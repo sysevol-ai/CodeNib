@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 5
+_EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 6
 _IMPORT_ERROR: BaseException | None = None
 
 try:
@@ -42,6 +42,9 @@ _claim_owner_replacement_permit_exact = _implementation_attribute(
 _require_owner_exact = _implementation_attribute("require_owner_exact")
 _close_owner_exact = _implementation_attribute("close_owner_exact")
 _provision_owner_exact = _implementation_attribute("provision_owner_exact")
+_provision_owner_interruptibly_exact = _implementation_attribute(
+    "provision_owner_interruptibly_exact"
+)
 _capture_owner_destination_exact = _implementation_attribute(
     "capture_owner_destination_exact"
 )
@@ -50,6 +53,9 @@ _acquire_owner_replacement_lease_exact = _implementation_attribute(
 )
 _provision_owner_replacement_exact = _implementation_attribute(
     "provision_owner_replacement_exact"
+)
+_provision_owner_replacement_interruptibly_exact = _implementation_attribute(
+    "provision_owner_replacement_interruptibly_exact"
 )
 _verify_owner_authority_exact = _implementation_attribute(
     "verify_owner_authority_exact"
@@ -82,6 +88,9 @@ _abort_owner_file_exact = _implementation_attribute("abort_owner_file_exact")
 _seal_owner_directories_exact = _implementation_attribute(
     "seal_owner_directories_exact"
 )
+_seal_owner_directories_interruptibly_exact = _implementation_attribute(
+    "seal_owner_directories_interruptibly_exact"
+)
 _sync_owner_parent_exact = _implementation_attribute("sync_owner_parent_exact")
 _mark_owner_adopted_exact = _implementation_attribute("mark_owner_adopted_exact")
 _rename_owner_child_noreplace_exact = _implementation_attribute(
@@ -109,9 +118,11 @@ _workspace_owner_protocol_available = (
             _require_owner_exact,
             _close_owner_exact,
             _provision_owner_exact,
+            _provision_owner_interruptibly_exact,
             _capture_owner_destination_exact,
             _acquire_owner_replacement_lease_exact,
             _provision_owner_replacement_exact,
+            _provision_owner_replacement_interruptibly_exact,
             _verify_owner_authority_exact,
             _verify_owner_adoption_binding_exact,
             _verify_owner_destination_binding_exact,
@@ -125,6 +136,7 @@ _workspace_owner_protocol_available = (
             _finish_owner_file_exact,
             _abort_owner_file_exact,
             _seal_owner_directories_exact,
+            _seal_owner_directories_interruptibly_exact,
             _sync_owner_parent_exact,
             _mark_owner_adopted_exact,
             _rename_owner_child_noreplace_exact,
@@ -146,9 +158,11 @@ if not _workspace_owner_protocol_available:
     _require_owner_exact = None
     _close_owner_exact = None
     _provision_owner_exact = None
+    _provision_owner_interruptibly_exact = None
     _capture_owner_destination_exact = None
     _acquire_owner_replacement_lease_exact = None
     _provision_owner_replacement_exact = None
+    _provision_owner_replacement_interruptibly_exact = None
     _verify_owner_authority_exact = None
     _verify_owner_adoption_binding_exact = None
     _verify_owner_destination_binding_exact = None
@@ -162,6 +176,7 @@ if not _workspace_owner_protocol_available:
     _finish_owner_file_exact = None
     _abort_owner_file_exact = None
     _seal_owner_directories_exact = None
+    _seal_owner_directories_interruptibly_exact = None
     _sync_owner_parent_exact = None
     _mark_owner_adopted_exact = None
     _rename_owner_child_noreplace_exact = None
@@ -290,21 +305,36 @@ def provision_owner(
     root_mode: int,
     directories: tuple[tuple[bytes, int], ...],
     deadline_ns: int,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Provision one exact missing-destination skeleton."""
 
     _require_protocol()
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("workspace cancellation check must be callable")
     assert _provision_owner_exact is not None
+    assert _provision_owner_interruptibly_exact is not None
+    provision = (
+        _provision_owner_exact
+        if check_cancelled is None
+        else _provision_owner_interruptibly_exact
+    )
+    arguments = (
+        owner,
+        allowed_root,
+        destination_name,
+        stage_name,
+        plan_digest,
+        root_mode,
+        directories,
+        deadline_ns,
+    )
     _require_none_result(
-        _provision_owner_exact(
-            owner,
-            allowed_root,
-            destination_name,
-            stage_name,
-            plan_digest,
-            root_mode,
-            directories,
-            deadline_ns,
+        (
+            provision(*arguments)
+            if check_cancelled is None
+            else provision(*arguments, check_cancelled)
         ),
         "provision",
     )
@@ -349,19 +379,34 @@ def provision_owner_replacement(
     root_mode: int,
     directories: tuple[tuple[bytes, int], ...],
     deadline_ns: int,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Provision one candidate beside an exact captured destination."""
 
     _require_protocol()
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("workspace cancellation check must be callable")
     assert _provision_owner_replacement_exact is not None
+    assert _provision_owner_replacement_interruptibly_exact is not None
+    provision = (
+        _provision_owner_replacement_exact
+        if check_cancelled is None
+        else _provision_owner_replacement_interruptibly_exact
+    )
+    arguments = (
+        owner,
+        replacement_slot,
+        plan_digest,
+        root_mode,
+        directories,
+        deadline_ns,
+    )
     _require_none_result(
-        _provision_owner_replacement_exact(
-            owner,
-            replacement_slot,
-            plan_digest,
-            root_mode,
-            directories,
-            deadline_ns,
+        (
+            provision(*arguments)
+            if check_cancelled is None
+            else provision(*arguments, check_cancelled)
         ),
         "replacement-provision",
     )
@@ -493,10 +538,22 @@ def abort_owner_file(owner: object) -> None:
     _require_none_result(_abort_owner_file_exact(owner), "file-abort")
 
 
-def seal_owner_directories(owner: object) -> None:
+def seal_owner_directories(
+    owner: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
     _require_protocol()
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("workspace cancellation check must be callable")
     assert _seal_owner_directories_exact is not None
-    _require_none_result(_seal_owner_directories_exact(owner), "directory-seal")
+    assert _seal_owner_directories_interruptibly_exact is not None
+    result = (
+        _seal_owner_directories_exact(owner)
+        if check_cancelled is None
+        else _seal_owner_directories_interruptibly_exact(owner, check_cancelled)
+    )
+    _require_none_result(result, "directory-seal")
 
 
 def sync_owner_parent(owner: object) -> None:

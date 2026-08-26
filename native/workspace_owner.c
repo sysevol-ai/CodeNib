@@ -249,6 +249,31 @@ static int check_deadline(long long deadline_ns) {
   return 0;
 }
 
+static int poll_cancellation(PyObject *check_cancelled) {
+  PyObject *result;
+
+  if (check_cancelled == NULL || check_cancelled == Py_None) {
+    return 0;
+  }
+  if (!PyCallable_Check(check_cancelled)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace cancellation check must be callable");
+    return -1;
+  }
+  result = PyObject_CallNoArgs(check_cancelled);
+  if (result == NULL) {
+    return -1;
+  }
+  if (result != Py_None) {
+    Py_DECREF(result);
+    PyErr_SetString(PyExc_RuntimeError,
+                    "workspace cancellation check returned a result");
+    return -1;
+  }
+  Py_DECREF(result);
+  return 0;
+}
+
 static int verify_parent_binding(WorkspaceOwner *self);
 static int verify_captured_destination_hidden_authority(WorkspaceOwner *self);
 static int verify_captured_destination_local_authority(WorkspaceOwner *self);
@@ -1481,7 +1506,7 @@ static const char *path_basename(const char *path) {
 }
 
 static int parse_directories(WorkspaceOwner *self, PyObject *directories,
-                             long long deadline_ns) {
+                             long long deadline_ns, PyObject *check_cancelled) {
   Py_ssize_t count;
   Py_ssize_t index;
   PyObject *item;
@@ -1552,12 +1577,16 @@ static int parse_directories(WorkspaceOwner *self, PyObject *directories,
       return -1;
     }
     self->directories[index].mode = (mode_t)mode;
+    if ((index & 63) == 63 && index + 1 < count &&
+        poll_cancellation(check_cancelled) < 0) {
+      return -1;
+    }
   }
   return 0;
 }
 
-static int validate_directory_plan(WorkspaceOwner *self,
-                                   long long deadline_ns) {
+static int validate_directory_plan(WorkspaceOwner *self, long long deadline_ns,
+                                   PyObject *check_cancelled) {
   Py_ssize_t index;
   const char *path;
   const char *slash;
@@ -1585,6 +1614,10 @@ static int validate_directory_plan(WorkspaceOwner *self,
         find_directory_index(self, path, (size_t)(slash - path), index) < 0) {
       PyErr_SetString(PyExc_ValueError,
                       "workspace directory parent is absent from its plan");
+      return -1;
+    }
+    if ((index & 63) == 63 && index + 1 < self->directory_count &&
+        poll_cancellation(check_cancelled) < 0) {
       return -1;
     }
   }
@@ -1922,8 +1955,9 @@ WorkspaceOwner_claim_replacement_permit(WorkspaceOwner *self,
   return permit;
 }
 
-static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
-                                          PyObject *args) {
+static PyObject *
+WorkspaceOwner_provision_with_cancellation(WorkspaceOwner *self, PyObject *args,
+                                           PyObject *check_cancelled) {
   PyObject *allowed_root_object;
   PyObject *destination_object;
   PyObject *stage_object;
@@ -1949,6 +1983,11 @@ static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
   const char *name;
 
   if (require_linux() < 0 || require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (check_cancelled != Py_None && !PyCallable_Check(check_cancelled)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace cancellation check must be callable");
     return NULL;
   }
 #if !defined(SYS_renameat2) || !defined(SYS_fstat) ||                          \
@@ -2038,8 +2077,9 @@ static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
     goto error;
   }
   if (split_destination(destination, &parent_path, &destination_name) < 0 ||
-      parse_directories(self, directories_object, deadline_ns) < 0 ||
-      validate_directory_plan(self, deadline_ns) < 0 ||
+      parse_directories(self, directories_object, deadline_ns,
+                        check_cancelled) < 0 ||
+      validate_directory_plan(self, deadline_ns, check_cancelled) < 0 ||
       preflight_descriptor_budget(self, allowed_root, parent_path, 0) < 0) {
     goto error;
   }
@@ -2065,7 +2105,8 @@ static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
                     "workspace stage and destination must differ");
     goto error;
   }
-  if (check_deadline(deadline_ns) < 0) {
+  if (check_deadline(deadline_ns) < 0 ||
+      poll_cancellation(check_cancelled) < 0) {
     goto error;
   }
 
@@ -2158,6 +2199,9 @@ static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
   if (verify_allowed_root_policy(self) < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "workspace allowed-root policy changed before mutation");
+    goto error;
+  }
+  if (poll_cancellation(check_cancelled) < 0) {
     goto error;
   }
   self->namespace_state = WORKSPACE_PROVISIONING;
@@ -2287,6 +2331,9 @@ static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
                       "workspace directory crosses the root device");
       goto error;
     }
+    if (poll_cancellation(check_cancelled) < 0) {
+      goto error;
+    }
   }
   if (native_fsync_retry(self->root_guard_fd) < 0 ||
       native_fsync_retry(self->parent_guard_fd) < 0) {
@@ -2323,6 +2370,11 @@ error:
   free(stage_name);
   free(plan_digest);
   return NULL;
+}
+
+static PyObject *WorkspaceOwner_provision(WorkspaceOwner *self,
+                                          PyObject *args) {
+  return WorkspaceOwner_provision_with_cancellation(self, args, Py_None);
 }
 
 static PyObject *WorkspaceOwner_capture_destination(WorkspaceOwner *self,
@@ -2721,8 +2773,8 @@ rollback_lease:
   return NULL;
 }
 
-static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
-                                                      PyObject *args) {
+static PyObject *WorkspaceOwner_provision_replacement_with_cancellation(
+    WorkspaceOwner *self, PyObject *args, PyObject *check_cancelled) {
   PyObject *slot_object;
   PyObject *digest_object;
   PyObject *root_mode_object;
@@ -2741,6 +2793,11 @@ static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
   const char *name;
 
   if (require_linux() < 0 || require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (check_cancelled != Py_None && !PyCallable_Check(check_cancelled)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace cancellation check must be callable");
     return NULL;
   }
 #if !defined(SYS_renameat2) || !defined(SYS_fstat) ||                          \
@@ -2816,8 +2873,9 @@ static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
     PyErr_SetString(PyExc_ValueError, "workspace root mode is invalid");
     goto error;
   }
-  if (parse_directories(self, directories_object, deadline_ns) < 0 ||
-      validate_directory_plan(self, deadline_ns) < 0 ||
+  if (parse_directories(self, directories_object, deadline_ns,
+                        check_cancelled) < 0 ||
+      validate_directory_plan(self, deadline_ns, check_cancelled) < 0 ||
       preflight_additional_descriptor_budget((size_t)self->directory_count +
                                              1) < 0) {
     goto error;
@@ -2850,6 +2908,9 @@ static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
       verify_allowed_root_policy(self) < 0) {
     PyErr_SetString(PyExc_RuntimeError,
                     "workspace replacement binding changed before mutation");
+    goto error;
+  }
+  if (poll_cancellation(check_cancelled) < 0) {
     goto error;
   }
   self->namespace_state = WORKSPACE_REPLACEMENT_PROVISIONING;
@@ -2981,6 +3042,9 @@ static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
           "workspace directory crosses the replacement root device");
       goto error;
     }
+    if (poll_cancellation(check_cancelled) < 0) {
+      goto error;
+    }
   }
   if (native_fsync_retry(self->root_guard_fd) < 0 ||
       native_fsync_retry(self->parent_guard_fd) < 0) {
@@ -3005,6 +3069,12 @@ error:
   free(slot_name);
   free(plan_digest);
   return NULL;
+}
+
+static PyObject *WorkspaceOwner_provision_replacement(WorkspaceOwner *self,
+                                                      PyObject *args) {
+  return WorkspaceOwner_provision_replacement_with_cancellation(self, args,
+                                                                Py_None);
 }
 
 static int verify_descriptor(int descriptor, int guard, dev_t device,
@@ -3996,11 +4066,17 @@ static PyObject *WorkspaceOwner_abort_file(WorkspaceOwner *self,
   Py_RETURN_NONE;
 }
 
-static PyObject *WorkspaceOwner_seal_directories(WorkspaceOwner *self,
-                                                 PyObject *Py_UNUSED(ignored)) {
+static PyObject *
+WorkspaceOwner_seal_directories_with_cancellation(WorkspaceOwner *self,
+                                                  PyObject *check_cancelled) {
   Py_ssize_t index;
 
   if (require_owner_pid(self) < 0) {
+    return NULL;
+  }
+  if (check_cancelled != Py_None && !PyCallable_Check(check_cancelled)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "workspace cancellation check must be callable");
     return NULL;
   }
   if (self->closed || !workspace_state_is_adopted(self) || self->file_active ||
@@ -4009,9 +4085,15 @@ static PyObject *WorkspaceOwner_seal_directories(WorkspaceOwner *self,
                     "native workspace directories are not seal-ready");
     return NULL;
   }
+  if (poll_cancellation(check_cancelled) < 0) {
+    return NULL;
+  }
   for (index = self->directory_count; index > 0; --index) {
     if (native_fsync_retry(self->directories[index - 1].guard_fd) < 0) {
       return PyErr_SetFromErrno(PyExc_OSError);
+    }
+    if (poll_cancellation(check_cancelled) < 0) {
+      return NULL;
     }
   }
   if (native_fsync_retry(self->root_guard_fd) < 0 ||
@@ -4025,6 +4107,11 @@ static PyObject *WorkspaceOwner_seal_directories(WorkspaceOwner *self,
     return NULL;
   }
   Py_RETURN_NONE;
+}
+
+static PyObject *WorkspaceOwner_seal_directories(WorkspaceOwner *self,
+                                                 PyObject *Py_UNUSED(ignored)) {
+  return WorkspaceOwner_seal_directories_with_cancellation(self, Py_None);
 }
 
 static PyObject *
@@ -5348,6 +5435,9 @@ static WorkspaceOwner *require_workspace_owner_exact(PyObject *candidate) {
 }
 
 typedef PyObject *(*owner_varargs_function)(WorkspaceOwner *, PyObject *);
+typedef PyObject *(*owner_varargs_cancellation_function)(WorkspaceOwner *,
+                                                         PyObject *,
+                                                         PyObject *);
 typedef PyObject *(*owner_argument_function)(WorkspaceOwner *, PyObject *);
 typedef PyObject *(*owner_noargs_function)(WorkspaceOwner *, PyObject *);
 
@@ -5373,6 +5463,33 @@ static PyObject *dispatch_owner_varargs_exact(PyObject *args,
     return NULL;
   }
   result = function(owner, tail);
+  Py_DECREF(tail);
+  return result;
+}
+
+static PyObject *dispatch_owner_varargs_cancellation_exact(
+    PyObject *args, Py_ssize_t expected_size, const char *label,
+    owner_varargs_cancellation_function function) {
+  WorkspaceOwner *owner;
+  PyObject *check_cancelled;
+  PyObject *tail;
+  PyObject *result;
+
+  if (!PyTuple_CheckExact(args) || PyTuple_Size(args) != expected_size) {
+    PyErr_Format(PyExc_TypeError, "%s requires exactly %zd arguments", label,
+                 expected_size);
+    return NULL;
+  }
+  owner = require_workspace_owner_exact(PyTuple_GetItem(args, 0));
+  check_cancelled = PyTuple_GetItem(args, expected_size - 1);
+  if (owner == NULL || check_cancelled == NULL) {
+    return NULL;
+  }
+  tail = PyTuple_GetSlice(args, 1, expected_size - 1);
+  if (tail == NULL) {
+    return NULL;
+  }
+  result = function(owner, tail, check_cancelled);
   Py_DECREF(tail);
   return result;
 }
@@ -5411,6 +5528,14 @@ static PyObject *module_provision_owner_exact(PyObject *module,
                                       WorkspaceOwner_provision);
 }
 
+static PyObject *module_provision_owner_interruptibly_exact(PyObject *module,
+                                                            PyObject *args) {
+  (void)module;
+  return dispatch_owner_varargs_cancellation_exact(
+      args, 9, "provision_owner_interruptibly_exact",
+      WorkspaceOwner_provision_with_cancellation);
+}
+
 static PyObject *module_capture_owner_destination_exact(PyObject *module,
                                                         PyObject *args) {
   (void)module;
@@ -5433,6 +5558,15 @@ static PyObject *module_provision_owner_replacement_exact(PyObject *module,
   return dispatch_owner_varargs_exact(args, 6,
                                       "provision_owner_replacement_exact",
                                       WorkspaceOwner_provision_replacement);
+}
+
+static PyObject *
+module_provision_owner_replacement_interruptibly_exact(PyObject *module,
+                                                       PyObject *args) {
+  (void)module;
+  return dispatch_owner_varargs_cancellation_exact(
+      args, 7, "provision_owner_replacement_interruptibly_exact",
+      WorkspaceOwner_provision_replacement_with_cancellation);
 }
 
 static PyObject *module_claim_owner_publish_permit_exact(PyObject *module,
@@ -5553,6 +5687,15 @@ static PyObject *module_seal_owner_directories_exact(PyObject *module,
                                                      PyObject *owner) {
   (void)module;
   return dispatch_owner_noargs_exact(owner, WorkspaceOwner_seal_directories);
+}
+
+static PyObject *
+module_seal_owner_directories_interruptibly_exact(PyObject *module,
+                                                  PyObject *args) {
+  (void)module;
+  return dispatch_owner_argument_exact(
+      args, "seal_owner_directories_interruptibly_exact",
+      WorkspaceOwner_seal_directories_with_cancellation);
 }
 
 static PyObject *module_sync_owner_parent_exact(PyObject *module,
@@ -5692,7 +5835,7 @@ static PyObject *module_require_owner_exact(PyObject *module, PyObject *owner) {
   return owner;
 }
 
-#define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 5
+#define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 6
 
 static PyObject *module_require_support(PyObject *module,
                                         PyObject *Py_UNUSED(ignored)) {
@@ -5735,6 +5878,9 @@ static PyMethodDef workspace_module_methods[] = {
      "Authenticate against the internally pinned native owner type."},
     {"provision_owner_exact", (PyCFunction)module_provision_owner_exact,
      METH_VARARGS, "Provision through exact native-owner dispatch."},
+    {"provision_owner_interruptibly_exact",
+     (PyCFunction)module_provision_owner_interruptibly_exact, METH_VARARGS,
+     "Provision through cancellation-aware exact native-owner dispatch."},
     {"capture_owner_destination_exact",
      (PyCFunction)module_capture_owner_destination_exact, METH_VARARGS,
      "Capture one existing destination through exact native-owner dispatch."},
@@ -5744,6 +5890,9 @@ static PyMethodDef workspace_module_methods[] = {
     {"provision_owner_replacement_exact",
      (PyCFunction)module_provision_owner_replacement_exact, METH_VARARGS,
      "Provision one candidate beside an exact captured destination."},
+    {"provision_owner_replacement_interruptibly_exact",
+     (PyCFunction)module_provision_owner_replacement_interruptibly_exact,
+     METH_VARARGS, "Provision one cancellation-aware replacement candidate."},
     {"claim_owner_publish_permit_exact",
      (PyCFunction)module_claim_owner_publish_permit_exact, METH_O,
      "Claim the exact owner's private one-shot publication capability."},
@@ -5785,6 +5934,10 @@ static PyMethodDef workspace_module_methods[] = {
     {"seal_owner_directories_exact",
      (PyCFunction)module_seal_owner_directories_exact, METH_O,
      "Seal directories through exact native-owner dispatch."},
+    {"seal_owner_directories_interruptibly_exact",
+     (PyCFunction)module_seal_owner_directories_interruptibly_exact,
+     METH_VARARGS,
+     "Seal directories through cancellation-aware exact native dispatch."},
     {"sync_owner_parent_exact", (PyCFunction)module_sync_owner_parent_exact,
      METH_O, "Sync the parent through exact native-owner dispatch."},
     {"mark_owner_adopted_exact", (PyCFunction)module_mark_owner_adopted_exact,

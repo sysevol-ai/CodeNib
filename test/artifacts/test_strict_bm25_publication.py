@@ -105,27 +105,39 @@ class _TestWorkspaceProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _Result],
+        check_cancelled: Callable[[], None] | None = None,
         _replacement_source: object | None = None,
     ) -> _Result:
         self.run_count += 1
         self.requests.append(request)
+        if check_cancelled is not None:
+            check_cancelled()
         plan = request.plan if self.workspace_plan is None else self.workspace_plan
         parent = request.destination.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if request.destination_binding is not None and self.workspace_plan is None:
             parent.chmod(0o700)
-            return LocalWorkspaceProvider(parent).run_workspace(
-                request,
+            provider = LocalWorkspaceProvider(parent)
+            arguments = dict(
                 receipt_owner=receipt_owner,
                 operation=operation,
                 _replacement_source=_replacement_source,  # type: ignore[arg-type]
+            )
+            if check_cancelled is None:
+                return provider.run_workspace(request, **arguments)
+            return provider.run_workspace(
+                request,
+                **arguments,
+                check_cancelled=check_cancelled,
             )
         stage = parent / (
             f".{request.destination.name}.strict-{id(self):x}-{self.run_count}"
         )
         stage.mkdir(mode=plan.root_mode)
-        for directory in plan.directories:
+        for index, directory in enumerate(plan.directories):
             (stage / directory.path.as_posix()).mkdir(mode=directory.mode)
+            if check_cancelled is not None and index + 1 < len(plan.directories):
+                check_cancelled()
 
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         flags |= getattr(os, "O_CLOEXEC", 0)

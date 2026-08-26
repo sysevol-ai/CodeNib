@@ -52,6 +52,18 @@ _STAGE_PREFIX = ".codenib-workspace-stage-"
 _PROVISION_BOUND_REPLACEMENT_EXACT = OwnedWorkspaceAuthority.provision_bound_replacement
 
 
+def _provisioning_directories(
+    plan: WorkspacePlan,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[tuple[bytes, int], ...]:
+    records: list[tuple[bytes, int]] = []
+    for index, item in enumerate(plan.directories):
+        records.append((os.fsencode(item.path.as_posix()), item.mode))
+        if check_cancelled is not None and index + 1 < len(plan.directories):
+            check_cancelled()
+    return tuple(records)
+
+
 @dataclass(slots=True)
 class _ProviderWorkspaceCleanupOwner:
     workspace: OwnedWorkspaceAuthority
@@ -139,6 +151,7 @@ class LocalWorkspaceProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        check_cancelled: Callable[[], None] | None = None,
         _expected_parent_identity: tuple[int, ...] | None = None,
         _replacement_source: _ReplacementSourceGate | None = None,
     ) -> _OperationResult:
@@ -147,6 +160,8 @@ class LocalWorkspaceProvider:
             raise TypeError("strict workspace request has an invalid type")
         if type(receipt_owner) is not PublishedWorkspaceReceiptOwner:
             raise TypeError("strict workspace receipt owner has an invalid type")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("local workspace cancellation check must be callable")
         replacement = request.destination_binding is not None
         if replacement:
             if type(_replacement_source) is not _ReplacementSourceGate:
@@ -163,11 +178,20 @@ class LocalWorkspaceProvider:
             or any(type(value) is not int for value in _expected_parent_identity)
         ):
             raise TypeError("expected workspace parent identity is invalid")
-        detached_plan = _snapshot_workspace_plan(request.plan)
+        if check_cancelled is None:
+            detached_plan = _snapshot_workspace_plan(request.plan)
+        else:
+            detached_plan = _snapshot_workspace_plan(
+                request.plan,
+                check_cancelled=check_cancelled,
+            )
         relative_destination = self._relative_destination(request.destination)
         self.require_support()
+        if check_cancelled is not None:
+            check_cancelled()
         stage_name = _STAGE_PREFIX + secrets.token_hex(16)
         deadline_ns = time.monotonic_ns() + self.provision_timeout_ns
+        directories = _provisioning_directories(detached_plan, check_cancelled)
         if replacement:
             assert _replacement_source is not None
             return self._run_replacement_workspace(
@@ -179,6 +203,7 @@ class LocalWorkspaceProvider:
                 relative_destination=relative_destination,
                 stage_name=stage_name,
                 deadline_ns=deadline_ns,
+                check_cancelled=check_cancelled,
                 expected_parent_identity=_expected_parent_identity,
             )
 
@@ -199,19 +224,23 @@ class LocalWorkspaceProvider:
             # Recheck mutable external policy immediately before the native
             # call that can perform the first namespace mutation.
             self._require_private_root()
-            _workspace_owner.provision_owner(
+            provision_arguments = (
                 native_owner,
                 os.fsencode(self.allowed_root),
                 relative_destination,
                 os.fsencode(stage_name),
                 detached_plan.digest.encode("ascii"),
                 detached_plan.root_mode,
-                tuple(
-                    (os.fsencode(item.path.as_posix()), item.mode)
-                    for item in detached_plan.directories
-                ),
+                directories,
                 deadline_ns,
             )
+            if check_cancelled is None:
+                _workspace_owner.provision_owner(*provision_arguments)
+            else:
+                _workspace_owner.provision_owner(
+                    *provision_arguments,
+                    check_cancelled=check_cancelled,
+                )
             if _expected_parent_identity is not None:
                 parent_descriptor = _workspace_owner.borrow_owner_parent_descriptor(
                     native_owner
@@ -223,14 +252,21 @@ class LocalWorkspaceProvider:
                     raise RuntimeError(
                         "native workspace parent differs from retained authority"
                     )
-            workspace.adopt_provisioned(
-                destination=request.destination,
-                stage_name=stage_name,
-                provisioned_owner=native_owner,
-                publication_permit=publication_permit,
-                plan=detached_plan,
-                destination_binding=request.destination_binding,
-            )
+            adoption_arguments = {
+                "destination": request.destination,
+                "stage_name": stage_name,
+                "provisioned_owner": native_owner,
+                "publication_permit": publication_permit,
+                "plan": detached_plan,
+                "destination_binding": request.destination_binding,
+            }
+            if check_cancelled is None:
+                workspace.adopt_provisioned(**adoption_arguments)
+            else:
+                workspace.adopt_provisioned(
+                    **adoption_arguments,
+                    check_cancelled=check_cancelled,
+                )
             return run_adopted_workspace_operation(
                 request,
                 workspace=workspace,
@@ -249,6 +285,7 @@ class LocalWorkspaceProvider:
         relative_destination: bytes,
         stage_name: str,
         deadline_ns: int,
+        check_cancelled: Callable[[], None] | None,
         expected_parent_identity: tuple[int, ...] | None,
     ) -> _OperationResult:
         """Bind before candidate mutation and delegate the handed-off owner."""
@@ -303,10 +340,17 @@ class LocalWorkspaceProvider:
             )
             self._require_private_root()
             provision_deadline_ns = time.monotonic_ns() + self.provision_timeout_ns
-            _PROVISION_BOUND_REPLACEMENT_EXACT(
-                workspace,
-                deadline_ns=provision_deadline_ns,
-            )
+            if check_cancelled is None:
+                _PROVISION_BOUND_REPLACEMENT_EXACT(
+                    workspace,
+                    deadline_ns=provision_deadline_ns,
+                )
+            else:
+                _PROVISION_BOUND_REPLACEMENT_EXACT(
+                    workspace,
+                    deadline_ns=provision_deadline_ns,
+                    check_cancelled=check_cancelled,
+                )
             return run_adopted_workspace_operation(
                 request,
                 workspace=workspace,

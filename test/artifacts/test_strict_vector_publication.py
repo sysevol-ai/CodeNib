@@ -86,15 +86,22 @@ class _TestWorkspaceProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _Result],
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _Result:
         self.run_count += 1
         self.requests.append(request)
+        if check_cancelled is not None:
+            check_cancelled()
         parent = request.destination.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         stage = parent / f".{request.destination.name}.vector-test-{self.run_count}"
         stage.mkdir(mode=request.plan.root_mode)
-        for directory in request.plan.directories:
+        for index, directory in enumerate(request.plan.directories):
             (stage / directory.path.as_posix()).mkdir(mode=directory.mode)
+            if check_cancelled is not None and index + 1 < len(
+                request.plan.directories
+            ):
+                check_cancelled()
 
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         flags |= getattr(os, "O_CLOEXEC", 0)

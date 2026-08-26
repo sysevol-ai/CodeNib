@@ -187,6 +187,167 @@ def test_local_provider_retains_owner_when_native_cleanup_cannot_authenticate(
     assert tuple(root.glob(".codenib-workspace-orphan-*"))
 
 
+def test_local_provider_propagates_exact_cancellation_into_provisioning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    request = _request(root)
+    receipt_owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("cancel during local provisioning")
+    armed = False
+    forwarded: list[object] = []
+    operation_calls = 0
+
+    def check_cancelled() -> None:
+        if armed:
+            raise cancellation
+
+    def stop_during_provision(*_args: object, **kwargs: object) -> None:
+        nonlocal armed
+        callback = kwargs.pop("check_cancelled")
+        assert kwargs == {}
+        assert callable(callback)
+        forwarded.append(callback)
+        armed = True
+        callback()
+
+    def forbidden_operation(_session: StrictWorkspaceSession) -> None:
+        nonlocal operation_calls
+        operation_calls += 1
+
+    monkeypatch.setattr(
+        workspace_owner,
+        "provision_owner",
+        stop_during_provision,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=receipt_owner,
+            operation=forbidden_operation,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is cancellation
+    assert forwarded == [check_cancelled]
+    assert operation_calls == 0
+    assert receipt_owner.state == "empty"
+    assert tuple(root.iterdir()) == ()
+    receipt_owner.close()
+    assert receipt_owner.closed
+
+
+def test_local_provider_propagates_cancellation_into_native_adoption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    request = _request(root)
+    receipt_owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("cancel during local adoption")
+    real_provision = workspace_owner.provision_owner
+    armed = False
+    operation_calls = 0
+
+    def check_cancelled() -> None:
+        if armed:
+            raise cancellation
+
+    def provision_then_stop(*args: object, **kwargs: object) -> None:
+        nonlocal armed
+        assert kwargs.get("check_cancelled") is check_cancelled
+        real_provision(*args, **kwargs)
+        armed = True
+
+    def forbidden_operation(_session: StrictWorkspaceSession) -> None:
+        nonlocal operation_calls
+        operation_calls += 1
+
+    monkeypatch.setattr(
+        workspace_owner,
+        "provision_owner",
+        provision_then_stop,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=receipt_owner,
+            operation=forbidden_operation,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is cancellation
+    assert operation_calls == 0
+    assert receipt_owner.state == "empty"
+    assert len(tuple(root.glob(".codenib-workspace-orphan-*"))) == 1
+    receipt_owner.close()
+    assert receipt_owner.closed
+
+
+def test_local_adoption_settles_native_owner_after_plan_poll(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    base_plan = _plan()
+    plan = WorkspacePlan(
+        subject_digest=base_plan.subject_digest,
+        directories=base_plan.directories,
+        files=(
+            *base_plan.files,
+            WorkspaceFile("data/second.json", max_bytes=1),
+        ),
+    )
+    request = StrictWorkspaceRequest(
+        purpose="test-local-workspace-provider",
+        destination=root / "published",
+        plan=plan,
+    )
+    receipt_owner = PublishedWorkspaceReceiptOwner()
+    cancellation = RuntimeError("cancel after native ownership handoff")
+    workspaces: list[object] = []
+    real_adopt = local_provider_module.OwnedWorkspaceAuthority._adopt_locked
+
+    def observe_adopt(workspace, *args: object, **kwargs: object) -> None:
+        workspaces.append(workspace)
+        real_adopt(workspace, *args, **kwargs)
+
+    def check_cancelled() -> None:
+        if workspaces and workspaces[-1].state == "adopting":
+            raise cancellation
+
+    monkeypatch.setattr(
+        local_provider_module.OwnedWorkspaceAuthority,
+        "_adopt_locked",
+        observe_adopt,
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        run_strict_workspace(
+            provider,
+            request,
+            receipt_owner=receipt_owner,
+            operation=lambda _session: None,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is cancellation
+    assert len(workspaces) == 1
+    assert workspaces[0].state == "closed"
+    assert receipt_owner.state == "empty"
+    assert not request.destination.exists()
+    assert len(tuple(root.glob(".codenib-workspace-orphan-*"))) == 1
+    receipt_owner.close()
+
+
 def test_local_provider_keeps_a_postpublish_receipt_active(tmp_path: Path) -> None:
     root = tmp_path / "authority"
     provider = _require_native_provider(root)

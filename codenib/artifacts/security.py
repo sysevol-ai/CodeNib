@@ -83,10 +83,43 @@ def _interruptible_chunks(
         yield chunk
 
 
-def assert_no_credential_fields(value: Any, *, source: str) -> None:
+def assert_no_credential_fields(
+    value: Any,
+    *,
+    source: str,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
     """Reject credential-shaped keys in metadata intended for publication."""
 
-    assert_no_secret_fields(value, source=source)
+    if check_cancelled is None:
+        assert_no_secret_fields(value, source=source)
+        return
+    if not callable(check_cancelled):
+        raise TypeError("publication cancellation check must be callable")
+
+    check_cancelled()
+    stack = [value]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, Mapping):
+            item_count = len(current)
+            for index, (key, child) in enumerate(current.items()):
+                # Preserve the shared classifier's exact key semantics without
+                # asking it to recursively traverse the complete value.
+                assert_no_secret_fields({key: None}, source=source)
+                stack.append(child)
+                if index + 1 < item_count:
+                    check_cancelled()
+        elif isinstance(current, (list, tuple)):
+            item_count = len(current)
+            for index, child in enumerate(current):
+                stack.append(child)
+                if index + 1 < item_count:
+                    check_cancelled()
+        elif isinstance(current, str):
+            assert_no_secret_fields(current, source=source)
+        if stack:
+            check_cancelled()
 
 
 def _forbidden_path_strings(paths: Iterable[Path]) -> tuple[str, ...]:
@@ -118,10 +151,18 @@ def assert_publishable_json_value(
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Scan decoded JSON semantics without depending on their source encoding."""
 
-    assert_no_credential_fields(value, source=label)
+    if check_cancelled is None:
+        assert_no_credential_fields(value, source=label)
+    else:
+        assert_no_credential_fields(
+            value,
+            source=label,
+            check_cancelled=check_cancelled,
+        )
     forbidden = _forbidden_path_strings(forbidden_paths)
     secrets = tuple(
         value
@@ -140,17 +181,26 @@ def assert_publishable_json_value(
         if any(pattern in text for pattern in secrets):
             raise ValueError(f"{label} contains a configured credential")
 
+    if check_cancelled is not None:
+        check_cancelled()
     stack = [value]
     while stack:
         current = stack.pop()
         if isinstance(current, Mapping):
-            for key, child in current.items():
+            item_count = len(current)
+            for index, (key, child) in enumerate(current.items()):
                 if not isinstance(key, str):
                     raise ValueError(f"{label} contains a non-text JSON object key")
                 check_text(key)
                 stack.append(child)
+                if check_cancelled is not None and index + 1 < item_count:
+                    check_cancelled()
         elif isinstance(current, (list, tuple)):
-            stack.extend(current)
+            item_count = len(current)
+            for index, child in enumerate(current):
+                stack.append(child)
+                if check_cancelled is not None and index + 1 < item_count:
+                    check_cancelled()
         elif isinstance(current, str):
             check_text(current)
         elif current is None or isinstance(current, bool):
@@ -172,6 +222,8 @@ def assert_publishable_json_value(
             raise ValueError(
                 f"{label} contains unsupported JSON value: " f"{type(current).__name__}"
             )
+        if check_cancelled is not None and stack:
+            check_cancelled()
 
 
 def _serialized_patterns(values: Iterable[str]) -> tuple[bytes, ...]:
@@ -493,12 +545,21 @@ def _assert_publishable_tree_reader_interruptibly(
                 max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
                 max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
             )
-            assert_publishable_json_value(
-                decoded,
-                forbidden_paths=roots,
-                environ=environ,
-                label=json_label,
-            )
+            if check_cancelled is None:
+                assert_publishable_json_value(
+                    decoded,
+                    forbidden_paths=roots,
+                    environ=environ,
+                    label=json_label,
+                )
+            else:
+                assert_publishable_json_value(
+                    decoded,
+                    forbidden_paths=roots,
+                    environ=environ,
+                    label=json_label,
+                    check_cancelled=check_cancelled,
+                )
         else:
             with reader.open_authenticated_file(
                 relative,

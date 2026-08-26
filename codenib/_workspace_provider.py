@@ -217,6 +217,7 @@ class StrictWorkspaceProvider(Protocol):
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
+        check_cancelled: Callable[[], None] | None = None,
         _replacement_source: _ReplacementSourceGate | None = None,
     ) -> _OperationResult: ...
 
@@ -1153,6 +1154,7 @@ def _invoke_strict_workspace_provider(
     request: StrictWorkspaceRequest,
     receipt_owner: PublishedWorkspaceReceiptOwner,
     operation_gate: _ProviderOperationGate,
+    check_cancelled: Callable[[], None] | None,
     replacement_source: _ReplacementSourceGate | None,
     replacement_lifecycle: list[bool] | None,
     operation_lifecycle: list[bool],
@@ -1180,18 +1182,35 @@ def _invoke_strict_workspace_provider(
         try:
             provider_started[0] = True
             if replacement_source is None:
-                result = run_workspace(
-                    request,
-                    receipt_owner=receipt_owner,
-                    operation=operation_gate,
-                )
+                if check_cancelled is None:
+                    result = run_workspace(
+                        request,
+                        receipt_owner=receipt_owner,
+                        operation=operation_gate,
+                    )
+                else:
+                    result = run_workspace(
+                        request,
+                        receipt_owner=receipt_owner,
+                        operation=operation_gate,
+                        check_cancelled=check_cancelled,
+                    )
             else:
-                result = run_workspace(
-                    request,
-                    receipt_owner=receipt_owner,
-                    operation=operation_gate,
-                    _replacement_source=replacement_source,
-                )
+                if check_cancelled is None:
+                    result = run_workspace(
+                        request,
+                        receipt_owner=receipt_owner,
+                        operation=operation_gate,
+                        _replacement_source=replacement_source,
+                    )
+                else:
+                    result = run_workspace(
+                        request,
+                        receipt_owner=receipt_owner,
+                        operation=operation_gate,
+                        check_cancelled=check_cancelled,
+                        _replacement_source=replacement_source,
+                    )
             provider_returned[0] = True
         except BaseException as exc:  # noqa: B036 - settle before propagation
             commit_provider_primary(provider_primary, exc)
@@ -1384,11 +1403,14 @@ def run_strict_workspace(
                 # the same settlement boundary.
                 operation_lifecycle[2] = False
                 operation_lifecycle[0] = True
+                if check_cancelled is not None:
+                    check_cancelled()
                 result = invoke_strict_provider(
                     run_workspace,
                     request,
                     receipt_owner,
                     operation_gate,
+                    check_cancelled,
                     None,
                     None,
                     operation_lifecycle,
@@ -1434,11 +1456,14 @@ def run_strict_workspace(
                 replacement_lifecycle[0] = True
                 replacement_lifecycle[2] = True
                 operation_lifecycle[0] = True
+                if check_cancelled is not None:
+                    check_cancelled()
                 result = invoke_strict_provider(
                     run_workspace,
                     request,
                     receipt_owner,
                     operation_gate,
+                    check_cancelled,
                     replacement_source,
                     replacement_lifecycle,
                     operation_lifecycle,

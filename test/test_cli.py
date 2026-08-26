@@ -2303,6 +2303,65 @@ def test_retained_provider_passes_output_parent_identity_to_delegate(
     assert observed == [topology.output_parent_binding.identity]
 
 
+def test_retained_provider_forwards_exact_cancellation_callback(
+    tmp_path: Path,
+) -> None:
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    topology = cli._require_retained_materialization_topology(
+        catalog,
+        cas_root,
+        workspace_root,
+        workspace_root / "context",
+    )
+    callback_calls = 0
+    observed_callback: object | None = None
+
+    def check_cancelled() -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+
+    class Delegate:
+        def run_workspace(
+            self,
+            _request: object,
+            *,
+            receipt_owner: object,
+            operation: object,
+            check_cancelled: object,
+            _expected_parent_identity: tuple[int, ...] | None = None,
+        ) -> str:
+            nonlocal observed_callback
+            assert receipt_owner is not None
+            assert operation is not None
+            assert _expected_parent_identity == topology.output_parent_binding.identity
+            assert callable(check_cancelled)
+            observed_callback = check_cancelled
+            check_cancelled()
+            return "interruptible"
+
+    provider = cli._RetainedTopologyWorkspaceProvider(Delegate(), topology)
+    try:
+        assert (
+            provider.run_workspace(
+                object(),
+                receipt_owner=object(),
+                operation=object(),
+                check_cancelled=check_cancelled,
+            )
+            == "interruptible"
+        )
+    finally:
+        topology.close()
+
+    assert observed_callback is check_cancelled
+    assert callback_calls == 1
+
+
 def test_artifact_materialize_rejects_catalog_file_mount_before_storage_open(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

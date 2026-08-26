@@ -528,13 +528,25 @@ def _assert_authenticated_publishable_json_value(
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    assert_publishable_json_value(
-        value,
-        forbidden_paths=(),
-        environ=environ,
-        label=label,
-    )
+    if check_cancelled is None:
+        assert_publishable_json_value(
+            value,
+            forbidden_paths=(),
+            environ=environ,
+            label=label,
+        )
+    else:
+        if not callable(check_cancelled):
+            raise TypeError("strict BM25 cancellation check must be callable")
+        assert_publishable_json_value(
+            value,
+            forbidden_paths=(),
+            environ=environ,
+            label=label,
+            check_cancelled=check_cancelled,
+        )
     forbidden: set[str] = set()
     for path in forbidden_paths:
         expanded = path.expanduser()
@@ -544,20 +556,31 @@ def _assert_authenticated_publishable_json_value(
             forbidden.add(raw)
         forbidden.update((lexical, Path(lexical).as_posix()))
     patterns = tuple(sorted(pattern for pattern in forbidden if pattern))
+    if check_cancelled is not None:
+        check_cancelled()
     stack = [value]
     while stack:
         current = stack.pop()
         if isinstance(current, Mapping):
-            for key, child in current.items():
+            item_count = len(current)
+            for index, (key, child) in enumerate(current.items()):
                 if any(pattern in key for pattern in patterns):
                     raise ValueError(f"{label} contains an absolute build-machine path")
                 stack.append(child)
+                if check_cancelled is not None and index + 1 < item_count:
+                    check_cancelled()
         elif isinstance(current, (list, tuple)):
-            stack.extend(current)
+            item_count = len(current)
+            for index, child in enumerate(current):
+                stack.append(child)
+                if check_cancelled is not None and index + 1 < item_count:
+                    check_cancelled()
         elif isinstance(current, str) and any(
             pattern in current for pattern in patterns
         ):
             raise ValueError(f"{label} contains an absolute build-machine path")
+        if check_cancelled is not None and stack:
+            check_cancelled()
 
 
 def _source_path(

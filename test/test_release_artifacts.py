@@ -633,8 +633,9 @@ def test_registry_publishers_use_separate_workflows() -> None:
         in wheel_env["CIBW_REPAIR_WHEEL_COMMAND_LINUX"]
     )
     wheel_smoke = wheel_env["CIBW_TEST_COMMAND"]
-    assert "workspace_owner_protocol_version == 5" in wheel_smoke
+    assert "workspace_owner_protocol_version == 6" in wheel_smoke
     for symbol in (
+        "provision_owner_interruptibly_exact",
         "capture_owner_destination_exact",
         "acquire_owner_replacement_lease_exact",
         "verify_owner_destination_binding_exact",
@@ -642,8 +643,10 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "borrow_owner_destination_descriptor_exact",
         "claim_owner_replacement_permit_exact",
         "provision_owner_replacement_exact",
+        "provision_owner_replacement_interruptibly_exact",
         "verify_owner_replacement_binding_exact",
         "exchange_owner_replacement_exact",
+        "seal_owner_directories_interruptibly_exact",
     ):
         assert symbol in wheel_smoke
     for symbol in (
@@ -732,8 +735,9 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "run"
     ]
     assert 'name == "_workspace_owner_impl.abi3.so"' in abi3_exercise
-    assert "workspace_owner_protocol_version == 5" in abi3_exercise
+    assert "workspace_owner_protocol_version == 6" in abi3_exercise
     for symbol in (
+        "provision_owner_interruptibly_exact",
         "capture_owner_destination_exact",
         "acquire_owner_replacement_lease_exact",
         "verify_owner_destination_binding_exact",
@@ -741,8 +745,10 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "borrow_owner_destination_descriptor_exact",
         "claim_owner_replacement_permit_exact",
         "provision_owner_replacement_exact",
+        "provision_owner_replacement_interruptibly_exact",
         "verify_owner_replacement_binding_exact",
         "exchange_owner_replacement_exact",
+        "seal_owner_directories_interruptibly_exact",
     ):
         assert symbol in abi3_exercise
     assert "implementation.require_support() is None" in abi3_exercise
@@ -840,7 +846,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
                 assert all(character in "0123456789abcdef" for character in revision)
 
 
-def test_both_release_wheel_architectures_run_protocol_v5_exchange_smoke() -> None:
+def test_both_release_wheel_architectures_run_protocol_v6_exchange_smoke() -> None:
     root = Path(__file__).resolve().parents[1]
     with (root / ".github/workflows/release-verify.yml").open(
         encoding="utf-8"
@@ -903,7 +909,7 @@ def test_both_release_wheel_architectures_run_protocol_v5_exchange_smoke() -> No
         assert "os.close(" not in smoke
 
 
-def test_protocol_v5_workspace_replacement_limits_are_documented() -> None:
+def test_protocol_v6_workspace_replacement_limits_are_documented() -> None:
     root = Path(__file__).resolve().parents[1]
     provider = (root / "docs/development/local-workspace-provider.md").read_text(
         encoding="utf-8"
@@ -915,6 +921,7 @@ def test_protocol_v5_workspace_replacement_limits_are_documented() -> None:
         prose = " ".join(text.split())
         assert "protocol v4" in text.lower()
         assert "protocol v5" in text.lower()
+        assert "protocol v6" in text.lower()
         assert "renameat2(RENAME_EXCHANGE)" in text
         assert "flock(LOCK_EX | LOCK_NB)" in text
         assert "open-file-description (OFD)" in text

@@ -22,7 +22,7 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 from ._version import package_version
 from .provider_routes import (
@@ -2068,14 +2068,25 @@ class _RetainedTopologyWorkspaceProvider:
         *,
         receipt_owner: object,
         operation: object,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> object:
         self.topology.verify()
-        result = self.delegate.run_workspace(  # type: ignore[attr-defined]
-            request,
+        arguments = dict(
             receipt_owner=receipt_owner,
             operation=operation,
-            _expected_parent_identity=self.topology.output_parent_binding.identity,
+            _expected_parent_identity=(self.topology.output_parent_binding.identity),
         )
+        if check_cancelled is None:
+            result = self.delegate.run_workspace(  # type: ignore[attr-defined]
+                request,
+                **arguments,
+            )
+        else:
+            result = self.delegate.run_workspace(  # type: ignore[attr-defined]
+                request,
+                **arguments,
+                check_cancelled=check_cancelled,
+            )
         self.topology.verify_bindings()
         return result
 

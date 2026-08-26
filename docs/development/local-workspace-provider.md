@@ -41,14 +41,27 @@ keeps that exchange contract and moves a cooperative, parent-wide cross-process
 lease ahead of every candidate mutation. The native aggregate owns the parent,
 incumbent, and candidate descriptors throughout; every descriptor borrowed by
 trusted internal code remains owner-owned and must never be closed by the
-borrower.
+borrower. Protocol v6 adds cancellation-aware exact entry points for initial
+provisioning, replacement provisioning, and directory sealing. It polls only
+between attested plan records, completed directory mutations, or successful
+directory `fsync` calls; callback identity is preserved and an error from the
+current operation remains primary.
 
 The Python authority and `LocalWorkspaceProvider` now select that primitive for
 receipt-bound exact requests. Exact replacement has three explicit authority
 phases:
 
+`run_strict_workspace(...)` polls an explicit stop after provider support and
+callback-gate activation but before provider entry, then passes that same exact
+callback through the provider protocol. An interruptible call therefore fails
+closed before a legacy provider body can run if that provider does not accept
+`check_cancelled`; a no-callback call retains the previous provider call shape.
+Local propagates the callback through plan detachment, native provisioning,
+descriptor adoption, skeleton authentication, workspace refresh, and sealing,
+while its no-callback native calls also retain their previous shapes.
+
 1. `bind_replacement_source(...)` synchronously consumes an active source
-   receipt while a separately supplied protocol-v5 owner already holds the
+   receipt while a separately supplied protocol-v6 owner already holds the
    captured destination under its native lease. It requires the exact private
    destination-binding object from that receipt, matches both the retained
    parent descriptor and a complete incumbent descriptor scan, revalidates the
@@ -721,7 +734,7 @@ The provider deliberately has a narrow first release:
 - One absolute authority root owned by the current effective UID, with exact
   mode `0700`. The root must be a private, quiescent namespace rather than a
   directory another same-UID process actively mutates.
-- A complete protocol-v5 native extension and a successful Linux ownership
+- A complete protocol-v6 native extension and a successful Linux ownership
   support probe before the first namespace mutation.
 - A plan small enough for the process descriptor limit. The format permits up
   to 100,000 directories, but the native `RLIMIT_NOFILE` preflight may reject a
@@ -745,7 +758,7 @@ policy permits cleanup; discarding it forfeits recoverability.
 
 ## Publication guarantees
 
-The protocol-v5 native aggregate preserves the protocol-v2 missing-destination
+The protocol-v6 native aggregate preserves the protocol-v2 missing-destination
 publication contract. In that publication mode it owns the namespace and file
 descriptors for the whole operation, creates and writes files without returning
 raw file descriptors to Python, pins the root and planned directory identities,
@@ -784,6 +797,11 @@ Protocol v4 added `claim_owner_replacement_permit_exact`,
 `acquire_owner_replacement_lease_exact` and requires it after capture and before
 permit claim or provisioning. The fail-closed facade exposes the same
 operations without `_exact`, including `acquire_owner_replacement_lease`.
+Protocol v6 adds `provision_owner_interruptibly_exact`,
+`provision_owner_replacement_interruptibly_exact`, and
+`seal_owner_directories_interruptibly_exact`; the facade selects those calls
+only when an explicit cancellation callback is present and otherwise retains
+the legacy exact call shape.
 Claim returns a distinct opaque
 `WorkspaceReplacementPermit`; exchange consumes that permit and returns an
 opaque `WorkspaceReceiptToken` for the existing `commit_owner_receipt`

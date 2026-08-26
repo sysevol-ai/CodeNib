@@ -289,7 +289,7 @@ remains provider-neutral, and a concrete `LocalWorkspaceProvider` now supplies
 it on Linux for missing or active-receipt-bound exact destinations below one
 private, quiescent root owned by the current effective UID with exact mode
 `0700`. Native workspace-owner
-protocol v5 preserves the v2 publication contract: it pins the namespace and
+protocol v6 preserves the v2 publication contract: it pins the namespace and
 owns every file descriptor, acquires and writes files without exposing raw file
 descriptors to Python, and gates the only forward rename with a one-shot publish
 permit. The caller-owned receipt slot is the publication-authority
@@ -298,8 +298,14 @@ candidate, while a fork child authenticates and closes only its inherited
 descriptor pairs. The v3-compatible capture state authenticates the private
 root and exact destination name/device/inode binding without mutation. Protocol v4
 added a distinct one-shot replacement permit and one aggregate for that
-incumbent plus a hidden, same-parent candidate. Protocol v5 retains that atomic
-exchange history and inserts a required parent lease before candidate mutation.
+incumbent plus a hidden, same-parent candidate. Protocol v5 retained that atomic
+exchange history and inserted a required parent lease before candidate mutation.
+Protocol v6 adds exact cancellation-aware provisioning, replacement
+provisioning, and directory-sealing entry points while retaining the v5 entry
+points unchanged for non-interruptible callers. The native directory-plan and
+directory-`fsync` loops poll only after the current record or syscall has been
+attested and before future work, preserving both exact callback identity and
+storage-error precedence.
 Its success states are `destination-captured` -> `destination-leased` ->
 `replacement-provisioning` -> `replacement-provisioned` ->
 `replacement-adopted` -> `replacement-exchanged-unreceipted` ->
@@ -361,8 +367,8 @@ second flock. A fork child cannot mutate, reverse, commit, or unlock the
 parent's lease; it only authenticates and closes its own inherited descriptor
 pairs.
 
-The protocol-v5 Python publication seam is now implemented without changing
-the native ABI. `OwnedWorkspaceAuthority.bind_replacement_source(...)` consumes
+The protocol-v6 Python publication seam retains the v5 replacement lifecycle.
+`OwnedWorkspaceAuthority.bind_replacement_source(...)` consumes
 an active source receipt and requires its exact private destination-binding
 object while the supplied native owner is already `destination-leased`. It
 borrows and retains the parent and incumbent descriptors before provisioning,
@@ -490,7 +496,7 @@ after replacement without consulting mutable public source projections. Its
 profile or durable job payload. Strict whole-context and retained
 materialization APIs are now available as injectable library producers.
 `LocalWorkspaceProvider` preserves the missing-destination flow and now also
-selects the protocol-v5 replacement seam for strict BM25. The immutable request
+selects the protocol-v6 replacement seam for strict BM25. The immutable request
 still contains only its receipt-derived destination binding. The top-level
 operation receives the separately active exact source owner and creates a
 private PID-bound, callback-scoped one-shot gate. That gate is tied by object
@@ -861,7 +867,7 @@ Strict BM25 replacement now has its `provider-bound-exact` production provider.
 The strict producer passes its separately active source owner outside the
 immutable request; a private one-shot gate binds it to the same request,
 destination-binding object, operation, native owner, and workspace before Local
-candidate mutation. Local then selects the protocol-v5 dual-root provision and
+candidate mutation. Local then selects the protocol-v6 dual-root provision and
 publication seam. This completes Gate C without changing any compiler/runtime
 default, automatic orphan reclamation, crash recovery, or the remaining M1
 evidence requirements.
@@ -881,7 +887,7 @@ that collecting a fast result cannot silently approve a production route:
 | B1 | Promote BM25 compiler publication to a configured default. | Pending A2 compiler. |
 | B2 | Promote query-only BM25 retained cold start to a configured default. | Pending A2 query-only runtime; this does not replace source-bound manifest MCP. |
 | B2 source-bound | Promote a specifically scoped source-bound BM25 retained cold start. | Pending A2 source-bound BM25 runtime; it cannot satisfy the full manifest-compatibility gate. |
-| C | Supply the `provider-bound-exact` strict BM25 native provider. | Complete. The request still carries only its immutable receipt-derived binding. `run_strict_workspace(...)` accepts the separately active exact source owner and gives Local only a PID-bound, callback-scoped one-shot gate tied by object identity to that request, binding, operation, native owner, and workspace. Local captures and leases before the gate synchronously binds the source, provisions only through the handed-off workspace, and publishes only through the protocol-v5 dual-root seam. The displaced incumbent remains a reopenable `linux-renameat2` orphan. Automatic GC, a crash journal, hostile same-UID defense, and default-route promotion remain outside Gate C. |
+| C | Supply the `provider-bound-exact` strict BM25 native provider. | Complete. The request still carries only its immutable receipt-derived binding. `run_strict_workspace(...)` accepts the separately active exact source owner and gives Local only a PID-bound, callback-scoped one-shot gate tied by object identity to that request, binding, operation, native owner, and workspace. Local captures and leases before the gate synchronously binds the source, provisions only through the handed-off workspace, and publishes only through the protocol-v6 dual-root seam. The displaced incumbent remains a reopenable `linux-renameat2` orphan. Automatic GC, a crash journal, hostile same-UID defense, and default-route promotion remain outside Gate C. |
 
 An initial v3 1x0 readiness smoke stopped before completion because strict BM25
 applied per-document node and token defaults to its whole-file lexical prepass.
@@ -1237,7 +1243,12 @@ authorities. The existing self-publishing adapters remain compatibility entry
 points rather than being called from the worker. Its stop token is propagated
 through cache-lock waits, repository inventories and read sessions, portable
 artifact scans, workspace refresh/seal/staged validation, bundle planning, and
-CAS ingestion. Returned records and receipts are attested before a newly
+CAS ingestion. Provider support and gate activation precede one final
+pre-entry poll; the interruptible provider protocol then requires the same
+callback, so a legacy provider cannot silently run without it. Local carries
+the stop through plan detachment, native provision/replacement loops,
+descriptor adoption, skeleton capture, and native directory sealing. Returned
+records and receipts are attested before a newly
 observed stop can win; the staged namespace transition through authenticated
 receipt creation remains an uninterruptible commit section, and an exact
 cooperative stop does not poison the retained repository source.

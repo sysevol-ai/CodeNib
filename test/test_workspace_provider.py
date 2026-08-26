@@ -126,10 +126,13 @@ class _TestProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], object],
+        check_cancelled: Callable[[], None] | None = None,
         _replacement_source: object | None = None,
     ) -> object:
         self.runs += 1
         self.last_replacement_source = _replacement_source
+        if check_cancelled is not None:
+            check_cancelled()
         destination = self.adopted_destination or request.destination
         parent = destination.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -193,6 +196,99 @@ def _publish_generation(
         owner.close()
         raise
     return owner
+
+
+@pytest.mark.parametrize("replacement", (False, True), ids=("missing", "exact"))
+def test_run_strict_workspace_stops_before_provider_entry(
+    tmp_path: Path,
+    replacement: bool,
+) -> None:
+    destination = tmp_path / "published"
+    source_owner = _publish_generation(destination) if replacement else None
+    request = StrictWorkspaceRequest(
+        "replace" if replacement else "missing",
+        destination,
+        _plan(),
+        destination_binding=(
+            source_owner.destination_binding if source_owner is not None else None
+        ),
+    )
+    provider = _TestProvider()
+    output_owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("cancel before provider entry")
+    operation_calls = 0
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    def forbidden_operation(_session: StrictWorkspaceSession) -> None:
+        nonlocal operation_calls
+        operation_calls += 1
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=forbidden_operation,
+                source_owner=source_owner,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is cancellation
+        assert provider.support_checks == 1
+        assert provider.runs == 0
+        assert operation_calls == 0
+        assert output_owner.state == "empty"
+        if source_owner is None:
+            assert not destination.exists()
+        else:
+            assert source_owner.active
+            assert (
+                source_owner.consume(
+                    lambda _receipt, reader: reader.read_bytes(
+                        "payload.bin",
+                        max_bytes=32,
+                    )
+                )
+                == b"same bytes"
+            )
+    finally:
+        output_owner.close()
+        if source_owner is not None:
+            source_owner.close()
+
+
+def test_interruptible_workspace_rejects_legacy_provider_before_body(
+    tmp_path: Path,
+) -> None:
+    class LegacyProvider:
+        def __init__(self) -> None:
+            self.runs = 0
+
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, _request, *, receipt_owner, operation):
+            del receipt_owner, operation
+            self.runs += 1
+            raise AssertionError("legacy provider body must not run")
+
+    provider = LegacyProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+
+    with pytest.raises(TypeError, match="check_cancelled"):
+        run_strict_workspace(
+            provider,
+            StrictWorkspaceRequest("test", tmp_path / "published", _plan()),
+            receipt_owner=owner,
+            operation=lambda _session: None,
+            check_cancelled=lambda: None,
+        )
+
+    assert provider.runs == 0
+    assert owner.state == "empty"
 
 
 @pytest.mark.skipif(

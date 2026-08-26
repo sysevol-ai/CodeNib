@@ -176,9 +176,12 @@ class _TestWorkspaceProvider:
         *,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         operation: Callable[[StrictWorkspaceSession], _Result],
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _Result:
         self.run_count += 1
         self.requests.append(request)
+        if check_cancelled is not None:
+            check_cancelled()
         plan = request.plan if self.workspace_plan is None else self.workspace_plan
         parent = request.destination.parent
         parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -186,8 +189,10 @@ class _TestWorkspaceProvider:
             f".{request.destination.name}.strict-{id(self):x}-{self.run_count}"
         )
         stage.mkdir(mode=plan.root_mode)
-        for directory in plan.directories:
+        for index, directory in enumerate(plan.directories):
             (stage / directory.path.as_posix()).mkdir(mode=directory.mode)
+            if check_cancelled is not None and index + 1 < len(plan.directories):
+                check_cancelled()
 
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         flags |= getattr(os, "O_CLOEXEC", 0)
@@ -643,6 +648,118 @@ def test_strict_context_plan_is_deterministic_and_binds_manifest_config(
         )
         assert changed.plan.subject_digest != first.plan.subject_digest
         assert changed.manifest_digest != first.manifest_digest
+    finally:
+        fixture.close()
+
+
+def test_strict_context_plan_stops_before_source_record_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    source_records = tuple(
+        strict_context_module.directory_ownership_file_records(
+            fixture.owners["bm25"].receipt.ownership
+        )
+    )
+    assert len(source_records) == 2
+    first_path, poisoned_path = (record.path for record in source_records)
+    interruption = RuntimeError("injected strict context planning stop")
+    poison_consumed = False
+    armed = False
+    real_record_payload = strict_context_module._record_payload
+
+    def guarded_record_payload(record):
+        nonlocal armed, poison_consumed
+        if record.path == poisoned_path and armed:
+            poison_consumed = True
+            raise AssertionError("strict context planning consumed its poisoned tail")
+        payload = real_record_payload(record)
+        if record.path == first_path:
+            armed = True
+        return payload
+
+    def check_cancelled() -> None:
+        if armed:
+            raise interruption
+
+    monkeypatch.setattr(
+        strict_context_module,
+        "_record_payload",
+        guarded_record_payload,
+    )
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            strict_context_module._plan_context_artifact_strict_interruptibly(
+                fixture.manifest,
+                repository="owner/repo",
+                repository_source=fixture.repository_source,
+                view_generations=fixture.owners,
+                environ={},
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is interruption
+        assert not poison_consumed
+        assert fixture.repository_source.usable
+        assert all(owner.active for owner in fixture.owners.values())
+    finally:
+        fixture.close()
+
+
+def test_strict_context_expected_plan_mismatch_precedes_terminal_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    planned = plan_context_artifact_strict(
+        fixture.manifest,
+        repository="owner/repo",
+        repository_source=fixture.repository_source,
+        view_generations=fixture.owners,
+        environ={},
+    )
+    forged = replace(planned, repository="other/repo")
+    inputs = strict_context_module._freeze_inputs(
+        fixture.manifest,
+        repository="owner/repo",
+        repository_source=fixture.repository_source,
+        view_generations=fixture.owners,
+        environ={},
+    )
+    real_artifact_type = strict_context_module.PlannedContextArtifact
+    interruption = RuntimeError("terminal strict context planning stop")
+    terminal_polls = 0
+    armed = False
+
+    def construct_and_arm(*args: object, **kwargs: object) -> PlannedContextArtifact:
+        nonlocal armed
+        result = real_artifact_type(*args, **kwargs)
+        armed = True
+        return result
+
+    def check_cancelled() -> None:
+        nonlocal terminal_polls
+        if armed:
+            terminal_polls += 1
+            raise interruption
+
+    monkeypatch.setattr(
+        strict_context_module,
+        "PlannedContextArtifact",
+        construct_and_arm,
+    )
+    try:
+        with pytest.raises(ValueError, match="exact inputs"):
+            strict_context_module._require_expected_plan(
+                forged,
+                inputs,
+                check_cancelled=check_cancelled,
+            )
+
+        assert terminal_polls == 0
+        assert fixture.repository_source.usable
+        assert all(owner.active for owner in fixture.owners.values())
     finally:
         fixture.close()
 

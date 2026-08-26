@@ -194,6 +194,166 @@ def _tree_fingerprint(root: Path) -> tuple[tuple[object, ...], ...]:
     return tuple(entries)
 
 
+@pytest.mark.parametrize("replacement", (False, True), ids=("missing", "exact"))
+def test_native_provisioning_preserves_exact_mid_plan_cancellation(
+    tmp_path: Path,
+    replacement: bool,
+) -> None:
+    root = tmp_path / "authority"
+    root.mkdir(mode=0o700)
+    root.chmod(0o700)
+    destination = root / "published"
+    stage_name = b".replacement" if replacement else b".stage"
+    stage = root / os.fsdecode(stage_name)
+    directories = tuple(
+        (f"directory-{index:02d}".encode("ascii"), 0o711) for index in range(8)
+    )
+    if replacement:
+        destination.mkdir(mode=0o700)
+        (destination / "incumbent.txt").write_bytes(b"incumbent")
+        owner = _capture_existing_destination(root, b"published")
+        workspace_owner.acquire_owner_replacement_lease(
+            owner,
+            time.monotonic_ns() + 10_000_000_000,
+        )
+        permit = workspace_owner.claim_owner_replacement_permit(owner)
+    else:
+        owner = _require_native_owner()
+        permit = workspace_owner.claim_owner_publish_permit(owner)
+    cancellation = KeyboardInterrupt("cancel during native provisioning")
+    observed_partial_counts: list[int] = []
+
+    def check_cancelled() -> None:
+        if not stage.is_dir():
+            return
+        created = tuple(
+            (stage.joinpath(os.fsdecode(path)), mode)
+            for path, mode in directories
+            if stage.joinpath(os.fsdecode(path)).is_dir()
+        )
+        if 0 < len(created) < len(directories):
+            assert all(
+                stat.S_IMODE(path.lstat().st_mode) == mode for path, mode in created
+            )
+            observed_partial_counts.append(len(created))
+            raise cancellation
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            if replacement:
+                workspace_owner.provision_owner_replacement(
+                    owner,
+                    stage_name,
+                    b"0" * 64,
+                    0o700,
+                    directories,
+                    time.monotonic_ns() + 10_000_000_000,
+                    check_cancelled=check_cancelled,
+                )
+            else:
+                workspace_owner.provision_owner(
+                    owner,
+                    os.fsencode(root),
+                    b"published",
+                    stage_name,
+                    b"0" * 64,
+                    0o700,
+                    directories,
+                    time.monotonic_ns() + 10_000_000_000,
+                    check_cancelled=check_cancelled,
+                )
+
+        assert caught.value is cancellation
+        assert len(observed_partial_counts) == 1
+        assert 0 < observed_partial_counts[0] < len(directories)
+        assert stage.is_dir()
+        if replacement:
+            assert workspace_owner.owner_state(owner) == "replacement-provisioning"
+            assert destination.is_dir()
+            assert (destination / "incumbent.txt").read_bytes() == b"incumbent"
+        else:
+            assert workspace_owner.owner_state(owner) == "provisioning"
+            assert not destination.exists()
+    finally:
+        if not workspace_owner.owner_closed(owner):
+            workspace_owner.abort_owner(owner)
+        del permit
+
+    assert workspace_owner.owner_closed(owner)
+    if replacement:
+        assert stage.is_dir()
+        assert (
+            sum(path.is_dir() for path in stage.iterdir()) == observed_partial_counts[0]
+        )
+        assert (destination / "incumbent.txt").read_bytes() == b"incumbent"
+        assert set(root.iterdir()) == {destination, stage}
+    else:
+        assert not stage.exists()
+        assert not destination.exists()
+        quarantined = tuple(root.glob(".codenib-workspace-orphan-*"))
+        assert len(quarantined) == 1
+        assert (
+            sum(path.is_dir() for path in quarantined[0].iterdir())
+            == observed_partial_counts[0]
+        )
+
+
+def test_native_directory_seal_preserves_exact_mid_loop_cancellation(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "authority"
+    root.mkdir(mode=0o700)
+    root.chmod(0o700)
+    plan = WorkspacePlan(
+        subject_digest=hashlib.sha256(b"interruptible-directory-seal").hexdigest(),
+        directories=tuple(
+            WorkspaceDirectory(Path(f"directory-{index:02d}")) for index in range(4)
+        ),
+    )
+    owner, plan, permit = _provision(root, plan=plan)
+    workspace_owner.verify_owner_adoption_binding(
+        owner,
+        os.fsencode(root / "published"),
+        b".stage",
+        plan.digest.encode("ascii"),
+    )
+    workspace_owner.mark_owner_adopted(owner)
+    cancellation = KeyboardInterrupt("cancel during native directory seal")
+    callback_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal callback_calls
+        callback_calls += 1
+        if callback_calls == 2:
+            raise cancellation
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            workspace_owner.seal_owner_directories(
+                owner,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is cancellation
+        assert callback_calls == 2
+        assert workspace_owner.owner_state(owner) == "adopted"
+        assert workspace_owner.verify_owner_authority(owner) is None
+        assert workspace_owner.seal_owner_directories(owner) is None
+    finally:
+        if not workspace_owner.owner_closed(owner):
+            workspace_owner.abort_owner(owner)
+        del permit
+
+    assert workspace_owner.owner_closed(owner)
+    assert not (root / ".stage").exists()
+    assert not (root / "published").exists()
+    quarantined = tuple(root.glob(".codenib-workspace-orphan-*"))
+    assert len(quarantined) == 1
+    assert {path.name for path in quarantined[0].iterdir()} == {
+        f"directory-{index:02d}" for index in range(4)
+    }
+
+
 def _compile_exchange_fault_shim(tmp_path: Path) -> Path:
     compiler = shutil.which("cc")
     if compiler is None:
@@ -791,7 +951,7 @@ def test_workspace_owner_facade_rejects_symbol_complete_protocol_v4() -> None:
     )
 
 
-def test_workspace_owner_facade_rejects_each_incomplete_protocol_v5_abi() -> None:
+def test_workspace_owner_facade_rejects_each_incomplete_protocol_v6_abi() -> None:
     required_symbols = (
         "require_support",
         "create_owner_exact",
@@ -800,9 +960,11 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v5_abi() -> Non
         "require_owner_exact",
         "close_owner_exact",
         "provision_owner_exact",
+        "provision_owner_interruptibly_exact",
         "capture_owner_destination_exact",
         "acquire_owner_replacement_lease_exact",
         "provision_owner_replacement_exact",
+        "provision_owner_replacement_interruptibly_exact",
         "verify_owner_authority_exact",
         "verify_owner_adoption_binding_exact",
         "verify_owner_destination_binding_exact",
@@ -816,6 +978,7 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v5_abi() -> Non
         "finish_owner_file_exact",
         "abort_owner_file_exact",
         "seal_owner_directories_exact",
+        "seal_owner_directories_interruptibly_exact",
         "sync_owner_parent_exact",
         "mark_owner_adopted_exact",
         "rename_owner_child_noreplace_exact",
@@ -841,7 +1004,7 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v5_abi() -> Non
         )
         for missing in required:
             implementation = types.ModuleType("codenib._workspace_owner_impl")
-            implementation.workspace_owner_protocol_version = 5
+            implementation.workspace_owner_protocol_version = 6
             for name in required:
                 if name != missing:
                     setattr(implementation, name, lambda *args, **kwargs: None)
@@ -860,7 +1023,7 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v5_abi() -> Non
             except RuntimeError as error:
                 assert "workspace-owner extension" in str(error)
             else:
-                raise AssertionError(f"incomplete protocol-v5 ABI accepted: {{missing}}")
+                raise AssertionError(f"incomplete protocol-v6 ABI accepted: {{missing}}")
         """
     )
     repository_root = Path(__file__).resolve().parents[1]

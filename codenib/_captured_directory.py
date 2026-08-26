@@ -15,7 +15,7 @@ import secrets
 import stat
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable, Iterator, Mapping, TypeVar
 
@@ -401,8 +401,14 @@ class WorkspacePlan:
     files: tuple[WorkspaceFile, ...] = ()
     root_mode: int = 0o700
     digest: str = ""
+    check_cancelled: InitVar[Callable[[], None] | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        check_cancelled: Callable[[], None] | None,
+    ) -> None:
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("workspace plan cancellation check must be callable")
         subject = self.subject_digest
         if (
             not isinstance(subject, str)
@@ -412,19 +418,24 @@ class WorkspacePlan:
             raise ValueError("workspace plan subject digest must be lowercase sha256")
         directories = tuple(self.directories)
         files = tuple(self.files)
-        if not all(
-            isinstance(directory_item, WorkspaceDirectory)
-            for directory_item in directories
-        ):
-            raise TypeError("workspace plan directories must be WorkspaceDirectory")
-        if not all(isinstance(file_item, WorkspaceFile) for file_item in files):
-            raise TypeError("workspace plan files must be WorkspaceFile")
+        for index, directory_item in enumerate(directories):
+            if not isinstance(directory_item, WorkspaceDirectory):
+                raise TypeError("workspace plan directories must be WorkspaceDirectory")
+            if check_cancelled is not None and (
+                index + 1 < len(directories) or bool(files)
+            ):
+                check_cancelled()
+        for index, file_item in enumerate(files):
+            if not isinstance(file_item, WorkspaceFile):
+                raise TypeError("workspace plan files must be WorkspaceFile")
+            if check_cancelled is not None and index + 1 < len(files):
+                check_cancelled()
         root_mode = _workspace_mode(self.root_mode, directory=True)
 
         directory_by_path: dict[str, WorkspaceDirectory] = {}
         file_by_path: dict[str, WorkspaceFile] = {}
         portable_paths: dict[str, str] = {}
-        for directory_item in directories:
+        for index, directory_item in enumerate(directories):
             path = directory_item.path.as_posix()
             if path in directory_by_path:
                 raise ValueError(f"workspace plan repeats directory: {path}")
@@ -437,8 +448,12 @@ class WorkspacePlan:
                 )
             portable_paths[portable] = path
             directory_by_path[path] = directory_item
+            if check_cancelled is not None and (
+                index + 1 < len(directories) or bool(files)
+            ):
+                check_cancelled()
         total_bytes = 0
-        for file_item in files:
+        for index, file_item in enumerate(files):
             path = file_item.path.as_posix()
             if path in file_by_path:
                 raise ValueError(f"workspace plan repeats file: {path}")
@@ -458,26 +473,59 @@ class WorkspacePlan:
             total_bytes += file_item.max_bytes
             if total_bytes > _MAX_WORKSPACE_TOTAL_BYTES:
                 raise ValueError("workspace plan total byte limit is out of bounds")
+            if check_cancelled is not None and index + 1 < len(files):
+                check_cancelled()
 
-        for path in tuple(directory_by_path) + tuple(file_by_path):
-            relative = PurePosixPath(path)
-            for depth in range(1, len(relative.parts)):
-                ancestor = "/".join(relative.parts[:depth])
-                if ancestor not in directory_by_path:
-                    raise ValueError(
-                        f"workspace plan is missing directory ancestor: {ancestor}"
+        path_groups = (directory_by_path, file_by_path)
+        for group_index, paths in enumerate(path_groups):
+            for index, path in enumerate(paths):
+                relative = PurePosixPath(path)
+                for depth in range(1, len(relative.parts)):
+                    ancestor = "/".join(relative.parts[:depth])
+                    if ancestor not in directory_by_path:
+                        raise ValueError(
+                            "workspace plan is missing directory ancestor: "
+                            f"{ancestor}"
+                        )
+                if check_cancelled is not None and (
+                    index + 1 < len(paths)
+                    or (
+                        group_index + 1 < len(path_groups)
+                        and bool(path_groups[group_index + 1])
                     )
+                ):
+                    check_cancelled()
 
         canonical_directories = tuple(
             sorted(directories, key=lambda item: item.path.as_posix())
         )
         canonical_files = tuple(sorted(files, key=lambda item: item.path.as_posix()))
+
+        def encoded_plan_paths() -> Iterator[bytes]:
+            nonlocal plan_path_cancellation_failure
+            entry_groups = (canonical_directories, canonical_files)
+            for group_index, entries in enumerate(entry_groups):
+                for index, item in enumerate(entries):
+                    yield os.fsencode(item.path.as_posix())
+                    if check_cancelled is not None and (
+                        index + 1 < len(entries)
+                        or (
+                            group_index + 1 < len(entry_groups)
+                            and bool(entry_groups[group_index + 1])
+                        )
+                    ):
+                        try:
+                            check_cancelled()
+                        except BaseException as exc:
+                            plan_path_cancellation_failure = exc
+                            raise
+
+        plan_path_cancellation_failure: BaseException | None = None
         try:
-            _validate_ownership_inventory_budget(
-                os.fsencode(item.path.as_posix())
-                for item in (*canonical_directories, *canonical_files)
-            )
+            _validate_ownership_inventory_budget(encoded_plan_paths())
         except RuntimeError as exc:
+            if exc is plan_path_cancellation_failure:
+                raise
             raise ValueError(
                 "workspace plan exceeds the ownership scanner budget"
             ) from exc
@@ -485,7 +533,7 @@ class WorkspacePlan:
         _workspace_frame(plan_digest, b"domain", _WORKSPACE_PLAN_DOMAIN)
         _workspace_frame(plan_digest, b"subject", subject.encode("ascii"))
         _workspace_frame(plan_digest, b"root-mode", root_mode.to_bytes(2, "big"))
-        for directory_item in canonical_directories:
+        for index, directory_item in enumerate(canonical_directories):
             _workspace_frame(
                 plan_digest,
                 b"directory-path",
@@ -496,7 +544,11 @@ class WorkspacePlan:
                 b"directory-mode",
                 directory_item.mode.to_bytes(2, "big"),
             )
-        for file_item in canonical_files:
+            if check_cancelled is not None and (
+                index + 1 < len(canonical_directories) or bool(canonical_files)
+            ):
+                check_cancelled()
+        for index, file_item in enumerate(canonical_files):
             _workspace_frame(
                 plan_digest,
                 b"file-path",
@@ -512,6 +564,8 @@ class WorkspacePlan:
                 b"file-max-bytes",
                 file_item.max_bytes.to_bytes(8, "big"),
             )
+            if check_cancelled is not None and index + 1 < len(canonical_files):
+                check_cancelled()
         _workspace_frame(
             plan_digest,
             b"entry-count",
@@ -523,11 +577,17 @@ class WorkspacePlan:
         object.__setattr__(self, "digest", plan_digest.hexdigest())
 
 
-def _snapshot_workspace_plan(plan: object) -> WorkspacePlan:
+def _snapshot_workspace_plan(
+    plan: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> WorkspacePlan:
     """Detach one exact plan from caller-visible frozen dataclasses."""
 
     if type(plan) is not WorkspacePlan:
         raise TypeError("owned workspace plan must be an exact WorkspacePlan")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("workspace plan cancellation check must be callable")
     subject_digest = plan.subject_digest
     root_mode = plan.root_mode
     source_directories = plan.directories
@@ -546,7 +606,8 @@ def _snapshot_workspace_plan(plan: object) -> WorkspacePlan:
     file_fields: list[tuple[str, int, int]] = []
 
     def snapshot_paths() -> Iterator[bytes]:
-        for directory in source_directories:
+        nonlocal snapshot_cancellation_failure
+        for index, directory in enumerate(source_directories):
             if type(directory) is not WorkspaceDirectory:
                 raise TypeError("owned workspace directories must use exact types")
             path = directory.path
@@ -556,7 +617,15 @@ def _snapshot_workspace_plan(plan: object) -> WorkspacePlan:
             path_text = path.as_posix()
             directory_fields.append((path_text, mode))
             yield os.fsencode(path_text)
-        for file in source_files:
+            if check_cancelled is not None and (
+                index + 1 < len(source_directories) or bool(source_files)
+            ):
+                try:
+                    check_cancelled()
+                except BaseException as exc:
+                    snapshot_cancellation_failure = exc
+                    raise
+        for index, file in enumerate(source_files):
             if type(file) is not WorkspaceFile:
                 raise TypeError("owned workspace files must use exact types")
             path = file.path
@@ -571,34 +640,63 @@ def _snapshot_workspace_plan(plan: object) -> WorkspacePlan:
             path_text = path.as_posix()
             file_fields.append((path_text, mode, max_bytes))
             yield os.fsencode(path_text)
+            if check_cancelled is not None and index + 1 < len(source_files):
+                try:
+                    check_cancelled()
+                except BaseException as exc:
+                    snapshot_cancellation_failure = exc
+                    raise
 
+    snapshot_cancellation_failure: BaseException | None = None
     try:
         _validate_ownership_inventory_budget(snapshot_paths())
     except RuntimeError as exc:
+        if exc is snapshot_cancellation_failure:
+            raise
         raise ValueError(
             "owned workspace plan exceeds the ownership scanner budget"
         ) from exc
 
-    directories = tuple(
-        WorkspaceDirectory(
-            PurePosixPath(path),
-            mode=mode,
+    detached_directories: list[WorkspaceDirectory] = []
+    for index, (path, mode) in enumerate(directory_fields):
+        detached_directories.append(
+            WorkspaceDirectory(
+                PurePosixPath(path),
+                mode=mode,
+            )
         )
-        for path, mode in directory_fields
-    )
-    files = tuple(
-        WorkspaceFile(
-            PurePosixPath(path),
-            mode=mode,
-            max_bytes=max_bytes,
+        if check_cancelled is not None and (
+            index + 1 < len(directory_fields) or bool(file_fields)
+        ):
+            check_cancelled()
+    directories = tuple(detached_directories)
+    detached_files: list[WorkspaceFile] = []
+    for index, (path, mode, max_bytes) in enumerate(file_fields):
+        detached_files.append(
+            WorkspaceFile(
+                PurePosixPath(path),
+                mode=mode,
+                max_bytes=max_bytes,
+            )
         )
-        for path, mode, max_bytes in file_fields
-    )
-    detached = WorkspacePlan(
-        subject_digest=subject_digest,
-        directories=directories,
-        files=files,
-        root_mode=root_mode,
+        if check_cancelled is not None and index + 1 < len(file_fields):
+            check_cancelled()
+    files = tuple(detached_files)
+    detached = (
+        WorkspacePlan(
+            subject_digest=subject_digest,
+            directories=directories,
+            files=files,
+            root_mode=root_mode,
+        )
+        if check_cancelled is None
+        else WorkspacePlan(
+            subject_digest=subject_digest,
+            directories=directories,
+            files=files,
+            root_mode=root_mode,
+            check_cancelled=check_cancelled,
+        )
     )
     if detached.digest != source_digest:
         raise ValueError("owned workspace plan digest is inconsistent")
@@ -2433,7 +2531,12 @@ class OwnedWorkspaceAuthority:
             self._close_resources_after_error_locked(bind_error)
             raise
 
-    def provision_bound_replacement(self, *, deadline_ns: int) -> None:
+    def provision_bound_replacement(
+        self,
+        *,
+        deadline_ns: int,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         """Provision and adopt the candidate retained by phase-one binding."""
 
         self._require_owner_pid()
@@ -2443,12 +2546,22 @@ class OwnedWorkspaceAuthority:
             )
         if type(deadline_ns) is not int or deadline_ns <= 0:
             raise ValueError("workspace replacement deadline is invalid")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
         self._reject_reentrant("provision bound replacement")
         self._lock.run(
-            lambda: self._provision_bound_replacement_locked(deadline_ns=deadline_ns)
+            lambda: self._provision_bound_replacement_locked(
+                deadline_ns=deadline_ns,
+                check_cancelled=check_cancelled,
+            )
         )
 
-    def _provision_bound_replacement_locked(self, *, deadline_ns: int) -> None:
+    def _provision_bound_replacement_locked(
+        self,
+        *,
+        deadline_ns: int,
+        check_cancelled: Callable[[], None] | None,
+    ) -> None:
         self._require_owner_pid()
         if self._state != "replacement-bound":
             raise RuntimeError(
@@ -2485,17 +2598,30 @@ class OwnedWorkspaceAuthority:
             if _root_identity(os.fstat(incumbent_descriptor)) != incumbent_identity:
                 raise RuntimeError("workspace replacement incumbent authority changed")
             _native_workspace_owner.verify_owner_destination_binding(owner)
-            _native_workspace_owner.provision_owner_replacement(
+            if check_cancelled is not None:
+                check_cancelled()
+            directories: list[tuple[bytes, int]] = []
+            for index, item in enumerate(plan.directories):
+                directories.append((os.fsencode(item.path.as_posix()), item.mode))
+                if check_cancelled is not None and index + 1 < len(plan.directories):
+                    check_cancelled()
+            provision_arguments = (
                 owner,
                 os.fsencode(stage_path.name),
                 plan.digest.encode("ascii"),
                 plan.root_mode,
-                tuple(
-                    (os.fsencode(item.path.as_posix()), item.mode)
-                    for item in plan.directories
-                ),
+                tuple(directories),
                 deadline_ns,
             )
+            if check_cancelled is None:
+                _native_workspace_owner.provision_owner_replacement(
+                    *provision_arguments
+                )
+            else:
+                _native_workspace_owner.provision_owner_replacement(
+                    *provision_arguments,
+                    check_cancelled=check_cancelled,
+                )
             _native_workspace_owner.verify_owner_adoption_binding(
                 owner,
                 os.fsencode(destination),
@@ -2505,15 +2631,16 @@ class OwnedWorkspaceAuthority:
             root_descriptor = _native_workspace_owner.borrow_owner_root_descriptor(
                 owner
             )
-            directory_descriptors = {
-                item.path.as_posix(): (
+            directory_descriptors: dict[str, int] = {}
+            for index, item in enumerate(plan.directories):
+                directory_descriptors[item.path.as_posix()] = (
                     _native_workspace_owner.borrow_owner_directory_descriptor(
                         owner,
                         os.fsencode(item.path.as_posix()),
                     )
                 )
-                for item in plan.directories
-            }
+                if check_cancelled is not None and index + 1 < len(plan.directories):
+                    check_cancelled()
             _authority, replacement = _adopt_native_posix_replacement_authority(
                 destination.parent,
                 native_owner=owner,
@@ -2537,6 +2664,7 @@ class OwnedWorkspaceAuthority:
                 plan=plan,
                 destination_binding=destination_binding,
                 native_replacement=replacement,
+                check_cancelled=check_cancelled,
             )
         except BaseException as provision_error:  # noqa: B036 - settle owner
             if self._state != "closed":
@@ -2587,6 +2715,7 @@ class OwnedWorkspaceAuthority:
         publication_permit: object,
         plan: WorkspacePlan,
         destination_binding: PublishedWorkspaceDestinationBinding | None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """Adopt a native-owned skeleton without duplicating its descriptors."""
 
@@ -2595,6 +2724,8 @@ class OwnedWorkspaceAuthority:
             raise UnsupportedWorkspaceCreation(
                 "native provisioned workspace adoption requires Linux"
             )
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
         self._reject_reentrant("adopt provisioned workspace")
         self._lock.run(
             lambda: self._adopt_provisioned_locked(
@@ -2604,6 +2735,7 @@ class OwnedWorkspaceAuthority:
                 publication_permit=publication_permit,
                 plan=plan,
                 destination_binding=destination_binding,
+                check_cancelled=check_cancelled,
             )
         )
 
@@ -2616,6 +2748,7 @@ class OwnedWorkspaceAuthority:
         publication_permit: object,
         plan: WorkspacePlan,
         destination_binding: PublishedWorkspaceDestinationBinding | None,
+        check_cancelled: Callable[[], None] | None,
     ) -> None:
         self._require_owner_pid()
         if self._state != "empty" or self._native_owner is not None:
@@ -2630,7 +2763,13 @@ class OwnedWorkspaceAuthority:
             raise UnsupportedWorkspaceCreation(
                 "native local workspaces currently require a missing destination"
             )
-        detached_plan = _snapshot_workspace_plan(plan)
+        if check_cancelled is None:
+            detached_plan = _snapshot_workspace_plan(plan)
+        else:
+            detached_plan = _snapshot_workspace_plan(
+                plan,
+                check_cancelled=check_cancelled,
+            )
         destination_path = lexical_directory_path(destination)
         stage_relative = _relative_path(stage_name)
         if len(stage_relative.parts) != 1:
@@ -2646,15 +2785,18 @@ class OwnedWorkspaceAuthority:
             # This is the native ownership handoff.  It precedes every
             # borrowed-descriptor read and remains inside failure settlement.
             self._native_owner = owner
-            directory_descriptors = {
-                item.path.as_posix(): (
+            directory_descriptors: dict[str, int] = {}
+            for index, item in enumerate(detached_plan.directories):
+                directory_descriptors[item.path.as_posix()] = (
                     _native_workspace_owner.borrow_owner_directory_descriptor(
                         owner,
                         os.fsencode(item.path.as_posix()),
                     )
                 )
-                for item in detached_plan.directories
-            }
+                if check_cancelled is not None and index + 1 < len(
+                    detached_plan.directories
+                ):
+                    check_cancelled()
             self._adopt_locked(
                 destination=destination_path,
                 stage_name=stage_relative.name,
@@ -2668,6 +2810,7 @@ class OwnedWorkspaceAuthority:
                 plan=detached_plan,
                 destination_binding=None,
                 native_publication_permit=publication_permit,
+                check_cancelled=check_cancelled,
             )
         except BaseException as adoption_error:  # noqa: B036 - settle owner
             if self._state == "empty":
@@ -2698,6 +2841,7 @@ class OwnedWorkspaceAuthority:
         destination_binding: PublishedWorkspaceDestinationBinding | None,
         native_publication_permit: object | None = None,
         native_replacement: _NativeReplacementPublication | None = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self._require_owner_pid()
         replacement_adoption = native_replacement is not None
@@ -2710,7 +2854,15 @@ class OwnedWorkspaceAuthority:
                 raise RuntimeError("owned workspace replacement adoption is not active")
         elif self._state != "empty":
             raise RuntimeError("owned workspace authority is not empty")
-        plan = _snapshot_workspace_plan(plan)
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
+        if check_cancelled is None:
+            plan = _snapshot_workspace_plan(plan)
+        else:
+            plan = _snapshot_workspace_plan(
+                plan,
+                check_cancelled=check_cancelled,
+            )
         if (
             isinstance(parent_descriptor, bool)
             or not isinstance(parent_descriptor, int)
@@ -2750,11 +2902,16 @@ class OwnedWorkspaceAuthority:
                 "workspace replacement slot, plan, or source binding changed"
             )
 
-        expected_directory_paths = {item.path.as_posix() for item in plan.directories}
+        expected_directory_paths: set[str] = set()
+        for index, item in enumerate(plan.directories):
+            expected_directory_paths.add(item.path.as_posix())
+            if check_cancelled is not None and index + 1 < len(plan.directories):
+                check_cancelled()
         normalized_descriptors: dict[str, int] = {}
         if not isinstance(directory_descriptors, Mapping):
             raise TypeError("workspace directory descriptors must be a mapping")
-        for raw_path, descriptor in directory_descriptors.items():
+        descriptor_count = len(directory_descriptors)
+        for index, (raw_path, descriptor) in enumerate(directory_descriptors.items()):
             path = _relative_path(raw_path).as_posix()
             if path in normalized_descriptors:
                 raise ValueError(f"workspace repeats directory descriptor: {path}")
@@ -2767,18 +2924,25 @@ class OwnedWorkspaceAuthority:
                     "workspace directory descriptors must be open integers"
                 )
             normalized_descriptors[path] = descriptor
+            if check_cancelled is not None and index + 1 < descriptor_count:
+                check_cancelled()
         if set(normalized_descriptors) != expected_directory_paths:
             raise ValueError(
                 "workspace directory descriptors must exactly match the plan"
             )
 
-        self._state = "adopting"
-        self._destination = destination_path
-        self._stage_path = stage_path
-        self._plan = plan
-        self._destination_binding = destination_binding
-        self._file_specs = {item.path.as_posix(): item for item in plan.files}
         try:
+            self._state = "adopting"
+            self._destination = destination_path
+            self._stage_path = stage_path
+            self._plan = plan
+            self._destination_binding = destination_binding
+            file_specs: dict[str, WorkspaceFile] = {}
+            for index, item in enumerate(plan.files):
+                file_specs[item.path.as_posix()] = item
+                if check_cancelled is not None and index + 1 < len(plan.files):
+                    check_cancelled()
+            self._file_specs = file_specs
             if self._native_owner is None:
                 _open_publication_authority(
                     destination_path.parent,
@@ -2842,9 +3006,11 @@ class OwnedWorkspaceAuthority:
             if _root_identity(stage_metadata) != self._root_identity:
                 raise RuntimeError("workspace stage name differs from its root handle")
 
-            expected_directory_modes = {
-                item.path.as_posix(): item.mode for item in plan.directories
-            }
+            expected_directory_modes: dict[str, int] = {}
+            for index, item in enumerate(plan.directories):
+                expected_directory_modes[item.path.as_posix()] = item.mode
+                if check_cancelled is not None and index + 1 < len(plan.directories):
+                    check_cancelled()
 
             def skeleton_policy(path: str, kind: str, mode: int, _size: int) -> None:
                 if kind != "directory":
@@ -2855,36 +3021,51 @@ class OwnedWorkspaceAuthority:
                         f"workspace skeleton directory differs from plan: {path}"
                     )
 
-            skeleton = authority.capture_child(
-                stage_relative.name,
-                path=stage_path,
-                label="owned workspace stage",
-                allow_empty_root=True,
-                entry_policy=skeleton_policy,
-            )
-            expected_inventory = tuple(
-                (item.path.as_posix(), "directory") for item in plan.directories
-            )
+            capture_arguments = {
+                "path": stage_path,
+                "label": "owned workspace stage",
+                "allow_empty_root": True,
+                "entry_policy": skeleton_policy,
+            }
+            if check_cancelled is None:
+                skeleton = authority.capture_child(
+                    stage_relative.name,
+                    **capture_arguments,
+                )
+            else:
+                skeleton = authority.capture_child(
+                    stage_relative.name,
+                    **capture_arguments,
+                    check_cancelled=check_cancelled,
+                )
+            expected_inventory_items: list[tuple[str, str]] = []
+            for index, item in enumerate(plan.directories):
+                expected_inventory_items.append((item.path.as_posix(), "directory"))
+                if check_cancelled is not None and index + 1 < len(plan.directories):
+                    check_cancelled()
+            expected_inventory = tuple(expected_inventory_items)
             if directory_ownership_inventory(skeleton) != expected_inventory:
                 raise ValueError("workspace skeleton differs from its exact plan")
             if directory_ownership_root_identity(skeleton) != self._root_identity:
                 raise RuntimeError("workspace root changed while it was adopted")
 
-            captured_identities = {
-                path: (
-                    identity[0],
-                    identity[1],
-                    stat.S_IFMT(identity[2]),
-                    identity[4],
-                )
-                for path, kind, identity in directory_ownership_entry_identities(
-                    skeleton
-                )
-                if kind == "directory"
-            }
+            captured_identities: dict[str, tuple[int, int, int, int]] = {}
+            ownership_identities = directory_ownership_entry_identities(skeleton)
+            for index, (path, kind, identity) in enumerate(ownership_identities):
+                if kind == "directory":
+                    captured_identities[path] = (
+                        identity[0],
+                        identity[1],
+                        stat.S_IFMT(identity[2]),
+                        identity[4],
+                    )
+                if check_cancelled is not None and index + 1 < len(
+                    ownership_identities
+                ):
+                    check_cancelled()
             self._directory_descriptors = {"": self._root_descriptor}
             self._directory_identities = {"": self._root_identity}
-            for item in plan.directories:
+            for index, item in enumerate(plan.directories):
                 path = item.path.as_posix()
                 if self._native_owner is None:
                     descriptor = self._resources.open(
@@ -2924,6 +3105,8 @@ class OwnedWorkspaceAuthority:
                     )
                 self._directory_descriptors[path] = descriptor
                 self._directory_identities[path] = identity
+                if check_cancelled is not None and index + 1 < len(plan.directories):
+                    check_cancelled()
 
             if replacement_adoption:
                 assert native_replacement is not None
@@ -2960,7 +3143,10 @@ class OwnedWorkspaceAuthority:
                     if observed_destination != destination_binding.ownership:
                         raise RuntimeError("owned workspace destination changed")
             authority.verify_path_binding()
-            self._refresh_locked(require_complete=False)
+            self._refresh_locked(
+                require_complete=False,
+                check_cancelled=check_cancelled,
+            )
             if self._native_owner is not None:
                 _native_workspace_owner.mark_owner_adopted(self._native_owner)
             if native_replacement is not None:
@@ -3364,9 +3550,13 @@ class OwnedWorkspaceAuthority:
         """Persist the complete pre-opened skeleton from leaves to its root."""
 
         if self._native_owner is not None:
-            _native_workspace_owner.seal_owner_directories(self._native_owner)
-            if check_cancelled is not None:
-                check_cancelled()
+            if check_cancelled is None:
+                _native_workspace_owner.seal_owner_directories(self._native_owner)
+            else:
+                _native_workspace_owner.seal_owner_directories(
+                    self._native_owner,
+                    check_cancelled=check_cancelled,
+                )
             return
 
         ordered_paths = sorted(

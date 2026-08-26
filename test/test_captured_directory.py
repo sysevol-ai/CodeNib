@@ -1344,6 +1344,62 @@ def test_workspace_plan_uses_exact_ownership_scanner_budgets(
         )
 
 
+def test_workspace_plan_preserves_runtime_cancellation_during_budget_scan() -> None:
+    cancellation = RuntimeError("exact workspace plan cancellation")
+    calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            raise cancellation
+
+    with pytest.raises(RuntimeError) as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=(WorkspaceDirectory("first"), WorkspaceDirectory("second")),
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+
+
+def test_workspace_plan_polls_between_directory_and_file_records() -> None:
+    cancellation = RuntimeError("stop before the first workspace file")
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    with pytest.raises(RuntimeError) as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=(WorkspaceDirectory("nested"),),
+            files=(WorkspaceFile("nested/payload", max_bytes=1),),
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+
+
+def test_workspace_plan_snapshot_preserves_runtime_cancellation() -> None:
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        directories=(WorkspaceDirectory("first"), WorkspaceDirectory("second")),
+    )
+    cancellation = RuntimeError("exact workspace plan snapshot cancellation")
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    with pytest.raises(RuntimeError) as raised:
+        captured_directory._snapshot_workspace_plan(
+            plan,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+
+
 def test_owned_workspace_publication_support_gate_is_side_effect_free(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

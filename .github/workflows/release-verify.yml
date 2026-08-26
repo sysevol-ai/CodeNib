@@ -127,8 +127,9 @@ jobs:
             from codenib import _workspace_owner
 
             assert platform.machine() == '${{ matrix.arch }}'
-            assert implementation.workspace_owner_protocol_version == 5
-            protocol_v5_symbols = (
+            assert implementation.workspace_owner_protocol_version == 6
+            protocol_v6_symbols = (
+                "provision_owner_interruptibly_exact",
                 "capture_owner_destination_exact",
                 "acquire_owner_replacement_lease_exact",
                 "verify_owner_destination_binding_exact",
@@ -136,14 +137,17 @@ jobs:
                 "borrow_owner_destination_descriptor_exact",
                 "claim_owner_replacement_permit_exact",
                 "provision_owner_replacement_exact",
+                "provision_owner_replacement_interruptibly_exact",
                 "verify_owner_replacement_binding_exact",
                 "exchange_owner_replacement_exact",
+                "seal_owner_directories_interruptibly_exact",
             )
             assert all(
                 callable(getattr(implementation, name, None))
-                for name in protocol_v5_symbols
+                for name in protocol_v6_symbols
             )
-            facade_v5_symbols = (
+            facade_v6_symbols = (
+                "provision_owner",
                 "capture_owner_destination",
                 "acquire_owner_replacement_lease",
                 "verify_owner_destination_binding",
@@ -154,15 +158,16 @@ jobs:
                 "verify_owner_replacement_binding",
                 "exchange_owner_replacement",
                 "_bind_owner_replacement_permit",
+                "seal_owner_directories",
             )
             assert all(
                 callable(getattr(_workspace_owner, name, None))
-                for name in facade_v5_symbols
+                for name in facade_v6_symbols
             )
             assert implementation.require_support() is None
             assert _workspace_owner.require_support() is None
 
-            plan_digest = hashlib.sha256(b"cibuildwheel-protocol-v5").hexdigest()
+            plan_digest = hashlib.sha256(b"cibuildwheel-protocol-v6").hexdigest()
             plan_digest_bytes = plan_digest.encode("ascii")
             directories = ((b"data", 0o700),)
             incumbent_payload = b"incumbent"
@@ -677,8 +682,9 @@ jobs:
           )
 
           assert Path(implementation.__file__).name == "_workspace_owner_impl.abi3.so"
-          assert implementation.workspace_owner_protocol_version == 5
-          protocol_v5_symbols = (
+          assert implementation.workspace_owner_protocol_version == 6
+          protocol_v6_symbols = (
+              "provision_owner_interruptibly_exact",
               "capture_owner_destination_exact",
               "acquire_owner_replacement_lease_exact",
               "verify_owner_destination_binding_exact",
@@ -686,16 +692,19 @@ jobs:
               "borrow_owner_destination_descriptor_exact",
               "claim_owner_replacement_permit_exact",
               "provision_owner_replacement_exact",
+              "provision_owner_replacement_interruptibly_exact",
               "verify_owner_replacement_binding_exact",
               "exchange_owner_replacement_exact",
+              "seal_owner_directories_interruptibly_exact",
           )
           assert all(
               callable(getattr(implementation, name, None))
-              for name in protocol_v5_symbols
+              for name in protocol_v6_symbols
           )
           assert implementation.require_support() is None
           assert _workspace_owner.require_support() is None
-          facade_v5_symbols = (
+          facade_v6_symbols = (
+              "provision_owner",
               "capture_owner_destination",
               "acquire_owner_replacement_lease",
               "verify_owner_destination_binding",
@@ -706,10 +715,11 @@ jobs:
               "verify_owner_replacement_binding",
               "exchange_owner_replacement",
               "_bind_owner_replacement_permit",
+              "seal_owner_directories",
           )
           assert all(
               callable(getattr(_workspace_owner, name, None))
-              for name in facade_v5_symbols
+              for name in facade_v6_symbols
           )
 
           payload = b'{"release-smoke":"ok"}'

@@ -10,10 +10,10 @@ import hashlib
 import inspect
 import json
 import re
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import InitVar, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, TypeVar
 
 from .._atomic_directory import (
     PublicationDirectoryReader,
@@ -69,6 +69,8 @@ _MAX_METADATA_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
 _STRICT_CONTEXT_PLAN_DOMAIN = "codenib-portable-context-strict-workspace-v1"
 _MISSING = object()
+_JSON_CANCEL_POLL_CHUNKS = 256
+_Item = TypeVar("_Item")
 
 
 def _interruptible_chunks(
@@ -86,26 +88,73 @@ def _interruptible_chunks(
         yield chunk
 
 
-def _canonical_json_bytes(value: Any, *, label: str) -> bytes:
+def _interruptible_items(
+    items: Sequence[_Item],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[_Item]:
+    """Poll between known items without adding a terminal cancellation point."""
+
+    item_count = len(items)
+    for index, item in enumerate(items):
+        yield item
+        if check_cancelled is not None and index + 1 < item_count:
+            check_cancelled()
+
+
+def _canonical_json_bytes(
+    value: Any,
+    *,
+    label: str,
+    check_cancelled: Callable[[], None] | None = None,
+) -> bytes:
     """Return one bounded deterministic JSON representation."""
 
+    if check_cancelled is not None:
+        check_cancelled()
+    cancellation: BaseException | None = None
+    size_failure: ValueError | None = None
+
+    def poll() -> None:
+        nonlocal cancellation
+        if check_cancelled is None:
+            return
+        try:
+            check_cancelled()
+        except BaseException as exc:  # noqa: B036 - retain exact stop identity
+            cancellation = exc
+            raise
+
     try:
-        payload = (
-            json.dumps(
-                value,
-                allow_nan=False,
-                ensure_ascii=True,
-                indent=2,
-                sort_keys=True,
-                separators=(",", ": "),
-            )
-            + "\n"
-        ).encode("utf-8", errors="strict")
+        encoder = json.JSONEncoder(
+            allow_nan=False,
+            ensure_ascii=True,
+            indent=2,
+            sort_keys=True,
+            separators=(",", ": "),
+        )
+        payload = bytearray()
+        chunks_since_poll = 0
+        for text in encoder.iterencode(value):
+            encoded = text.encode("utf-8", errors="strict")
+            if len(payload) + len(encoded) + 1 > _MAX_METADATA_BYTES:
+                size_failure = ValueError(
+                    f"{label} exceeds its {_MAX_METADATA_BYTES}-byte limit"
+                )
+                raise size_failure
+            payload.extend(encoded)
+            chunks_since_poll += 1
+            if (
+                check_cancelled is not None
+                and chunks_since_poll >= _JSON_CANCEL_POLL_CHUNKS
+            ):
+                poll()
+                chunks_since_poll = 0
+        payload.extend(b"\n")
     except (RecursionError, TypeError, ValueError) as exc:
+        if exc is cancellation or exc is size_failure:
+            raise
         raise ValueError(f"{label} is not canonical JSON data") from exc
-    if len(payload) > _MAX_METADATA_BYTES:
-        raise ValueError(f"{label} exceeds its {_MAX_METADATA_BYTES}-byte limit")
-    return payload
+    return bytes(payload)
 
 
 def _record_payload(record: TreeFileRecord) -> dict[str, Any]:
@@ -178,10 +227,22 @@ def _view_adjustments(
     view: str,
     records: tuple[TreeFileRecord, ...],
     view_config: Mapping[str, Any],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    by_path = {record.path: record for record in records}
-    if len(by_path) != len(records):
-        raise RuntimeError(f"strict context {view} source repeats a file")
+    by_path: dict[str, TreeFileRecord] = {}
+    previous_path: str | None = None
+    for index, record in enumerate(records):
+        if type(record) is not TreeFileRecord:
+            raise TypeError(f"strict context {view} source record has an invalid type")
+        if record.path in by_path:
+            raise RuntimeError(f"strict context {view} source repeats a file")
+        if previous_path is not None and previous_path > record.path:
+            raise RuntimeError(f"strict context {view} records are not canonical")
+        by_path[record.path] = record
+        previous_path = record.path
+        if check_cancelled is not None and index + 1 < len(records):
+            check_cancelled()
     if view == "bm25":
         required = {"documents.json", "bm25_metadata.json"}
         if set(by_path) != required:
@@ -225,8 +286,14 @@ class PlannedContextView:
     output_records: tuple[TreeFileRecord, ...]
     config_payload: bytes
     entry_digest: str
+    check_cancelled: InitVar[Callable[[], None] | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        check_cancelled: Callable[[], None] | None,
+    ) -> None:
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("strict context cancellation check must be callable")
         inventory = tuple(self.source_inventory)
         source_records = tuple(self.source_records)
         output_records = tuple(self.output_records)
@@ -245,23 +312,29 @@ class PlannedContextView:
                 raise ValueError(f"strict context {label} digest is invalid")
         if not isinstance(self.config_payload, bytes):
             raise TypeError("strict context view config payload must be bytes")
-        if any(type(record) is not TreeFileRecord for record in source_records):
-            raise TypeError("strict context source records have an invalid type")
-        if any(type(record) is not TreeFileRecord for record in output_records):
-            raise TypeError("strict context output records have an invalid type")
-        if source_records != tuple(sorted(source_records, key=lambda item: item.path)):
-            raise ValueError("strict context source records must be canonical")
-        if output_records != tuple(sorted(output_records, key=lambda item: item.path)):
-            raise ValueError("strict context output records must be canonical")
-        prefix = f"views/{self.name}/"
-        expected = tuple(
-            _prefixed_record(PurePosixPath("views") / self.name, record)
-            for record in source_records
-        )
-        if output_records != expected or any(
-            not record.path.startswith(prefix) for record in output_records
-        ):
+        for index, record in enumerate(source_records):
+            if type(record) is not TreeFileRecord:
+                raise TypeError("strict context source records have an invalid type")
+            if index and source_records[index - 1].path >= record.path:
+                raise ValueError("strict context source records must be canonical")
+            if check_cancelled is not None and index + 1 < len(source_records):
+                check_cancelled()
+        for index, record in enumerate(output_records):
+            if type(record) is not TreeFileRecord:
+                raise TypeError("strict context output records have an invalid type")
+            if index and output_records[index - 1].path >= record.path:
+                raise ValueError("strict context output records must be canonical")
+            if check_cancelled is not None and index + 1 < len(output_records):
+                check_cancelled()
+        if len(output_records) != len(source_records):
             raise ValueError("strict context view output records are not exact")
+        prefix = PurePosixPath("views") / self.name
+        for index, record in enumerate(source_records):
+            expected = _prefixed_record(prefix, record)
+            if output_records[index] != expected:
+                raise ValueError("strict context view output records are not exact")
+            if check_cancelled is not None and index + 1 < len(source_records):
+                check_cancelled()
         object.__setattr__(self, "source_inventory", inventory)
         object.__setattr__(self, "source_records", source_records)
         object.__setattr__(self, "output_records", output_records)
@@ -285,8 +358,14 @@ class PlannedContextArtifact:
     streaming_json_paths: tuple[str, ...]
     file_count: int
     byte_count: int
+    check_cancelled: InitVar[Callable[[], None] | None] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(
+        self,
+        check_cancelled: Callable[[], None] | None,
+    ) -> None:
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("strict context cancellation check must be callable")
         views = tuple(self.views)
         view_plans = tuple(self.view_plans)
         output_records = tuple(self.output_records)
@@ -295,14 +374,22 @@ class PlannedContextArtifact:
             raise TypeError("strict context plan must contain an exact WorkspacePlan")
         if views != tuple(sorted(views)) or not views or len(set(views)) != len(views):
             raise ValueError("strict context views must be non-empty and canonical")
-        if tuple(view.name for view in view_plans) != views:
+        for index, view in enumerate(view_plans):
+            if type(view) is not PlannedContextView:
+                raise TypeError("strict context view plans have an invalid type")
+            if index >= len(views) or view.name != views[index]:
+                raise ValueError("strict context view plans differ from selected views")
+            if check_cancelled is not None and index + 1 < len(view_plans):
+                check_cancelled()
+        if len(view_plans) != len(views):
             raise ValueError("strict context view plans differ from selected views")
-        if any(type(view) is not PlannedContextView for view in view_plans):
-            raise TypeError("strict context view plans have an invalid type")
-        if output_records != tuple(sorted(output_records, key=lambda item: item.path)):
-            raise ValueError("strict context output records must be canonical")
-        if any(type(record) is not TreeFileRecord for record in output_records):
-            raise TypeError("strict context output records have an invalid type")
+        for index, record in enumerate(output_records):
+            if type(record) is not TreeFileRecord:
+                raise TypeError("strict context output records have an invalid type")
+            if index and output_records[index - 1].path >= record.path:
+                raise ValueError("strict context output records must be canonical")
+            if check_cancelled is not None and index + 1 < len(output_records):
+                check_cancelled()
         if hashlib.sha256(self.manifest_payload).hexdigest() != self.manifest_digest:
             raise ValueError("strict context manifest digest differs from its bytes")
         if not _COMMIT_RE.fullmatch(self.commit):
@@ -330,27 +417,40 @@ class PlannedContextArtifact:
             self.metadata_payload, bytes
         ):
             raise TypeError("strict context JSON payloads must be bytes")
-        if streaming_paths != tuple(sorted(set(streaming_paths))):
-            raise ValueError("strict context streaming paths must be canonical")
-        output_by_path = {record.path: record for record in output_records}
-        if len(output_by_path) != len(output_records):
-            raise ValueError("strict context output records repeat a path")
-        try:
-            planned_files = tuple(
-                TreeFileRecord(
+        for index, path in enumerate(streaming_paths):
+            if not isinstance(path, str) or (
+                index and streaming_paths[index - 1] >= path
+            ):
+                raise ValueError("strict context streaming paths must be canonical")
+            if check_cancelled is not None and index + 1 < len(streaming_paths):
+                check_cancelled()
+        output_by_path: dict[str, TreeFileRecord] = {}
+        for index, record in enumerate(output_records):
+            if record.path in output_by_path:
+                raise ValueError("strict context output records repeat a path")
+            output_by_path[record.path] = record
+            if check_cancelled is not None and index + 1 < len(output_records):
+                check_cancelled()
+        if len(self.plan.files) != len(output_records):
+            raise ValueError("strict context workspace files differ from exact output")
+        for index, item in enumerate(self.plan.files):
+            try:
+                expected = TreeFileRecord(
                     path=item.path.as_posix(),
                     mode=item.mode,
                     size=item.max_bytes,
                     sha256=output_by_path[item.path.as_posix()].sha256,
                 )
-                for item in self.plan.files
-            )
-        except KeyError as exc:
-            raise ValueError(
-                "strict context workspace names an unknown output file"
-            ) from exc
-        if planned_files != output_records:
-            raise ValueError("strict context workspace files differ from exact output")
+            except KeyError as exc:
+                raise ValueError(
+                    "strict context workspace names an unknown output file"
+                ) from exc
+            if output_records[index] != expected:
+                raise ValueError(
+                    "strict context workspace files differ from exact output"
+                )
+            if check_cancelled is not None and index + 1 < len(self.plan.files):
+                check_cancelled()
         object.__setattr__(self, "views", views)
         object.__setattr__(self, "view_plans", view_plans)
         object.__setattr__(self, "output_records", output_records)
@@ -623,30 +723,56 @@ def _planned_view(
     ownership = receipt.ownership
     inventory = tuple(directory_ownership_inventory(ownership))  # type: ignore[arg-type]
     records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
-    if records != tuple(sorted(records, key=lambda item: item.path)):
-        raise RuntimeError(f"strict context {view} records are not canonical")
     entry = manifest.indexes[view].to_dict(manifest_version=manifest.version)
     config = entry.get("config")
     if not isinstance(config, dict):
         raise ValueError(f"strict context {view} config must be an object")
-    adjustments = _view_adjustments(view, records, config)
+    adjustments = (
+        _view_adjustments(view, records, config)
+        if check_cancelled is None
+        else _view_adjustments(
+            view,
+            records,
+            config,
+            check_cancelled=check_cancelled,
+        )
+    )
     _merge_adjustments(entry, adjustments, view=view)
     entry["path"] = f"views/{view}"
     config = entry["config"]
-    _assert_authenticated_publishable_json_value(
-        entry,
-        forbidden_paths=(inputs.repository_identity.root, receipt.path),
-        environ=inputs.environment,
-        label=f"strict context {view} manifest entry",
-    )
-    entry_payload = _canonical_json_bytes(
-        entry,
-        label=f"strict context {view} manifest entry",
-    )
-    config_payload = _canonical_json_bytes(
-        config,
-        label=f"strict context {view} config",
-    )
+    if check_cancelled is None:
+        _assert_authenticated_publishable_json_value(
+            entry,
+            forbidden_paths=(inputs.repository_identity.root, receipt.path),
+            environ=inputs.environment,
+            label=f"strict context {view} manifest entry",
+        )
+        entry_payload = _canonical_json_bytes(
+            entry,
+            label=f"strict context {view} manifest entry",
+        )
+        config_payload = _canonical_json_bytes(
+            config,
+            label=f"strict context {view} config",
+        )
+    else:
+        _assert_authenticated_publishable_json_value(
+            entry,
+            forbidden_paths=(inputs.repository_identity.root, receipt.path),
+            environ=inputs.environment,
+            label=f"strict context {view} manifest entry",
+            check_cancelled=check_cancelled,
+        )
+        entry_payload = _canonical_json_bytes(
+            entry,
+            label=f"strict context {view} manifest entry",
+            check_cancelled=check_cancelled,
+        )
+        config_payload = _canonical_json_bytes(
+            config,
+            label=f"strict context {view} config",
+            check_cancelled=check_cancelled,
+        )
     _validate_source_view(
         view=view,
         owner=owner,
@@ -657,34 +783,48 @@ def _planned_view(
         check_cancelled=check_cancelled,
     )
     prefix = PurePosixPath("views") / view
-    outputs = tuple(_prefixed_record(prefix, record) for record in records)
-    return (
-        PlannedContextView(
-            name=view,
-            source_plan_digest=receipt.plan_digest,
-            source_ownership=ownership,
-            source_digest=directory_ownership_digest(ownership),  # type: ignore[arg-type]
-            source_inventory=inventory,
-            source_records=records,
-            output_records=outputs,
-            config_payload=config_payload,
-            entry_digest=hashlib.sha256(entry_payload).hexdigest(),
-        ),
-        entry,
+    outputs = tuple(
+        _prefixed_record(prefix, record)
+        for record in _interruptible_items(records, check_cancelled)
     )
+    planned_view_kwargs = dict(
+        name=view,
+        source_plan_digest=receipt.plan_digest,
+        source_ownership=ownership,
+        source_digest=directory_ownership_digest(ownership),  # type: ignore[arg-type]
+        source_inventory=inventory,
+        source_records=records,
+        output_records=outputs,
+        config_payload=config_payload,
+        entry_digest=hashlib.sha256(entry_payload).hexdigest(),
+    )
+    planned_view = (
+        PlannedContextView(**planned_view_kwargs)
+        if check_cancelled is None
+        else PlannedContextView(
+            **planned_view_kwargs,
+            check_cancelled=check_cancelled,
+        )
+    )
+    return planned_view, entry
 
 
 def _workspace_directories(
     view_plans: tuple[PlannedContextView, ...],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[WorkspaceDirectory, ...]:
-    paths = {"views"}
-    for view in view_plans:
+    directories = [WorkspaceDirectory(PurePosixPath("views"))]
+    for view in _interruptible_items(view_plans, check_cancelled):
         prefix = PurePosixPath("views") / view.name
-        paths.add(prefix.as_posix())
-        for relative, kind in view.source_inventory:
+        directories.append(WorkspaceDirectory(prefix))
+        for relative, kind in _interruptible_items(
+            view.source_inventory,
+            check_cancelled,
+        ):
             if kind == "directory":
-                paths.add((prefix / PurePosixPath(relative)).as_posix())
-    return tuple(WorkspaceDirectory(PurePosixPath(path)) for path in sorted(paths))
+                directories.append(WorkspaceDirectory(prefix / PurePosixPath(relative)))
+    return tuple(directories)
 
 
 def _workspace_subject(
@@ -695,6 +835,7 @@ def _workspace_subject(
     metadata_digest: str,
     view_plans: tuple[PlannedContextView, ...],
     output_records: tuple[TreeFileRecord, ...],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> str:
     identity = {
         "domain": _STRICT_CONTEXT_PLAN_DOMAIN,
@@ -711,18 +852,41 @@ def _workspace_subject(
                 "source_plan_digest": view.source_plan_digest,
                 "source_tree_digest": view.source_digest,
                 "entry_digest": view.entry_digest,
-                "source_inventory": [list(item) for item in view.source_inventory],
+                "source_inventory": [
+                    list(item)
+                    for item in _interruptible_items(
+                        view.source_inventory,
+                        check_cancelled,
+                    )
+                ],
                 "source_records": [
-                    _record_payload(record) for record in view.source_records
+                    _record_payload(record)
+                    for record in _interruptible_items(
+                        view.source_records,
+                        check_cancelled,
+                    )
                 ],
             }
-            for view in view_plans
+            for view in _interruptible_items(view_plans, check_cancelled)
         ],
-        "output_records": [_record_payload(record) for record in output_records],
+        "output_records": [
+            _record_payload(record)
+            for record in _interruptible_items(output_records, check_cancelled)
+        ],
     }
-    return hashlib.sha256(
-        _canonical_json_bytes(identity, label="strict context plan identity")
-    ).hexdigest()
+    payload = (
+        _canonical_json_bytes(
+            identity,
+            label="strict context plan identity",
+        )
+        if check_cancelled is None
+        else _canonical_json_bytes(
+            identity,
+            label="strict context plan identity",
+            check_cancelled=check_cancelled,
+        )
+    )
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _build_plan(
@@ -763,13 +927,8 @@ def _build_plan(
             planned_entries.append(planned_entry)
     view_plans = tuple(item[0] for item in planned_entries)
 
-    portable = json.loads(
-        _canonical_json_bytes(
-            inputs.manifest,
-            label="strict context repository manifest snapshot",
-        )
-    )
-    portable["repo"]["path"] = "source"
+    portable = dict(inputs.manifest)
+    portable["repo"] = {**inputs.manifest["repo"], "path": "source"}
     portable["indexes"] = {
         planned_view.name: entry for planned_view, entry in planned_entries
     }
@@ -777,17 +936,26 @@ def _build_plan(
         manifest.capabilities,
         selected,
     )
-    manifest_payload = _canonical_json_bytes(
-        portable,
-        label="strict context portable repository manifest",
+    manifest_payload = (
+        _canonical_json_bytes(
+            portable,
+            label="strict context portable repository manifest",
+        )
+        if check_cancelled is None
+        else _canonical_json_bytes(
+            portable,
+            label="strict context portable repository manifest",
+            check_cancelled=check_cancelled,
+        )
     )
     manifest_record = _output_record(MANIFEST_FILENAME, manifest_payload)
 
-    inventoried_records = tuple(
-        sorted(
-            (manifest_record,)
-            + tuple(record for view in view_plans for record in view.output_records),
-            key=lambda item: item.path,
+    inventoried_records = (manifest_record,) + tuple(
+        record
+        for view in _interruptible_items(view_plans, check_cancelled)
+        for record in _interruptible_items(
+            view.output_records,
+            check_cancelled,
         )
     )
     metadata = {
@@ -822,25 +990,40 @@ def _build_plan(
                 "bytes": record.size,
                 "sha256": record.sha256,
             }
-            for record in inventoried_records
+            for record in _interruptible_items(
+                inventoried_records,
+                check_cancelled,
+            )
         ],
     }
-    _assert_authenticated_publishable_json_value(
-        metadata,
-        forbidden_paths=(inputs.repository_identity.root,),
-        environ=inputs.environment,
-        label="strict context metadata",
-    )
-    metadata_payload = _canonical_json_bytes(
-        metadata,
-        label="strict context metadata",
-    )
+    if check_cancelled is None:
+        _assert_authenticated_publishable_json_value(
+            metadata,
+            forbidden_paths=(inputs.repository_identity.root,),
+            environ=inputs.environment,
+            label="strict context metadata",
+        )
+        metadata_payload = _canonical_json_bytes(
+            metadata,
+            label="strict context metadata",
+        )
+    else:
+        _assert_authenticated_publishable_json_value(
+            metadata,
+            forbidden_paths=(inputs.repository_identity.root,),
+            environ=inputs.environment,
+            label="strict context metadata",
+            check_cancelled=check_cancelled,
+        )
+        metadata_payload = _canonical_json_bytes(
+            metadata,
+            label="strict context metadata",
+            check_cancelled=check_cancelled,
+        )
     metadata_record = _output_record(CONTEXT_ARTIFACT_MANIFEST, metadata_payload)
-    output_records = tuple(
-        sorted((*inventoried_records, metadata_record), key=lambda item: item.path)
-    )
+    output_records = (metadata_record, *inventoried_records)
     manifest_digest = manifest_record.sha256
-    subject_digest = _workspace_subject(
+    subject_kwargs = dict(
         repository=inputs.repository,
         manifest=manifest,
         manifest_digest=manifest_digest,
@@ -848,27 +1031,58 @@ def _build_plan(
         view_plans=view_plans,
         output_records=output_records,
     )
-    workspace = WorkspacePlan(
-        subject_digest=subject_digest,
-        directories=_workspace_directories(view_plans),
-        files=tuple(
-            WorkspaceFile(
-                PurePosixPath(record.path),
-                mode=record.mode,
-                max_bytes=record.size,
-            )
-            for record in output_records
-        ),
-    )
-    streaming_json_paths = tuple(
-        sorted(
-            record.path
-            for record in output_records
-            if PurePosixPath(record.path).name.startswith("documents")
-            and PurePosixPath(record.path).suffix == ".json"
+    subject_digest = (
+        _workspace_subject(**subject_kwargs)
+        if check_cancelled is None
+        else _workspace_subject(
+            **subject_kwargs,
+            check_cancelled=check_cancelled,
         )
     )
-    return PlannedContextArtifact(
+    workspace_directories = (
+        _workspace_directories(view_plans)
+        if check_cancelled is None
+        else _workspace_directories(
+            view_plans,
+            check_cancelled=check_cancelled,
+        )
+    )
+    workspace_files = tuple(
+        WorkspaceFile(
+            PurePosixPath(record.path),
+            mode=record.mode,
+            max_bytes=record.size,
+        )
+        for record in _interruptible_items(output_records, check_cancelled)
+    )
+    workspace = (
+        WorkspacePlan(
+            subject_digest=subject_digest,
+            directories=workspace_directories,
+            files=workspace_files,
+        )
+        if check_cancelled is None
+        else WorkspacePlan(
+            subject_digest=subject_digest,
+            directories=workspace_directories,
+            files=workspace_files,
+            check_cancelled=check_cancelled,
+        )
+    )
+    streaming_json_paths = tuple(
+        record.path
+        for record in _interruptible_items(output_records, check_cancelled)
+        if PurePosixPath(record.path).name.startswith("documents")
+        and PurePosixPath(record.path).suffix == ".json"
+    )
+    byte_count = sum(
+        record.size
+        for record in _interruptible_items(
+            inventoried_records,
+            check_cancelled,
+        )
+    )
+    artifact_kwargs = dict(
         plan=workspace,
         manifest_digest=manifest_digest,
         repository=inputs.repository,
@@ -882,7 +1096,15 @@ def _build_plan(
         metadata_payload=metadata_payload,
         streaming_json_paths=streaming_json_paths,
         file_count=len(inventoried_records),
-        byte_count=sum(record.size for record in inventoried_records),
+        byte_count=byte_count,
+    )
+    return (
+        PlannedContextArtifact(**artifact_kwargs)
+        if check_cancelled is None
+        else PlannedContextArtifact(
+            **artifact_kwargs,
+            check_cancelled=check_cancelled,
+        )
     )
 
 
