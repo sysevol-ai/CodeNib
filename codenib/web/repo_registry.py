@@ -609,11 +609,13 @@ class RepoRegistry:
                     exc_info=True,
                 )
 
-    def refresh(self, repo_id: str) -> RepoBundle:
+    def refresh(self, repo_id: str) -> None:
         """Prepare and atomically publish a complete new bundle generation.
 
         The active bundle remains untouched when metadata authentication, view
-        loading, graph loading, or Ask runtime construction fails.
+        loading, graph loading, or Ask runtime construction fails. The caller
+        must use ``pin()`` for any subsequent access; a refresh never escapes an
+        unleased bundle that another concurrent refresh could retire.
         """
 
         with self._generation_lock:
@@ -631,7 +633,7 @@ class RepoRegistry:
         entry = entries[0]
         if not os.path.exists(entry.manifest_path):
             raise FileNotFoundError(entry.manifest_path)
-        return self._replace_entry(entry, prepare_runtime=True)
+        self._replace_entry(entry, prepare_runtime=True)
 
     def _replace_entry(
         self,

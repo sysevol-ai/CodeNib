@@ -403,6 +403,46 @@ def test_registry_swap_keeps_pinned_generation_alive_until_release():
     registry.close()
 
 
+def test_registry_refresh_publishes_without_escaping_unleased_bundle(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(repo, manifest_path, instance_id="repo")
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, owner),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    assert registry.refresh("repo") is None
+    with registry.pin("repo") as pinned:
+        assert pinned is candidate
+    assert owner.closed is False
+
+    registry.close()
+    assert owner.closed is True
+
+
 def test_registry_failed_refresh_keeps_active_generation(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
