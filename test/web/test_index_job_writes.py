@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
 from codenib.storage import (
+    INDEX_JOB_REQUEST_CONTRACT,
     IndexJobRecord,
     IndexJobRequest,
     IndexJobStatus,
@@ -270,6 +271,62 @@ def test_catalog_writer_rejects_changed_public_request_without_replanning(
         )
 
     assert len(planner.calls) == 1
+
+
+def test_catalog_writer_attests_exact_replay_candidate_without_replanning() -> None:
+    binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
+    plan = IndexJobCreatePlan(
+        source_revision_id="src_" + "b" * 64,
+        profile_id="profile_" + "c" * 64,
+        expected_ref_generation=0,
+    )
+    returned = _queued_job(
+        binding.repository_id,
+        plan.source_revision_id,
+        "another-request",
+        {
+            "contract": INDEX_JOB_REQUEST_CONTRACT,
+            "views": {
+                "bm25": {
+                    "profile_id": plan.profile_id,
+                    "requested_mode": "full",
+                    "required": True,
+                }
+            },
+        },
+        ref_name=binding.ref_name,
+        expected_ref_generation=plan.expected_ref_generation,
+        max_attempts=plan.max_attempts,
+    )
+
+    class WrongReplayCatalog:
+        def find_job_by_idempotency(self, repository_id, idempotency_key):
+            assert (repository_id, idempotency_key) == (
+                binding.repository_id,
+                "request",
+            )
+            return returned
+
+        def create_job_if_idle(self, *args, **kwargs):
+            raise AssertionError("an existing replay candidate must not create a job")
+
+    @contextmanager
+    def factory():
+        yield WrongReplayCatalog()
+
+    planner = _Planner(plan)
+    writer = CatalogIndexJobWriter(factory, (binding,), planner)
+
+    with pytest.raises(IndexJobWriteError, match="different replay candidate"):
+        writer.create(
+            "demo",
+            indexes=("bm25",),
+            mode="full",
+            force=False,
+            idempotency_key="request",
+        )
+
+    assert planner.calls == []
 
 
 @pytest.mark.parametrize(

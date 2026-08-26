@@ -201,6 +201,7 @@ def _replayed_job_response(
     value: object,
     *,
     index_type: str,
+    idempotency_key: str,
 ) -> IndexJobStatusResponse:
     """Project only an exact replay of the caller's public request shape."""
 
@@ -220,7 +221,11 @@ def _replayed_job_response(
         views = expected.view_requests
         if (
             expected.repository_id != binding.repository_id
-            or expected.ref_name != binding.ref_name
+            or expected.idempotency_key != idempotency_key
+        ):
+            raise IndexJobWriteError("catalog returned a different replay candidate")
+        if (
+            expected.ref_name != binding.ref_name
             or len(views) != 1
             or views[0].view_type != index_type
             or views[0].requested_mode.value != "full"
@@ -352,6 +357,7 @@ class CatalogIndexJobWriter:
                         binding,
                         existing,
                         index_type=index_type,
+                        idempotency_key=normalized_key,
                     )
                 plan = self._planner.plan(
                     binding,
