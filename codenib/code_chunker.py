@@ -373,6 +373,7 @@ class CodeChunker:
             if self._source_record_is_selected(
                 record,
                 extension_to_language=extension_to_language,
+                repository_root=source_identity.root,
                 source_selection=source_selection,
             )
         ]
@@ -535,6 +536,7 @@ class CodeChunker:
         record: RepositorySourceFileRecord,
         *,
         extension_to_language: Dict[str, str],
+        repository_root: Path,
         source_selection: RepositorySourceSelection,
     ) -> bool:
         """Apply repository discovery policy to one authenticated file record."""
@@ -560,7 +562,10 @@ class CodeChunker:
             for part in relative.parts[:-1]
         ):
             return False
-        if not self._should_process_file_path(relative, extension_to_language):
+        if not self._should_process_file_path(
+            repository_root / relative,
+            extension_to_language,
+        ):
             return False
         file_size_mb = record.size / (1024 * 1024)
         return file_size_mb <= self.repo_config.max_file_size_mb

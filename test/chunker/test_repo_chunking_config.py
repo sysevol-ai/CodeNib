@@ -220,6 +220,27 @@ def test_authenticated_repository_chunking_uses_retained_bytes_and_paths(
     assert "retained" in chunks[0].content
 
 
+def test_authenticated_repository_chunking_preserves_test_filter_path_context(
+    tmp_path: Path,
+):
+    repo = tmp_path / "tests" / "repo"
+    repo.mkdir(parents=True)
+    (repo / "app.py").write_text(
+        "def app():\n    return 1\n",
+        encoding="utf-8",
+    )
+    chunker = CodeChunker(
+        language="python",
+        repo_config=RepoChunkingConfig(languages=["python"]),
+    )
+
+    direct_chunks = chunker.chunk_repository(str(repo), strict=True)
+    with capture_repository_source(repo) as source:
+        retained_chunks = chunker.chunk_repository_source(source)
+
+    assert direct_chunks == retained_chunks == []
+
+
 def test_authenticated_repository_chunking_threads_cancellation_into_source_gates(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
