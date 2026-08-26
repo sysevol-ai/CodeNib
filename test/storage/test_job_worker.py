@@ -1568,6 +1568,23 @@ def test_worker_constructor_requires_three_intervals_strictly_below_lease() -> N
     IndexJobWorker(lease_duration_ms=301, **common)
 
 
+def test_worker_constructor_rejects_a_different_bound_resolver_store() -> None:
+    backend = _Backend()
+    worker_store = _RetainingStore()
+    resolver_store = _RetainingStore()
+    resolver = _default_resolver()
+    resolver.object_store = resolver_store  # type: ignore[attr-defined]
+
+    with pytest.raises(StorageValidationError, match="same object store"):
+        IndexJobWorker(
+            catalog_factory=_SessionFactory(backend),
+            object_store=worker_store,
+            resolver=resolver,
+            lease_duration_ms=301,
+            heartbeat_interval_ms=100,
+        )
+
+
 def test_empty_scan_returns_idle_without_creating_an_owner() -> None:
     backend = _Backend()
     owners: list[str] = []

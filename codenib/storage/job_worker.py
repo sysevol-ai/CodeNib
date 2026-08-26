@@ -681,6 +681,14 @@ class IndexJobExecutorResolver(Protocol):
     ) -> IndexJobExecutor: ...
 
 
+@runtime_checkable
+class IndexJobObjectStoreBoundResolver(Protocol):
+    """A resolver whose executors write into one declared object store."""
+
+    @property
+    def object_store(self) -> ReceiptRetainingObjectStore: ...
+
+
 class IndexJobWorkerDisposition(str, Enum):
     """Stable result classes returned by one worker pass."""
 
@@ -1497,6 +1505,19 @@ class IndexJobWorker:
             raise TypeError("worker requires a receipt-retaining object store")
         if not isinstance(resolver, IndexJobExecutorResolver):
             raise TypeError("worker resolver does not implement its protocol")
+        if isinstance(resolver, IndexJobObjectStoreBoundResolver):
+            resolver_object_store = resolver.object_store
+            if not isinstance(
+                resolver_object_store,
+                ReceiptRetainingObjectStore,
+            ):
+                raise TypeError(
+                    "worker bound resolver requires a receipt-retaining object store"
+                )
+            if resolver_object_store is not object_store:
+                raise StorageValidationError(
+                    "worker and bound resolver must use the same object store"
+                )
         if not callable(owner_id_factory):
             raise TypeError("worker owner ID factory must be callable")
         if not callable(monotonic):
@@ -2857,6 +2878,7 @@ __all__ = [
     "IndexJobExecutionResult",
     "IndexJobExecutor",
     "IndexJobExecutorResolver",
+    "IndexJobObjectStoreBoundResolver",
     "IndexJobStopReason",
     "IndexJobStopToken",
     "IndexJobViewExecutionResult",

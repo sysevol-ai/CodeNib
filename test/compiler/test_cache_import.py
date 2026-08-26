@@ -66,6 +66,7 @@ from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
 from codenib.compiler.job_resolver import (
     CompilerCacheJobResolver,
     CompilerCacheJobResourceFactory,
+    CompilerCacheJobResourceScope,
 )
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.compiler.manifest_import import RepoManifestImportResult
@@ -99,6 +100,8 @@ from codenib.storage import (
     IndexJobWorkerDisposition,
     LocalCAS,
     PublishConflict,
+    ReceiptRetainingObjectStore,
+    RetainedImportObjectStore,
     SQLiteCatalog,
     StorageIntegrityError,
     StorageValidationError,
@@ -401,25 +404,78 @@ class _ScopedCompilerCacheResources:
         executor: CompilerCacheJobExecutor,
         *,
         close_resources: bool = True,
+        suppress_failure: bool = False,
+        cleanup_failure: BaseException | None = None,
     ) -> None:
         self.executor = executor
         self.close_resources = close_resources
+        self.suppress_failure = suppress_failure
+        self.cleanup_failure = cleanup_failure
+        self.declarations = 0
         self.contexts = []
         self.object_stores = []
         self.exits = 0
 
+    def create_scope(self, context, *, object_store):
+        self.declarations += 1
+        return CompilerCacheJobResourceScope(
+            object_store=self.executor.object_store,
+            view_type=self.executor.view_type,
+            resources=self._open(context, object_store=object_store),
+        )
+
     @contextmanager
-    def open(self, context, *, object_store):
+    def _open(self, context, *, object_store):
         self.contexts.append(context)
         self.object_stores.append(object_store)
         try:
-            yield self.executor
+            try:
+                yield self.executor
+            except BaseException:
+                if not self.suppress_failure:
+                    raise
         finally:
             self.exits += 1
             if self.close_resources:
                 self.executor.context_output_owner.close()
                 self.executor.view_output_owner.close()
                 self.executor.repository_source.close()
+            if self.cleanup_failure is not None:
+                raise self.cleanup_failure
+
+
+class _UnusedCompilerCacheResources:
+    def create_scope(self, context, *, object_store):
+        raise AssertionError(context, object_store)
+
+
+class _ReceiptRetainingOnlyStore:
+    def put_bytes(self, data):
+        raise NotImplementedError(data)
+
+    def put_file(self, source):
+        raise NotImplementedError(source)
+
+    def has(self, digest):
+        raise NotImplementedError(digest)
+
+    def open(self, digest):
+        raise NotImplementedError(digest)
+
+    def read_bytes(self, digest):
+        raise NotImplementedError(digest)
+
+    def verify(self, digest):
+        raise NotImplementedError(digest)
+
+    def materialize(self, digest, destination):
+        raise NotImplementedError(digest, destination)
+
+    def verify_receipt(self, expected):
+        raise NotImplementedError(expected)
+
+    def retain_receipts(self, expected, callback):
+        raise NotImplementedError(expected, callback)
 
 
 class _LockAwareCatalog(SQLiteCatalog):
@@ -722,6 +778,9 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
     assert (
         compiler_module.CompilerCacheJobResourceFactory
         is CompilerCacheJobResourceFactory
+    )
+    assert (
+        compiler_module.CompilerCacheJobResourceScope is CompilerCacheJobResourceScope
     )
     assert (
         compiler_module.CompilerCacheJobPreparationResult
@@ -1185,6 +1244,38 @@ def test_prepare_compiler_cache_job_rejects_mismatch_before_workspace_or_cas(
         fixture.close()
 
 
+def test_compiler_cache_resolver_requires_streaming_import_capability() -> None:
+    object_store = _ReceiptRetainingOnlyStore()
+
+    assert isinstance(object_store, ReceiptRetainingObjectStore)
+    assert not isinstance(object_store, RetainedImportObjectStore)
+    with pytest.raises(TypeError, match="retained import store"):
+        CompilerCacheJobResolver(
+            resource_factory=_UnusedCompilerCacheResources(),
+            object_store=object_store,  # type: ignore[arg-type]
+        )
+
+
+def test_worker_rejects_a_different_compiler_resolver_store(tmp_path: Path) -> None:
+    with (
+        LocalCAS(tmp_path / "worker-cas") as worker_store,
+        LocalCAS(tmp_path / "resolver-cas") as resolver_store,
+    ):
+        resolver = CompilerCacheJobResolver(
+            resource_factory=_UnusedCompilerCacheResources(),
+            object_store=resolver_store,
+        )
+
+        with pytest.raises(StorageValidationError, match="same object store"):
+            IndexJobWorker(
+                catalog_factory=lambda: None,  # type: ignore[arg-type]
+                object_store=worker_store,
+                resolver=resolver,
+                lease_duration_ms=300,
+                heartbeat_interval_ms=50,
+            )
+
+
 def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
     tmp_path: Path,
 ) -> None:
@@ -1242,6 +1333,7 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
 
             assert outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
             assert outcome.job_id == queued.job_id
+            assert resources.declarations == 1
             assert len(resources.contexts) == 1
             assert resources.contexts[0].job.job_id == queued.job_id
             assert resources.object_stores == [cas]
@@ -1263,7 +1355,99 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
         fixture.close()
 
 
-def test_compiler_cache_resolver_rejects_foreign_store_and_closes_scope(
+@pytest.mark.parametrize("cleanup_mode", ("suppress", "raise"))
+def test_compiler_cache_scope_cleanup_cannot_replace_executor_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_mode: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    publication_calls: list[str] = []
+    primary = StorageIntegrityError("primary executor integrity failure")
+
+    def fail_execute(
+        _executor: CompilerCacheJobExecutor,
+        _context,
+    ):
+        raise primary
+
+    monkeypatch.setattr(CompilerCacheJobExecutor, "execute", fail_execute)
+    try:
+        with _JobTrackingCAS(tmp_path / "cas") as cas:
+            with SQLiteCatalog(catalog_path) as catalog:
+                (
+                    repository_id,
+                    source_revision_id,
+                    profile_id,
+                ) = _register_bm25_job_subject(catalog, fixture, plan)
+                queued = _create_bm25_job(
+                    catalog,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                )
+
+            executor = CompilerCacheJobExecutor(
+                cache_dir=fixture.cache,
+                view_type="bm25",
+                repository_source=fixture.source,
+                view_output_owner=fixture.bm25_owner,
+                context_output_owner=fixture.context_owner,
+                view_destination=fixture.bm25_destination,
+                context_destination=fixture.context_destination,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                object_store=cas,
+                environ={},
+            )
+            resources = _ScopedCompilerCacheResources(
+                executor,
+                suppress_failure=cleanup_mode == "suppress",
+                cleanup_failure=(
+                    RuntimeError("resource cleanup failed")
+                    if cleanup_mode == "raise"
+                    else None
+                ),
+            )
+            worker = IndexJobWorker(
+                catalog_factory=_CompilerCacheWorkerFactory(
+                    catalog_path,
+                    publication_calls,
+                ),
+                object_store=cas,
+                resolver=CompilerCacheJobResolver(
+                    resource_factory=resources,
+                    object_store=cas,
+                ),
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "compiler-cache-worker",
+            )
+
+            with pytest.raises(StorageIntegrityError) as caught:
+                worker.run_once()
+
+            assert caught.value is primary
+            assert resources.declarations == 1
+            assert len(resources.contexts) == 1
+            assert resources.exits == 1
+            assert fixture.source.closed
+            assert fixture.bm25_owner.closed
+            assert fixture.context_owner.closed
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert publication_calls == []
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                running = catalog.get_job(queued.job_id)
+                assert running.status is IndexJobStatus.RUNNING
+                assert running.result_snapshot_id is None
+    finally:
+        fixture.close()
+
+
+def test_compiler_cache_resolver_rejects_declared_foreign_store_before_scope(
     tmp_path: Path,
 ) -> None:
     fixture = _cache_fixture(tmp_path)
@@ -1324,11 +1508,13 @@ def test_compiler_cache_resolver_rejects_foreign_store_and_closes_scope(
             ):
                 worker.run_once()
 
-            assert len(resources.contexts) == 1
-            assert resources.exits == 1
-            assert fixture.source.closed
-            assert fixture.bm25_owner.closed
-            assert fixture.context_owner.closed
+            assert resources.declarations == 1
+            assert resources.contexts == []
+            assert resources.object_stores == []
+            assert resources.exits == 0
+            assert fixture.source.usable
+            assert fixture.bm25_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
             assert worker_cas.put_chunk_receipts == []
             assert foreign_cas.put_chunk_receipts == []
             assert worker_cas.retained_receipt_sets == []
@@ -1399,6 +1585,7 @@ def test_compiler_cache_resolver_rejects_unsupported_job_before_scope(
             assert resources.contexts == []
             assert resources.object_stores == []
             assert resources.exits == 0
+            assert resources.declarations == 0
             assert cas.put_chunk_receipts == []
             assert cas.retained_receipt_sets == []
             assert fixture.provider.run_count == 0

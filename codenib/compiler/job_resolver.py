@@ -24,28 +24,124 @@ from ..storage.models import (
     StorageIntegrityError,
     StorageValidationError,
 )
-from ..storage.protocols import ReceiptRetainingObjectStore
+from ..storage.protocols import RetainedImportObjectStore
 from .cache_import import CompilerCacheJobExecutor
 
 _SUPPORTED_CACHE_VIEWS = frozenset({"bm25", "vector"})
+_MISSING_EXECUTION_RESULT = object()
+
+
+@dataclass(frozen=True, slots=True)
+class CompilerCacheJobResourceScope:
+    """Side-effect-free declaration for one attempt resource scope.
+
+    The context manager must not acquire a source binding, workspace, receipt
+    owner, or other attempt-local authority until ``__enter__`` is called.
+    Its yielded executor must use the object store and view declared here.
+    """
+
+    object_store: RetainedImportObjectStore
+    view_type: str
+    resources: AbstractContextManager[CompilerCacheJobExecutor]
+
+    def __post_init__(self) -> None:
+        if type(self) is not CompilerCacheJobResourceScope:
+            raise TypeError("compiler cache resource scope must use the exact type")
+        if not isinstance(self.object_store, RetainedImportObjectStore):
+            raise TypeError(
+                "compiler cache resource scope requires a retained import store"
+            )
+        if (
+            type(self.view_type) is not str
+            or self.view_type not in _SUPPORTED_CACHE_VIEWS
+        ):
+            raise TypeError(
+                "compiler cache resource scope requires a supported exact view"
+            )
+        if not isinstance(self.resources, AbstractContextManager):
+            raise TypeError("compiler cache resource scope requires a context manager")
 
 
 @runtime_checkable
 class CompilerCacheJobResourceFactory(Protocol):
-    """Open fresh attempt-scoped authorities for one cache executor.
+    """Declare fresh attempt-scoped authorities for one cache executor.
 
-    Implementations own the returned context manager and must settle every
-    source binding, workspace receipt owner, and other attempt-local resource
-    when its scope exits. The supplied object store is borrowed from the
-    resolver and must be attached unchanged to the returned executor.
+    ``create_scope`` must only assemble a side-effect-free scope descriptor;
+    it must not open a source binding, workspace, receipt owner, or other
+    attempt-local authority. Implementations own the descriptor's context
+    manager and must settle every resource when its scope exits. The supplied
+    object store is borrowed from the resolver and must be declared on the
+    scope and attached unchanged to the yielded executor.
     """
 
-    def open(
+    def create_scope(
         self,
         context: IndexJobExecutionContext,
         *,
-        object_store: ReceiptRetainingObjectStore,
-    ) -> AbstractContextManager[CompilerCacheJobExecutor]: ...
+        object_store: RetainedImportObjectStore,
+    ) -> CompilerCacheJobResourceScope: ...
+
+
+def _add_cleanup_exception_note(
+    primary: BaseException,
+    secondary: BaseException,
+) -> None:
+    """Best-effort note cleanup failure without replacing the primary error."""
+
+    try:
+        add_note = getattr(primary, "add_note", None)
+        if callable(add_note):
+            add_note(
+                "compiler cache resource cleanup also failed: "
+                f"{type(secondary).__name__}"
+            )
+    except BaseException:  # noqa: B036 - notes must not replace execution failure
+        pass
+
+
+def _execute_in_resource_scope(
+    scope: CompilerCacheJobResourceScope,
+    context: IndexJobExecutionContext,
+) -> IndexJobExecutionResult:
+    """Execute without permitting hostile cleanup to suppress the primary error."""
+
+    result: object = _MISSING_EXECUTION_RESULT
+    primary: BaseException | None = None
+    try:
+        with scope.resources as executor:
+            try:
+                if type(executor) is not CompilerCacheJobExecutor:
+                    raise TypeError(
+                        "compiler cache resource factory returned an invalid executor"
+                    )
+                if executor.object_store is not scope.object_store:
+                    raise StorageIntegrityError(
+                        "compiler cache executor differs from its declared object store"
+                    )
+                if executor.view_type != scope.view_type:
+                    raise StorageIntegrityError(
+                        "compiler cache executor differs from its declared job view"
+                    )
+                result = executor.execute(context)
+                if type(result) is not IndexJobExecutionResult:
+                    raise StorageIntegrityError(
+                        "compiler cache executor returned an invalid result"
+                    )
+            except BaseException as exc:  # noqa: B036 - rethrown after cleanup
+                primary = exc
+                raise
+    except BaseException as cleanup_exc:  # noqa: B036 - preserve primary failure
+        if primary is None:
+            raise
+        if cleanup_exc is not primary:
+            _add_cleanup_exception_note(primary, cleanup_exc)
+    if primary is not None:
+        raise primary
+    if type(result) is not IndexJobExecutionResult:
+        raise StorageIntegrityError(
+            "compiler cache resource scope returned no execution result"
+        )
+    return result
 
 
 def _detach_resolved_job(value: object) -> IndexJobRecord:
@@ -121,7 +217,7 @@ class _ScopedCompilerCacheJobExecutor:
     job: IndexJobRecord
     views: tuple[IndexJobViewRecord, ...]
     resource_factory: CompilerCacheJobResourceFactory
-    object_store: ReceiptRetainingObjectStore
+    object_store: RetainedImportObjectStore
 
     def execute(
         self,
@@ -133,33 +229,23 @@ class _ScopedCompilerCacheJobExecutor:
             raise StorageIntegrityError(
                 "scoped compiler cache executor received a different job attempt"
             )
-        resources = self.resource_factory.open(
+        scope = self.resource_factory.create_scope(
             context,
             object_store=self.object_store,
         )
-        if not isinstance(resources, AbstractContextManager):
+        if type(scope) is not CompilerCacheJobResourceScope:
             raise TypeError(
-                "compiler cache resource factory must return a context manager"
+                "compiler cache resource factory must return an exact scope"
             )
-        with resources as executor:
-            if type(executor) is not CompilerCacheJobExecutor:
-                raise TypeError(
-                    "compiler cache resource factory returned an invalid executor"
-                )
-            if executor.object_store is not self.object_store:
-                raise StorageIntegrityError(
-                    "compiler cache executor must use the resolver object store"
-                )
-            if executor.view_type != self.views[0].view_type:
-                raise StorageIntegrityError(
-                    "compiler cache executor resolved a different job view"
-                )
-            result = executor.execute(context)
-            if type(result) is not IndexJobExecutionResult:
-                raise StorageIntegrityError(
-                    "compiler cache executor returned an invalid result"
-                )
-            return result
+        if scope.object_store is not self.object_store:
+            raise StorageIntegrityError(
+                "compiler cache resource scope must use the resolver object store"
+            )
+        if scope.view_type != self.views[0].view_type:
+            raise StorageIntegrityError(
+                "compiler cache resource scope resolved a different job view"
+            )
+        return _execute_in_resource_scope(scope, context)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,21 +253,21 @@ class CompilerCacheJobResolver:
     """Resolve one supported cache job through fresh scoped authorities.
 
     This resolver deliberately has no catalog capability. It binds the same
-    receipt-retaining object-store instance used by the enclosing worker and
+    retained-import object-store instance used by the enclosing worker and
     defers attempt-local authority creation until execution begins.
     """
 
     resource_factory: CompilerCacheJobResourceFactory
-    object_store: ReceiptRetainingObjectStore
+    object_store: RetainedImportObjectStore
 
     def __post_init__(self) -> None:
         if type(self) is not CompilerCacheJobResolver:
             raise TypeError("compiler cache job resolver must use the exact type")
         if not isinstance(self.resource_factory, CompilerCacheJobResourceFactory):
             raise TypeError("compiler cache job resolver requires a resource factory")
-        if not isinstance(self.object_store, ReceiptRetainingObjectStore):
+        if not isinstance(self.object_store, RetainedImportObjectStore):
             raise TypeError(
-                "compiler cache job resolver requires a receipt-retaining store"
+                "compiler cache job resolver requires a retained import store"
             )
 
     def resolve(
@@ -219,4 +305,5 @@ class CompilerCacheJobResolver:
 __all__ = [
     "CompilerCacheJobResolver",
     "CompilerCacheJobResourceFactory",
+    "CompilerCacheJobResourceScope",
 ]

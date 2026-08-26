@@ -80,6 +80,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobExecutionResult",
         "IndexJobExecutor",
         "IndexJobExecutorResolver",
+        "IndexJobObjectStoreBoundResolver",
         "IndexJobEventKind",
         "IndexJobEventRecord",
         "IndexJobRunnableCursor",
