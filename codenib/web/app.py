@@ -293,7 +293,7 @@ async def _run_pinned_thread(function, /, *args, **kwargs):
         raise
     state, value = outcome
     if state is _THREAD_CALL_FAILED:
-        if isinstance(value, (StopIteration, StopAsyncIteration)):
+        if issubclass(type(value), (StopIteration, StopAsyncIteration)):
             # Iteration sentinels cannot cross an async function boundary:
             # PEP 479 would otherwise rewrite them implicitly. Make that
             # unavoidable mapping explicit and retain the exact worker error.
@@ -302,30 +302,28 @@ async def _run_pinned_thread(function, /, *args, **kwargs):
     return value
 
 
-def _generation_cached(cache: dict, key: str, bundle, factory):
+def _generation_cached(cache: dict, key: str, repo_id: str, bundle, factory):
     """Reuse a helper only while it is bound to the active bundle generation."""
 
-    repo_id = getattr(getattr(bundle, "entry", None), "instance_id", None)
-    if repo_id is not None:
-        for cached_key, cached_value in tuple(cache.items()):
-            if not (
-                isinstance(cached_value, tuple)
-                and len(cached_value) == 2
-                and cached_value[0] is not bundle
-                and getattr(
-                    getattr(cached_value[0], "entry", None),
-                    "instance_id",
-                    None,
-                )
-                == repo_id
-            ):
-                continue
-            cache.pop(cached_key, None)
+    for cached_key, cached_value in tuple(cache.items()):
+        if not (
+            isinstance(cached_value, tuple)
+            and len(cached_value) == 3
+            and cached_value[0] == repo_id
+            and cached_value[1] is not bundle
+        ):
+            continue
+        cache.pop(cached_key, None)
     cached = cache.get(key)
-    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] is bundle:
-        return cached[1]
+    if (
+        isinstance(cached, tuple)
+        and len(cached) == 3
+        and cached[0] == repo_id
+        and cached[1] is bundle
+    ):
+        return cached[2]
     value = factory()
-    cache[key] = (bundle, value)
+    cache[key] = (repo_id, bundle, value)
     return value
 
 
@@ -342,12 +340,11 @@ def _prune_retired_generation_caches(registry=None) -> None:
         if not isinstance(cache, dict):
             continue
         for key, cached in tuple(cache.items()):
-            if not (isinstance(cached, tuple) and len(cached) == 2):
+            if not (isinstance(cached, tuple) and len(cached) == 3):
                 continue
-            bundle = cached[0]
-            repo_id = getattr(getattr(bundle, "entry", None), "instance_id", None)
+            repo_id, bundle, _helper = cached
             try:
-                current = get_bundle(repo_id) if repo_id is not None else bundle
+                current = get_bundle(repo_id)
             except BaseException:  # noqa: B036 - cache pruning is best effort
                 continue
             if current is not bundle:
@@ -376,7 +373,7 @@ def _wiki(repo_id: str, bundle=None):
             )
         return WikiBuilder(bundle, narrator=getattr(app.state, "narrator", None))
 
-    return _generation_cached(cache, repo_id, bundle, build)
+    return _generation_cached(cache, repo_id, repo_id, bundle, build)
 
 
 def _wiki_media_dir(config, repo_id: str, page_id: str) -> Path:
@@ -517,7 +514,7 @@ def _edge_labeler(repo_id: str, commit: str | None = None, bundle=None):
 
         config = load_config()
         wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
-        namespace = f"{bundle.entry.instance_id}@{source_commit}"
+        namespace = f"{repo_id}@{source_commit}"
         model = config.edge_label_model or config.wiki_generation_model
         return EdgeLabeler(
             source_fn=source_fn,
@@ -529,7 +526,7 @@ def _edge_labeler(repo_id: str, commit: str | None = None, bundle=None):
             api_key=config.wiki_generation_api_key,
         )
 
-    return _generation_cached(cache, cache_key, bundle, build)
+    return _generation_cached(cache, cache_key, repo_id, bundle, build)
 
 
 def _commit_window(repo_id: str, bundle=None):
@@ -543,7 +540,7 @@ def _commit_window(repo_id: str, bundle=None):
 
         return CommitWindow(bundle.entry.repo_dir)
 
-    return _generation_cached(cache, repo_id, bundle, build)
+    return _generation_cached(cache, repo_id, repo_id, bundle, build)
 
 
 def _window_stats_for_bundle(repo_id: str, bundle):

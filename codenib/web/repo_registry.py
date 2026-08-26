@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from importlib.util import find_spec
 from threading import Lock, RLock
@@ -523,7 +523,7 @@ def _retain_cleanup_failure(
 
     if current is None:
         return later
-    if isinstance(current, Exception) and not isinstance(later, Exception):
+    if issubclass(type(current), Exception) and not issubclass(type(later), Exception):
         preferred = later
         secondary = current
         label = "earlier repository cleanup also failed"
@@ -553,14 +553,25 @@ def _raise_with_cleanup_failure(
 
 
 def _plain_repo_instance_id(value: Any) -> str:
-    """Detach a registry key from caller-defined string subclass methods."""
+    """Validate and detach one persistent repository registry key."""
 
-    if not isinstance(value, str):
+    if not issubclass(type(value), str):
         raise ValueError("repository instance_id must be non-empty text")
     instance_id = str.__str__(value)
     if not instance_id:
         raise ValueError("repository instance_id must be non-empty text")
     return instance_id
+
+
+_REPO_LOOKUP_MISS = object()
+
+
+def _plain_repo_lookup_key(value: Any) -> Any:
+    """Detach real string keys and safely map other legacy misses to a sentinel."""
+
+    if issubclass(type(value), str):
+        return str.__str__(value)
+    return _REPO_LOOKUP_MISS
 
 
 def _log_cleanup_failure(message: str, failure: BaseException) -> None:
@@ -578,6 +589,37 @@ def _log_cleanup_failure(message: str, failure: BaseException) -> None:
         )
     except BaseException:  # noqa: B036 - diagnostics cannot replace cleanup
         pass
+
+
+def _close_orphan_cleanup_owner(owner: Any) -> Tuple[bool, Optional[BaseException]]:
+    """Attempt one orphan authority without letting failures escape its claim."""
+
+    failure: BaseException | None = None
+    try:
+        closed = bool(owner.closed)
+    except BaseException as exc:  # noqa: B036 - uncertain means pending
+        closed = False
+        failure = _retain_cleanup_failure(failure, exc)
+    if not closed:
+        try:
+            owner.close()
+        except BaseException as exc:  # noqa: B036 - caller retains retry ownership
+            failure = _retain_cleanup_failure(failure, exc)
+        try:
+            closed = bool(owner.closed)
+        except BaseException as exc:  # noqa: B036 - uncertain means pending
+            closed = False
+            failure = _retain_cleanup_failure(failure, exc)
+    return closed, failure
+
+
+def _vector_cleanup_is_complete(vector_store: Any) -> bool:
+    """Read the vector store's monotonic cleanup attestation when available."""
+
+    try:
+        return bool(vector_store.closed)
+    except AttributeError:
+        return False
 
 
 class RepoRegistry:
@@ -621,9 +663,13 @@ class RepoRegistry:
         # publish under this lock, while retired generations remain reachable
         # until their final request releases its lease.
         self._generation_lock = RLock()
-        self._bundle_leases: Dict[int, int] = {}
+        self._bundle_leases: Dict[object, Tuple[int, ...]] = {}
         self._retired_bundles: Dict[int, _OwnedRepoBundle] = {}
-        self._cleanup_in_progress: set[int] = set()
+        # One atomic mapping entry claims both a retired bundle and its source
+        # authority. This avoids coupled-set release gaps under asynchronous
+        # exceptions; orphan-only authorities use their own atomic claim set.
+        self._cleanup_in_progress: Dict[int, Optional[int]] = {}
+        self._orphan_cleanup_in_progress: set[int] = set()
         self._orphan_cleanup_owners: List[Any] = []
         # Cleanup mutates retryable owners outside the generation lock. Keep
         # every drain and close serialized so shutdown cannot return while a
@@ -649,7 +695,7 @@ class RepoRegistry:
         while active repositories absent from the complete snapshot are retired.
         """
 
-        with self._registry_reload_lock:
+        with self._cleanup_lock, self._registry_reload_lock:
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
@@ -660,6 +706,7 @@ class RepoRegistry:
                     self._config.registry_path,
                 )
             seen: set[str] = set()
+            shutdown_failure: Optional[BaseException] = None
             for entry in entries:
                 try:
                     instance_id = _plain_repo_instance_id(entry.instance_id)
@@ -689,14 +736,26 @@ class RepoRegistry:
                     )
                     logger.info("Registered %r (%s)", instance_id, entry.repo)
                 except Exception as exc:  # noqa: BLE001 - keep other repos alive
-                    self._retain_exception_cleanup(instance_id, exc)
+                    try:
+                        self._retain_exception_cleanup(instance_id, exc)
+                    except BaseException as cleanup_failure:  # noqa: B036
+                        _raise_with_cleanup_failure(exc, cleanup_failure)
+                    with self._generation_lock:
+                        closed = self._closed
+                    if closed and shutdown_failure is None:
+                        shutdown_failure = exc
                     logger.error(
                         "Failed to load %r: %s",
                         instance_id,
                         exc,
                         exc_info=True,
                     )
+                    if closed:
+                        break
             self._retire_entries_absent_from(seen)
+            if shutdown_failure is not None:
+                raise shutdown_failure
+            self._raise_if_closed_after_cleanup()
 
     def refresh(self, repo_id: str) -> None:
         """Prepare and atomically publish a complete new bundle generation.
@@ -707,11 +766,11 @@ class RepoRegistry:
         unleased bundle that another concurrent refresh could retire.
         """
 
-        repo_id = _plain_repo_instance_id(repo_id)
-        with self._registry_reload_lock:
+        with self._cleanup_lock, self._registry_reload_lock:
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
+            repo_id = _plain_repo_instance_id(repo_id)
             entries = [
                 entry
                 for entry in load_registry(self._config.registry_path)
@@ -727,6 +786,21 @@ class RepoRegistry:
                 raise FileNotFoundError(entry.manifest_path)
             self._replace_entry(entry, prepare_runtime=True)
 
+    def _raise_if_closed_after_cleanup(
+        self,
+        cleanup_failure: Optional[BaseException] = None,
+    ) -> None:
+        """Reject false success when cleanup reentrantly shuts the registry."""
+
+        with self._generation_lock:
+            closed = self._closed
+        if not closed:
+            return
+        error = RuntimeError("repository registry is closed")
+        if cleanup_failure is not None:
+            _raise_with_cleanup_failure(error, cleanup_failure)
+        raise error
+
     def _retire_entries_absent_from(self, instance_ids: set[str]) -> None:
         """Remove active generations missing from one complete registry snapshot."""
 
@@ -736,9 +810,7 @@ class RepoRegistry:
             for instance_id in tuple(self._bundles):
                 if instance_id in instance_ids:
                     continue
-                owned = self._retire_active_locked(instance_id)
-                if owned is not None:
-                    self._retired_bundles[id(owned.bundle)] = owned
+                self._retire_active_locked(instance_id)
             # A failed metadata capture has no bundle to retire, but its owner
             # is still part of this complete registry snapshot. Once the id is
             # absent, move that owner to the generic retry drain instead of
@@ -746,30 +818,41 @@ class RepoRegistry:
             for instance_id in tuple(self._source_cleanup_owners):
                 if instance_id in instance_ids or instance_id in self._bundles:
                     continue
-                owner = self._source_cleanup_owners.pop(instance_id, None)
-                binding = self._source_bindings.pop(instance_id, None)
+                owner = self._source_cleanup_owners.get(instance_id)
+                binding = self._source_bindings.get(instance_id)
                 cleanup_owner = owner if owner is not None else binding
                 if cleanup_owner is not None and not any(
                     candidate is cleanup_owner
                     for candidate in self._orphan_cleanup_owners
                 ):
                     self._orphan_cleanup_owners.append(cleanup_owner)
+                self._source_cleanup_owners.pop(instance_id, None)
+                self._source_bindings.pop(instance_id, None)
         failure = self._drain_retired()
         if failure is not None:
-            if not isinstance(failure, Exception):
+            if not issubclass(type(failure), Exception):
+                self._raise_if_closed_after_cleanup(failure)
                 raise failure
             _log_cleanup_failure(
                 "Removed repository cleanup remains pending: %s",
                 failure,
             )
         orphan_failure = self._drain_orphan_cleanup()
+        cleanup_failure = failure
         if orphan_failure is not None:
-            if not isinstance(orphan_failure, Exception):
+            cleanup_failure = (
+                orphan_failure
+                if cleanup_failure is None
+                else _retain_cleanup_failure(cleanup_failure, orphan_failure)
+            )
+            if not issubclass(type(orphan_failure), Exception):
+                self._raise_if_closed_after_cleanup(cleanup_failure)
                 raise orphan_failure
             _log_cleanup_failure(
                 "Removed repository cleanup remains pending: %s",
                 orphan_failure,
             )
+        self._raise_if_closed_after_cleanup(cleanup_failure)
 
     def _replace_entry(
         self,
@@ -781,7 +864,10 @@ class RepoRegistry:
         try:
             owned = self._build_repo_metadata(entry)
         except BaseException as primary:  # noqa: B036 - retain retry owner
-            self._retain_exception_cleanup(instance_id, primary)
+            try:
+                self._retain_exception_cleanup(instance_id, primary)
+            except BaseException as cleanup_failure:  # noqa: B036
+                _raise_with_cleanup_failure(primary, cleanup_failure)
             raise
         try:
             if prepare_runtime:
@@ -789,15 +875,23 @@ class RepoRegistry:
             self._publish_owned(instance_id, owned)
             return owned.bundle
         except BaseException as primary:  # noqa: B036 - retain candidate owner
-            # Cancellation may land immediately after the atomic publication.
-            # Inspect identity under the same lock instead of relying on a
-            # caller-side flag whose next bytecode may never run.
-            with self._generation_lock:
-                published = self._bundles.get(instance_id) is owned.bundle
-            if not published:
-                cleanup_failure = self._retire_unpublished(owned)
-                if cleanup_failure is not None:
-                    _raise_with_cleanup_failure(primary, cleanup_failure)
+            cleanup_failure: BaseException | None = None
+            try:
+                # Cancellation may land immediately after the atomic
+                # publication. Both active and retired identity prove that the
+                # registry accepted cleanup ownership for this generation.
+                with self._generation_lock:
+                    key = id(owned.bundle)
+                    ownership_transferred = (
+                        self._bundles.get(instance_id) is owned.bundle
+                        or key in self._retired_bundles
+                    )
+                if not ownership_transferred:
+                    cleanup_failure = self._retire_unpublished(owned)
+            except BaseException as settlement_failure:  # noqa: B036
+                _raise_with_cleanup_failure(primary, settlement_failure)
+            if cleanup_failure is not None:
+                _raise_with_cleanup_failure(primary, cleanup_failure)
             raise
 
     def _prepare_runtime_bundle(self, bundle: RepoBundle) -> None:
@@ -827,7 +921,9 @@ class RepoRegistry:
             require_manifest_source_identity,
         )
 
-        _plain_repo_instance_id(entry.instance_id)
+        instance_id = _plain_repo_instance_id(entry.instance_id)
+        if type(entry.instance_id) is not str:
+            entry = replace(entry, instance_id=instance_id)
 
         manifest = RepoManifest.load(entry.manifest_path)
         cleanup_owner = SourceBindingCleanupOwner()
@@ -880,7 +976,7 @@ class RepoRegistry:
     def _load_repo_metadata(self, entry: RepoEntry) -> RepoBundle:
         """Legacy metadata loader used by offline callers and focused tests."""
 
-        with self._registry_reload_lock:
+        with self._cleanup_lock, self._registry_reload_lock:
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
@@ -888,7 +984,10 @@ class RepoRegistry:
             try:
                 owned = self._build_repo_metadata(entry)
             except BaseException as primary:  # noqa: B036 - preserve retry owner
-                self._retain_exception_cleanup(instance_id, primary)
+                try:
+                    self._retain_exception_cleanup(instance_id, primary)
+                except BaseException as cleanup_failure:  # noqa: B036
+                    _raise_with_cleanup_failure(primary, cleanup_failure)
                 raise
             with self._generation_lock:
                 closed = self._closed
@@ -906,14 +1005,20 @@ class RepoRegistry:
                         owned.source_cleanup_owner
                     )
             if closed:
-                cleanup_failure = self._retire_unpublished(owned)
                 error = RuntimeError("repository registry is closed")
+                try:
+                    cleanup_failure = self._retire_unpublished(owned)
+                except BaseException as cleanup_failure:  # noqa: B036
+                    _raise_with_cleanup_failure(error, cleanup_failure)
                 if cleanup_failure is not None:
                     _raise_with_cleanup_failure(error, cleanup_failure)
                 raise error
             if duplicate:
-                cleanup_failure = self._retire_unpublished(owned)
                 error = ValueError(f"duplicate repository instance_id: {instance_id!r}")
+                try:
+                    cleanup_failure = self._retire_unpublished(owned)
+                except BaseException as cleanup_failure:  # noqa: B036
+                    _raise_with_cleanup_failure(error, cleanup_failure)
                 if cleanup_failure is not None:
                     _raise_with_cleanup_failure(error, cleanup_failure)
                 raise error
@@ -955,18 +1060,60 @@ class RepoRegistry:
         if closed:
             cleanup_failure = self._drain_orphan_cleanup()
             if cleanup_failure is not None:
-                if not isinstance(cleanup_failure, Exception):
+                if not issubclass(type(cleanup_failure), Exception):
                     _raise_with_cleanup_failure(error, cleanup_failure)
                 _log_cleanup_failure(
                     "Unpublished repository cleanup remains pending: %s",
                     cleanup_failure,
                 )
 
-    def _publish_owned(self, instance_id: str, owned: _OwnedRepoBundle) -> None:
+    def _publish_owned(
+        self,
+        instance_id: str,
+        owned: _OwnedRepoBundle,
+    ) -> None:
         instance_id = _plain_repo_instance_id(instance_id)
+        with self._cleanup_lock:
+            self._publish_owned_under_cleanup_lock(instance_id, owned)
+
+    def _publish_owned_under_cleanup_lock(
+        self,
+        instance_id: str,
+        owned: _OwnedRepoBundle,
+    ) -> None:
+        authority = (
+            owned.source_cleanup_owner
+            if owned.source_cleanup_owner is not None
+            else owned.source_binding
+        )
         with self._generation_lock:
             if self._closed:
                 raise RuntimeError("repository registry is closed")
+            if authority is not None and (
+                any(
+                    retired.source_cleanup_owner is authority
+                    or retired.source_binding is authority
+                    for retired in self._retired_bundles.values()
+                )
+                or any(
+                    candidate is authority for candidate in self._orphan_cleanup_owners
+                )
+                or self._authority_cleanup_in_progress_locked(id(authority))
+            ):
+                raise RuntimeError("repository source cleanup authority is pending")
+
+        # The caller owns the cleanup lock, but no generation lock, while this
+        # caller-defined descriptor runs. All reload paths take locks in the
+        # same cleanup -> reload order, so reentrant shutdown cannot deadlock.
+        authority_closed = authority is not None and bool(authority.closed)
+
+        with self._generation_lock:
+            if self._closed:
+                raise RuntimeError("repository registry is closed")
+            if authority_closed:
+                raise RuntimeError(
+                    "repository source cleanup authority is already closed"
+                )
             previous_bundle = self._bundles.get(instance_id)
             previous_binding = self._source_bindings.get(instance_id)
             previous_owner = self._source_cleanup_owners.get(instance_id)
@@ -981,27 +1128,29 @@ class RepoRegistry:
             )
             orphan_owner = None
             orphan_appended = False
-            if previous is not None:
-                self._retired_bundles[id(previous.bundle)] = previous
-            else:
-                # A failed metadata capture may leave a retryable owner without
-                # a published bundle. A later first publish must not overwrite
-                # the only reference that can finish that cleanup.
-                orphan_owner = (
-                    previous_owner if previous_owner is not None else previous_binding
-                )
-                if (
-                    orphan_owner is not None
-                    and orphan_owner is not owned.source_cleanup_owner
-                    and orphan_owner is not owned.source_binding
-                    and not any(
-                        candidate is orphan_owner
-                        for candidate in self._orphan_cleanup_owners
-                    )
-                ):
-                    self._orphan_cleanup_owners.append(orphan_owner)
-                    orphan_appended = True
             try:
+                if previous is not None:
+                    self._retired_bundles[id(previous.bundle)] = previous
+                else:
+                    # A failed metadata capture may leave a retryable owner
+                    # without a published bundle. A later first publish must
+                    # not overwrite the only reference that can finish it.
+                    orphan_owner = (
+                        previous_owner
+                        if previous_owner is not None
+                        else previous_binding
+                    )
+                    if (
+                        orphan_owner is not None
+                        and orphan_owner is not owned.source_cleanup_owner
+                        and orphan_owner is not owned.source_binding
+                        and not any(
+                            candidate is orphan_owner
+                            for candidate in self._orphan_cleanup_owners
+                        )
+                    ):
+                        orphan_appended = True
+                        self._orphan_cleanup_owners.append(orphan_owner)
                 # Publish the bundle pointer last. Readers take the same lock,
                 # so none can observe candidate metadata with the old bundle.
                 self._source_bindings[instance_id] = owned.source_binding
@@ -1033,42 +1182,73 @@ class RepoRegistry:
                 raise
         failure = self._drain_retired()
         if failure is not None:
-            if not isinstance(failure, Exception):
+            if not issubclass(type(failure), Exception):
+                self._raise_if_closed_after_cleanup(failure)
                 raise failure
             _log_cleanup_failure(
                 "Retired repository cleanup remains pending: %s",
                 failure,
             )
         orphan_failure = self._drain_orphan_cleanup()
+        cleanup_failure = failure
         if orphan_failure is not None:
-            if not isinstance(orphan_failure, Exception):
+            cleanup_failure = (
+                orphan_failure
+                if cleanup_failure is None
+                else _retain_cleanup_failure(cleanup_failure, orphan_failure)
+            )
+            if not issubclass(type(orphan_failure), Exception):
+                self._raise_if_closed_after_cleanup(cleanup_failure)
                 raise orphan_failure
             _log_cleanup_failure(
                 "Unpublished repository cleanup remains pending: %s",
                 orphan_failure,
             )
+        self._raise_if_closed_after_cleanup(cleanup_failure)
 
     def _retire_active_locked(
         self,
         instance_id: str,
     ) -> Optional[_OwnedRepoBundle]:
-        bundle = self._bundles.pop(instance_id, None)
-        source_binding = self._source_bindings.pop(instance_id, None)
-        cleanup_owner = self._source_cleanup_owners.pop(instance_id, None)
+        bundle = self._bundles.get(instance_id)
         if bundle is None:
             return None
-        return _OwnedRepoBundle(bundle, source_binding, cleanup_owner)
+        source_binding = self._source_bindings.get(instance_id)
+        cleanup_owner = self._source_cleanup_owners.get(instance_id)
+        owned = _OwnedRepoBundle(bundle, source_binding, cleanup_owner)
+        # Install durable retirement ownership before deleting any active-map
+        # reference. An asynchronous exception can then create only a harmless
+        # temporary alias, never an unreachable resource authority.
+        self._retired_bundles[id(bundle)] = owned
+        if self._bundles.get(instance_id) is bundle:
+            self._bundles.pop(instance_id, None)
+        if self._source_bindings.get(instance_id) is source_binding:
+            self._source_bindings.pop(instance_id, None)
+        if self._source_cleanup_owners.get(instance_id) is cleanup_owner:
+            self._source_cleanup_owners.pop(instance_id, None)
+        return owned
 
     def _retire_unpublished(
         self,
         owned: _OwnedRepoBundle,
     ) -> Optional[BaseException]:
+        key = id(owned.bundle)
         with self._generation_lock:
-            self._retired_bundles[id(owned.bundle)] = owned
-        return self._drain_retired()
+            if key in self._retired_bundles:
+                return None
+            self._retired_bundles[key] = owned
+        # This unwind owns only the rejected candidate. Retrying unrelated
+        # generations here can close the same failed owner twice within one
+        # publication attempt and can manufacture a new higher-priority
+        # cancellation while preserving the original error.
+        return self._drain_retired(only_keys={key})
 
     @staticmethod
-    def _close_owned(owned: _OwnedRepoBundle) -> bool:
+    def _close_owned(
+        owned: _OwnedRepoBundle,
+        *,
+        close_authority: bool = True,
+    ) -> bool:
         """Close one unpinned generation and report whether cleanup completed."""
 
         bundle = owned.bundle
@@ -1079,88 +1259,336 @@ class RepoRegistry:
         vector_store = bundle.vector_store
         if vector_store is not None:
             try:
-                vector_store.close()
+                if _vector_cleanup_is_complete(vector_store):
+                    bundle.vector_store = None
+                else:
+                    vector_store.close()
+                    bundle.vector_store = None
             except BaseException as exc:  # noqa: B036 - continue source cleanup
+                try:
+                    if _vector_cleanup_is_complete(vector_store):
+                        bundle.vector_store = None
+                except BaseException as inspection_failure:  # noqa: B036
+                    exc = _retain_cleanup_failure(exc, inspection_failure)
                 first_failure = _retain_cleanup_failure(first_failure, exc)
-            else:
-                bundle.vector_store = None
 
         owner = owned.source_cleanup_owner
         owner_closed = owner is None
-        if owner is not None:
-            try:
-                owner.close()
-            except BaseException as exc:  # noqa: B036 - retain retry owner
-                first_failure = _retain_cleanup_failure(first_failure, exc)
+        if owner is not None and close_authority:
             try:
                 owner_closed = bool(owner.closed)
             except BaseException as exc:  # noqa: B036 - uncertain means pending
                 owner_closed = False
                 first_failure = _retain_cleanup_failure(first_failure, exc)
-        elif owned.source_binding is not None:
-            try:
-                owned.source_binding.close()
-            except BaseException as exc:  # noqa: B036 - retain retry owner
-                first_failure = _retain_cleanup_failure(first_failure, exc)
+            if not owner_closed:
+                try:
+                    owner.close()
+                except BaseException as exc:  # noqa: B036 - retain retry owner
+                    first_failure = _retain_cleanup_failure(first_failure, exc)
+                try:
+                    owner_closed = bool(owner.closed)
+                except BaseException as exc:  # noqa: B036 - uncertain means pending
+                    owner_closed = False
+                    first_failure = _retain_cleanup_failure(first_failure, exc)
+            if owner_closed:
+                owned.source_cleanup_owner = None
+                owned.source_binding = None
+        elif owned.source_binding is not None and close_authority:
             try:
                 owner_closed = bool(owned.source_binding.closed)
             except BaseException as exc:  # noqa: B036 - uncertain means pending
                 owner_closed = False
                 first_failure = _retain_cleanup_failure(first_failure, exc)
+            if not owner_closed:
+                try:
+                    owned.source_binding.close()
+                except BaseException as exc:  # noqa: B036 - retain retry owner
+                    first_failure = _retain_cleanup_failure(first_failure, exc)
+                try:
+                    owner_closed = bool(owned.source_binding.closed)
+                except BaseException as exc:  # noqa: B036 - uncertain means pending
+                    owner_closed = False
+                    first_failure = _retain_cleanup_failure(first_failure, exc)
+            if owner_closed:
+                owned.source_binding = None
 
+        complete = (
+            bundle.vector_store is None
+            and owned.source_cleanup_owner is None
+            and owned.source_binding is None
+        )
         if first_failure is not None:
             raise first_failure
-        return bundle.vector_store is None and owner_closed
+        return complete
 
-    def _drain_retired(self) -> Optional[BaseException]:
+    def _authority_cleanup_in_progress_locked(self, authority_id: int) -> bool:
+        return authority_id in self._orphan_cleanup_in_progress or any(
+            candidate == authority_id
+            for candidate in self._cleanup_in_progress.values()
+        )
+
+    def _bundle_key_is_leased_locked(self, key: int) -> bool:
+        return any(key in keys for keys in self._bundle_leases.values())
+
+    def _release_retired_cleanup_claim(self, key: int) -> None:
+        """Idempotently release one atomic bundle/authority cleanup claim."""
+
+        try:
+            with self._generation_lock:
+                self._cleanup_in_progress.pop(key, None)
+        finally:
+            # A line-level asynchronous exception before the first pop still
+            # runs this idempotent fallback while the owner remains durable.
+            with self._generation_lock:
+                self._cleanup_in_progress.pop(key, None)
+
+    def _release_orphan_cleanup_claim(self, authority_id: int) -> None:
+        """Idempotently release one orphan-only cleanup claim."""
+
+        try:
+            with self._generation_lock:
+                self._orphan_cleanup_in_progress.discard(authority_id)
+        finally:
+            with self._generation_lock:
+                self._orphan_cleanup_in_progress.discard(authority_id)
+
+    def _settle_retired_cleanup_claim(
+        self,
+        key: int,
+        owned: _OwnedRepoBundle,
+        *,
+        owner: Any,
+        binding: Any,
+        authority: Any,
+        suppress_authority: bool,
+        complete: bool,
+    ) -> None:
+        self._release_retired_cleanup_claim(key)
+        with self._generation_lock:
+            complete = complete or (
+                owned.bundle.vector_store is None
+                and owned.source_cleanup_owner is None
+                and owned.source_binding is None
+            )
+            authority_settled = (
+                not suppress_authority
+                and authority is not None
+                and (
+                    (owner is not None and owned.source_cleanup_owner is None)
+                    or (owner is None and owned.source_binding is None)
+                )
+            )
+            if authority_settled:
+                for retired in self._retired_bundles.values():
+                    if retired.source_cleanup_owner is authority:
+                        retired.source_cleanup_owner = None
+                        retired.source_binding = None
+                    elif retired.source_binding is authority:
+                        retired.source_binding = None
+                aliases = tuple(
+                    candidate for candidate in (owner, binding) if candidate is not None
+                )
+                self._orphan_cleanup_owners[:] = [
+                    candidate
+                    for candidate in self._orphan_cleanup_owners
+                    if not any(candidate is alias for alias in aliases)
+                ]
+            if complete and self._retired_bundles.get(key) is owned:
+                self._retired_bundles.pop(key, None)
+
+    def _settle_orphan_cleanup_claim(
+        self,
+        authority_id: int,
+        owner: Any,
+        *,
+        closed: bool,
+    ) -> None:
+        self._release_orphan_cleanup_claim(authority_id)
+        if closed:
+            with self._generation_lock:
+                self._orphan_cleanup_owners[:] = [
+                    candidate
+                    for candidate in self._orphan_cleanup_owners
+                    if candidate is not owner
+                ]
+
+    def _drain_retired(
+        self,
+        *,
+        only_keys: Optional[set[int]] = None,
+    ) -> Optional[BaseException]:
         with self._cleanup_lock:
             first_failure: BaseException | None = None
             with self._generation_lock:
-                ready = [
+                candidates = [
                     (key, owned)
                     for key, owned in self._retired_bundles.items()
-                    if self._bundle_leases.get(key, 0) == 0
-                    and key not in self._cleanup_in_progress
+                    if only_keys is None or key in only_keys
                 ]
-                self._cleanup_in_progress.update(key for key, _owned in ready)
-            for key, owned in ready:
+            attempted_authority_ids: set[int] = set()
+            for key, owned in candidates:
                 complete = False
+                claimed_key = False
+                suppress_authority = False
+                owner = owned.source_cleanup_owner
+                binding = owned.source_binding
+                authority = owner if owner is not None else binding
                 try:
-                    complete = self._close_owned(owned)
+                    with self._generation_lock:
+                        authority_id = id(authority) if authority is not None else None
+                        suppress_authority = authority_id is not None and (
+                            authority_id in attempted_authority_ids
+                            or self._authority_cleanup_in_progress_locked(authority_id)
+                        )
+                        if authority is not None:
+                            active_authority_alias = any(
+                                candidate is authority
+                                for candidate in self._source_cleanup_owners.values()
+                            ) or any(
+                                candidate is authority
+                                for candidate in self._source_bindings.values()
+                            )
+                            leased_authority_alias = any(
+                                self._bundle_key_is_leased_locked(retired_key)
+                                and (
+                                    retired.source_cleanup_owner is authority
+                                    or retired.source_binding is authority
+                                )
+                                for retired_key, retired in self._retired_bundles.items()
+                                if retired_key != key
+                            )
+                            suppress_authority = suppress_authority or (
+                                active_authority_alias or leased_authority_alias
+                            )
+                        if (
+                            self._retired_bundles.get(key) is not owned
+                            or any(
+                                candidate is owned.bundle
+                                for candidate in self._bundles.values()
+                            )
+                            or self._bundle_key_is_leased_locked(key)
+                            or key in self._cleanup_in_progress
+                        ):
+                            continue
+                        if authority_id is not None and not suppress_authority:
+                            attempted_authority_ids.add(authority_id)
+                        claimed_key = True
+                        self._cleanup_in_progress[key] = (
+                            authority_id if not suppress_authority else None
+                        )
+                        if suppress_authority:
+                            if owner is not None:
+                                owned.source_cleanup_owner = None
+                                owned.source_binding = None
+                            elif binding is not None:
+                                owned.source_binding = None
+                    complete = self._close_owned(
+                        owned,
+                        close_authority=not suppress_authority,
+                    )
                 except BaseException as exc:  # noqa: B036 - visit every generation
                     first_failure = _retain_cleanup_failure(first_failure, exc)
                 finally:
-                    with self._generation_lock:
-                        self._cleanup_in_progress.discard(key)
-                        if complete:
-                            self._retired_bundles.pop(key, None)
+                    try:
+                        if claimed_key:
+                            try:
+                                self._settle_retired_cleanup_claim(
+                                    key,
+                                    owned,
+                                    owner=owner,
+                                    binding=binding,
+                                    authority=authority,
+                                    suppress_authority=suppress_authority,
+                                    complete=complete,
+                                )
+                            except BaseException as exc:  # noqa: B036
+                                first_failure = _retain_cleanup_failure(
+                                    first_failure,
+                                    exc,
+                                )
+                    finally:
+                        try:
+                            if claimed_key:
+                                self._release_retired_cleanup_claim(key)
+                        except BaseException as exc:  # noqa: B036 - claim is durable
+                            first_failure = _retain_cleanup_failure(first_failure, exc)
             return first_failure
 
     def _drain_orphan_cleanup(self) -> Optional[BaseException]:
         with self._cleanup_lock:
             first_failure: BaseException | None = None
-            pending: List[Any] = []
             with self._generation_lock:
-                owners = tuple(self._orphan_cleanup_owners)
-                self._orphan_cleanup_owners.clear()
+                owners: List[Any] = []
+                for owner in self._orphan_cleanup_owners:
+                    if not any(candidate is owner for candidate in owners):
+                        owners.append(owner)
+            attempted_authority_ids: set[int] = set()
             for owner in owners:
+                claimed = False
+                closed = False
+                authority_id = id(owner)
                 try:
-                    owner.close()
-                except BaseException as exc:  # noqa: B036 - visit every owner
+                    # A retained generation is the sole authority for retrying
+                    # its cleanup. Keep aliases queued until that generation
+                    # either settles or releases its final lease.
+                    with self._generation_lock:
+                        still_queued = any(
+                            candidate is owner
+                            for candidate in self._orphan_cleanup_owners
+                        )
+                        generation_owned = (
+                            any(
+                                candidate is owner
+                                for candidate in self._source_cleanup_owners.values()
+                            )
+                            or any(
+                                candidate is owner
+                                for candidate in self._source_bindings.values()
+                            )
+                            or any(
+                                retired.source_cleanup_owner is owner
+                                or retired.source_binding is owner
+                                for retired in self._retired_bundles.values()
+                            )
+                        )
+                        if (
+                            not still_queued
+                            or generation_owned
+                            or authority_id in attempted_authority_ids
+                            or self._authority_cleanup_in_progress_locked(authority_id)
+                        ):
+                            continue
+                        attempted_authority_ids.add(authority_id)
+                        claimed = True
+                        self._orphan_cleanup_in_progress.add(authority_id)
+                    closed, failure = _close_orphan_cleanup_owner(owner)
+                    if failure is not None:
+                        first_failure = _retain_cleanup_failure(
+                            first_failure,
+                            failure,
+                        )
+                except BaseException as exc:  # noqa: B036 - keep owner reachable
                     first_failure = _retain_cleanup_failure(first_failure, exc)
-                try:
-                    closed = bool(owner.closed)
-                except BaseException as exc:  # noqa: B036 - uncertain means pending
-                    closed = False
-                    first_failure = _retain_cleanup_failure(first_failure, exc)
-                if not closed:
-                    pending.append(owner)
-            with self._generation_lock:
-                for owner in pending:
-                    if not any(
-                        candidate is owner for candidate in self._orphan_cleanup_owners
-                    ):
-                        self._orphan_cleanup_owners.append(owner)
+                finally:
+                    try:
+                        if claimed:
+                            try:
+                                self._settle_orphan_cleanup_claim(
+                                    authority_id,
+                                    owner,
+                                    closed=closed,
+                                )
+                            except BaseException as exc:  # noqa: B036
+                                first_failure = _retain_cleanup_failure(
+                                    first_failure,
+                                    exc,
+                                )
+                    finally:
+                        try:
+                            if claimed:
+                                self._release_orphan_cleanup_claim(authority_id)
+                        except BaseException as exc:  # noqa: B036 - claim is durable
+                            first_failure = _retain_cleanup_failure(first_failure, exc)
             return first_failure
 
     def close(self) -> None:
@@ -1169,33 +1597,35 @@ class RepoRegistry:
         # A refresh that entered first either publishes or fully retires its
         # candidate before shutdown can report completion. The cleanup lock
         # also joins drains started by a final request lease release.
-        with self._registry_reload_lock, self._cleanup_lock:
+        with self._cleanup_lock, self._registry_reload_lock:
             with self._generation_lock:
                 self._closed = True
                 for instance_id in tuple(self._bundles):
-                    owned = self._retire_active_locked(instance_id)
-                    if owned is not None:
-                        self._retired_bundles[id(owned.bundle)] = owned
+                    self._retire_active_locked(instance_id)
+                # Claim owner-only failures before invoking any caller-owned
+                # close method. The orphan drain removes its queue before each
+                # callback, so a reentrant close cannot acquire the same owner.
+                owner_only_ids = tuple(self._source_cleanup_owners) + tuple(
+                    instance_id
+                    for instance_id in self._source_bindings
+                    if instance_id not in self._source_cleanup_owners
+                )
+                for instance_id in owner_only_ids:
+                    owner = self._source_cleanup_owners.get(instance_id)
+                    binding = self._source_bindings.get(instance_id)
+                    cleanup_owner = owner if owner is not None else binding
+                    if cleanup_owner is not None and not any(
+                        candidate is cleanup_owner
+                        for candidate in self._orphan_cleanup_owners
+                    ):
+                        # Publish retry ownership before removing either map
+                        # entry, so interruption at any following line leaves a
+                        # reachable authority for the next close attempt.
+                        self._orphan_cleanup_owners.append(cleanup_owner)
+                    self._source_cleanup_owners.pop(instance_id, None)
+                    self._source_bindings.pop(instance_id, None)
 
             first_failure = self._drain_retired()
-
-            # Owners left in these maps belong to metadata candidates that failed
-            # before a bundle was published. They remain retryable just like retired
-            # generations, but have no request lease to wait for.
-            for instance_id, owner in tuple(self._source_cleanup_owners.items()):
-                try:
-                    owner.close()
-                except BaseException as exc:  # noqa: B036 - finish every cleanup
-                    first_failure = _retain_cleanup_failure(first_failure, exc)
-                try:
-                    owner_closed = bool(owner.closed)
-                except BaseException as exc:  # noqa: B036 - uncertain means pending
-                    owner_closed = False
-                    first_failure = _retain_cleanup_failure(first_failure, exc)
-                if owner_closed:
-                    with self._generation_lock:
-                        self._source_cleanup_owners.pop(instance_id, None)
-                        self._source_bindings.pop(instance_id, None)
 
             orphan_failure = self._drain_orphan_cleanup()
             if orphan_failure is not None:
@@ -1530,50 +1960,99 @@ class RepoRegistry:
     def pin(self, repo_id: str) -> Iterator[Optional[RepoBundle]]:
         """Pin the current generation for the complete caller operation."""
 
-        repo_id = _plain_repo_instance_id(repo_id)
-        with self._generation_lock:
-            if self._closed:
-                raise RuntimeError("repository registry is closed")
-            bundle = self._bundles.get(repo_id)
-            key = id(bundle) if bundle is not None else None
-            if key is not None:
-                self._bundle_leases[key] = self._bundle_leases.get(key, 0) + 1
+        lease_token = object()
+        bundle: Optional[RepoBundle] = None
+        keys: Tuple[int, ...] = ()
+        primary: BaseException | None = None
+        cleanup_failure: BaseException | None = None
         try:
-            yield bundle
+            try:
+                with self._generation_lock:
+                    if self._closed:
+                        raise RuntimeError("repository registry is closed")
+                    repo_id = _plain_repo_lookup_key(repo_id)
+                    bundle = self._bundles.get(repo_id)
+                    keys = (id(bundle),) if bundle is not None else ()
+                    if keys:
+                        self._bundle_leases[lease_token] = keys
+                yield bundle
+            except BaseException as exc:  # noqa: B036 - settle lease cleanup
+                primary = exc
         finally:
-            if key is not None:
-                self._release_bundle_keys((key,))
+            try:
+                if keys:
+                    try:
+                        self._release_bundle_lease(lease_token)
+                    except BaseException as exc:  # noqa: B036
+                        cleanup_failure = exc
+            finally:
+                if keys:
+                    self._drop_bundle_lease(lease_token)
+        if primary is not None:
+            if cleanup_failure is not None:
+                _raise_with_cleanup_failure(primary, cleanup_failure)
+            raise primary
+        if cleanup_failure is not None:
+            raise cleanup_failure
 
     @contextmanager
     def pin_all(self) -> Iterator[Tuple[RepoBundle, ...]]:
         """Pin one coherent snapshot of every currently published bundle."""
 
-        with self._generation_lock:
-            active = not self._closed
-            if not active:
-                bundles: Tuple[RepoBundle, ...] = ()
-            else:
-                bundles = tuple(self._bundles.values())
-            keys = tuple(id(bundle) for bundle in bundles)
-            for key in keys:
-                self._bundle_leases[key] = self._bundle_leases.get(key, 0) + 1
+        lease_token = object()
+        active = False
+        bundles: Tuple[RepoBundle, ...] = ()
+        keys: Tuple[int, ...] = ()
+        primary: BaseException | None = None
+        cleanup_failure: BaseException | None = None
         try:
-            yield bundles
+            try:
+                with self._generation_lock:
+                    active = not self._closed
+                    if active:
+                        bundles = tuple(self._bundles.values())
+                        keys = tuple(id(bundle) for bundle in bundles)
+                        if keys:
+                            self._bundle_leases[lease_token] = keys
+                yield bundles
+            except BaseException as exc:  # noqa: B036 - settle lease cleanup
+                primary = exc
         finally:
-            if active:
-                self._release_bundle_keys(keys)
+            try:
+                if active and keys:
+                    try:
+                        self._release_bundle_lease(lease_token)
+                    except BaseException as exc:  # noqa: B036
+                        cleanup_failure = exc
+            finally:
+                if active and keys:
+                    self._drop_bundle_lease(lease_token)
+        if primary is not None:
+            if cleanup_failure is not None:
+                _raise_with_cleanup_failure(primary, cleanup_failure)
+            raise primary
+        if cleanup_failure is not None:
+            raise cleanup_failure
 
-    def _release_bundle_keys(self, keys: Tuple[int, ...]) -> None:
-        with self._generation_lock:
-            for key in keys:
-                leases = self._bundle_leases.get(key, 0)
-                if leases <= 1:
-                    self._bundle_leases.pop(key, None)
-                else:
-                    self._bundle_leases[key] = leases - 1
+    def _drop_bundle_lease(self, lease_token: object) -> Tuple[int, ...]:
+        keys: Tuple[int, ...] = ()
+        try:
+            with self._generation_lock:
+                keys = self._bundle_leases.pop(lease_token, ())
+        finally:
+            # A trace/signal exception before the first pop still reaches this
+            # idempotent fallback, so an exited pin can never remain leased.
+            with self._generation_lock:
+                fallback_keys = self._bundle_leases.pop(lease_token, ())
+                if not keys:
+                    keys = fallback_keys
+        return keys
+
+    def _release_bundle_lease(self, lease_token: object) -> None:
+        self._drop_bundle_lease(lease_token)
         failure = self._drain_retired()
         if failure is not None:
-            if not isinstance(failure, Exception):
+            if not issubclass(type(failure), Exception):
                 raise failure
             _log_cleanup_failure(
                 "Retired repository cleanup remains pending: %s",
@@ -1587,7 +2066,7 @@ class RepoRegistry:
     def get(self, repo_id: str) -> Optional[RepoBundle]:
         """Return a non-owning snapshot for offline, non-reloading callers."""
 
-        repo_id = _plain_repo_instance_id(repo_id)
+        repo_id = _plain_repo_lookup_key(repo_id)
         with self._generation_lock:
             return self._bundles.get(repo_id)
 

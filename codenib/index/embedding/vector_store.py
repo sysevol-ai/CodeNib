@@ -25,10 +25,7 @@ import faiss
 import numpy as np
 
 from ... import compat_pickle
-from ..._atomic_directory import (
-    PublicationDirectoryReader,
-    _annotate_secondary_error,
-)
+from ..._atomic_directory import PublicationDirectoryReader, _annotate_secondary_error
 from ..._bounded_json import canonical_json_array_chunks, iter_bounded_json_array
 from ..._captured_directory import AuthenticatedSnapshotReader
 from ...log_utils import get_logger
@@ -1053,6 +1050,24 @@ class CodeVectorStore:
             state = _LoadedVectorState(None, [], None, [], {}, None)
             self._loaded_state = state
         return state
+
+    @property
+    def closed(self) -> bool:
+        """Whether every resource owned by this store has been released."""
+
+        state = getattr(self, "_loaded_state", None)
+        if state is None:
+            return getattr(self, "embedding", None) is None
+        return bool(
+            state.l0_index is None
+            and state.l2_index is None
+            and not state.l0_documents
+            and not state.l2_documents
+            and getattr(self, "embedding", None) is None
+            and getattr(self, "_query_cache_depth", 0) == 0
+            and getattr(self, "_cached_query_text", None) is None
+            and getattr(self, "_cached_query_vector", None) is None
+        )
 
     @property
     def l0_index(self) -> Any:

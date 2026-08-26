@@ -4,7 +4,10 @@
 
 """Tests for per-repo skill-registry isolation, config, and the QA registry."""
 
+import dis
+import inspect
 import pickle
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Lock
 from types import SimpleNamespace
@@ -368,6 +371,195 @@ def test_registry_complete_snapshot_retries_failed_owner_cleanup(monkeypatch):
     assert registry._orphan_cleanup_owners == []
 
 
+def test_registry_absent_owner_transfer_interruption_keeps_authority():
+    stop = KeyboardInterrupt("absent owner transfer interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["removed"] = owner
+    source, first_line = inspect.getsourcelines(
+        RepoRegistry._retire_entries_absent_from
+    )
+    transfer_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._orphan_cleanup_owners.append(cleanup_owner)" in line
+    )
+    triggered = False
+
+    def interrupt_after_transfer(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry._retire_entries_absent_from.__code__
+            and frame.f_lineno > transfer_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_transfer
+
+    sys.settrace(interrupt_after_transfer)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            registry._retire_entries_absent_from(set())
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert owner.close_calls == 0
+    assert owner in registry._orphan_cleanup_owners
+
+    registry._retire_entries_absent_from(set())
+    assert owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_complete_snapshot_reports_reentrant_cleanup_shutdown():
+    registry = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self, *, close_registry=False):
+            self.close_calls = 0
+            self.close_registry = close_registry
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_registry:
+                registry.close()
+
+    keep = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    removed = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    keep_owner = Owner()
+    removed_owner = Owner(close_registry=True)
+    registry._bundles.update({"keep": keep, "removed": removed})
+    registry._source_cleanup_owners.update(
+        {"keep": keep_owner, "removed": removed_owner}
+    )
+
+    with pytest.raises(RuntimeError, match="repository registry is closed"):
+        registry._retire_entries_absent_from({"keep"})
+
+    assert registry._closed is True
+    assert registry.get("keep") is None
+    assert removed_owner.close_calls == 1
+    assert keep_owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+    assert registry._retired_bundles == {}
+
+
+def test_registry_load_all_reports_reentrant_build_shutdown(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    def build(_entry):
+        registry.close()
+        return _OwnedRepoBundle(candidate, None, owner)
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+
+    with pytest.raises(RuntimeError, match="repository registry is closed"):
+        registry.load_all()
+
+    assert registry._closed is True
+    assert owner.close_calls == 1
+    assert registry._bundles == {}
+    assert registry._source_cleanup_owners == {}
+    assert registry._retired_bundles == {}
+
+
+def test_registry_load_all_preserves_reentrant_cleanup_failure(
+    tmp_path,
+    monkeypatch,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    cleanup_failure = RuntimeError("old generation cleanup failed")
+
+    class Owner:
+        def __init__(self, *, reentrant_failure=None):
+            self.close_calls = 0
+            self.reentrant_failure = reentrant_failure
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.reentrant_failure is not None:
+                registry.close()
+                raise self.reentrant_failure
+
+    old_owner = Owner(reentrant_failure=cleanup_failure)
+    candidate_owner = Owner()
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, candidate_owner),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    with pytest.raises(RuntimeError, match="repository registry is closed") as caught:
+        registry.load_all()
+
+    assert caught.value.__cause__ is cleanup_failure
+    assert registry._closed is True
+    assert old_owner.close_calls == 1
+    assert candidate_owner.close_calls == 1
+    assert registry._bundles == {}
+    assert registry._source_cleanup_owners == {}
+    assert registry._retired_bundles == {}
+
+
 def test_registry_load_all_prepares_only_live_replacements(tmp_path, monkeypatch):
     manifest_path = tmp_path / "repo_manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
@@ -658,6 +850,636 @@ def test_registry_concurrent_close_closes_owner_once():
         second.result(timeout=5)
 
     assert owner.close_calls == 1
+
+
+def test_registry_reentrant_close_claims_owner_only_once():
+    stop = SystemExit("owner cleanup stopped")
+    registry = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            registry.close()
+            raise stop
+
+    owner = Owner()
+    registry._source_cleanup_owners["repo"] = owner
+
+    with pytest.raises(SystemExit) as caught:
+        registry.close()
+
+    assert caught.value is stop
+    assert owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+    assert registry._orphan_cleanup_owners == []
+
+    registry.close()
+    assert owner.close_calls == 1
+
+
+def test_registry_close_owner_transfer_interruption_keeps_authority():
+    stop = KeyboardInterrupt("owner transfer interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["repo"] = owner
+    source, first_line = inspect.getsourcelines(RepoRegistry.close)
+    transfer_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._orphan_cleanup_owners.append(cleanup_owner)" in line
+    )
+    triggered = False
+
+    def interrupt_after_transfer(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry.close.__code__
+            and frame.f_lineno > transfer_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_transfer
+
+    sys.settrace(interrupt_after_transfer)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            registry.close()
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert owner.close_calls == 0
+    assert owner in registry._orphan_cleanup_owners
+
+    registry.close()
+    assert owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_cleanup_settles_closed_owner_before_raising():
+    stop = KeyboardInterrupt("owner cleanup stopped")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            raise stop
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        registry.close()
+
+    assert caught.value is stop
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
+
+    registry.close()
+    assert owner.close_calls == 1
+
+
+def test_registry_refresh_cannot_deadlock_reentrant_retired_cleanup(monkeypatch):
+    cleanup_entered = Event()
+    refresh_started = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            cleanup_entered.set()
+            assert refresh_started.wait(5)
+            registry.close()
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._retired_bundles[id(bundle)] = _OwnedRepoBundle(
+        bundle,
+        None,
+        owner,
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: pytest.fail("closed refresh must not read the registry"),
+    )
+
+    def refresh():
+        refresh_started.set()
+        with pytest.raises(RuntimeError, match="repository registry is closed"):
+            registry.refresh("repo")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cleanup_future = pool.submit(registry._drain_retired)
+        assert cleanup_entered.wait(5)
+        refresh_future = pool.submit(refresh)
+        assert cleanup_future.result(timeout=5) is None
+        refresh_future.result(timeout=5)
+
+    assert owner.close_calls == 1
+    assert registry._closed is True
+    assert registry._retired_bundles == {}
+
+
+def test_registry_vector_close_settles_before_opcode_interruption():
+    opcode_events = []
+
+    def probe():
+        return None
+
+    def probe_trace(frame, event, _arg):
+        if frame.f_code is probe.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode":
+                opcode_events.append(frame.f_lasti)
+        return probe_trace
+
+    sys.settrace(probe_trace)
+    try:
+        probe()
+    finally:
+        sys.settrace(None)
+    if not opcode_events:
+        pytest.skip("this interpreter does not emit opcode trace events")
+
+    stop = KeyboardInterrupt("vector settlement interrupted")
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls > 1:
+                raise RuntimeError("vector closed twice")
+            self.done = True
+
+    vector = Vector()
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=vector,
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    instructions = tuple(dis.get_instructions(RepoRegistry._close_owned))
+    close_index = next(
+        index
+        for index, instruction in enumerate(instructions)
+        if instruction.opname in {"LOAD_ATTR", "LOAD_METHOD"}
+        and instruction.argval == "close"
+    )
+    call_index = next(
+        index
+        for index in range(close_index + 1, len(instructions))
+        if "CALL" in instructions[index].opname
+    )
+    interrupt_offset = instructions[call_index + 1].offset
+    triggered = False
+
+    def interrupt_after_close(frame, event, _arg):
+        nonlocal triggered
+        if frame.f_code is RepoRegistry._close_owned.__code__:
+            frame.f_trace_opcodes = True
+            if (
+                not triggered
+                and event == "opcode"
+                and frame.f_lasti == interrupt_offset
+            ):
+                triggered = True
+                sys.settrace(None)
+                raise stop
+        return interrupt_after_close
+
+    sys.settrace(interrupt_after_close)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            registry.close()
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert vector.close_calls == 1
+    assert bundle.vector_store is None
+    assert registry._retired_bundles == {}
+
+    registry.close()
+    assert vector.close_calls == 1
+
+
+def test_registry_vector_close_reconciles_completed_failure():
+    stop = KeyboardInterrupt("vector close completed while interrupted")
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            self.done = True
+            raise stop
+
+    vector = Vector()
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=vector,
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        registry.close()
+
+    assert caught.value is stop
+    assert vector.close_calls == 1
+    assert bundle.vector_store is None
+    assert registry._retired_bundles == {}
+
+    registry.close()
+    assert vector.close_calls == 1
+
+
+def test_registry_cleanup_deduplicates_generation_and_orphan_owner():
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    registry._orphan_cleanup_owners.append(owner)
+
+    registry.close()
+
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_final_lease_reconciles_orphan_owner_alias():
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    registry._orphan_cleanup_owners.append(owner)
+
+    with registry.pin("repo"):
+        registry.close()
+        assert owner.close_calls == 0
+        assert registry.retired_generation_count == 1
+        assert registry._orphan_cleanup_owners == [owner]
+
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_shared_pending_owner_runs_once_per_cleanup_settlement():
+    first_failure = RuntimeError("first cleanup failed")
+    later_stop = SystemExit("later cleanup stopped")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return False
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise first_failure
+            raise later_stop
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    for repo_id in ("one", "two"):
+        registry._bundles[repo_id] = RepoBundle(
+            entry=SimpleNamespace(),
+            manifest=SimpleNamespace(),
+        )
+        registry._source_cleanup_owners[repo_id] = owner
+
+    with pytest.raises(RuntimeError) as caught:
+        registry.close()
+
+    assert caught.value is first_failure
+    assert owner.close_calls == 1
+    assert registry.retired_generation_count == 1
+
+    with pytest.raises(SystemExit) as caught:
+        registry.close()
+    assert caught.value is later_stop
+    assert owner.close_calls == 2
+
+
+def test_registry_shared_owner_still_closes_each_bundle_vector():
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    vectors = [Vector(), Vector()]
+    registry = RepoRegistry(QAConfig())
+    for repo_id, vector in zip(("one", "two"), vectors, strict=True):
+        registry._bundles[repo_id] = RepoBundle(
+            entry=SimpleNamespace(),
+            manifest=SimpleNamespace(),
+            vector_store=vector,
+        )
+        registry._source_cleanup_owners[repo_id] = owner
+
+    registry.close()
+
+    assert owner.close_calls == 1
+    assert [vector.close_calls for vector in vectors] == [1, 1]
+    assert registry._retired_bundles == {}
+
+
+def test_registry_shared_owner_waits_for_every_leased_alias():
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    vectors = [Vector(), Vector()]
+    bundles = [
+        RepoBundle(
+            entry=SimpleNamespace(),
+            manifest=SimpleNamespace(),
+            vector_store=vector,
+        )
+        for vector in vectors
+    ]
+    registry = RepoRegistry(QAConfig())
+    for repo_id, bundle in zip(("one", "two"), bundles, strict=True):
+        registry._bundles[repo_id] = bundle
+        registry._source_cleanup_owners[repo_id] = owner
+
+    with registry.pin("one") as pinned:
+        registry.close()
+        assert pinned is bundles[0]
+        assert owner.close_calls == 0
+        assert [vector.close_calls for vector in vectors] == [0, 1]
+        assert registry.retired_generation_count == 1
+
+    assert owner.close_calls == 1
+    assert [vector.close_calls for vector in vectors] == [1, 1]
+    assert registry._retired_bundles == {}
+
+
+def test_registry_publish_does_not_close_active_shared_owner():
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    vector = Vector()
+    old = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=vector,
+    )
+    new = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = owner
+
+    registry._publish_owned("repo", _OwnedRepoBundle(new, None, owner))
+
+    assert registry.get("repo") is new
+    assert owner.close_calls == 0
+    assert vector.close_calls == 1
+    assert registry._retired_bundles == {}
+
+    registry.close()
+    assert owner.close_calls == 1
+
+
+def test_registry_retired_claim_interruption_keeps_retry_state():
+    stop = KeyboardInterrupt("retired claim interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    key = id(bundle)
+    registry._retired_bundles[key] = _OwnedRepoBundle(bundle, None, owner)
+    source, first_line = inspect.getsourcelines(RepoRegistry._drain_retired)
+    claim_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._cleanup_in_progress[key] = (" in line
+    )
+    triggered = False
+
+    def interrupt_after_claim(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry._drain_retired.__code__
+            and frame.f_lineno > claim_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_claim
+
+    sys.settrace(interrupt_after_claim)
+    try:
+        assert registry._drain_retired() is stop
+    finally:
+        sys.settrace(None)
+
+    assert triggered is True
+    assert owner.close_calls == 0
+    assert registry._cleanup_in_progress == {}
+    assert registry._orphan_cleanup_in_progress == set()
+    assert registry._retired_bundles[key].source_cleanup_owner is owner
+
+    assert registry._drain_retired() is None
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
+
+
+def test_registry_orphan_claim_interruption_keeps_retry_state():
+    stop = KeyboardInterrupt("orphan claim interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._orphan_cleanup_owners.append(owner)
+    source, first_line = inspect.getsourcelines(RepoRegistry._drain_orphan_cleanup)
+    claim_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._orphan_cleanup_in_progress.add(authority_id)" in line
+    )
+    triggered = False
+
+    def interrupt_after_claim(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry._drain_orphan_cleanup.__code__
+            and frame.f_lineno > claim_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_claim
+
+    sys.settrace(interrupt_after_claim)
+    try:
+        assert registry._drain_orphan_cleanup() is stop
+    finally:
+        sys.settrace(None)
+
+    assert triggered is True
+    assert owner.close_calls == 0
+    assert registry._orphan_cleanup_in_progress == set()
+    assert registry._orphan_cleanup_owners == [owner]
+
+    assert registry._drain_orphan_cleanup() is None
+    assert owner.close_calls == 1
+    assert registry._orphan_cleanup_owners == []
 
 
 def test_registry_close_waits_for_an_inflight_cleanup_drain():
@@ -1208,6 +2030,230 @@ def test_registry_queries_detach_hostile_lookup_key():
     registry.close()
 
 
+@pytest.mark.parametrize("repo_id", ["", None])
+def test_registry_closed_state_precedes_invalid_lookup_key(repo_id):
+    registry = RepoRegistry(QAConfig())
+    registry.close()
+
+    with pytest.raises(RuntimeError, match="repository registry is closed"):
+        registry.refresh(repo_id)
+    with pytest.raises(RuntimeError, match="repository registry is closed"):
+        with registry.pin(repo_id):
+            pass
+
+
+@pytest.mark.parametrize("repo_id", ["", None, 17])
+def test_registry_open_lookup_preserves_legacy_miss_semantics(repo_id):
+    registry = RepoRegistry(QAConfig())
+
+    assert registry.get(repo_id) is None
+    with registry.pin(repo_id) as pinned:
+        assert pinned is None
+
+
+def test_registry_rejects_fake_string_without_descriptor_dispatch():
+    touched = []
+
+    class Masquerade:
+        @property
+        def __class__(self):
+            touched.append("class")
+            registry.close()
+            return str
+
+    registry = RepoRegistry(QAConfig())
+    key = Masquerade()
+
+    assert registry.get(key) is None
+    with registry.pin(key) as pinned:
+        assert pinned is None
+    with pytest.raises(ValueError, match="instance_id must be non-empty text"):
+        registry.refresh(key)
+
+    assert touched == []
+    assert registry._closed is False
+
+
+def test_registry_pin_acquisition_interruption_releases_lease():
+    stop = KeyboardInterrupt("pin acquisition interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    pin_impl = RepoRegistry.pin.__wrapped__
+    source, first_line = inspect.getsourcelines(pin_impl)
+    acquire_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._bundle_leases[lease_token] = keys" in line
+    )
+    triggered = False
+
+    def interrupt_after_acquire(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is pin_impl.__code__
+            and frame.f_lineno > acquire_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_acquire
+
+    context = registry.pin("repo")
+    sys.settrace(interrupt_after_acquire)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            context.__enter__()
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry._bundle_leases == {}
+
+    registry.close()
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
+
+
+def test_registry_pin_all_acquisition_is_atomic_under_interruption():
+    stop = KeyboardInterrupt("pin-all acquisition interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owners = [Owner(), Owner()]
+    registry = RepoRegistry(QAConfig())
+    for repo_id, owner in zip(("one", "two"), owners, strict=True):
+        registry._bundles[repo_id] = RepoBundle(
+            entry=SimpleNamespace(),
+            manifest=SimpleNamespace(),
+        )
+        registry._source_cleanup_owners[repo_id] = owner
+    pin_impl = RepoRegistry.pin_all.__wrapped__
+    source, first_line = inspect.getsourcelines(pin_impl)
+    acquire_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._bundle_leases[lease_token] = keys" in line
+    )
+    triggered = False
+
+    def interrupt_after_acquire(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is pin_impl.__code__
+            and frame.f_lineno > acquire_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_acquire
+
+    context = registry.pin_all()
+    sys.settrace(interrupt_after_acquire)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            context.__enter__()
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry._bundle_leases == {}
+
+    registry.close()
+    assert [owner.close_calls for owner in owners] == [1, 1]
+    assert registry._retired_bundles == {}
+
+
+def test_registry_pin_release_interruption_cannot_leave_stale_lease():
+    stop = KeyboardInterrupt("pin release interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    context = registry.pin("repo")
+    assert context.__enter__() is bundle
+    registry.close()
+    source, first_line = inspect.getsourcelines(RepoRegistry._drop_bundle_lease)
+    release_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "keys = self._bundle_leases.pop(lease_token, ())" in line
+    )
+    triggered = False
+
+    def interrupt_after_release(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry._drop_bundle_lease.__code__
+            and frame.f_lineno > release_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_release
+
+    sys.settrace(interrupt_after_release)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            context.__exit__(None, None, None)
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry._bundle_leases == {}
+    assert owner.close_calls == 0
+    assert registry.retired_generation_count == 1
+
+    registry.close()
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
+
+
 def test_registry_refresh_publishes_without_escaping_unleased_bundle(
     tmp_path,
     monkeypatch,
@@ -1272,6 +2318,357 @@ def test_registry_refresh_detaches_hostile_lookup_key(tmp_path, monkeypatch):
     assert registry._closed is False
     assert registry.get("repo") is candidate
     registry.close()
+
+
+def test_registry_refresh_reports_reentrant_cleanup_shutdown(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self, *, close_registry=False):
+            self.close_calls = 0
+            self.close_registry = close_registry
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_registry:
+                registry.close()
+
+    old_owner = Owner(close_registry=True)
+    candidate_owner = Owner()
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, candidate_owner),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    with pytest.raises(RuntimeError, match="repository registry is closed"):
+        registry.refresh("repo")
+
+    assert registry._closed is True
+    assert registry.get("repo") is None
+    assert old_owner.close_calls == 1
+    assert candidate_owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+    assert registry._retired_bundles == {}
+
+
+def test_registry_publication_interrupt_closes_candidate_once(monkeypatch):
+    stop = KeyboardInterrupt("publication interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, owner),
+    )
+    publish_impl = RepoRegistry._publish_owned_under_cleanup_lock
+    source, first_line = inspect.getsourcelines(publish_impl)
+    assignment_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._bundles[instance_id] = owned.bundle" in line
+    )
+    triggered = False
+
+    def interrupt_after_publication(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is publish_impl.__code__
+            and frame.f_lineno > assignment_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            registry.close()
+            raise stop
+        return interrupt_after_publication
+
+    sys.settrace(interrupt_after_publication)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            registry._replace_entry(
+                SimpleNamespace(instance_id="repo"),
+                prepare_runtime=False,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry._closed is True
+    assert owner.close_calls == 1
+    assert registry._bundles == {}
+    assert registry._source_cleanup_owners == {}
+    assert registry._retired_bundles == {}
+
+
+def test_registry_previous_retirement_interrupt_rolls_back_old_generation(
+    monkeypatch,
+):
+    stop = KeyboardInterrupt("previous retirement interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    old_owner = Owner()
+    candidate_owner = Owner()
+    vector = Vector()
+    old = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=vector,
+    )
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, candidate_owner),
+    )
+    publish_impl = RepoRegistry._publish_owned_under_cleanup_lock
+    source, first_line = inspect.getsourcelines(publish_impl)
+    retirement_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._retired_bundles[id(previous.bundle)] = previous" in line
+    )
+    triggered = False
+
+    def interrupt_after_retirement(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is publish_impl.__code__
+            and frame.f_lineno > retirement_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_retirement
+
+    sys.settrace(interrupt_after_retirement)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            registry._replace_entry(
+                SimpleNamespace(instance_id="repo"),
+                prepare_runtime=False,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry.get("repo") is old
+    assert old_owner.close_calls == 0
+    assert vector.close_calls == 0
+    assert candidate_owner.close_calls == 1
+    assert registry._retired_bundles == {}
+
+    with registry.pin("repo") as pinned:
+        assert pinned is old
+    assert old_owner.close_calls == 0
+    assert vector.close_calls == 0
+
+    registry.close()
+    assert old_owner.close_calls == 1
+    assert vector.close_calls == 1
+
+
+def test_registry_active_alias_cannot_be_cleaned_after_retire_interrupt():
+    stop = KeyboardInterrupt("active retirement interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    class Vector:
+        def __init__(self):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    vector = Vector()
+    bundle = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        vector_store=vector,
+        bm25=object(),
+        runner=object(),
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    source, first_line = inspect.getsourcelines(RepoRegistry._retire_active_locked)
+    retirement_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._retired_bundles[id(bundle)] = owned" in line
+    )
+    triggered = False
+
+    def interrupt_after_retirement(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry._retire_active_locked.__code__
+            and frame.f_lineno > retirement_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise stop
+        return interrupt_after_retirement
+
+    sys.settrace(interrupt_after_retirement)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            with registry._generation_lock:
+                registry._retire_active_locked("repo")
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert registry.get("repo") is bundle
+    assert registry.retired_generation_count == 1
+
+    with registry.pin("repo") as pinned:
+        assert pinned is bundle
+
+    assert bundle.vector_store is vector
+    assert bundle.bm25 is not None
+    assert bundle.runner is not None
+    assert owner.close_calls == vector.close_calls == 0
+
+    registry.close()
+    assert owner.close_calls == vector.close_calls == 1
+    assert registry._retired_bundles == {}
+
+
+def test_registry_cleanup_claim_interruption_preserves_primary(monkeypatch):
+    primary = SystemExit("candidate preparation stopped")
+    later = KeyboardInterrupt("cleanup claim interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, owner),
+    )
+    monkeypatch.setattr(
+        registry,
+        "_prepare_runtime_bundle",
+        lambda _bundle: (_ for _ in ()).throw(primary),
+    )
+    source, first_line = inspect.getsourcelines(RepoRegistry._retire_unpublished)
+    claim_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._retired_bundles[key] = owned" in line
+    )
+    triggered = False
+
+    def interrupt_after_claim(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is RepoRegistry._retire_unpublished.__code__
+            and frame.f_lineno > claim_line
+        ):
+            triggered = True
+            sys.settrace(None)
+            raise later
+        return interrupt_after_claim
+
+    sys.settrace(interrupt_after_claim)
+    try:
+        with pytest.raises(SystemExit) as caught:
+            registry._replace_entry(
+                SimpleNamespace(instance_id="repo"),
+                prepare_runtime=True,
+            )
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is primary
+    assert caught.value.__cause__ is later
+    assert triggered is True
+    assert owner.close_calls == 0
+    assert registry.retired_generation_count == 1
+
+    registry.close()
+    assert owner.close_calls == 1
+    assert registry._retired_bundles == {}
 
 
 def test_registry_failed_refresh_keeps_active_generation(tmp_path, monkeypatch):
@@ -1391,6 +2788,65 @@ def test_registry_close_defers_pinned_generation_cleanup():
         assert registry.retired_generation_count == 1
 
     assert owner.closed is True
+    assert registry.retired_generation_count == 0
+
+
+@pytest.mark.parametrize("pin_all", [False, True])
+@pytest.mark.parametrize(
+    ("body_type", "cleanup_type", "cleanup_wins"),
+    [
+        (SystemExit, KeyboardInterrupt, False),
+        (RuntimeError, SystemExit, True),
+    ],
+)
+def test_registry_pin_cleanup_preserves_exception_priority(
+    pin_all,
+    body_type,
+    cleanup_type,
+    cleanup_wins,
+):
+    body_failure = body_type("body failure")
+    cleanup_failure = cleanup_type("cleanup failure")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls >= 2
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise cleanup_failure
+
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    pinned = registry.pin_all() if pin_all else registry.pin("repo")
+
+    caught = None
+    try:
+        with pinned:
+            registry.close()
+            raise body_failure
+    except BaseException as observed:  # noqa: B036 - assert exact priority
+        caught = observed
+    else:
+        raise AssertionError("pinned body failure did not propagate")
+
+    expected = cleanup_failure if cleanup_wins else body_failure
+    secondary = body_failure if cleanup_wins else cleanup_failure
+    assert caught is expected
+    assert caught.__cause__ is secondary
+    assert owner.close_calls == 1
+    assert registry.retired_generation_count == 1
+
+    registry.close()
+    assert owner.close_calls == 2
     assert registry.retired_generation_count == 0
 
 

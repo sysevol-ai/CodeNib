@@ -647,6 +647,22 @@ def test_close_visits_all_indices_and_retains_failed_index_for_retry(
     assert store.embedding is None
 
 
+def test_closed_attestation_includes_query_cache_state(tmp_path) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    store._loaded_state = _LoadedVectorState(None, [], None, [], {}, tmp_path)
+    store.embedding = None
+    store._query_cache_depth = 1
+    store._cached_query_text = "query"
+    store._cached_query_vector = object()
+
+    assert store.closed is False
+
+    store._query_cache_depth = 0
+    store._cached_query_text = None
+    store._cached_query_vector = None
+    assert store.closed is True
+
+
 def test_openai_wrapper_sends_vector_options_on_embedding_requests() -> None:
     client = MagicMock()
     client.embeddings.create.return_value = SimpleNamespace(

@@ -366,6 +366,31 @@ def test_pinned_thread_preserves_cancelled_error_identity():
     assert asyncio.run(observe()) is failure
 
 
+def test_pinned_thread_does_not_read_hostile_exception_class():
+    touched = []
+
+    class HostileFailure(BaseException):
+        @property
+        def __class__(self):
+            touched.append("class")
+            raise SystemExit("spoofed worker failure")
+
+    failure = HostileFailure()
+
+    def fail():
+        raise failure
+
+    async def observe():
+        try:
+            await web_app._run_pinned_thread(fail)
+        except BaseException as observed:  # noqa: B036 - assert exact carrier
+            return observed
+        raise AssertionError("thread failure did not propagate")
+
+    assert asyncio.run(observe()) is failure
+    assert touched == []
+
+
 def test_pinned_thread_maps_stop_iteration_without_losing_exact_cause():
     failure = StopIteration("thread stop")
 
@@ -432,15 +457,16 @@ def test_wiki_cache_rebuilds_when_bundle_generation_changes(monkeypatch):
     assert repeated is first
     assert refreshed is not first
     assert [builder.bundle for builder in created] == [old, new]
-    assert web_app.app.state.wiki_builders["repo"] == (new, refreshed)
+    assert web_app.app.state.wiki_builders["repo"] == ("repo", new, refreshed)
 
 
 def test_generation_cache_drops_helpers_bound_to_retired_bundle():
     old = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
     new = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
     cache = {
-        "repo@old": (old, object()),
+        "repo@old": ("repo", old, object()),
         "other@commit": (
+            "other",
             SimpleNamespace(entry=SimpleNamespace(instance_id="other")),
             object(),
         ),
@@ -449,13 +475,38 @@ def test_generation_cache_drops_helpers_bound_to_retired_bundle():
     current = web_app._generation_cached(
         cache,
         "repo@new",
+        "repo",
         new,
         object,
     )
 
-    assert cache["repo@new"] == (new, current)
+    assert cache["repo@new"] == ("repo", new, current)
     assert "repo@old" not in cache
     assert "other@commit" in cache
+
+
+def test_generation_cache_does_not_read_hostile_bundle_repo_id():
+    touched = []
+
+    class HostileId(str):
+        def __eq__(self, other):
+            touched.append(other)
+            return str.__eq__(self, other)
+
+    old = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
+    new = SimpleNamespace(entry=SimpleNamespace(instance_id=HostileId("repo")))
+    cache = {"repo@old": ("repo", old, object())}
+
+    current = web_app._generation_cached(
+        cache,
+        "repo@new",
+        "repo",
+        new,
+        object,
+    )
+
+    assert touched == []
+    assert cache == {"repo@new": ("repo", new, current)}
 
 
 def test_retired_generation_caches_are_pruned_after_removal(monkeypatch):
@@ -463,8 +514,8 @@ def test_retired_generation_caches_are_pruned_after_removal(monkeypatch):
     current = SimpleNamespace(entry=SimpleNamespace(instance_id="current"))
     current_helper = object()
     cache = {
-        "removed@commit": (removed, object()),
-        "current@commit": (current, current_helper),
+        "removed@commit": ("removed", removed, object()),
+        "current@commit": ("current", current, current_helper),
     }
     registry = SimpleNamespace(
         get=lambda repo_id: current if repo_id == "current" else None
@@ -475,7 +526,7 @@ def test_retired_generation_caches_are_pruned_after_removal(monkeypatch):
 
     web_app._prune_retired_generation_caches(registry)
 
-    assert cache == {"current@commit": (current, current_helper)}
+    assert cache == {"current@commit": ("current", current, current_helper)}
 
 
 def test_list_repos_keeps_info_and_window_stats_on_one_generation(monkeypatch):
