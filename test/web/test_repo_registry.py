@@ -251,6 +251,524 @@ def test_registry_retains_failed_source_cleanup_for_retry(tmp_path, monkeypatch)
     assert registry._source_cleanup_owners == {}
 
 
+def test_registry_later_publish_preserves_failed_owner_for_retry():
+    class Owner:
+        def __init__(self, *, fail_first=False):
+            self.close_calls = 0
+            self.fail_first = fail_first
+
+        @property
+        def closed(self):
+            return self.close_calls >= (2 if self.fail_first else 1)
+
+        def close(self):
+            self.close_calls += 1
+            if self.fail_first and self.close_calls == 1:
+                raise RuntimeError("retry old owner")
+
+    failed_owner = Owner(fail_first=True)
+    published_owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["repo"] = failed_owner
+
+    registry._publish_owned(
+        "repo",
+        _OwnedRepoBundle(bundle, None, published_owner),
+    )
+
+    assert registry.get("repo") is bundle
+    assert registry._source_cleanup_owners["repo"] is published_owner
+    assert registry._orphan_cleanup_owners == [failed_owner]
+    assert failed_owner.close_calls == 1
+
+    registry.close()
+
+    assert failed_owner.close_calls == 2
+    assert published_owner.close_calls == 1
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_complete_snapshot_retires_owner_without_bundle(monkeypatch):
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["removed"] = owner
+    monkeypatch.setattr("codenib.web.repo_registry.load_registry", lambda _path: [])
+
+    registry.load_all()
+
+    assert owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+    assert registry._orphan_cleanup_owners == []
+    registry.close()
+    assert owner.close_calls == 1
+
+
+def test_registry_complete_snapshot_retries_failed_owner_cleanup(monkeypatch):
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls >= 2
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise RuntimeError("retry removed owner")
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["removed"] = owner
+    monkeypatch.setattr("codenib.web.repo_registry.load_registry", lambda _path: [])
+
+    registry.load_all()
+    assert registry._source_cleanup_owners == {}
+    assert registry._orphan_cleanup_owners == [owner]
+
+    registry.load_all()
+    assert owner.close_calls == 2
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_load_all_prepares_only_live_replacements(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    old_owner = Owner()
+    candidate_owner = Owner()
+    built = iter(
+        (
+            _OwnedRepoBundle(old, None, old_owner),
+            _OwnedRepoBundle(candidate, None, candidate_owner),
+        )
+    )
+    prepared = []
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(registry, "_build_repo_metadata", lambda _entry: next(built))
+
+    def prepare(bundle):
+        prepared.append(bundle)
+        raise ValueError("candidate views are invalid")
+
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", prepare)
+
+    registry.load_all()
+    assert registry.get("repo") is old
+    assert prepared == []
+
+    registry.load_all()
+
+    assert prepared == [candidate]
+    assert registry.get("repo") is old
+    assert old_owner.closed is False
+    assert candidate_owner.closed is True
+    registry.close()
+    assert old_owner.closed is True
+
+
+def test_registry_close_waits_for_inflight_candidate_build(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    build_started = Event()
+    release_build = Event()
+    close_started = Event()
+    close_finished = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    def build(_entry):
+        build_started.set()
+        assert release_build.wait(5)
+        return _OwnedRepoBundle(candidate, None, owner)
+
+    def close_registry():
+        close_started.set()
+        try:
+            registry.close()
+        finally:
+            close_finished.set()
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        refresh_future = pool.submit(registry.refresh, "repo")
+        assert build_started.wait(5)
+        close_future = pool.submit(close_registry)
+        assert close_started.wait(5)
+        assert close_finished.wait(0.1) is False
+        release_build.set()
+        refresh_future.result(timeout=5)
+        close_future.result(timeout=5)
+
+    assert registry.get("repo") is None
+    assert owner.close_calls == 1
+
+
+def test_registry_close_waits_for_legacy_metadata_build(monkeypatch):
+    build_started = Event()
+    release_build = Event()
+    close_finished = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+
+    def build(_entry):
+        build_started.set()
+        assert release_build.wait(5)
+        return _OwnedRepoBundle(candidate, None, owner)
+
+    def close_registry():
+        try:
+            registry.close()
+        finally:
+            close_finished.set()
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        load = pool.submit(
+            registry._load_repo_metadata,
+            SimpleNamespace(instance_id="repo"),
+        )
+        assert build_started.wait(5)
+        closing = pool.submit(close_registry)
+        assert close_finished.wait(0.1) is False
+        release_build.set()
+        assert load.result(timeout=5) is candidate
+        closing.result(timeout=5)
+
+    assert owner.close_calls == 1
+    assert registry._source_cleanup_owners == {}
+
+
+def test_registry_concurrent_close_closes_owner_once():
+    close_entered = Event()
+    release_close = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            close_entered.set()
+            assert release_close.wait(5)
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["repo"] = owner
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(registry.close)
+        assert close_entered.wait(5)
+        second = pool.submit(registry.close)
+        assert second.done() is False
+        release_close.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+
+    assert owner.close_calls == 1
+
+
+def test_registry_close_waits_for_an_inflight_cleanup_drain():
+    cleanup_started = Event()
+    release_cleanup = Event()
+    close_finished = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            cleanup_started.set()
+            assert release_cleanup.wait(5)
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._orphan_cleanup_owners.append(owner)
+
+    def close_registry():
+        try:
+            registry.close()
+        finally:
+            close_finished.set()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        drain = pool.submit(registry._drain_orphan_cleanup)
+        assert cleanup_started.wait(5)
+        closing = pool.submit(close_registry)
+        assert close_finished.wait(0.1) is False
+        release_cleanup.set()
+        assert drain.result(timeout=5) is None
+        closing.result(timeout=5)
+
+    assert owner.close_calls == 1
+
+
+def test_registry_cleanup_cancellation_precedes_ordinary_failure():
+    ordinary = RuntimeError("vector cleanup failed")
+    stop = SystemExit("source cleanup stopped")
+
+    class Vector:
+        def close(self):
+            raise ordinary
+
+    class Owner:
+        @property
+        def closed(self):
+            return False
+
+        def close(self):
+            raise stop
+
+    owned = _OwnedRepoBundle(
+        RepoBundle(
+            entry=SimpleNamespace(),
+            manifest=SimpleNamespace(),
+            vector_store=Vector(),
+        ),
+        None,
+        Owner(),
+    )
+
+    with pytest.raises(SystemExit) as observed:
+        RepoRegistry._close_owned(owned)
+
+    assert observed.value is stop
+    notes = getattr(stop, "__notes__", ()) or getattr(
+        stop,
+        "_codenib_cleanup_notes",
+        (),
+    )
+    assert any("earlier repository cleanup" in note for note in notes)
+
+
+def test_registry_unpublished_cleanup_cancellation_precedes_primary(monkeypatch):
+    primary = ValueError("candidate invalid")
+    stop = KeyboardInterrupt("cleanup stopped")
+
+    class Owner:
+        @property
+        def closed(self):
+            return False
+
+        def close(self):
+            raise stop
+
+    owned = _OwnedRepoBundle(
+        RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace()),
+        None,
+        Owner(),
+    )
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(registry, "_build_repo_metadata", lambda _entry: owned)
+
+    def reject(_bundle):
+        raise primary
+
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", reject)
+
+    with pytest.raises(KeyboardInterrupt) as observed:
+        registry._replace_entry(
+            SimpleNamespace(instance_id="repo"), prepare_runtime=True
+        )
+
+    assert observed.value is stop
+    assert observed.value.__cause__ is primary
+    assert registry.retired_generation_count == 1
+
+
+def test_registry_primary_cancellation_precedes_ordinary_cleanup(monkeypatch):
+    primary = SystemExit("candidate stopped")
+    cleanup = RuntimeError("cleanup failed")
+
+    class Owner:
+        @property
+        def closed(self):
+            return False
+
+        def close(self):
+            raise cleanup
+
+    owned = _OwnedRepoBundle(
+        RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace()),
+        None,
+        Owner(),
+    )
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(registry, "_build_repo_metadata", lambda _entry: owned)
+
+    def stop(_bundle):
+        raise primary
+
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", stop)
+
+    with pytest.raises(SystemExit) as observed:
+        registry._replace_entry(
+            SimpleNamespace(instance_id="repo"), prepare_runtime=True
+        )
+
+    assert observed.value is primary
+    assert observed.value.__cause__ is cleanup
+
+
+def test_registry_cleanup_does_not_create_self_cause(monkeypatch):
+    stop = SystemExit("shared cancellation")
+
+    class Owner:
+        @property
+        def closed(self):
+            return False
+
+        def close(self):
+            raise stop
+
+    owned = _OwnedRepoBundle(
+        RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace()),
+        None,
+        Owner(),
+    )
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(registry, "_build_repo_metadata", lambda _entry: owned)
+    monkeypatch.setattr(
+        registry,
+        "_prepare_runtime_bundle",
+        lambda _bundle: (_ for _ in ()).throw(stop),
+    )
+
+    with pytest.raises(SystemExit) as observed:
+        registry._replace_entry(
+            SimpleNamespace(instance_id="repo"), prepare_runtime=True
+        )
+
+    assert observed.value is stop
+    assert observed.value.__cause__ is not stop
+
+
+def test_registry_hostile_cleanup_attribute_cannot_replace_primary(monkeypatch):
+    lookup = KeyboardInterrupt("hostile attribute lookup")
+
+    class HostileExit(SystemExit):
+        def __getattribute__(self, name):
+            if name == "source_cleanup_owner":
+                raise lookup
+            return super().__getattribute__(name)
+
+    primary = HostileExit("primary")
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: (_ for _ in ()).throw(primary),
+    )
+
+    with pytest.raises(SystemExit) as observed:
+        registry._replace_entry(
+            SimpleNamespace(instance_id="repo"), prepare_runtime=False
+        )
+
+    assert observed.value is primary
+
+
+def test_registry_hostile_cleanup_traceback_cannot_replace_publication():
+    lookup = KeyboardInterrupt("hostile traceback lookup")
+
+    class HostileFailure(RuntimeError):
+        def __getattribute__(self, name):
+            if name == "__traceback__":
+                raise lookup
+            return super().__getattribute__(name)
+
+    failure = HostileFailure("cleanup remains pending")
+
+    class Owner:
+        @property
+        def closed(self):
+            return False
+
+        def close(self):
+            raise failure
+
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._source_cleanup_owners["repo"] = Owner()
+
+    registry._publish_owned(
+        "repo",
+        _OwnedRepoBundle(candidate, None, None),
+    )
+
+    assert registry.get("repo") is candidate
+    assert len(registry._orphan_cleanup_owners) == 1
+
+
 def test_registry_reload_closes_the_previous_source_authority(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -364,7 +882,7 @@ def test_registry_reload_keeps_failed_declared_entry_and_retires_absent_entry(
     )
 
     def reject(_entry, *, prepare_runtime):
-        assert prepare_runtime is False
+        assert prepare_runtime is True
         raise ValueError("replacement rejected")
 
     monkeypatch.setattr(registry, "_replace_entry", reject)
