@@ -314,10 +314,27 @@ def _detach_view_artifact(value: object) -> IndexJobViewArtifact:
     return detached
 
 
+def _detach_runnable_cursor(value: object) -> IndexJobRunnableCursor:
+    if type(value) is not IndexJobRunnableCursor:
+        raise StorageValidationError("worker runnable cursor must use the exact model")
+    try:
+        detached = replace(value)
+    except StorageValidationError:
+        raise
+    except Exception as exc:
+        raise StorageValidationError(
+            "worker runnable cursor is structurally damaged"
+        ) from exc
+    if detached != value:
+        raise StorageValidationError("worker runnable cursor is not canonical")
+    return detached
+
+
 def _attest_runnable_page(
     value: object,
     *,
     limit: int,
+    after_cursor: IndexJobRunnableCursor | None = None,
 ) -> IndexJobRunnablePage:
     if type(value) is not IndexJobRunnablePage:
         raise StorageIntegrityError("worker scan returned a non-exact runnable page")
@@ -336,14 +353,8 @@ def _attest_runnable_page(
         jobs = tuple(_detach_job_record(candidate) for candidate in raw_jobs)
         if raw_cursor is None:
             cursor = None
-        elif type(raw_cursor) is IndexJobRunnableCursor:
-            cursor = replace(raw_cursor)
-            if cursor != raw_cursor:
-                raise StorageValidationError("worker runnable cursor is not canonical")
         else:
-            raise StorageValidationError(
-                "worker runnable cursor must use the exact model"
-            )
+            cursor = _detach_runnable_cursor(raw_cursor)
         detached = IndexJobRunnablePage(jobs=jobs, next_cursor=cursor)
     except (StorageValidationError, AttributeError) as exc:
         raise StorageIntegrityError(
@@ -351,6 +362,18 @@ def _attest_runnable_page(
         ) from exc
     if detached != value:
         raise StorageIntegrityError("worker scan returned a noncanonical page")
+    ordering = tuple((job.created_at_ms, job.job_id) for job in jobs)
+    if after_cursor is not None:
+        lower_bound = (after_cursor.created_at_ms, after_cursor.job_id)
+        if any(key <= lower_bound for key in ordering):
+            raise StorageIntegrityError(
+                "worker scan did not advance beyond its runnable cursor"
+            )
+    if cursor is not None:
+        if not jobs or cursor != IndexJobRunnableCursor(*ordering[-1]):
+            raise StorageIntegrityError(
+                "worker scan continuation does not identify its final candidate"
+            )
     return detached
 
 
@@ -733,6 +756,33 @@ class IndexJobWorkerRunResult:
     @classmethod
     def idle(cls) -> IndexJobWorkerRunResult:
         return cls(IndexJobWorkerDisposition.IDLE, None, None)
+
+
+@dataclass(frozen=True, slots=True)
+class IndexJobWorkerPageResult:
+    """One bounded worker result plus a strictly advancing scan continuation."""
+
+    result: IndexJobWorkerRunResult
+    continuation_cursor: IndexJobRunnableCursor | None
+
+    def __post_init__(self) -> None:
+        if type(self) is not IndexJobWorkerPageResult:
+            raise StorageValidationError("worker page result must use the exact model")
+        if type(self.result) is not IndexJobWorkerRunResult:
+            raise StorageValidationError(
+                "worker page result requires an exact run result"
+            )
+        cursor = self.continuation_cursor
+        if cursor is not None:
+            cursor = _detach_runnable_cursor(cursor)
+        if (
+            self.result.disposition is not IndexJobWorkerDisposition.IDLE
+            and cursor is None
+        ):
+            raise StorageValidationError(
+                "processed worker pages require a continuation cursor"
+            )
+        object.__setattr__(self, "continuation_cursor", cursor)
 
 
 @runtime_checkable
@@ -1558,32 +1608,48 @@ class IndexJobWorker:
     def run_once(self) -> IndexJobWorkerRunResult:
         """Claim and execute the first candidate won from one advisory page."""
 
+        return self.run_page().result
+
+    def run_page(
+        self,
+        *,
+        cursor: IndexJobRunnableCursor | None = None,
+    ) -> IndexJobWorkerPageResult:
+        """Run one page after ``cursor`` and return its safe continuation."""
+
+        scan_cursor = None if cursor is None else _detach_runnable_cursor(cursor)
+
         if not self._run_lock.acquire(blocking=False):
             raise RuntimeError("index job worker is already running")
         try:
             result = _run_catalog_session(
                 self._catalog_factory,
-                self._run_once_in_session,
+                lambda catalog: self._run_page_in_session(catalog, scan_cursor),
             )
-            if type(result) is not IndexJobWorkerRunResult:
+            if type(result) is not IndexJobWorkerPageResult:
                 raise StorageIntegrityError(
-                    "worker catalog session returned no run result"
+                    "worker catalog session returned no page result"
                 )
             return result
         finally:
             self._run_lock.release()
 
-    def _run_once_in_session(
+    def _run_page_in_session(
         self,
         catalog: JobWorkerCatalog,
-    ) -> IndexJobWorkerRunResult:
+        cursor: IndexJobRunnableCursor | None,
+    ) -> IndexJobWorkerPageResult:
         if not isinstance(catalog, JobWorkerCatalog):
             raise StorageValidationError(
                 "worker session lacks required catalog capabilities"
             )
         page = _attest_runnable_page(
-            catalog.scan_runnable_jobs(limit=self._scan_limit),
+            catalog.scan_runnable_jobs(
+                cursor=cursor,
+                limit=self._scan_limit,
+            ),
             limit=self._scan_limit,
+            after_cursor=cursor,
         )
         for candidate in page.jobs:
             if not self._accept_candidate(candidate):
@@ -1602,18 +1668,24 @@ class IndexJobWorker:
             except (PublishConflict, StorageNotFound):
                 continue
             try:
-                return self._run_claimed_job(
+                result = self._run_claimed_job(
                     catalog,
                     candidate.job_id,
                     owner,
                     lease,
                 )
             except _ClaimAuthorityLost as lost:
-                return self._run_result(
-                    IndexJobWorkerDisposition.LOST_AUTHORITY,
-                    lost.authority,
+                result = self._run_result(
+                    IndexJobWorkerDisposition.LOST_AUTHORITY, lost.authority
                 )
-        return IndexJobWorkerRunResult.idle()
+            return IndexJobWorkerPageResult(
+                result,
+                IndexJobRunnableCursor(candidate.created_at_ms, candidate.job_id),
+            )
+        return IndexJobWorkerPageResult(
+            IndexJobWorkerRunResult.idle(),
+            page.next_cursor,
+        )
 
     def _accept_candidate(self, candidate: IndexJobRecord) -> bool:
         """Run one trusted, mutation-free eligibility check before claim."""
@@ -2921,6 +2993,7 @@ __all__ = [
     "IndexJobStopToken",
     "IndexJobViewExecutionResult",
     "IndexJobWorkerDisposition",
+    "IndexJobWorkerPageResult",
     "IndexJobWorkerRunResult",
     "IndexJobWorker",
 ]

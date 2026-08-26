@@ -25,6 +25,8 @@ from codenib.storage.job_worker import (
     IndexJobViewExecutionResult,
     IndexJobWorker,
     IndexJobWorkerDisposition,
+    IndexJobWorkerPageResult,
+    IndexJobWorkerRunResult,
 )
 from codenib.storage.models import (
     INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
@@ -39,6 +41,7 @@ from codenib.storage.models import (
     IndexJobEventRecord,
     IndexJobRecord,
     IndexJobRequest,
+    IndexJobRunnableCursor,
     IndexJobRunnablePage,
     IndexJobStatus,
     IndexJobViewOutcome,
@@ -192,6 +195,7 @@ class _Backend:
     completion_foreign_job_id: bool = False
     attempt_history_exceeds_max: bool = False
     acquire_calls: list[tuple[int, str, str]] = field(default_factory=list)
+    scan_cursors: list[IndexJobRunnableCursor | None] = field(default_factory=list)
     heartbeat_calls: list[tuple[int, int, str]] = field(default_factory=list)
     progress_calls: list[dict[str, Any]] = field(default_factory=list)
     view_result_calls: list[dict[str, Any]] = field(default_factory=list)
@@ -626,19 +630,33 @@ class _FakeCatalog:
     def scan_runnable_jobs(
         self,
         *,
-        cursor: object = None,
+        cursor: IndexJobRunnableCursor | None = None,
         limit: int = 64,
     ) -> IndexJobRunnablePage:
-        del cursor
-        scan_limit = (
-            len(self.backend.scan_job_ids) if self.backend.ignore_scan_limit else limit
-        )
-        jobs = tuple(
+        if cursor is not None and type(cursor) is not IndexJobRunnableCursor:
+            raise AssertionError("worker supplied a noncanonical test cursor")
+        self.backend.scan_cursors.append(cursor)
+        lower_bound = None if cursor is None else (cursor.created_at_ms, cursor.job_id)
+        runnable = tuple(
             self.backend.jobs[job_id]
-            for job_id in self.backend.scan_job_ids[:scan_limit]
+            for job_id in self.backend.scan_job_ids
             if self.backend.jobs[job_id].status is IndexJobStatus.QUEUED
+            and (
+                lower_bound is None
+                or (
+                    self.backend.jobs[job_id].created_at_ms,
+                    self.backend.jobs[job_id].job_id,
+                )
+                > lower_bound
+            )
         )
-        page = IndexJobRunnablePage(jobs=jobs, next_cursor=None)
+        scan_limit = len(runnable) if self.backend.ignore_scan_limit else limit
+        jobs = runnable[:scan_limit]
+        next_cursor = None
+        if len(runnable) > scan_limit:
+            last = jobs[-1]
+            next_cursor = IndexJobRunnableCursor(last.created_at_ms, last.job_id)
+        page = IndexJobRunnablePage(jobs=jobs, next_cursor=next_cursor)
         if self.backend.bind_corruption == "job_status_raw" and page.jobs:
             object.__setattr__(page.jobs[0], "status", "queued")
         if self.backend.damage_scan_candidate_after_create and page.jobs:
@@ -1694,6 +1712,47 @@ def test_candidate_filter_skips_jobs_before_owner_or_claim() -> None:
     assert owners == ["selected-owner"]
     assert [call[1] for call in backend.acquire_calls] == [second.job_id]
     assert backend.jobs[first.job_id].status is IndexJobStatus.QUEUED
+
+
+def test_run_page_advances_across_filtered_candidates_without_starvation() -> None:
+    backend = _Backend()
+    first = backend.add_job("unsupported-first")
+    second = backend.add_job("unsupported-second")
+    third = backend.add_job("supported-third")
+    considered: list[str] = []
+
+    def accept(job: IndexJobRecord) -> bool:
+        considered.append(job.job_id)
+        return job.job_id == third.job_id
+
+    worker, _store, _factory = _worker(
+        backend,
+        _default_resolver(),
+        candidate_filter=accept,
+        scan_limit=1,
+    )
+
+    first_page = worker.run_page()
+    second_page = worker.run_page(cursor=first_page.continuation_cursor)
+    third_page = worker.run_page(cursor=second_page.continuation_cursor)
+    exhausted = worker.run_page(cursor=third_page.continuation_cursor)
+
+    first_cursor = IndexJobRunnableCursor(first.created_at_ms, first.job_id)
+    second_cursor = IndexJobRunnableCursor(second.created_at_ms, second.job_id)
+    third_cursor = IndexJobRunnableCursor(third.created_at_ms, third.job_id)
+    assert first_page == IndexJobWorkerPageResult(
+        IndexJobWorkerRunResult.idle(), first_cursor
+    )
+    assert second_page == IndexJobWorkerPageResult(
+        IndexJobWorkerRunResult.idle(), second_cursor
+    )
+    assert third_page.result.disposition is IndexJobWorkerDisposition.SUCCEEDED
+    assert third_page.result.job_id == third.job_id
+    assert third_page.continuation_cursor == third_cursor
+    assert exhausted == IndexJobWorkerPageResult(IndexJobWorkerRunResult.idle(), None)
+    assert backend.scan_cursors == [None, first_cursor, second_cursor, third_cursor]
+    assert considered == [first.job_id, second.job_id, third.job_id]
+    assert [call[1] for call in backend.acquire_calls] == [third.job_id]
 
 
 @pytest.mark.parametrize("decision", (None, 1, "true"))
