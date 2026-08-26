@@ -1282,6 +1282,12 @@ wiring remain absent.
   surfaced as an integrity alarm rather than mistaken for catalog response
   loss, while direct publication callers retain their established exception
   identity contract.
+- Publication preflight and exact receipt revalidation remain covered by the
+  attempt heartbeat. The pump settles only inside the retained callback, where
+  the worker checks heartbeat fault, cancellation, and authority, performs one
+  final fenced heartbeat, and then publishes before releasing receipt
+  retention. Slow object hashing therefore cannot expire an otherwise healthy
+  worker and force a duplicate attempt.
 - Add production resolver and prepare-only builder adapters, then wire the
   worker into CLI, runtime, Web, MCP, and default routes. The existing BM25 and
   vector compiler-cache ingress adapters intentionally remain explicit

@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import islice
 from typing import Any
@@ -245,13 +245,16 @@ def publish_job_artifacts(
     fencing_token: int,
     outputs: Sequence[IndexJobViewArtifact],
     _retention_cleanup_as_integrity: bool = False,
+    _before_catalog_publish: Callable[[], None] | None = None,
 ) -> IndexJobRecord:
     """Retain exact receipts while the catalog atomically publishes them.
 
     No catalog read occurs before the object store has revalidated and retained
     the complete receipt set. The retention callback encloses the catalog's
     ``BEGIN IMMEDIATE`` through commit/rollback and validates the returned
-    successful job before allowing the retention scope to end.
+    successful job before allowing the retention scope to end. The private
+    pre-publication hook, when supplied, runs inside that retention scope after
+    receipt verification and immediately before the catalog mutation.
     """
 
     normalized_job_id = _bounded_exact_text(job_id, "job ID", 80)
@@ -262,6 +265,8 @@ def publish_job_artifacts(
     # after an attested callback for catalog commit-response loss.
     if type(_retention_cleanup_as_integrity) is not bool:
         raise TypeError("retention cleanup policy must be an exact boolean")
+    if _before_catalog_publish is not None and not callable(_before_catalog_publish):
+        raise TypeError("pre-publication hook must be callable")
     _artifacts, frozen_outputs, retained_receipts = _preflight_job_artifacts(outputs)
 
     if not isinstance(object_store, ReceiptRetainingObjectStore):
@@ -296,6 +301,8 @@ def publish_job_artifacts(
             if callback_violation is None:
                 callback_violation = violation
             raise violation
+        if _before_catalog_publish is not None:
+            _before_catalog_publish()
         completed = catalog.publish_job_outputs(
             normalized_job_id,
             owner_id=normalized_owner,

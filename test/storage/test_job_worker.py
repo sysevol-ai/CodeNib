@@ -2248,7 +2248,120 @@ def test_interrupted_heartbeat_settle_finishes_cleanup_before_rethrow(
     assert caught.value is failure
     assert backend.completion_calls == []
     assert backend.publication_calls == []
+    # Publication now keeps renewing through receipt verification and settles
+    # the pump only inside the retained callback, before the catalog mutation.
+    assert len(store.retained) == 1
+    assert set(backend.sessions) == set(backend.closed_sessions)
+    assert not any(
+        thread.name.startswith("codenib-job-heartbeat-")
+        for thread in threading.enumerate()
+    )
+
+
+@pytest.mark.parametrize("failure_phase", ("settle", "final_heartbeat"))
+def test_prepublication_failure_is_not_reclassified_as_response_loss(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_phase: str,
+) -> None:
+    backend = _Backend()
+    job = backend.add_job(f"prepublication-{failure_phase}")
+    worker, store, _factory = _worker(backend, _default_resolver())
+    failure = RuntimeError(f"{failure_phase} failed before catalog publication")
+
+    def commit_takeover() -> None:
+        session_id = backend.main_session_id
+        assert session_id is not None
+        _FakeCatalog(backend, session_id)._commit_takeover(
+            job.job_id,
+            lease_duration_ms=300,
+        )
+
+    if failure_phase == "settle":
+        original_stop = job_worker_module._HeartbeatPump.stop_and_join
+        armed = True
+
+        def stop_then_fail(pump: object) -> None:
+            nonlocal armed
+            original_stop(pump)  # type: ignore[arg-type]
+            if armed:
+                armed = False
+                commit_takeover()
+                raise failure
+
+        monkeypatch.setattr(
+            job_worker_module._HeartbeatPump,
+            "stop_and_join",
+            stop_then_fail,
+        )
+    else:
+
+        def heartbeat_then_fail(*_args: object) -> None:
+            commit_takeover()
+            raise failure
+
+        monkeypatch.setattr(worker, "_final_heartbeat", heartbeat_then_fail)
+
+    with pytest.raises(RuntimeError) as caught:
+        worker.run_once()
+
+    assert caught.value is failure
+    assert len(store.retained) == 1
+    assert backend.publication_calls == []
+    assert backend.completions[(job.job_id, 1)].outcome is IndexJobCompletion.REQUEUE
+    assert backend.jobs[job.job_id].attempt_count == 2
+    assert set(backend.sessions) == set(backend.closed_sessions)
+    assert not any(
+        thread.name.startswith("codenib-job-heartbeat-")
+        for thread in threading.enumerate()
+    )
+
+
+def test_prepublication_terminal_does_not_hide_a_pending_heartbeat_fault(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = _Backend()
+    job = backend.add_job("prepublication-terminal-heartbeat-fault")
+    worker, store, _factory = _worker(backend, _default_resolver())
+    failure = RuntimeError("heartbeat failed while terminal state was reconciled")
+    original_reconcile = worker._reconcile_attempt
+    original_stop = job_worker_module._HeartbeatPump.stop_and_join
+    takeover_armed = True
+    fault_armed = True
+
+    def reconcile_after_takeover(*args: object, **kwargs: object):
+        nonlocal takeover_armed
+        if takeover_armed:
+            takeover_armed = False
+            session_id = backend.main_session_id
+            assert session_id is not None
+            _FakeCatalog(backend, session_id)._commit_takeover(
+                job.job_id,
+                lease_duration_ms=300,
+            )
+        return original_reconcile(*args, **kwargs)
+
+    def stop_then_fault(pump: object) -> None:
+        nonlocal fault_armed
+        original_stop(pump)  # type: ignore[arg-type]
+        if fault_armed:
+            fault_armed = False
+            pump.fault = failure  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(worker, "_reconcile_attempt", reconcile_after_takeover)
+    monkeypatch.setattr(
+        job_worker_module._HeartbeatPump,
+        "stop_and_join",
+        stop_then_fault,
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        worker.run_once()
+
+    assert caught.value is failure
     assert store.retained == []
+    assert backend.publication_calls == []
+    assert backend.completions[(job.job_id, 1)].outcome is IndexJobCompletion.REQUEUE
+    assert backend.jobs[job.job_id].attempt_count == 2
     assert set(backend.sessions) == set(backend.closed_sessions)
     assert not any(
         thread.name.startswith("codenib-job-heartbeat-")
@@ -3506,7 +3619,7 @@ def test_final_heartbeat_cancellation_wins_over_publishable_result() -> None:
     assert result.disposition is IndexJobWorkerDisposition.CANCELLED
     assert backend.completion_calls[-1]["outcome"] is IndexJobCompletion.CANCELLED
     assert backend.publication_calls == []
-    assert store.retained == []
+    assert len(store.retained) == 1
 
 
 def test_heartbeat_authority_conflict_stops_without_stale_closure() -> None:

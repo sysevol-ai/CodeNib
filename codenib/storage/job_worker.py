@@ -753,6 +753,14 @@ class _ClaimAuthorityLost(Exception):
         self.authority = authority
 
 
+class _PublicationAuthorityLost(Exception):
+    """Stop retained publication after its heartbeat authority was lost."""
+
+
+class _PublicationCancelRequested(Exception):
+    """Stop retained publication after observing durable cancellation."""
+
+
 class _AttemptCausalEvidence:
     """Thread-safe causal frontier and exact worker-observed event evidence."""
 
@@ -1660,6 +1668,7 @@ class IndexJobWorker:
         result: IndexJobExecutionResult | None = None
         failure_code: str | None = None
         phase_base_exception: BaseException | None = None
+        keep_heartbeat_for_publication = False
         try:
             pump.start()
             if not stop_state.is_set():
@@ -1739,11 +1748,81 @@ class IndexJobWorker:
             except BaseException as exc:  # noqa: B036 - preserve first failure
                 if phase_base_exception is None:
                     phase_base_exception = exc
-            try:
+            keep_heartbeat_for_publication = (
+                phase_base_exception is None
+                and control.fault is None
+                and pump.fault is None
+                and not stop_state.is_set()
+                and failure_code is None
+                and result is not None
+                and result.publishable
+            )
+            if not keep_heartbeat_for_publication:
+                try:
+                    pump.stop_and_join()
+                except BaseException as exc:  # noqa: B036 - preserve first failure
+                    if phase_base_exception is None:
+                        phase_base_exception = exc
+
+        if keep_heartbeat_for_publication:
+            heartbeat_settled = False
+
+            def settle_heartbeat() -> None:
+                nonlocal heartbeat_settled
                 pump.stop_and_join()
-            except BaseException as exc:  # noqa: B036 - preserve first failure
-                if phase_base_exception is None:
-                    phase_base_exception = exc
+                heartbeat_settled = True
+                if pump.fault is not None:
+                    raise pump.fault
+
+            def before_catalog_publish() -> None:
+                settle_heartbeat()
+                if stop_state.reason is IndexJobStopReason.AUTHORITY_LOST:
+                    raise _PublicationAuthorityLost
+                if stop_state.reason is IndexJobStopReason.CANCEL_REQUESTED:
+                    raise _PublicationCancelRequested
+                heartbeat = self._final_heartbeat(
+                    catalog,
+                    authority,
+                    causal_evidence,
+                )
+                if heartbeat is None:
+                    raise _PublicationAuthorityLost
+                if heartbeat.cancel_requested:
+                    raise _PublicationCancelRequested
+
+            publication_failure: BaseException | None = None
+            try:
+                terminal = self._reconcile_attempt(
+                    catalog,
+                    authority,
+                    causal_floor_ms=causal_evidence.causal_floor_ms,
+                )
+                if terminal is not None:
+                    settle_heartbeat()
+                    return terminal
+                return self._publish_result(
+                    catalog,
+                    job,
+                    authority,
+                    result,
+                    causal_evidence,
+                    before_catalog_publish=before_catalog_publish,
+                )
+            except BaseException as exc:  # noqa: B036 - settle before rethrow
+                publication_failure = exc
+                raise
+            finally:
+                if not heartbeat_settled:
+                    try:
+                        pump.stop_and_join()
+                    except BaseException as cleanup_exc:  # noqa: B036
+                        if publication_failure is None:
+                            raise
+                        _add_secondary_exception_note(
+                            publication_failure,
+                            cleanup_exc,
+                            "heartbeat cleanup also failed",
+                        )
 
         if phase_base_exception is not None:
             raise phase_base_exception
@@ -2446,10 +2525,22 @@ class IndexJobWorker:
         authority: _AttemptAuthority,
         result: IndexJobExecutionResult,
         causal_evidence: _AttemptCausalEvidence,
+        *,
+        before_catalog_publish: Callable[[], None] | None = None,
     ) -> IndexJobWorkerRunResult:
         _artifacts, expected_outputs, _receipts = _preflight_job_artifacts(
             result.artifacts
         )
+        pre_catalog_failure: BaseException | None = None
+
+        def run_before_catalog_publish() -> None:
+            nonlocal pre_catalog_failure
+            try:
+                assert before_catalog_publish is not None
+                before_catalog_publish()
+            except BaseException as exc:  # noqa: B036 - exact rethrow below
+                pre_catalog_failure = exc
+                raise
 
         def reconcile_conflict() -> IndexJobWorkerRunResult | None:
             causal_floor_ms = causal_evidence.causal_floor_ms
@@ -2461,7 +2552,6 @@ class IndexJobWorker:
                 allow_competing_non_success=True,
             )
 
-        causal_floor_ms = causal_evidence.causal_floor_ms
         try:
             completed = publish_job_artifacts(
                 authority.job_id,
@@ -2471,10 +2561,33 @@ class IndexJobWorker:
                 fencing_token=authority.fencing_token,
                 outputs=result.artifacts,
                 _retention_cleanup_as_integrity=True,
+                _before_catalog_publish=(
+                    run_before_catalog_publish
+                    if before_catalog_publish is not None
+                    else None
+                ),
+            )
+        except _PublicationCancelRequested:
+            return self._complete_attempt(
+                catalog,
+                authority,
+                outcome=IndexJobCompletion.CANCELLED,
+                error_code=None,
+                error_message=None,
+                causal_evidence=causal_evidence,
+            )
+        except _PublicationAuthorityLost:
+            terminal = reconcile_conflict()
+            return terminal or self._run_result(
+                IndexJobWorkerDisposition.LOST_AUTHORITY,
+                authority,
             )
         except Exception as exc:
+            if exc is pre_catalog_failure:
+                raise
             if isinstance(exc, StorageIntegrityError):
                 raise
+            causal_floor_ms = causal_evidence.causal_floor_ms
             if isinstance(exc, PublishConflict):
                 terminal = reconcile_conflict()
             else:
@@ -2517,6 +2630,7 @@ class IndexJobWorker:
                 error_message=None,
                 causal_evidence=causal_evidence,
             )
+        causal_floor_ms = causal_evidence.causal_floor_ms
         completed = _attest_job_identity(completed, authority)
         _attest_completed_publication(
             completed,

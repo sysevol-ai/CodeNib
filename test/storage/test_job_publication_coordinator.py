@@ -354,6 +354,10 @@ def test_retention_encloses_catalog_transaction_and_return_attestation() -> None
     store = _RetainingOnlyStore(events)
     catalog = _CatalogSpy(completed, store, events)
 
+    def before_catalog_publish() -> None:
+        assert store.active
+        events.append("pre-catalog-hook")
+
     result = publish_job_artifacts(
         completed.job_id,
         catalog=catalog,  # type: ignore[arg-type]
@@ -361,11 +365,13 @@ def test_retention_encloses_catalog_transaction_and_return_attestation() -> None
         owner_id="worker-1",
         fencing_token=7,
         outputs=outputs,
+        _before_catalog_publish=before_catalog_publish,
     )
 
     assert result == completed
     assert events == [
         "retain-enter",
+        "pre-catalog-hook",
         "catalog-enter",
         "catalog-return",
         "callback-returned",
@@ -375,6 +381,35 @@ def test_retention_encloses_catalog_transaction_and_return_attestation() -> None
     assert tuple(output.view_type for output in catalog.outputs) == ("bm25",)
     assert isinstance(store, ReceiptRetainingObjectStore)
     assert not isinstance(store, StreamingObjectStore)
+
+
+def test_prepublication_hook_failure_is_exact_and_skips_the_catalog() -> None:
+    outputs = (_artifact("bm25", "1", b"primary"),)
+    completed = _completed_job(outputs)
+    events: list[object] = []
+    store = _RetainingOnlyStore(events)
+    catalog = _CatalogSpy(completed, store, events)
+    failure = RuntimeError("pre-catalog hook failed")
+
+    def fail_before_catalog_publish() -> None:
+        assert store.active
+        events.append("pre-catalog-hook")
+        raise failure
+
+    with pytest.raises(RuntimeError) as caught:
+        publish_job_artifacts(
+            completed.job_id,
+            catalog=catalog,  # type: ignore[arg-type]
+            object_store=store,
+            owner_id="worker-1",
+            fencing_token=7,
+            outputs=outputs,
+            _before_catalog_publish=fail_before_catalog_publish,
+        )
+
+    assert caught.value is failure
+    assert events == ["retain-enter", "pre-catalog-hook", "retain-exit"]
+    assert catalog.calls == 0
 
 
 def test_receipts_are_frozen_sorted_and_deduplicated_before_retention() -> None:

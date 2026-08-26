@@ -60,6 +60,9 @@ class _CatalogProbe:
         self.publication_calls = 0
         self.lose_publication_response = lose_publication_response
         self.publication_response_lost = False
+        self.retention_heartbeat_ready = threading.Event()
+        self._retention_heartbeat_after_count: int | None = None
+        self._retention_lease_expiry_target: int | None = None
 
     def record_session(self, catalog: SQLiteCatalog) -> None:
         with self.lock:
@@ -82,6 +85,19 @@ class _CatalogProbe:
             self.heartbeats.append((threading.get_ident(), id(catalog), heartbeat))
             if len(self.heartbeats) >= self.heartbeat_target:
                 self.heartbeat_ready.set()
+            if (
+                self._retention_heartbeat_after_count is not None
+                and len(self.heartbeats) > self._retention_heartbeat_after_count
+                and heartbeat.lease.lease_expires_at_ms  # type: ignore[attr-defined]
+                >= self._retention_lease_expiry_target
+            ):
+                self.retention_heartbeat_ready.set()
+
+    def arm_retention_heartbeat(self, lease_expiry_target: int) -> None:
+        with self.lock:
+            self._retention_heartbeat_after_count = len(self.heartbeats)
+            self._retention_lease_expiry_target = lease_expiry_target
+            self.retention_heartbeat_ready.clear()
 
     def begin_publication(self) -> None:
         with self.lock:
@@ -177,6 +193,22 @@ class _CleanupFailingCAS(_TrackingCAS):
         super().retain_receipts(expected, callback)
         self.callback_completed = True
         raise self.failure
+
+
+class _BlockingRetainingCAS(_TrackingCAS):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.retention_entered = threading.Event()
+        self.release_retention = threading.Event()
+
+    def retain_receipts(
+        self,
+        expected: tuple[BlobInfo, ...],
+        callback: Callable[[], Any],
+    ) -> Any:
+        self.retention_entered.set()
+        assert self.release_retention.wait(timeout=30)
+        return super().retain_receipts(expected, callback)
 
 
 class _StaticResolver:
@@ -340,13 +372,14 @@ def _worker(
     resolver: _StaticResolver,
     *,
     owner_id: str,
+    lease_duration_ms: int = 60_000,
     heartbeat_interval_ms: int = 5,
 ) -> IndexJobWorker:
     return IndexJobWorker(
         catalog_factory=factory,
         object_store=object_store,
         resolver=resolver,
-        lease_duration_ms=60_000,
+        lease_duration_ms=lease_duration_ms,
         heartbeat_interval_ms=heartbeat_interval_ms,
         owner_id_factory=lambda: owner_id,
     )
@@ -433,6 +466,77 @@ def test_slow_executor_observes_repeated_independent_heartbeats(
         assert first_session == second_session
         assert first.lease.lease_expires_at_ms < second.lease.lease_expires_at_ms
         assert len({session for _thread, session in probe.sessions}) >= 2
+
+
+def test_receipt_verification_keeps_publication_heartbeat_authority_live(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "retained-heartbeat.sqlite3"
+    clock = {"ms": 1_000}
+    job, _profiles = _create_job(
+        path,
+        view_types=("bm25",),
+        clock=clock,
+    )
+    probe = _CatalogProbe()
+    factory = _SQLiteSessionFactory(path, probe, clock=clock)
+    with _BlockingRetainingCAS(tmp_path / "cas") as object_store:
+        executor = _SuccessfulExecutor(object_store)
+        resolver = _StaticResolver(executor)
+        first = _worker(
+            factory,
+            object_store,
+            resolver,
+            owner_id="retained-heartbeat-a",
+            lease_duration_ms=30,
+            heartbeat_interval_ms=1,
+        )
+        contender = _worker(
+            factory,
+            object_store,
+            resolver,
+            owner_id="retained-heartbeat-b",
+            lease_duration_ms=30,
+            heartbeat_interval_ms=1,
+        )
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            first_future = pool.submit(first.run_once)
+            try:
+                assert object_store.retention_entered.wait(timeout=30)
+                initial_expiry = executor.contexts[0].lease.lease_expires_at_ms
+                probe.arm_retention_heartbeat(initial_expiry + 100)
+                assert probe.retention_heartbeat_ready.wait(timeout=30)
+
+                # The original claim is now expired under the catalog clock,
+                # while heartbeats observed during receipt retention extended
+                # the active lease beyond this point.
+                clock["ms"] = initial_expiry + 50
+                assert contender.run_once() == IndexJobWorkerRunResult.idle()
+            finally:
+                object_store.release_retention.set()
+            result = first_future.result(timeout=30)
+
+        assert result == IndexJobWorkerRunResult(
+            IndexJobWorkerDisposition.SUCCEEDED,
+            job.job_id,
+            1,
+        )
+        assert executor.calls == 1
+        assert resolver.calls == 1
+        assert len(object_store.retained_calls) == 1
+        assert probe.publication_calls == 1
+        with SQLiteCatalog(path, create=False) as catalog:
+            _install_clock(catalog, clock)
+            completed = catalog.get_job(job.job_id)
+            assert completed.status is IndexJobStatus.SUCCEEDED
+            assert completed.attempt_count == 1
+            assert catalog.list_job_attempt_completions(job.job_id) == ()
+            assert tuple(
+                event.attempt_count for event in catalog.list_job_events(job.job_id)
+            ) == (1,)
+            resolved = catalog.resolve_ref(job.repository_id)
+            assert resolved["generation"] == 1
+            assert resolved["manifest"]["views"]["bm25"]["metadata"] == {"attempt": 1}
 
 
 def test_running_cancel_is_observed_and_closes_only_cancelled(
