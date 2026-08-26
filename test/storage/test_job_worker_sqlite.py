@@ -455,9 +455,10 @@ def test_running_cancel_is_observed_and_closes_only_cancelled(
         def observe_heartbeat_lock(lock) -> None:
             if (
                 lock is coordination.lock
-                and threading.get_ident() != main_thread
-                and copy_started.is_set()
+                and threading.current_thread().name.startswith("codenib-job-heartbeat-")
+                and executor.entered.is_set()
             ):
+                assert copy_started.wait(timeout=5)
                 heartbeat_attempted.set()
             original_lock_acquire(lock)
 
