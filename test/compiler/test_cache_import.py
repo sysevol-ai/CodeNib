@@ -23,6 +23,7 @@ import codenib.artifacts.portable_views as portable_views_module
 import codenib.artifacts.strict_vector as strict_vector_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
+import codenib.compiler.job_resources as job_resources_module
 import codenib.index.embedding.vector_store as vector_store_module
 from codenib import LocalWorkspaceProvider
 from codenib import cli as cli_module
@@ -67,6 +68,10 @@ from codenib.compiler.job_resolver import (
     CompilerCacheJobResolver,
     CompilerCacheJobResourceFactory,
     CompilerCacheJobResourceScope,
+)
+from codenib.compiler.job_resources import (
+    LocalCompilerCacheJobResourceFactory,
+    LocalCompilerCacheJobTarget,
 )
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.compiler.manifest_import import RepoManifestImportResult
@@ -791,6 +796,11 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         compiler_module.CompilerCacheJobResourceScope is CompilerCacheJobResourceScope
     )
     assert (
+        compiler_module.LocalCompilerCacheJobResourceFactory
+        is LocalCompilerCacheJobResourceFactory
+    )
+    assert compiler_module.LocalCompilerCacheJobTarget is LocalCompilerCacheJobTarget
+    assert (
         compiler_module.CompilerCacheJobPreparationResult
         is CompilerCacheJobPreparationResult
     )
@@ -1359,6 +1369,247 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
                 summary = catalog.get_manifest_summary(completed.result_snapshot_id)
                 assert tuple(summary["views"]) == ("bm25",)
                 assert summary["views"]["bm25"]["profile"]["profile_id"] == (profile_id)
+    finally:
+        fixture.close()
+
+
+def test_local_compiler_cache_job_target_is_frozen_and_bounded(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    environment = {"CODENIB_TEST_SETTING": "trusted"}
+    try:
+        target = LocalCompilerCacheJobTarget(
+            repository_root=fixture.repository,
+            cache_dir=fixture.cache,
+            workspace_provider=LocalWorkspaceProvider(fixture.workspace),
+            repository_key=_REPOSITORY_KEY,
+            environ=environment,
+        )
+        environment["CODENIB_TEST_SETTING"] = "changed"
+
+        assert target.repository_root == fixture.repository
+        assert target.cache_dir == fixture.cache
+        assert target.workspace_root == fixture.workspace
+        assert target.environ == {"CODENIB_TEST_SETTING": "trusted"}
+        assert isinstance(
+            LocalCompilerCacheJobResourceFactory((target,)),
+            CompilerCacheJobResourceFactory,
+        )
+        with pytest.raises(ValueError, match="duplicate repository IDs"):
+            LocalCompilerCacheJobResourceFactory((target, target))
+        with pytest.raises(ValueError, match="must not overlap the repository"):
+            LocalCompilerCacheJobTarget(
+                repository_root=fixture.repository,
+                cache_dir=fixture.cache,
+                workspace_provider=LocalWorkspaceProvider(
+                    fixture.repository / "job-workspace"
+                ),
+                repository_key=_REPOSITORY_KEY,
+            )
+    finally:
+        fixture.close()
+
+
+def test_local_compiler_cache_cleanup_owner_import_rejects_tuple_subclasses() -> None:
+    class HostileOwners(tuple):
+        def __iter__(self):
+            raise AssertionError("hostile cleanup owners iterated")
+
+    source = RuntimeError("source")
+    target = RuntimeError("target")
+    BaseException.__setattr__(
+        source,
+        "publication_cleanup_owners",
+        HostileOwners((object(),)),
+    )
+
+    job_resources_module._inherit_cleanup_owners(target, source)
+
+    with pytest.raises(AttributeError):
+        BaseException.__getattribute__(target, "publication_cleanup_owners")
+
+
+def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    publication_calls: list[str] = []
+    provider = LocalWorkspaceProvider(fixture.workspace)
+    try:
+        try:
+            provider.require_support()
+        except UnsupportedWorkspaceCreation as exc:
+            pytest.skip(str(exc))
+        with _JobTrackingCAS(tmp_path / "cas") as cas:
+            with SQLiteCatalog(catalog_path) as catalog:
+                (
+                    repository_id,
+                    source_revision_id,
+                    profile_id,
+                ) = _register_bm25_job_subject(catalog, fixture, plan)
+                queued = _create_bm25_job(
+                    catalog,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                )
+
+            target = LocalCompilerCacheJobTarget(
+                repository_root=fixture.repository,
+                cache_dir=fixture.cache,
+                workspace_provider=provider,
+                repository_key=_REPOSITORY_KEY,
+                environ={},
+            )
+            assert target.repository_id == repository_id
+            worker = IndexJobWorker(
+                catalog_factory=_CompilerCacheWorkerFactory(
+                    catalog_path,
+                    publication_calls,
+                ),
+                object_store=cas,
+                resolver=CompilerCacheJobResolver(
+                    resource_factory=LocalCompilerCacheJobResourceFactory((target,)),
+                    object_store=cas,
+                ),
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "local-compiler-cache-worker",
+            )
+
+            outcome = worker.run_once()
+
+            assert outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
+            assert outcome.job_id == queued.job_id
+            assert publication_calls == [queued.job_id]
+            assert len(cas.put_chunk_receipts) == 3
+            assert len(cas.retained_receipt_sets) == 1
+            assert not tuple(fixture.workspace.glob(".codenib-cache-job-*"))
+            orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
+            assert len(orphans) == 2
+            assert all(orphan.is_dir() for orphan in orphans)
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                completed = catalog.get_job(queued.job_id)
+                assert completed.status is IndexJobStatus.SUCCEEDED
+                assert completed.result_snapshot_id is not None
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize("executor_fails", (False, True))
+def test_local_compiler_cache_job_factory_retains_failed_cleanup_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    executor_fails: bool,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    publication_calls: list[str] = []
+    provider = LocalWorkspaceProvider(fixture.workspace)
+    real_discard = job_resources_module.discard_owned_directory
+    primary = StorageIntegrityError("primary local executor integrity failure")
+    try:
+        try:
+            provider.require_support()
+        except UnsupportedWorkspaceCreation as exc:
+            pytest.skip(str(exc))
+        with _JobTrackingCAS(tmp_path / "cas") as cas:
+            with SQLiteCatalog(catalog_path) as catalog:
+                (
+                    repository_id,
+                    source_revision_id,
+                    profile_id,
+                ) = _register_bm25_job_subject(catalog, fixture, plan)
+                queued = _create_bm25_job(
+                    catalog,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                )
+
+            target = LocalCompilerCacheJobTarget(
+                repository_root=fixture.repository,
+                cache_dir=fixture.cache,
+                workspace_provider=provider,
+                repository_key=_REPOSITORY_KEY,
+                environ={},
+            )
+
+            def fail_context_discard(path: Path, ownership: object):
+                if path.name.endswith("-context"):
+                    raise OSError("injected context isolation failure")
+                return real_discard(path, ownership)  # type: ignore[arg-type]
+
+            monkeypatch.setattr(
+                job_resources_module,
+                "discard_owned_directory",
+                fail_context_discard,
+            )
+            if executor_fails:
+
+                def fail_execute(
+                    _executor: CompilerCacheJobExecutor,
+                    _context,
+                ):
+                    raise primary
+
+                monkeypatch.setattr(
+                    CompilerCacheJobExecutor,
+                    "execute",
+                    fail_execute,
+                )
+            worker = IndexJobWorker(
+                catalog_factory=_CompilerCacheWorkerFactory(
+                    catalog_path,
+                    publication_calls,
+                ),
+                object_store=cas,
+                resolver=CompilerCacheJobResolver(
+                    resource_factory=LocalCompilerCacheJobResourceFactory((target,)),
+                    object_store=cas,
+                ),
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "cleanup-failure-worker",
+            )
+
+            if executor_fails:
+                with pytest.raises(StorageIntegrityError) as caught:
+                    worker.run_once()
+                assert caught.value is primary
+            else:
+                with pytest.raises(
+                    StorageIntegrityError,
+                    match="resource cleanup did not settle",
+                ) as caught:
+                    worker.run_once()
+
+            assert publication_calls == []
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                running = catalog.get_job(queued.job_id)
+                assert running.status is IndexJobStatus.RUNNING
+                assert running.result_snapshot_id is None
+            cleanup_owners = caught.value.publication_cleanup_owners
+            pending = tuple(
+                owner
+                for owner in cleanup_owners
+                if type(owner).__name__ == "_AttemptWorkspaceCleanupOwner"
+                and not owner.closed
+            )
+            assert len(pending) == 1
+            monkeypatch.setattr(
+                job_resources_module,
+                "discard_owned_directory",
+                real_discard,
+            )
+            pending[0].close()
+            assert pending[0].closed
+            assert not tuple(fixture.workspace.glob(".codenib-cache-job-*"))
+            assert len(tuple(fixture.workspace.glob(".*.discarded-*"))) == 2
     finally:
         fixture.close()
 

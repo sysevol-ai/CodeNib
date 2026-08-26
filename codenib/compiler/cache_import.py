@@ -1447,18 +1447,25 @@ def compiler_cache_source_selection(
     cache_dir: str | Path,
     *,
     max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> RepositorySourceSelection:
     """Return the exact source selection recorded by one compiler cache.
 
     The CLI needs this identity axis before it captures the retained repository
     source.  The import coordinator authenticates the same manifest again under
     its longer-lived cache lock, so a manifest replacement between these two
-    reads can only make the later import fail closed.
+    reads can only make the later import fail closed. A cooperative caller may
+    supply ``check_cancelled`` to interrupt contention for the short manifest
+    lock before source capture begins.
     """
 
     cache = lexical_directory_path(Path(cache_dir))
     bounded_limit = _manifest_limit(max_manifest_bytes)
-    with compiler_cache_lock(cache, create=False):
+    with compiler_cache_lock(
+        cache,
+        create=False,
+        check_cancelled=check_cancelled,
+    ):
         manifest = _parse_exact_manifest(
             _read_manifest(cache, max_manifest_bytes=bounded_limit),
             max_manifest_bytes=bounded_limit,

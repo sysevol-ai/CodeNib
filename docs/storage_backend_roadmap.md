@@ -1243,10 +1243,24 @@ receipt-retaining object-store instance supplied to the enclosing worker, and
 enters a caller-provided context manager for fresh source and workspace
 authorities. The scope exits on success and every executor failure; a factory
 that returns an executor attached to a different object store fails as an
-integrity error before cache, workspace, or CAS work. This is the lifecycle
-boundary for a production resolver, not the production binding itself: no
-trusted repository registry, local resource factory, source builder, or worker
-entry point is wired yet.
+integrity error before cache, workspace, or CAS work. This seam remains the
+lifecycle boundary rather than a path-discovery capability; the local binding
+below must receive its trusted targets explicitly.
+
+The first trusted local resource factory now implements that resolver seam for
+an explicit, caller-authorized target set. Each target freezes one canonical
+namespace/repository identity, repository root, existing compiler cache, private
+local workspace provider, and environment snapshot; durable repository IDs are
+looked up only in that set and never interpreted as paths. Every attempt gets a
+fresh retained source binding, receipt owners, and nonce destinations. Scope
+exit closes all authorities and atomically isolates each exact owned output for
+later quiescent GC instead of recursively deleting by path; an incomplete
+cleanup is promoted to a storage-integrity failure with a retryable owner. The
+factory rechecks cooperative stop state around cache selection and source
+capture and fails before workspace/CAS work when the current source revision no
+longer matches the job. This is still caller-supplied local configuration: no
+CLI/runtime target registry, cache-building adapter, scheduler, or default route
+uses it yet.
 
 ### M2: Immutable generation publication
 
@@ -1278,9 +1292,10 @@ local SQLite catalog. The backend-neutral prepare-only whole-job worker is
 implemented and verified with file-backed SQLite integration coverage. An
 explicit one-view compiler-cache executor now supplies parser-inert BM25 or
 schema-8 vector artifacts without catalog authority. Its resource-scoped
-resolver seam guarantees attempt-local cleanup and same-store binding, while
-the concrete production repository/resource resolver, source builders, and
-CLI, runtime, Web, MCP, and default wiring remain absent.
+resolver and trusted local target factory guarantee attempt-local cleanup,
+same-store binding, and exact configured repository/source identity, while
+source builders, production target configuration, and CLI, runtime, Web, MCP,
+and default wiring remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1316,11 +1331,11 @@ CLI, runtime, Web, MCP, and default wiring remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- Add production resolver and prepare-only source-builder adapters, then wire
-  the worker into CLI, runtime, Web, MCP, and default routes. The explicit
-  compiler-cache executor may recapture an already-current single BM25 or
-  vector cache view under the worker, while the older self-publishing ingress
-  APIs remain compatibility paths and are never nested inside the worker.
+- Add production target configuration and prepare-only source-builder adapters,
+  then wire the worker into CLI, runtime, Web, MCP, and default routes. The
+  trusted local factory can recapture an already-current single BM25 or vector
+  cache view under the worker, while the older self-publishing ingress APIs
+  remain compatibility paths and are never nested inside the worker.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
 - Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight
