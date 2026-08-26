@@ -675,6 +675,11 @@ class RepoRegistry:
         # every drain and close serialized so shutdown cannot return while a
         # different thread is still closing an unleased generation or owner.
         self._cleanup_lock = RLock()
+        # A request that releases its generation while a reload owns the
+        # cleanup boundary must not wait for a potentially slow candidate
+        # build. Exact operation tokens make that deferral cancellation-safe;
+        # the outermost reload drops its token before one final drain.
+        self._reload_preparations: set[object] = set()
         self._closed = False
         # Serialize registry-file snapshots through publication and removal
         # reconciliation. Without this boundary, an older load_all() could
@@ -686,6 +691,52 @@ class RepoRegistry:
         self._embeddings: Dict[Tuple[str, str, int, Optional[str], str], object] = {}
         self._embedding_load_lock = RLock()
 
+    @contextmanager
+    def _reload_preparation_boundary(self) -> Iterator[None]:
+        """Serialize a reload and settle leases deferred during its build."""
+
+        token = object()
+        primary: BaseException | None = None
+        cleanup_failure: BaseException | None = None
+        with self._cleanup_lock, self._registry_reload_lock:
+            try:
+                with self._generation_lock:
+                    self._reload_preparations.add(token)
+                try:
+                    yield
+                except BaseException as exc:  # noqa: B036 - settle boundary first
+                    primary = exc
+            finally:
+                final_drain = False
+                try:
+                    try:
+                        with self._generation_lock:
+                            self._reload_preparations.discard(token)
+                    finally:
+                        # A trace/signal exception after the first discard
+                        # cannot leave every future lease release deferred.
+                        with self._generation_lock:
+                            self._reload_preparations.discard(token)
+                            final_drain = not self._reload_preparations
+                    if final_drain:
+                        cleanup_failure = self._drain_retired()
+                except BaseException as exc:  # noqa: B036 - preserve body failure
+                    cleanup_failure = _retain_cleanup_failure(
+                        cleanup_failure,
+                        exc,
+                    )
+        if primary is not None:
+            if cleanup_failure is not None:
+                _raise_with_cleanup_failure(primary, cleanup_failure)
+            raise primary
+        if cleanup_failure is not None:
+            if not issubclass(type(cleanup_failure), Exception):
+                raise cleanup_failure
+            _log_cleanup_failure(
+                "Deferred repository cleanup remains pending: %s",
+                cleanup_failure,
+            )
+
     def load_all(self) -> None:
         """Load registry metadata, atomically replacing matching generations.
 
@@ -695,7 +746,7 @@ class RepoRegistry:
         while active repositories absent from the complete snapshot are retired.
         """
 
-        with self._cleanup_lock, self._registry_reload_lock:
+        with self._reload_preparation_boundary():
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
@@ -766,16 +817,20 @@ class RepoRegistry:
         unleased bundle that another concurrent refresh could retire.
         """
 
-        with self._cleanup_lock, self._registry_reload_lock:
+        with self._reload_preparation_boundary():
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
             repo_id = _plain_repo_instance_id(repo_id)
-            entries = [
-                entry
-                for entry in load_registry(self._config.registry_path)
-                if _plain_repo_instance_id(entry.instance_id) == repo_id
-            ]
+            entries = []
+            for entry in load_registry(self._config.registry_path):
+                try:
+                    instance_id = _plain_repo_instance_id(entry.instance_id)
+                except ValueError as exc:
+                    logger.error("Skipping malformed repository entry: %s", exc)
+                    continue
+                if instance_id == repo_id:
+                    entries.append(entry)
             if len(entries) != 1:
                 raise ValueError(
                     "repository registry must contain exactly one entry for "
@@ -976,7 +1031,7 @@ class RepoRegistry:
     def _load_repo_metadata(self, entry: RepoEntry) -> RepoBundle:
         """Legacy metadata loader used by offline callers and focused tests."""
 
-        with self._cleanup_lock, self._registry_reload_lock:
+        with self._reload_preparation_boundary():
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
@@ -2050,6 +2105,16 @@ class RepoRegistry:
 
     def _release_bundle_lease(self, lease_token: object) -> None:
         self._drop_bundle_lease(lease_token)
+        with self._generation_lock:
+            closed = self._closed
+            preparing = bool(self._reload_preparations)
+        if not closed and preparing:
+            # The outermost reload performs a final drain after dropping its
+            # operation token. The lease itself is already gone, so this
+            # request need not wait for model/index candidate preparation.
+            return
+        # Shutdown and ordinary non-reload cleanup retain the blocking
+        # settlement contract: no other owner is responsible for a final drain.
         failure = self._drain_retired()
         if failure is not None:
             if not issubclass(type(failure), Exception):

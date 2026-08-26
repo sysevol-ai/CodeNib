@@ -1076,7 +1076,8 @@ def test_registry_vector_close_settles_before_opcode_interruption():
     call_index = next(
         index
         for index in range(close_index + 1, len(instructions))
-        if "CALL" in instructions[index].opname
+        if instructions[index].opname != "PRECALL"
+        and "CALL" in instructions[index].opname
     )
     interrupt_offset = instructions[call_index + 1].offset
     triggered = False
@@ -2290,6 +2291,105 @@ def test_registry_refresh_publishes_without_escaping_unleased_bundle(
         assert pinned is candidate
     assert owner.closed is False
 
+    registry.close()
+    assert owner.closed is True
+
+
+def test_registry_pin_release_does_not_wait_for_refresh_candidate_build(
+    tmp_path,
+    monkeypatch,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    build_started = Event()
+    release_build = Event()
+    lease_released = Event()
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    old_owner = Owner()
+    candidate_owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    def build(_entry):
+        build_started.set()
+        assert release_build.wait(5)
+        return _OwnedRepoBundle(candidate, None, candidate_owner)
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+    pinned = registry.pin("repo")
+    assert pinned.__enter__() is old
+
+    def release_pin():
+        pinned.__exit__(None, None, None)
+        lease_released.set()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        refresh_future = pool.submit(registry.refresh, "repo")
+        assert build_started.wait(5)
+        release_future = pool.submit(release_pin)
+        assert lease_released.wait(1)
+        assert old_owner.closed is False
+        release_build.set()
+        release_future.result(timeout=5)
+        refresh_future.result(timeout=5)
+
+    assert registry.get("repo") is candidate
+    assert old_owner.closed is True
+    assert registry.retired_generation_count == 0
+    registry.close()
+    assert candidate_owner.closed is True
+
+
+def test_registry_refresh_skips_malformed_unrelated_entry(tmp_path, monkeypatch):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    malformed = _repo_entry(tmp_path, manifest_path, instance_id="")
+    target = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [malformed, target],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda entry: (
+            _OwnedRepoBundle(candidate, None, owner)
+            if entry is target
+            else pytest.fail("malformed unrelated entry reached the builder")
+        ),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    registry.refresh("repo")
+
+    assert registry.get("repo") is candidate
     registry.close()
     assert owner.closed is True
 
