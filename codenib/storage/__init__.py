@@ -5,6 +5,12 @@
 """Transactional catalog and immutable artifact storage contracts."""
 
 from .cas import BlobInfo, LocalCAS
+from .job_scheduler import (
+    IndexJobPageWorker,
+    IndexJobSchedulerRunSummary,
+    IndexJobSchedulerStopSignal,
+    IndexJobWorkerScheduler,
+)
 from .job_worker import (
     IndexJobCatalogSessionFactory,
     IndexJobExecutionContext,
@@ -18,6 +24,7 @@ from .job_worker import (
     IndexJobViewExecutionResult,
     IndexJobWorker,
     IndexJobWorkerDisposition,
+    IndexJobWorkerPageResult,
     IndexJobWorkerRunResult,
 )
 from .models import (
@@ -156,11 +163,14 @@ __all__ = [
     "IndexJobEventKind",
     "IndexJobEventRecord",
     "IndexJobObjectArtifact",
+    "IndexJobPageWorker",
     "IndexJobRecord",
     "IndexJobRequest",
     "IndexJobRequestedMode",
     "IndexJobRunnableCursor",
     "IndexJobRunnablePage",
+    "IndexJobSchedulerRunSummary",
+    "IndexJobSchedulerStopSignal",
     "IndexJobStatus",
     "IndexJobStopReason",
     "IndexJobStopToken",
@@ -170,8 +180,10 @@ __all__ = [
     "IndexJobViewOutput",
     "IndexJobViewRecord",
     "IndexJobWorkerDisposition",
+    "IndexJobWorkerPageResult",
     "IndexJobWorkerRunResult",
     "IndexJobWorker",
+    "IndexJobWorkerScheduler",
     "JobCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",
