@@ -552,6 +552,17 @@ def _raise_with_cleanup_failure(
     raise primary from cleanup_failure
 
 
+def _plain_repo_instance_id(value: Any) -> str:
+    """Detach a registry key from caller-defined string subclass methods."""
+
+    if not isinstance(value, str):
+        raise ValueError("repository instance_id must be non-empty text")
+    instance_id = str.__str__(value)
+    if not instance_id:
+        raise ValueError("repository instance_id must be non-empty text")
+    return instance_id
+
+
 def _log_cleanup_failure(message: str, failure: BaseException) -> None:
     """Report retryable cleanup without invoking hostile exception accessors."""
 
@@ -650,7 +661,11 @@ class RepoRegistry:
                 )
             seen: set[str] = set()
             for entry in entries:
-                instance_id = entry.instance_id
+                try:
+                    instance_id = _plain_repo_instance_id(entry.instance_id)
+                except ValueError as exc:
+                    logger.error("Failed to load repository entry: %s", exc)
+                    continue
                 if instance_id in seen:
                     logger.error("Skipping duplicate repository id %r", instance_id)
                     continue
@@ -692,6 +707,7 @@ class RepoRegistry:
         unleased bundle that another concurrent refresh could retire.
         """
 
+        repo_id = _plain_repo_instance_id(repo_id)
         with self._registry_reload_lock:
             with self._generation_lock:
                 if self._closed:
@@ -699,7 +715,7 @@ class RepoRegistry:
             entries = [
                 entry
                 for entry in load_registry(self._config.registry_path)
-                if entry.instance_id == repo_id
+                if _plain_repo_instance_id(entry.instance_id) == repo_id
             ]
             if len(entries) != 1:
                 raise ValueError(
@@ -761,22 +777,23 @@ class RepoRegistry:
         *,
         prepare_runtime: bool,
     ) -> RepoBundle:
+        instance_id = _plain_repo_instance_id(entry.instance_id)
         try:
             owned = self._build_repo_metadata(entry)
         except BaseException as primary:  # noqa: B036 - retain retry owner
-            self._retain_exception_cleanup(entry.instance_id, primary)
+            self._retain_exception_cleanup(instance_id, primary)
             raise
         try:
             if prepare_runtime:
                 self._prepare_runtime_bundle(owned.bundle)
-            self._publish_owned(entry.instance_id, owned)
+            self._publish_owned(instance_id, owned)
             return owned.bundle
         except BaseException as primary:  # noqa: B036 - retain candidate owner
             # Cancellation may land immediately after the atomic publication.
             # Inspect identity under the same lock instead of relying on a
             # caller-side flag whose next bytecode may never run.
             with self._generation_lock:
-                published = self._bundles.get(entry.instance_id) is owned.bundle
+                published = self._bundles.get(instance_id) is owned.bundle
             if not published:
                 cleanup_failure = self._retire_unpublished(owned)
                 if cleanup_failure is not None:
@@ -810,9 +827,7 @@ class RepoRegistry:
             require_manifest_source_identity,
         )
 
-        instance_id = entry.instance_id
-        if not isinstance(instance_id, str) or not instance_id:
-            raise ValueError("repository instance_id must be non-empty text")
+        _plain_repo_instance_id(entry.instance_id)
 
         manifest = RepoManifest.load(entry.manifest_path)
         cleanup_owner = SourceBindingCleanupOwner()
@@ -869,16 +884,17 @@ class RepoRegistry:
             with self._generation_lock:
                 if self._closed:
                     raise RuntimeError("repository registry is closed")
-            instance_id = entry.instance_id
-            if not isinstance(instance_id, str) or not instance_id:
-                raise ValueError("repository instance_id must be non-empty text")
+            instance_id = _plain_repo_instance_id(entry.instance_id)
             try:
                 owned = self._build_repo_metadata(entry)
             except BaseException as primary:  # noqa: B036 - preserve retry owner
                 self._retain_exception_cleanup(instance_id, primary)
                 raise
             with self._generation_lock:
-                if (
+                closed = self._closed
+                if closed:
+                    duplicate = False
+                elif (
                     instance_id in self._source_bindings
                     or instance_id in self._source_cleanup_owners
                 ):
@@ -889,6 +905,12 @@ class RepoRegistry:
                     self._source_cleanup_owners[instance_id] = (
                         owned.source_cleanup_owner
                     )
+            if closed:
+                cleanup_failure = self._retire_unpublished(owned)
+                error = RuntimeError("repository registry is closed")
+                if cleanup_failure is not None:
+                    _raise_with_cleanup_failure(error, cleanup_failure)
+                raise error
             if duplicate:
                 cleanup_failure = self._retire_unpublished(owned)
                 error = ValueError(f"duplicate repository instance_id: {instance_id!r}")
@@ -941,6 +963,7 @@ class RepoRegistry:
                 )
 
     def _publish_owned(self, instance_id: str, owned: _OwnedRepoBundle) -> None:
+        instance_id = _plain_repo_instance_id(instance_id)
         with self._generation_lock:
             if self._closed:
                 raise RuntimeError("repository registry is closed")
@@ -1507,6 +1530,7 @@ class RepoRegistry:
     def pin(self, repo_id: str) -> Iterator[Optional[RepoBundle]]:
         """Pin the current generation for the complete caller operation."""
 
+        repo_id = _plain_repo_instance_id(repo_id)
         with self._generation_lock:
             if self._closed:
                 raise RuntimeError("repository registry is closed")
@@ -1563,6 +1587,7 @@ class RepoRegistry:
     def get(self, repo_id: str) -> Optional[RepoBundle]:
         """Return a non-owning snapshot for offline, non-reloading callers."""
 
+        repo_id = _plain_repo_instance_id(repo_id)
         with self._generation_lock:
             return self._bundles.get(repo_id)
 

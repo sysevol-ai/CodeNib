@@ -68,6 +68,31 @@ def _repo_entry(repo, manifest_path, *, instance_id="owner__repo-1"):
     )
 
 
+def _hostile_registry_id(registry, touched):
+    class HostileId(str):
+        def __hash__(self):
+            touched.append("hash")
+            registry.close()
+            return str.__hash__(self)
+
+        def __eq__(self, other):
+            touched.append("eq")
+            registry.close()
+            return str.__eq__(self, other)
+
+        def __str__(self):
+            touched.append("str")
+            registry.close()
+            return str.__str__(self)
+
+        def __bool__(self):
+            touched.append("bool")
+            registry.close()
+            return True
+
+    return HostileId("repo")
+
+
 def _legacy_view_manifest(
     index_type,
     path,
@@ -393,6 +418,35 @@ def test_registry_load_all_prepares_only_live_replacements(tmp_path, monkeypatch
     assert old_owner.closed is True
 
 
+def test_registry_load_all_detaches_hostile_entry_key(tmp_path, monkeypatch):
+    touched = []
+    registry = RepoRegistry(QAConfig())
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(
+        tmp_path,
+        manifest_path,
+        instance_id=_hostile_registry_id(registry, touched),
+    )
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, None),
+    )
+
+    registry.load_all()
+
+    assert touched == []
+    assert registry._closed is False
+    assert registry.get("repo") is candidate
+    registry.close()
+
+
 def test_registry_close_waits_for_inflight_candidate_build(tmp_path, monkeypatch):
     manifest_path = tmp_path / "repo_manifest.json"
     manifest_path.write_text("{}", encoding="utf-8")
@@ -497,6 +551,80 @@ def test_registry_close_waits_for_legacy_metadata_build(monkeypatch):
 
     assert owner.close_calls == 1
     assert registry._source_cleanup_owners == {}
+
+
+def test_registry_legacy_metadata_rejects_reentrant_close(monkeypatch):
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+
+    def build(_entry):
+        registry.close()
+        return _OwnedRepoBundle(candidate, None, owner)
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+
+    with pytest.raises(RuntimeError, match="repository registry is closed"):
+        registry._load_repo_metadata(SimpleNamespace(instance_id="repo"))
+
+    assert owner.close_calls == 1
+    assert registry._source_bindings == {}
+    assert registry._source_cleanup_owners == {}
+    assert registry._retired_bundles == {}
+
+
+def test_registry_legacy_metadata_detaches_hostile_string_key(monkeypatch):
+    hash_calls = 0
+
+    class ReentrantId(str):
+        def __hash__(self):
+            nonlocal hash_calls
+            hash_calls += 1
+            registry.close()
+            return str.__hash__(self)
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, owner),
+    )
+
+    result = registry._load_repo_metadata(
+        SimpleNamespace(instance_id=ReentrantId("repo"))
+    )
+
+    assert result is candidate
+    assert hash_calls == 0
+    assert registry._closed is False
+    assert registry._source_cleanup_owners == {"repo": owner}
+
+    registry.close()
+    assert owner.close_calls == 1
 
 
 def test_registry_concurrent_close_closes_owner_once():
@@ -1064,6 +1192,22 @@ def test_registry_swap_keeps_pinned_generation_alive_until_release():
     registry.close()
 
 
+def test_registry_queries_detach_hostile_lookup_key():
+    touched = []
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = bundle
+    key = _hostile_registry_id(registry, touched)
+
+    assert registry.get(key) is bundle
+    with registry.pin(key) as pinned:
+        assert pinned is bundle
+
+    assert touched == []
+    assert registry._closed is False
+    registry.close()
+
+
 def test_registry_refresh_publishes_without_escaping_unleased_bundle(
     tmp_path,
     monkeypatch,
@@ -1102,6 +1246,32 @@ def test_registry_refresh_publishes_without_escaping_unleased_bundle(
 
     registry.close()
     assert owner.closed is True
+
+
+def test_registry_refresh_detaches_hostile_lookup_key(tmp_path, monkeypatch):
+    touched = []
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: _OwnedRepoBundle(candidate, None, None),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    registry.refresh(_hostile_registry_id(registry, touched))
+
+    assert touched == []
+    assert registry._closed is False
+    assert registry.get("repo") is candidate
+    registry.close()
 
 
 def test_registry_failed_refresh_keeps_active_generation(tmp_path, monkeypatch):
