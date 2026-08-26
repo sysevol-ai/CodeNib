@@ -12,7 +12,11 @@ import pytest
 from codenib.code_chunker import CodeChunker, RepoChunkingConfig
 from codenib.languages import extensions_for_language
 from codenib.repository_source_selection import RepositorySourceSelection
-from codenib.source_fingerprint import RepositoryChangedError, capture_repository_source
+from codenib.source_fingerprint import (
+    RepositoryChangedError,
+    RepositorySourceBinding,
+    capture_repository_source,
+)
 
 
 def test_repo_chunking_config_defaults_come_from_language_registry():
@@ -187,6 +191,48 @@ def test_authenticated_repository_chunking_uses_retained_bytes_and_paths(
     assert {chunk.node_id for chunk in chunks} == {"src/app.py:app()"}
     assert all("\r" not in chunk.content for chunk in chunks)
     assert "retained" in chunks[0].content
+
+
+def test_authenticated_repository_chunking_threads_cancellation_into_source_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+    chunker = CodeChunker(
+        language="python",
+        repo_config=RepoChunkingConfig(languages=["python"]),
+    )
+    real_snapshot = RepositorySourceBinding.authenticated_identity_snapshot
+    real_session = RepositorySourceBinding.read_session
+    observed = []
+
+    def tracked_snapshot(binding, *args, **kwargs):
+        observed.append(("identity", kwargs.get("check_cancelled")))
+        return real_snapshot(binding, *args, **kwargs)
+
+    def tracked_session(binding, *args, **kwargs):
+        observed.append(("session", kwargs.get("check_cancelled")))
+        return real_session(binding, *args, **kwargs)
+
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "authenticated_identity_snapshot",
+        tracked_snapshot,
+    )
+    monkeypatch.setattr(RepositorySourceBinding, "read_session", tracked_session)
+
+    def check_cancelled() -> None:
+        return None
+
+    with capture_repository_source(repo) as source:
+        chunker.chunk_repository_source(source, check_cancelled=check_cancelled)
+
+    assert observed == [
+        ("identity", check_cancelled),
+        ("session", check_cancelled),
+    ]
 
 
 def test_authenticated_repository_chunking_rejects_policy_mismatch_before_reads(

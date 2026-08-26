@@ -351,7 +351,9 @@ class CodeChunker:
 
         if check_cancelled is not None:
             check_cancelled()
-        source_identity = repository_source.authenticated_identity_snapshot()
+        source_identity = repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
         if check_cancelled is not None:
             check_cancelled()
         source_selection = self._source_selection_snapshot()
@@ -380,7 +382,7 @@ class CodeChunker:
         logger.info("Found %d authenticated files to process", len(selected))
 
         chunks: List[CodeChunk] = []
-        with repository_source.read_session():
+        with repository_source.read_session(check_cancelled=check_cancelled):
             for record, language in selected:
                 if check_cancelled is not None:
                     check_cancelled()
