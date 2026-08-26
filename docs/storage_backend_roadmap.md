@@ -1274,7 +1274,9 @@ after that frozen runnable keyspace is exhausted, backs off after complete idle
 cycles, and supports cooperative shutdown. Jobs inserted after the watermark
 are deferred to the next cycle, so continuous larger-key writes cannot starve a
 wrapped retry or make a configured cycle limit unbounded. Cache-building
-adapters, runtime registration, and default routing remain absent.
+adapters, job-triggered runtime registration, and default routing remain
+absent; the Web runtime now has the generation-safe refresh boundary described
+under M3.
 
 ### M2: Immutable generation publication
 
@@ -1309,8 +1311,12 @@ schema-8 vector artifacts without catalog authority. Its resource-scoped
 resolver and trusted local target factory guarantee attempt-local cleanup,
 same-store binding, and exact configured repository/source identity, while
 the explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
-over the current cache. Source builders, runtime, Web, MCP, and default wiring
-remain absent.
+over the current cache. The Web registry now prepares a complete replacement
+bundle before atomically publishing it, pins the exact generation for each
+in-flight request, defers old vector/source cleanup until the final pin exits,
+and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
+generation identity. Source builders, the #266 status/update handoff, MCP, and
+default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1362,8 +1368,17 @@ remain absent.
   paths and are never nested inside the worker.
 - Expose the #266 status and update APIs with accurate incremental versus
   rebuild behavior.
-- Load a complete new bundle and swap it RCU-style; pin old bundles for in-flight
-  requests.
+- `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
+  retires repositories removed from that snapshot, and keeps a prior generation
+  when its still-declared replacement fails. Snapshot reconciliation is
+  serialized with `refresh(repo_id)`, which authenticates and loads the complete
+  candidate retrieval/Ask/graph bundle before one lock-protected pointer swap.
+  Every Web route that reads repository state pins one exact bundle generation
+  through response construction; old or removed generations remain usable until
+  their final request exits, and failed or interrupted cleanup retains retryable
+  vector/source ownership. A failed candidate never replaces the active bundle.
+  The remaining #266 work is to invoke this boundary only after an attested
+  update job succeeds and to expose refresh/status results to the UI.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
