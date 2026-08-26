@@ -155,6 +155,39 @@ class BaseCodeChunker(ABC):
         # parser routes measure and decode the exact same source boundary.
         code_content = self._read_source(file_path)
 
+        return self.chunk_source(
+            code_content,
+            file_path=file_path,
+            relative_path=relative_path,
+            skeleton_mode=skeleton_mode,
+        )
+
+    def chunk_source(
+        self,
+        code_content: str,
+        *,
+        file_path: str,
+        relative_path: Optional[str] = None,
+        skeleton_mode: Optional[bool] = None,
+    ) -> List[CodeChunk]:
+        """Chunk already-authenticated source text without reopening a path.
+
+        ``file_path`` remains the value recorded on emitted chunks, while
+        ``relative_path`` controls their graph-compatible node IDs.  Callers
+        that obtained bytes through a retained source authority can therefore
+        reuse the exact parser/chunking contract without materializing a
+        replaceable public source path.
+        """
+
+        if type(code_content) is not str:
+            raise TypeError("chunk source content must be exact text")
+        if type(file_path) is not str or not file_path:
+            raise TypeError("chunk source file path must be non-empty exact text")
+        if relative_path is not None and (
+            type(relative_path) is not str or not relative_path
+        ):
+            raise TypeError("chunk source relative path must be non-empty exact text")
+
         # Parse the code
         code_bytes = code_content.encode("utf-8")
         tree = self.parser.parse(code_bytes)

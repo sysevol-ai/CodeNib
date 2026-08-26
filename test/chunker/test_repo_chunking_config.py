@@ -12,6 +12,7 @@ import pytest
 from codenib.code_chunker import CodeChunker, RepoChunkingConfig
 from codenib.languages import extensions_for_language
 from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import RepositoryChangedError, capture_repository_source
 
 
 def test_repo_chunking_config_defaults_come_from_language_registry():
@@ -159,6 +160,71 @@ def test_repository_chunking_rejects_an_excluded_chunk_result(
 
     with pytest.raises(RuntimeError, match="leaked excluded chunk"):
         chunker.chunk_repository(str(tmp_path), strict=True)
+
+
+def test_authenticated_repository_chunking_uses_retained_bytes_and_paths(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    (repo / "src" / "private").mkdir(parents=True)
+    (repo / "src" / "app.py").write_bytes(b"def app():\r\n    return 'retained'\r\n")
+    (repo / "src" / "private" / "secret.py").write_text(
+        "def secret():\n    return 1\n",
+        encoding="utf-8",
+    )
+    selection = RepositorySourceSelection(("src/private",))
+    config = RepoChunkingConfig(
+        languages=["python"],
+        filter_tests=False,
+        source_selection=selection,
+    )
+    chunker = CodeChunker(language="python", repo_config=config)
+
+    with capture_repository_source(repo, selection=selection) as source:
+        chunks = chunker.chunk_repository_source(source)
+
+    assert {chunk.file for chunk in chunks} == {"src/app.py"}
+    assert {chunk.node_id for chunk in chunks} == {"src/app.py:app()"}
+    assert all("\r" not in chunk.content for chunk in chunks)
+    assert "retained" in chunks[0].content
+
+
+def test_authenticated_repository_chunking_rejects_policy_mismatch_before_reads(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+    chunker = CodeChunker(
+        language="python",
+        repo_config=RepoChunkingConfig(
+            languages=["python"],
+            source_selection=RepositorySourceSelection(("generated",)),
+        ),
+    )
+
+    with capture_repository_source(repo) as source:
+        with pytest.raises(RuntimeError, match="differs from chunker policy"):
+            chunker.chunk_repository_source(source)
+        assert source.usable
+
+
+def test_authenticated_repository_chunking_rejects_changed_source(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source_path = repo / "app.py"
+    source_path.write_text("def app():\n    return 1\n", encoding="utf-8")
+    chunker = CodeChunker(
+        language="python",
+        repo_config=RepoChunkingConfig(languages=["python"]),
+    )
+
+    with capture_repository_source(repo) as source:
+        source_path.write_text("def replaced():\n    return 2\n", encoding="utf-8")
+        with pytest.raises(RepositoryChangedError):
+            chunker.chunk_repository_source(source)
 
 
 def test_strict_repository_chunking_rejects_partial_results(tmp_path, monkeypatch):

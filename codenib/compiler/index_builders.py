@@ -25,7 +25,8 @@ import stat
 import subprocess
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
 
 from ..index.embedding.model_policy import (
     DEFAULT_EMBEDDING_DIMENSION,
@@ -50,6 +51,7 @@ from ..repository_source_selection import (
     RepositorySourceSelection,
     repository_relative_source_path,
 )
+from ..source_fingerprint import RepositorySourceBinding
 from .resources import IndexState, IndexStatus
 from .verification import NullVerifier, UpdateVerifier, VerificationResult
 
@@ -315,7 +317,6 @@ class BM25IndexBuilder:
         artifact_identity = self._artifact_identity_for_selection(source_selection)
 
         from ..code_chunker import CodeChunker, RepoChunkingConfig
-        from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
         primary = self.languages[0] if self.languages else "python"
         repo_config = RepoChunkingConfig(
@@ -337,6 +338,116 @@ class BM25IndexBuilder:
             subject="BM25 chunks",
         )
 
+        return self._build_chunks(
+            scope,
+            repo_path=repo_path,
+            output_dir=output_dir,
+            source_selection=source_selection,
+            artifact_identity=artifact_identity,
+            chunks=chunks,
+            require_missing_output=False,
+            check_cancelled=None,
+        )
+
+    def build_from_repository_source(
+        self,
+        scope: str,
+        *,
+        repository_source: RepositorySourceBinding,
+        output_dir: str,
+        source_selection: RepositorySourceSelection | None = None,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> IndexStatus:
+        """Build one private BM25 generation from retained source authority.
+
+        Unlike :meth:`build`, this path never discovers or opens repository
+        files by pathname and refuses to reuse an existing output directory.
+        It is intended for prepare-only durable job attempts whose caller owns
+        the unique generation root and final cleanup.
+        """
+
+        if type(repository_source) is not RepositorySourceBinding:
+            raise TypeError("BM25 source build requires an exact source binding")
+        if type(output_dir) is not str or not output_dir:
+            raise TypeError("BM25 source build output must be non-empty exact text")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("BM25 source build cancellation must be callable")
+        selected = _source_selection_for_build(
+            self.source_selection,
+            source_selection,
+        )
+        if check_cancelled is not None:
+            check_cancelled()
+        identity = repository_source.authenticated_identity_snapshot()
+        if check_cancelled is not None:
+            check_cancelled()
+        if identity.source_selection != selected:
+            raise RuntimeError(
+                "BM25 source binding selection differs from builder policy"
+            )
+        output = Path(os.path.abspath(os.path.expanduser(output_dir)))
+        repository_root = identity.root
+        if output == repository_root or output in repository_root.parents:
+            raise ValueError("BM25 source build output cannot contain the repository")
+        if repository_root in output.parents:
+            raise ValueError("BM25 source build output cannot be inside the repository")
+        if os.path.lexists(output):
+            raise FileExistsError(
+                "BM25 source build requires a missing private generation"
+            )
+        from ..code_chunker import CodeChunker, RepoChunkingConfig
+
+        primary = self.languages[0] if self.languages else "python"
+        repo_config = RepoChunkingConfig(
+            languages=self.languages,
+            source_selection=selected,
+        )
+        repo_config.ignore_dirs.update(self.additional_ignore_dirs)
+        chunker = CodeChunker(
+            language=primary,
+            repo_config=repo_config,
+            max_lines_per_chunk=self.max_lines_per_chunk,
+            include_header_epilogue=True,
+        )
+        chunks = chunker.chunk_repository_source(
+            repository_source,
+            check_cancelled=check_cancelled,
+        )
+        _require_selected_paths(
+            selected,
+            (getattr(chunk, "file", None) for chunk in chunks),
+            repository_root=str(repository_root),
+            subject="BM25 chunks",
+        )
+        if check_cancelled is not None:
+            check_cancelled()
+        return self._build_chunks(
+            scope,
+            repo_path=str(repository_root),
+            output_dir=str(output),
+            source_selection=selected,
+            artifact_identity=self._artifact_identity_for_selection(selected),
+            chunks=chunks,
+            require_missing_output=True,
+            check_cancelled=check_cancelled,
+        )
+
+    def _build_chunks(
+        self,
+        scope: str,
+        *,
+        repo_path: str,
+        output_dir: str,
+        source_selection: RepositorySourceSelection,
+        artifact_identity: Dict[str, Any],
+        chunks: List[Any],
+        require_missing_output: bool,
+        check_cancelled: Callable[[], None] | None,
+    ) -> IndexStatus:
+        """Persist and attest one already-captured BM25 chunk generation."""
+
+        from ..index.sparse_idx.bm25_index import BM25CodeIndexer
+
         indexer = BM25CodeIndexer(
             chunks=chunks,
             max_k=self.max_k,
@@ -348,11 +459,18 @@ class BM25IndexBuilder:
             repository_root=repo_path,
             subject="BM25 documents",
         )
-        os.makedirs(output_dir, exist_ok=True)
+        if check_cancelled is not None:
+            check_cancelled()
+        if require_missing_output:
+            os.mkdir(output_dir, mode=0o700)
+        else:
+            os.makedirs(output_dir, exist_ok=True)
         indexer.save_index(output_dir)
         from .artifact_fingerprints import bm25_artifact_file_fingerprints
 
         artifact_files = bm25_artifact_file_fingerprints(output_dir)
+        if check_cancelled is not None:
+            check_cancelled()
 
         return IndexStatus(
             index_type="bm25",

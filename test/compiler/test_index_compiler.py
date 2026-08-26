@@ -74,7 +74,11 @@ from codenib.repository_filters import (
     default_exclude_patterns,
 )
 from codenib.repository_source_selection import RepositorySourceSelection
-from codenib.source_fingerprint import is_secure_source_fingerprint_v2
+from codenib.source_fingerprint import (
+    RepositoryChangedError,
+    capture_repository_source,
+    is_secure_source_fingerprint_v2,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -365,6 +369,119 @@ class TestBM25IndexBuilder:
         results = index.search("safe_local", top_k=1)
         assert results
         assert results[0].file == "settings.py"
+
+    def test_build_from_repository_source_uses_retained_bytes(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from codenib.code_chunker import CodeChunker
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "settings.py").write_bytes(b"UNIQUE_RETAINED_MODE = 'safe_source'\r\n")
+        private_root = tmp_path / "private"
+        private_root.mkdir()
+        output = private_root / "bm25"
+        monkeypatch.setattr(
+            CodeChunker,
+            "chunk_repository",
+            lambda *_args, **_kwargs: pytest.fail(
+                "retained BM25 build used path discovery"
+            ),
+        )
+
+        with capture_repository_source(repo) as source:
+            status = BM25IndexBuilder(
+                languages=["python"]
+            ).build_from_repository_source(
+                "current_repo",
+                repository_source=source,
+                output_dir=str(output),
+            )
+
+        assert status.state is IndexState.FRESH
+        assert status.path == str(output)
+        assert status.metadata["source_file_count"] == 1
+        assert status.metadata["source_selection_digest"] == (
+            RepositorySourceSelection().digest
+        )
+        index = BM25CodeIndexer()
+        index.load_index(str(output))
+        results = index.search("safe_source", top_k=1)
+        assert results
+        assert results[0].file == "settings.py"
+
+    def test_build_from_repository_source_requires_a_missing_private_output(
+        self,
+        tmp_path,
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+        output = tmp_path / "private" / "bm25"
+        output.mkdir(parents=True)
+        marker = output / "owned.txt"
+        marker.write_text("keep", encoding="utf-8")
+
+        with capture_repository_source(repo) as source:
+            with pytest.raises(FileExistsError, match="missing private generation"):
+                BM25IndexBuilder().build_from_repository_source(
+                    "current_repo",
+                    repository_source=source,
+                    output_dir=str(output),
+                )
+
+        assert marker.read_text(encoding="utf-8") == "keep"
+
+    def test_build_from_repository_source_stops_before_output_mutation(
+        self,
+        tmp_path,
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+        private_root = tmp_path / "private"
+        private_root.mkdir()
+        output = private_root / "bm25"
+
+        def stop() -> None:
+            raise RuntimeError("stop requested")
+
+        with capture_repository_source(repo) as source:
+            with pytest.raises(RuntimeError, match="stop requested"):
+                BM25IndexBuilder().build_from_repository_source(
+                    "current_repo",
+                    repository_source=source,
+                    output_dir=str(output),
+                    check_cancelled=stop,
+                )
+
+        assert not output.exists()
+
+    def test_build_from_repository_source_rejects_changed_authority(
+        self,
+        tmp_path,
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        path = repo / "app.py"
+        path.write_text("def app():\n    return 1\n", encoding="utf-8")
+        private_root = tmp_path / "private"
+        private_root.mkdir()
+        output = private_root / "bm25"
+
+        with capture_repository_source(repo) as source:
+            path.write_text("def changed():\n    return 2\n", encoding="utf-8")
+            with pytest.raises(RepositoryChangedError):
+                BM25IndexBuilder().build_from_repository_source(
+                    "current_repo",
+                    repository_source=source,
+                    output_dir=str(output),
+                )
+
+        assert not output.exists()
 
 
 # ---------------------------------------------------------------------------

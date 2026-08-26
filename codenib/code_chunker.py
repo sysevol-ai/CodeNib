@@ -12,7 +12,7 @@ This file maintains backward compatibility with the old API and adds repository 
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, List, Optional, Set
 
 # Import from the new modular code chunking system
 from .code_chunking import CodeChunk, create_chunker
@@ -28,6 +28,7 @@ from .repository_source_selection import (
     RepositorySourceSelection,
     repository_relative_source_path,
 )
+from .source_fingerprint import RepositorySourceBinding, RepositorySourceFileRecord
 from .utils import is_test_file
 
 logger = get_logger(__name__)
@@ -327,6 +328,105 @@ class CodeChunker:
 
         return all_chunks
 
+    def chunk_repository_source(
+        self,
+        repository_source: RepositorySourceBinding,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> List[CodeChunk]:
+        """Chunk one retained repository generation without path-based reads.
+
+        The binding supplies the complete authenticated file inventory and all
+        source bytes.  Discovery, filtering, decoding, and parsing therefore
+        operate on that fixed generation even when the repository is also
+        visible through a mutable public pathname.
+        """
+
+        if type(repository_source) is not RepositorySourceBinding:
+            raise TypeError(
+                "authenticated repository chunking requires an exact source binding"
+            )
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("authenticated repository cancellation must be callable")
+
+        if check_cancelled is not None:
+            check_cancelled()
+        source_identity = repository_source.authenticated_identity_snapshot()
+        if check_cancelled is not None:
+            check_cancelled()
+        source_selection = self._source_selection_snapshot()
+        if source_identity.source_selection != source_selection:
+            raise RuntimeError(
+                "authenticated repository selection differs from chunker policy"
+            )
+        records = tuple(source_identity.file_records)
+        languages = self.repo_config.languages or self._detect_source_languages(
+            records,
+            source_selection=source_selection,
+        )
+        extension_to_language = self._extension_language_map(languages)
+        selected = [
+            (record, extension_to_language[Path(record.path).suffix])
+            for record in records
+            if self._source_record_is_selected(
+                record,
+                extension_to_language=extension_to_language,
+                source_selection=source_selection,
+            )
+        ]
+
+        logger.info("Chunking authenticated repository: %s", source_identity.root)
+        logger.info("Target languages: %s", ", ".join(languages))
+        logger.info("Found %d authenticated files to process", len(selected))
+
+        chunks: List[CodeChunk] = []
+        with repository_source.read_session():
+            for record, language in selected:
+                if check_cancelled is not None:
+                    check_cancelled()
+                payload = repository_source.read_bytes(
+                    record.path,
+                    max_bytes=max(1, record.size),
+                )
+                if len(payload) != record.size:
+                    raise RuntimeError(
+                        "authenticated repository source returned the wrong byte count"
+                    )
+                source_text = (
+                    payload.decode("utf-8", errors="replace")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+                )
+                if self.repo_config.skip_minified and self._is_minified_source(
+                    source_text,
+                    path=record.path,
+                ):
+                    continue
+                try:
+                    chunks.extend(
+                        self._chunk_source_with_language(
+                            source_text,
+                            record.path,
+                            language,
+                        )
+                    )
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Failed to chunk authenticated repository source "
+                        f"{record.path}: {exc}"
+                    ) from exc
+                if check_cancelled is not None:
+                    check_cancelled()
+
+        self._require_selected_chunks(
+            chunks,
+            source_selection,
+            repository_root=source_identity.root,
+        )
+        self._update_nodes_from_chunks(chunks)
+        logger.info("Generated %d authenticated source chunks", len(chunks))
+        return chunks
+
     def get_repository_stats(self, repo_path: str) -> Dict[str, Any]:
         """
         Get statistics about the repository without processing files.
@@ -415,6 +515,54 @@ class CodeChunker:
             rel_path = Path(file_path).name  # Just show filename for brevity
             logger.info(f"  {rel_path}: {len(file_chunks)} chunks")
 
+    def _extension_language_map(self, languages: List[str]) -> Dict[str, str]:
+        """Map configured extensions to normalized chunker languages."""
+
+        extension_to_language: Dict[str, str] = {}
+        for language in languages:
+            normalized = normalize_chunker_language(language)
+            if normalized is None:
+                logger.warning("Language %r not supported yet", language)
+                continue
+            for extension in self._extensions_for_chunker_language(normalized):
+                extension_to_language[extension] = normalized
+        return extension_to_language
+
+    def _source_record_is_selected(
+        self,
+        record: RepositorySourceFileRecord,
+        *,
+        extension_to_language: Dict[str, str],
+        source_selection: RepositorySourceSelection,
+    ) -> bool:
+        """Apply repository discovery policy to one authenticated file record."""
+
+        if type(record) is not RepositorySourceFileRecord:
+            raise TypeError("authenticated repository file record is invalid")
+        relative = Path(record.path)
+        if (
+            relative.is_absolute()
+            or not record.path
+            or relative.as_posix() != record.path
+            or any(part in {"", ".", ".."} for part in relative.parts)
+        ):
+            raise RuntimeError("authenticated repository file path is not canonical")
+        if not source_selection.allows(record.path) or not repository_path_is_visible(
+            relative
+        ):
+            raise RuntimeError(
+                "authenticated repository binding exposed an excluded source path"
+            )
+        if any(
+            not self._should_include_directory(Path(part))
+            for part in relative.parts[:-1]
+        ):
+            return False
+        if not self._should_process_file_path(relative, extension_to_language):
+            return False
+        file_size_mb = record.size / (1024 * 1024)
+        return file_size_mb <= self.repo_config.max_file_size_mb
+
     def _discover_files(
         self,
         repo_path: Path,
@@ -441,15 +589,7 @@ class CodeChunker:
         if type(selected) is not RepositorySourceSelection:
             raise TypeError("source_selection must be a RepositorySourceSelection")
 
-        extension_to_language: Dict[str, str] = {}
-        for language in languages:
-            normalized = normalize_chunker_language(language)
-            if normalized is None:
-                logger.warning("Language %r not supported yet", language)
-                continue
-            extensions = self._extensions_for_chunker_language(normalized)
-            for ext in extensions:
-                extension_to_language[ext] = normalized
+        extension_to_language = self._extension_language_map(languages)
 
         # Walk through repository
         for root, dirs, files in os.walk(repo_path):
@@ -556,23 +696,29 @@ class CodeChunker:
         during embedding (e.g. babel's Makefile.js: 131KB in 3 lines →
         ~480 duplicate chunks each hitting the 8192-token cap).
         """
-        threshold = self.repo_config.minified_line_threshold
         try:
             with open(file_path, "r", errors="replace") as f:
-                for line in f:
-                    if len(line) > threshold:
-                        logger.debug(
-                            "Skipping minified file (line > %d chars): %s",
-                            threshold,
-                            file_path,
-                        )
-                        return True
+                return self._is_minified_source(f.read(), path=str(file_path))
         except OSError as exc:
             logger.debug(
                 "Unable to inspect file for minification, treating as not minified: %s (%s)",
                 file_path,
                 exc,
             )
+        return False
+
+    def _is_minified_source(self, source: str, *, path: str) -> bool:
+        """Apply the shared long-line policy to already-read source text."""
+
+        threshold = self.repo_config.minified_line_threshold
+        for line in source.splitlines(keepends=True):
+            if len(line) > threshold:
+                logger.debug(
+                    "Skipping minified file (line > %d chars): %s",
+                    threshold,
+                    path,
+                )
+                return True
         return False
 
     def _chunk_file_with_language(
@@ -614,6 +760,31 @@ class CodeChunker:
             )
         else:
             return chunker.chunk_file(str(file_path), skeleton_mode=self.skeleton_mode)
+
+    def _chunk_source_with_language(
+        self,
+        source: str,
+        relative_path: str,
+        language: str,
+    ) -> List[CodeChunk]:
+        """Chunk authenticated text through the configured language parser."""
+
+        if language not in self._chunkers:
+            self._chunkers[language] = create_chunker(
+                language,
+                max_lines_per_chunk=self.max_lines_per_chunk,
+                chunk_depth=self.chunk_depth,
+                include_header_epilogue=self.include_header_epilogue,
+                l2_level_exclusive=self.l2_level_exclusive,
+                skeleton_mode=self.skeleton_mode,
+                include_l2_in_file_skeleton=self.include_l2_in_file_skeleton,
+            )
+        return self._chunkers[language].chunk_source(
+            source,
+            file_path=relative_path,
+            relative_path=relative_path,
+            skeleton_mode=self.skeleton_mode,
+        )
 
     def _extensions_for_chunker_language(self, language: str) -> Set[str]:
         """Return configured repository extensions for a chunker language."""
@@ -755,6 +926,47 @@ class CodeChunker:
 
         result = list(detected_languages)
         logger.info(f"Detected languages: {result}")
+        return result
+
+    def _detect_source_languages(
+        self,
+        records: tuple[RepositorySourceFileRecord, ...],
+        *,
+        source_selection: RepositorySourceSelection,
+    ) -> List[str]:
+        """Infer languages from one authenticated repository inventory."""
+
+        extension_counts: Dict[str, int] = {}
+        for record in records:
+            if type(record) is not RepositorySourceFileRecord:
+                raise TypeError("authenticated repository file record is invalid")
+            relative = Path(record.path)
+            if (
+                not source_selection.allows(record.path)
+                or not repository_path_is_visible(relative)
+                or any(
+                    not self._should_include_directory(Path(part))
+                    for part in relative.parts[:-1]
+                )
+            ):
+                continue
+            if relative.suffix:
+                extension_counts[relative.suffix] = (
+                    extension_counts.get(relative.suffix, 0) + 1
+                )
+
+        detected = {
+            language
+            for language in chunker_languages()
+            if any(
+                extension in extension_counts
+                for extension in self._extensions_for_chunker_language(language)
+            )
+        }
+        if not detected or "python" in detected:
+            detected.add("python")
+        result = sorted(detected)
+        logger.info("Detected authenticated source languages: %s", result)
         return result
 
     def _source_selection_snapshot(self) -> RepositorySourceSelection:

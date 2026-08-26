@@ -119,6 +119,69 @@ def test_chunk_file_replaces_invalid_utf8_bytes(monkeypatch, tmp_path):
     assert "\ufffd" in chunks[0].content
 
 
+def test_chunk_source_reuses_parser_without_reopening_a_path(monkeypatch):
+    parser = SimpleNamespace(parse=lambda _code: SimpleNamespace(root_node=object()))
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.get_language", lambda _lang: object()
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_create_parser",
+        staticmethod(lambda _language: parser),
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_read_source",
+        staticmethod(lambda _path: pytest.fail("chunk_source reopened a path")),
+    )
+
+    chunker = StubCodeChunker("python", chunk_depth=0)
+    chunks = chunker.chunk_source(
+        "value = 1\n",
+        file_path="src/app.py",
+        relative_path="src/app.py",
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].file == "src/app.py"
+    assert chunks[0].node_id == "src/app.py"
+    assert chunks[0].content == "src/app.py\nvalue = 1\n"
+
+
+@pytest.mark.parametrize(
+    ("content", "file_path", "relative_path", "message"),
+    [
+        (b"value = 1", "src/app.py", "src/app.py", "exact text"),
+        ("value = 1", "", "src/app.py", "file path"),
+        ("value = 1", "src/app.py", "", "relative path"),
+    ],
+)
+def test_chunk_source_rejects_noncanonical_inputs(
+    monkeypatch,
+    content,
+    file_path,
+    relative_path,
+    message,
+):
+    parser = SimpleNamespace(parse=lambda _code: SimpleNamespace(root_node=object()))
+    monkeypatch.setattr(
+        "codenib.code_chunking.base.get_language", lambda _lang: object()
+    )
+    monkeypatch.setattr(
+        BaseCodeChunker,
+        "_create_parser",
+        staticmethod(lambda _language: parser),
+    )
+    chunker = StubCodeChunker("python", chunk_depth=0)
+
+    with pytest.raises(TypeError, match=message):
+        chunker.chunk_source(
+            content,
+            file_path=file_path,
+            relative_path=relative_path,
+        )
+
+
 def test_tree_walkers_handle_deeper_trees_than_python_recursion_limit():
     target = SimpleNamespace(type="target", children=[])
     branch = target
