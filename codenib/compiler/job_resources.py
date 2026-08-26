@@ -138,7 +138,7 @@ class LocalCompilerCacheJobTarget:
         object.__setattr__(
             self,
             "environ",
-            _snapshot_environment({} if self.environ is None else self.environ),
+            _snapshot_environment(self.environ),
         )
         object.__setattr__(self, "_repository_id", repository.repository_id)
 

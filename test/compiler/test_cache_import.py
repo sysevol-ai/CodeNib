@@ -1411,6 +1411,36 @@ def test_local_compiler_cache_job_target_is_frozen_and_bounded(
         fixture.close()
 
 
+def test_local_compiler_cache_job_target_freezes_default_process_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    variable = "CODENIB_TEST_CACHE_CREDENTIAL"
+    initial = "configured-secret-value"
+    try:
+        monkeypatch.setenv(variable, initial)
+        target = LocalCompilerCacheJobTarget(
+            repository_root=fixture.repository,
+            cache_dir=fixture.cache,
+            workspace_provider=LocalWorkspaceProvider(fixture.workspace),
+            repository_key=_REPOSITORY_KEY,
+        )
+        explicit_empty_target = LocalCompilerCacheJobTarget(
+            repository_root=fixture.repository,
+            cache_dir=fixture.cache,
+            workspace_provider=LocalWorkspaceProvider(fixture.workspace),
+            repository_key=_REPOSITORY_KEY,
+            environ={},
+        )
+        monkeypatch.setenv(variable, "changed-after-target-construction")
+
+        assert target.environ[variable] == initial
+        assert explicit_empty_target.environ == {}
+    finally:
+        fixture.close()
+
+
 def test_local_compiler_cache_cleanup_owner_import_rejects_tuple_subclasses() -> None:
     class HostileOwners(tuple):
         def __iter__(self):
@@ -1550,11 +1580,13 @@ def test_local_compiler_cache_job_factory_retains_failed_cleanup_owner(
                 fail_context_discard,
             )
             if executor_fails:
+                real_execute = CompilerCacheJobExecutor.execute
 
                 def fail_execute(
-                    _executor: CompilerCacheJobExecutor,
-                    _context,
+                    executor: CompilerCacheJobExecutor,
+                    context,
                 ):
+                    real_execute(executor, context)
                     raise primary
 
                 monkeypatch.setattr(
