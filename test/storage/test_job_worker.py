@@ -244,6 +244,9 @@ class _Backend:
     view_result_failure: Exception | None = None
     view_result_mutate_then_raise: BaseException | None = None
     view_result_mutation_raised: bool = False
+    view_result_commit_response_loss: BaseException | None = None
+    view_result_retry_failure: BaseException | None = None
+    view_result_response_loss_raised: bool = False
     mutate_progress_payload: bool = False
     ignore_scan_limit: bool = False
     reverse_scan_page_after_create: bool = False
@@ -1033,6 +1036,11 @@ class _FakeCatalog:
             }
         )
         if (
+            self.backend.view_result_response_loss_raised
+            and self.backend.view_result_retry_failure is not None
+        ):
+            raise self.backend.view_result_retry_failure
+        if (
             self.backend.view_result_mutate_then_raise is not None
             and not self.backend.view_result_mutation_raised
         ):
@@ -1054,6 +1062,12 @@ class _FakeCatalog:
             effective_mode=effective_mode,
             outcome=outcome,
         )
+        if (
+            self.backend.view_result_commit_response_loss is not None
+            and not self.backend.view_result_response_loss_raised
+        ):
+            self.backend.view_result_response_loss_raised = True
+            raise self.backend.view_result_commit_response_loss
         if self.backend.view_result_time_regression:
             prior_progress = tuple(
                 value
@@ -2722,6 +2736,34 @@ def test_unknown_progress_catalog_failure_is_rethrown_without_closure() -> None:
     assert store.retained == []
 
 
+def test_progress_catalog_validation_is_a_sticky_integrity_fault() -> None:
+    failure = StorageValidationError("catalog rejected progress")
+    backend = _Backend(progress_failure=failure)
+    backend.add_job("progress-catalog-validation")
+    observed: list[StorageIntegrityError] = []
+
+    def execute(context: IndexJobExecutionContext) -> IndexJobExecutionResult:
+        try:
+            context.control.append_progress("executor.progress")
+        except StorageIntegrityError as exc:
+            observed.append(exc)
+            assert context.control.stop_token.reason is IndexJobStopReason.CONTROL_FAULT
+        return _succeeded_result(context)
+
+    worker, store, _factory = _worker(backend, _Resolver(_Executor(execute)))
+
+    with pytest.raises(StorageIntegrityError, match="prevalidated event") as caught:
+        worker.run_once()
+
+    assert observed == [caught.value]
+    assert caught.value.__cause__ is failure
+    assert len(backend.progress_calls) == 1
+    assert backend.completion_calls == []
+    assert backend.view_result_calls == []
+    assert backend.publication_calls == []
+    assert store.retained == []
+
+
 def test_progress_response_is_attested_before_executor_can_continue() -> None:
     backend = _Backend(corrupt_progress_response=True)
     backend.add_job("progress-response")
@@ -3369,6 +3411,31 @@ def test_view_result_retry_uses_a_fresh_detached_payload() -> None:
     assert backend.view_result_calls[1]["payload"] == {"documents": 3}
     assert len(backend.publication_calls) == 1
     assert len(store.retained) == 1
+
+
+def test_view_result_replay_validation_is_an_integrity_failure() -> None:
+    first_failure = RuntimeError("view result response lost")
+    replay_failure = StorageValidationError("view result replay validation failed")
+    backend = _Backend(
+        view_result_commit_response_loss=first_failure,
+        view_result_retry_failure=replay_failure,
+    )
+    backend.add_job("view-result-replay-validation")
+    worker, store, _factory = _worker(backend, _default_resolver())
+
+    with pytest.raises(
+        StorageIntegrityError,
+        match="replay failed validation after an unknown write outcome",
+    ) as caught:
+        worker.run_once()
+
+    assert caught.value is not first_failure
+    assert caught.value.__cause__ is replay_failure
+    assert len(backend.view_result_calls) == 2
+    assert len(backend.events_by_key) == 1
+    assert backend.completion_calls == []
+    assert backend.publication_calls == []
+    assert store.retained == []
 
 
 def test_progress_budget_reserves_one_result_event_per_requested_view() -> None:

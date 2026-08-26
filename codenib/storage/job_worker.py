@@ -1089,9 +1089,12 @@ class _AttemptExecutionControl:
                     PublishConflict,
                     StorageIntegrityError,
                     StorageNotFound,
-                    StorageValidationError,
                 ):
                     raise
+                except StorageValidationError as exc:
+                    raise StorageIntegrityError(
+                        "worker progress catalog rejected a prevalidated event"
+                    ) from exc
                 except Exception as first_failure:
                     try:
                         value = append()
@@ -1861,11 +1864,20 @@ class IndexJobWorker:
             value = record(first_payload)
         except (PublishConflict, StorageIntegrityError, StorageNotFound):
             raise
+        except StorageValidationError as exc:
+            raise StorageIntegrityError(
+                "worker view-result catalog rejected a prevalidated event"
+            ) from exc
         except Exception as first_failure:
             try:
                 value = record(result.payload)
             except (PublishConflict, StorageIntegrityError, StorageNotFound):
                 raise
+            except StorageValidationError as exc:
+                raise StorageIntegrityError(
+                    "worker view-result replay failed validation after an "
+                    "unknown write outcome"
+                ) from exc
             except Exception:
                 raise first_failure
         event = _attest_event(
