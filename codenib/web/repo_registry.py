@@ -21,6 +21,7 @@ from functools import partial
 from importlib.util import find_spec
 from threading import Lock, RLock, local
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple
+from weakref import ReferenceType, ref
 
 from .._atomic_directory import _annotate_secondary_error
 from .._owned_file_publication import _CancellationSafeRLock
@@ -47,6 +48,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 _REGISTRY_CLEANUP_CONTEXT = local()
 _REGISTRY_RELOAD_CONTEXT = local()
+_REGISTRY_DEFERRED_DRAIN_CONTEXT = local()
 _REGISTRY_LOCK_RESULT_MISSING = object()
 
 
@@ -56,6 +58,16 @@ class _RegistryLockOutcome:
 
     value: Any = _REGISTRY_LOCK_RESULT_MISSING
     error: BaseException | None = None
+
+
+class _DeferredRegistryDrain:
+    """One strong cleanup wakeup that can be invalidated across threads."""
+
+    __slots__ = ("registry", "token", "__weakref__")
+
+    def __init__(self, registry: "RepoRegistry") -> None:
+        self.registry: RepoRegistry | None = registry
+        self.token = object()
 
 
 def _capture_registry_lock_outcome(
@@ -124,6 +136,64 @@ def _settle_registry_lock_outcome(outcome: _RegistryLockOutcome) -> Any:
         if outcome.error is not None and outcome.error is not unwrap_failure:
             _raise_with_cleanup_failure(outcome.error, unwrap_failure)
         raise
+
+
+def _deferred_registry_drain_entries() -> Tuple[_DeferredRegistryDrain, ...]:
+    """Return live cleanup tickets queued by this thread."""
+
+    entries = getattr(_REGISTRY_DEFERRED_DRAIN_CONTEXT, "entries", ())
+    live = tuple(entry for entry in entries if entry.registry is not None)
+    if len(live) != len(entries):
+        try:
+            _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = live
+        finally:
+            _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = live
+    return live
+
+
+def _defer_registry_retired_drain(registry: "RepoRegistry") -> None:
+    """Keep one identity-deduplicated retired drain reachable for settlement."""
+
+    pending = _deferred_registry_drain_entries()
+    with registry._generation_lock:
+        if not registry._retired_bundles:
+            registry._invalidate_deferred_drain_tickets_locked()
+            return
+        ticket = next(
+            (entry for entry in pending if entry.registry is registry),
+            None,
+        )
+        if ticket is None:
+            ticket = _DeferredRegistryDrain(registry)
+            pending = (*pending, ticket)
+            registry._deferred_drain_tickets[:] = [
+                ticket_ref
+                for ticket_ref in registry._deferred_drain_tickets
+                if ticket_ref() is not None
+            ]
+            registry._deferred_drain_tickets.append(ref(ticket))
+        else:
+            ticket.token = object()
+        try:
+            _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = pending
+        finally:
+            _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = pending
+
+
+def _remove_deferred_registry_retired_drain(registry: "RepoRegistry") -> None:
+    """Discard this thread's settled or lease-blocked tickets for a registry."""
+
+    pending = _deferred_registry_drain_entries()
+    removed = tuple(entry for entry in pending if entry.registry is registry)
+    if not removed:
+        return
+    for ticket in removed:
+        registry._discard_deferred_drain_ticket(ticket)
+    updated = tuple(entry for entry in pending if entry.registry is not None)
+    try:
+        _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = updated
+    finally:
+        _REGISTRY_DEFERRED_DRAIN_CONTEXT.entries = updated
 
 
 def _live_registry_thread_context(
@@ -878,6 +948,10 @@ class RepoRegistry:
         self._cleanup_in_progress: Dict[int, Optional[int]] = {}
         self._orphan_cleanup_in_progress: set[int] = set()
         self._orphan_cleanup_owners: List[Any] = []
+        # Deferred drain tickets strongly retain this registry only until a
+        # cleanup attempt settles. Keep weak back-references so another thread
+        # can invalidate stale thread-local tickets after a successful retry.
+        self._deferred_drain_tickets: List[ReferenceType[_DeferredRegistryDrain]] = []
         # Cleanup mutates retryable owners outside the generation lock. Keep
         # every drain and close serialized so shutdown cannot return while a
         # different thread is still closing an unleased generation or owner.
@@ -936,7 +1010,7 @@ class RepoRegistry:
             )
         )
 
-    def _run_registry_lock(
+    def _run_registry_lock_once(
         self,
         lock: _CancellationSafeRLock,
         operation: Callable[[], Any],
@@ -979,6 +1053,95 @@ class RepoRegistry:
             if outcome.error is not None and outcome.error is not settlement_failure:
                 _raise_with_cleanup_failure(outcome.error, settlement_failure)
             raise
+
+    def _flush_deferred_retired_drains(
+        self,
+        *,
+        attempted_tokens: Optional[set[object]] = None,
+    ) -> BaseException | None:
+        """Drain cross-registry lease releases after every lock edge is gone."""
+
+        first_failure: BaseException | None = None
+        attempted = set(attempted_tokens or ())
+        while True:
+            target_entry = None
+            for ticket in _deferred_registry_drain_entries():
+                target = ticket.registry
+                token = ticket.token
+                if target is not None and token not in attempted:
+                    target_entry = (ticket, target, token)
+                    break
+            if target_entry is None:
+                break
+            ticket, target, token = target_entry
+            attempted.add(token)
+            failure: BaseException | None = None
+            try:
+                failure = target._drain_retired(settle_deferred=False)
+            except BaseException as exc:  # noqa: B036 - settle after locks
+                failure = exc
+            try:
+                _, waits_for_lease = target._retired_drain_state()
+            except BaseException as exc:  # noqa: B036 - keep retry authority
+                waits_for_lease = False
+                failure = _retain_cleanup_failure(failure, exc)
+            if failure is None and waits_for_lease:
+                target._discard_deferred_drain_ticket(
+                    ticket,
+                    expected_token=token,
+                )
+            if failure is not None:
+                first_failure = _retain_cleanup_failure(
+                    first_failure,
+                    failure,
+                )
+        return first_failure
+
+    def _can_flush_deferred_retired_drains(self) -> bool:
+        """Whether this thread has released every registry lifecycle edge."""
+
+        return (
+            not self._cleanup_lock.held_by_current_thread()
+            and not self._registry_reload_lock.held_by_current_thread()
+            and not self._cleanup_callback_is_active()
+            and not self._reload_operation_is_active()
+        )
+
+    def _run_registry_lock(
+        self,
+        lock: _CancellationSafeRLock,
+        operation: Callable[[], Any],
+    ) -> Any:
+        """Run one nested lock scope and settle deferred drains at its edge."""
+
+        outcome = _RegistryLockOutcome()
+        deferred_failure: BaseException | None = None
+        try:
+            outcome.value = self._run_registry_lock_once(lock, operation)
+        except BaseException as exc:  # noqa: B036 - settle deferred work next
+            outcome.error = exc
+
+        if self._can_flush_deferred_retired_drains():
+            try:
+                deferred_failure = self._flush_deferred_retired_drains()
+            except BaseException as exc:  # noqa: B036 - retain durable queue
+                deferred_failure = exc
+
+        primary = outcome.error
+        if primary is not None:
+            if deferred_failure is not None:
+                _raise_with_cleanup_failure(primary, deferred_failure)
+            raise primary
+        if deferred_failure is not None:
+            if not issubclass(type(deferred_failure), Exception):
+                raise deferred_failure
+            _log_cleanup_failure(
+                "Deferred repository cleanup remains pending: %s",
+                deferred_failure,
+            )
+        if outcome.value is _REGISTRY_LOCK_RESULT_MISSING:
+            raise RuntimeError("registry lifecycle lock did not run its operation")
+        return outcome.value
 
     def _run_serialized_cleanup(self, operation: Callable[[], Any]) -> Any:
         """Serialize mutation of retryable cleanup authorities."""
@@ -1539,6 +1702,8 @@ class RepoRegistry:
                             previous.source_cleanup_owner
                         )
                         self._retired_bundles.pop(id(previous.bundle), None)
+                        if not self._retired_bundles:
+                            self._invalidate_deferred_drain_tickets_locked()
                 raise
         failure = self._drain_retired()
         if failure is not None:
@@ -1755,6 +1920,8 @@ class RepoRegistry:
                 ]
             if complete and self._retired_bundles.get(key) is owned:
                 self._retired_bundles.pop(key, None)
+            if not self._retired_bundles:
+                self._invalidate_deferred_drain_tickets_locked()
 
     def _settle_orphan_cleanup_claim(
         self,
@@ -1776,6 +1943,7 @@ class RepoRegistry:
         self,
         *,
         only_keys: Optional[set[int]] = None,
+        settle_deferred: bool = True,
     ) -> Optional[BaseException]:
         def operation() -> Optional[BaseException]:
             first_failure: BaseException | None = None
@@ -1875,9 +2043,14 @@ class RepoRegistry:
                                 self._release_retired_cleanup_claim(key)
                         except BaseException as exc:  # noqa: B036 - claim is durable
                             first_failure = _retain_cleanup_failure(first_failure, exc)
+            with self._generation_lock:
+                if not self._retired_bundles:
+                    self._invalidate_deferred_drain_tickets_locked()
             return first_failure
 
-        return self._run_serialized_cleanup(operation)
+        if settle_deferred:
+            return self._run_serialized_cleanup(operation)
+        return self._run_registry_lock_once(self._cleanup_lock, operation)
 
     def _drain_orphan_cleanup(self) -> Optional[BaseException]:
         def operation() -> Optional[BaseException]:
@@ -2461,6 +2634,47 @@ class RepoRegistry:
                     keys = fallback_keys
         return keys
 
+    def _discard_deferred_drain_ticket(
+        self,
+        ticket: _DeferredRegistryDrain,
+        *,
+        expected_token: object | None = None,
+    ) -> bool:
+        """Invalidate one exact deferred wakeup under generation ownership."""
+
+        with self._generation_lock:
+            if ticket.registry is not self or (
+                expected_token is not None and ticket.token is not expected_token
+            ):
+                return False
+            ticket.registry = None
+            self._deferred_drain_tickets[:] = [
+                ticket_ref
+                for ticket_ref in self._deferred_drain_tickets
+                if ticket_ref() is not None and ticket_ref() is not ticket
+            ]
+            return True
+
+    def _invalidate_deferred_drain_tickets_locked(self) -> None:
+        """Release every cross-thread ticket after all retired work settles."""
+
+        for ticket_ref in self._deferred_drain_tickets:
+            ticket = ticket_ref()
+            if ticket is not None and ticket.registry is self:
+                ticket.registry = None
+        self._deferred_drain_tickets.clear()
+
+    def _retired_drain_state(self) -> Tuple[bool, bool]:
+        """Return pending state and whether leases alone block its drain."""
+
+        with self._generation_lock:
+            pending = bool(self._retired_bundles)
+            if not pending:
+                self._invalidate_deferred_drain_tickets_locked()
+            return pending, pending and all(
+                self._bundle_key_is_leased_locked(key) for key in self._retired_bundles
+            )
+
     def _release_bundle_lease(self, lease_token: object) -> None:
         self._drop_bundle_lease(lease_token)
         cross_cleanup_callback = (
@@ -2475,10 +2689,45 @@ class RepoRegistry:
             # The pin may have been entered before this cross-registry cleanup
             # callback or reload began. Its lease must still be dropped, but
             # synchronously taking the other registry's cleanup lock would let
-            # reciprocal operations form an ABBA cycle. Leave the now-unleased
-            # generation durable for the next ordinary release or shutdown.
+            # reciprocal operations form an ABBA cycle. Queue the now-unleased
+            # generation for the current thread's outermost lifecycle-lock
+            # settlement, after every registry lock on that thread is gone.
+            _defer_registry_retired_drain(self)
             return
-        failure = self._drain_retired()
+        # This release is itself the wakeup for the target generation. Do not
+        # let the generic lock wrapper immediately retry an older deferred
+        # ticket before this first failure has been classified and retained.
+        failure = self._drain_retired(settle_deferred=False)
+        pending, waits_for_lease = self._retired_drain_state()
+        if pending and (failure is not None or not waits_for_lease):
+            _defer_registry_retired_drain(self)
+        else:
+            _remove_deferred_registry_retired_drain(self)
+        # Cleanup callbacks may have released another registry's final lease.
+        # Settle those tickets now that this cleanup lock is gone, but do not
+        # retry this registry's just-attempted owner in the same unwind epoch.
+        deferred_failure: BaseException | None = None
+        if self._can_flush_deferred_retired_drains():
+            attempted_tokens = {
+                ticket.token
+                for ticket in _deferred_registry_drain_entries()
+                if ticket.registry is self
+            }
+            try:
+                deferred_failure = self._flush_deferred_retired_drains(
+                    attempted_tokens=attempted_tokens,
+                )
+            except BaseException as exc:  # noqa: B036 - tickets retain retry state
+                deferred_failure = exc
+        if failure is not None and deferred_failure is not None:
+            if not issubclass(type(failure), Exception) or not issubclass(
+                type(deferred_failure),
+                Exception,
+            ):
+                _raise_with_cleanup_failure(failure, deferred_failure)
+            failure = _retain_cleanup_failure(failure, deferred_failure)
+        elif deferred_failure is not None:
+            failure = deferred_failure
         if failure is not None:
             if not issubclass(type(failure), Exception):
                 raise failure

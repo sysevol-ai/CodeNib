@@ -5,12 +5,14 @@
 """Tests for per-repo skill-registry isolation, config, and the QA registry."""
 
 import dis
+import gc
 import inspect
 import pickle
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event, Lock, Thread
 from types import CodeType, SimpleNamespace
+from weakref import ref as weakref_ref
 
 import pytest
 
@@ -42,6 +44,8 @@ from codenib.web.repo_registry import (
     RepoBundle,
     RepoRegistry,
     _capture_registry_lock_outcome,
+    _defer_registry_retired_drain,
+    _deferred_registry_drain_entries,
     _fresh_registry,
     _OwnedRepoBundle,
     _settle_registry_lock_outcome,
@@ -1448,18 +1452,718 @@ def test_registry_cleanup_callbacks_defer_preexisting_cross_registry_pin_release
     assert results == [None, None]
     assert first._bundle_leases == {}
     assert second._bundle_leases == {}
-    assert first.retired_generation_count == 1
-    assert second.retired_generation_count == 1
-    assert first_owner.close_calls == 0
-    assert second_owner.close_calls == 0
-    assert first._drain_retired() is None
-    assert second._drain_retired() is None
-    assert first_owner.close_calls == 1
-    assert second_owner.close_calls == 1
     assert first.retired_generation_count == 0
     assert second.retired_generation_count == 0
+    assert first_owner.close_calls == 1
+    assert second_owner.close_calls == 1
     first.close()
     second.close()
+
+
+def test_registry_cross_cleanup_release_flushes_closed_target_after_outer_lock():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+    lock_observations = []
+
+    class GenerationOwner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            lock_observations.append(
+                (
+                    second._cleanup_lock.held_by_current_thread(),
+                    second._registry_reload_lock.held_by_current_thread(),
+                )
+            )
+            self.close_calls += 1
+
+    owner = GenerationOwner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = bundle
+    first._source_cleanup_owners["first"] = owner
+    pinned = first.pin("first")
+    assert pinned.__enter__() is bundle
+    first.close()
+    assert first.retired_generation_count == 1
+    assert owner.close_calls == 0
+
+    class CrossOwner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            pinned.__exit__(None, None, None)
+            self.closed = True
+
+    second._orphan_cleanup_owners.append(CrossOwner())
+    second.close()
+
+    assert first._bundle_leases == {}
+    assert first.retired_generation_count == 0
+    assert owner.close_calls == 1
+    assert lock_observations == [(False, False)]
+
+
+def test_registry_cross_reload_release_flushes_after_reload_returns():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+    lock_observations = []
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            lock_observations.append(
+                second._registry_reload_lock.held_by_current_thread()
+            )
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = bundle
+    first._source_cleanup_owners["first"] = owner
+    pinned = first.pin("first")
+    assert pinned.__enter__() is bundle
+    first.close()
+
+    def release_during_reload():
+        pinned.__exit__(None, None, None)
+        assert owner.close_calls == 0
+
+    second._run_serialized_reload(release_during_reload)
+
+    assert first._bundle_leases == {}
+    assert first.retired_generation_count == 0
+    assert owner.close_calls == 1
+    assert lock_observations == [False]
+    second.close()
+
+
+def test_registry_cross_cleanup_deduplicates_two_final_pin_releases():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class GenerationOwner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = GenerationOwner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = bundle
+    first._source_cleanup_owners["first"] = owner
+    pins = (first.pin("first"), first.pin("first"))
+    assert [pin.__enter__() for pin in pins] == [bundle, bundle]
+    first.close()
+
+    class CrossOwner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            for pin in pins:
+                pin.__exit__(None, None, None)
+            self.closed = True
+
+    second._orphan_cleanup_owners.append(CrossOwner())
+    second.close()
+
+    assert first._bundle_leases == {}
+    assert first.retired_generation_count == 0
+    assert owner.close_calls == 1
+
+
+def test_registry_deferred_drain_retries_after_later_release_in_same_flush():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+    third = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self, callback=None):
+            self.callback = callback
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.callback is not None:
+                self.callback()
+
+    first_owner = Owner()
+    first_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = first_bundle
+    first._source_cleanup_owners["first"] = first_owner
+    first_pins = (first.pin("first"), first.pin("first"))
+    assert [pin.__enter__() for pin in first_pins] == [first_bundle, first_bundle]
+    first.close()
+
+    third_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    third_pin = third.pin("third")
+    third_owner = Owner(lambda: first_pins[1].__exit__(None, None, None))
+    third._bundles["third"] = third_bundle
+    third._source_cleanup_owners["third"] = third_owner
+    assert third_pin.__enter__() is third_bundle
+    third.close()
+
+    class CrossOwner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            first_pins[0].__exit__(None, None, None)
+            third_pin.__exit__(None, None, None)
+            self.closed = True
+
+    second._orphan_cleanup_owners.append(CrossOwner())
+    second.close()
+
+    assert first._bundle_leases == {}
+    assert first.retired_generation_count == 0
+    assert first_owner.close_calls == 1
+    assert third._bundle_leases == {}
+    assert third.retired_generation_count == 0
+    assert third_owner.close_calls == 1
+
+
+def test_registry_deferred_drain_does_not_retain_lease_blocked_target():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+    worker_ready = Event()
+    release_worker = Event()
+    worker_queues = []
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = bundle
+    first._source_cleanup_owners["first"] = owner
+    pins = (first.pin("first"), first.pin("first"))
+    assert [pin.__enter__() for pin in pins] == [bundle, bundle]
+    first.close()
+
+    class CrossOwner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            pins[0].__exit__(None, None, None)
+            self.closed = True
+
+    second._orphan_cleanup_owners.append(CrossOwner())
+
+    def release_first_pin():
+        assert second._drain_orphan_cleanup() is None
+        worker_queues.append(_deferred_registry_drain_entries())
+        worker_ready.set()
+        release_worker.wait(timeout=2)
+        worker_queues.append(_deferred_registry_drain_entries())
+
+    thread = Thread(target=release_first_pin, daemon=True)
+    thread.start()
+    assert worker_ready.wait(timeout=2)
+
+    assert worker_queues == [()]
+    assert first.retired_generation_count == 1
+    assert owner.close_calls == 0
+    pins[1].__exit__(None, None, None)
+    assert first.retired_generation_count == 0
+    assert owner.close_calls == 1
+
+    release_worker.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert worker_queues == [(), ()]
+    second.close()
+
+
+def test_registry_deferred_ticket_retains_target_until_first_flush():
+    second = RepoRegistry(QAConfig())
+    alive_during_callback = []
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    target = RepoRegistry(QAConfig())
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    target._bundles["target"] = bundle
+    target._source_cleanup_owners["target"] = owner
+    pinned = target.pin("target")
+    assert pinned.__enter__() is bundle
+    target.close()
+    target_ref = weakref_ref(target)
+    del target
+
+    class CrossOwner:
+        def __init__(self, context):
+            self.context = context
+            self.closed = False
+
+        def close(self):
+            self.context.__exit__(None, None, None)
+            self.context = None
+            gc.collect()
+            alive_during_callback.append(target_ref() is not None)
+            self.closed = True
+
+    second._orphan_cleanup_owners.append(CrossOwner(pinned))
+    del pinned
+    second.close()
+
+    assert alive_during_callback == [True]
+    assert owner.close_calls == 1
+    gc.collect()
+    assert target_ref() is None
+
+
+def test_registry_successful_cross_thread_retry_invalidates_deferred_ticket():
+    second = RepoRegistry(QAConfig())
+    worker_ready = Event()
+    release_worker = Event()
+    worker_queues = []
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+            self.done = False
+            self.fail = True
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.fail:
+                raise ValueError("first cleanup failed")
+            self.done = True
+
+    owner = Owner()
+    target = RepoRegistry(QAConfig())
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    target._bundles["target"] = bundle
+    target._source_cleanup_owners["target"] = owner
+    pinned = target.pin("target")
+    assert pinned.__enter__() is bundle
+    target.close()
+
+    class CrossOwner:
+        def __init__(self, context):
+            self.context = context
+            self.closed = False
+
+        def close(self):
+            self.context.__exit__(None, None, None)
+            self.context = None
+            self.closed = True
+
+    second._orphan_cleanup_owners.append(CrossOwner(pinned))
+    del pinned
+
+    def fail_first_cleanup():
+        second.close()
+        worker_queues.append(_deferred_registry_drain_entries())
+        worker_ready.set()
+        release_worker.wait(timeout=2)
+        worker_queues.append(_deferred_registry_drain_entries())
+
+    thread = Thread(target=fail_first_cleanup, daemon=True)
+    thread.start()
+    assert worker_ready.wait(timeout=2)
+
+    assert len(worker_queues[0]) == 1
+    ticket = worker_queues[0][0]
+    assert ticket.registry is target
+    assert target.retired_generation_count == 1
+    assert owner.close_calls == 1
+    owner.fail = False
+    target.close()
+    assert target.retired_generation_count == 0
+    assert owner.close_calls == 2
+    assert ticket.registry is None
+    del target
+
+    release_worker.set()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert worker_queues[1] == ()
+
+
+def test_registry_direct_release_classifies_failure_before_deferred_retry():
+    early = SystemExit("first cleanup cancellation")
+    late = KeyboardInterrupt("later deferred retry cancellation")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+            self.failures = [early, late]
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.failures:
+                raise self.failures.pop(0)
+            self.done = True
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry._bundles["repo"] = bundle
+    registry._source_cleanup_owners["repo"] = owner
+    pinned = registry.pin("repo")
+    assert pinned.__enter__() is bundle
+    registry.close()
+    _defer_registry_retired_drain(registry)
+
+    with pytest.raises(SystemExit) as caught:
+        pinned.__exit__(None, None, None)
+
+    assert caught.value is early
+    assert owner.close_calls == 1
+    assert registry.retired_generation_count == 1
+
+    owner.failures.clear()
+    registry.close()
+    assert owner.close_calls == 2
+    assert registry.retired_generation_count == 0
+
+
+def test_registry_direct_release_flushes_cross_callback_target():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self, callback=None):
+            self.callback = callback
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.callback is not None:
+                self.callback()
+
+    second_owner = Owner()
+    second_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    second._bundles["second"] = second_bundle
+    second._source_cleanup_owners["second"] = second_owner
+    second_pin = second.pin("second")
+    assert second_pin.__enter__() is second_bundle
+    second.close()
+
+    first_owner = Owner(lambda: second_pin.__exit__(None, None, None))
+    first_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = first_bundle
+    first._source_cleanup_owners["first"] = first_owner
+    first_pin = first.pin("first")
+    assert first_pin.__enter__() is first_bundle
+    first.close()
+
+    first_pin.__exit__(None, None, None)
+
+    assert first._bundle_leases == {}
+    assert first.retired_generation_count == 0
+    assert first_owner.close_calls == 1
+    assert second._bundle_leases == {}
+    assert second.retired_generation_count == 0
+    assert second_owner.close_calls == 1
+
+
+def test_registry_nested_direct_release_waits_for_outer_lifecycle_edge():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+    lock_observations = []
+
+    class Owner:
+        def __init__(self, callback=None):
+            self.callback = callback
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.callback is not None:
+                self.callback()
+
+    second_owner = Owner(
+        lambda: lock_observations.append(
+            (
+                first._cleanup_lock.held_by_current_thread(),
+                first._registry_reload_lock.held_by_current_thread(),
+            )
+        )
+    )
+    second_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    second._bundles["second"] = second_bundle
+    second._source_cleanup_owners["second"] = second_owner
+    second_pin = second.pin("second")
+    assert second_pin.__enter__() is second_bundle
+    second.close()
+
+    first_owner = Owner()
+    first_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = first_bundle
+    first._source_cleanup_owners["first"] = first_owner
+    first_pin = first.pin("first")
+    assert first_pin.__enter__() is first_bundle
+
+    class CrossOwner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            second_pin.__exit__(None, None, None)
+            first_pin.__exit__(None, None, None)
+            self.closed = True
+
+    first._orphan_cleanup_owners.append(CrossOwner())
+    first.close()
+
+    assert first_owner.close_calls == 1
+    assert second_owner.close_calls == 1
+    assert lock_observations == [(False, False)]
+    assert first.retired_generation_count == 0
+    assert second.retired_generation_count == 0
+
+
+def test_registry_direct_release_flushes_new_same_target_token():
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self, callback=None):
+            self.callback = callback
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.callback is not None:
+                self.callback()
+
+    second_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    second_pin = second.pin("second")
+    first_second_pin = first.pin("first-two")
+    second_owner = Owner(lambda: first_second_pin.__exit__(None, None, None))
+    second._bundles["second"] = second_bundle
+    second._source_cleanup_owners["second"] = second_owner
+    assert second_pin.__enter__() is second_bundle
+
+    first_one = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first_two = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first_one_owner = Owner(lambda: second_pin.__exit__(None, None, None))
+    first_two_owner = Owner()
+    first._bundles.update({"first-one": first_one, "first-two": first_two})
+    first._source_cleanup_owners.update(
+        {"first-one": first_one_owner, "first-two": first_two_owner}
+    )
+    first_one_pin = first.pin("first-one")
+    assert first_one_pin.__enter__() is first_one
+    assert first_second_pin.__enter__() is first_two
+    first.close()
+    second.close()
+
+    first_one_pin.__exit__(None, None, None)
+
+    assert first._bundle_leases == {}
+    assert first.retired_generation_count == 0
+    assert first_one_owner.close_calls == 1
+    assert first_two_owner.close_calls == 1
+    assert second._bundle_leases == {}
+    assert second.retired_generation_count == 0
+    assert second_owner.close_calls == 1
+
+
+def test_registry_direct_release_precedes_cross_target_cleanup_failure():
+    early = SystemExit("direct cleanup cancellation")
+    late = KeyboardInterrupt("cross-target cleanup cancellation")
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self, failure, callback=None):
+            self.failure = failure
+            self.callback = callback
+            self.close_calls = 0
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.callback is not None:
+                self.callback()
+                self.callback = None
+            if self.failure is not None:
+                raise self.failure
+            self.done = True
+
+    second_owner = Owner(late)
+    second_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    second._bundles["second"] = second_bundle
+    second._source_cleanup_owners["second"] = second_owner
+    second_pin = second.pin("second")
+    assert second_pin.__enter__() is second_bundle
+    second.close()
+
+    first_owner = Owner(early, lambda: second_pin.__exit__(None, None, None))
+    first_bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = first_bundle
+    first._source_cleanup_owners["first"] = first_owner
+    first_pin = first.pin("first")
+    assert first_pin.__enter__() is first_bundle
+    first.close()
+
+    with pytest.raises(SystemExit) as caught:
+        first_pin.__exit__(None, None, None)
+
+    assert caught.value is early
+    assert caught.value.__cause__ is late
+    assert first_owner.close_calls == 1
+    assert second_owner.close_calls == 1
+    assert first.retired_generation_count == 1
+    assert second.retired_generation_count == 1
+
+    first_owner.failure = None
+    second_owner.failure = None
+    first.close()
+    second.close()
+    assert first_owner.close_calls == 2
+    assert second_owner.close_calls == 2
+
+
+@pytest.mark.parametrize(
+    ("body_type", "deferred_type", "deferred_wins"),
+    [
+        (SystemExit, KeyboardInterrupt, False),
+        (RuntimeError, SystemExit, True),
+    ],
+)
+def test_registry_deferred_cleanup_preserves_exception_priority(
+    body_type,
+    deferred_type,
+    deferred_wins,
+):
+    body_failure = body_type("source cleanup failed")
+    deferred_failure = deferred_type("deferred generation cleanup failed")
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class GenerationOwner:
+        def __init__(self):
+            self.failure = deferred_failure
+            self.close_calls = 0
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.failure is not None:
+                raise self.failure
+            self.done = True
+
+    generation_owner = GenerationOwner()
+    bundle = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    first._bundles["first"] = bundle
+    first._source_cleanup_owners["first"] = generation_owner
+    pinned = first.pin("first")
+    assert pinned.__enter__() is bundle
+    first.close()
+
+    class CrossOwner:
+        def __init__(self):
+            self.failure = body_failure
+            self.close_calls = 0
+            self.done = False
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                pinned.__exit__(None, None, None)
+            if self.failure is not None:
+                raise self.failure
+            self.done = True
+
+    cross_owner = CrossOwner()
+    second._orphan_cleanup_owners.append(cross_owner)
+
+    with pytest.raises(BaseException) as caught:
+        second.close()
+
+    preferred = deferred_failure if deferred_wins else body_failure
+    secondary = body_failure if deferred_wins else deferred_failure
+    assert caught.value is preferred
+    assert caught.value.__cause__ is secondary
+    assert generation_owner.close_calls == 1
+    assert cross_owner.close_calls == 1
+    assert first.retired_generation_count == 1
+
+    generation_owner.failure = None
+    cross_owner.failure = None
+    first.close()
+    second.close()
+    assert generation_owner.close_calls == 2
+    assert cross_owner.close_calls == 2
+    assert first.retired_generation_count == 0
 
 
 def test_registry_cleanup_callback_restores_context_after_interruption():
