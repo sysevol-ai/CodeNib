@@ -63,6 +63,10 @@ from codenib.compiler.index_builders import (
     VectorIndexBuilder,
 )
 from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.job_resolver import (
+    CompilerCacheJobResolver,
+    CompilerCacheJobResourceFactory,
+)
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.compiler.manifest_import import RepoManifestImportResult
 from codenib.compiler.manifest_materialization import (
@@ -391,15 +395,31 @@ class _CompilerCacheWorkerFactory:
         return _CompilerCacheWorkerCatalog(self.path, self.publication_calls)
 
 
-class _StaticCompilerCacheResolver:
-    def __init__(self, executor: CompilerCacheJobExecutor) -> None:
+class _ScopedCompilerCacheResources:
+    def __init__(
+        self,
+        executor: CompilerCacheJobExecutor,
+        *,
+        close_resources: bool = True,
+    ) -> None:
         self.executor = executor
-        self.calls = 0
+        self.close_resources = close_resources
+        self.contexts = []
+        self.object_stores = []
+        self.exits = 0
 
-    def resolve(self, job, views):
-        assert tuple(view.job_id for view in views) == (job.job_id,) * len(views)
-        self.calls += 1
-        return self.executor
+    @contextmanager
+    def open(self, context, *, object_store):
+        self.contexts.append(context)
+        self.object_stores.append(object_store)
+        try:
+            yield self.executor
+        finally:
+            self.exits += 1
+            if self.close_resources:
+                self.executor.context_output_owner.close()
+                self.executor.view_output_owner.close()
+                self.executor.repository_source.close()
 
 
 class _LockAwareCatalog(SQLiteCatalog):
@@ -698,6 +718,11 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         is CompilerCacheJobPublicationResult
     )
     assert compiler_module.CompilerCacheJobExecutor is CompilerCacheJobExecutor
+    assert compiler_module.CompilerCacheJobResolver is CompilerCacheJobResolver
+    assert (
+        compiler_module.CompilerCacheJobResourceFactory
+        is CompilerCacheJobResourceFactory
+    )
     assert (
         compiler_module.CompilerCacheJobPreparationResult
         is CompilerCacheJobPreparationResult
@@ -1195,7 +1220,12 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
                 object_store=cas,
                 environ={},
             )
-            resolver = _StaticCompilerCacheResolver(executor)
+            resources = _ScopedCompilerCacheResources(executor)
+            assert isinstance(resources, CompilerCacheJobResourceFactory)
+            resolver = CompilerCacheJobResolver(
+                resource_factory=resources,
+                object_store=cas,
+            )
             worker = IndexJobWorker(
                 catalog_factory=_CompilerCacheWorkerFactory(
                     catalog_path,
@@ -1212,7 +1242,13 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
 
             assert outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
             assert outcome.job_id == queued.job_id
-            assert resolver.calls == 1
+            assert len(resources.contexts) == 1
+            assert resources.contexts[0].job.job_id == queued.job_id
+            assert resources.object_stores == [cas]
+            assert resources.exits == 1
+            assert fixture.source.closed
+            assert fixture.bm25_owner.closed
+            assert fixture.context_owner.closed
             assert publication_calls == [queued.job_id]
             assert len(cas.put_chunk_receipts) == 3
             assert len(cas.retained_receipt_sets) == 1
@@ -1223,6 +1259,152 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
                 summary = catalog.get_manifest_summary(completed.result_snapshot_id)
                 assert tuple(summary["views"]) == ("bm25",)
                 assert summary["views"]["bm25"]["profile"]["profile_id"] == (profile_id)
+    finally:
+        fixture.close()
+
+
+def test_compiler_cache_resolver_rejects_foreign_store_and_closes_scope(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    publication_calls: list[str] = []
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "worker-cas") as worker_cas,
+            _JobTrackingCAS(tmp_path / "foreign-cas") as foreign_cas,
+        ):
+            with SQLiteCatalog(catalog_path) as catalog:
+                (
+                    repository_id,
+                    source_revision_id,
+                    profile_id,
+                ) = _register_bm25_job_subject(catalog, fixture, plan)
+                queued = _create_bm25_job(
+                    catalog,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                )
+
+            resources = _ScopedCompilerCacheResources(
+                CompilerCacheJobExecutor(
+                    cache_dir=fixture.cache,
+                    view_type="bm25",
+                    repository_source=fixture.source,
+                    view_output_owner=fixture.bm25_owner,
+                    context_output_owner=fixture.context_owner,
+                    view_destination=fixture.bm25_destination,
+                    context_destination=fixture.context_destination,
+                    workspace_provider=fixture.provider,
+                    repository_key=_REPOSITORY_KEY,
+                    object_store=foreign_cas,
+                    environ={},
+                )
+            )
+            worker = IndexJobWorker(
+                catalog_factory=_CompilerCacheWorkerFactory(
+                    catalog_path,
+                    publication_calls,
+                ),
+                object_store=worker_cas,
+                resolver=CompilerCacheJobResolver(
+                    resource_factory=resources,
+                    object_store=worker_cas,
+                ),
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "compiler-cache-worker",
+            )
+
+            with pytest.raises(
+                StorageIntegrityError,
+                match="resolver object store",
+            ):
+                worker.run_once()
+
+            assert len(resources.contexts) == 1
+            assert resources.exits == 1
+            assert fixture.source.closed
+            assert fixture.bm25_owner.closed
+            assert fixture.context_owner.closed
+            assert worker_cas.put_chunk_receipts == []
+            assert foreign_cas.put_chunk_receipts == []
+            assert worker_cas.retained_receipt_sets == []
+            assert publication_calls == []
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                running = catalog.get_job(queued.job_id)
+                assert running.status is IndexJobStatus.RUNNING
+                assert running.result_snapshot_id is None
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize("case", ("incremental", "optional", "queued"))
+def test_compiler_cache_resolver_rejects_unsupported_job_before_scope(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+                requested_mode="incremental" if case == "incremental" else "full",
+                required=case != "optional",
+            )
+            if case != "queued":
+                catalog.acquire_job_lease(
+                    queued.job_id,
+                    owner_id="scoped-resolver-worker",
+                    lease_duration_ms=60_000,
+                )
+            job = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+            resources = _ScopedCompilerCacheResources(
+                CompilerCacheJobExecutor(
+                    cache_dir=fixture.cache,
+                    view_type="bm25",
+                    repository_source=fixture.source,
+                    view_output_owner=fixture.bm25_owner,
+                    context_output_owner=fixture.context_owner,
+                    view_destination=fixture.bm25_destination,
+                    context_destination=fixture.context_destination,
+                    workspace_provider=fixture.provider,
+                    repository_key=_REPOSITORY_KEY,
+                    object_store=cas,
+                    environ={},
+                ),
+                close_resources=False,
+            )
+            resolver = CompilerCacheJobResolver(
+                resource_factory=resources,
+                object_store=cas,
+            )
+
+            with pytest.raises(StorageValidationError, match="active required FULL"):
+                resolver.resolve(job, views)
+
+            assert resources.contexts == []
+            assert resources.object_stores == []
+            assert resources.exits == 0
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.source.usable
+            assert fixture.bm25_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
     finally:
         fixture.close()
 

@@ -1236,6 +1236,18 @@ requires fresh caller-owned source, workspace receipt, and destination
 authorities. The existing self-publishing adapters remain compatibility entry
 points rather than being called from the worker.
 
+The compiler-cache bridge now also has a resource-scoped resolver seam. It
+attests the canonical running request before opening attempt resources, accepts
+only one required `full` BM25 or vector view, binds the exact
+receipt-retaining object-store instance supplied to the enclosing worker, and
+enters a caller-provided context manager for fresh source and workspace
+authorities. The scope exits on success and every executor failure; a factory
+that returns an executor attached to a different object store fails as an
+integrity error before cache, workspace, or CAS work. This is the lifecycle
+boundary for a production resolver, not the production binding itself: no
+trusted repository registry, local resource factory, source builder, or worker
+entry point is wired yet.
+
 ### M2: Immutable generation publication
 
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
@@ -1265,8 +1277,10 @@ Status: in progress. Schema-v6 durable execution control is implemented for the
 local SQLite catalog. The backend-neutral prepare-only whole-job worker is
 implemented and verified with file-backed SQLite integration coverage. An
 explicit one-view compiler-cache executor now supplies parser-inert BM25 or
-schema-8 vector artifacts without catalog authority; production source
-builders/resolvers and CLI, runtime, Web, MCP, and default wiring remain absent.
+schema-8 vector artifacts without catalog authority. Its resource-scoped
+resolver seam guarantees attempt-local cleanup and same-store binding, while
+the concrete production repository/resource resolver, source builders, and
+CLI, runtime, Web, MCP, and default wiring remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded

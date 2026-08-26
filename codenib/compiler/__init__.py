@@ -46,6 +46,10 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     )
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+    from codenib.compiler.job_resolver import (
+        CompilerCacheJobResolver,
+        CompilerCacheJobResourceFactory,
+    )
     from codenib.compiler.manifest import ManifestIndexStateStore, RepoManifest
     from codenib.compiler.manifest_export import (
         RepoManifestExportReceipt,
@@ -149,6 +153,14 @@ _EXPORTS = {
     "publish_compiler_cache_vector_job": (
         "codenib.compiler.cache_import",
         "publish_compiler_cache_vector_job",
+    ),
+    "CompilerCacheJobResolver": (
+        "codenib.compiler.job_resolver",
+        "CompilerCacheJobResolver",
+    ),
+    "CompilerCacheJobResourceFactory": (
+        "codenib.compiler.job_resolver",
+        "CompilerCacheJobResourceFactory",
     ),
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
     "IndexCompilerConfig": (
@@ -254,6 +266,8 @@ __all__ = [
     "CompilerCacheJobExecutor",
     "CompilerCacheJobPreparationResult",
     "CompilerCacheJobPublicationResult",
+    "CompilerCacheJobResolver",
+    "CompilerCacheJobResourceFactory",
     "CompilerCacheMultiViewImportResult",
     "CompilerCacheTopologyGuard",
     "CompilerCacheVectorJobPublicationResult",

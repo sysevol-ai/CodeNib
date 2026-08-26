@@ -1,0 +1,222 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+"""Resource-scoped resolver for prepare-only compiler-cache jobs."""
+
+from __future__ import annotations
+
+from contextlib import AbstractContextManager
+from dataclasses import dataclass, replace
+from typing import Protocol, runtime_checkable
+
+from ..storage.job_worker import (
+    IndexJobExecutionContext,
+    IndexJobExecutionResult,
+    IndexJobExecutor,
+)
+from ..storage.models import (
+    IndexJobRecord,
+    IndexJobRequest,
+    IndexJobRequestedMode,
+    IndexJobStatus,
+    IndexJobViewRecord,
+    StorageIntegrityError,
+    StorageValidationError,
+)
+from ..storage.protocols import ReceiptRetainingObjectStore
+from .cache_import import CompilerCacheJobExecutor
+
+_SUPPORTED_CACHE_VIEWS = frozenset({"bm25", "vector"})
+
+
+@runtime_checkable
+class CompilerCacheJobResourceFactory(Protocol):
+    """Open fresh attempt-scoped authorities for one cache executor.
+
+    Implementations own the returned context manager and must settle every
+    source binding, workspace receipt owner, and other attempt-local resource
+    when its scope exits. The supplied object store is borrowed from the
+    resolver and must be attached unchanged to the returned executor.
+    """
+
+    def open(
+        self,
+        context: IndexJobExecutionContext,
+        *,
+        object_store: ReceiptRetainingObjectStore,
+    ) -> AbstractContextManager[CompilerCacheJobExecutor]: ...
+
+
+def _detach_resolved_job(value: object) -> IndexJobRecord:
+    if type(value) is not IndexJobRecord:
+        raise StorageValidationError(
+            "compiler cache resolver requires an exact job record"
+        )
+    try:
+        detached = replace(value)
+    except StorageValidationError:
+        raise
+    except Exception as exc:
+        raise StorageValidationError(
+            "compiler cache resolver job record is structurally damaged"
+        ) from exc
+    if detached != value or type(detached.status) is not IndexJobStatus:
+        raise StorageValidationError(
+            "compiler cache resolver job record is not canonical"
+        )
+    return detached
+
+
+def _detach_resolved_views(value: object) -> tuple[IndexJobViewRecord, ...]:
+    if type(value) is not tuple or any(
+        type(item) is not IndexJobViewRecord for item in value
+    ):
+        raise StorageValidationError(
+            "compiler cache resolver requires exact job view records"
+        )
+    try:
+        detached = tuple(
+            IndexJobViewRecord(
+                job_id=item.job_id,
+                view_type=item.view_type,
+                profile_id=item.profile_id,
+                requested_mode=item.requested_mode,
+                required=item.required,
+            )
+            for item in value
+        )
+    except StorageValidationError:
+        raise
+    except Exception as exc:
+        raise StorageValidationError(
+            "compiler cache resolver job views are structurally damaged"
+        ) from exc
+    if detached != value:
+        raise StorageValidationError(
+            "compiler cache resolver job views are not canonical"
+        )
+    return detached
+
+
+def _canonical_resolved_views(job: IndexJobRecord) -> tuple[IndexJobViewRecord, ...]:
+    request = IndexJobRequest(
+        repository_id=job.repository_id,
+        source_revision_id=job.source_revision_id,
+        ref_name=job.ref_name,
+        idempotency_key=job.idempotency_key,
+        expected_ref_generation=job.expected_ref_generation,
+        max_attempts=job.max_attempts,
+        request_json=job.request_json,
+    )
+    if request.job_id != job.job_id or request.request_digest != job.request_digest:
+        raise StorageIntegrityError(
+            "compiler cache resolver job request identity is inconsistent"
+        )
+    return request.view_requests
+
+
+@dataclass(frozen=True, slots=True)
+class _ScopedCompilerCacheJobExecutor:
+    job: IndexJobRecord
+    views: tuple[IndexJobViewRecord, ...]
+    resource_factory: CompilerCacheJobResourceFactory
+    object_store: ReceiptRetainingObjectStore
+
+    def execute(
+        self,
+        context: IndexJobExecutionContext,
+    ) -> IndexJobExecutionResult:
+        if type(context) is not IndexJobExecutionContext:
+            raise TypeError("scoped compiler cache executor requires an exact context")
+        if context.job != self.job or context.views != self.views:
+            raise StorageIntegrityError(
+                "scoped compiler cache executor received a different job attempt"
+            )
+        resources = self.resource_factory.open(
+            context,
+            object_store=self.object_store,
+        )
+        if not isinstance(resources, AbstractContextManager):
+            raise TypeError(
+                "compiler cache resource factory must return a context manager"
+            )
+        with resources as executor:
+            if type(executor) is not CompilerCacheJobExecutor:
+                raise TypeError(
+                    "compiler cache resource factory returned an invalid executor"
+                )
+            if executor.object_store is not self.object_store:
+                raise StorageIntegrityError(
+                    "compiler cache executor must use the resolver object store"
+                )
+            if executor.view_type != self.views[0].view_type:
+                raise StorageIntegrityError(
+                    "compiler cache executor resolved a different job view"
+                )
+            result = executor.execute(context)
+            if type(result) is not IndexJobExecutionResult:
+                raise StorageIntegrityError(
+                    "compiler cache executor returned an invalid result"
+                )
+            return result
+
+
+@dataclass(frozen=True, slots=True)
+class CompilerCacheJobResolver:
+    """Resolve one supported cache job through fresh scoped authorities.
+
+    This resolver deliberately has no catalog capability. It binds the same
+    receipt-retaining object-store instance used by the enclosing worker and
+    defers attempt-local authority creation until execution begins.
+    """
+
+    resource_factory: CompilerCacheJobResourceFactory
+    object_store: ReceiptRetainingObjectStore
+
+    def __post_init__(self) -> None:
+        if type(self) is not CompilerCacheJobResolver:
+            raise TypeError("compiler cache job resolver must use the exact type")
+        if not isinstance(self.resource_factory, CompilerCacheJobResourceFactory):
+            raise TypeError("compiler cache job resolver requires a resource factory")
+        if not isinstance(self.object_store, ReceiptRetainingObjectStore):
+            raise TypeError(
+                "compiler cache job resolver requires a receipt-retaining store"
+            )
+
+    def resolve(
+        self,
+        job: IndexJobRecord,
+        views: tuple[IndexJobViewRecord, ...],
+    ) -> IndexJobExecutor:
+        detached_job = _detach_resolved_job(job)
+        detached_views = _detach_resolved_views(views)
+        if detached_views != _canonical_resolved_views(detached_job):
+            raise StorageIntegrityError(
+                "compiler cache resolver views differ from the job request"
+            )
+        if (
+            detached_job.status is not IndexJobStatus.RUNNING
+            or detached_job.cancel_requested
+            or len(detached_views) != 1
+            or detached_views[0].job_id != detached_job.job_id
+            or detached_views[0].view_type not in _SUPPORTED_CACHE_VIEWS
+            or detached_views[0].requested_mode is not IndexJobRequestedMode.FULL
+            or detached_views[0].required is not True
+        ):
+            raise StorageValidationError(
+                "compiler cache resolver requires one active required FULL "
+                "BM25 or vector view"
+            )
+        return _ScopedCompilerCacheJobExecutor(
+            job=detached_job,
+            views=detached_views,
+            resource_factory=self.resource_factory,
+            object_store=self.object_store,
+        )
+
+
+__all__ = [
+    "CompilerCacheJobResolver",
+    "CompilerCacheJobResourceFactory",
+]
