@@ -195,6 +195,117 @@ def _publish_generation(
     return owner
 
 
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict workspace publication currently requires Linux directory fsync",
+)
+def test_run_strict_workspace_preserves_exact_staged_cancellation(
+    tmp_path: Path,
+) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    provider = _TestProvider()
+    owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("exact staged cancellation")
+    armed = False
+
+    def check_cancelled() -> None:
+        if armed:
+            raise cancellation
+
+    def operation(session: StrictWorkspaceSession) -> None:
+        nonlocal armed
+        session.write_file("payload.bin", (b"owned",))
+
+        def validate_staged(_reader) -> None:
+            nonlocal armed
+            armed = True
+
+        def forbidden_published(_reader) -> None:
+            raise AssertionError("cancelled stage reached published validation")
+
+        session.publish_validated(
+            validate_staged,
+            validate_published_destination=forbidden_published,
+        )
+
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=owner,
+                operation=operation,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is cancellation
+        assert owner.state == "cleanup"
+        assert not request.destination.exists()
+        assert provider.last_workspace is not None
+        assert provider.last_workspace.state == "failed"
+        owner.close()
+        assert owner.closed
+        assert provider.last_workspace.state == "closed"
+    finally:
+        if not owner.closed:
+            owner.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict workspace publication currently requires Linux directory fsync",
+)
+def test_run_strict_workspace_defers_latched_published_stop_until_receipted(
+    tmp_path: Path,
+) -> None:
+    request = StrictWorkspaceRequest("test", tmp_path / "published", _plan())
+    owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("latched during published validation")
+    published = False
+
+    def check_cancelled() -> None:
+        if published:
+            raise cancellation
+
+    def operation(session: StrictWorkspaceSession) -> bytes:
+        session.write_file("payload.bin", (b"owned",))
+
+        def validate_staged(_reader) -> bytes:
+            return b"staged"
+
+        def validate_published(_reader) -> bytes:
+            nonlocal published
+            published = True
+            return b"published"
+
+        return session.publish_validated(
+            validate_staged,
+            validate_published_destination=validate_published,
+        )
+
+    try:
+        result = run_strict_workspace(
+            _TestProvider(),
+            request,
+            receipt_owner=owner,
+            operation=operation,
+            check_cancelled=check_cancelled,
+        )
+
+        assert result == b"published"
+        assert published
+        assert owner.active
+        receipt = owner.receipt
+        assert receipt.path == request.destination
+        assert receipt.plan == request.plan
+        assert request.destination.joinpath("payload.bin").read_bytes() == b"owned"
+        with pytest.raises(KeyboardInterrupt) as caught:
+            check_cancelled()
+        assert caught.value is cancellation
+    finally:
+        owner.close()
+
+
 def _run_thread(
     callback: Callable[[], object],
     *,

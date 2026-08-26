@@ -506,7 +506,10 @@ class _InstrumentedCAS(LocalCAS):
         def retained() -> _Result:
             assert not self.state.get("retention_active", False)
             assert self.receipt_counts
-            assert set(self.receipt_counts.values()) == {1}
+            # Raw view puts are point-in-time attested before cancellation can
+            # win. The projection is first attested by the retaining store,
+            # which then independently reattests every raw-view receipt.
+            assert set(self.receipt_counts.values()) == {1, 2}
             self.state["retention_active"] = True
             self.state.setdefault("events", []).append(("retention", "enter"))
             try:
@@ -561,7 +564,9 @@ class _InstrumentedCatalog(SQLiteCatalog):
     def publish_snapshot(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         self._record("publish_snapshot")
         assert self.state["cas"].receipt_counts
-        assert set(self.state["cas"].receipt_counts.values()) == {2}
+        # The final catalog boundary reattests every retained object. Raw view
+        # receipts have the additional point-in-time post-put attestation.
+        assert set(self.state["cas"].receipt_counts.values()) == {2, 3}
         self.publish_count += 1
         return super().publish_snapshot(*args, **kwargs)
 
@@ -941,7 +946,7 @@ def test_all_selected_views_finish_validation_and_planning_before_cas_and_catalo
     state["cas"] = cas
     catalog = _InstrumentedCatalog(tmp_path / "catalog.sqlite", state)
     real_validate = (
-        manifest_import_module.validate_content_bound_portable_query_view_reader
+        manifest_import_module._validate_content_bound_portable_query_view_reader_with_identity
     )
     real_plan = manifest_import_module.plan_view_bundle_reader
     real_consume = PublishedWorkspaceReceiptOwner.consume
@@ -972,7 +977,7 @@ def test_all_selected_views_finish_validation_and_planning_before_cas_and_catalo
     state["before_first_put"] = before_first_put
     monkeypatch.setattr(
         manifest_import_module,
-        "validate_content_bound_portable_query_view_reader",
+        "_validate_content_bound_portable_query_view_reader_with_identity",
         validating,
     )
     monkeypatch.setattr(manifest_import_module, "plan_view_bundle_reader", planning)

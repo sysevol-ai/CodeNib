@@ -10,7 +10,7 @@ import hashlib
 import inspect
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -56,7 +56,7 @@ from .portable_views import (
     _validate_content_bound_portable_query_view_reader_with_identity,
 )
 from .runtime import verify_context_artifact_reader
-from .security import assert_publishable_tree_reader
+from .security import _assert_publishable_tree_reader_interruptibly
 from .strict_bm25 import (
     _assert_authenticated_publishable_json_value,
     _environment_snapshot,
@@ -69,6 +69,21 @@ _MAX_METADATA_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
 _STRICT_CONTEXT_PLAN_DOMAIN = "codenib-portable-context-strict-workspace-v1"
 _MISSING = object()
+
+
+def _interruptible_chunks(
+    chunks: Iterable[bytes],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[bytes]:
+    iterator = iter(chunks)
+    while True:
+        if check_cancelled is not None:
+            check_cancelled()
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
+        yield chunk
 
 
 def _canonical_json_bytes(value: Any, *, label: str) -> bytes:
@@ -402,12 +417,19 @@ def _freeze_inputs(
     repository_source: RepositorySourceBinding,
     view_generations: Mapping[str, PublishedWorkspaceReceiptOwner],
     environ: Mapping[str, str] | None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _FrozenContextInputs:
     if type(repository_source) is not RepositorySourceBinding:
         raise TypeError("strict context repository source has an invalid type")
     if not repository_source.usable:
         raise RuntimeError("strict context repository source is not usable")
-    repository_identity = repository_source.authenticated_identity_snapshot()
+    repository_identity = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
     if type(repository_identity) is not RepositorySourceIdentitySnapshot:
         raise TypeError("strict context repository identity has an invalid type")
     if not isinstance(repository, str):
@@ -543,6 +565,7 @@ def _validate_source_view(
     expected_ownership: object,
     config: Mapping[str, Any],
     inputs: _FrozenContextInputs,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     def validate(
         receipt: PublishedWorkspaceReceipt,
@@ -554,9 +577,13 @@ def _validate_source_view(
             or receipt.plan_digest != expected_receipt.plan_digest
         ):
             raise RuntimeError(f"strict context {view} receipt changed")
-        before = publication.capture_ownership()
+        before = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         if before != expected_ownership:
             raise RuntimeError(f"strict context {view} generation changed")
+        if check_cancelled is not None:
+            check_cancelled()
         _validate_content_bound_portable_query_view_reader_with_identity(
             publication,
             repository_source=inputs.repository_source,
@@ -565,11 +592,19 @@ def _validate_source_view(
             view_config=config,
             forbidden_paths=(),
             environ=inputs.environment,
+            check_cancelled=check_cancelled,
         )
-        if publication.capture_ownership() != before:
+        if (
+            publication.capture_ownership(
+                check_cancelled=check_cancelled,
+            )
+            != before
+        ):
             raise RuntimeError(f"strict context {view} generation changed")
 
-    owner.consume(validate)
+    owner.consume(validate, check_cancelled=check_cancelled)
+    if check_cancelled is not None:
+        check_cancelled()
 
 
 def _planned_view(
@@ -578,10 +613,13 @@ def _planned_view(
     *,
     manifest: RepoManifest,
     inputs: _FrozenContextInputs,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[PlannedContextView, dict[str, Any]]:
     receipt = owner.receipt
     if not receipt.durable:
         raise RuntimeError(f"strict context {view} generation is not durable")
+    if check_cancelled is not None:
+        check_cancelled()
     ownership = receipt.ownership
     inventory = tuple(directory_ownership_inventory(ownership))  # type: ignore[arg-type]
     records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
@@ -616,6 +654,7 @@ def _planned_view(
         expected_ownership=ownership,
         config=config,
         inputs=inputs,
+        check_cancelled=check_cancelled,
     )
     prefix = PurePosixPath("views") / view
     outputs = tuple(_prefixed_record(prefix, record) for record in records)
@@ -686,16 +725,42 @@ def _workspace_subject(
     ).hexdigest()
 
 
-def _build_plan(inputs: _FrozenContextInputs) -> PlannedContextArtifact:
+def _build_plan(
+    inputs: _FrozenContextInputs,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> PlannedContextArtifact:
     manifest = _validate_manifest_identity(inputs)
     _require_disjoint_paths(inputs)
+    if check_cancelled is not None:
+        check_cancelled()
     selected = tuple(name for name, _owner in inputs.view_generations)
     planned_entries: list[tuple[PlannedContextView, dict[str, Any]]] = []
-    with inputs.repository_source.read_session():
+    source_session = (
+        inputs.repository_source.read_session()
+        if check_cancelled is None
+        else inputs.repository_source.read_session(
+            check_cancelled=check_cancelled,
+        )
+    )
+    with source_session:
         for view, owner in inputs.view_generations:
-            planned_entries.append(
-                _planned_view(view, owner, manifest=manifest, inputs=inputs)
-            )
+            if check_cancelled is None:
+                planned_entry = _planned_view(
+                    view,
+                    owner,
+                    manifest=manifest,
+                    inputs=inputs,
+                )
+            else:
+                planned_entry = _planned_view(
+                    view,
+                    owner,
+                    manifest=manifest,
+                    inputs=inputs,
+                    check_cancelled=check_cancelled,
+                )
+            planned_entries.append(planned_entry)
     view_plans = tuple(item[0] for item in planned_entries)
 
     portable = json.loads(
@@ -821,6 +886,30 @@ def _build_plan(inputs: _FrozenContextInputs) -> PlannedContextArtifact:
     )
 
 
+def _plan_context_artifact_strict_interruptibly(
+    manifest: RepoManifest,
+    *,
+    repository: str,
+    repository_source: RepositorySourceBinding,
+    view_generations: Mapping[str, PublishedWorkspaceReceiptOwner],
+    environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
+) -> PlannedContextArtifact:
+    """Plan one exact context generation from retained portable views."""
+
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("strict context cancellation check must be callable")
+    inputs = _freeze_inputs(
+        manifest,
+        repository=repository,
+        repository_source=repository_source,
+        view_generations=view_generations,
+        environ=environ,
+        check_cancelled=check_cancelled,
+    )
+    return _build_plan(inputs, check_cancelled=check_cancelled)
+
+
 def plan_context_artifact_strict(
     manifest: RepoManifest,
     *,
@@ -831,14 +920,13 @@ def plan_context_artifact_strict(
 ) -> PlannedContextArtifact:
     """Plan one exact context generation from retained portable views."""
 
-    inputs = _freeze_inputs(
+    return _plan_context_artifact_strict_interruptibly(
         manifest,
         repository=repository,
         repository_source=repository_source,
         view_generations=view_generations,
         environ=environ,
     )
-    return _build_plan(inputs)
 
 
 def _preflight_output_authority(
@@ -875,8 +963,10 @@ def _preflight_output_authority(
 def _require_expected_plan(
     planned: PlannedContextArtifact,
     inputs: _FrozenContextInputs,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    expected = _build_plan(inputs)
+    expected = _build_plan(inputs, check_cancelled=check_cancelled)
     if planned != expected:
         raise ValueError("strict context plan differs from its exact inputs")
 
@@ -898,23 +988,28 @@ def _validate_candidate(
     planned: PlannedContextArtifact,
     inputs: _FrozenContextInputs,
     forbidden_paths: tuple[Path, ...],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    before = candidate.capture_ownership()
+    before = candidate.capture_ownership(
+        check_cancelled=check_cancelled,
+    )
     records = tuple(directory_ownership_file_records(before))  # type: ignore[arg-type]
     inventory = tuple(directory_ownership_inventory(before))  # type: ignore[arg-type]
     if records != planned.output_records or inventory != _candidate_inventory(planned):
         raise RuntimeError("strict context candidate differs from its exact plan")
-    assert_publishable_tree_reader(
+    _assert_publishable_tree_reader_interruptibly(
         candidate,
         forbidden_paths=(inputs.repository_identity.root, *forbidden_paths),
         environ=inputs.environment,
         label="strict context artifact",
         streaming_json_paths=planned.streaming_json_paths,
+        check_cancelled=check_cancelled,
     )
     verified = verify_context_artifact_reader(
         candidate,
         expected_repository=planned.repository,
         expected_commit=planned.commit,
+        check_cancelled=check_cancelled,
     )
     if (
         verified.views != planned.views
@@ -923,7 +1018,9 @@ def _validate_candidate(
         or verified.byte_count != planned.byte_count
     ):
         raise RuntimeError("strict context candidate identity differs from its plan")
-    after = candidate.capture_ownership()
+    after = candidate.capture_ownership(
+        check_cancelled=check_cancelled,
+    )
     if after != before:
         raise RuntimeError("strict context candidate changed during validation")
 
@@ -933,6 +1030,7 @@ def _replay_view(
     *,
     planned_view: PlannedContextView,
     owner: PublishedWorkspaceReceiptOwner,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     def replay(
         receipt: PublishedWorkspaceReceipt,
@@ -945,14 +1043,24 @@ def _replay_view(
             raise ValueError(
                 f"strict context {planned_view.name} source changed after planning"
             )
-        before = publication.capture_ownership()
+        before = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         if before != planned_view.source_ownership:
             raise RuntimeError(
                 f"strict context {planned_view.name} source changed during replay"
             )
+        if check_cancelled is not None:
+            check_cancelled()
         written: list[TreeFileRecord] = []
         prefix = PurePosixPath("views") / planned_view.name
-        for source_record in planned_view.source_records:
+        for source_record, expected_output in zip(
+            planned_view.source_records,
+            planned_view.output_records,
+            strict=True,
+        ):
+            if check_cancelled is not None:
+                check_cancelled()
             with publication.open_authenticated_file(
                 source_record.path,
                 max_bytes=source_record.size,
@@ -960,23 +1068,39 @@ def _replay_view(
                 written.append(
                     session.write_file(
                         prefix / PurePosixPath(source_record.path),
-                        source.iter_bytes(),
+                        _interruptible_chunks(
+                            source.iter_bytes(),
+                            check_cancelled,
+                        ),
                     )
                 )
             if source.record != source_record:
                 raise RuntimeError(
                     f"strict context {planned_view.name} source file changed"
                 )
+            if written[-1] != expected_output:
+                raise RuntimeError(
+                    f"strict context {planned_view.name} replay differs from its plan"
+                )
+            if check_cancelled is not None:
+                check_cancelled()
         if tuple(written) != planned_view.output_records:
             raise RuntimeError(
                 f"strict context {planned_view.name} replay differs from its plan"
             )
-        if publication.capture_ownership() != before:
+        if (
+            publication.capture_ownership(
+                check_cancelled=check_cancelled,
+            )
+            != before
+        ):
             raise RuntimeError(
                 f"strict context {planned_view.name} source changed during replay"
             )
 
-    owner.consume(replay)
+    owner.consume(replay, check_cancelled=check_cancelled)
+    if check_cancelled is not None:
+        check_cancelled()
 
 
 def _publish_frozen(
@@ -987,7 +1111,10 @@ def _publish_frozen(
     workspace_provider: StrictWorkspaceProvider,
     output_receipt_owner: PublishedWorkspaceReceiptOwner,
     require_expected_plan: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> ContextArtifactResult:
+    if check_cancelled is not None:
+        check_cancelled()
     if any(owner is output_receipt_owner for _view, owner in inputs.view_generations):
         raise ValueError("strict context input and output receipt owners must differ")
     source_paths = _require_disjoint_paths(inputs)
@@ -998,7 +1125,11 @@ def _publish_frozen(
     )
     _require_missing_destination(lexical_destination)
     if require_expected_plan:
-        _require_expected_plan(planned, inputs)
+        _require_expected_plan(
+            planned,
+            inputs,
+            check_cancelled=check_cancelled,
+        )
     request = StrictWorkspaceRequest(
         purpose="portable-context-generation",
         destination=lexical_destination,
@@ -1011,7 +1142,19 @@ def _publish_frozen(
     def operation(session: StrictWorkspaceSession) -> None:
         if session.request != request:
             raise RuntimeError("strict context provider changed its request")
-        with inputs.repository_source.read_session():
+        if check_cancelled is not None:
+            check_cancelled()
+        source_session = (
+            inputs.repository_source.read_session()
+            if check_cancelled is None
+            else inputs.repository_source.read_session(
+                check_cancelled=check_cancelled,
+            )
+        )
+        with source_session:
+            expected_by_path = {
+                record.path: record for record in planned.output_records
+            }
             written = [
                 session.write_file(MANIFEST_FILENAME, (planned.manifest_payload,)),
                 session.write_file(
@@ -1019,51 +1162,72 @@ def _publish_frozen(
                     (planned.metadata_payload,),
                 ),
             ]
+            if any(record != expected_by_path.get(record.path) for record in written):
+                raise RuntimeError(
+                    "strict context metadata replay differs from its plan"
+                )
+            if check_cancelled is not None:
+                check_cancelled()
             for planned_view in planned.view_plans:
+                if check_cancelled is not None:
+                    check_cancelled()
                 _replay_view(
                     session,
                     planned_view=planned_view,
                     owner=owners[planned_view.name],
+                    check_cancelled=check_cancelled,
                 )
             expected_static = {
                 MANIFEST_FILENAME,
                 CONTEXT_ARTIFACT_MANIFEST,
             }
-            if (
-                any(
-                    record
-                    != next(
-                        item
-                        for item in planned.output_records
-                        if item.path == record.path
-                    )
-                    for record in written
-                )
-                or {record.path for record in written} != expected_static
-            ):
+            if {record.path for record in written} != expected_static:
                 raise RuntimeError(
                     "strict context metadata replay differs from its plan"
                 )
 
-        def validate(candidate: PublicationDirectoryReader) -> None:
+        def validate_with_check(
+            candidate: PublicationDirectoryReader,
+            validation_check: Callable[[], None] | None,
+        ) -> None:
             # Each staged/published callback owns its source postcondition.
             # In particular, the published-side check must finish inside the
             # directory transaction's rollback window, not after commit.
-            with inputs.repository_source.read_session():
+            source_session = (
+                inputs.repository_source.read_session()
+                if validation_check is None
+                else inputs.repository_source.read_session(
+                    check_cancelled=validation_check,
+                )
+            )
+            with source_session:
                 _validate_candidate(
                     candidate,
                     planned=planned,
                     inputs=inputs,
                     forbidden_paths=source_paths,
+                    check_cancelled=validation_check,
                 )
 
-        session.publish_validated(validate)
+        def validate(candidate: PublicationDirectoryReader) -> None:
+            validate_with_check(candidate, check_cancelled)
+
+        def validate_published(candidate: PublicationDirectoryReader) -> None:
+            validate_with_check(candidate, None)
+
+        if check_cancelled is not None:
+            check_cancelled()
+        session.publish_validated(
+            validate,
+            validate_published_destination=validate_published,
+        )
 
     run_strict_workspace(
         workspace_provider,
         request,
         receipt_owner=output_receipt_owner,
         operation=operation,
+        check_cancelled=check_cancelled,
     )
     if not output_receipt_owner.active:
         raise RuntimeError("strict context publication returned without a receipt")
@@ -1082,6 +1246,50 @@ def _publish_frozen(
     )
 
 
+def _publish_planned_context_artifact_strict_interruptibly(
+    destination: Path,
+    *,
+    planned: PlannedContextArtifact,
+    manifest: RepoManifest,
+    repository: str,
+    repository_source: RepositorySourceBinding,
+    view_generations: Mapping[str, PublishedWorkspaceReceiptOwner],
+    workspace_provider: StrictWorkspaceProvider,
+    output_receipt_owner: PublishedWorkspaceReceiptOwner,
+    environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
+) -> ContextArtifactResult:
+    """Replay and durably publish one exact strict context plan."""
+
+    _preflight_output_authority(
+        planned,
+        repository_source=repository_source,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+    )
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("strict context cancellation check must be callable")
+    if check_cancelled is not None:
+        check_cancelled()
+    inputs = _freeze_inputs(
+        manifest,
+        repository=repository,
+        repository_source=repository_source,
+        view_generations=view_generations,
+        environ=environ,
+        check_cancelled=check_cancelled,
+    )
+    return _publish_frozen(
+        destination,
+        planned=planned,
+        inputs=inputs,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=output_receipt_owner,
+        require_expected_plan=True,
+        check_cancelled=check_cancelled,
+    )
+
+
 def publish_planned_context_artifact_strict(
     destination: Path,
     *,
@@ -1096,26 +1304,16 @@ def publish_planned_context_artifact_strict(
 ) -> ContextArtifactResult:
     """Replay and durably publish one exact strict context plan."""
 
-    _preflight_output_authority(
-        planned,
-        repository_source=repository_source,
-        workspace_provider=workspace_provider,
-        output_receipt_owner=output_receipt_owner,
-    )
-    inputs = _freeze_inputs(
-        manifest,
+    return _publish_planned_context_artifact_strict_interruptibly(
+        destination,
+        planned=planned,
+        manifest=manifest,
         repository=repository,
         repository_source=repository_source,
         view_generations=view_generations,
-        environ=environ,
-    )
-    return _publish_frozen(
-        destination,
-        planned=planned,
-        inputs=inputs,
         workspace_provider=workspace_provider,
         output_receipt_owner=output_receipt_owner,
-        require_expected_plan=True,
+        environ=environ,
     )
 
 

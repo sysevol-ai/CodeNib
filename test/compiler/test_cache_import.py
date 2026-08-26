@@ -20,11 +20,14 @@ from typing import TypeVar
 import pytest
 
 import codenib.artifacts.portable_views as portable_views_module
+import codenib.artifacts.strict_context as strict_context_module
 import codenib.artifacts.strict_vector as strict_vector_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.job_resources as job_resources_module
 import codenib.index.embedding.vector_store as vector_store_module
+import codenib.source_fingerprint as source_fingerprint_module
+import codenib.storage.view_bundle as view_bundle_module
 from codenib import LocalWorkspaceProvider
 from codenib import cli as cli_module
 from codenib._captured_directory import (
@@ -1200,6 +1203,534 @@ def test_prepare_compiler_cache_job_stops_while_waiting_for_cache_lock(
         fixture.close()
 
 
+def test_compiler_cache_job_stop_check_reuses_exact_failure() -> None:
+    token = _TestStopToken()
+    check_cancelled = cache_import_module._compiler_cache_job_stop_check(token)
+    assert check_cancelled is not None
+    check_cancelled()
+
+    token.set()
+    with pytest.raises(RuntimeError) as first:
+        check_cancelled()
+    with pytest.raises(RuntimeError) as replay:
+        check_cancelled()
+
+    assert replay.value is first.value
+    assert type(first.value).__name__ == "_CompilerCacheJobStopped"
+    assert str(first.value) == "compiler cache job preparation stopped"
+
+
+def test_prepare_compiler_cache_job_stops_inside_source_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken()
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    real_update = source_fingerprint_module._update_inventory_record
+    callbacks: list[Callable[[], None]] = []
+    seen: list[str] = []
+    active = True
+
+    def observe_scan(*args, **kwargs):
+        callback = kwargs.get("check_cancelled")
+        if active and callback is not None:
+            callbacks.append(callback)
+        return real_scan(*args, **kwargs)
+
+    def stop_after_first_record(*args, **kwargs):
+        real_update(*args, **kwargs)
+        if not active:
+            return
+        if seen:
+            raise AssertionError(
+                "cancelled job source inventory consumed another record"
+            )
+        seen.append(kwargs["relative"])
+        token.set()
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        observe_scan,
+    )
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_update_inventory_record",
+        stop_after_first_record,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="source-cancelled-prepare-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(RuntimeError) as stopped:
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert type(stopped.value).__name__ == "_CompilerCacheJobStopped"
+            assert str(stopped.value) == "compiler cache job preparation stopped"
+            assert seen == ["sample.py"]
+            assert callbacks
+            with pytest.raises(RuntimeError) as replay:
+                callbacks[0]()
+            assert replay.value is stopped.value
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.bm25_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.bm25_destination.exists()
+            assert not fixture.context_destination.exists()
+            assert fixture.source.usable
+            active = False
+            fixture.source.verify_snapshot()
+    finally:
+        active = False
+        fixture.close()
+
+
+def test_prepare_compiler_cache_job_stops_inside_source_read_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken()
+    real_session = RepositorySourceBinding.read_session
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    active_depth = 0
+    session_calls = 0
+    scan_calls = 0
+    triggered = False
+    exact_stop: BaseException | None = None
+
+    class TrackingSession:
+        def __init__(self, inner) -> None:
+            self._inner = inner
+
+        def __enter__(self):
+            nonlocal active_depth
+            active_depth += 1
+            try:
+                return self._inner.__enter__()
+            except BaseException:  # noqa: B036 - mirror failed enter cleanup
+                active_depth -= 1
+                raise
+
+        def __exit__(self, exc_type, exc, traceback):
+            nonlocal active_depth
+            try:
+                return self._inner.__exit__(exc_type, exc, traceback)
+            finally:
+                active_depth -= 1
+
+    def tracked_session(binding, *args, **kwargs):
+        nonlocal session_calls
+        inner = real_session(binding, *args, **kwargs)
+        if binding is not fixture.source:
+            return inner
+        if not callable(kwargs.get("check_cancelled")):
+            raise AssertionError("job source read session omitted cancellation")
+        session_calls += 1
+        return TrackingSession(inner)
+
+    def tracked_scan(*args, **kwargs):
+        nonlocal scan_calls, triggered
+        if active_depth and not triggered:
+            callback = kwargs.get("check_cancelled")
+            if not callable(callback):
+                raise AssertionError("job source session scan omitted cancellation")
+
+            def stop_on_first_scan_poll() -> None:
+                nonlocal exact_stop, triggered
+                triggered = True
+                token.set()
+                try:
+                    callback()
+                except BaseException as exc:  # noqa: B036 - exact identity
+                    exact_stop = exc
+                    raise
+
+            scan_calls += 1
+            kwargs["check_cancelled"] = stop_on_first_scan_poll
+        return real_scan(*args, **kwargs)
+
+    monkeypatch.setattr(RepositorySourceBinding, "read_session", tracked_session)
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        tracked_scan,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="source-session-cancelled-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(RuntimeError) as stopped:
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert stopped.value is exact_stop
+            assert type(stopped.value).__name__ == "_CompilerCacheJobStopped"
+            assert str(stopped.value) == "compiler cache job preparation stopped"
+            assert session_calls == 1
+            assert scan_calls == 1
+            assert triggered
+            assert active_depth == 0
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.source.usable
+            fixture.source.authenticated_identity_snapshot()
+    finally:
+        fixture.close()
+
+
+def test_prepare_compiler_cache_job_attests_artifact_before_final_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken()
+    real_snapshot = RepositorySourceBinding.authenticated_identity_snapshot
+    forged_returned = False
+    final_scan_attempted = False
+
+    def forged_artifact(*args, **kwargs):
+        nonlocal forged_returned
+        forged_returned = True
+        return (object(),)
+
+    def stop_before_final_source_scan(binding, *args, **kwargs):
+        nonlocal final_scan_attempted
+        if forged_returned:
+            final_scan_attempted = True
+            callback = kwargs.get("check_cancelled")
+            if not callable(callback):
+                raise AssertionError("final source scan omitted cancellation")
+            token.set()
+            callback()
+        return real_snapshot(binding, *args, **kwargs)
+
+    monkeypatch.setattr(
+        cache_import_module,
+        "_prepare_job_view_artifacts_inside_authority",
+        forged_artifact,
+    )
+    monkeypatch.setattr(
+        RepositorySourceBinding,
+        "authenticated_identity_snapshot",
+        stop_before_final_source_scan,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="forged-artifact-prepare-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(
+                StorageIntegrityError,
+                match="ingestion returned a different requested view",
+            ):
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert forged_returned
+            assert not final_scan_attempted
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 2
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize("phase", ("plan", "publish"))
+def test_prepare_compiler_cache_job_stops_during_context_full_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken()
+    active_phase: list[str | None] = [None]
+    scan_cancelled = [False]
+    real_capture_ownership = (
+        strict_context_module.PublicationDirectoryReader.capture_ownership
+    )
+    real_context_plan = cache_import_module.plan_context_artifact_strict
+    real_context_publish = cache_import_module.publish_planned_context_artifact_strict
+
+    def tracked_context_plan(*args, **kwargs):
+        active_phase[0] = "plan"
+        try:
+            return real_context_plan(*args, **kwargs)
+        finally:
+            active_phase[0] = None
+
+    def tracked_context_publish(*args, **kwargs):
+        active_phase[0] = "publish"
+        try:
+            return real_context_publish(*args, **kwargs)
+        finally:
+            active_phase[0] = None
+
+    def cancel_inside_capture(publication, *args, **kwargs):
+        if active_phase[0] != phase or scan_cancelled[0]:
+            return real_capture_ownership(publication, *args, **kwargs)
+        check_cancelled = kwargs.get("check_cancelled")
+        if not callable(check_cancelled):
+            raise AssertionError("context owner scan omitted its cancellation check")
+
+        def stop_on_first_scan_poll() -> None:
+            scan_cancelled[0] = True
+            token.set()
+            check_cancelled()
+
+        kwargs["check_cancelled"] = stop_on_first_scan_poll
+        real_capture_ownership(publication, *args, **kwargs)
+        raise AssertionError("context full scan completed after cancellation") from None
+
+    monkeypatch.setattr(
+        cache_import_module,
+        "plan_context_artifact_strict",
+        tracked_context_plan,
+    )
+    monkeypatch.setattr(
+        cache_import_module,
+        "publish_planned_context_artifact_strict",
+        tracked_context_publish,
+    )
+    monkeypatch.setattr(
+        strict_context_module.PublicationDirectoryReader,
+        "capture_ownership",
+        cancel_inside_capture,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id=f"stopped-context-{phase}-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(
+                RuntimeError,
+                match="compiler cache job preparation stopped",
+            ):
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert scan_cancelled == [True]
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 1
+            assert fixture.bm25_owner.active
+            assert fixture.context_owner.state == "empty"
+            assert fixture.bm25_destination.is_dir()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+@pytest.mark.parametrize("pass_name", ("crc", "hash"))
+def test_prepare_compiler_cache_job_stops_during_view_bundle_full_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pass_name: str,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken()
+    crc_polled = [False]
+    hash_poison_consumed = [False]
+
+    if pass_name == "crc":
+        real_crc32 = view_bundle_module._publication_file_crc32
+
+        def cancel_during_crc(*args, **kwargs):
+            check_cancelled = kwargs.get("check_cancelled")
+            if not callable(check_cancelled):
+                raise AssertionError("bundle CRC pass omitted its cancellation check")
+
+            def stop_on_first_crc_poll() -> None:
+                crc_polled[0] = True
+                token.set()
+                check_cancelled()
+
+            kwargs["check_cancelled"] = stop_on_first_crc_poll
+            real_crc32(*args, **kwargs)
+            raise AssertionError(
+                "bundle CRC pass completed after cancellation"
+            ) from None
+
+        monkeypatch.setattr(
+            view_bundle_module,
+            "_publication_file_crc32",
+            cancel_during_crc,
+        )
+    else:
+        real_bundle_bytes = view_bundle_module._iter_planned_view_bundle_bytes
+
+        def poisoned_bundle_bytes(*args, **kwargs):
+            iterator = iter(real_bundle_bytes(*args, **kwargs))
+            first = next(iterator)
+            token.set()
+            yield first
+            hash_poison_consumed[0] = True
+            raise AssertionError("bundle hash pass consumed its poisoned tail")
+
+        monkeypatch.setattr(
+            view_bundle_module,
+            "_iter_planned_view_bundle_bytes",
+            poisoned_bundle_bytes,
+        )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id=f"stopped-bundle-{pass_name}-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(
+                RuntimeError,
+                match="compiler cache job preparation stopped",
+            ):
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            if pass_name == "crc":
+                assert crc_polled == [True]
+            else:
+                assert hash_poison_consumed == [False]
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 2
+            assert fixture.bm25_owner.active
+            assert fixture.context_owner.active
+            assert fixture.bm25_destination.is_dir()
+            assert fixture.context_destination.is_dir()
+    finally:
+        fixture.close()
+
+
 @pytest.mark.parametrize("case", ("profile", "source", "request"))
 def test_prepare_compiler_cache_job_rejects_mismatch_before_workspace_or_cas(
     tmp_path: Path,
@@ -1292,6 +1823,58 @@ def test_worker_rejects_a_different_compiler_resolver_store(tmp_path: Path) -> N
                 lease_duration_ms=300,
                 heartbeat_interval_ms=50,
             )
+
+
+def test_prepare_compiler_cache_job_rejects_forged_receipt_before_stop(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken()
+    try:
+        with (
+            _ForgedPutReceiptCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="forged-receipt-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+            cas.after_put = lambda count: token.set() if count == 1 else None
+
+            with pytest.raises(
+                StorageValidationError,
+                match="object receipt is not canonical",
+            ):
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert len(cas.put_chunk_receipts) == 1
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 2
+            assert fixture.bm25_owner.active
+            assert fixture.context_owner.active
+    finally:
+        fixture.close()
 
 
 def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
@@ -2589,7 +3172,8 @@ def test_compiler_cache_bm25_job_rejects_post_ingest_drift_or_substitution(
                     cas=cas,
                 )
 
-            assert len(cas.put_chunk_receipts) == 3
+            expected_put_count = 1 if case == "receipt_substitution" else 3
+            assert len(cas.put_chunk_receipts) == expected_put_count
             assert catalog.resolve_ref(repository_id) == preserved_ref
             assert cas.read_bytes(preserved_digest) == (
                 b"retained old snapshot before adversarial drift"
@@ -2600,7 +3184,7 @@ def test_compiler_cache_bm25_job_rejects_post_ingest_drift_or_substitution(
                 (job.job_id,),
             ).fetchone()[0]
             assert publication_count == 0
-            if case in {"source_drift", "job_drift"}:
+            if case in {"source_drift", "job_drift", "receipt_substitution"}:
                 assert cas.retained_receipt_sets == []
             else:
                 assert len(cas.retained_receipt_sets) == 1
@@ -4170,29 +4754,21 @@ def test_prepare_compiler_cache_vector_job_stops_during_candidate_validation(
     plan = _expected_vector_job_plan(fixture)
     token = _TestStopToken()
     candidate_scan_reached = threading.Event()
+    candidate_scan_resumed = [False]
     real_iter_documents = portable_views_module.iter_bounded_json_array
-    real_assert_no_secrets = portable_views_module.assert_no_secret_fields
 
     def stop_when_candidate_document_is_parsed(*args, **kwargs):
         for document in real_iter_documents(*args, **kwargs):
             token.set()
             candidate_scan_reached.set()
             yield document
-
-    def reject_work_after_stop(value, *, source):
-        if token.reason is not None and source.startswith("portable vector document"):
-            pytest.fail("candidate validation continued after cancellation")
-        return real_assert_no_secrets(value, source=source)
+            candidate_scan_resumed[0] = True
+            pytest.fail("candidate validation requested another document after stop")
 
     monkeypatch.setattr(
         portable_views_module,
         "iter_bounded_json_array",
         stop_when_candidate_document_is_parsed,
-    )
-    monkeypatch.setattr(
-        portable_views_module,
-        "assert_no_secret_fields",
-        reject_work_after_stop,
     )
     try:
         with (
@@ -4229,6 +4805,7 @@ def test_prepare_compiler_cache_vector_job_stops_during_candidate_validation(
                 )
 
             assert candidate_scan_reached.is_set()
+            assert candidate_scan_resumed == [False]
             assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
             assert catalog.get_job(queued.job_id) == running
             assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
@@ -4238,6 +4815,74 @@ def test_prepare_compiler_cache_vector_job_stops_during_candidate_validation(
             # Validation began after the workspace was staged, so the receipt
             # owner retains its cleanup authority until the fixture closes it.
             assert fixture.vector_owner.state == "cleanup"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.vector_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+def test_prepare_compiler_cache_vector_job_stops_before_canonical_chunk_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="STOP_VECTOR_CHUNK")
+    plan = _expected_vector_job_plan(fixture)
+    token = _TestStopToken()
+    poison_consumed = [False]
+
+    def poisoned_canonical_chunks(_values):
+        token.set()
+        yield b"["
+        poison_consumed[0] = True
+        yield object()
+
+    monkeypatch.setattr(
+        strict_vector_module,
+        "canonical_json_array_chunks",
+        poisoned_canonical_chunks,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            queued = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="stopped-vector-chunk-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(
+                RuntimeError,
+                match="compiler cache job preparation stopped",
+            ):
+                _prepare_vector_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert poison_consumed == [False]
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.vector_owner.state == "empty"
             assert fixture.context_owner.state == "empty"
             assert not fixture.vector_destination.exists()
             assert not fixture.context_destination.exists()
@@ -4903,7 +5548,8 @@ def test_compiler_cache_vector_job_rejects_post_ingest_drift_or_substitution(
                     cas=cas,
                 )
 
-            assert len(cas.put_chunk_receipts) == 5
+            expected_put_count = 1 if case == "receipt_substitution" else 5
+            assert len(cas.put_chunk_receipts) == expected_put_count
             assert catalog.resolve_ref(repository_id) == preserved_ref
             assert cas.read_bytes(preserved_digest) == (
                 b"retained old vector snapshot before adversarial drift"
@@ -4914,7 +5560,7 @@ def test_compiler_cache_vector_job_rejects_post_ingest_drift_or_substitution(
                 (job.job_id,),
             ).fetchone()[0]
             assert publication_count == 0
-            if case in {"source_drift", "job_drift"}:
+            if case in {"source_drift", "job_drift", "receipt_substitution"}:
                 assert cas.retained_receipt_sets == []
             else:
                 assert len(cas.retained_receipt_sets) == 1

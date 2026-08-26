@@ -528,6 +528,7 @@ class PublicationDirectoryReader:
         "_diagnostic_path",
         "root_identity",
         "_capture",
+        "_capture_supports_cancellation",
         "_open_file",
         "_expected_ownership",
         "_records_by_path",
@@ -555,10 +556,12 @@ class PublicationDirectoryReader:
         _authority_expected_ownership: _TreeOwnership | None = None,
         _path_prefix: PurePosixPath | None = None,
         _lifetime: _PublicationReaderLifetime | None = None,
+        _capture_supports_cancellation: bool = False,
     ) -> None:
         self._diagnostic_path = display_path
         self.root_identity = root_identity
         self._capture = capture
+        self._capture_supports_cancellation = _capture_supports_cancellation
         self._open_file = open_file
         self._expected_ownership = expected_ownership
         self._authority_expected_ownership = (
@@ -699,22 +702,34 @@ class PublicationDirectoryReader:
         required_root_file: str | None = None,
         allow_empty_root: bool = False,
         entry_policy: DirectoryEntryPolicy | None = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _TreeOwnership:
         """Capture through the already-open directory authority."""
 
         self._require_active()
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("directory ownership cancellation check must be callable")
         try:
             if self._path_prefix is not None:
                 return self._projected_capture(
                     required_root_file=required_root_file,
                     allow_empty_root=allow_empty_root,
                     entry_policy=entry_policy,
+                    check_cancelled=check_cancelled,
                 )
-            observed = self._capture(
-                required_root_file,
-                allow_empty_root,
-                entry_policy,
-            )
+            if self._capture_supports_cancellation:
+                observed = self._capture(  # type: ignore[call-arg]
+                    required_root_file,
+                    allow_empty_root,
+                    entry_policy,
+                    check_cancelled,
+                )
+            else:
+                observed = self._capture(
+                    required_root_file,
+                    allow_empty_root,
+                    entry_policy,
+                )
             if self._expected_ownership is not None:
                 _require_matching_ownership(
                     observed,
@@ -733,6 +748,7 @@ class PublicationDirectoryReader:
         required_root_file: str | None,
         allow_empty_root: bool,
         entry_policy: DirectoryEntryPolicy | None,
+        check_cancelled: Callable[[], None] | None,
     ) -> _TreeOwnership:
         ownership = self._expected_ownership
         if ownership is None:
@@ -766,6 +782,8 @@ class PublicationDirectoryReader:
                         stat.S_IMODE(identities[path][2]),
                         0,
                     )
+                if check_cancelled is not None:
+                    check_cancelled()
         return ownership
 
     def subtree(
@@ -800,6 +818,7 @@ class PublicationDirectoryReader:
             _authority_expected_ownership=self._authority_expected_ownership,
             _path_prefix=authority_prefix,
             _lifetime=self._lifetime,
+            _capture_supports_cancellation=self._capture_supports_cancellation,
         )
 
     def inventory(self) -> tuple[tuple[str, str], ...]:
@@ -2745,6 +2764,7 @@ class _PublicationAuthority:
         required_root_file: str | None = None,
         allow_empty_root: bool = False,
         entry_policy: DirectoryEntryPolicy | None = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _TreeOwnership:
         return self.read_child(
             name,
@@ -2755,6 +2775,7 @@ class _PublicationAuthority:
                 required_root_file=required_root_file,
                 allow_empty_root=allow_empty_root,
                 entry_policy=entry_policy,
+                check_cancelled=check_cancelled,
             ),
         )
 
@@ -3107,14 +3128,15 @@ def _open_posix_publication_authority(
                 reader = _PublicationTreeReader(
                     display_path,
                     root_identity,
-                    lambda required_root_file, allow_empty_root, entry_policy: (
+                    lambda root_file, allow_empty, policy, cancelled: (
                         _capture_posix_directory_descriptor(
                             child_descriptor,
                             display_path,
                             resources=resources,
-                            required_root_file=required_root_file,
-                            allow_empty_root=allow_empty_root,
-                            entry_policy=entry_policy,
+                            required_root_file=root_file,
+                            allow_empty_root=allow_empty,
+                            entry_policy=policy,
+                            check_cancelled=cancelled,
                         )
                     ),
                     lambda relative, max_bytes, expected: _open_posix_authenticated_file(
@@ -3126,6 +3148,7 @@ def _open_posix_publication_authority(
                         expected=expected,
                     ),
                     expected_ownership,
+                    _capture_supports_cancellation=True,
                 )
 
                 def validate_child_binding() -> None:
@@ -3301,13 +3324,14 @@ def _adopt_native_posix_publication_authority(
             reader = _PublicationTreeReader(
                 display_path,
                 root_identity,
-                lambda required_root_file, allow_empty_root, entry_policy: (
+                lambda required_root_file, allow_empty_root, entry_policy, check_cancelled: (
                     _capture_posix_directory_descriptor(
                         root_descriptor,
                         display_path,
                         required_root_file=required_root_file,
                         allow_empty_root=allow_empty_root,
                         entry_policy=entry_policy,
+                        check_cancelled=check_cancelled,
                     )
                 ),
                 lambda relative, max_bytes, expected: (
@@ -3320,6 +3344,7 @@ def _adopt_native_posix_publication_authority(
                     )
                 ),
                 expected_ownership,
+                _capture_supports_cancellation=True,
             )
 
             def validate_child_binding() -> None:
@@ -3593,13 +3618,14 @@ class _NativeReplacementPublication:
             reader = _PublicationTreeReader(
                 display_path,
                 identity,
-                lambda required_root_file, allow_empty_root, entry_policy: (
+                lambda required_root_file, allow_empty_root, entry_policy, check_cancelled: (
                     _capture_posix_directory_descriptor(
                         descriptor,
                         display_path,
                         required_root_file=required_root_file,
                         allow_empty_root=allow_empty_root,
                         entry_policy=entry_policy,
+                        check_cancelled=check_cancelled,
                     )
                 ),
                 lambda relative, max_bytes, expected: (
@@ -3612,6 +3638,7 @@ class _NativeReplacementPublication:
                     )
                 ),
                 expected_ownership,
+                _capture_supports_cancellation=True,
             )
 
             def validate_binding() -> None:
@@ -3700,13 +3727,17 @@ class _NativeReplacementPublication:
         *,
         path: Path,
         label: str,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _TreeOwnership:
         return self.read_incumbent(
             self.incumbent_name,
             path,
             label,
             None,
-            lambda reader: reader.capture_ownership(allow_empty_root=True),
+            lambda reader: reader.capture_ownership(
+                allow_empty_root=True,
+                check_cancelled=check_cancelled,
+            ),
         )
 
     def exchange(self, deadline_ns: int) -> object:
@@ -3881,6 +3912,7 @@ def _publish_native_replacement_with_authority(
         [_TreeOwnership, _TreeOwnership, DirectoryOrphan, object],
         None,
     ],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> DirectoryOrphan:
     """Publish one native replacement without generic isolation or sync."""
 
@@ -3919,6 +3951,8 @@ def _publish_native_replacement_with_authority(
         raise TypeError("workspace replacement published validator is invalid")
     if not callable(commit_callback):
         raise TypeError("workspace replacement commit callback is invalid")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("workspace replacement cancellation check must be callable")
 
     # Freeze every authority method, capability receiver, ownership check, and
     # receipt constructor before either validator runs.  A validator may
@@ -3944,6 +3978,7 @@ def _publish_native_replacement_with_authority(
         *,
         path: Path,
         label: str,
+        cancellation_check: Callable[[], None] | None = None,
     ) -> _TreeOwnership:
         return read_candidate_exact(
             name,
@@ -3953,14 +3988,18 @@ def _publish_native_replacement_with_authority(
             callback=lambda reader: capture_ownership_exact(
                 reader,
                 allow_empty_root=True,
+                check_cancelled=cancellation_check,
             ),
         )
 
     verify_replacement_exact()
+    if check_cancelled is not None:
+        check_cancelled()
     staged = capture_candidate_exact(
         stage_display.name,
         path=stage_display,
         label="workspace replacement candidate",
+        cancellation_check=check_cancelled,
     )
     require_publishable_exact(
         staged,
@@ -3968,6 +4007,8 @@ def _publish_native_replacement_with_authority(
     )
     if staged != expected_stage_root_ownership:
         raise RuntimeError("workspace replacement candidate changed before exchange")
+    if check_cancelled is not None:
+        check_cancelled()
     if validate_staged_directory is not None:
         read_candidate_exact(
             stage_display.name,
@@ -3977,26 +4018,37 @@ def _publish_native_replacement_with_authority(
             callback=validate_staged_directory,
         )
         verify_authority_pair_exact(publication_authority)
-        if (
-            capture_candidate_exact(
-                stage_display.name,
-                path=stage_display,
-                label="workspace replacement candidate",
-            )
-            != staged
-        ):
+        validated_staged = capture_candidate_exact(
+            stage_display.name,
+            path=stage_display,
+            label="workspace replacement candidate",
+            cancellation_check=check_cancelled,
+        )
+        if validated_staged != staged:
             raise RuntimeError(
                 "workspace replacement candidate changed during validation"
             )
+        if check_cancelled is not None:
+            check_cancelled()
 
-    incumbent = capture_incumbent_exact(
-        path=destination_display,
-        label="workspace replacement incumbent",
+    incumbent = (
+        capture_incumbent_exact(
+            path=destination_display,
+            label="workspace replacement incumbent",
+        )
+        if check_cancelled is None
+        else capture_incumbent_exact(
+            path=destination_display,
+            label="workspace replacement incumbent",
+            check_cancelled=check_cancelled,
+        )
     )
     if incumbent != expected_destination_ownership:
         raise RuntimeError("workspace replacement incumbent changed before exchange")
     verify_authority_pair_exact(publication_authority)
     verify_replacement_exact()
+    if check_cancelled is not None:
+        check_cancelled()
 
     receipt_token = exchange_replacement_exact(deadline_ns)
     verify_replacement_exact()
@@ -4459,15 +4511,24 @@ def _windows_find_child(
     api: _WindowsKernelApi,
     parent_handle: int,
     name: str,
+    *,
+    expected_file_id: int | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _WindowsDirectoryEntry | None:
     folded = name.casefold()
     match: _WindowsDirectoryEntry | None = None
     for entry in api.iter_directory(parent_handle):
         if entry.name.casefold() != folded:
+            if check_cancelled is not None:
+                check_cancelled()
             continue
         if match is not None:
             raise RuntimeError("Windows directory contains ambiguous child names")
         match = entry
+        if expected_file_id is not None and entry.file_id != expected_file_id:
+            raise RuntimeError("Windows directory child identity changed")
+        if check_cancelled is not None:
+            check_cancelled()
     return match
 
 
@@ -4528,6 +4589,7 @@ def _windows_owned_file_record(
     relative: str,
     entry_policy: DirectoryEntryPolicy | None,
     resource_owner: _WindowsResourceOwner,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[int, str, tuple[int, ...]]:
     handle, opened = _windows_open_child_by_id(
         api,
@@ -4562,6 +4624,8 @@ def _windows_owned_file_record(
         digest = hashlib.sha256()
         remaining = size
         while remaining:
+            if check_cancelled is not None:
+                check_cancelled()
             block = api.read(handle, min(remaining, _OWNERSHIP_COPY_BYTES))
             if not block:
                 raise RuntimeError(f"directory ownership file was truncated: {path}")
@@ -4572,7 +4636,13 @@ def _windows_owned_file_record(
         after = api.metadata(handle)
         if _ownership_version_identity(after) != _ownership_version_identity(opened):
             raise RuntimeError(f"directory ownership file changed: {path}")
-        rebound = _windows_find_child(api, parent_handle, entry.name)
+        rebound = _windows_find_child(
+            api,
+            parent_handle,
+            entry.name,
+            expected_file_id=entry.file_id,
+            check_cancelled=check_cancelled,
+        )
         if rebound is None or rebound.file_id != entry.file_id:
             raise RuntimeError(f"directory ownership file changed: {path}")
     budget.byte_count += size
@@ -4773,7 +4843,10 @@ def _scan_windows_owned_directory(
     required_root_file: str | None = None,
     allow_empty_root: bool = False,
     resource_owner: _WindowsResourceOwner,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> bytes:
+    if check_cancelled is not None:
+        check_cancelled()
     if depth > _MAX_SAFE_REMOVAL_DEPTH:
         raise RuntimeError("directory ownership scan exceeds its depth limit")
     before = api.metadata(handle)
@@ -4791,6 +4864,8 @@ def _scan_windows_owned_directory(
         relative = _ownership_relative_path(parts + (raw_name,))
         _reserve_ownership_record(budget, relative=relative)
         entries.append((raw_name, entry))
+        if check_cancelled is not None:
+            check_cancelled()
     entries.sort(key=lambda item: item[0])
     if (
         required_root_file is not None
@@ -4803,6 +4878,8 @@ def _scan_windows_owned_directory(
     hasher.update(b"codenib.atomic-directory.v1\x00")
     hasher.update(stat.S_IMODE(before.st_mode).to_bytes(4, "big"))
     for raw_name, entry in entries:
+        if check_cancelled is not None:
+            check_cancelled()
         child_parts = parts + (raw_name,)
         relative_bytes = _ownership_relative_path(child_parts)
         relative = relative_bytes.decode("utf-8", errors="strict")
@@ -4863,6 +4940,7 @@ def _scan_windows_owned_directory(
                     entry_policy=entry_policy,
                     depth=depth + 1,
                     resource_owner=resource_owner,
+                    check_cancelled=check_cancelled,
                 )
                 after = api.metadata(child_handle)
                 if _ownership_version_identity(after) != _ownership_version_identity(
@@ -4871,7 +4949,13 @@ def _scan_windows_owned_directory(
                     raise RuntimeError(
                         f"directory ownership directory changed: {child_path}"
                     )
-            rebound = _windows_find_child(api, handle, entry.name)
+            rebound = _windows_find_child(
+                api,
+                handle,
+                entry.name,
+                expected_file_id=entry.file_id,
+                check_cancelled=check_cancelled,
+            )
             if rebound is None or rebound.file_id != entry.file_id:
                 raise RuntimeError(
                     f"directory ownership directory changed: {child_path}"
@@ -4895,6 +4979,7 @@ def _scan_windows_owned_directory(
                 relative=relative,
                 entry_policy=entry_policy,
                 resource_owner=resource_owner,
+                check_cancelled=check_cancelled,
             )
             digest_bytes = bytes.fromhex(digest)
             file_mode = stat.S_IMODE(file_identity[2])
@@ -4931,6 +5016,7 @@ def _capture_windows_directory_handle(
     required_root_file: str | None,
     allow_empty_root: bool,
     entry_policy: DirectoryEntryPolicy | None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _TreeOwnership:
     selected_resources = _WindowsResourceOwner(api) if resources is None else resources
     _required_root_file_bytes(required_root_file)
@@ -4958,6 +5044,7 @@ def _capture_windows_directory_handle(
         required_root_file=required_root_file,
         allow_empty_root=allow_empty_root,
         resource_owner=selected_resources,
+        check_cancelled=check_cancelled,
     )
     after = api.metadata(handle)
     if _ownership_version_identity(after) != _ownership_version_identity(opened):
@@ -5152,15 +5239,16 @@ def _open_windows_publication_authority(
                 reader = _PublicationTreeReader(
                     display_path,
                     _directory_inode_identity(metadata),
-                    lambda required_root_file, allow_empty_root, entry_policy: (
+                    lambda root_file, allow_empty, policy, cancelled: (
                         _capture_windows_directory_handle(
                             api,
                             handle,
                             display_path,
                             resources=resources,
-                            required_root_file=required_root_file,
-                            allow_empty_root=allow_empty_root,
-                            entry_policy=entry_policy,
+                            required_root_file=root_file,
+                            allow_empty_root=allow_empty,
+                            entry_policy=policy,
+                            check_cancelled=cancelled,
                         )
                     ),
                     lambda relative, max_bytes, expected: (
@@ -5175,6 +5263,7 @@ def _open_windows_publication_authority(
                         )
                     ),
                     expected_ownership,
+                    _capture_supports_cancellation=True,
                 )
 
                 def validate_child_binding() -> None:
@@ -5628,6 +5717,7 @@ def _hash_owned_regular_file(
     budget: _OwnershipBudget,
     relative: str,
     entry_policy: DirectoryEntryPolicy | None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[int, str, tuple[int, ...]]:
     flags = os.O_RDONLY | os.O_NOFOLLOW
     flags |= getattr(os, "O_CLOEXEC", 0)
@@ -5664,6 +5754,8 @@ def _hash_owned_regular_file(
         digest = hashlib.sha256()
         remaining = size
         while remaining:
+            if check_cancelled is not None:
+                check_cancelled()
             chunk = os.read(descriptor, min(remaining, _OWNERSHIP_COPY_BYTES))
             if not chunk:
                 raise RuntimeError(f"directory ownership file was truncated: {path}")
@@ -5703,7 +5795,10 @@ def _scan_owned_directory(
     depth: int,
     required_root_file: bytes | None = None,
     allow_empty_root: bool = False,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> bytes:
+    if check_cancelled is not None:
+        check_cancelled()
     if depth > _MAX_SAFE_REMOVAL_DEPTH:
         raise RuntimeError("directory ownership scan exceeds its depth limit")
     before = os.fstat(descriptor)
@@ -5742,6 +5837,8 @@ def _scan_owned_directory(
                 relative = _ownership_relative_path(parts + (raw_name,))
                 _reserve_ownership_record(budget, relative=relative)
                 names.append((raw_name, entry.name))
+                if check_cancelled is not None:
+                    check_cancelled()
     names.sort(key=lambda item: item[0])
     if (
         required_root_file is not None
@@ -5754,6 +5851,8 @@ def _scan_owned_directory(
     hasher.update(b"codenib.atomic-directory.v1\x00")
     hasher.update(stat.S_IMODE(before.st_mode).to_bytes(4, "big"))
     for raw_name, name in names:
+        if check_cancelled is not None:
+            check_cancelled()
         child_parts = parts + (raw_name,)
         relative = _ownership_relative_path(child_parts)
         child_path = path / name
@@ -5816,6 +5915,7 @@ def _scan_owned_directory(
                     entry_identities=entry_identities,
                     entry_policy=entry_policy,
                     depth=depth + 1,
+                    check_cancelled=check_cancelled,
                 )
                 after = os.fstat(child_descriptor)
                 if _ownership_version_identity(after) != _ownership_version_identity(
@@ -5858,6 +5958,7 @@ def _scan_owned_directory(
                 budget=budget,
                 relative=os.fsdecode(relative),
                 entry_policy=entry_policy,
+                check_cancelled=check_cancelled,
             )
             digest_bytes = bytes.fromhex(digest)
             entry_hasher.update(b"F")
@@ -5913,6 +6014,7 @@ def _capture_posix_directory_descriptor(
     required_root_file: str | None,
     allow_empty_root: bool,
     entry_policy: DirectoryEntryPolicy | None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _TreeOwnership:
     """Capture one already-open POSIX directory without reacquiring its path."""
 
@@ -5944,6 +6046,7 @@ def _capture_posix_directory_descriptor(
         depth=0,
         required_root_file=required_root_file_bytes,
         allow_empty_root=allow_empty_root,
+        check_cancelled=check_cancelled,
     )
     after = os.fstat(descriptor)
     if _ownership_version_identity(after) != _ownership_version_identity(opened):
@@ -5967,9 +6070,12 @@ def capture_directory_ownership(
     required_root_file: str | None = None,
     allow_empty_root: bool = False,
     entry_policy: DirectoryEntryPolicy | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _TreeOwnership:
     """Return a bounded token through a pinned parent/source authority."""
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("directory ownership cancellation check must be callable")
     lexical = lexical_directory_path(path)
     with _PublicationAuthorityOwner() as authority_owner:
         if sys.platform.startswith("linux") or sys.platform == "darwin":
@@ -5997,6 +6103,7 @@ def capture_directory_ownership(
             required_root_file=required_root_file,
             allow_empty_root=allow_empty_root,
             entry_policy=entry_policy,
+            check_cancelled=check_cancelled,
         )
 
 
@@ -6006,6 +6113,7 @@ def capture_directory_ownership_if_exists(
     required_root_file: str | None = None,
     allow_empty_root: bool = False,
     entry_policy: DirectoryEntryPolicy | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _TreeOwnership | None:
     """Capture one existing tree or atomically observe that its child is absent.
 
@@ -6014,6 +6122,8 @@ def capture_directory_ownership_if_exists(
     callers can pass the returned ``None`` into a later no-replace operation.
     """
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("directory ownership cancellation check must be callable")
     _required_root_file_bytes(required_root_file)
     lexical = lexical_directory_path(path)
     with _PublicationAuthorityOwner() as authority_owner:
@@ -6042,6 +6152,8 @@ def capture_directory_ownership_if_exists(
         )
         if metadata is None:
             authority.verify_path_binding()
+            if check_cancelled is not None:
+                check_cancelled()
             return None
         initial_root_identity = _directory_inode_identity(metadata)
         ownership = authority.capture_child(
@@ -6051,6 +6163,7 @@ def capture_directory_ownership_if_exists(
             required_root_file=required_root_file,
             allow_empty_root=allow_empty_root,
             entry_policy=entry_policy,
+            check_cancelled=check_cancelled,
         )
         if ownership.root_identity != initial_root_identity:
             raise RuntimeError("directory ownership root changed while it was captured")
@@ -6556,14 +6669,36 @@ def _require_tree_ownership_at(
     expected: _TreeOwnership,
     label: str,
     allow_root_rename: bool = False,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
+    callback_error: BaseException | None = None
+
+    def poll() -> None:
+        nonlocal callback_error
+        assert check_cancelled is not None
+        try:
+            check_cancelled()
+        except BaseException as error:  # noqa: B036 - preserve exact callback fault
+            callback_error = error
+            raise
+
     try:
-        observed = authority.capture_child(
-            name,
-            path=path,
-            label=label,
-        )
+        if check_cancelled is None:
+            observed = authority.capture_child(
+                name,
+                path=path,
+                label=label,
+            )
+        else:
+            observed = authority.capture_child(
+                name,
+                path=path,
+                label=label,
+                check_cancelled=poll,
+            )
     except (OSError, ValueError, RuntimeError) as exc:
+        if exc is callback_error:
+            raise
         raise RuntimeError(f"{label} changed during directory publication") from exc
     _require_matching_ownership(
         observed,
@@ -6571,6 +6706,8 @@ def _require_tree_ownership_at(
         label=label,
         allow_root_rename=allow_root_rename,
     )
+    if check_cancelled is not None:
+        check_cancelled()
 
 
 def _require_tree_ownership(
@@ -6598,19 +6735,27 @@ def _run_authenticated_directory_callback(
     reader: PublicationDirectoryReader,
     expected_ownership: _TreeOwnership,
     callback: Callable[[PublicationDirectoryReader], _T],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _T:
     """Run one authenticated callback inside an exact ownership sandwich."""
 
     def consume() -> _T:
-        before = reader.capture_ownership()
+        before = reader.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         if before != expected_ownership:
             raise RuntimeError(
                 "authenticated directory differs from expected ownership"
             )
+        if check_cancelled is not None:
+            check_cancelled()
         return callback(reader)
 
     def validate_after_ownership() -> None:
-        after = reader.capture_ownership()
+        after = reader.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         if after != expected_ownership:
             raise RuntimeError("authenticated directory changed while it was consumed")
 
@@ -6637,6 +6782,7 @@ def reopen_authenticated_directory(
     callback: Callable[[PublicationDirectoryReader], _T],
     *,
     expected_parent_identity: tuple[int, ...] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _T:
     """Consume an existing tree through one backend-neutral authority.
 
@@ -6652,6 +6798,8 @@ def reopen_authenticated_directory(
         )
     if not callable(callback):
         raise TypeError("authenticated directory callback must be callable")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("authenticated directory cancellation check must be callable")
     lexical = lexical_directory_path(path)
     with _PublicationAuthorityOwner() as authority_owner:
         authority = _open_publication_authority(
@@ -6671,6 +6819,7 @@ def reopen_authenticated_directory(
                     reader,
                     expected_ownership,
                     callback,
+                    check_cancelled=check_cancelled,
                 ),
             ),
             (
@@ -6904,6 +7053,7 @@ def _publish_staged_directory_with_authority(
         ]
         | None
     ) = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> DirectoryOrphan | None:
     """Publish a complete stage through a caller-owned parent authority.
 
@@ -6946,6 +7096,52 @@ def _publish_staged_directory_with_authority(
         if not callable(commit_callback):
             raise TypeError("directory commit callback must be callable")
         _require_durable_publication_commit_authority(publication_authority)
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("directory publication cancellation check must be callable")
+
+    def capture_pretransition_ownership(
+        name: str,
+        *,
+        path: Path,
+        label: str,
+    ) -> _TreeOwnership:
+        if check_cancelled is None:
+            return publication_authority.capture_child(
+                name,
+                path=path,
+                label=label,
+            )
+        return publication_authority.capture_child(
+            name,
+            path=path,
+            label=label,
+            check_cancelled=check_cancelled,
+        )
+
+    def require_pretransition_ownership(
+        name: str,
+        *,
+        path: Path,
+        expected: _TreeOwnership,
+        label: str,
+    ) -> None:
+        if check_cancelled is None:
+            _require_tree_ownership_at(
+                publication_authority,
+                name,
+                path=path,
+                expected=expected,
+                label=label,
+            )
+            return
+        _require_tree_ownership_at(
+            publication_authority,
+            name,
+            path=path,
+            expected=expected,
+            label=label,
+            check_cancelled=check_cancelled,
+        )
 
     def perform_publication() -> DirectoryOrphan | None:
         stage_metadata = _directory_or_missing_at(
@@ -6969,7 +7165,7 @@ def _publish_staged_directory_with_authority(
         ):
             raise RuntimeError("staged directory root changed before publication")
 
-        stage_ownership = publication_authority.capture_child(
+        stage_ownership = capture_pretransition_ownership(
             stage_display.name,
             path=stage_display,
             label="staged directory",
@@ -6983,6 +7179,8 @@ def _publish_staged_directory_with_authority(
             and stage_ownership != expected_stage_root_ownership
         ):
             raise RuntimeError("staged directory changed before publication")
+        if check_cancelled is not None:
+            check_cancelled()
         if validate_staged_directory is not None:
             publication_authority.read_child(
                 stage_display.name,
@@ -6991,8 +7189,7 @@ def _publish_staged_directory_with_authority(
                 expected_ownership=stage_ownership,
                 callback=validate_staged_directory,
             )
-            _require_tree_ownership_at(
-                publication_authority,
+            require_pretransition_ownership(
                 stage_display.name,
                 path=stage_display,
                 expected=stage_ownership,
@@ -7015,7 +7212,7 @@ def _publish_staged_directory_with_authority(
         observed_destination_ownership = (
             None
             if destination_metadata is None
-            else publication_authority.capture_child(
+            else capture_pretransition_ownership(
                 destination_display.name,
                 path=destination_display,
                 label="destination",
@@ -7033,10 +7230,11 @@ def _publish_staged_directory_with_authority(
             )
             if observed_identity != expected_destination_identity:
                 raise RuntimeError("destination changed before directory publication")
+        if check_cancelled is not None:
+            check_cancelled()
 
         destination_was_missing = destination_metadata is None
-        _require_tree_ownership_at(
-            publication_authority,
+        require_pretransition_ownership(
             stage_display.name,
             path=stage_display,
             expected=stage_ownership,
@@ -7051,8 +7249,7 @@ def _publish_staged_directory_with_authority(
             required_destination_inode_identity = _directory_inode_identity(
                 destination_metadata
             )
-            _require_tree_ownership_at(
-                publication_authority,
+            require_pretransition_ownership(
                 destination_display.name,
                 path=destination_display,
                 expected=moved_destination_ownership,
@@ -7086,8 +7283,7 @@ def _publish_staged_directory_with_authority(
 
         try:
             if destination_was_missing:
-                _require_tree_ownership_at(
-                    publication_authority,
+                require_pretransition_ownership(
                     stage_display.name,
                     path=stage_display,
                     expected=stage_ownership,

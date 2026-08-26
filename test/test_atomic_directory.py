@@ -806,6 +806,77 @@ def test_authority_publish_helper_borrows_authority_and_commits_exact_once(
     not sys.platform.startswith("linux"),
     reason="strict commit durability currently requires Linux directory fsync",
 )
+def test_authority_publish_does_not_poll_cancellation_after_rename(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "published"
+    stage = tmp_path / "stage"
+    _write_tree(stage, "new.txt", "new")
+    expected_stage = capture_directory_ownership(stage)
+    authority = atomic_module._open_publication_authority(
+        tmp_path,
+        parent_resource=None,
+        expected_parent_identity=None,
+    )
+    cancellation = KeyboardInterrupt("latched at directory rename")
+    renamed = False
+    polls = 0
+    commits = 0
+    real_rename = authority._rename_callback
+
+    def rename(source: str, target: str) -> object | None:
+        nonlocal renamed
+        token = real_rename(source, target)
+        renamed = True
+        return token
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if renamed:
+            raise cancellation
+
+    def validate_published(reader: atomic_module.PublicationDirectoryReader) -> None:
+        assert renamed
+        assert reader.read_bytes("new.txt", max_bytes=3) == b"new"
+
+    def commit(
+        _staged: object,
+        _published: object,
+        _previous: DirectoryOrphan | None,
+        _publication_token: object | None,
+    ) -> None:
+        nonlocal commits
+        commits += 1
+
+    authority._rename_callback = rename
+    try:
+        orphan = atomic_module._publish_staged_directory_with_authority(
+            authority,
+            stage,
+            destination,
+            expected_stage_root_ownership=expected_stage,
+            expected_destination_ownership=None,
+            validate_published_destination=validate_published,
+            commit_callback=commit,
+            check_cancelled=check_cancelled,
+        )
+        assert orphan is None
+        assert polls > 0
+        assert renamed
+        assert commits == 1
+        assert (destination / "new.txt").read_text(encoding="utf-8") == "new"
+        with pytest.raises(KeyboardInterrupt) as caught:
+            check_cancelled()
+        assert caught.value is cancellation
+    finally:
+        authority.close()
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="strict commit durability currently requires Linux directory fsync",
+)
 def test_authority_publish_helper_does_not_commit_before_validation_finishes(
     tmp_path: Path,
 ) -> None:
@@ -10642,6 +10713,65 @@ def test_native_replacement_helper_orders_exchange_validation_commit_and_orphan(
     _write_tree(orphan.path, "payload.bin", "old")
     with pytest.raises(RuntimeError, match="directory orphan|root differs"):
         orphan.reopen(lambda _reader: None)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_does_not_poll_cancellation_after_exchange(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+    cancellation = KeyboardInterrupt("latched at native exchange")
+    polls = 0
+    commits = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if prepared.native_state["value"] != "replacement-adopted":
+            raise cancellation
+
+    def commit(
+        _staged: object,
+        _published: object,
+        _displaced: DirectoryOrphan,
+        receipt_token: object,
+    ) -> None:
+        nonlocal commits
+        assert receipt_token is prepared.receipt_token
+        commits += 1
+        prepared.native_state["value"] = "replacement-receipted"
+        prepared.replacement.mark_receipted()
+
+    try:
+        atomic_module._publish_native_replacement_with_authority(
+            prepared.authority,
+            prepared.replacement,
+            prepared.stage,
+            prepared.destination,
+            expected_stage_root_ownership=expected_candidate,
+            expected_destination_ownership=expected_incumbent,
+            deadline_ns=1,
+            validate_published_destination=lambda reader: (
+                reader.read_bytes("payload.bin", max_bytes=16)
+            ),
+            commit_callback=commit,
+            check_cancelled=check_cancelled,
+        )
+        assert polls > 0
+        assert commits == 1
+        assert prepared.native_state["value"] == "replacement-receipted"
+        assert (prepared.destination / "payload.bin").read_bytes() == b"new"
+        with pytest.raises(KeyboardInterrupt) as caught:
+            check_cancelled()
+        assert caught.value is cancellation
+    finally:
+        _close_fake_native_replacement(prepared)
 
 
 @pytest.mark.skipif(

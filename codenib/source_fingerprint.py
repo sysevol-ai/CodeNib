@@ -51,9 +51,7 @@ from ._windows_fs_authority import WindowsDirectoryEntry as _WindowsDirectoryEnt
 from ._windows_fs_authority import WindowsHandleMetadata as _WindowsHandleMetadata
 from ._windows_fs_authority import WindowsKernelApi as _WindowsKernelApi
 from ._windows_fs_authority import WindowsReparsePoint as _WindowsReparsePoint
-from ._windows_fs_authority import (
-    _WindowsHandleCleanup,
-)
+from ._windows_fs_authority import _WindowsHandleCleanup
 from .repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
     repository_path_is_visible,
@@ -98,6 +96,36 @@ def _remember_interruption(
     interruption: BaseException,
 ) -> BaseException:
     return deferred if deferred is not None else interruption
+
+
+class _CancellationPoll:
+    """Record only the exact exception object raised by one stop callback."""
+
+    __slots__ = ("_callback", "raised_exception")
+
+    def __init__(self, callback: Callable[[], None]) -> None:
+        self._callback = callback
+        self.raised_exception: BaseException | None = None
+
+    def __call__(self) -> None:
+        try:
+            self._callback()
+        except BaseException as exc:  # noqa: B036 - identity is the authority
+            self.raised_exception = exc
+            raise
+
+    def raised_exactly(self, exc: BaseException) -> bool:
+        return self.raised_exception is exc
+
+
+def _cancellation_poll(
+    check_cancelled: Callable[[], None] | None,
+) -> _CancellationPoll | None:
+    if check_cancelled is None:
+        return None
+    if not callable(check_cancelled):
+        raise TypeError("repository source cancellation check must be callable")
+    return _CancellationPoll(check_cancelled)
 
 
 class _SourceLifecycleRLock:
@@ -608,6 +636,8 @@ def _verify_resolved_repository_link(
     source: object,
     link: _RepositorySourceLinkRecord,
     records: Mapping[str, RepositorySourceFileRecord],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     observed_state = (
         "regular"
@@ -628,7 +658,13 @@ def _verify_resolved_repository_link(
             "repository source link record changed after authentication"
         )
     content_digest = hashlib.sha256()
-    source.update_hash(content_digest)  # type: ignore[attr-defined]
+    if check_cancelled is None:
+        source.update_hash(content_digest)  # type: ignore[attr-defined]
+    else:
+        source.update_hash(  # type: ignore[attr-defined]
+            content_digest,
+            check_cancelled=check_cancelled,
+        )
     opened_size = getattr(source, "opened_size", None)
     if opened_size is None:
         descriptor = getattr(source, "descriptor", -1)
@@ -645,8 +681,12 @@ def _verify_posix_repository_links(
     root_identity: tuple[int, ...],
     links: tuple[_RepositorySourceLinkRecord, ...],
     records: Mapping[str, RepositorySourceFileRecord],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    for link in links:
+    if check_cancelled is not None and links:
+        check_cancelled()
+    for index, link in enumerate(links):
         with _resolved_repository_file_at(
             root,
             root_descriptor,
@@ -655,7 +695,17 @@ def _verify_posix_repository_links(
             expected_final_identity=link.lexical_identity,  # type: ignore[arg-type]
             expected_final_link_target=link.link_target,
         ) as source:
-            _verify_resolved_repository_link(source, link, records)
+            if check_cancelled is None:
+                _verify_resolved_repository_link(source, link, records)
+            else:
+                _verify_resolved_repository_link(
+                    source,
+                    link,
+                    records,
+                    check_cancelled=check_cancelled,
+                )
+        if check_cancelled is not None and index + 1 < len(links):
+            check_cancelled()
 
 
 def _verify_windows_repository_links(
@@ -666,19 +716,46 @@ def _verify_windows_repository_links(
     records: Mapping[str, RepositorySourceFileRecord],
     *,
     api: _WindowsKernelApi,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    for link in links:
-        with _resolved_windows_repository_file_at(
-            root,
-            root_authority,
-            link.path,
-            expected_root_identity=root_identity,
-            expected_final_identity=link.lexical_identity,
-            expected_final_link_target=link.link_target,
-            expected_final_reparse_point=link.windows_reparse_point,
-            api=api,
-        ) as source:
-            _verify_resolved_repository_link(source, link, records)
+    if check_cancelled is not None and links:
+        check_cancelled()
+    for index, link in enumerate(links):
+        if check_cancelled is None:
+            resolver = _resolved_windows_repository_file_at(
+                root,
+                root_authority,
+                link.path,
+                expected_root_identity=root_identity,
+                expected_final_identity=link.lexical_identity,
+                expected_final_link_target=link.link_target,
+                expected_final_reparse_point=link.windows_reparse_point,
+                api=api,
+            )
+        else:
+            resolver = _resolved_windows_repository_file_at(
+                root,
+                root_authority,
+                link.path,
+                expected_root_identity=root_identity,
+                expected_final_identity=link.lexical_identity,
+                expected_final_link_target=link.link_target,
+                expected_final_reparse_point=link.windows_reparse_point,
+                api=api,
+                check_cancelled=check_cancelled,
+            )
+        with resolver as source:
+            if check_cancelled is None:
+                _verify_resolved_repository_link(source, link, records)
+            else:
+                _verify_resolved_repository_link(
+                    source,
+                    link,
+                    records,
+                    check_cancelled=check_cancelled,
+                )
+        if check_cancelled is not None and index + 1 < len(links):
+            check_cancelled()
 
 
 class RepositorySourceBinding:
@@ -931,21 +1008,39 @@ class RepositorySourceBinding:
             self._poison(exc)
             raise
 
-    def _verify_inventory(self) -> None:
+    def _verify_inventory(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         self._require_open()
-        self._verify_public_projection()
+        if check_cancelled is None:
+            self._verify_public_projection()
+        else:
+            self._verify_public_projection(check_cancelled=check_cancelled)
+            check_cancelled()
         if self._windows_authority is not None:
             api = self._windows_api
             if api is None:  # pragma: no cover - constructor invariant
                 raise AssertionError("Windows repository binding has no API")
             authority = self._windows_authority
-            scan = _scan_pinned_windows_repository(
-                api,
-                authority.handle,
-                excluded=self._excluded,
-                selection=self._selection,
-                collect_entries=False,
-            )
+            if check_cancelled is None:
+                scan = _scan_pinned_windows_repository(
+                    api,
+                    authority.handle,
+                    excluded=self._excluded,
+                    selection=self._selection,
+                    collect_entries=False,
+                )
+            else:
+                scan = _scan_pinned_windows_repository(
+                    api,
+                    authority.handle,
+                    excluded=self._excluded,
+                    selection=self._selection,
+                    collect_entries=False,
+                    check_cancelled=check_cancelled,
+                )
             if (
                 scan.inventory_digest != self._inventory_digest
                 or scan.inventory_entries != self._inventory_entries
@@ -956,14 +1051,26 @@ class RepositorySourceBinding:
                 authority,
                 self._root_identity,
             )
-            self._verify_retained_link_targets()
+            if check_cancelled is None:
+                self._verify_retained_link_targets()
+            else:
+                self._verify_retained_link_targets(check_cancelled=check_cancelled)
             return
-        scan = _scan_pinned_repository(
-            self._root_descriptor,
-            excluded=self._excluded,
-            selection=self._selection,
-            collect_entries=False,
-        )
+        if check_cancelled is None:
+            scan = _scan_pinned_repository(
+                self._root_descriptor,
+                excluded=self._excluded,
+                selection=self._selection,
+                collect_entries=False,
+            )
+        else:
+            scan = _scan_pinned_repository(
+                self._root_descriptor,
+                excluded=self._excluded,
+                selection=self._selection,
+                collect_entries=False,
+                check_cancelled=check_cancelled,
+            )
         if (
             scan.inventory_digest != self._inventory_digest
             or scan.inventory_entries != self._inventory_entries
@@ -976,9 +1083,16 @@ class RepositorySourceBinding:
             authority,
             self._root_identity,  # type: ignore[arg-type]
         )
-        self._verify_retained_link_targets()
+        if check_cancelled is None:
+            self._verify_retained_link_targets()
+        else:
+            self._verify_retained_link_targets(check_cancelled=check_cancelled)
 
-    def _verify_public_projection(self) -> None:
+    def _verify_public_projection(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         if (
             type(self.root) is not type(self._authenticated_root)
             or self.root != self._authenticated_root
@@ -992,10 +1106,14 @@ class RepositorySourceBinding:
             raise RepositoryChangedError(
                 "repository source public identity changed after authentication"
             )
-        for observed, expected in zip(
-            self.file_records,
-            self._authenticated_file_records,
-            strict=True,
+        if check_cancelled is not None and self._authenticated_file_records:
+            check_cancelled()
+        for index, (observed, expected) in enumerate(
+            zip(
+                self.file_records,
+                self._authenticated_file_records,
+                strict=True,
+            )
         ):
             try:
                 detached = _snapshot_source_file_record(observed)
@@ -1007,105 +1125,197 @@ class RepositorySourceBinding:
                 raise RepositoryChangedError(
                     "repository source public records changed after authentication"
                 )
-        if len(self._records) != len(self._authenticated_file_records) or any(
-            (
-                not _same_source_file_record(self._records[expected.path], expected)
-                if expected.path in self._records
-                else True
-            )
-            for expected in self._authenticated_file_records
-        ):
+            if check_cancelled is not None and index + 1 < len(
+                self._authenticated_file_records
+            ):
+                check_cancelled()
+        if len(self._records) != len(self._authenticated_file_records):
             raise RepositoryChangedError(
                 "repository source retained records changed after authentication"
             )
-        if len(self._links) != len(self._authenticated_link_records) or any(
-            (
-                not _same_source_link_record(self._links[expected.path], expected)
-                if expected.path in self._links
-                else True
-            )
-            for expected in self._authenticated_link_records
-        ):
+        if check_cancelled is not None and self._authenticated_file_records:
+            check_cancelled()
+        for index, expected in enumerate(self._authenticated_file_records):
+            if expected.path not in self._records or not _same_source_file_record(
+                self._records[expected.path],
+                expected,
+            ):
+                raise RepositoryChangedError(
+                    "repository source retained records changed after authentication"
+                )
+            if check_cancelled is not None and index + 1 < len(
+                self._authenticated_file_records
+            ):
+                check_cancelled()
+        if len(self._links) != len(self._authenticated_link_records):
             raise RepositoryChangedError(
                 "repository source retained link records changed after authentication"
             )
+        if check_cancelled is not None and self._authenticated_link_records:
+            check_cancelled()
+        for index, expected in enumerate(self._authenticated_link_records):
+            if expected.path not in self._links or not _same_source_link_record(
+                self._links[expected.path],
+                expected,
+            ):
+                raise RepositoryChangedError(
+                    "repository source retained link records changed after authentication"
+                )
+            if check_cancelled is not None and index + 1 < len(
+                self._authenticated_link_records
+            ):
+                check_cancelled()
 
-    def _verify_retained_link_targets(self) -> None:
+    def _verify_retained_link_targets(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         """Rebind every link target state, including excluded or missing targets."""
 
         if self._windows_authority is not None:
             api = self._windows_api
             if api is None:  # pragma: no cover - constructor invariant
                 raise AssertionError("Windows repository binding has no API")
-            _verify_windows_repository_links(
+            if check_cancelled is None:
+                _verify_windows_repository_links(
+                    self._authenticated_root,
+                    self._windows_authority,
+                    self._root_identity,
+                    self._authenticated_link_records,
+                    self._records,
+                    api=api,
+                )
+            else:
+                _verify_windows_repository_links(
+                    self._authenticated_root,
+                    self._windows_authority,
+                    self._root_identity,
+                    self._authenticated_link_records,
+                    self._records,
+                    api=api,
+                    check_cancelled=check_cancelled,
+                )
+            return
+        if check_cancelled is None:
+            _verify_posix_repository_links(
                 self._authenticated_root,
-                self._windows_authority,
-                self._root_identity,
+                self._root_descriptor,
+                self._root_identity,  # type: ignore[arg-type]
                 self._authenticated_link_records,
                 self._records,
-                api=api,
             )
-            return
-        _verify_posix_repository_links(
-            self._authenticated_root,
-            self._root_descriptor,
-            self._root_identity,  # type: ignore[arg-type]
-            self._authenticated_link_records,
-            self._records,
-        )
+        else:
+            _verify_posix_repository_links(
+                self._authenticated_root,
+                self._root_descriptor,
+                self._root_identity,  # type: ignore[arg-type]
+                self._authenticated_link_records,
+                self._records,
+                check_cancelled=check_cancelled,
+            )
 
-    def verify_snapshot(self) -> None:
+    def verify_snapshot(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         """Revalidate the whole retained v2 inventory or poison this binding."""
 
+        poll = _cancellation_poll(check_cancelled)
+        cancellation_failure: BaseException | None = None
         with self._authentication_lease():
             try:
-                self._verify_inventory()
+                if poll is None:
+                    self._verify_inventory()
+                else:
+                    self._verify_inventory(check_cancelled=poll)
             except BaseException as exc:  # noqa: B036 - preserve body failure
-                self._poison(exc)
-                if isinstance(exc, RepositoryChangedError):
-                    raise
-                if not isinstance(exc, (OSError, RuntimeError, ValueError)):
-                    raise
-                raise RepositoryChangedError(
-                    "repository source changed after it was authenticated"
-                ) from exc
+                if poll is not None and poll.raised_exactly(exc):
+                    cancellation_failure = exc
+                else:
+                    self._poison(exc)
+                    if isinstance(exc, RepositoryChangedError):
+                        raise
+                    if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                        raise
+                    raise RepositoryChangedError(
+                        "repository source changed after it was authenticated"
+                    ) from exc
+        if cancellation_failure is not None:
+            raise cancellation_failure
 
-    def authenticated_identity_snapshot(self) -> RepositorySourceIdentitySnapshot:
+    def authenticated_identity_snapshot(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> RepositorySourceIdentitySnapshot:
         """Verify and return identity values caller mutation cannot replace."""
 
+        poll = _cancellation_poll(check_cancelled)
+        cancellation_failure: BaseException | None = None
+        snapshot: RepositorySourceIdentitySnapshot | None = None
         with self._authentication_lease():
             try:
-                self._verify_inventory()
+                if poll is None:
+                    self._verify_inventory()
+                else:
+                    self._verify_inventory(check_cancelled=poll)
             except BaseException as exc:  # noqa: B036 - preserve body failure
-                self._poison(exc)
-                if isinstance(exc, RepositoryChangedError):
-                    raise
-                if not isinstance(exc, (OSError, RuntimeError, ValueError)):
-                    raise
-                raise RepositoryChangedError(
-                    "repository source changed after it was authenticated"
-                ) from exc
-            return RepositorySourceIdentitySnapshot(
-                root=type(self._authenticated_root)(
-                    os.fspath(self._authenticated_root)
-                ),
-                fingerprint=self._authenticated_fingerprint,
-                file_count=self._authenticated_file_count,
-                file_records=tuple(
-                    _snapshot_source_file_record(record)
-                    for record in self._authenticated_file_records
-                ),
-                source_selection=(
-                    None
-                    if self._source_selection_identity is None
-                    else _snapshot_repository_source_selection(
-                        self._source_selection_identity
+                if poll is not None and poll.raised_exactly(exc):
+                    cancellation_failure = exc
+                else:
+                    self._poison(exc)
+                    if isinstance(exc, RepositoryChangedError):
+                        raise
+                    if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                        raise
+                    raise RepositoryChangedError(
+                        "repository source changed after it was authenticated"
+                    ) from exc
+            if cancellation_failure is None:
+                try:
+                    records: list[RepositorySourceFileRecord] = []
+                    if poll is not None:
+                        poll()
+                    for index, record in enumerate(self._authenticated_file_records):
+                        records.append(_snapshot_source_file_record(record))
+                        if poll is not None and index + 1 < len(
+                            self._authenticated_file_records
+                        ):
+                            poll()
+                    snapshot = RepositorySourceIdentitySnapshot(
+                        root=type(self._authenticated_root)(
+                            os.fspath(self._authenticated_root)
+                        ),
+                        fingerprint=self._authenticated_fingerprint,
+                        file_count=self._authenticated_file_count,
+                        file_records=tuple(records),
+                        source_selection=(
+                            None
+                            if self._source_selection_identity is None
+                            else _snapshot_repository_source_selection(
+                                self._source_selection_identity
+                            )
+                        ),
                     )
-                ),
-            )
+                except BaseException as exc:  # noqa: B036 - exact stop identity
+                    if poll is not None and poll.raised_exactly(exc):
+                        cancellation_failure = exc
+                    else:
+                        raise
+        if cancellation_failure is not None:
+            raise cancellation_failure
+        if snapshot is None:  # pragma: no cover - control-flow invariant
+            raise AssertionError("repository source snapshot was not produced")
+        return snapshot
 
     @contextmanager
-    def read_session(self) -> Iterator[RepositorySourceBinding]:
+    def read_session(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> Iterator[RepositorySourceBinding]:
         """Gate exact reads with one whole-tree check per side.
 
         Cancellation is recovered once execution is inside this generator. The
@@ -1115,49 +1325,99 @@ class RepositorySourceBinding:
         enter the returned generator manager.
         """
 
+        poll = _cancellation_poll(check_cancelled)
+        cancellation_failure: BaseException | None = None
         with self._authentication_lease():
             if self._session_depth == 0:
                 try:
-                    self._verify_inventory()
-                except BaseException as exc:
-                    self._poison(exc)
-                    if isinstance(exc, RepositoryChangedError):
-                        raise
-                    if not isinstance(exc, (OSError, RuntimeError, ValueError)):
-                        raise
-                    raise RepositoryChangedError(
-                        "repository source changed before a read session"
-                    ) from exc
-            self._session_depth += 1
-            primary_failure: BaseException | None = None
-            try:
-                yield self
-            except BaseException as exc:  # noqa: B036 - preserve body failure
-                primary_failure = exc
-            finally:
-                self._session_depth -= 1
-                exit_failure: BaseException | None = None
-                if self._session_depth == 0 and not self._closed and not self._poisoned:
-                    try:
+                    if poll is None:
                         self._verify_inventory()
-                    except BaseException as exc:  # noqa: B036 - defer exit fault
+                    else:
+                        self._verify_inventory(check_cancelled=poll)
+                except BaseException as exc:
+                    if poll is not None and poll.raised_exactly(exc):
+                        cancellation_failure = exc
+                    else:
                         self._poison(exc)
-                        exit_failure = exc
-                if primary_failure is not None:
-                    if exit_failure is not None:
-                        raise primary_failure from exit_failure
-                    raise primary_failure
-                if exit_failure is not None:
-                    if isinstance(exit_failure, RepositoryChangedError):
-                        raise exit_failure
-                    if not isinstance(
-                        exit_failure,
-                        (OSError, RuntimeError, ValueError),
+                        if isinstance(exc, RepositoryChangedError):
+                            raise
+                        if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                            raise
+                        raise RepositoryChangedError(
+                            "repository source changed before a read session"
+                        ) from exc
+            if cancellation_failure is None:
+                self._session_depth += 1
+                primary_failure: BaseException | None = None
+                try:
+                    yield self
+                except BaseException as exc:  # noqa: B036 - preserve body failure
+                    primary_failure = exc
+                finally:
+                    self._session_depth -= 1
+                    primary_is_cancellation = False
+                    if primary_failure is not None and poll is not None:
+                        primary_is_cancellation = poll.raised_exactly(primary_failure)
+                        if not primary_is_cancellation:
+                            try:
+                                poll()
+                            except BaseException as probe_exc:  # noqa: B036
+                                primary_is_cancellation = probe_exc is primary_failure
+
+                    exit_failure: BaseException | None = None
+                    exit_is_cancellation = False
+                    if (
+                        self._session_depth == 0
+                        and not self._closed
+                        and not self._poisoned
                     ):
-                        raise exit_failure
-                    raise RepositoryChangedError(
-                        "repository source changed during a read session"
-                    ) from exit_failure
+                        try:
+                            if poll is None or primary_is_cancellation:
+                                self._verify_inventory()
+                            else:
+                                self._verify_inventory(check_cancelled=poll)
+                        except BaseException as exc:  # noqa: B036 - defer fault
+                            exit_failure = exc
+                            exit_is_cancellation = (
+                                not primary_is_cancellation
+                                and poll is not None
+                                and poll.raised_exactly(exc)
+                            )
+                            if exit_is_cancellation and primary_failure is None:
+                                try:
+                                    self._verify_inventory()
+                                except BaseException as postflight_exc:  # noqa: B036
+                                    exit_failure = postflight_exc
+                                    exit_is_cancellation = False
+                                    self._poison(postflight_exc)
+                            elif not exit_is_cancellation:
+                                self._poison(exc)
+
+                    if primary_failure is not None:
+                        if primary_is_cancellation and (
+                            exit_failure is None or exit_is_cancellation
+                        ):
+                            cancellation_failure = primary_failure
+                        else:
+                            if exit_failure is not None:
+                                raise primary_failure from exit_failure
+                            raise primary_failure
+                    elif exit_failure is not None:
+                        if exit_is_cancellation:
+                            cancellation_failure = exit_failure
+                        elif isinstance(exit_failure, RepositoryChangedError):
+                            raise exit_failure
+                        elif not isinstance(
+                            exit_failure,
+                            (OSError, RuntimeError, ValueError),
+                        ):
+                            raise exit_failure
+                        else:
+                            raise RepositoryChangedError(
+                                "repository source changed during a read session"
+                            ) from exit_failure
+        if cancellation_failure is not None:
+            raise cancellation_failure
 
     def _read_record(
         self,
@@ -1844,9 +2104,12 @@ def _scan_pinned_repository(
     excluded: tuple[tuple[str, ...], ...],
     selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     collect_entries: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _RepositoryScan:
     """Enumerate one stable view through an already-open repository root."""
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("repository source cancellation check must be callable")
     selected = _snapshot_repository_source_selection(selection)
     inventory = hashlib.sha256()
     entries: list[_RepositoryEntry] = []
@@ -1871,7 +2134,14 @@ def _scan_pinned_repository(
             lambda: os.open(".", _directory_flags(), dir_fd=descriptor),
         ) as scan_descriptor:
             with os.scandir(scan_descriptor) as children:
-                for child in children:
+                child_iterator = iter(children)
+                while True:
+                    if check_cancelled is not None:
+                        check_cancelled()
+                    try:
+                        child = next(child_iterator)
+                    except StopIteration:
+                        break
                     child_parts = (*parts, child.name)
                     relative = "/".join(child_parts)
                     if _relative_is_excluded(child_parts, excluded) or not (
@@ -1886,7 +2156,9 @@ def _scan_pinned_repository(
         names.sort()
 
         directories: list[tuple[str, os.stat_result, tuple[str, ...]]] = []
-        for name in names:
+        if check_cancelled is not None and names:
+            check_cancelled()
+        for index, name in enumerate(names):
             child_parts = (*parts, name)
             relative = "/".join(child_parts)
             metadata = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
@@ -1941,10 +2213,14 @@ def _scan_pinned_repository(
                         link_target=link_target,
                     )
                 )
+            if check_cancelled is not None and index + 1 < len(names):
+                check_cancelled()
 
         del names
 
-        for name, metadata, child_parts in directories:
+        if check_cancelled is not None and directories:
+            check_cancelled()
+        for index, (name, metadata, child_parts) in enumerate(directories):
             with _owned_scan_descriptor(
                 cleanup,
                 lambda name=name, descriptor=descriptor: os.open(
@@ -1973,6 +2249,8 @@ def _scan_pinned_repository(
                         "repository source directory changed while scanning: "
                         + "/".join(child_parts)
                     )
+            if check_cancelled is not None and index + 1 < len(directories):
+                check_cancelled()
 
         after = os.fstat(descriptor)
         if _version_identity(after) != _version_identity(before):
@@ -2017,9 +2295,12 @@ def _scan_pinned_windows_repository(
     excluded: tuple[tuple[str, ...], ...],
     selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     collect_entries: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _RepositoryScan:
     """Enumerate through one retained Windows root without following reparses."""
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("repository source cancellation check must be callable")
     selected = _snapshot_repository_source_selection(selection)
     inventory = hashlib.sha256()
     entries: list[_RepositoryEntry] = []
@@ -2036,7 +2317,14 @@ def _scan_pinned_windows_repository(
             raise ValueError("Windows repository directory is not stably bound")
 
         children: list[tuple[str, _WindowsDirectoryEntry]] = []
-        for child in _iter_windows_directory(api, handle):
+        child_iterator = iter(_iter_windows_directory(api, handle))
+        while True:
+            if check_cancelled is not None:
+                check_cancelled()
+            try:
+                child = next(child_iterator)
+            except StopIteration:
+                break
             child_parts = (*parts, child.name)
             relative = "/".join(child_parts)
             if _windows_relative_is_excluded(child_parts, excluded) or not (
@@ -2050,7 +2338,9 @@ def _scan_pinned_windows_repository(
         directories: list[
             tuple[_WindowsDirectoryEntry, tuple[object, ...], tuple[str, ...]]
         ] = []
-        for name, child in children:
+        if check_cancelled is not None and children:
+            check_cancelled()
+        for index, (name, child) in enumerate(children):
             child_parts = (*parts, name)
             relative = "/".join(child_parts)
             with _owned_scan_handle(
@@ -2099,7 +2389,15 @@ def _scan_pinned_windows_repository(
                     raise ValueError(
                         f"Windows repository entry changed while scanning: {relative}"
                     )
-                rebound = _windows_find_child(api, handle, name)
+                if check_cancelled is None:
+                    rebound = _windows_find_child(api, handle, name)
+                else:
+                    rebound = _windows_find_child(
+                        api,
+                        handle,
+                        name,
+                        check_cancelled=check_cancelled,
+                    )
                 if rebound is None or rebound.file_id_128 != child.file_id_128:
                     raise ValueError(
                         f"Windows repository entry changed while scanning: {relative}"
@@ -2125,9 +2423,13 @@ def _scan_pinned_windows_repository(
                             windows_reparse_point=reparse_point,
                         )
                     )
+            if check_cancelled is not None and index + 1 < len(children):
+                check_cancelled()
 
         del children
-        for child, expected_identity, child_parts in directories:
+        if check_cancelled is not None and directories:
+            check_cancelled()
+        for index, (child, expected_identity, child_parts) in enumerate(directories):
             with _owned_scan_handle(
                 cleanup,
                 lambda handle=handle, child=child: _windows_open_child(
@@ -2144,7 +2446,15 @@ def _scan_pinned_windows_repository(
                     )
                 scan_directory(child_handle, child_parts)
                 after = api.metadata(child_handle)
-                rebound = _windows_find_child(api, handle, child.name)
+                if check_cancelled is None:
+                    rebound = _windows_find_child(api, handle, child.name)
+                else:
+                    rebound = _windows_find_child(
+                        api,
+                        handle,
+                        child.name,
+                        check_cancelled=check_cancelled,
+                    )
                 if (
                     _windows_version_identity(after) != expected_identity
                     or rebound is None
@@ -2154,6 +2464,8 @@ def _scan_pinned_windows_repository(
                         "Windows repository directory changed while scanning: "
                         + "/".join(child_parts)
                     )
+            if check_cancelled is not None and index + 1 < len(directories):
+                check_cancelled()
 
         after = api.metadata(handle)
         if _windows_version_identity(after) != _windows_version_identity(before):

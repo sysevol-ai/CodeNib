@@ -1234,7 +1234,13 @@ only final publisher. This bridge consumes an already-current compiler cache;
 it is not a source builder or production resolver, and every attempt still
 requires fresh caller-owned source, workspace receipt, and destination
 authorities. The existing self-publishing adapters remain compatibility entry
-points rather than being called from the worker.
+points rather than being called from the worker. Its stop token is propagated
+through cache-lock waits, repository inventories and read sessions, portable
+artifact scans, workspace refresh/seal/staged validation, bundle planning, and
+CAS ingestion. Returned records and receipts are attested before a newly
+observed stop can win; the staged namespace transition through authenticated
+receipt creation remains an uninterruptible commit section, and an exact
+cooperative stop does not poison the retained repository source.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts

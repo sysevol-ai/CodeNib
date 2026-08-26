@@ -1818,6 +1818,64 @@ def test_preopened_workspace_seal_return_interruption_keeps_token_recoverable(
         workspace.close()
 
 
+def test_workspace_refresh_integrity_precedes_latched_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        files=(WorkspaceFile("payload", max_bytes=4),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("payload", (b"safe",))
+        cancellation = KeyboardInterrupt("latched after forged capture")
+        armed = False
+        real_capture = atomic_directory._PublicationAuthority.capture_child
+
+        def capture_then_forge(
+            authority: object,
+            name: str,
+            **kwargs: object,
+        ) -> _TreeOwnership:
+            nonlocal armed
+            kwargs.pop("check_cancelled", None)
+            observed = real_capture(authority, name, **kwargs)  # type: ignore[arg-type]
+            armed = True
+            return replace(observed, inventory=())
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        monkeypatch.setattr(
+            atomic_directory._PublicationAuthority,
+            "capture_child",
+            capture_then_forge,
+        )
+
+        try:
+            with pytest.raises(
+                RuntimeError,
+                match="inventory differs from its plan",
+            ):
+                workspace.seal(check_cancelled=check_cancelled)
+            assert armed
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
+
+
 def test_preopened_workspace_rejects_producer_reentrant_close(
     tmp_path: Path,
 ) -> None:

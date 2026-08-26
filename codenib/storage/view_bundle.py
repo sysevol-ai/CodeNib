@@ -452,6 +452,7 @@ def plan_view_bundle_reader(
     max_files: int = DEFAULT_MAX_BUNDLE_FILES,
     max_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
     max_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> PlannedViewBundle:
     """Plan exact canonical bundle bytes from one authenticated subtree.
 
@@ -463,18 +464,26 @@ def plan_view_bundle_reader(
 
     if type(publication) is not PublicationDirectoryReader:
         raise TypeError("view bundle planning requires a publication reader")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("view bundle cancellation check must be callable")
     normalized_prefix = _publication_subtree_prefix(prefix)
     normalized_view_type = _validate_view_type(view_type)
     _validate_limits(max_files, max_bytes, max_metadata_bytes)
     _validate_expected_subtree_ownership(expected_source_ownership)
+    if check_cancelled is not None:
+        check_cancelled()
 
-    outer_before = publication.capture_ownership()
+    outer_before = publication.capture_ownership(
+        check_cancelled=check_cancelled,
+    )
     outer_snapshot = _canonical_ownership_snapshot(outer_before)
     _require_publication_subtree_projection(
         outer_before,
         normalized_prefix,
         expected_source_ownership,
     )
+    if check_cancelled is not None:
+        check_cancelled()
 
     def plan() -> PlannedViewBundle:
         source_inventory = tuple(
@@ -509,6 +518,8 @@ def plan_view_bundle_reader(
             )
             for record in records
         )
+        if check_cancelled is not None:
+            check_cancelled()
         _validate_member_paths(members, max_files=max_files)
         total_bytes = sum(member.byte_size for member in members)
         if total_bytes > max_bytes:
@@ -526,6 +537,7 @@ def plan_view_bundle_reader(
                 publication,
                 normalized_prefix / record.path,
                 record,
+                check_cancelled=check_cancelled,
             )
             for record in records
         )
@@ -549,6 +561,7 @@ def plan_view_bundle_reader(
             publication,
             receipt,
             expected_digest=None,
+            check_cancelled=check_cancelled,
         )
 
         def hash_planned_bytes() -> None:
@@ -593,7 +606,9 @@ def plan_view_bundle_reader(
         )
 
     def validate_after_namespace() -> None:
-        outer_after = publication.capture_ownership()
+        outer_after = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         if _canonical_ownership_snapshot(outer_after) != outer_snapshot:
             raise RuntimeError("view bundle publication tree changed while planning")
         _require_publication_subtree_projection(
@@ -602,6 +617,9 @@ def plan_view_bundle_reader(
             expected_source_ownership,
         )
 
+    final_cancellation_check = (
+        (lambda: None) if check_cancelled is None else check_cancelled
+    )
     return _run_callback_with_post_validations(
         plan,
         (
@@ -613,6 +631,10 @@ def plan_view_bundle_reader(
                 "view bundle planning reader validity validation also failed",
                 publication._require_valid,
             ),
+            (
+                "view bundle planning final cancellation check also failed",
+                final_cancellation_check,
+            ),
         ),
     )
 
@@ -621,6 +643,8 @@ def consume_planned_view_bundle(
     publication: PublicationDirectoryReader,
     plan: PlannedViewBundle,
     consumer: Callable[[Iterable[bytes]], _T],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _T:
     """Synchronously consume exact planned bytes through the source authority.
 
@@ -638,13 +662,19 @@ def consume_planned_view_bundle(
         raise TypeError("planned view bundle must use the exact plan type")
     if not callable(consumer):
         raise TypeError("planned view bundle consumer must be callable")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("view bundle cancellation check must be callable")
     receipt = _require_planned_view_bundle(plan)
     if publication is not receipt.publication:
         raise RuntimeError(
             "planned view bundle must be consumed in its planning reader callback"
         )
+    if check_cancelled is not None:
+        check_cancelled()
 
-    outer_before = publication.capture_ownership()
+    outer_before = publication.capture_ownership(
+        check_cancelled=check_cancelled,
+    )
     outer_snapshot = _canonical_ownership_snapshot(outer_before)
     if outer_snapshot != _canonical_ownership_snapshot(receipt.outer_ownership):
         raise RuntimeError("planned view bundle outer ownership changed")
@@ -653,10 +683,13 @@ def consume_planned_view_bundle(
         receipt.prefix,
         receipt.source_ownership,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     chunks = _CallbackScopedBundleChunks(
         publication,
         receipt,
         expected_digest=receipt.digest,
+        check_cancelled=check_cancelled,
     )
 
     def consume() -> _T:
@@ -669,7 +702,9 @@ def consume_planned_view_bundle(
             raise
 
     def validate_after_namespace() -> None:
-        outer_after = publication.capture_ownership()
+        outer_after = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         if _canonical_ownership_snapshot(outer_after) != outer_snapshot:
             raise RuntimeError("view bundle publication tree changed while consumed")
         _require_publication_subtree_projection(
@@ -678,6 +713,9 @@ def consume_planned_view_bundle(
             receipt.source_ownership,
         )
 
+    final_cancellation_check = (
+        (lambda: None) if check_cancelled is None else check_cancelled
+    )
     return _run_bundle_stream_callback(
         consume,
         chunks,
@@ -693,6 +731,10 @@ def consume_planned_view_bundle(
             (
                 "planned view bundle reader validity validation also failed",
                 publication._require_valid,
+            ),
+            (
+                "planned view bundle final cancellation check also failed",
+                final_cancellation_check,
             ),
         ),
     )
@@ -1807,6 +1849,8 @@ def _publication_file_crc32(
     publication: PublicationDirectoryReader,
     relative: PurePosixPath,
     expected: TreeFileRecord,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> int:
     observed_size = 0
     checksum = 0
@@ -1818,10 +1862,14 @@ def _publication_file_crc32(
         for chunk in chunks:
             observed_size += len(chunk)
             checksum = zlib.crc32(chunk, checksum)
+            if check_cancelled is not None:
+                check_cancelled()
     if observed_size != expected.size:
         raise StorageIntegrityError(
             f"view bundle source size changed while planning: {expected.path}"
         )
+    if check_cancelled is not None:
+        check_cancelled()
     return checksum & 0xFFFFFFFF
 
 
@@ -2235,6 +2283,7 @@ class _CallbackScopedBundleChunks:
         "_ambient_error",
         "_closed",
         "_complete",
+        "_check_cancelled",
         "_digest",
         "_error",
         "_expected_digest",
@@ -2251,11 +2300,13 @@ class _CallbackScopedBundleChunks:
         receipt: _PlannedViewBundleReceipt,
         *,
         expected_digest: str | None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self._active = True
         self._ambient_error = sys.exc_info()[1]
         self._closed = False
         self._complete = False
+        self._check_cancelled = check_cancelled
         self._digest = hashlib.sha256()
         self._error: BaseException | None = None
         self._expected_digest = expected_digest
@@ -2275,6 +2326,8 @@ class _CallbackScopedBundleChunks:
             raise RuntimeError("planned view bundle stream is closed")
         if self._complete:
             raise StopIteration
+        if self._check_cancelled is not None:
+            self._check_cancelled()
         if self._iterator is None:
             self._iterator = _iter_planned_view_bundle_bytes(
                 self._publication,

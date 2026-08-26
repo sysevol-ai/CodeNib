@@ -147,18 +147,21 @@ class _InterruptibleReader:
 
     def read(self, size: int = -1) -> bytes:
         self._check_cancelled()
-        block = self._source.read(size)
-        self._check_cancelled()
-        return block
+        return self._source.read(size)
 
 
 def _interruptible_chunks(
     chunks: Iterable[bytes],
     check_cancelled: Callable[[], None] | None,
 ) -> Iterator[bytes]:
-    for chunk in chunks:
+    iterator = iter(chunks)
+    while True:
         if check_cancelled is not None:
             check_cancelled()
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
         yield chunk
 
 
@@ -261,8 +264,16 @@ def _preflight_recapture_authorities(
 
 def _authenticated_repository_identity(
     repository_source: RepositorySourceBinding,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> RepositorySourceIdentitySnapshot:
-    identity = repository_source.authenticated_identity_snapshot()
+    identity = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
     if type(identity) is not RepositorySourceIdentitySnapshot:
         raise TypeError("strict vector repository identity has an invalid type")
     return identity
@@ -481,10 +492,13 @@ class _PublicationVectorReader:
         self,
         publication: PublicationDirectoryReader,
         ownership: object,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self.root = Path("/__codenib_publication_vector__")
         self.ownership = ownership
         self._publication = publication
+        self._check_cancelled = check_cancelled
         self._records = {
             record.path: record
             for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
@@ -521,12 +535,19 @@ class _PublicationVectorReader:
         with self.open_file(relative, max_bytes=max_bytes) as source:
             for chunk in source.iter_bytes(chunk_size=_JSON_READ_CHUNK_BYTES):
                 payload.extend(chunk)
+                if self._check_cancelled is not None:
+                    self._check_cancelled()
         return bytes(payload)
 
     def verify_root(self, *, entry_policy: Any) -> None:
-        observed = self._publication.capture_ownership(entry_policy=entry_policy)
+        observed = self._publication.capture_ownership(
+            entry_policy=entry_policy,
+            check_cancelled=self._check_cancelled,
+        )
         if observed != self.ownership:
             raise RuntimeError("strict vector cache changed during validation")
+        if self._check_cancelled is not None:
+            self._check_cancelled()
 
 
 def _load_json_object(
@@ -537,7 +558,11 @@ def _load_json_object(
 ) -> dict[str, Any]:
     with reader.open_file(relative, max_bytes=_MAX_CONFIG_JSON_BYTES) as source:
         validate_bounded_json_stream(
-            source,
+            (
+                source
+                if reader._check_cancelled is None
+                else _InterruptibleReader(source, reader._check_cancelled)
+            ),
             label=label,
             max_bytes=_MAX_CONFIG_JSON_BYTES,
         )
@@ -561,13 +586,18 @@ def _record_chunks(
     chunks: Iterable[bytes],
     *,
     max_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> TreeFileRecord:
     iterator = iter(chunks)
     digest = hashlib.sha256()
     size = 0
     primary_error: BaseException | None = None
     try:
-        for chunk in iterator:
+        while True:
+            try:
+                chunk = next(iterator)
+            except StopIteration:
+                break
             if type(chunk) is not bytes:
                 raise TypeError("strict vector output chunks must be exact bytes")
             size += len(chunk)
@@ -577,6 +607,8 @@ def _record_chunks(
                     f"{relative}"
                 )
             digest.update(chunk)
+            if check_cancelled is not None:
+                check_cancelled()
     except BaseException as exc:  # noqa: B036 - preserve generation fault
         primary_error = exc
     try:
@@ -626,9 +658,12 @@ def _normalized_documents(
             ),
             label=f"schema-8 vector {level} documents",
         )
-        for index, document in enumerate(documents):
-            if check_cancelled is not None:
-                check_cancelled()
+        iterator = enumerate(documents)
+        while True:
+            try:
+                index, document = next(iterator)
+            except StopIteration:
+                break
             page_content, metadata = validate_schema_8_vector_document_row(
                 document,
                 row_index=index,
@@ -656,6 +691,8 @@ def _normalized_documents(
             )
             if counter is not None:
                 counter[0] += 1
+            if check_cancelled is not None:
+                check_cancelled()
             yield normalized
     if check_cancelled is not None:
         check_cancelled()
@@ -687,6 +724,7 @@ def _document_record(
             )
         ),
         max_bytes=MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
+        check_cancelled=check_cancelled,
     )
     if record != TreeFileRecord(
         path=relative,
@@ -986,12 +1024,12 @@ def _derived_vector(
             authenticated_source_files=policy.authenticated_source_files,
             check_cancelled=check_cancelled,
         )
-        if check_cancelled is not None:
-            check_cancelled()
         if observed_count != raw_count:
             raise ValueError(
                 f"schema-8 vector {level} document count differs from root config"
             )
+        if check_cancelled is not None:
+            check_cancelled()
 
         level_config = _load_json_object(
             reader,
@@ -1084,9 +1122,6 @@ def _derived_vector(
     }
     if observed_directories != expected_query_directories:
         raise ValueError("schema-8 vector cache level directories are not exact")
-
-    if check_cancelled is not None:
-        check_cancelled()
 
     return _DerivedVector(
         output_records=tuple(sorted(output_records, key=lambda item: item.path)),
@@ -1255,6 +1290,7 @@ def _captured_source_view(
     publication: PublicationDirectoryReader,
     *,
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[object, tuple[TreeFileRecord, ...], _PublicationVectorReader]:
     # Every caller enters through ``reopen_authenticated_directory``, whose
     # pre/post whole-tree matches already bind this callback to the expected
@@ -1263,7 +1299,17 @@ def _captured_source_view(
     records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
     if not records:
         raise ValueError(f"{label} has no files")
-    return ownership, records, _PublicationVectorReader(publication, ownership)
+    if check_cancelled is not None:
+        check_cancelled()
+    return (
+        ownership,
+        records,
+        _PublicationVectorReader(
+            publication,
+            ownership,
+            check_cancelled=check_cancelled,
+        ),
+    )
 
 
 def _planned_view_from_publication(
@@ -1281,14 +1327,13 @@ def _planned_view_from_publication(
         expected_ownership,
         publication,
         label=source_label,
+        check_cancelled=check_cancelled,
     )
     derived = _derived_vector(
         reader,
         policy=policy,
         check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     source_digest = directory_ownership_digest(ownership)  # type: ignore[arg-type]
     plan = _workspace_plan(
         source_digest=source_digest,
@@ -1297,7 +1342,7 @@ def _planned_view_from_publication(
         view_config_digest=policy.config_digest,
         repository_fingerprint=repository_identity.fingerprint,
     )
-    return PlannedVectorView(
+    result = PlannedVectorView(
         plan=plan,
         source_ownership=ownership,
         source_digest=source_digest,
@@ -1308,6 +1353,7 @@ def _planned_view_from_publication(
         model_suffix=derived.model_suffix,
         counts=derived.counts,
     )
+    return result
 
 
 def _plan_recaptured_vector_view_with_identity(
@@ -1332,6 +1378,7 @@ def _plan_recaptured_vector_view_with_identity(
     source_ownership = capture_directory_ownership(
         lexical_source,
         entry_policy=entry_policy,
+        check_cancelled=check_cancelled,
     )
     if check_cancelled is not None:
         check_cancelled()
@@ -1346,11 +1393,17 @@ def _plan_recaptured_vector_view_with_identity(
             check_cancelled=check_cancelled,
         )
 
-    with repository_source.read_session():
+    source_session = (
+        repository_source.read_session()
+        if check_cancelled is None
+        else repository_source.read_session(check_cancelled=check_cancelled)
+    )
+    with source_session:
         return reopen_authenticated_directory(
             lexical_source,
             source_ownership,  # type: ignore[arg-type]
             consume_source,
+            check_cancelled=check_cancelled,
         )
 
 
@@ -1372,7 +1425,10 @@ def _plan_recaptured_vector_view(
         raise RuntimeError("strict vector repository source is not usable")
     if check_cancelled is not None:
         check_cancelled()
-    repository_identity = _authenticated_repository_identity(repository_source)
+    repository_identity = _authenticated_repository_identity(
+        repository_source,
+        check_cancelled=check_cancelled,
+    )
     lexical_source, _lexical_destination = _recapture_locations(
         source,
         destination,
@@ -1437,12 +1493,11 @@ def _replay_vector_source(
     policy: _VectorPolicy,
     check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    if check_cancelled is not None:
-        check_cancelled()
     ownership, source_records, reader = _captured_source_view(
         planned.source_ownership,
         publication,
         label="strict vector recapture source",
+        check_cancelled=check_cancelled,
     )
     if (
         ownership != planned.source_ownership
@@ -1510,8 +1565,6 @@ def _replay_vector_source(
                 )
             )
 
-    if check_cancelled is not None:
-        check_cancelled()
     if tuple(sorted(written, key=lambda item: item.path)) != planned.output_records:
         raise RuntimeError("strict vector replay differs from its exact plan")
 
@@ -1528,8 +1581,6 @@ def _candidate_records(
     environ: Mapping[str, str],
     check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[TreeFileRecord, ...]:
-    if check_cancelled is not None:
-        check_cancelled()
     observed = candidate.file_records()
     observed_inventory = candidate.inventory()
     records_by_path = {record.path: record for record in observed}
@@ -1553,6 +1604,8 @@ def _candidate_records(
         planned.output_records
     ):
         raise RuntimeError("strict vector candidate differs from its exact plan")
+    if check_cancelled is not None:
+        check_cancelled()
 
     candidate_config = dict(view_config)
     candidate_config.update(planned.adjustments)
@@ -1564,11 +1617,9 @@ def _candidate_records(
         view_config=candidate_config,
         forbidden_paths=forbidden_paths,
         environ=environ,
-        _framework_sandwiched=True,
         check_cancelled=check_cancelled,
+        _framework_sandwiched=True,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     return observed
 
 
@@ -1606,15 +1657,16 @@ def _publish_recaptured_vector_view_with_identity(
     observed_source_ownership = capture_directory_ownership(
         lexical_source,
         entry_policy=entry_policy,
+        check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     _require_plan(
         planned,
         source_ownership=observed_source_ownership,
         repository_identity=repository_identity,
         policy=policy,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     request = StrictWorkspaceRequest(
         purpose="portable-vector-recapture",
         destination=lexical_destination,
@@ -1623,10 +1675,10 @@ def _publish_recaptured_vector_view_with_identity(
     )
 
     def operation(session: StrictWorkspaceSession) -> None:
-        if check_cancelled is not None:
-            check_cancelled()
         if session.request != request:
             raise RuntimeError("strict vector provider changed its request")
+        if check_cancelled is not None:
+            check_cancelled()
 
         def replay_source(publication: PublicationDirectoryReader) -> None:
             _replay_vector_source(
@@ -1637,8 +1689,18 @@ def _publish_recaptured_vector_view_with_identity(
                 check_cancelled=check_cancelled,
             )
 
-        def validate_candidate(candidate: PublicationDirectoryReader) -> None:
-            with repository_source.read_session():
+        def validate_candidate_with_check(
+            candidate: PublicationDirectoryReader,
+            validation_check: Callable[[], None] | None,
+        ) -> None:
+            source_session = (
+                repository_source.read_session()
+                if validation_check is None
+                else repository_source.read_session(
+                    check_cancelled=validation_check,
+                )
+            )
+            with source_session:
                 if (
                     _candidate_records(
                         candidate,
@@ -1649,23 +1711,38 @@ def _publish_recaptured_vector_view_with_identity(
                         view_config=policy.view_config,
                         forbidden_paths=forbidden_paths,
                         environ=policy.environment,
-                        check_cancelled=check_cancelled,
+                        check_cancelled=validation_check,
                     )
                     != planned.output_records
                 ):
                     raise RuntimeError("strict vector candidate is not canonical")
 
-        with repository_source.read_session():
+        def validate_candidate(candidate: PublicationDirectoryReader) -> None:
+            validate_candidate_with_check(candidate, check_cancelled)
+
+        def validate_published_candidate(
+            candidate: PublicationDirectoryReader,
+        ) -> None:
+            validate_candidate_with_check(candidate, None)
+
+        source_session = (
+            repository_source.read_session()
+            if check_cancelled is None
+            else repository_source.read_session(check_cancelled=check_cancelled)
+        )
+        with source_session:
             reopen_authenticated_directory(
                 lexical_source,
                 planned.source_ownership,  # type: ignore[arg-type]
                 replay_source,
+                check_cancelled=check_cancelled,
             )
         if check_cancelled is not None:
             check_cancelled()
-        session.publish_validated(validate_candidate)
-        if check_cancelled is not None:
-            check_cancelled()
+        session.publish_validated(
+            validate_candidate,
+            validate_published_destination=validate_published_candidate,
+        )
 
     # Recheck mutable authority state immediately before a workspace may be
     # provisioned.  Planning never grants a provider permission to replace an
@@ -1683,14 +1760,15 @@ def _publish_recaptured_vector_view_with_identity(
         request,
         receipt_owner=output_receipt_owner,
         operation=operation,
+        check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     if not output_receipt_owner.active:
         raise RuntimeError("strict vector publication returned without a receipt")
     receipt = output_receipt_owner.receipt
     if receipt.path != lexical_destination or receipt.plan != planned.plan:
         raise RuntimeError("strict vector publication returned the wrong receipt")
+    if check_cancelled is not None:
+        check_cancelled()
     return planned.adjustments
 
 
@@ -1716,7 +1794,10 @@ def _publish_recaptured_vector_view(
     )
     if check_cancelled is not None:
         check_cancelled()
-    repository_identity = _authenticated_repository_identity(repository_source)
+    repository_identity = _authenticated_repository_identity(
+        repository_source,
+        check_cancelled=check_cancelled,
+    )
     lexical_source, lexical_destination = _recapture_locations(
         source,
         destination,

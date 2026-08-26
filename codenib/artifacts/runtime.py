@@ -39,9 +39,7 @@ from ..compiler.manifest import (
 from ..compiler.manifest_source import (
     capture_repository_source_for_manifest as capture_repository_source,
 )
-from ..compiler.manifest_source import (
-    require_manifest_source_identity,
-)
+from ..compiler.manifest_source import require_manifest_source_identity
 from ..compiler.snapshot_store import normalize_repo
 from ..repository_filters import (
     REPOSITORY_FILTER_POLICY_VERSION,
@@ -70,6 +68,22 @@ _DEFAULT_MAX_FILES = 100_000
 _DEFAULT_MAX_BYTES = 64 * 1024 * 1024 * 1024
 _MAX_METADATA_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
+
+
+class _InterruptibleReader:
+    __slots__ = ("_source", "_check_cancelled")
+
+    def __init__(
+        self,
+        source: PublicationAuthenticatedFile,
+        check_cancelled: Callable[[], None],
+    ) -> None:
+        self._source = source
+        self._check_cancelled = check_cancelled
+
+    def read(self, size: int = -1) -> bytes:
+        self._check_cancelled()
+        return self._source.read(size)
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -419,10 +433,12 @@ class _PublicationContextReader:
         ownership: object,
         *,
         entry_policy_factory: Callable[[], Callable[[str, str, int, int], None]],
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self._publication = publication
         self._ownership = ownership
         self._entry_policy_factory = entry_policy_factory
+        self._check_cancelled = check_cancelled
         self._records = {
             record.path: record
             for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
@@ -466,11 +482,14 @@ class _PublicationContextReader:
         with self.open_file(relative, max_bytes=max_bytes) as source:
             for chunk in source.iter_bytes():
                 payload.extend(chunk)
+                if self._check_cancelled is not None:
+                    self._check_cancelled()
         return bytes(payload)
 
     def verify_root(self) -> None:
         observed = self._publication.capture_ownership(
             entry_policy=self._entry_policy_factory(),
+            check_cancelled=self._check_cancelled,
         )
         if observed != self._ownership:
             raise ValueError("context artifact changed during verification")
@@ -527,6 +546,7 @@ def _inventory(
     *,
     max_files: int,
     max_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[dict[str, tuple[int, str]], int]:
     raw_files = metadata.get("files")
     if not isinstance(raw_files, list) or not raw_files:
@@ -537,6 +557,8 @@ def _inventory(
     result: dict[str, tuple[int, str]] = {}
     total_bytes = 0
     for index, record in enumerate(raw_files):
+        if check_cancelled is not None:
+            check_cancelled()
         if not isinstance(record, dict):
             raise ValueError(f"context artifact file record {index} must be an object")
         relative = _relative_path(
@@ -632,10 +654,26 @@ def _document_source_paths(
     label: str,
     max_bytes: int,
     require_file: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> set[str]:
     result: set[str] = set()
     with reader.open_file(relative, max_bytes=max_bytes) as source:
-        for index, document in enumerate(iter_bounded_json_array(source, label=label)):
+        documents = iter_bounded_json_array(
+            (
+                source
+                if check_cancelled is None
+                else _InterruptibleReader(source, check_cancelled)
+            ),
+            label=label,
+        )
+        iterator = enumerate(documents)
+        while True:
+            if check_cancelled is not None:
+                check_cancelled()
+            try:
+                index, document = next(iterator)
+            except StopIteration:
+                break
             if not isinstance(document, dict):
                 raise ValueError(f"{label} document {index} must be an object")
             page_content = document.get("page_content")
@@ -663,6 +701,8 @@ def _document_source_paths(
                     not isinstance(value, int) or isinstance(value, bool) or value < 0
                 ):
                     raise ValueError(f"{label} document {index} has invalid {field}")
+            if check_cancelled is not None:
+                check_cancelled()
     return result
 
 
@@ -673,11 +713,14 @@ def _validate_view_payloads(
     *,
     views: tuple[str, ...],
     require_document_source_paths: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[str, ...]:
     source_paths: set[str] = set()
     inventory_paths = set(inventory)
 
     if "bm25" in views:
+        if check_cancelled is not None:
+            check_cancelled()
         metadata_relative = "views/bm25/bm25_metadata.json"
         documents_relative = "views/bm25/documents.json"
         required = {metadata_relative, documents_relative}
@@ -698,6 +741,7 @@ def _validate_view_payloads(
                 label="portable BM25 documents",
                 max_bytes=_MAX_DOCUMENTS_BYTES,
                 require_file=require_document_source_paths,
+                check_cancelled=check_cancelled,
             )
         )
 
@@ -713,6 +757,8 @@ def _validate_view_payloads(
         if not document_paths:
             raise ValueError("portable vector view has no JSON document store")
         for relative in document_paths:
+            if check_cancelled is not None:
+                check_cancelled()
             path = PurePosixPath(relative)
             suffix = path.name.removeprefix("documents_").removesuffix(".json")
             index_relative = (path.parent / f"index_{suffix}.faiss").as_posix()
@@ -727,6 +773,7 @@ def _validate_view_payloads(
                     label=f"portable vector documents {relative}",
                     max_bytes=_MAX_DOCUMENTS_BYTES,
                     require_file=require_document_source_paths,
+                    check_cancelled=check_cancelled,
                 )
             )
     return tuple(sorted(source_paths))
@@ -742,6 +789,7 @@ def _validate_manifest(
     views: tuple[str, ...],
     inventoried_paths: set[str],
     expected_manifest_version: str | None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[Path, RepoManifest]:
     if expected_manifest_version is not None and (
         type(expected_manifest_version) is not str
@@ -838,6 +886,8 @@ def _validate_manifest(
         raise ValueError("context artifact builder identity is invalid")
 
     for view in views:
+        if check_cancelled is not None:
+            check_cancelled()
         entry = manifest.indexes[view]
         if not isinstance(entry.config, dict) or not isinstance(entry.metadata, dict):
             raise ValueError(f"context artifact view metadata is invalid: {view}")
@@ -977,9 +1027,12 @@ def _verify_context_artifact_reader(
     max_bytes: int,
     expected_manifest_version: str | None,
     capture_final: Callable[[], object],
+    check_cancelled: Callable[[], None] | None,
 ) -> VerifiedContextArtifact:
     metadata_path = root / CONTEXT_ARTIFACT_MANIFEST
     try:
+        if check_cancelled is not None:
+            check_cancelled()
         metadata = _load_json_object(
             reader,
             CONTEXT_ARTIFACT_MANIFEST,
@@ -998,6 +1051,7 @@ def _verify_context_artifact_reader(
             metadata,
             max_files=max_files,
             max_bytes=max_bytes,
+            check_cancelled=check_cancelled,
         )
         records = {
             record.path: record
@@ -1013,6 +1067,8 @@ def _verify_context_artifact_reader(
                 f"missing={missing}, extra={extra}"
             )
         for relative, (expected_size, expected_digest) in inventory.items():
+            if check_cancelled is not None:
+                check_cancelled()
             record = records[relative]
             if record.size != expected_size or record.sha256 != expected_digest:
                 raise ValueError(f"context artifact file digest mismatch: {relative}")
@@ -1026,6 +1082,7 @@ def _verify_context_artifact_reader(
             views=views,
             inventoried_paths=set(inventory),
             expected_manifest_version=expected_manifest_version,
+            check_cancelled=check_cancelled,
         )
         source_paths = _validate_view_payloads(
             root,
@@ -1033,6 +1090,7 @@ def _verify_context_artifact_reader(
             inventory,
             views=views,
             require_document_source_paths=manifest.version == MANIFEST_VERSION,
+            check_cancelled=check_cancelled,
         )
         source_selection = (
             manifest.source_selection
@@ -1101,19 +1159,28 @@ def verify_context_artifact_reader(
     expected_manifest_version: str | None = MANIFEST_VERSION,
     max_files: int = _DEFAULT_MAX_FILES,
     max_bytes: int = _DEFAULT_MAX_BYTES,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> VerifiedContextArtifact:
     """Verify an artifact through a publication authority without a path reopen."""
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("context artifact cancellation check must be callable")
     _validate_context_limits(max_files, max_bytes)
+    if check_cancelled is not None:
+        check_cancelled()
     policy_factory = lambda: _context_entry_policy(  # noqa: E731
         max_files=max_files,
         max_bytes=max_bytes,
     )
-    ownership = publication.capture_ownership(entry_policy=policy_factory())
+    ownership = publication.capture_ownership(
+        entry_policy=policy_factory(),
+        check_cancelled=check_cancelled,
+    )
     reader = _PublicationContextReader(
         publication,
         ownership,
         entry_policy_factory=policy_factory,
+        check_cancelled=check_cancelled,
     )
     return _verify_context_artifact_reader(
         Path("/__codenib_context_artifact__"),
@@ -1126,7 +1193,9 @@ def verify_context_artifact_reader(
         expected_manifest_version=expected_manifest_version,
         capture_final=lambda: publication.capture_ownership(
             entry_policy=policy_factory(),
+            check_cancelled=check_cancelled,
         ),
+        check_cancelled=check_cancelled,
     )
 
 
@@ -1179,6 +1248,7 @@ def verify_context_artifact(
             capture_final=lambda: publication.capture_ownership(
                 entry_policy=policy_factory(),
             ),
+            check_cancelled=None,
         )
 
     try:

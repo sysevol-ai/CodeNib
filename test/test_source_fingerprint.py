@@ -804,6 +804,106 @@ def test_repository_source_identity_snapshot_is_detached(tmp_path: Path) -> None
         assert binding.read_bytes("a.py", max_bytes=1024) == b"VALUE = 1\n"
 
 
+def test_repository_source_snapshot_cancellation_stops_inventory_without_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    (repo / "b.py").write_bytes(b"B\n")
+    binding = capture_repository_source(repo)
+    real_update = source_fingerprint_module._update_inventory_record
+    stop = RuntimeError("injected repository inventory stop")
+    seen: list[str] = []
+    armed = False
+    active = True
+
+    def observe_record(*args, **kwargs):
+        nonlocal armed
+        if active and seen:
+            raise AssertionError("cancelled inventory consumed a poisoned next record")
+        real_update(*args, **kwargs)
+        if active:
+            seen.append(kwargs["relative"])
+            armed = True
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_update_inventory_record",
+        observe_record,
+    )
+    with pytest.raises(RuntimeError) as caught:
+        binding.authenticated_identity_snapshot(check_cancelled=check_cancelled)
+
+    assert caught.value is stop
+    assert seen == ["a.py"]
+    assert binding.usable
+    active = False
+    binding.verify_snapshot()
+    binding.close()
+
+
+@pytest.mark.skipif(
+    not contained_source_module.SECURE_CONTAINED_SYMLINKS,
+    reason="requires secure POSIX contained symlinks",
+)
+def test_repository_source_link_hash_cancellation_does_not_poison_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    hidden = repo / ".codenib-cache"
+    hidden.mkdir(parents=True)
+    target = hidden / "target.py"
+    target.write_bytes(b"x" * (contained_source_module._READ_CHUNK_BYTES * 3 + 1))
+    (repo / "visible.py").symlink_to(".codenib-cache/target.py")
+    binding = capture_repository_source(repo)
+    real_update_hash = contained_source_module._BoundRepositoryFile.update_hash
+    stop = RuntimeError("injected retained-link hash stop")
+    inside_hash = False
+    hash_polls = 0
+
+    def observe_hash(bound, hasher, *, check_cancelled=None):
+        nonlocal inside_hash
+        inside_hash = True
+        try:
+            if check_cancelled is None:
+                return real_update_hash(bound, hasher)
+            return real_update_hash(
+                bound,
+                hasher,
+                check_cancelled=check_cancelled,
+            )
+        finally:
+            inside_hash = False
+
+    def check_cancelled() -> None:
+        nonlocal hash_polls
+        if inside_hash:
+            hash_polls += 1
+            if hash_polls == 2:
+                raise stop
+
+    monkeypatch.setattr(
+        contained_source_module._BoundRepositoryFile,
+        "update_hash",
+        observe_hash,
+    )
+    with pytest.raises(RuntimeError) as caught:
+        binding.verify_snapshot(check_cancelled=check_cancelled)
+
+    assert caught.value is stop
+    assert hash_polls == 2
+    assert binding.usable
+    binding.verify_snapshot()
+    binding.close()
+
+
 def test_repository_source_binding_rejects_retained_link_record_mutation(
     tmp_path: Path,
 ) -> None:
@@ -1282,6 +1382,45 @@ def test_repository_source_read_session_scans_whole_tree_twice(
         assert binding.read_bytes("b.py", max_bytes=16) == b"B\n"
 
     assert scans == 2
+    binding.close()
+
+
+def test_repository_source_read_session_exact_stop_revalidates_without_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    binding = capture_repository_source(repo)
+    real_scan = source_fingerprint_module._scan_pinned_repository
+    scan_callbacks: list[object | None] = []
+    stop = RuntimeError("injected sticky read-session stop")
+    armed = False
+
+    def observe_scan(*args, **kwargs):
+        scan_callbacks.append(kwargs.get("check_cancelled"))
+        return real_scan(*args, **kwargs)
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_repository",
+        observe_scan,
+    )
+    with pytest.raises(RuntimeError) as caught:
+        with binding.read_session(check_cancelled=check_cancelled):
+            armed = True
+            check_cancelled()
+
+    assert caught.value is stop
+    assert [callback is not None for callback in scan_callbacks] == [True, False]
+    assert binding.usable
+    armed = False
+    binding.verify_snapshot()
     binding.close()
 
 
@@ -1986,6 +2125,117 @@ class _FakeWindowsSourceApi:
         block = data[offset : offset + size]
         self.offsets[handle] += len(block)
         return block
+
+
+def test_windows_inventory_cancellation_does_not_resume_poisoned_tail() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "a.py", b"A\n")
+    api.add_file(api.root_id, "b.py", b"B\n")
+    (
+        selected,
+        authority,
+        _root_identity,
+    ) = contained_source_module._open_windows_pinned_repository_root(
+        Path(r"C:\repo"),
+        api=api,
+    )
+    retained_handles = dict(api.handles)
+    real_iter_directory = api.iter_directory
+    stop = RuntimeError("injected Windows inventory stop")
+    armed = False
+    yielded: list[str] = []
+
+    def poison_tail(handle: int):
+        nonlocal armed
+        for entry in real_iter_directory(handle):
+            if yielded:
+                raise AssertionError(
+                    "cancelled Windows inventory resumed its poisoned tail"
+                )
+            yielded.append(entry.name)
+            armed = True
+            yield entry
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    api.iter_directory = poison_tail  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            source_fingerprint_module._scan_pinned_windows_repository(
+                selected,
+                authority.handle,
+                excluded=(),
+                collect_entries=False,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is stop
+        assert yielded == ["a.py"]
+        assert api.handles == retained_handles
+    finally:
+        authority.close()
+    assert api.handles == {}
+
+
+def test_windows_link_resolution_cancellation_does_not_poison_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    hidden = api.add_directory(api.root_id, ".codenib-cache")
+    api.add_file(hidden, "target.py", b"VALUE = 1\n")
+    api.add_symlink(
+        api.root_id,
+        "visible.py",
+        r".codenib-cache\target.py",
+    )
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+    retained_handles = dict(api.handles)
+    real_open = contained_source_module._open_windows_resolution_at
+    stop = RuntimeError("injected Windows link-resolution stop")
+    inside_resolution = False
+    active = True
+    resolution_polls = 0
+
+    def observe_open(*args, **kwargs):
+        nonlocal inside_resolution
+        inside_resolution = True
+        try:
+            return real_open(*args, **kwargs)
+        finally:
+            inside_resolution = False
+
+    def check_cancelled() -> None:
+        nonlocal resolution_polls
+        if active and inside_resolution:
+            resolution_polls += 1
+            if resolution_polls == 2:
+                raise stop
+
+    monkeypatch.setattr(
+        contained_source_module,
+        "_open_windows_resolution_at",
+        observe_open,
+    )
+    with pytest.raises(RuntimeError) as caught:
+        binding.verify_snapshot(check_cancelled=check_cancelled)
+
+    assert caught.value is stop
+    assert resolution_polls == 2
+    assert binding.usable
+    assert api.handles == retained_handles
+    active = False
+    binding.verify_snapshot()
+    binding.close()
+    assert api.handles == {}
 
 
 def _open_fake_windows_resolution(

@@ -39,7 +39,9 @@ from .._captured_directory import (
     WorkspaceFile,
     WorkspacePlan,
 )
-from ..artifacts.portable_views import validate_content_bound_portable_query_view_reader
+from ..artifacts.portable_views import (
+    _validate_content_bound_portable_query_view_reader_with_identity,
+)
 from ..artifacts.runtime import verify_context_artifact_reader
 from ..source_fingerprint import RepositorySourceBinding
 from ..storage.cas import BlobInfo
@@ -718,9 +720,14 @@ def _interruptible_chunks(
     chunks: Iterable[bytes],
     check_cancelled: Callable[[], None] | None,
 ) -> Iterator[bytes]:
-    for chunk in chunks:
+    iterator = iter(chunks)
+    while True:
         if check_cancelled is not None:
             check_cancelled()
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
         yield chunk
 
 
@@ -765,6 +772,7 @@ def _prepare_manifest_views_inside_authority(
         expected_manifest_version=plan.manifest.version,
         max_files=max_context_files,
         max_bytes=max_context_bytes,
+        check_cancelled=check_cancelled,
     )
     _validate_context_matches_plan(
         plan,
@@ -784,15 +792,26 @@ def _prepare_manifest_views_inside_authority(
             check_cancelled()
         prefix = PurePosixPath("views") / intent.view_type
         view_reader = publication.subtree(prefix)
-        validate_content_bound_portable_query_view_reader(
+        repository_identity = (
+            repository_source.authenticated_identity_snapshot()
+            if check_cancelled is None
+            else repository_source.authenticated_identity_snapshot(
+                check_cancelled=check_cancelled,
+            )
+        )
+        _validate_content_bound_portable_query_view_reader_with_identity(
             view_reader,
             repository_source=repository_source,
+            repository_identity=repository_identity,
             view_type=intent.view_type,
             view_config=intent.manifest_entry["config"],
             forbidden_paths=forbidden_paths,
             environ=environment,
+            check_cancelled=check_cancelled,
         )
-        source_ownership = view_reader.capture_ownership()
+        source_ownership = view_reader.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         bundle = plan_view_bundle_reader(
             publication,
             prefix,
@@ -801,6 +820,7 @@ def _prepare_manifest_views_inside_authority(
             max_files=max_bundle_files,
             max_bytes=max_bundle_bytes,
             max_metadata_bytes=max_bundle_metadata_bytes,
+            check_cancelled=check_cancelled,
         )
         if check_cancelled is not None:
             check_cancelled()
@@ -811,36 +831,56 @@ def _prepare_manifest_views_inside_authority(
     for intent, view_reader, bundle in planned:
         if check_cancelled is not None:
             check_cancelled()
-        raw_bundle = consume_planned_view_bundle(
+
+        def store_bundle(
+            chunks: Iterable[bytes],
+            *,
+            expected_bundle: PlannedViewBundle = bundle,
+            expected_view_type: str = intent.view_type,
+        ) -> _StoredObject:
+            raw = object_store.put_chunks(  # type: ignore[attr-defined]
+                _interruptible_chunks(chunks, check_cancelled),
+                expected_bundle.digest,
+                expected_bundle.byte_size,
+            )
+            stored = _exact_blob_object(
+                raw,
+                expected_digest=expected_bundle.digest,
+                expected_size=expected_bundle.byte_size,
+                media_type=VIEW_BUNDLE_MEDIA_TYPE,
+                label=f"portable {expected_view_type} bundle ingestion",
+            )
+            _verify_exact_receipt(object_store, stored)
+            existing = stored_by_digest.get(stored.record.digest)
+            if existing is not None and not _same_object(
+                existing.record,
+                stored.record,
+            ):
+                raise StorageIntegrityError("bundle object metadata conflicts")
+            stored_by_digest[stored.record.digest] = stored
+            return stored
+
+        bundle_object = consume_planned_view_bundle(
             publication,
             bundle,
-            lambda chunks, bundle=bundle: object_store.put_chunks(  # type: ignore[attr-defined]
-                _interruptible_chunks(chunks, check_cancelled),
-                bundle.digest,
-                bundle.byte_size,
-            ),
+            store_bundle,
+            check_cancelled=check_cancelled,
         )
         if check_cancelled is not None:
             check_cancelled()
-        bundle_object = _exact_blob_object(
-            raw_bundle,
-            expected_digest=bundle.digest,
-            expected_size=bundle.byte_size,
-            media_type=VIEW_BUNDLE_MEDIA_TYPE,
-            label=f"portable {intent.view_type} bundle ingestion",
-        )
-        existing_bundle = stored_by_digest.get(bundle_object.record.digest)
-        if existing_bundle is not None and not _same_object(
-            existing_bundle.record, bundle_object.record
-        ):
-            raise StorageIntegrityError("bundle object metadata conflicts")
-        stored_by_digest[bundle_object.record.digest] = bundle_object
 
         members: list[tuple[str, int, int, _StoredObject]] = []
         for member in bundle.members:
             if check_cancelled is not None:
                 check_cancelled()
             existing = stored_by_digest.get(member.digest)
+            if existing is not None and (
+                existing.record.byte_size != member.byte_size
+                or existing.record.media_type != _MEMBER_MEDIA_TYPE
+            ):
+                raise StorageIntegrityError(
+                    "duplicate member digest has conflicting metadata"
+                )
             with view_reader.iter_authenticated_chunks(
                 member.path,
                 max_bytes=member.byte_size,
@@ -851,8 +891,6 @@ def _prepare_manifest_views_inside_authority(
                         member.digest,
                         member.byte_size,
                     )
-                    if check_cancelled is not None:
-                        check_cancelled()
                     stored = _exact_blob_object(
                         raw_member,
                         expected_digest=member.digest,
@@ -860,18 +898,14 @@ def _prepare_manifest_views_inside_authority(
                         media_type=_MEMBER_MEDIA_TYPE,
                         label=f"portable {intent.view_type} member ingestion",
                     )
+                    _verify_exact_receipt(object_store, stored)
                     stored_by_digest[stored.record.digest] = stored
                 else:
                     _drain(chunks, check_cancelled=check_cancelled)
-                    if (
-                        existing.record.byte_size != member.byte_size
-                        or existing.record.media_type != _MEMBER_MEDIA_TYPE
-                    ):
-                        raise StorageIntegrityError(
-                            "duplicate member digest has conflicting metadata"
-                        )
                     stored = existing
             members.append((member.path, member.byte_size, member.mode, stored))
+            if check_cancelled is not None:
+                check_cancelled()
 
         member_digests = tuple(sorted({item[3].record.digest for item in members}))
         generation = ViewGeneration.create(
@@ -890,9 +924,6 @@ def _prepare_manifest_views_inside_authority(
                 generation=generation,
             )
         )
-
-    if check_cancelled is not None:
-        check_cancelled()
 
     return _PreparedManifestViews(
         artifact_plan_digest=artifact_plan_digest,
@@ -969,11 +1000,10 @@ def _prepare_job_view_artifacts_inside_authority(
                 "retained job artifact differs from its prepared view generation"
             )
         artifacts.append(artifact)
-    if check_cancelled is not None:
-        check_cancelled()
-    repository_source.verify_snapshot()
-    if check_cancelled is not None:
-        check_cancelled()
+    if check_cancelled is None:
+        repository_source.verify_snapshot()
+    else:
+        repository_source.verify_snapshot(check_cancelled=check_cancelled)
     return tuple(artifacts)
 
 

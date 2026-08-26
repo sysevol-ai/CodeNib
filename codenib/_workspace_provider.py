@@ -191,6 +191,10 @@ class StrictWorkspaceSession(Protocol):
             [PublicationDirectoryReader],
             _ValidationResult,
         ],
+        *,
+        validate_published_destination: (
+            Callable[[PublicationDirectoryReader], _ValidationResult] | None
+        ) = None,
     ) -> _ValidationResult: ...
 
 
@@ -439,6 +443,7 @@ class _ReplacementSourceGate:
 class _AdoptedWorkspaceSession:
     __slots__ = (
         "_active",
+        "_check_cancelled",
         "_gate",
         "_monotonic_ns",
         "_operation_provenance",
@@ -457,6 +462,7 @@ class _AdoptedWorkspaceSession:
         workspace: OwnedWorkspaceAuthority,
         receipt_owner: PublishedWorkspaceReceiptOwner,
         *,
+        check_cancelled: Callable[[], None] | None = None,
         operation_provenance: object,
         monotonic_ns: Callable[[], int] = _MONOTONIC_NS_EXACT,
         publish_replacement: Callable[..., None] = _PUBLISH_REPLACEMENT_EXACT,
@@ -466,6 +472,7 @@ class _AdoptedWorkspaceSession:
         self._workspace = workspace
         self._receipt_owner = receipt_owner
         self._active = True
+        self._check_cancelled = check_cancelled
         self._monotonic_ns = monotonic_ns
         self._operation_provenance = operation_provenance
         self._replacement_timeout_ns = replacement_timeout_ns
@@ -550,7 +557,13 @@ class _AdoptedWorkspaceSession:
             if self._published:
                 raise RuntimeError("strict workspace session was already published")
             self._require_request_binding()
-            return self._workspace.write_file(relative, chunks)
+            if self._check_cancelled is None:
+                return self._workspace.write_file(relative, chunks)
+            return self._workspace.write_file(
+                relative,
+                chunks,
+                check_cancelled=self._check_cancelled,
+            )
 
         return self._gate.run(write)
 
@@ -560,6 +573,10 @@ class _AdoptedWorkspaceSession:
             [PublicationDirectoryReader],
             _ValidationResult,
         ],
+        *,
+        validate_published_destination: (
+            Callable[[PublicationDirectoryReader], _ValidationResult] | None
+        ) = None,
     ) -> _ValidationResult:
         self._require_owner_pid()
 
@@ -567,11 +584,23 @@ class _AdoptedWorkspaceSession:
             self._require_active()
             if not callable(validator):
                 raise TypeError("strict workspace validator must be callable")
+            if validate_published_destination is not None and not callable(
+                validate_published_destination
+            ):
+                raise TypeError("strict workspace published validator must be callable")
             if self._published:
                 raise RuntimeError("strict workspace session was already published")
             self._require_request_binding()
-            self._workspace.seal()
+            if self._check_cancelled is None:
+                self._workspace.seal()
+            else:
+                self._workspace.seal(check_cancelled=self._check_cancelled)
             published: list[_ValidationResult] = []
+            published_validator = (
+                validator
+                if validate_published_destination is None
+                else validate_published_destination
+            )
 
             def validate_staged(reader: PublicationDirectoryReader) -> None:
                 validator(reader)
@@ -581,7 +610,7 @@ class _AdoptedWorkspaceSession:
                 self._require_request_binding()
 
             def validate_published(reader: PublicationDirectoryReader) -> None:
-                result = validator(reader)
+                result = published_validator(reader)
                 self._require_request_binding()
                 published.append(result)
 
@@ -593,11 +622,21 @@ class _AdoptedWorkspaceSession:
                     raise RuntimeError(
                         "missing workspace received a replacement timeout"
                     )
-                self._workspace.publish_into(
-                    self._receipt_owner,
-                    validate_staged_directory=validate_staged,
-                    validate_published_destination=validate_published,
-                )
+                publish_kwargs = {
+                    "validate_staged_directory": validate_staged,
+                    "validate_published_destination": validate_published,
+                }
+                if self._check_cancelled is None:
+                    self._workspace.publish_into(
+                        self._receipt_owner,
+                        **publish_kwargs,
+                    )
+                else:
+                    self._workspace.publish_into(
+                        self._receipt_owner,
+                        check_cancelled=self._check_cancelled,
+                        **publish_kwargs,
+                    )
             else:
                 timeout_ns = self._replacement_timeout_ns
                 if type(timeout_ns) is not int or not (
@@ -605,13 +644,24 @@ class _AdoptedWorkspaceSession:
                 ):
                     raise RuntimeError("exact workspace replacement timeout is missing")
                 deadline_ns = self._monotonic_ns() + timeout_ns
-                self._publish_replacement(
-                    self._workspace,
-                    self._receipt_owner,
-                    deadline_ns=deadline_ns,
-                    validate_staged_directory=validate_staged,
-                    validate_published_destination=validate_published,
-                )
+                replacement_kwargs = {
+                    "deadline_ns": deadline_ns,
+                    "validate_staged_directory": validate_staged,
+                    "validate_published_destination": validate_published,
+                }
+                if self._check_cancelled is None:
+                    self._publish_replacement(
+                        self._workspace,
+                        self._receipt_owner,
+                        **replacement_kwargs,
+                    )
+                else:
+                    self._publish_replacement(
+                        self._workspace,
+                        self._receipt_owner,
+                        check_cancelled=self._check_cancelled,
+                        **replacement_kwargs,
+                    )
             if len(published) != 1 or not self._receipt_owner.active:
                 raise RuntimeError(
                     "strict workspace publication did not install one active receipt"
@@ -675,6 +725,7 @@ class _ProviderOperationGate:
     """One-shot callback lease revoked before a provider call can escape."""
 
     __slots__ = (
+        "_check_cancelled",
         "_lifecycle",
         "_lock",
         "_monotonic_ns",
@@ -691,14 +742,18 @@ class _ProviderOperationGate:
         request: StrictWorkspaceRequest,
         operation: Callable[[StrictWorkspaceSession], _OperationResult],
         *,
+        check_cancelled: Callable[[], None] | None = None,
         lifecycle: list[bool],
         replacement_source: _ReplacementSourceGate | None = None,
     ) -> None:
         if type(lifecycle) is not list or lifecycle != [False, False, True]:
             raise TypeError("strict workspace operation lifecycle is invalid")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("strict workspace cancellation check must be callable")
         # As for the source gate, the enclosing strict call owns this inactive
         # cell before construction and is the only code that may activate it.
         self._lifecycle = lifecycle
+        self._check_cancelled = check_cancelled
         self._lock = _CancellationSafeRLock()
         # Exact callers construct this gate before provider support; missing
         # callers construct it before provisioning. Freeze the publication
@@ -1218,6 +1273,7 @@ def _run_adopted_workspace_operation(
         request,
         workspace,
         receipt_owner,
+        check_cancelled=operation._check_cancelled,
         operation_provenance=operation_provenance,
         monotonic_ns=operation._monotonic_ns,
         publish_replacement=operation._publish_replacement,
@@ -1266,6 +1322,7 @@ def run_strict_workspace(
     receipt_owner: PublishedWorkspaceReceiptOwner,
     operation: Callable[[StrictWorkspaceSession], _OperationResult],
     source_owner: PublishedWorkspaceReceiptOwner | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _OperationResult:
     """Preflight and invoke one trusted provider without an ambient fallback."""
 
@@ -1275,6 +1332,8 @@ def run_strict_workspace(
         raise TypeError("strict workspace receipt owner has an invalid type")
     if not callable(operation):
         raise TypeError("strict workspace operation must be callable")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("strict workspace cancellation check must be callable")
     if receipt_owner.state != "empty":
         raise RuntimeError("strict workspace receipt owner must be empty")
     binding = request.destination_binding
@@ -1316,6 +1375,7 @@ def run_strict_workspace(
                 operation_gate = _ProviderOperationGate(
                     request,
                     operation,
+                    check_cancelled=check_cancelled,
                     lifecycle=operation_lifecycle,
                 )
                 run_workspace = provider_run_workspace
@@ -1350,6 +1410,7 @@ def run_strict_workspace(
                 operation_gate = _ProviderOperationGate(
                     request,
                     operation,
+                    check_cancelled=check_cancelled,
                     lifecycle=operation_lifecycle,
                     replacement_source=replacement_source,
                 )

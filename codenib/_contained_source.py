@@ -16,7 +16,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Iterable, Iterator, Sequence
+from typing import Callable, Iterable, Iterator, Sequence
 
 from ._windows_fs_authority import (
     FILE_ATTRIBUTE_DIRECTORY as _WINDOWS_FILE_ATTRIBUTE_DIRECTORY,
@@ -582,10 +582,17 @@ class _BoundRepositoryFile:
     def closed(self) -> bool:
         return self.cleanup.closed
 
-    def update_hash(self, hasher: object) -> None:
+    def update_hash(
+        self,
+        hasher: object,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         update = getattr(hasher, "update", None)
         if not callable(update):
             raise TypeError("hasher must provide an update method")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("cancellation check must be callable")
         opened = os.fstat(self.descriptor)
         if (
             not stat.S_ISREG(opened.st_mode)
@@ -595,6 +602,8 @@ class _BoundRepositoryFile:
             raise ValueError("source file is not a stable regular file")
         remaining = opened.st_size
         while remaining:
+            if check_cancelled is not None:
+                check_cancelled()
             block = os.read(self.descriptor, min(remaining, _READ_CHUNK_BYTES))
             if not block:
                 raise ValueError("source file was truncated while hashing")
@@ -1261,13 +1270,30 @@ def _windows_find_child(
     api: _WindowsKernelApi,
     parent_handle: int,
     name: str,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _WindowsDirectoryEntry | None:
     """Find one exact child without imposing unsafe case-folding semantics."""
 
     _windows_simple_child_name(name)
-    matches = [
-        entry for entry in api.enumerate_directory(parent_handle) if entry.name == name
-    ]
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("cancellation check must be callable")
+    matches: list[_WindowsDirectoryEntry] = []
+    stream = getattr(api, "iter_directory", None)
+    entries = iter(
+        stream(parent_handle)
+        if callable(stream)
+        else api.enumerate_directory(parent_handle)
+    )
+    while True:
+        if check_cancelled is not None:
+            check_cancelled()
+        try:
+            entry = next(entries)
+        except StopIteration:
+            break
+        if entry.name == name:
+            matches.append(entry)
     if len(matches) > 1:
         raise ValueError("Windows source directory has duplicate exact child names")
     return matches[0] if matches else None
@@ -1476,6 +1502,8 @@ def _verify_windows_resolution_state(
     root_handle: int,
     root_identity: tuple[object, ...],
     observations: Sequence[_WindowsPathObservation],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     _verify_windows_root_path(api, authority, root_handle, root_identity)
     for observation in observations:
@@ -1484,7 +1512,19 @@ def _verify_windows_resolution_state(
             != observation.parent_identity
         ):
             raise ValueError("Windows source parent changed during resolution")
-        entry = _windows_find_child(api, observation.parent_handle, observation.name)
+        if check_cancelled is None:
+            entry = _windows_find_child(
+                api,
+                observation.parent_handle,
+                observation.name,
+            )
+        else:
+            entry = _windows_find_child(
+                api,
+                observation.parent_handle,
+                observation.name,
+                check_cancelled=check_cancelled,
+            )
         if entry is None or entry.file_id_128 != observation.file_id_128:
             raise ValueError("Windows source path changed during resolution")
         if (
@@ -1528,16 +1568,32 @@ class _WindowsResolutionBinding:
         self.closed = False
         self._cleanup_started = False
 
-    def verify(self) -> None:
+    def verify(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         if self.closed or self._cleanup_started:
             raise ValueError("Windows source binding is closed")
-        _verify_windows_resolution_state(
-            self.api,
-            self.root_authority,
-            self.root_handle,
-            self.root_identity,
-            self.observations,
-        )
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("cancellation check must be callable")
+        if check_cancelled is None:
+            _verify_windows_resolution_state(
+                self.api,
+                self.root_authority,
+                self.root_handle,
+                self.root_identity,
+                self.observations,
+            )
+        else:
+            _verify_windows_resolution_state(
+                self.api,
+                self.root_authority,
+                self.root_handle,
+                self.root_identity,
+                self.observations,
+                check_cancelled=check_cancelled,
+            )
 
     def close(self) -> None:
         if self.closed:
@@ -1628,13 +1684,22 @@ class _WindowsBoundRepositoryFile(_WindowsResolutionBinding):
             raise ValueError("Windows source file is not a stable regular file")
         return opened
 
-    def update_hash(self, hasher: object) -> None:
+    def update_hash(
+        self,
+        hasher: object,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
         update = getattr(hasher, "update", None)
         if not callable(update):
             raise TypeError("hasher must provide an update method")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("cancellation check must be callable")
         opened = self._opened()
         remaining = opened.st_size
         while remaining:
+            if check_cancelled is not None:
+                check_cancelled()
             block = self.api.read(self.file_handle, min(remaining, _READ_CHUNK_BYTES))
             if not block:
                 raise ValueError("Windows source file was truncated while hashing")
@@ -1642,7 +1707,10 @@ class _WindowsBoundRepositoryFile(_WindowsResolutionBinding):
             remaining -= len(block)
         if self.api.read(self.file_handle, 1):
             raise ValueError("Windows source file grew while hashing")
-        self.verify()
+        if check_cancelled is None:
+            self.verify()
+        else:
+            self.verify(check_cancelled=check_cancelled)
         self._opened()
 
     def read_bytes(self, *, max_bytes: int) -> bytes:
@@ -1684,8 +1752,15 @@ class _WindowsBoundRepositoryDirectory(_WindowsResolutionBinding):
         self.directory_handle = directory_handle
         self.opened_identity = opened_identity
 
-    def verify(self) -> None:
-        super().verify()
+    def verify(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
+        if check_cancelled is None:
+            super().verify()
+        else:
+            super().verify(check_cancelled=check_cancelled)
         opened = self.api.metadata(self.directory_handle)
         if (
             not stat.S_ISDIR(opened.st_mode)
@@ -1711,14 +1786,29 @@ class _WindowsStableUnresolvedRepositoryFile(_WindowsResolutionBinding):
         self.name = name
         self.expected_file_id = expected_file_id
 
-    def verify(self) -> None:
-        super().verify()
+    def verify(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> None:
+        if check_cancelled is None:
+            super().verify()
+        else:
+            super().verify(check_cancelled=check_cancelled)
         if (
             _windows_version_identity(self.api.metadata(self.parent_handle))
             != self.parent_identity
         ):
             raise ValueError("Windows unresolved source parent changed")
-        entry = _windows_find_child(self.api, self.parent_handle, self.name)
+        if check_cancelled is None:
+            entry = _windows_find_child(self.api, self.parent_handle, self.name)
+        else:
+            entry = _windows_find_child(
+                self.api,
+                self.parent_handle,
+                self.name,
+                check_cancelled=check_cancelled,
+            )
         observed = None if entry is None else entry.file_id_128
         if observed != self.expected_file_id:
             raise ValueError("Windows unresolved source terminal changed")
@@ -1786,7 +1876,10 @@ def _open_windows_resolution_at(
     allow_absolute_symlinks: bool = False,
     owns_root_authority: bool = False,
     cleanup_slot: _SourceCleanupSlot | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _WindowsResolutionBinding:
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("cancellation check must be callable")
     construction = _WindowsResolutionConstructionCleanup(
         api,
         root_authority,
@@ -1855,10 +1948,24 @@ def _open_windows_resolution_at(
                 "handle_identities": handle_identities,
             }
 
+        def verify_binding(binding: _WindowsResolutionBinding) -> None:
+            if check_cancelled is None:
+                binding.verify()
+            else:
+                binding.verify(check_cancelled=check_cancelled)
+
         while pending:
             name, is_lexical_final = pending.pop(0)
             parent_identity = _windows_version_identity(api.metadata(current_handle))
-            entry = _windows_find_child(api, current_handle, name)
+            if check_cancelled is None:
+                entry = _windows_find_child(api, current_handle, name)
+            else:
+                entry = _windows_find_child(
+                    api,
+                    current_handle,
+                    name,
+                    check_cancelled=check_cancelled,
+                )
             if entry is None:
                 if not (allow_stable_unresolved and lexical_final_is_link):
                     raise FileNotFoundError(name)
@@ -1869,7 +1976,7 @@ def _open_windows_resolution_at(
                     expected_file_id=None,
                     **common_kwargs(),
                 )
-                binding.verify()
+                verify_binding(binding)
                 if cleanup_slot is not None:
                     cleanup_slot.own(binding)
                 return binding
@@ -1941,7 +2048,7 @@ def _open_windows_resolution_at(
                         expected_file_id=entry.file_id_128,
                         **common_kwargs(),
                     )
-                    binding.verify()
+                    verify_binding(binding)
                     if cleanup_slot is not None:
                         cleanup_slot.own(binding)
                     return binding
@@ -1970,7 +2077,7 @@ def _open_windows_resolution_at(
                         opened_identity=_windows_version_identity(directory_metadata),
                         **common_kwargs(),
                     )
-                    binding.verify()
+                    verify_binding(binding)
                     if cleanup_slot is not None:
                         cleanup_slot.own(binding)
                     return binding
@@ -1994,7 +2101,7 @@ def _open_windows_resolution_at(
                     opened_identity=opened_identity,
                     **common_kwargs(),
                 )
-                binding.verify()
+                verify_binding(binding)
                 if cleanup_slot is not None:
                     cleanup_slot.own(binding)
                 return binding
@@ -2008,7 +2115,7 @@ def _open_windows_resolution_at(
                     expected_file_id=entry.file_id_128,
                     **common_kwargs(),
                 )
-                binding.verify()
+                verify_binding(binding)
                 if cleanup_slot is not None:
                     cleanup_slot.own(binding)
                 return binding
@@ -2018,7 +2125,7 @@ def _open_windows_resolution_at(
                 opened_size=opened.st_size,
                 **common_kwargs(),
             )
-            binding.verify()
+            verify_binding(binding)
             if cleanup_slot is not None:
                 cleanup_slot.own(binding)
             return binding
@@ -2038,6 +2145,7 @@ def _resolved_windows_repository_file_at(
     expected_final_link_target: str | None = None,
     expected_final_reparse_point: _WindowsReparsePoint | None = None,
     api: _WindowsKernelApi | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterator[_WindowsResolutionBinding]:
     """Resolve one source entry through a caller-owned pinned Windows root."""
 
@@ -2056,10 +2164,14 @@ def _resolved_windows_repository_file_at(
         api=selected,
         allow_absolute_symlinks=True,
         cleanup_slot=cleanup_slot,
+        check_cancelled=check_cancelled,
     )
     try:
         yield binding
-        binding.verify()
+        if check_cancelled is None:
+            binding.verify()
+        else:
+            binding.verify(check_cancelled=check_cancelled)
     except BaseException as primary:  # noqa: B036 - preserve body failure
         _raise_with_cleanup(primary, cleanup_slot)
     else:

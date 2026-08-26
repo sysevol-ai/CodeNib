@@ -3310,3 +3310,44 @@ def test_content_bound_reader_keeps_semantic_primary_through_all_final_checks(
     assert "final ownership validation" in notes
     assert "reader cleanup" in notes
     assert "reader cleanup secondary" in notes
+
+
+@pytest.mark.parametrize("mutate", (False, True))
+def test_publication_view_root_reconciles_exact_cancellation(
+    tmp_path: Path,
+    mutate: bool,
+) -> None:
+    _repo, bm25 = _bm25_view(tmp_path)
+    ownership = capture_directory_ownership(bm25)
+    stop = KeyboardInterrupt("injected portable ownership stop")
+    polls = 0
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        reader = portable_views_module._PublicationViewReader(
+            publication,
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+        reader.verify_root()
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if mutate:
+            (bm25 / "documents.json").write_bytes(b"[]\n")
+        raise stop
+
+    expected = RuntimeError if mutate else KeyboardInterrupt
+    with pytest.raises(expected) as caught:
+        reopen_authenticated_directory(
+            bm25,
+            ownership,
+            validate,
+        )
+
+    assert polls == 1
+    if mutate:
+        assert "changed" in str(caught.value)
+        assert caught.value is not stop
+    else:
+        assert caught.value is stop

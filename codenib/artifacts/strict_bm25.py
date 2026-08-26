@@ -78,18 +78,21 @@ class _InterruptibleReader:
 
     def read(self, size: int = -1) -> bytes:
         self._check_cancelled()
-        block = self._source.read(size)
-        self._check_cancelled()
-        return block
+        return self._source.read(size)
 
 
 def _interruptible_chunks(
     chunks: Iterable[bytes],
     check_cancelled: Callable[[], None] | None,
 ) -> Iterator[bytes]:
-    for chunk in chunks:
+    iterator = iter(chunks)
+    while True:
         if check_cancelled is not None:
             check_cancelled()
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
         yield chunk
 
 
@@ -235,8 +238,16 @@ def _preflight_recapture_publication_authorities(
 
 def _authenticated_repository_identity(
     repository_source: RepositorySourceBinding,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> RepositorySourceIdentitySnapshot:
-    identity = repository_source.authenticated_identity_snapshot()
+    identity = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
     if type(identity) is not RepositorySourceIdentitySnapshot:
         raise TypeError("strict BM25 repository identity has an invalid type")
     return identity
@@ -414,10 +425,13 @@ class _PublicationBm25Reader:
         self,
         publication: PublicationDirectoryReader,
         ownership: object,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         self.root = Path("/__codenib_publication_bm25__")
         self.ownership = ownership
         self._publication = publication
+        self._check_cancelled = check_cancelled
         self._records = {
             record.path: record
             for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
@@ -464,10 +478,15 @@ class _PublicationBm25Reader:
         with self.open_file(path, max_bytes=max_bytes) as source:
             for chunk in source.iter_bytes(chunk_size=_JSON_READ_CHUNK_BYTES):
                 payload.extend(chunk)
+                if self._check_cancelled is not None:
+                    self._check_cancelled()
         return bytes(payload)
 
     def verify_root(self) -> None:
-        observed = self._publication.capture_ownership(entry_policy=_entry_policy)
+        observed = self._publication.capture_ownership(
+            entry_policy=_entry_policy,
+            check_cancelled=self._check_cancelled,
+        )
         if observed != self.ownership:
             raise RuntimeError("strict BM25 view changed during validation")
 
@@ -480,7 +499,11 @@ def _load_json_object(
 ) -> dict[str, Any]:
     with reader.open_file(relative, max_bytes=_MAX_CONFIG_JSON_BYTES) as source:
         validate_bounded_json_stream(
-            source,
+            (
+                source
+                if reader._check_cancelled is None
+                else _InterruptibleReader(source, reader._check_cancelled)
+            ),
             label=label,
             max_bytes=_MAX_CONFIG_JSON_BYTES,
         )
@@ -615,9 +638,12 @@ def _normalized_documents(
             ),
             label="portable BM25 documents",
         )
-        for index, document in enumerate(documents):
-            if check_cancelled is not None:
-                check_cancelled()
+        iterator = enumerate(documents)
+        while True:
+            try:
+                index, document = next(iterator)
+            except StopIteration:
+                break
             if not isinstance(document, dict) or set(document) != {
                 "page_content",
                 "metadata",
@@ -656,6 +682,8 @@ def _normalized_documents(
                 environ=environ,
                 label=f"portable BM25 document {index}",
             )
+            if check_cancelled is not None:
+                check_cancelled()
             yield normalized
     if check_cancelled is not None:
         check_cancelled()
@@ -673,9 +701,11 @@ def _record_chunks(
     size = 0
     primary_error: BaseException | None = None
     try:
-        for chunk in iterator:
-            if check_cancelled is not None:
-                check_cancelled()
+        while True:
+            try:
+                chunk = next(iterator)
+            except StopIteration:
+                break
             if not isinstance(chunk, bytes):
                 raise TypeError("strict BM25 output chunks must be bytes")
             size += len(chunk)
@@ -684,6 +714,8 @@ def _record_chunks(
                     f"strict BM25 output exceeds its {max_bytes}-byte limit: {relative}"
                 )
             digest.update(chunk)
+            if check_cancelled is not None:
+                check_cancelled()
     except BaseException as exc:  # noqa: B036 - preserve generation fault
         primary_error = exc
     try:
@@ -909,14 +941,28 @@ def _captured_source_view(
     publication: PublicationDirectoryReader,
     *,
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[object, tuple[TreeFileRecord, ...], _PublicationBm25Reader]:
-    ownership = publication.capture_ownership(entry_policy=_entry_policy)
+    ownership = publication.capture_ownership(
+        entry_policy=_entry_policy,
+        check_cancelled=check_cancelled,
+    )
     if ownership != expected_ownership:
         raise RuntimeError(f"{label} changed")
     records = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
     if {record.path for record in records} != _STRICT_BM25_FILES:
         raise ValueError(f"{label} is incomplete")
-    return ownership, records, _PublicationBm25Reader(publication, ownership)
+    if check_cancelled is not None:
+        check_cancelled()
+    return (
+        ownership,
+        records,
+        _PublicationBm25Reader(
+            publication,
+            ownership,
+            check_cancelled=check_cancelled,
+        ),
+    )
 
 
 def _source_view(
@@ -1004,6 +1050,7 @@ def _planned_view_from_publication(
         expected_ownership,
         publication,
         label=source_label,
+        check_cancelled=check_cancelled,
     )
     metadata_bytes, document_chunks = _payloads(
         reader,
@@ -1019,15 +1066,12 @@ def _planned_view_from_publication(
         max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
         check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     metadata_record = TreeFileRecord(
         path="bm25_metadata.json",
         mode=0o600,
         size=len(metadata_bytes),
         sha256=hashlib.sha256(metadata_bytes).hexdigest(),
     )
-    reader.verify_root()
     output_records = tuple(
         sorted((documents_record, metadata_record), key=lambda item: item.path)
     )
@@ -1039,7 +1083,7 @@ def _planned_view_from_publication(
         view_config_digest=config_digest,
         repository_fingerprint=repository_identity.fingerprint,
     )
-    return PlannedBm25View(
+    result = PlannedBm25View(
         plan=plan,
         source_ownership=ownership,
         source_digest=source_digest,
@@ -1048,6 +1092,8 @@ def _planned_view_from_publication(
         view_config_digest=config_digest,
         repository_fingerprint=repository_identity.fingerprint,
     )
+    reader.verify_root()
+    return result
 
 
 def _plan_bm25_view_with_identity(
@@ -1181,9 +1227,10 @@ def _candidate_records(
     authenticated_source_files: frozenset[str],
     check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[TreeFileRecord, ...]:
-    if check_cancelled is not None:
-        check_cancelled()
-    ownership = candidate.capture_ownership(entry_policy=_entry_policy)
+    ownership = candidate.capture_ownership(
+        entry_policy=_entry_policy,
+        check_cancelled=check_cancelled,
+    )
     observed = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
     if (
         directory_ownership_inventory(ownership)  # type: ignore[arg-type]
@@ -1194,7 +1241,13 @@ def _candidate_records(
         or observed != planned.output_records
     ):
         raise RuntimeError("strict BM25 candidate differs from its exact plan")
-    reader = _PublicationBm25Reader(candidate, ownership)
+    if check_cancelled is not None:
+        check_cancelled()
+    reader = _PublicationBm25Reader(
+        candidate,
+        ownership,
+        check_cancelled=check_cancelled,
+    )
     metadata_bytes, document_chunks = _payloads(
         reader,
         repository_identity.root,
@@ -1222,9 +1275,9 @@ def _candidate_records(
             key=lambda item: item.path,
         )
     )
+    if records != planned.output_records:
+        raise RuntimeError("strict BM25 candidate differs from its exact plan")
     reader.verify_root()
-    if check_cancelled is not None:
-        check_cancelled()
     return records
 
 
@@ -1403,6 +1456,7 @@ def _plan_recaptured_bm25_view_with_identity(
     source_ownership = capture_directory_ownership(
         lexical_source,
         entry_policy=_entry_policy,
+        check_cancelled=check_cancelled,
     )
     if check_cancelled is not None:
         check_cancelled()
@@ -1420,11 +1474,17 @@ def _plan_recaptured_bm25_view_with_identity(
             check_cancelled=check_cancelled,
         )
 
-    with repository_source.read_session():
+    source_session = (
+        repository_source.read_session()
+        if check_cancelled is None
+        else repository_source.read_session(check_cancelled=check_cancelled)
+    )
+    with source_session:
         return reopen_authenticated_directory(
             lexical_source,
             source_ownership,  # type: ignore[arg-type]
             consume_source,
+            check_cancelled=check_cancelled,
         )
 
 
@@ -1446,7 +1506,10 @@ def _plan_recaptured_bm25_view(
         raise RuntimeError("strict BM25 repository source is not usable")
     if check_cancelled is not None:
         check_cancelled()
-    repository_identity = _authenticated_repository_identity(repository_source)
+    repository_identity = _authenticated_repository_identity(
+        repository_source,
+        check_cancelled=check_cancelled,
+    )
     lexical_source, _lexical_destination = _recapture_locations(
         source,
         destination,
@@ -1502,15 +1565,16 @@ def _publish_recaptured_bm25_view_with_identity(
     observed_source_ownership = capture_directory_ownership(
         lexical_source,
         entry_policy=_entry_policy,
+        check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     _require_plan_for_ownership(
         planned,
         source_ownership=observed_source_ownership,
         repository_identity=repository_identity,
         view_config_digest=config_digest,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     request = StrictWorkspaceRequest(
         purpose="portable-bm25-recapture",
         destination=lexical_destination,
@@ -1519,16 +1583,17 @@ def _publish_recaptured_bm25_view_with_identity(
     )
 
     def operation(session: StrictWorkspaceSession) -> None:
-        if check_cancelled is not None:
-            check_cancelled()
         if session.request != request:
             raise RuntimeError("strict BM25 provider changed its request")
+        if check_cancelled is not None:
+            check_cancelled()
 
         def replay_source(publication: PublicationDirectoryReader) -> None:
             ownership, source_records, reader = _captured_source_view(
                 planned.source_ownership,
                 publication,
                 label="strict BM25 recapture source",
+                check_cancelled=check_cancelled,
             )
             if (
                 ownership != planned.source_ownership
@@ -1558,12 +1623,22 @@ def _publish_recaptured_bm25_view_with_identity(
                     key=lambda item: item.path,
                 )
             )
-            reader.verify_root()
             if written != planned.output_records:
                 raise RuntimeError("strict BM25 replay differs from its exact plan")
+            reader.verify_root()
 
-        def validate_candidate(candidate: PublicationDirectoryReader) -> None:
-            with repository_source.read_session():
+        def validate_candidate_with_check(
+            candidate: PublicationDirectoryReader,
+            validation_check: Callable[[], None] | None,
+        ) -> None:
+            source_session = (
+                repository_source.read_session()
+                if validation_check is None
+                else repository_source.read_session(
+                    check_cancelled=validation_check,
+                )
+            )
+            with source_session:
                 if (
                     _candidate_records(
                         candidate,
@@ -1572,23 +1647,38 @@ def _publish_recaptured_bm25_view_with_identity(
                         forbidden_paths=forbidden,
                         environ=environ,
                         authenticated_source_files=authenticated_files,
-                        check_cancelled=check_cancelled,
+                        check_cancelled=validation_check,
                     )
                     != planned.output_records
                 ):
                     raise RuntimeError("strict BM25 candidate is not canonical")
 
-        with repository_source.read_session():
+        def validate_candidate(candidate: PublicationDirectoryReader) -> None:
+            validate_candidate_with_check(candidate, check_cancelled)
+
+        def validate_published_candidate(
+            candidate: PublicationDirectoryReader,
+        ) -> None:
+            validate_candidate_with_check(candidate, None)
+
+        source_session = (
+            repository_source.read_session()
+            if check_cancelled is None
+            else repository_source.read_session(check_cancelled=check_cancelled)
+        )
+        with source_session:
             reopen_authenticated_directory(
                 lexical_source,
                 planned.source_ownership,  # type: ignore[arg-type]
                 replay_source,
+                check_cancelled=check_cancelled,
             )
         if check_cancelled is not None:
             check_cancelled()
-        session.publish_validated(validate_candidate)
-        if check_cancelled is not None:
-            check_cancelled()
+        session.publish_validated(
+            validate_candidate,
+            validate_published_destination=validate_published_candidate,
+        )
 
     # Recheck mutable authority state after the potentially long source scan
     # and immediately before the provider can provision its first workspace.
@@ -1605,14 +1695,15 @@ def _publish_recaptured_bm25_view_with_identity(
         request,
         receipt_owner=output_receipt_owner,
         operation=operation,
+        check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     if not output_receipt_owner.active:
         raise RuntimeError("strict BM25 publication returned without a receipt")
     receipt = output_receipt_owner.receipt
     if receipt.path != lexical_destination or receipt.plan != planned.plan:
         raise RuntimeError("strict BM25 publication returned the wrong receipt")
+    if check_cancelled is not None:
+        check_cancelled()
     return planned.adjustments
 
 
@@ -1638,7 +1729,10 @@ def _publish_recaptured_bm25_view(
     )
     if check_cancelled is not None:
         check_cancelled()
-    repository_identity = _authenticated_repository_identity(repository_source)
+    repository_identity = _authenticated_repository_identity(
+        repository_source,
+        check_cancelled=check_cancelled,
+    )
     lexical_source, lexical_destination = _recapture_locations(
         source,
         destination,

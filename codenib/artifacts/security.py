@@ -10,10 +10,14 @@ import hashlib
 import json
 import math
 import os
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping
+from typing import Any
 
-from .._atomic_directory import PublicationDirectoryReader
+from .._atomic_directory import (
+    PublicationDirectoryReader,
+    directory_ownership_file_records,
+)
 from .._bounded_json import (
     DEFAULT_MAX_ATOM_BYTES,
     DEFAULT_MAX_DEPTH,
@@ -50,6 +54,33 @@ _MAX_PUBLISHABLE_JSON_DEPTH = DEFAULT_MAX_DEPTH
 _MAX_PUBLISHABLE_JSON_KEY_BYTES = DEFAULT_MAX_KEY_BYTES
 _MAX_PUBLISHABLE_JSON_STRING_BYTES = DEFAULT_MAX_STRING_BYTES
 _MAX_PUBLISHABLE_JSON_ATOM_BYTES = DEFAULT_MAX_ATOM_BYTES
+
+
+class _InterruptibleReader:
+    __slots__ = ("_source", "_check_cancelled")
+
+    def __init__(self, source: Any, check_cancelled: Callable[[], None]) -> None:
+        self._source = source
+        self._check_cancelled = check_cancelled
+
+    def read(self, size: int = -1) -> bytes:
+        self._check_cancelled()
+        return self._source.read(size)
+
+
+def _interruptible_chunks(
+    chunks: Iterable[bytes],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[bytes]:
+    iterator = iter(chunks)
+    while True:
+        if check_cancelled is not None:
+            check_cancelled()
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
+        yield chunk
 
 
 def assert_no_credential_fields(value: Any, *, source: str) -> None:
@@ -259,7 +290,7 @@ def _reject_publication_constant(value: str) -> None:
     raise ValueError(f"publication JSON constant is not finite: {value}")
 
 
-def assert_publishable_tree_reader(
+def _assert_publishable_tree_reader_interruptibly(
     reader: PublicationDirectoryReader,
     *,
     forbidden_paths: Iterable[Path],
@@ -267,6 +298,7 @@ def assert_publishable_tree_reader(
     label: str,
     max_json_bytes: int = _MAX_PUBLISHABLE_JSON_BYTES,
     streaming_json_paths: Iterable[str | PurePosixPath] = (),
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Apply publication policy through one authenticated tree authority.
 
@@ -277,6 +309,8 @@ def assert_publishable_tree_reader(
     bounded lexical validation and a complete path/credential byte scan here.
     """
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("publication cancellation check must be callable")
     if (
         isinstance(max_json_bytes, bool)
         or not isinstance(max_json_bytes, int)
@@ -316,6 +350,8 @@ def assert_publishable_tree_reader(
         if normalized in streaming_json:
             raise ValueError("streaming publication JSON path is duplicated")
         streaming_json.add(normalized)
+    if check_cancelled is not None:
+        check_cancelled()
     roots = tuple(forbidden_paths)
     forbidden = _serialized_patterns(_forbidden_path_strings(roots))
     secrets = _secret_values(environ)
@@ -347,8 +383,11 @@ def assert_publishable_tree_reader(
                 f"{label} JSON file exceeds its {max_json_bytes}-byte limit: {path}"
             )
 
-    reader.capture_ownership(entry_policy=entry_policy)
-    records = reader.file_records()
+    ownership = reader.capture_ownership(
+        entry_policy=entry_policy,
+        check_cancelled=check_cancelled,
+    )
+    records = tuple(directory_ownership_file_records(ownership))
     missing_streaming_json = streaming_json - {record.path for record in records}
     if missing_streaming_json:
         raise ValueError(
@@ -356,6 +395,8 @@ def assert_publishable_tree_reader(
             f"{sorted(missing_streaming_json)[0]}"
         )
     for record in records:
+        if check_cancelled is not None:
+            check_cancelled()
         relative = record.path
         if relative in streaming_json:
             json_label = f"{label} JSON {relative}"
@@ -368,7 +409,11 @@ def assert_publishable_tree_reader(
                 # size so a legitimate large array is not forced into one DOM.
                 lexical_budget = max(1, record.size)
                 validate_bounded_json_stream(
-                    source,
+                    (
+                        source
+                        if check_cancelled is None
+                        else _InterruptibleReader(source, check_cancelled)
+                    ),
                     label=json_label,
                     max_bytes=_MAX_STREAMING_PUBLISHABLE_JSON_BYTES,
                     max_nodes=lexical_budget,
@@ -383,7 +428,10 @@ def assert_publishable_tree_reader(
                 max_bytes=record.size,
             ) as source:
                 match = _matching_kind_blocks(
-                    source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
+                    _interruptible_chunks(
+                        source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
+                        check_cancelled,
+                    ),
                     forbidden=forbidden,
                     secrets=secrets,
                 )
@@ -394,7 +442,11 @@ def assert_publishable_tree_reader(
                 max_bytes=max_json_bytes,
             ) as source:
                 validate_bounded_json_stream(
-                    source,
+                    (
+                        source
+                        if check_cancelled is None
+                        else _InterruptibleReader(source, check_cancelled)
+                    ),
                     label=json_label,
                     max_bytes=max_json_bytes,
                     max_nodes=_MAX_PUBLISHABLE_JSON_NODES,
@@ -404,7 +456,17 @@ def assert_publishable_tree_reader(
                     max_string_bytes=_MAX_PUBLISHABLE_JSON_STRING_BYTES,
                     max_atom_bytes=_MAX_PUBLISHABLE_JSON_ATOM_BYTES,
                 )
-            payload = reader.read_bytes(relative, max_bytes=max_json_bytes)
+            payload_buffer = bytearray()
+            with reader.open_authenticated_file(
+                relative,
+                max_bytes=max_json_bytes,
+            ) as source:
+                for chunk in _interruptible_chunks(
+                    source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
+                    check_cancelled,
+                ):
+                    payload_buffer.extend(chunk)
+            payload = bytes(payload_buffer)
             match = _matching_kind_blocks(
                 (payload,),
                 forbidden=forbidden,
@@ -443,7 +505,10 @@ def assert_publishable_tree_reader(
                 max_bytes=record.size,
             ) as source:
                 match = _matching_kind_blocks(
-                    source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
+                    _interruptible_chunks(
+                        source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
+                        check_cancelled,
+                    ),
                     forbidden=forbidden,
                     secrets=secrets,
                 )
@@ -453,7 +518,31 @@ def assert_publishable_tree_reader(
             )
         if match == "secret":
             raise ValueError(f"{label} contains a configured credential in {relative}")
-    reader.capture_ownership(entry_policy=entry_policy)
+    reader.capture_ownership(
+        entry_policy=entry_policy,
+        check_cancelled=check_cancelled,
+    )
+
+
+def assert_publishable_tree_reader(
+    reader: PublicationDirectoryReader,
+    *,
+    forbidden_paths: Iterable[Path],
+    environ: Mapping[str, str],
+    label: str,
+    max_json_bytes: int = _MAX_PUBLISHABLE_JSON_BYTES,
+    streaming_json_paths: Iterable[str | PurePosixPath] = (),
+) -> None:
+    """Apply publication policy through one authenticated tree authority."""
+
+    _assert_publishable_tree_reader_interruptibly(
+        reader,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
+        label=label,
+        max_json_bytes=max_json_bytes,
+        streaming_json_paths=streaming_json_paths,
+    )
 
 
 def _assert_publishable_file(

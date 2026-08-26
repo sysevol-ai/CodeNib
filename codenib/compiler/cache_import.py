@@ -43,9 +43,9 @@ from ..artifacts.strict_bm25 import (
 )
 from ..artifacts.strict_context import (
     _canonical_json_bytes,
+    _plan_context_artifact_strict_interruptibly,
     _portable_capabilities,
-    plan_context_artifact_strict,
-    publish_planned_context_artifact_strict,
+    _publish_planned_context_artifact_strict_interruptibly,
 )
 from ..artifacts.strict_vector import (
     _plan_recaptured_vector_view,
@@ -129,6 +129,13 @@ _COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
 _SUPPORTED_CACHE_VIEWS = ("bm25", "vector")
 _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 
+# Keep the established module seams patchable in focused compiler-cache tests
+# while the public strict-context functions retain their stable signatures.
+plan_context_artifact_strict = _plan_context_artifact_strict_interruptibly
+publish_planned_context_artifact_strict = (
+    _publish_planned_context_artifact_strict_interruptibly
+)
+
 
 class _CompilerCacheJobStopped(RuntimeError):
     """Internal cooperative stop signal for prepare-only worker work."""
@@ -142,11 +149,33 @@ def _compiler_cache_job_stop_check(
     if not isinstance(stop_token, IndexJobStopToken):
         raise TypeError("compiler cache job stop token is invalid")
 
+    stopped: _CompilerCacheJobStopped | None = None
+
     def check_cancelled() -> None:
+        nonlocal stopped
         if stop_token.is_set():
-            raise _CompilerCacheJobStopped("compiler cache job preparation stopped")
+            if stopped is None:
+                stopped = _CompilerCacheJobStopped(
+                    "compiler cache job preparation stopped"
+                )
+            raise stopped
 
     return check_cancelled
+
+
+def _interruptible_chunks(
+    chunks: Iterable[bytes],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterable[bytes]:
+    iterator = iter(chunks)
+    while True:
+        if check_cancelled is not None:
+            check_cancelled()
+        try:
+            chunk = next(iterator)
+        except StopIteration:
+            return
+        yield chunk
 
 
 class CompilerCacheTopologyGuard(Protocol):
@@ -969,12 +998,19 @@ def _compiler_cache_job_binding(
     repository_key: str,
     namespace_name: str,
     allow_succeeded: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _CompilerCacheJobBinding:
     if type(view_type) is not str or view_type not in _SUPPORTED_CACHE_VIEWS:
         raise TypeError("compiler cache job view type is invalid")
     if type(allow_succeeded) is not bool:
         raise TypeError("compiler cache job replay policy must be a boolean")
-    source_snapshot = repository_source.authenticated_identity_snapshot()
+    source_snapshot = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
     if type(source_snapshot) is not RepositorySourceIdentitySnapshot:
         raise TypeError("compiler cache repository identity has an invalid type")
     repository_identity = RepositoryIdentity(
@@ -1234,6 +1270,7 @@ def _preflight_cache_job_preparation_operation(
     max_bundle_metadata_bytes: int,
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str] | None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[_ImportOperation, _CompilerCacheJobBinding]:
     """Validate a worker preparation without accepting catalog authority."""
 
@@ -1284,6 +1321,7 @@ def _preflight_cache_job_preparation_operation(
         repository_key=repository,
         namespace_name=namespace,
         allow_succeeded=False,
+        check_cancelled=check_cancelled,
     )
     inputs = _ImportPreflight(
         repository_key=repository,
@@ -1405,12 +1443,18 @@ def _destination_topology(
                 raise ValueError("compiler cache output destinations overlap")
 
 
-def _read_manifest(cache: Path, *, max_manifest_bytes: int) -> bytes:
+def _read_manifest(
+    cache: Path,
+    *,
+    max_manifest_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
+) -> bytes:
     return bytes(
         _read_bounded_json(
             cache / MANIFEST_FILENAME,
             label="compiler cache repository manifest",
             max_bytes=max_manifest_bytes,
+            check_cancelled=check_cancelled,
         )
     )
 
@@ -1731,25 +1775,35 @@ def _read_context_manifest(
     owner: PublishedWorkspaceReceiptOwner,
     *,
     max_manifest_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> bytes:
     def read(
         receipt: PublishedWorkspaceReceipt,
         publication: PublicationDirectoryReader,
     ) -> bytes:
         del receipt
-        before = publication.capture_ownership()
+        before = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
         with publication.open_authenticated_file(
             MANIFEST_FILENAME,
             max_bytes=max_manifest_bytes,
         ) as source:
-            payload = b"".join(source.iter_bytes())
-        if publication.capture_ownership() != before:
+            payload = b"".join(
+                _interruptible_chunks(source.iter_bytes(), check_cancelled)
+            )
+        if (
+            publication.capture_ownership(
+                check_cancelled=check_cancelled,
+            )
+            != before
+        ):
             raise StorageIntegrityError(
                 "compiler cache context artifact changed while reading its manifest"
             )
         return payload
 
-    return owner.consume(read)
+    return owner.consume(read, check_cancelled=check_cancelled)
 
 
 def _preflight_cache_import_operation(
@@ -1855,13 +1909,12 @@ def _prepare_compiler_cache_import_locked(
     source_manifest_bytes = _read_manifest(
         cache,
         max_manifest_bytes=inputs.max_manifest_bytes,
+        check_cancelled=check_cancelled,
     )
     manifest = _parse_exact_manifest(
         source_manifest_bytes,
         max_manifest_bytes=inputs.max_manifest_bytes,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     if expected_manifest is not None:
         if type(expected_manifest) is not RepoManifest:
             raise TypeError("compiler update returned an invalid repository manifest")
@@ -1874,7 +1927,13 @@ def _prepare_compiler_cache_import_locked(
             "compiler cache repository manifest commit must be a full "
             "lowercase Git SHA"
         )
-    identity = repository_source.authenticated_identity_snapshot()
+    identity = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
     if type(identity) is not RepositorySourceIdentitySnapshot:
         raise TypeError("compiler cache repository identity has an invalid type")
     _cache_topology(cache, identity)
@@ -1914,11 +1973,11 @@ def _prepare_compiler_cache_import_locked(
             environ=inputs.environment,
             check_cancelled=check_cancelled,
         )
-        if check_cancelled is not None:
-            check_cancelled()
         if view == "bm25":
             _require_source_fingerprints(entries[view], planned)
         _planned_adjustments(view, planned)
+        if check_cancelled is not None:
+            check_cancelled()
         planned_views[view] = planned
     portable_manifest, canonical_manifest_bytes = _portable_manifest(
         manifest,
@@ -1930,8 +1989,6 @@ def _prepare_compiler_cache_import_locked(
         views=views,
         max_manifest_bytes=inputs.max_manifest_bytes,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     if (
         import_plan.selection.selected_views != views
         or import_plan.manifest.to_dict() != portable_manifest.to_dict()
@@ -1947,6 +2004,8 @@ def _prepare_compiler_cache_import_locked(
             import_plan,
             view_type=views[0],
         )
+    if check_cancelled is not None:
+        check_cancelled()
 
     recaptures: list[CompilerCacheViewRecaptureResult] = []
     for view in views:
@@ -1966,12 +2025,12 @@ def _prepare_compiler_cache_import_locked(
             environ=inputs.environment,
             check_cancelled=check_cancelled,
         )
-        if check_cancelled is not None:
-            check_cancelled()
         if adjustments != _planned_adjustments(view, planned):
             raise StorageIntegrityError(
                 f"compiler cache {view} publication differs from its exact plan"
             )
+        if check_cancelled is not None:
+            check_cancelled()
         recaptures.append(
             CompilerCacheViewRecaptureResult(
                 view_type=view,
@@ -1990,6 +2049,7 @@ def _prepare_compiler_cache_import_locked(
         repository_source=repository_source,
         view_generations=operation.view_owners,
         environ=inputs.environment,
+        check_cancelled=check_cancelled,
     )
     if (
         planned_context.views != views
@@ -2010,37 +2070,49 @@ def _prepare_compiler_cache_import_locked(
         workspace_provider=workspace_provider,
         output_receipt_owner=context_output_owner,
         environ=inputs.environment,
+        check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     observed_manifest_bytes = _read_context_manifest(
         context_output_owner,
         max_manifest_bytes=inputs.max_manifest_bytes,
+        check_cancelled=check_cancelled,
     )
     if observed_manifest_bytes != canonical_manifest_bytes:
         raise StorageIntegrityError(
             "compiler cache context manifest differs from its preplanned bytes"
         )
-    if repository_source.authenticated_identity_snapshot() != identity:
+    final_identity = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
+    if final_identity != identity:
         raise StorageIntegrityError(
             "compiler cache repository source changed during recapture"
         )
     if (
-        _read_manifest(cache, max_manifest_bytes=inputs.max_manifest_bytes)
+        _read_manifest(
+            cache,
+            max_manifest_bytes=inputs.max_manifest_bytes,
+            check_cancelled=check_cancelled,
+        )
         != source_manifest_bytes
     ):
         raise StorageIntegrityError(
             "compiler cache repository manifest changed during recapture"
         )
-    if check_cancelled is not None:
-        check_cancelled()
-    return _PreparedCompilerCacheImport(
+    result = _PreparedCompilerCacheImport(
         manifest=manifest,
         recaptures=tuple(recaptures),
         canonical_manifest_bytes=canonical_manifest_bytes,
         import_plan=import_plan,
         context_artifact=context_artifact,
     )
+    if check_cancelled is not None:
+        check_cancelled()
+    return result
 
 
 def _commit_prepared_compiler_cache_import(
@@ -2102,13 +2174,13 @@ def _ingest_prepared_compiler_cache_job(
         raise TypeError("compiler cache job operation is invalid")
     if type(binding) is not _CompilerCacheJobBinding:
         raise TypeError("compiler cache job binding is invalid")
-    if check_cancelled is not None:
-        check_cancelled()
     _require_compiler_cache_job_profile(
         binding,
         preparation.import_plan,
         view_type=view_type,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     artifacts = context_output_owner.consume(
         lambda receipt, publication: _prepare_job_view_artifacts_inside_authority(
             receipt,
@@ -2126,17 +2198,12 @@ def _ingest_prepared_compiler_cache_job(
             max_bundle_bytes=operation.inputs.max_bundle_bytes,
             max_bundle_metadata_bytes=operation.inputs.max_bundle_metadata_bytes,
             check_cancelled=check_cancelled,
-        )
+        ),
+        check_cancelled=check_cancelled,
     )
-    if check_cancelled is not None:
-        check_cancelled()
     if type(artifacts) is not tuple or len(artifacts) != 1:
         raise StorageIntegrityError(
             f"compiler cache {view_type} ingestion returned invalid job artifacts"
-        )
-    if repository_source.authenticated_identity_snapshot() != binding.source_snapshot:
-        raise StorageIntegrityError(
-            "compiler cache repository source changed during CAS ingestion"
         )
     artifact = artifacts[0]
     if (
@@ -2146,6 +2213,17 @@ def _ingest_prepared_compiler_cache_job(
     ):
         raise StorageIntegrityError(
             "compiler cache ingestion returned a different requested view"
+        )
+    final_source_snapshot = (
+        repository_source.authenticated_identity_snapshot()
+        if check_cancelled is None
+        else repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+    )
+    if final_source_snapshot != binding.source_snapshot:
+        raise StorageIntegrityError(
+            "compiler cache repository source changed during CAS ingestion"
         )
     if check_cancelled is not None:
         check_cancelled()
@@ -2294,6 +2372,7 @@ def prepare_compiler_cache_job_view(
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
         forbidden_paths=forbidden_paths,
         environ=environ,
+        check_cancelled=check_cancelled,
     )
     if check_cancelled is not None:
         check_cancelled()
@@ -2327,9 +2406,7 @@ def prepare_compiler_cache_job_view(
         raise StorageIntegrityError(
             "compiler cache job preparation returned invalid recapture evidence"
         )
-    if check_cancelled is not None:
-        check_cancelled()
-    return CompilerCacheJobPreparationResult(
+    result = CompilerCacheJobPreparationResult(
         job=binding.job,
         view=binding.view,
         manifest=preparation.import_plan.manifest,
@@ -2338,6 +2415,9 @@ def prepare_compiler_cache_job_view(
         context_artifact=preparation.context_artifact,
         artifact=artifact,
     )
+    if check_cancelled is not None:
+        check_cancelled()
+    return result
 
 
 @dataclass(frozen=True, slots=True)

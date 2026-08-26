@@ -781,6 +781,8 @@ class PublishedWorkspaceReceipt:
             ["PublishedWorkspaceReceipt", PublicationDirectoryReader],
             _WorkspaceResult,
         ],
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _WorkspaceResult:
         if close_authority is not _WORKSPACE_RECEIPT_CLOSE:
             raise RuntimeError("published workspace receipt authority is invalid")
@@ -791,6 +793,7 @@ class PublishedWorkspaceReceipt:
         return self._transfer.workspace._consume_published_workspace(
             self,
             callback,
+            check_cancelled=check_cancelled,
         )
 
     def _close_from_owner(self, close_authority: object) -> None:
@@ -880,11 +883,17 @@ class PublishedWorkspaceReceiptOwner:
             [PublishedWorkspaceReceipt, PublicationDirectoryReader],
             _WorkspaceResult,
         ],
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _WorkspaceResult:
         """Synchronously borrow one exact authenticated publication reader."""
 
         if not callable(callback):
             raise TypeError("published workspace receipt consumer must be callable")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError(
+                "published workspace receipt cancellation check must be callable"
+            )
         self._require_owner_pid()
         if self._lock.held_by_current_thread():
             raise RuntimeError("published workspace receipt consume is reentrant")
@@ -899,6 +908,7 @@ class PublishedWorkspaceReceiptOwner:
             return self._slot._consume_from_owner(
                 _WORKSPACE_RECEIPT_CLOSE,
                 callback,
+                check_cancelled=check_cancelled,
             )
 
         return self._lock.run(consume_locked)
@@ -2975,15 +2985,27 @@ class OwnedWorkspaceAuthority:
         self,
         relative: str | Path | PurePosixPath,
         chunks: Iterable[bytes],
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> TreeFileRecord:
         self._require_owner_pid()
         self._reject_reentrant("write")
-        return self._lock.run(lambda: self._write_file_locked(relative, chunks))
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
+        return self._lock.run(
+            lambda: self._write_file_locked(
+                relative,
+                chunks,
+                check_cancelled=check_cancelled,
+            )
+        )
 
     def _write_file_locked(
         self,
         relative: str | Path | PurePosixPath,
         chunks: Iterable[bytes],
+        *,
+        check_cancelled: Callable[[], None] | None,
     ) -> TreeFileRecord:
         self._require_owner_pid()
         if self._state not in {"adopted", "writing"}:
@@ -2996,7 +3018,13 @@ class OwnedWorkspaceAuthority:
         if path in self._written_files:
             raise ValueError(f"workspace file was already written: {path}")
         if self._native_owner is not None:
-            return self._write_native_file_locked(normalized, path, spec, chunks)
+            return self._write_native_file_locked(
+                normalized,
+                path,
+                spec,
+                chunks,
+                check_cancelled=check_cancelled,
+            )
 
         descriptor = -1
         descriptor_record = _WorkspaceFileOwner(_DescriptorOwner())
@@ -3005,7 +3033,10 @@ class OwnedWorkspaceAuthority:
         primary_error: BaseException | None = None
         record: tuple[tuple[int, ...], int, int, str] | None = None
         try:
-            self._refresh_locked(require_complete=False)
+            self._refresh_locked(
+                require_complete=False,
+                check_cancelled=check_cancelled,
+            )
             iterator = iter(chunks)
             parent_path = normalized.parent.as_posix()
             if parent_path == ".":
@@ -3021,7 +3052,13 @@ class OwnedWorkspaceAuthority:
             )
             byte_count = 0
             digest = hashlib.sha256()
-            for chunk in iterator:
+            while True:
+                if check_cancelled is not None:
+                    check_cancelled()
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    break
                 if not isinstance(chunk, bytes):
                     raise TypeError("owned workspace file chunks must be bytes")
                 byte_count += len(chunk)
@@ -3121,7 +3158,10 @@ class OwnedWorkspaceAuthority:
                 size=record[2],
                 sha256=record[3],
             )
-            self._refresh_locked(require_complete=False)
+            self._refresh_locked(
+                require_complete=False,
+                check_cancelled=check_cancelled,
+            )
             self._state = "writing"
         except BaseException as transition_error:
             self._state = "failed"
@@ -3135,6 +3175,8 @@ class OwnedWorkspaceAuthority:
         path: str,
         spec: WorkspaceFile,
         chunks: Iterable[bytes],
+        *,
+        check_cancelled: Callable[[], None] | None,
     ) -> TreeFileRecord:
         owner = self._native_owner
         if owner is None:  # pragma: no cover - caller selects this branch
@@ -3143,7 +3185,10 @@ class OwnedWorkspaceAuthority:
         primary_error: BaseException | None = None
         record: tuple[tuple[int, ...], int, int, str] | None = None
         try:
-            self._refresh_locked(require_complete=False)
+            self._refresh_locked(
+                require_complete=False,
+                check_cancelled=check_cancelled,
+            )
             iterator = iter(chunks)
             parent_path = normalized.parent.as_posix()
             if parent_path == ".":
@@ -3156,7 +3201,13 @@ class OwnedWorkspaceAuthority:
             )
             byte_count = 0
             digest = hashlib.sha256()
-            for chunk in iterator:
+            while True:
+                if check_cancelled is not None:
+                    check_cancelled()
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    break
                 if not isinstance(chunk, bytes):
                     raise TypeError("owned workspace file chunks must be bytes")
                 byte_count += len(chunk)
@@ -3238,7 +3289,10 @@ class OwnedWorkspaceAuthority:
                 size=record[2],
                 sha256=record[3],
             )
-            self._refresh_locked(require_complete=False)
+            self._refresh_locked(
+                require_complete=False,
+                check_cancelled=check_cancelled,
+            )
             self._state = "writing"
         except BaseException as transition_error:
             self._state = "failed"
@@ -3263,9 +3317,15 @@ class OwnedWorkspaceAuthority:
                 )
         self._close_resources_after_error_locked(primary_error)
 
-    def seal(self) -> object:
+    def seal(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> object:
         self._require_owner_pid()
         self._reject_reentrant("seal")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
 
         def seal_locked() -> object:
             self._require_owner_pid()
@@ -3274,9 +3334,15 @@ class OwnedWorkspaceAuthority:
             if self._state not in {"adopted", "writing"}:
                 raise RuntimeError(f"owned workspace cannot seal while {self._state}")
             try:
-                ownership = self._refresh_locked(require_complete=True)
-                self._fsync_directories_locked()
-                ownership = self._refresh_locked(require_complete=True)
+                ownership = self._refresh_locked(
+                    require_complete=True,
+                    check_cancelled=check_cancelled,
+                )
+                self._fsync_directories_locked(check_cancelled=check_cancelled)
+                ownership = self._refresh_locked(
+                    require_complete=True,
+                    check_cancelled=check_cancelled,
+                )
             except BaseException as primary_error:
                 self._state = "failed"
                 if self._native_owner is None:
@@ -3290,11 +3356,17 @@ class OwnedWorkspaceAuthority:
 
         return self._lock.run(seal_locked)
 
-    def _fsync_directories_locked(self) -> None:
+    def _fsync_directories_locked(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None,
+    ) -> None:
         """Persist the complete pre-opened skeleton from leaves to its root."""
 
         if self._native_owner is not None:
             _native_workspace_owner.seal_owner_directories(self._native_owner)
+            if check_cancelled is not None:
+                check_cancelled()
             return
 
         ordered_paths = sorted(
@@ -3304,6 +3376,8 @@ class OwnedWorkspaceAuthority:
         )
         for path in ordered_paths:
             os.fsync(self._directory_descriptors[path])
+            if check_cancelled is not None:
+                check_cancelled()
 
     def publish_into(
         self,
@@ -3315,6 +3389,7 @@ class OwnedWorkspaceAuthority:
         validate_published_destination: (
             Callable[[PublicationDirectoryReader], None] | None
         ) = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """Durably publish and install ownership in a pre-created caller slot."""
 
@@ -3330,6 +3405,8 @@ class OwnedWorkspaceAuthority:
             validate_published_destination
         ):
             raise TypeError("published workspace validator must be callable")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
         transfer = self._lock.run(self._new_publication_transfer_locked)
         reservation = _WorkspaceReservation(transfer)
         try:
@@ -3340,6 +3417,7 @@ class OwnedWorkspaceAuthority:
                     reservation,
                     validate_staged_directory,
                     validate_published_destination,
+                    check_cancelled,
                 )
             )
         except BaseException as primary_error:  # noqa: B036 - reconcile owners
@@ -3362,6 +3440,7 @@ class OwnedWorkspaceAuthority:
         validate_published_destination: (
             Callable[[PublicationDirectoryReader], None] | None
         ) = None,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """Exchange a sealed replacement and install its exact receipt."""
 
@@ -3379,6 +3458,8 @@ class OwnedWorkspaceAuthority:
             validate_published_destination
         ):
             raise TypeError("published workspace validator must be callable")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned workspace cancellation check must be callable")
         transfer = self._lock.run(self._new_publication_transfer_locked)
         reservation = _WorkspaceReservation(transfer)
         try:
@@ -3390,6 +3471,7 @@ class OwnedWorkspaceAuthority:
                     deadline_ns,
                     validate_staged_directory,
                     validate_published_destination,
+                    check_cancelled,
                 )
             )
         except BaseException as primary_error:  # noqa: B036 - reconcile owners
@@ -3420,6 +3502,7 @@ class OwnedWorkspaceAuthority:
         validate_published_destination: (
             Callable[[PublicationDirectoryReader], None] | None
         ),
+        check_cancelled: Callable[[], None] | None,
     ) -> None:
         self._require_owner_pid()
         if self._state != "sealed" or self._sealed_ownership is None:
@@ -3498,20 +3581,32 @@ class OwnedWorkspaceAuthority:
             ensure_receipted_exact(native_receipt_token, transfer)
             self._state = "published"
 
-        _publish_staged_directory_with_authority(
-            authority,
-            self._stage_path,
-            self._destination,
-            expected_stage_root_ownership=sealed_ownership,
-            expected_destination_ownership=(
+        publication_kwargs = {
+            "expected_stage_root_ownership": sealed_ownership,
+            "expected_destination_ownership": (
                 None
                 if self._destination_binding is None
                 else self._destination_binding.ownership
             ),
-            validate_staged_directory=validate_staged_directory,
-            validate_published_destination=validate_published_destination,
-            commit_callback=install_receipt,
-        )
+            "validate_staged_directory": validate_staged_directory,
+            "validate_published_destination": validate_published_destination,
+            "commit_callback": install_receipt,
+        }
+        if check_cancelled is None:
+            _publish_staged_directory_with_authority(
+                authority,
+                self._stage_path,
+                self._destination,
+                **publication_kwargs,
+            )
+        else:
+            _publish_staged_directory_with_authority(
+                authority,
+                self._stage_path,
+                self._destination,
+                check_cancelled=check_cancelled,
+                **publication_kwargs,
+            )
 
     def _publish_replacement_into_locked(
         self,
@@ -3523,6 +3618,7 @@ class OwnedWorkspaceAuthority:
         validate_published_destination: (
             Callable[[PublicationDirectoryReader], None] | None
         ),
+        check_cancelled: Callable[[], None] | None,
     ) -> None:
         self._require_owner_pid()
         replacement = self._native_replacement
@@ -3601,18 +3697,31 @@ class OwnedWorkspaceAuthority:
             ensure_receipted_exact(native_receipt_token, transfer)
             self._state = "published"
 
-        _publish_native_replacement_with_authority(
-            authority,
-            replacement,
-            stage_path,
-            destination,
-            expected_stage_root_ownership=sealed_ownership,
-            expected_destination_ownership=destination_binding.ownership,
-            deadline_ns=deadline_ns,
-            validate_staged_directory=validate_staged_directory,
-            validate_published_destination=validate_published_destination,
-            commit_callback=install_receipt,
-        )
+        publication_kwargs = {
+            "expected_stage_root_ownership": sealed_ownership,
+            "expected_destination_ownership": destination_binding.ownership,
+            "deadline_ns": deadline_ns,
+            "validate_staged_directory": validate_staged_directory,
+            "validate_published_destination": validate_published_destination,
+            "commit_callback": install_receipt,
+        }
+        if check_cancelled is None:
+            _publish_native_replacement_with_authority(
+                authority,
+                replacement,
+                stage_path,
+                destination,
+                **publication_kwargs,
+            )
+        else:
+            _publish_native_replacement_with_authority(
+                authority,
+                replacement,
+                stage_path,
+                destination,
+                check_cancelled=check_cancelled,
+                **publication_kwargs,
+            )
 
     def _store_publication_transfer_locked(
         self,
@@ -3789,6 +3898,8 @@ class OwnedWorkspaceAuthority:
             [PublishedWorkspaceReceipt, PublicationDirectoryReader],
             _WorkspaceResult,
         ],
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> _WorkspaceResult:
         self._require_owner_pid()
         self._reject_reentrant("consume")
@@ -3822,11 +3933,19 @@ class OwnedWorkspaceAuthority:
             def exact_reader(
                 reader: PublicationDirectoryReader,
             ) -> _WorkspaceResult:
-                before = reader.capture_ownership(allow_empty_root=True)
+                before = reader.capture_ownership(
+                    allow_empty_root=True,
+                    check_cancelled=check_cancelled,
+                )
                 if before != receipt.ownership:
                     raise RuntimeError("published workspace generation changed")
+                if check_cancelled is not None:
+                    check_cancelled()
                 result = callback(receipt, reader)
-                after = reader.capture_ownership(allow_empty_root=True)
+                after = reader.capture_ownership(
+                    allow_empty_root=True,
+                    check_cancelled=check_cancelled,
+                )
                 if after != before:
                     raise RuntimeError(
                         "published workspace changed during receipt consumption"
@@ -3990,7 +4109,12 @@ class OwnedWorkspaceAuthority:
         if not _native_workspace_owner.owner_closed(owner):
             raise RuntimeError("native workspace abort did not close its owner")
 
-    def _refresh_locked(self, *, require_complete: bool) -> object:
+    def _refresh_locked(
+        self,
+        *,
+        require_complete: bool,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> object:
         authority = self._require_parent_authority()
         if (
             self._stage_path is None
@@ -4011,6 +4135,8 @@ class OwnedWorkspaceAuthority:
             raise RuntimeError("owned workspace root changed")
         if _root_identity(os.fstat(self._root_descriptor)) != self._root_identity:
             raise RuntimeError("owned workspace root handle changed")
+        if check_cancelled is not None:
+            check_cancelled()
 
         directory_specs = {
             item.path.as_posix(): item for item in self._plan.directories
@@ -4043,6 +4169,8 @@ class OwnedWorkspaceAuthority:
                     raise RuntimeError(
                         f"owned workspace directory binding changed: {path}"
                     )
+            if check_cancelled is not None:
+                check_cancelled()
 
         allowed_files = self._written_files
 
@@ -4060,13 +4188,23 @@ class OwnedWorkspaceAuthority:
                     f"owned workspace contains an unplanned file: {path}"
                 )
 
-        observed = authority.capture_child(
-            self._stage_path.name,
-            path=self._stage_path,
-            label="owned workspace stage",
-            allow_empty_root=True,
-            entry_policy=entry_policy,
-        )
+        capture_kwargs = {
+            "path": self._stage_path,
+            "label": "owned workspace stage",
+            "allow_empty_root": True,
+            "entry_policy": entry_policy,
+        }
+        if check_cancelled is None:
+            observed = authority.capture_child(
+                self._stage_path.name,
+                **capture_kwargs,
+            )
+        else:
+            observed = authority.capture_child(
+                self._stage_path.name,
+                check_cancelled=check_cancelled,
+                **capture_kwargs,
+            )
         expected_inventory = tuple(
             sorted(
                 [(path, "directory") for path in directory_specs]
@@ -4122,6 +4260,8 @@ class OwnedWorkspaceAuthority:
                 "owned workspace is missing required files: " + ", ".join(missing)
             )
         authority.verify_path_binding()
+        if check_cancelled is not None:
+            check_cancelled()
         return observed
 
     def close(self) -> None:
