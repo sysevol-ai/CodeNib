@@ -140,6 +140,23 @@ class IndexJobSurface(BaseModel):
     required: bool
 
 
+class IndexJobCreateRequest(BaseModel):
+    """Bounded user intent for one durable repository index update."""
+
+    indexes: List[Literal["bm25", "vector", "symbol_graph"]] = Field(
+        min_length=1,
+        max_length=3,
+    )
+    mode: Literal["full", "incremental"]
+    force: bool = Field(default=False, strict=True)
+
+    @model_validator(mode="after")
+    def _require_unique_indexes(self) -> "IndexJobCreateRequest":
+        if len(set(self.indexes)) != len(self.indexes):
+            raise ValueError("index job request surfaces must be unique")
+        return self
+
+
 class IndexJobEvent(BaseModel):
     """Bounded progress with a Web-owned key and no worker/fencing authority."""
 

@@ -29,7 +29,7 @@ from time import perf_counter
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,6 +48,12 @@ from ..wiki.media_generation import (
 )
 from ..wiki.narrator import Narrator
 from .config import load_config
+from .index_job_writes import (
+    IndexJobConflictError,
+    IndexJobRequestError,
+    IndexJobWriteError,
+    IndexJobWriter,
+)
 from .index_jobs import (
     IndexJobNotFoundError,
     IndexJobReader,
@@ -65,6 +71,7 @@ from .schemas import (
     ChatResponse,
     EdgeLabelRequest,
     EdgeLabelResponse,
+    IndexJobCreateRequest,
     IndexJobStatusResponse,
     RepoIndexStatus,
     RepoInfo,
@@ -244,6 +251,16 @@ def _index_job_reader() -> IndexJobReader:
             detail="Durable index job status is not configured",
         )
     return reader
+
+
+def _index_job_writer() -> IndexJobWriter:
+    writer = getattr(app.state, "index_job_writer", None)
+    if not isinstance(writer, IndexJobWriter):
+        raise HTTPException(
+            status_code=503,
+            detail="Durable index job creation is not configured",
+        )
+    return writer
 
 
 def _bundle(repo_id: str):
@@ -701,6 +718,53 @@ async def index_job_status(
         raise HTTPException(
             status_code=503,
             detail="Durable index job status is unavailable",
+        ) from exc
+
+
+@app.post(
+    "/api/repos/{repo_id}/index-jobs",
+    response_model=IndexJobStatusResponse,
+    status_code=202,
+)
+async def create_index_job(
+    repo_id: str,
+    request: IndexJobCreateRequest,
+    idempotency_key: Annotated[
+        str,
+        Header(alias="Idempotency-Key", min_length=1, max_length=256),
+    ],
+) -> IndexJobStatusResponse:
+    """Atomically enqueue one explicitly supported durable index update."""
+
+    try:
+        return await asyncio.to_thread(
+            _index_job_writer().create,
+            repo_id,
+            indexes=tuple(request.indexes),
+            mode=request.mode,
+            force=request.force,
+            idempotency_key=idempotency_key,
+        )
+    except IndexJobNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Repository is not configured for index updates",
+        ) from exc
+    except IndexJobRequestError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IndexJobConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="An index update is already active or the idempotency key conflicts",
+        ) from exc
+    except IndexJobWriteError as exc:
+        logger.warning(
+            "Durable index job creation unavailable: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Durable index job creation is unavailable",
         ) from exc
 
 

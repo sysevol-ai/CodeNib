@@ -1347,9 +1347,10 @@ over the current cache. The Web registry now prepares a complete replacement
 bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
-generation identity. The first #266 status and durable-read slices are present;
-source builders, Web job creation/refresh handoff, success-triggered runtime
-refresh, MCP, UI controls, and default routing remain absent.
+generation identity. The first #266 status, durable-read, and explicitly
+injected one-view write slices are present; source builders, a production Web
+planner/default binding, success-triggered refresh, MCP, UI controls, and
+default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1445,7 +1446,15 @@ refresh, MCP, UI controls, and default routing remain absent.
   serialize to one creation and one conflict. This prevents a Web control plane
   from racing multiple updates into one publication slot without granting it
   lease, cancellation, execution, or publication authority; the trusted source
-  and profile planner plus the Web POST binding remain follow-up work.
+  and profile planner remains an explicit injected capability.
+- The first Web write slice exposes `POST /api/repos/{repo_id}/index-jobs` with
+  a required bounded idempotency header and returns the detached durable job
+  status. Its catalog adapter accepts exactly one `full` BM25 or vector view,
+  matching the current production worker; multi-view, incremental, symbol-graph,
+  and forced requests fail before planning or catalog access. Planner identities
+  and storage failures stay private, conflicts map to one public response, and
+  the default server continues to return unavailable because no writer or
+  source/profile planner is wired by default.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
