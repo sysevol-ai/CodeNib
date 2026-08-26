@@ -478,6 +478,14 @@ class _ReceiptRetainingOnlyStore:
         raise NotImplementedError(expected, callback)
 
 
+class _RetryableCleanupOwner:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class _LockAwareCatalog(SQLiteCatalog):
     def __init__(self, path: Path, state: dict[str, object]) -> None:
         self._test_state = state
@@ -1402,14 +1410,19 @@ def test_compiler_cache_scope_cleanup_cannot_replace_executor_failure(
                 object_store=cas,
                 environ={},
             )
+            cleanup_owner = _RetryableCleanupOwner()
+            cleanup_failure = None
+            if cleanup_mode == "raise":
+                cleanup_failure = RuntimeError("resource cleanup failed")
+                BaseException.__setattr__(
+                    cleanup_failure,
+                    "publication_cleanup_owners",
+                    (cleanup_owner,),
+                )
             resources = _ScopedCompilerCacheResources(
                 executor,
                 suppress_failure=cleanup_mode == "suppress",
-                cleanup_failure=(
-                    RuntimeError("resource cleanup failed")
-                    if cleanup_mode == "raise"
-                    else None
-                ),
+                cleanup_failure=cleanup_failure,
             )
             worker = IndexJobWorker(
                 catalog_factory=_CompilerCacheWorkerFactory(
@@ -1430,6 +1443,11 @@ def test_compiler_cache_scope_cleanup_cannot_replace_executor_failure(
                 worker.run_once()
 
             assert caught.value is primary
+            if cleanup_mode == "raise":
+                assert BaseException.__getattribute__(
+                    primary,
+                    "publication_cleanup_owners",
+                ) == (cleanup_owner,)
             assert resources.declarations == 1
             assert len(resources.contexts) == 1
             assert resources.exits == 1

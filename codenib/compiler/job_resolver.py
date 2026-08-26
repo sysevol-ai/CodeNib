@@ -99,6 +99,44 @@ def _add_cleanup_exception_note(
         pass
 
 
+def _inherit_cleanup_owners(
+    primary: BaseException,
+    secondary: BaseException,
+) -> None:
+    """Keep exact cleanup recovery handles reachable from the primary error."""
+
+    try:
+        try:
+            inherited = BaseException.__getattribute__(
+                secondary,
+                "publication_cleanup_owners",
+            )
+        except AttributeError:
+            return
+        if type(inherited) is not tuple:
+            return
+        try:
+            existing = BaseException.__getattribute__(
+                primary,
+                "publication_cleanup_owners",
+            )
+        except AttributeError:
+            existing = ()
+        if type(existing) is not tuple:
+            existing = ()
+        retained = existing
+        for owner in inherited:
+            if not any(candidate is owner for candidate in retained):
+                retained = (*retained, owner)
+        BaseException.__setattr__(
+            primary,
+            "publication_cleanup_owners",
+            retained,
+        )
+    except BaseException:  # noqa: B036 - recovery metadata is best effort
+        pass
+
+
 def _execute_in_resource_scope(
     scope: CompilerCacheJobResourceScope,
     context: IndexJobExecutionContext,
@@ -134,6 +172,7 @@ def _execute_in_resource_scope(
         if primary is None:
             raise
         if cleanup_exc is not primary:
+            _inherit_cleanup_owners(primary, cleanup_exc)
             _add_cleanup_exception_note(primary, cleanup_exc)
     if primary is not None:
         raise primary
