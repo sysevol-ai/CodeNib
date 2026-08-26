@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -166,7 +168,8 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
         return ChatResponse(answer="answer")
 
     async def fake_to_thread(func, *args, **kwargs):
-        calls.append(func)
+        observed = args[0] if func is web_app._capture_thread_outcome else func
+        calls.append(observed)
         return func(*args, **kwargs)
 
     monkeypatch.setattr(web_app, "_registry", Registry)
@@ -184,6 +187,342 @@ def test_chat_maps_citations_off_loop_from_the_served_checkout(monkeypatch):
 
     assert response.answer == "answer"
     assert calls == [bundle.ensure_runtime, bundle.runner.run, fake_mapping]
+
+
+def test_chat_pins_one_bundle_generation_through_response_mapping(monkeypatch):
+    events = []
+    result = object()
+
+    class Runner:
+        def run(self, _query, *, chat_history):
+            assert chat_history == []
+            assert events == ["pin-enter", "runtime"]
+            events.append("run")
+            return result
+
+    def ensure_runtime():
+        assert events == ["pin-enter"]
+        events.append("runtime")
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/served/checkout"),
+        runner=Runner(),
+        ensure_runtime=ensure_runtime,
+        source_reader=object(),
+    )
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id):
+            assert repo_id == "repo"
+            events.append("pin-enter")
+            try:
+                yield bundle
+            finally:
+                events.append("pin-exit")
+
+    def map_response(observed, **_kwargs):
+        assert observed is result
+        assert events == ["pin-enter", "runtime", "run"]
+        events.append("map")
+        return ChatResponse(answer="answer")
+
+    async def inline(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(web_app, "agent_result_to_response", map_response)
+    monkeypatch.setattr(web_app.asyncio, "to_thread", inline)
+
+    response = asyncio.run(
+        web_app.chat(
+            ChatRequest(
+                repo_id="repo",
+                messages=[{"role": "user", "content": "Where is runtime?"}],
+            )
+        )
+    )
+
+    assert response.answer == "answer"
+    assert events == ["pin-enter", "runtime", "run", "map", "pin-exit"]
+
+
+def test_pinned_bundle_preserves_get_only_registry_fallback(monkeypatch):
+    bundle = object()
+    calls = []
+
+    class Registry:
+        def get(self, repo_id):
+            calls.append(repo_id)
+            return bundle if repo_id == "repo" else None
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+
+    with web_app._pinned_bundle("repo") as observed:
+        assert observed is bundle
+
+    with pytest.raises(web_app.HTTPException) as error:
+        with web_app._pinned_bundle("missing"):
+            raise AssertionError("missing bundle context yielded")
+
+    assert error.value.status_code == 404
+    assert calls == ["repo", "missing"]
+
+
+def test_pinned_bundle_releases_on_exact_base_exception(monkeypatch):
+    stop = SystemExit("request stopped")
+    events = []
+
+    class Registry:
+        @contextmanager
+        def pin(self, _repo_id):
+            events.append("pin-enter")
+            try:
+                yield object()
+            finally:
+                events.append("pin-exit")
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+
+    with pytest.raises(SystemExit) as observed:
+        with web_app._pinned_bundle("repo"):
+            raise stop
+
+    assert observed.value is stop
+    assert events == ["pin-enter", "pin-exit"]
+
+
+def test_chat_cancellation_keeps_bundle_pinned_until_worker_settles(monkeypatch):
+    events = []
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+
+    class Runner:
+        def run(self, _query, *, chat_history):
+            assert chat_history == []
+            events.append("worker-enter")
+            worker_started.set()
+            assert release_worker.wait(timeout=5)
+            events.append("worker-exit")
+            return object()
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/served/checkout"),
+        runner=Runner(),
+        ensure_runtime=lambda: None,
+        source_reader=object(),
+    )
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id):
+            assert repo_id == "repo"
+            events.append("pin-enter")
+            try:
+                yield bundle
+            finally:
+                events.append("pin-exit")
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+
+    async def cancel_while_worker_is_blocked():
+        request = asyncio.create_task(
+            web_app.chat(
+                ChatRequest(
+                    repo_id="repo",
+                    messages=[{"role": "user", "content": "Where is runtime?"}],
+                )
+            )
+        )
+        started = await asyncio.to_thread(worker_started.wait, 5)
+        assert started
+        request.cancel()
+        for _ in range(3):
+            await asyncio.sleep(0)
+        assert not request.done()
+        assert events == ["pin-enter", "worker-enter"]
+        release_worker.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+    asyncio.run(cancel_while_worker_is_blocked())
+
+    assert events == ["pin-enter", "worker-enter", "worker-exit", "pin-exit"]
+
+
+def test_pinned_thread_preserves_cancelled_error_identity():
+    failure = asyncio.CancelledError("thread cancelled")
+
+    def fail():
+        raise failure
+
+    async def observe():
+        try:
+            await web_app._run_pinned_thread(fail)
+        except BaseException as observed:  # noqa: B036 - assert exact carrier
+            return observed
+        raise AssertionError("thread failure did not propagate")
+
+    assert asyncio.run(observe()) is failure
+
+
+def test_pinned_thread_maps_stop_iteration_without_losing_exact_cause():
+    failure = StopIteration("thread stop")
+
+    def fail():
+        raise failure
+
+    async def observe():
+        with pytest.raises(RuntimeError) as observed:
+            await web_app._run_pinned_thread(fail)
+        return observed.value
+
+    observed = asyncio.run(observe())
+
+    assert str(observed) == "thread worker raised an iteration sentinel"
+    assert observed.__cause__ is failure
+
+
+def test_pinned_thread_outer_cancellation_precedes_worker_failure():
+    worker_started = threading.Event()
+    release_worker = threading.Event()
+    worker_finished = threading.Event()
+
+    def fail_after_release():
+        worker_started.set()
+        assert release_worker.wait(5)
+        worker_finished.set()
+        raise StopIteration("secondary worker stop")
+
+    async def cancel_worker():
+        request = asyncio.create_task(web_app._run_pinned_thread(fail_after_release))
+        assert await asyncio.to_thread(worker_started.wait, 5)
+        request.cancel()
+        await asyncio.sleep(0)
+        assert not request.done()
+        release_worker.set()
+        with pytest.raises(asyncio.CancelledError):
+            await request
+
+    asyncio.run(cancel_worker())
+
+    assert worker_finished.is_set()
+
+
+def test_wiki_cache_rebuilds_when_bundle_generation_changes(monkeypatch):
+    created = []
+    config = SimpleNamespace(wiki_agent=False)
+
+    def build(bundle, narrator=None):
+        builder = SimpleNamespace(bundle=bundle, narrator=narrator)
+        created.append(builder)
+        return builder
+
+    old = object()
+    new = object()
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "WikiBuilder", build)
+    monkeypatch.setattr(web_app.app.state, "wiki_builders", {}, raising=False)
+    monkeypatch.setattr(web_app.app.state, "narrator", object(), raising=False)
+
+    first = web_app._wiki("repo", old)
+    repeated = web_app._wiki("repo", old)
+    refreshed = web_app._wiki("repo", new)
+
+    assert repeated is first
+    assert refreshed is not first
+    assert [builder.bundle for builder in created] == [old, new]
+    assert web_app.app.state.wiki_builders["repo"] == (new, refreshed)
+
+
+def test_generation_cache_drops_helpers_bound_to_retired_bundle():
+    old = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
+    new = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
+    cache = {
+        "repo@old": (old, object()),
+        "other@commit": (
+            SimpleNamespace(entry=SimpleNamespace(instance_id="other")),
+            object(),
+        ),
+    }
+
+    current = web_app._generation_cached(
+        cache,
+        "repo@new",
+        new,
+        object,
+    )
+
+    assert cache["repo@new"] == (new, current)
+    assert "repo@old" not in cache
+    assert "other@commit" in cache
+
+
+def test_retired_generation_caches_are_pruned_after_removal(monkeypatch):
+    removed = SimpleNamespace(entry=SimpleNamespace(instance_id="removed"))
+    current = SimpleNamespace(entry=SimpleNamespace(instance_id="current"))
+    current_helper = object()
+    cache = {
+        "removed@commit": (removed, object()),
+        "current@commit": (current, current_helper),
+    }
+    registry = SimpleNamespace(
+        get=lambda repo_id: current if repo_id == "current" else None
+    )
+    monkeypatch.setattr(web_app.app.state, "edge_labelers", cache, raising=False)
+    monkeypatch.setattr(web_app.app.state, "wiki_builders", {}, raising=False)
+    monkeypatch.setattr(web_app.app.state, "commit_windows", {}, raising=False)
+
+    web_app._prune_retired_generation_caches(registry)
+
+    assert cache == {"current@commit": (current, current_helper)}
+
+
+def test_list_repos_keeps_info_and_window_stats_on_one_generation(monkeypatch):
+    events = []
+    info = SimpleNamespace(
+        id="repo",
+        base_commit="old",
+        capabilities={},
+        incremental=None,
+    )
+    old = SimpleNamespace(
+        entry=SimpleNamespace(instance_id="repo", base_commit="old"),
+        info=lambda: info,
+    )
+    new = SimpleNamespace(entry=SimpleNamespace(instance_id="repo", base_commit="new"))
+
+    class Registry:
+        @contextmanager
+        def pin_all(self):
+            events.append("pin-enter")
+            try:
+                yield (old,)
+            finally:
+                events.append("pin-exit")
+
+        def get(self, _repo_id):
+            return new
+
+        def list_infos(self):
+            raise AssertionError("production listing must use the pinned snapshot")
+
+    def window_stats(repo_id, bundle):
+        assert repo_id == "repo"
+        events.append(f"stats-{bundle.entry.base_commit}")
+        return bundle.entry.base_commit
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(
+        web_app, "load_config", lambda: SimpleNamespace(edge_labels=False)
+    )
+    monkeypatch.setattr(web_app, "_window_stats_for_bundle", window_stats)
+
+    observed = asyncio.run(web_app.list_repos())
+
+    assert observed[0].base_commit == "old"
+    assert observed[0].incremental == "old"
+    assert events == ["pin-enter", "stats-old", "pin-exit"]
 
 
 def test_chat_fails_closed_without_authenticated_source_reader(monkeypatch):
@@ -235,11 +574,17 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
             return {"id": page_id}
 
     async def fake_to_thread(func, *args, **kwargs):
-        calls.append((func.__name__, args))
+        if func is web_app._capture_thread_outcome:
+            observed = args[0]
+            observed_args = args[1]
+        else:
+            observed = func
+            observed_args = args
+        calls.append((observed.__name__, observed_args))
         return func(*args, **kwargs)
 
     builder = Builder()
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: builder)
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: builder)
     monkeypatch.setattr(
         web_app,
         "_bundle",
@@ -281,7 +626,7 @@ def test_cached_wiki_tree_does_not_generate_a_missing_outline(monkeypatch):
         def page_tree(self):
             raise AssertionError("cached-only Wiki lookup must not generate")
 
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
     monkeypatch.setattr(
         web_app,
         "_bundle",
@@ -325,7 +670,7 @@ def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
         wiki_media_api_key=None,
         wiki_media_options={},
     )
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
     monkeypatch.setattr(web_app, "load_config", lambda: config)
     monkeypatch.setattr(
         web_app,
@@ -451,7 +796,12 @@ def test_wiki_page_can_skip_media_materialization_for_preload(monkeypatch):
                 "media_slots": [slot],
             }
 
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(
+        web_app,
+        "_bundle",
+        lambda _repo_id: SimpleNamespace(entry=SimpleNamespace(repo="org/repo")),
+    )
     monkeypatch.setattr(
         web_app,
         "_materialize_wiki_media",
@@ -590,7 +940,7 @@ def test_wiki_page_graph_reports_why_the_graph_is_unavailable(monkeypatch):
             "Dependency graph uses schema 4, but this server requires schema 5."
         ),
     )
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id: Builder())
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
 
     result = asyncio.run(web_app.wiki_page_graph("repo", "overview"))
@@ -677,7 +1027,11 @@ def test_unavailable_codemap_returns_repository_setup_report(monkeypatch):
         graph_setup=lambda: Setup(),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     result = asyncio.run(web_app.codemap("repo"))
 
@@ -700,7 +1054,11 @@ def test_unavailable_modulemap_returns_repository_setup_report(monkeypatch):
         graph_setup=lambda: Setup(),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     result = asyncio.run(web_app.modulemap("repo"))
 
@@ -746,7 +1104,11 @@ def test_modulemap_endpoint_projects_the_graph_and_stamps_the_commit(monkeypatch
         graph_setup=lambda: None,
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     result = asyncio.run(web_app.modulemap("repo", granularity="file"))
 
@@ -804,7 +1166,11 @@ def test_commit_window_maps_use_only_selected_snapshot_metadata(monkeypatch):
         }
 
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(codemap_builder, "build_codemap", fake_codemap)
     monkeypatch.setattr(modulemap_builder, "build_modulemap", fake_modulemap)
 
@@ -848,7 +1214,11 @@ def test_current_codemap_uses_the_authenticated_source_reader(monkeypatch):
         return {"available": True, "nodes": [], "edges": []}
 
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(codemap_builder, "build_codemap", fake_codemap)
 
     result = asyncio.run(web_app.codemap("repo"))
@@ -884,7 +1254,11 @@ def test_source_endpoint_reads_the_requested_window_commit(monkeypatch):
         ),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(
         web_app,
         "_wiki",
@@ -920,7 +1294,11 @@ def test_source_endpoint_rejects_excluded_historical_source(monkeypatch):
         ),
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
 
     with pytest.raises(web_app.HTTPException) as error:
         asyncio.run(
@@ -944,7 +1322,7 @@ def test_edge_label_uses_the_graph_payload_commit(monkeypatch):
         def label(self, *args):
             return "calls", False
 
-    def labeler(repo_id, commit):
+    def labeler(repo_id, commit, _bundle=None):
         calls.append((repo_id, commit))
         return Labeler()
 
@@ -1003,7 +1381,11 @@ def test_historical_edge_labeler_gates_source_with_manifest_selection(monkeypatc
         wiki_generation_api_key=None,
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(web_app, "load_config", lambda: config)
     monkeypatch.setattr(web_app, "_wiki_llm", lambda *_args, **_kwargs: object())
     monkeypatch.setattr(edge_label_module, "EdgeLabeler", Labeler)
@@ -1033,7 +1415,11 @@ def test_source_endpoint_reads_the_live_checkout_without_building_the_wiki(
     binding = capture_repository_source(tmp_path)
     bundle.source_reader = binding.borrow_reader()
     monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
-    monkeypatch.setattr(web_app, "_commit_window", lambda _repo_id: Window())
+    monkeypatch.setattr(
+        web_app,
+        "_commit_window",
+        lambda _repo_id, _bundle=None: Window(),
+    )
     monkeypatch.setattr(
         web_app,
         "_wiki",
