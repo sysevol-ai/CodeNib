@@ -9,8 +9,8 @@ import inspect
 import pickle
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event, Lock
-from types import SimpleNamespace
+from threading import Barrier, Event, Lock, Thread
+from types import CodeType, SimpleNamespace
 
 import pytest
 
@@ -37,10 +37,15 @@ from codenib.web.config import (
 )
 from codenib.web.repo_registry import (
     _DEMO_SYSTEM_PROMPT,
+    _REGISTRY_CLEANUP_CONTEXT,
+    _REGISTRY_RELOAD_CONTEXT,
     RepoBundle,
     RepoRegistry,
+    _capture_registry_lock_outcome,
     _fresh_registry,
     _OwnedRepoBundle,
+    _settle_registry_lock_outcome,
+    _unwrap_registry_lock_outcome,
 )
 
 
@@ -696,6 +701,165 @@ def test_registry_close_waits_for_inflight_candidate_build(tmp_path, monkeypatch
     assert owner.close_calls == 1
 
 
+def test_registry_slow_refresh_does_not_block_pinned_request_release(
+    tmp_path,
+    monkeypatch,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    prepare_started = Event()
+    release_prepare = Event()
+    request_pinned = Event()
+    release_request = Event()
+    request_finished = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    old_owner = Owner()
+    current_owner = Owner()
+    candidate_owner = Owner()
+    old = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    current = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = old
+    registry._source_cleanup_owners["repo"] = old_owner
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    builds = 0
+
+    def build(_entry):
+        nonlocal builds
+        builds += 1
+        if builds == 1:
+            return _OwnedRepoBundle(current, None, current_owner)
+        return _OwnedRepoBundle(candidate, None, candidate_owner)
+
+    def prepare(bundle):
+        if bundle is candidate:
+            prepare_started.set()
+            assert release_prepare.wait(5)
+
+    def request():
+        try:
+            with registry.pin("repo") as pinned:
+                assert pinned is old
+                request_pinned.set()
+                assert release_request.wait(5)
+        finally:
+            request_finished.set()
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", prepare)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        request_future = pool.submit(request)
+        assert request_pinned.wait(5)
+        registry.refresh("repo")
+        assert registry.get("repo") is current
+        assert registry.retired_generation_count == 1
+        assert old_owner.close_calls == 0
+        refresh_future = pool.submit(registry.refresh, "repo")
+        assert prepare_started.wait(5)
+        try:
+            release_request.set()
+            assert request_finished.wait(1)
+            assert old_owner.close_calls == 1
+            assert registry.retired_generation_count == 0
+        finally:
+            release_request.set()
+            release_prepare.set()
+        request_future.result(timeout=5)
+        refresh_future.result(timeout=5)
+
+    assert current_owner.close_calls == 1
+    assert candidate_owner.close_calls == 0
+    assert registry.get("repo") is candidate
+    registry.close()
+    assert candidate_owner.close_calls == 1
+
+
+@pytest.mark.parametrize("operation", ["load_all", "legacy"])
+def test_registry_slow_metadata_load_does_not_block_cleanup(
+    tmp_path,
+    monkeypatch,
+    operation,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    build_started = Event()
+    release_build = Event()
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    retired_owner = Owner()
+    candidate_owner = Owner()
+    retired = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._retired_bundles[id(retired)] = _OwnedRepoBundle(
+        retired,
+        None,
+        retired_owner,
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    def build(_entry):
+        build_started.set()
+        assert release_build.wait(5)
+        return _OwnedRepoBundle(candidate, None, candidate_owner)
+
+    def load():
+        if operation == "load_all":
+            return registry.load_all()
+        return registry._load_repo_metadata(entry)
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        load_future = pool.submit(load)
+        assert build_started.wait(5)
+        cleanup_future = pool.submit(registry._drain_retired)
+        try:
+            assert cleanup_future.result(timeout=1) is None
+            assert retired_owner.close_calls == 1
+        finally:
+            release_build.set()
+        result = load_future.result(timeout=5)
+
+    if operation == "legacy":
+        assert result is candidate
+    assert candidate_owner.close_calls == 0
+    registry.close()
+    assert candidate_owner.close_calls == 1
+
+
 def test_registry_close_waits_for_legacy_metadata_build(monkeypatch):
     build_started = Event()
     release_build = Event()
@@ -901,7 +1065,8 @@ def test_registry_close_owner_transfer_interruption_keeps_authority():
     owner = Owner()
     registry = RepoRegistry(QAConfig())
     registry._source_cleanup_owners["repo"] = owner
-    source, first_line = inspect.getsourcelines(RepoRegistry.close)
+    close_impl = RepoRegistry._close_under_cleanup_lock
+    source, first_line = inspect.getsourcelines(close_impl)
     transfer_line = first_line + next(
         index
         for index, line in enumerate(source)
@@ -914,7 +1079,7 @@ def test_registry_close_owner_transfer_interruption_keeps_authority():
         if (
             not triggered
             and event == "line"
-            and frame.f_code is RepoRegistry.close.__code__
+            and frame.f_code is close_impl.__code__
             and frame.f_lineno > transfer_line
         ):
             triggered = True
@@ -1018,6 +1183,1103 @@ def test_registry_refresh_cannot_deadlock_reentrant_retired_cleanup(monkeypatch)
     assert owner.close_calls == 1
     assert registry._closed is True
     assert registry._retired_bundles == {}
+
+
+def test_registry_reentrant_cleanup_close_does_not_wait_for_slow_refresh(
+    tmp_path,
+    monkeypatch,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    build_started = Event()
+    release_build = Event()
+    close_returned = Event()
+
+    class Owner:
+        def __init__(self, *, reentrant_close=False):
+            self.close_calls = 0
+            self.reentrant_close = reentrant_close
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+            if self.reentrant_close:
+                try:
+                    registry.close()
+                finally:
+                    close_returned.set()
+
+    retired_owner = Owner(reentrant_close=True)
+    candidate_owner = Owner()
+    retired = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    registry._retired_bundles[id(retired)] = _OwnedRepoBundle(
+        retired,
+        None,
+        retired_owner,
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [entry],
+    )
+
+    def build(_entry):
+        build_started.set()
+        assert release_build.wait(5)
+        return _OwnedRepoBundle(candidate, None, candidate_owner)
+
+    monkeypatch.setattr(registry, "_build_repo_metadata", build)
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        refresh = pool.submit(registry.refresh, "repo")
+        assert build_started.wait(5)
+        cleanup = pool.submit(registry._drain_retired)
+        try:
+            assert close_returned.wait(1)
+        finally:
+            release_build.set()
+        assert cleanup.result(timeout=5) is None
+        with pytest.raises(RuntimeError, match="repository registry is closed"):
+            refresh.result(timeout=5)
+
+    assert retired_owner.close_calls == 1
+    assert candidate_owner.close_calls == 1
+    assert registry._retired_bundles == {}
+
+
+@pytest.mark.parametrize("operation", ["load_all", "refresh", "legacy"])
+def test_registry_cleanup_callback_rejects_reentrant_reload(operation):
+    failures = []
+    registry = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            try:
+                if operation == "load_all":
+                    registry.load_all()
+                elif operation == "refresh":
+                    registry.refresh("repo")
+                else:
+                    registry._load_repo_metadata(SimpleNamespace(instance_id="repo"))
+            except BaseException as exc:  # noqa: B036 - assert exact boundary
+                failures.append(exc)
+            self.closed = True
+
+    owner = Owner()
+    registry._orphan_cleanup_owners.append(owner)
+
+    assert registry._drain_orphan_cleanup() is None
+
+    assert len(failures) == 1
+    assert type(failures[0]) is RuntimeError
+    assert str(failures[0]) == "repository reload cannot start during cleanup"
+    assert registry._orphan_cleanup_owners == []
+
+
+def test_registry_cleanup_callback_rejects_cross_registry_shutdown():
+    failures = []
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class Owner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            try:
+                second.close()
+            except BaseException as exc:  # noqa: B036 - assert lock boundary
+                failures.append(exc)
+            self.closed = True
+
+    owner = Owner()
+    first._orphan_cleanup_owners.append(owner)
+
+    assert first._drain_orphan_cleanup() is None
+
+    assert len(failures) == 1
+    assert type(failures[0]) is RuntimeError
+    assert str(failures[0]) == (
+        "repository shutdown cannot cross a registry cleanup callback"
+    )
+    assert first._orphan_cleanup_owners == []
+    assert second._closed is False
+    second.close()
+
+
+@pytest.mark.parametrize("pin_all", [False, True])
+def test_registry_cleanup_callbacks_reject_cross_registry_pins(pin_all):
+    barrier = Barrier(2)
+    failures = []
+    results = []
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+    first._bundles["first"] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+    second._bundles["second"] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+
+    class Owner:
+        def __init__(self, other, repo_id):
+            self.other = other
+            self.repo_id = repo_id
+            self.closed = False
+
+        def close(self):
+            barrier.wait(timeout=2)
+            try:
+                context = (
+                    self.other.pin_all() if pin_all else self.other.pin(self.repo_id)
+                )
+                with context:
+                    pytest.fail("cleanup callback unexpectedly acquired a pin")
+            except BaseException as exc:  # noqa: B036 - assert lock boundary
+                failures.append(exc)
+            self.closed = True
+
+    first._orphan_cleanup_owners.append(Owner(second, "second"))
+    second._orphan_cleanup_owners.append(Owner(first, "first"))
+    threads = [
+        Thread(
+            target=lambda registry=registry: results.append(
+                registry._drain_orphan_cleanup()
+            ),
+            daemon=True,
+        )
+        for registry in (first, second)
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert results == [None, None]
+    assert len(failures) == 2
+    assert all(type(failure) is RuntimeError for failure in failures)
+    assert all(
+        str(failure) == "repository pin cannot start during cleanup"
+        for failure in failures
+    )
+    first.close()
+    second.close()
+
+
+def test_registry_cleanup_callbacks_defer_preexisting_cross_registry_pin_release():
+    barrier = Barrier(2)
+    results = []
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class GenerationOwner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    first_owner = GenerationOwner()
+    second_owner = GenerationOwner()
+    first._bundles["first"] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+    first._source_cleanup_owners["first"] = first_owner
+    second._bundles["second"] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+    second._source_cleanup_owners["second"] = second_owner
+    first_pin = first.pin("first")
+    second_pin = second.pin("second")
+    assert first_pin.__enter__() is first._bundles["first"]
+    assert second_pin.__enter__() is second._bundles["second"]
+    with first._generation_lock:
+        first._retire_active_locked("first")
+    with second._generation_lock:
+        second._retire_active_locked("second")
+
+    class CrossOwner:
+        def __init__(self, context):
+            self.context = context
+            self.closed = False
+
+        def close(self):
+            barrier.wait(timeout=2)
+            self.context.__exit__(None, None, None)
+            self.closed = True
+
+    first._orphan_cleanup_owners.append(CrossOwner(second_pin))
+    second._orphan_cleanup_owners.append(CrossOwner(first_pin))
+    threads = [
+        Thread(
+            target=lambda registry=registry: results.append(
+                registry._drain_orphan_cleanup()
+            ),
+            daemon=True,
+        )
+        for registry in (first, second)
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert results == [None, None]
+    assert first._bundle_leases == {}
+    assert second._bundle_leases == {}
+    assert first.retired_generation_count == 1
+    assert second.retired_generation_count == 1
+    assert first_owner.close_calls == 0
+    assert second_owner.close_calls == 0
+    assert first._drain_retired() is None
+    assert second._drain_retired() is None
+    assert first_owner.close_calls == 1
+    assert second_owner.close_calls == 1
+    assert first.retired_generation_count == 0
+    assert second.retired_generation_count == 0
+    first.close()
+    second.close()
+
+
+def test_registry_cleanup_callback_restores_context_after_interruption():
+    stop = KeyboardInterrupt("cleanup context restoration interrupted")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._orphan_cleanup_owners.append(owner)
+    restore_impl = type(registry._cleanup_callback())._restore
+    source, first_line = inspect.getsourcelines(restore_impl)
+    restore_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._context.registries = self._previous_registries" in line
+    )
+    triggered = False
+
+    def interrupt_first_restore(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is restore_impl.__code__
+            and frame.f_locals["self"]._kind == "cleanup"
+            and frame.f_lineno == restore_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_first_restore
+
+    sys.settrace(interrupt_first_restore)
+    try:
+        assert registry._drain_orphan_cleanup() is stop
+    finally:
+        sys.settrace(None)
+
+    assert triggered is True
+    assert registry._cleanup_callback_is_active() is False
+    assert registry._owns_current_cleanup_callback() is False
+    registry._run_serialized_reload(lambda: None)
+    assert registry._drain_orphan_cleanup() is None
+    assert owner.close_calls == 1
+
+
+@pytest.mark.parametrize("operation", ["close", "load_all", "pin", "pin_all"])
+def test_registry_reload_callbacks_reject_cross_registry_operations(operation):
+    barrier = Barrier(2)
+    failures = []
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    def load(registry, other, repo_id):
+        def build(_entry):
+            barrier.wait(timeout=2)
+            if operation == "close":
+                other.close()
+            elif operation == "load_all":
+                other.load_all()
+            elif operation == "pin":
+                with other.pin(repo_id):
+                    pytest.fail("reload callback unexpectedly acquired a pin")
+            else:
+                with other.pin_all():
+                    pytest.fail("reload callback unexpectedly acquired all pins")
+
+        registry._build_repo_metadata = build
+        try:
+            registry._load_repo_metadata(SimpleNamespace(instance_id=repo_id))
+        except BaseException as exc:  # noqa: B036 - assert lock boundary
+            failures.append(exc)
+
+    threads = [
+        Thread(target=load, args=(first, second, "first"), daemon=True),
+        Thread(target=load, args=(second, first, "second"), daemon=True),
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(failures) == 2
+    assert all(type(failure) is RuntimeError for failure in failures)
+    expected_message = {
+        "close": "repository shutdown cannot cross a registry reload operation",
+        "load_all": "repository reload cannot reenter another reload",
+        "pin": "repository pin cannot cross a registry reload operation",
+        "pin_all": "repository pin cannot cross a registry reload operation",
+    }[operation]
+    assert all(str(failure) == expected_message for failure in failures)
+    assert first._closed is False
+    assert second._closed is False
+    first.close()
+    second.close()
+
+
+def test_registry_capture_failure_cross_reload_is_fail_fast_and_retryable(
+    monkeypatch,
+):
+    barrier = Barrier(2)
+    first = RepoRegistry(QAConfig())
+    second = RepoRegistry(QAConfig())
+
+    class Source:
+        def __init__(self, other):
+            self.other = other
+            self.close_calls = 0
+            self.done = False
+            self.cross = True
+
+        @property
+        def closed(self):
+            return self.done
+
+        def close(self):
+            self.close_calls += 1
+            if self.cross:
+                barrier.wait(timeout=2)
+                self.other.close()
+            self.done = True
+
+    sources = {
+        "first": Source(second),
+        "second": Source(first),
+    }
+    primaries = {key: ValueError(f"capture {key}") for key in sources}
+
+    def capture(repo_dir, _manifest, **kwargs):
+        kwargs["_source_owner"](sources[repo_dir])
+        raise primaries[repo_dir]
+
+    monkeypatch.setattr(
+        RepoManifest,
+        "load",
+        classmethod(lambda _cls, _path: SimpleNamespace()),
+    )
+    monkeypatch.setattr(
+        "codenib.compiler.manifest_source.capture_repository_source_for_manifest",
+        capture,
+    )
+    entries = {
+        key: SimpleNamespace(
+            instance_id=key,
+            repo_dir=key,
+            manifest_path=f"{key}.json",
+        )
+        for key in sources
+    }
+    caught = {}
+
+    def load(registry, key):
+        try:
+            registry._load_repo_metadata(entries[key])
+        except BaseException as exc:  # noqa: B036 - assert exact settlement
+            caught[key] = exc
+
+    threads = [
+        Thread(target=load, args=(first, "first"), daemon=True),
+        Thread(target=load, args=(second, "second"), daemon=True),
+    ]
+
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    for registry, key in ((first, "first"), (second, "second")):
+        assert caught[key] is primaries[key]
+        assert type(caught[key].__cause__) is RuntimeError
+        assert str(caught[key].__cause__) == (
+            "repository shutdown cannot cross a registry reload operation"
+        )
+        assert registry._source_cleanup_owners[key].pending_sources == (sources[key],)
+        assert sources[key].close_calls == 1
+
+    for source in sources.values():
+        source.cross = False
+    first.close()
+    second.close()
+    assert [source.close_calls for source in sources.values()] == [2, 2]
+    assert all(source.closed for source in sources.values())
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [KeyboardInterrupt, StopIteration, StopAsyncIteration],
+)
+def test_registry_reload_restores_context_after_interruption(error_type):
+    stop = error_type("reload context restoration interrupted")
+    registry = RepoRegistry(QAConfig())
+    restore_impl = type(registry._cleanup_callback())._restore
+    source, first_line = inspect.getsourcelines(restore_impl)
+    restore_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._context.registries = self._previous_registries" in line
+    )
+    triggered = False
+
+    def interrupt_first_restore(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is restore_impl.__code__
+            and frame.f_locals["self"]._kind == "reload"
+            and frame.f_lineno == restore_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_first_restore
+
+    sys.settrace(interrupt_first_restore)
+    try:
+        with pytest.raises(error_type) as caught:
+            registry._run_serialized_reload(lambda: None)
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry._reload_operation_is_active() is False
+    assert registry._owns_current_reload_operation() is False
+    registry._run_serialized_reload(lambda: None)
+    registry.close()
+
+
+@pytest.mark.parametrize("context_kind", ["cleanup", "reload"])
+def test_registry_thread_context_activation_return_is_recoverable(context_kind):
+    stop = KeyboardInterrupt(f"{context_kind} context activation interrupted")
+    registry = RepoRegistry(QAConfig())
+    activate_impl = type(registry._cleanup_callback())._activate
+    triggered = False
+
+    def interrupt_activation_return(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "return"
+            and frame.f_code is activate_impl.__code__
+            and frame.f_locals["self"]._kind == context_kind
+        ):
+            triggered = True
+            raise stop
+        return interrupt_activation_return
+
+    sys.settrace(interrupt_activation_return)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            if context_kind == "cleanup":
+                registry._run_serialized_cleanup(
+                    lambda: registry._run_cleanup_callback(lambda: None)
+                )
+            else:
+                registry._run_serialized_reload(lambda: None)
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert triggered is True
+    assert registry._cleanup_callback_is_active() is False
+    assert registry._reload_operation_is_active() is False
+    assert getattr(_REGISTRY_CLEANUP_CONTEXT, "registries", ()) == ()
+    assert getattr(_REGISTRY_RELOAD_CONTEXT, "registries", ()) == ()
+    assert registry._cleanup_lock.held_by_current_thread() is False
+    assert registry._registry_reload_lock.held_by_current_thread() is False
+    registry._run_serialized_reload(lambda: None)
+    registry.close()
+
+
+@pytest.mark.parametrize("lock_name", ["_cleanup_lock", "_registry_reload_lock"])
+@pytest.mark.parametrize(
+    ("primary_type", "expected"),
+    [
+        (None, "settlement"),
+        (ValueError, "settlement"),
+        (SystemExit, "primary"),
+    ],
+)
+def test_registry_lock_adapter_recovers_settlement_interruption(
+    lock_name,
+    primary_type,
+    expected,
+):
+    stop = KeyboardInterrupt("registry lock settlement interrupted")
+    registry = RepoRegistry(QAConfig())
+    lock = getattr(registry, lock_name)
+    lock_run = type(lock).run
+    source, first_line = inspect.getsourcelines(lock_run)
+    release_call_index = next(
+        index
+        for index, line in enumerate(source)
+        if "release_error = self._release_reconciled(baseline)" in line
+    )
+    settlement_entry_line = first_line + release_call_index - 1
+    assert source[release_call_index - 1].strip() == "try:"
+    triggered = False
+    primary = primary_type("registry operation failed") if primary_type else None
+
+    def operation():
+        if primary is not None:
+            raise primary
+        return "ok"
+
+    def interrupt_settlement(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is lock_run.__code__
+            and frame.f_lineno == settlement_entry_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_settlement
+
+    sys.settrace(interrupt_settlement)
+    try:
+        with pytest.raises(BaseException) as caught:
+            registry._run_registry_lock(lock, operation)
+    finally:
+        sys.settrace(None)
+
+    preferred = primary if expected == "primary" else stop
+    assert caught.value is preferred
+    if primary is not None:
+        secondary = stop if expected == "primary" else primary
+        assert caught.value.__cause__ is secondary
+    assert triggered is True
+    assert lock._logical_depth() == 0
+    assert lock._native_is_owned() is False
+    observed = []
+    thread = Thread(
+        target=lambda: observed.append(
+            registry._run_registry_lock(lock, lambda: "released")
+        ),
+        daemon=True,
+    )
+    thread.start()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert observed == ["released"]
+    registry.close()
+
+
+@pytest.mark.parametrize(
+    "fault_line_text",
+    [
+        "except BaseException as error:",
+        "outcome.error = error",
+        "return outcome",
+    ],
+)
+@pytest.mark.parametrize(
+    ("primary_type", "expected"),
+    [
+        (ValueError, "settlement"),
+        (SystemExit, "primary"),
+    ],
+)
+def test_registry_lock_adapter_retains_operation_failure_across_capture_seam(
+    fault_line_text,
+    primary_type,
+    expected,
+):
+    primary = primary_type("registry operation failed")
+    stop = KeyboardInterrupt("registry outcome capture interrupted")
+    registry = RepoRegistry(QAConfig())
+    capture_impl = _capture_registry_lock_outcome
+    source, first_line = inspect.getsourcelines(capture_impl)
+    fault_line = first_line + next(
+        index for index, line in enumerate(source) if fault_line_text in line
+    )
+    triggered = False
+
+    def fail():
+        raise primary
+
+    def interrupt_capture(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is capture_impl.__code__
+            and frame.f_lineno == fault_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_capture
+
+    sys.settrace(interrupt_capture)
+    try:
+        with pytest.raises(BaseException) as caught:
+            registry._run_registry_lock(registry._cleanup_lock, fail)
+    finally:
+        sys.settrace(None)
+
+    preferred = primary if expected == "primary" else stop
+    secondary = stop if expected == "primary" else primary
+    assert caught.value is preferred
+    assert caught.value.__cause__ is secondary
+    assert triggered is True
+    assert registry._cleanup_lock._logical_depth() == 0
+    assert registry._cleanup_lock._native_is_owned() is False
+    registry.close()
+
+
+@pytest.mark.parametrize("lock_name", ["_cleanup_lock", "_registry_reload_lock"])
+@pytest.mark.parametrize(
+    "ambient_type",
+    [ValueError, SystemExit, KeyboardInterrupt, StopIteration],
+)
+def test_registry_lock_adapter_ignores_ambient_exception_context(
+    lock_name,
+    ambient_type,
+):
+    ambient = ambient_type("unrelated caller context")
+    stop = KeyboardInterrupt("registry lock settlement interrupted")
+    registry = RepoRegistry(QAConfig())
+    lock = getattr(registry, lock_name)
+    lock_run = type(lock).run
+    source, first_line = inspect.getsourcelines(lock_run)
+    release_call_index = next(
+        index
+        for index, line in enumerate(source)
+        if "release_error = self._release_reconciled(baseline)" in line
+    )
+    settlement_entry_line = first_line + release_call_index - 1
+    triggered = False
+
+    def interrupt_settlement(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is lock_run.__code__
+            and frame.f_lineno == settlement_entry_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_settlement
+
+    def invoke_with_ambient_context():
+        try:
+            raise ambient
+        except BaseException:  # noqa: B036 - keep ambient context active
+            return registry._run_registry_lock(lock, lambda: "ok")
+
+    sys.settrace(interrupt_settlement)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            invoke_with_ambient_context()
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert caught.value.__cause__ is None
+    assert triggered is True
+    assert lock._logical_depth() == 0
+    assert lock._native_is_owned() is False
+    registry.close()
+
+
+@pytest.mark.parametrize(
+    ("primary_type", "expected"),
+    [
+        (ValueError, "settlement"),
+        (SystemExit, "primary"),
+    ],
+)
+@pytest.mark.parametrize(
+    "fault_line_text",
+    ["if outcome.error is not None:", "raise outcome.error"],
+)
+def test_registry_lock_adapter_retains_failure_across_outcome_unwrap(
+    primary_type,
+    expected,
+    fault_line_text,
+):
+    primary = primary_type("registry operation failed")
+    stop = KeyboardInterrupt("registry outcome unwrap interrupted")
+    registry = RepoRegistry(QAConfig())
+    unwrap_impl = _unwrap_registry_lock_outcome
+    source, first_line = inspect.getsourcelines(unwrap_impl)
+    fault_line = first_line + next(
+        index for index, line in enumerate(source) if fault_line_text in line
+    )
+    triggered = False
+
+    def fail():
+        raise primary
+
+    def interrupt_unwrap(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is unwrap_impl.__code__
+            and frame.f_lineno == fault_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_unwrap
+
+    sys.settrace(interrupt_unwrap)
+    try:
+        with pytest.raises(BaseException) as caught:
+            registry._run_registry_lock(registry._cleanup_lock, fail)
+    finally:
+        sys.settrace(None)
+
+    preferred = primary if expected == "primary" else stop
+    secondary = stop if expected == "primary" else primary
+    assert caught.value is preferred
+    assert caught.value.__cause__ is secondary
+    assert triggered is True
+    assert registry._cleanup_lock._logical_depth() == 0
+    assert registry._cleanup_lock._native_is_owned() is False
+    registry.close()
+
+
+@pytest.mark.parametrize(
+    ("primary_type", "expected"),
+    [
+        (ValueError, "settlement"),
+        (SystemExit, "primary"),
+    ],
+)
+@pytest.mark.parametrize(
+    "fault_line_text",
+    [
+        "except BaseException as unwrap_failure:",
+        "if outcome.error is not None and outcome.error is not unwrap_failure:",
+    ],
+)
+def test_registry_lock_adapter_retains_failure_across_unwrap_handler(
+    primary_type,
+    expected,
+    fault_line_text,
+):
+    primary = primary_type("registry operation failed")
+    stop = KeyboardInterrupt("registry outcome settlement interrupted")
+    registry = RepoRegistry(QAConfig())
+    settle_impl = _settle_registry_lock_outcome
+    source, first_line = inspect.getsourcelines(settle_impl)
+    fault_line = first_line + next(
+        index for index, line in enumerate(source) if fault_line_text in line
+    )
+    triggered = False
+
+    def fail():
+        raise primary
+
+    def interrupt_settlement(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is settle_impl.__code__
+            and frame.f_lineno == fault_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_settlement
+
+    sys.settrace(interrupt_settlement)
+    try:
+        with pytest.raises(BaseException) as caught:
+            registry._run_registry_lock(registry._cleanup_lock, fail)
+    finally:
+        sys.settrace(None)
+
+    preferred = primary if expected == "primary" else stop
+    secondary = stop if expected == "primary" else primary
+    assert caught.value is preferred
+    assert caught.value.__cause__ is secondary
+    assert triggered is True
+    assert registry._cleanup_lock._logical_depth() == 0
+    assert registry._cleanup_lock._native_is_owned() is False
+    registry.close()
+
+
+@pytest.mark.parametrize("ambient_type", [SystemExit, KeyboardInterrupt])
+def test_registry_lock_adapter_ignores_ambient_at_capture_entry(ambient_type):
+    ambient = ambient_type("unrelated caller context")
+    stop = KeyboardInterrupt("registry capture entry interrupted")
+    registry = RepoRegistry(QAConfig())
+    capture_impl = _capture_registry_lock_outcome
+    source, first_line = inspect.getsourcelines(capture_impl)
+    fault_line = first_line + next(
+        index for index, line in enumerate(source) if line.strip() == "try:"
+    )
+    triggered = False
+
+    def interrupt_capture(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is capture_impl.__code__
+            and frame.f_lineno == fault_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_capture
+
+    def invoke_with_ambient_context():
+        try:
+            raise ambient
+        except BaseException:  # noqa: B036 - keep ambient context active
+            return registry._run_registry_lock(
+                registry._cleanup_lock,
+                lambda: "ok",
+            )
+
+    sys.settrace(interrupt_capture)
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            invoke_with_ambient_context()
+    finally:
+        sys.settrace(None)
+
+    assert caught.value is stop
+    assert caught.value.__cause__ is None
+    assert triggered is True
+    assert registry._cleanup_lock._logical_depth() == 0
+    assert registry._cleanup_lock._native_is_owned() is False
+    registry.close()
+
+
+@pytest.mark.parametrize("ambient_type", [SystemExit, KeyboardInterrupt])
+def test_registry_lock_adapter_ignores_reused_ambient_at_capture_entry(
+    ambient_type,
+):
+    ambient = ambient_type("previous registry operation failed")
+    stop = KeyboardInterrupt("next registry capture entry interrupted")
+    registry = RepoRegistry(QAConfig())
+    capture_impl = _capture_registry_lock_outcome
+    source, first_line = inspect.getsourcelines(capture_impl)
+    fault_line = first_line + next(
+        index for index, line in enumerate(source) if line.strip() == "try:"
+    )
+    triggered = False
+
+    def fail_once():
+        raise ambient
+
+    def interrupt_capture(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is capture_impl.__code__
+            and frame.f_lineno == fault_line
+        ):
+            triggered = True
+            raise stop
+        return interrupt_capture
+
+    try:
+        registry._run_registry_lock(registry._cleanup_lock, fail_once)
+    except BaseException as caught:  # noqa: B036 - reuse exact ambient error
+        assert caught is ambient
+        sys.settrace(interrupt_capture)
+        try:
+            with pytest.raises(KeyboardInterrupt) as interrupted:
+                registry._run_registry_lock(
+                    registry._cleanup_lock,
+                    lambda: "ok",
+                )
+        finally:
+            sys.settrace(None)
+    else:  # pragma: no cover - the exact primary must escape
+        raise AssertionError("registry operation failure did not escape")
+
+    assert interrupted.value is stop
+    assert interrupted.value.__cause__ is None
+    assert triggered is True
+    assert registry._cleanup_lock._logical_depth() == 0
+    assert registry._cleanup_lock._native_is_owned() is False
+    registry.close()
+
+
+@pytest.mark.parametrize(
+    ("context_kind", "primary_type", "restore_type", "expected"),
+    [
+        ("cleanup", SystemExit, KeyboardInterrupt, "primary"),
+        ("cleanup", RuntimeError, SystemExit, "restore"),
+        ("reload", SystemExit, KeyboardInterrupt, "primary"),
+        ("reload", RuntimeError, SystemExit, "restore"),
+    ],
+)
+def test_registry_thread_context_preserves_exception_priority(
+    context_kind,
+    primary_type,
+    restore_type,
+    expected,
+):
+    primary = primary_type("body failed")
+    restore_failure = restore_type("context restoration interrupted")
+    registry = RepoRegistry(QAConfig())
+    restore_impl = type(registry._cleanup_callback())._restore
+    source, first_line = inspect.getsourcelines(restore_impl)
+    restore_line = first_line + next(
+        index
+        for index, line in enumerate(source)
+        if "self._context.registries = self._previous_registries" in line
+    )
+    triggered = False
+
+    def interrupt_first_restore(frame, event, _arg):
+        nonlocal triggered
+        if (
+            not triggered
+            and event == "line"
+            and frame.f_code is restore_impl.__code__
+            and frame.f_locals["self"]._kind == context_kind
+            and frame.f_lineno == restore_line
+        ):
+            triggered = True
+            raise restore_failure
+        return interrupt_first_restore
+
+    sys.settrace(interrupt_first_restore)
+    try:
+        if context_kind == "cleanup":
+
+            class Owner:
+                @property
+                def closed(self):
+                    return False
+
+                def close(self):
+                    raise primary
+
+            bundle = RepoBundle(
+                entry=SimpleNamespace(),
+                manifest=SimpleNamespace(),
+            )
+            registry._retired_bundles[id(bundle)] = _OwnedRepoBundle(
+                bundle,
+                None,
+                Owner(),
+            )
+            observed = registry._drain_retired()
+        else:
+
+            def fail_reload():
+                raise primary
+
+            try:
+                registry._run_serialized_reload(fail_reload)
+            except BaseException as exc:  # noqa: B036 - assert exact priority
+                observed = exc
+    finally:
+        sys.settrace(None)
+
+    assert triggered is True
+    preferred = primary if expected == "primary" else restore_failure
+    assert observed is preferred
+    if expected == "restore":
+        assert observed.__cause__ is primary
+    assert registry._cleanup_callback_is_active() is False
+    assert registry._reload_operation_is_active() is False
+
+
+@pytest.mark.parametrize("context_kind", ["cleanup", "reload"])
+@pytest.mark.parametrize("error_type", [StopIteration, StopAsyncIteration])
+def test_registry_thread_context_preserves_iteration_stop_identity(
+    context_kind,
+    error_type,
+):
+    stop = error_type("exact stop")
+    registry = RepoRegistry(QAConfig())
+    if context_kind == "cleanup":
+
+        class Owner:
+            @property
+            def closed(self):
+                return False
+
+            def close(self):
+                raise stop
+
+        bundle = RepoBundle(
+            entry=SimpleNamespace(),
+            manifest=SimpleNamespace(),
+        )
+        registry._retired_bundles[id(bundle)] = _OwnedRepoBundle(
+            bundle,
+            None,
+            Owner(),
+        )
+        observed = registry._drain_retired()
+    else:
+
+        def fail_reload():
+            raise stop
+
+        try:
+            registry._run_serialized_reload(fail_reload)
+        except BaseException as exc:  # noqa: B036 - assert exact identity
+            observed = exc
+
+    assert observed is stop
+    assert registry._cleanup_callback_is_active() is False
+    assert registry._reload_operation_is_active() is False
 
 
 def test_registry_vector_close_settles_before_opcode_interruption():
@@ -1392,6 +2654,11 @@ def test_registry_retired_claim_interruption_keeps_retry_state():
     key = id(bundle)
     registry._retired_bundles[key] = _OwnedRepoBundle(bundle, None, owner)
     source, first_line = inspect.getsourcelines(RepoRegistry._drain_retired)
+    operation_code = next(
+        constant
+        for constant in RepoRegistry._drain_retired.__code__.co_consts
+        if isinstance(constant, CodeType) and constant.co_name == "operation"
+    )
     claim_line = first_line + next(
         index
         for index, line in enumerate(source)
@@ -1404,7 +2671,7 @@ def test_registry_retired_claim_interruption_keeps_retry_state():
         if (
             not triggered
             and event == "line"
-            and frame.f_code is RepoRegistry._drain_retired.__code__
+            and frame.f_code is operation_code
             and frame.f_lineno > claim_line
         ):
             triggered = True
@@ -1447,6 +2714,11 @@ def test_registry_orphan_claim_interruption_keeps_retry_state():
     registry = RepoRegistry(QAConfig())
     registry._orphan_cleanup_owners.append(owner)
     source, first_line = inspect.getsourcelines(RepoRegistry._drain_orphan_cleanup)
+    operation_code = next(
+        constant
+        for constant in RepoRegistry._drain_orphan_cleanup.__code__.co_consts
+        if isinstance(constant, CodeType) and constant.co_name == "operation"
+    )
     claim_line = first_line + next(
         index
         for index, line in enumerate(source)
@@ -1459,7 +2731,7 @@ def test_registry_orphan_claim_interruption_keeps_retry_state():
         if (
             not triggered
             and event == "line"
-            and frame.f_code is RepoRegistry._drain_orphan_cleanup.__code__
+            and frame.f_code is operation_code
             and frame.f_lineno > claim_line
         ):
             triggered = True
@@ -2417,6 +3689,69 @@ def test_registry_refresh_detaches_hostile_lookup_key(tmp_path, monkeypatch):
     assert touched == []
     assert registry._closed is False
     assert registry.get("repo") is candidate
+    registry.close()
+
+
+@pytest.mark.parametrize(
+    ("invalid_id", "invalid_first"),
+    [("", True), (None, False), (17, True)],
+)
+def test_registry_refresh_skips_invalid_unrelated_entry(
+    tmp_path,
+    monkeypatch,
+    invalid_id,
+    invalid_first,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    invalid = SimpleNamespace(instance_id=invalid_id)
+    entry = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    candidate = RepoBundle(entry=SimpleNamespace(), manifest=SimpleNamespace())
+    registry = RepoRegistry(QAConfig())
+    entries = [invalid, entry] if invalid_first else [entry, invalid]
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: entries,
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda selected: (
+            _OwnedRepoBundle(candidate, None, None)
+            if selected is entry
+            else pytest.fail("refresh selected an unrelated entry")
+        ),
+    )
+    monkeypatch.setattr(registry, "_prepare_runtime_bundle", lambda _bundle: None)
+
+    registry.refresh("repo")
+
+    assert registry.get("repo") is candidate
+    registry.close()
+
+
+def test_registry_refresh_rejects_duplicate_valid_target_entries(
+    tmp_path,
+    monkeypatch,
+):
+    manifest_path = tmp_path / "repo_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    first = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    second = _repo_entry(tmp_path, manifest_path, instance_id="repo")
+    registry = RepoRegistry(QAConfig())
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.load_registry",
+        lambda _path: [first, second],
+    )
+    monkeypatch.setattr(
+        registry,
+        "_build_repo_metadata",
+        lambda _entry: pytest.fail("duplicate targets must fail before build"),
+    )
+
+    with pytest.raises(ValueError, match="exactly one entry"):
+        registry.refresh("repo")
+
     registry.close()
 
 

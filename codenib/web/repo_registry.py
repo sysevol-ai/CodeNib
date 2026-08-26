@@ -19,10 +19,11 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import partial
 from importlib.util import find_spec
-from threading import Lock, RLock
+from threading import Lock, RLock, local
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from .._atomic_directory import _annotate_secondary_error
+from .._owned_file_publication import _CancellationSafeRLock
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import IndexEntry, RepoManifest
 from ..index.embedding._lifecycle import close_vector_after_failure
@@ -44,6 +45,212 @@ if TYPE_CHECKING:
     from ..source_fingerprint import RepositorySourceBinding, RepositorySourceReader
 
 logger = get_logger(__name__)
+_REGISTRY_CLEANUP_CONTEXT = local()
+_REGISTRY_RELOAD_CONTEXT = local()
+_REGISTRY_LOCK_RESULT_MISSING = object()
+
+
+@dataclass(slots=True)
+class _RegistryLockOutcome:
+    """One lock callback result carried across normal lock settlement."""
+
+    value: Any = _REGISTRY_LOCK_RESULT_MISSING
+    error: BaseException | None = None
+
+
+def _capture_registry_lock_outcome(
+    operation: Callable[[], Any],
+    captured: List[_RegistryLockOutcome],
+) -> _RegistryLockOutcome:
+    """Keep operation failures out of the lifecycle lock's unwind path."""
+
+    outcome = _RegistryLockOutcome()
+    captured.append(outcome)
+    try:
+        outcome.value = operation()
+    except BaseException as error:  # noqa: B036 - unwrap after lock release
+        outcome.error = error
+    return outcome
+
+
+def _base_exception_context(error: BaseException) -> BaseException | None:
+    """Read one operation-origin context without hostile attribute dispatch."""
+
+    try:
+        context = vars(BaseException)["__context__"].__get__(error, type(error))
+    except BaseException:  # noqa: B036 - inspection cannot replace failure
+        return None
+    if not issubclass(type(context), BaseException):
+        return None
+    try:
+        error_traceback = vars(BaseException)["__traceback__"].__get__(
+            error,
+            type(error),
+        )
+        capture_frames = []
+        while error_traceback is not None:
+            frame = error_traceback.tb_frame
+            if frame.f_code is _capture_registry_lock_outcome.__code__:
+                capture_frames.append(frame)
+            error_traceback = error_traceback.tb_next
+        context_traceback = vars(BaseException)["__traceback__"].__get__(
+            context,
+            type(context),
+        )
+        while context_traceback is not None:
+            frame = context_traceback.tb_frame
+            if any(frame is capture_frame for capture_frame in capture_frames):
+                return context
+            context_traceback = context_traceback.tb_next
+    except BaseException:  # noqa: B036 - inspection cannot replace failure
+        return None
+    return None
+
+
+def _unwrap_registry_lock_outcome(outcome: _RegistryLockOutcome) -> Any:
+    """Return or raise one durable result after its lock has settled."""
+
+    if outcome.error is not None:
+        raise outcome.error
+    return outcome.value
+
+
+def _settle_registry_lock_outcome(outcome: _RegistryLockOutcome) -> Any:
+    """Preserve a durable operation failure across an interrupted unwrap."""
+
+    try:
+        return _unwrap_registry_lock_outcome(outcome)
+    except BaseException as unwrap_failure:  # noqa: B036 - retain primary
+        if outcome.error is not None and outcome.error is not unwrap_failure:
+            _raise_with_cleanup_failure(outcome.error, unwrap_failure)
+        raise
+
+
+def _live_registry_thread_context(
+    context: Any,
+    lock_attribute: str,
+) -> Tuple["RepoRegistry", ...]:
+    """Return markers whose guarding lock is still owned by this thread.
+
+    An asynchronous exception can land after a context manager's ``__enter__``
+    has stored its thread-local marker but before the ``with`` statement has
+    installed ``__exit__``.  The surrounding registry operation still releases
+    its real RLock while unwinding.  Treat that lock as the durable authority
+    and prune any marker that outlives it, so one interrupted callback cannot
+    poison every later operation on the same thread.
+    """
+
+    registries = getattr(context, "registries", ())
+    active = []
+    for registry in registries:
+        lock = object.__getattribute__(registry, lock_attribute)
+        if lock.held_by_current_thread():
+            active.append(registry)
+    if len(active) != len(registries):
+        live = tuple(active)
+        try:
+            context.registries = live
+        finally:
+            context.registries = live
+        return live
+    return registries
+
+
+class _RegistryThreadContext:
+    """Track one registry lock context with interruption-safe settlement."""
+
+    __slots__ = ("_context", "_kind", "_previous_registries", "_registry")
+
+    def __init__(self, context: Any, registry: "RepoRegistry", kind: str) -> None:
+        self._context = context
+        self._registry = registry
+        self._kind = kind
+        self._previous_registries: Tuple["RepoRegistry", ...] = ()
+
+    def _activate(self) -> None:
+        self._previous_registries = getattr(
+            self._context,
+            "registries",
+            (),
+        )
+        try:
+            self._context.registries = (
+                *self._previous_registries,
+                self._registry,
+            )
+        except BaseException:  # noqa: B036 - never leave a partial marker
+            try:
+                self._context.registries = self._previous_registries
+            finally:
+                self._context.registries = self._previous_registries
+            raise
+
+    def _restore(self) -> BaseException | None:
+        failure: BaseException | None = None
+        try:
+            self._context.registries = self._previous_registries
+        except BaseException as exc:  # noqa: B036 - retry restoration below
+            failure = exc
+        finally:
+            try:
+                self._context.registries = self._previous_registries
+            except BaseException as exc:  # noqa: B036 - preserve both failures
+                failure = _retain_cleanup_failure(failure, exc)
+        return failure
+
+    def run(self, operation: Callable[[], Any]) -> Any:
+        """Run one callback after installing all marker-cleanup finalizers."""
+
+        missing = object()
+        result: Any = missing
+        primary: BaseException | None = None
+        restore_failure: BaseException | None = None
+        try:
+            try:
+                try:
+                    self._activate()
+                    result = operation()
+                except BaseException as exc:  # noqa: B036 - settle exact primary
+                    primary = exc
+                retry_failure = self._restore()
+                if retry_failure is not None:
+                    restore_failure = _retain_cleanup_failure(
+                        restore_failure,
+                        retry_failure,
+                    )
+            except BaseException as exc:  # noqa: B036 - retry below
+                restore_failure = _retain_cleanup_failure(
+                    restore_failure,
+                    exc,
+                )
+        finally:
+            # This outer settlement is installed before marker activation, so
+            # even an asynchronous exception at an inner-finally boundary gets
+            # a second idempotent restoration attempt.
+            try:
+                retry_failure = self._restore()
+            except BaseException as exc:  # noqa: B036 - retain exact failure
+                restore_failure = _retain_cleanup_failure(
+                    restore_failure,
+                    exc,
+                )
+            else:
+                if retry_failure is not None:
+                    restore_failure = _retain_cleanup_failure(
+                        restore_failure,
+                        retry_failure,
+                    )
+
+        if primary is not None:
+            if restore_failure is not None:
+                _raise_with_cleanup_failure(primary, restore_failure)
+            raise primary
+        if restore_failure is not None:
+            raise restore_failure
+        if result is missing:
+            raise RuntimeError("registry thread context did not run its operation")
+        return result
+
 
 _SKILLS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -674,68 +881,152 @@ class RepoRegistry:
         # Cleanup mutates retryable owners outside the generation lock. Keep
         # every drain and close serialized so shutdown cannot return while a
         # different thread is still closing an unleased generation or owner.
-        self._cleanup_lock = RLock()
-        # A request that releases its generation while a reload owns the
-        # cleanup boundary must not wait for a potentially slow candidate
-        # build. Exact operation tokens make that deferral cancellation-safe;
-        # the outermost reload drops its token before one final drain.
-        self._reload_preparations: set[object] = set()
+        self._cleanup_lock = _CancellationSafeRLock()
         self._closed = False
         # Serialize registry-file snapshots through publication and removal
         # reconciliation. Without this boundary, an older load_all() could
         # retire a generation that a concurrent refresh() just published from
-        # a newer snapshot.
-        self._registry_reload_lock = RLock()
+        # a newer snapshot. External reload/shutdown paths take this before
+        # cleanup; cleanup callbacks never reenter it.
+        self._registry_reload_lock = _CancellationSafeRLock()
         # One embedding model per model name, shared across repos: the GPU model
         # is loaded once instead of once per CodeVectorStore (one per repo).
         self._embeddings: Dict[Tuple[str, str, int, Optional[str], str], object] = {}
         self._embedding_load_lock = RLock()
 
-    @contextmanager
-    def _reload_preparation_boundary(self) -> Iterator[None]:
-        """Serialize a reload and settle leases deferred during its build."""
+    def _cleanup_callback_is_active(self) -> bool:
+        """Whether this thread is executing any registry cleanup hook."""
 
-        token = object()
-        primary: BaseException | None = None
-        cleanup_failure: BaseException | None = None
-        with self._cleanup_lock, self._registry_reload_lock:
-            try:
-                with self._generation_lock:
-                    self._reload_preparations.add(token)
-                try:
-                    yield
-                except BaseException as exc:  # noqa: B036 - settle boundary first
-                    primary = exc
-            finally:
-                final_drain = False
-                try:
-                    try:
-                        with self._generation_lock:
-                            self._reload_preparations.discard(token)
-                    finally:
-                        # A trace/signal exception after the first discard
-                        # cannot leave every future lease release deferred.
-                        with self._generation_lock:
-                            self._reload_preparations.discard(token)
-                            final_drain = not self._reload_preparations
-                    if final_drain:
-                        cleanup_failure = self._drain_retired()
-                except BaseException as exc:  # noqa: B036 - preserve body failure
-                    cleanup_failure = _retain_cleanup_failure(
-                        cleanup_failure,
-                        exc,
-                    )
-        if primary is not None:
-            if cleanup_failure is not None:
-                _raise_with_cleanup_failure(primary, cleanup_failure)
-            raise primary
-        if cleanup_failure is not None:
-            if not issubclass(type(cleanup_failure), Exception):
-                raise cleanup_failure
-            _log_cleanup_failure(
-                "Deferred repository cleanup remains pending: %s",
-                cleanup_failure,
+        return bool(
+            _live_registry_thread_context(
+                _REGISTRY_CLEANUP_CONTEXT,
+                "_cleanup_lock",
             )
+        )
+
+    def _owns_current_cleanup_callback(self) -> bool:
+        """Whether this thread owns this registry through a cleanup hook."""
+
+        return any(
+            registry is self
+            for registry in _live_registry_thread_context(
+                _REGISTRY_CLEANUP_CONTEXT,
+                "_cleanup_lock",
+            )
+        )
+
+    def _reload_operation_is_active(self) -> bool:
+        """Whether this thread is inside any serialized registry reload."""
+
+        return bool(
+            _live_registry_thread_context(
+                _REGISTRY_RELOAD_CONTEXT,
+                "_registry_reload_lock",
+            )
+        )
+
+    def _owns_current_reload_operation(self) -> bool:
+        """Whether this thread owns this registry's reload operation."""
+
+        return any(
+            registry is self
+            for registry in _live_registry_thread_context(
+                _REGISTRY_RELOAD_CONTEXT,
+                "_registry_reload_lock",
+            )
+        )
+
+    def _run_registry_lock(
+        self,
+        lock: _CancellationSafeRLock,
+        operation: Callable[[], Any],
+    ) -> Any:
+        """Run one operation and unwrap its failure only after lock release."""
+
+        baseline = lock._logical_depth()
+        captured: List[_RegistryLockOutcome] = []
+        try:
+            outcome = lock.run(
+                partial(
+                    _capture_registry_lock_outcome,
+                    operation,
+                    captured,
+                )
+            )
+        except BaseException as lock_failure:  # noqa: B036 - reconcile first
+            # ``run`` normally reconciles both acquisition and release. This
+            # outer pass covers an asynchronous exception at its own handler or
+            # normal-settlement entry before that reconciliation call starts.
+            lock._release_preserving(baseline, lock_failure)
+            outcome = captured[-1] if captured else None
+            operation_failure = outcome.error if outcome is not None else None
+            if (
+                operation_failure is None
+                and outcome is not None
+                and outcome.value is _REGISTRY_LOCK_RESULT_MISSING
+            ):
+                # An asynchronous exception may land at the operation's except
+                # handler before its error can be stored in the durable slot.
+                # CPython retains that earlier exact object as the implicit
+                # context; inspect it without caller-defined dispatch.
+                operation_failure = _base_exception_context(lock_failure)
+            if operation_failure is not None:
+                _raise_with_cleanup_failure(operation_failure, lock_failure)
+            raise
+        try:
+            return _settle_registry_lock_outcome(outcome)
+        except BaseException as settlement_failure:  # noqa: B036 - retry once
+            if outcome.error is not None and outcome.error is not settlement_failure:
+                _raise_with_cleanup_failure(outcome.error, settlement_failure)
+            raise
+
+    def _run_serialized_cleanup(self, operation: Callable[[], Any]) -> Any:
+        """Serialize mutation of retryable cleanup authorities."""
+
+        return self._run_registry_lock(self._cleanup_lock, operation)
+
+    def _cleanup_callback(self) -> _RegistryThreadContext:
+        """Mark caller cleanup code so registry reentry cannot invert locks."""
+
+        return _RegistryThreadContext(
+            _REGISTRY_CLEANUP_CONTEXT,
+            self,
+            "cleanup",
+        )
+
+    def _run_cleanup_callback(self, operation: Callable[[], Any]) -> Any:
+        """Run caller cleanup code under an interruption-safe thread marker."""
+
+        return self._cleanup_callback().run(operation)
+
+    def _run_serialized_reload(self, operation: Callable[[], Any]) -> Any:
+        """Serialize one reload without holding cleanup across candidate builds."""
+
+        if self._cleanup_callback_is_active():
+            raise RuntimeError("repository reload cannot start during cleanup")
+        if self._reload_operation_is_active():
+            raise RuntimeError("repository reload cannot reenter another reload")
+
+        def reload_operation() -> Any:
+            # Join cleanup already in flight before the registry snapshot, but
+            # release cleanup while metadata and runtime views are prepared.
+            def require_open() -> None:
+                with self._generation_lock:
+                    if self._closed:
+                        raise RuntimeError("repository registry is closed")
+
+            self._run_serialized_cleanup(require_open)
+            marker = _RegistryThreadContext(
+                _REGISTRY_RELOAD_CONTEXT,
+                self,
+                "reload",
+            )
+            return marker.run(operation)
+
+        return self._run_registry_lock(
+            self._registry_reload_lock,
+            reload_operation,
+        )
 
     def load_all(self) -> None:
         """Load registry metadata, atomically replacing matching generations.
@@ -746,10 +1037,7 @@ class RepoRegistry:
         while active repositories absent from the complete snapshot are retired.
         """
 
-        with self._reload_preparation_boundary():
-            with self._generation_lock:
-                if self._closed:
-                    raise RuntimeError("repository registry is closed")
+        def operation() -> None:
             entries = load_registry(self._config.registry_path)
             if not entries:
                 logger.warning(
@@ -808,6 +1096,8 @@ class RepoRegistry:
                 raise shutdown_failure
             self._raise_if_closed_after_cleanup()
 
+        self._run_serialized_reload(operation)
+
     def refresh(self, repo_id: str) -> None:
         """Prepare and atomically publish a complete new bundle generation.
 
@@ -817,29 +1107,34 @@ class RepoRegistry:
         unleased bundle that another concurrent refresh could retire.
         """
 
-        with self._reload_preparation_boundary():
-            with self._generation_lock:
-                if self._closed:
-                    raise RuntimeError("repository registry is closed")
-            repo_id = _plain_repo_instance_id(repo_id)
+        requested_repo_id = repo_id
+
+        def operation() -> None:
+            plain_repo_id = _plain_repo_instance_id(requested_repo_id)
             entries = []
             for entry in load_registry(self._config.registry_path):
                 try:
                     instance_id = _plain_repo_instance_id(entry.instance_id)
                 except ValueError as exc:
-                    logger.error("Skipping malformed repository entry: %s", exc)
+                    logger.error(
+                        "Skipping invalid repository entry while refreshing %r: %s",
+                        plain_repo_id,
+                        exc,
+                    )
                     continue
-                if instance_id == repo_id:
+                if instance_id == plain_repo_id:
                     entries.append(entry)
             if len(entries) != 1:
                 raise ValueError(
                     "repository registry must contain exactly one entry for "
-                    f"{repo_id!r}"
+                    f"{plain_repo_id!r}"
                 )
             entry = entries[0]
             if not os.path.exists(entry.manifest_path):
                 raise FileNotFoundError(entry.manifest_path)
             self._replace_entry(entry, prepare_runtime=True)
+
+        self._run_serialized_reload(operation)
 
     def _raise_if_closed_after_cleanup(
         self,
@@ -1031,10 +1326,7 @@ class RepoRegistry:
     def _load_repo_metadata(self, entry: RepoEntry) -> RepoBundle:
         """Legacy metadata loader used by offline callers and focused tests."""
 
-        with self._reload_preparation_boundary():
-            with self._generation_lock:
-                if self._closed:
-                    raise RuntimeError("repository registry is closed")
+        def operation() -> RepoBundle:
             instance_id = _plain_repo_instance_id(entry.instance_id)
             try:
                 owned = self._build_repo_metadata(entry)
@@ -1078,6 +1370,8 @@ class RepoRegistry:
                     _raise_with_cleanup_failure(error, cleanup_failure)
                 raise error
             return owned.bundle
+
+        return self._run_serialized_reload(operation)
 
     def _retain_exception_cleanup(
         self,
@@ -1128,8 +1422,13 @@ class RepoRegistry:
         owned: _OwnedRepoBundle,
     ) -> None:
         instance_id = _plain_repo_instance_id(instance_id)
-        with self._cleanup_lock:
-            self._publish_owned_under_cleanup_lock(instance_id, owned)
+        self._run_serialized_cleanup(
+            partial(
+                self._publish_owned_under_cleanup_lock,
+                instance_id,
+                owned,
+            )
+        )
 
     def _publish_owned_under_cleanup_lock(
         self,
@@ -1158,9 +1457,15 @@ class RepoRegistry:
                 raise RuntimeError("repository source cleanup authority is pending")
 
         # The caller owns the cleanup lock, but no generation lock, while this
-        # caller-defined descriptor runs. All reload paths take locks in the
-        # same cleanup -> reload order, so reentrant shutdown cannot deadlock.
-        authority_closed = authority is not None and bool(authority.closed)
+        # caller-defined descriptor runs. Reload paths reject cleanup-callback
+        # reentry, while a reentrant shutdown marks the registry closed without
+        # waiting on the reload operation that is currently settling it.
+        if authority is None:
+            authority_closed = False
+        else:
+            authority_closed = self._run_cleanup_callback(
+                lambda: bool(authority.closed)
+            )
 
         with self._generation_lock:
             if self._closed:
@@ -1472,7 +1777,7 @@ class RepoRegistry:
         *,
         only_keys: Optional[set[int]] = None,
     ) -> Optional[BaseException]:
-        with self._cleanup_lock:
+        def operation() -> Optional[BaseException]:
             first_failure: BaseException | None = None
             with self._generation_lock:
                 candidates = [
@@ -1537,9 +1842,12 @@ class RepoRegistry:
                                 owned.source_binding = None
                             elif binding is not None:
                                 owned.source_binding = None
-                    complete = self._close_owned(
-                        owned,
-                        close_authority=not suppress_authority,
+                    complete = self._run_cleanup_callback(
+                        partial(
+                            self._close_owned,
+                            owned,
+                            close_authority=not suppress_authority,
+                        )
                     )
                 except BaseException as exc:  # noqa: B036 - visit every generation
                     first_failure = _retain_cleanup_failure(first_failure, exc)
@@ -1569,8 +1877,10 @@ class RepoRegistry:
                             first_failure = _retain_cleanup_failure(first_failure, exc)
             return first_failure
 
+        return self._run_serialized_cleanup(operation)
+
     def _drain_orphan_cleanup(self) -> Optional[BaseException]:
-        with self._cleanup_lock:
+        def operation() -> Optional[BaseException]:
             first_failure: BaseException | None = None
             with self._generation_lock:
                 owners: List[Any] = []
@@ -1616,7 +1926,9 @@ class RepoRegistry:
                         attempted_authority_ids.add(authority_id)
                         claimed = True
                         self._orphan_cleanup_in_progress.add(authority_id)
-                    closed, failure = _close_orphan_cleanup_owner(owner)
+                    closed, failure = self._run_cleanup_callback(
+                        partial(_close_orphan_cleanup_owner, owner)
+                    )
                     if failure is not None:
                         first_failure = _retain_cleanup_failure(
                             first_failure,
@@ -1646,50 +1958,78 @@ class RepoRegistry:
                             first_failure = _retain_cleanup_failure(first_failure, exc)
             return first_failure
 
+        return self._run_serialized_cleanup(operation)
+
     def close(self) -> None:
         """Retire active generations; pinned requests release them later."""
 
-        # A refresh that entered first either publishes or fully retires its
-        # candidate before shutdown can report completion. The cleanup lock
-        # also joins drains started by a final request lease release.
-        with self._cleanup_lock, self._registry_reload_lock:
-            with self._generation_lock:
-                self._closed = True
-                for instance_id in tuple(self._bundles):
-                    self._retire_active_locked(instance_id)
-                # Claim owner-only failures before invoking any caller-owned
-                # close method. The orphan drain removes its queue before each
-                # callback, so a reentrant close cannot acquire the same owner.
-                owner_only_ids = tuple(self._source_cleanup_owners) + tuple(
-                    instance_id
-                    for instance_id in self._source_bindings
-                    if instance_id not in self._source_cleanup_owners
-                )
-                for instance_id in owner_only_ids:
-                    owner = self._source_cleanup_owners.get(instance_id)
-                    binding = self._source_bindings.get(instance_id)
-                    cleanup_owner = owner if owner is not None else binding
-                    if cleanup_owner is not None and not any(
-                        candidate is cleanup_owner
-                        for candidate in self._orphan_cleanup_owners
-                    ):
-                        # Publish retry ownership before removing either map
-                        # entry, so interruption at any following line leaves a
-                        # reachable authority for the next close attempt.
-                        self._orphan_cleanup_owners.append(cleanup_owner)
-                    self._source_cleanup_owners.pop(instance_id, None)
-                    self._source_bindings.pop(instance_id, None)
+        # Cleanup callbacks may reenter shutdown while a reload thread owns the
+        # reload lock and is waiting to publish under this same cleanup lock.
+        # Waiting for that reload here would form a lock cycle, so the owning
+        # cleanup thread performs the idempotent shutdown transition directly;
+        # the outer reload observes ``_closed`` and settles its candidate.
+        if self._owns_current_cleanup_callback():
+            self._close_under_cleanup_lock()
+            return
+        if self._cleanup_callback_is_active():
+            raise RuntimeError(
+                "repository shutdown cannot cross a registry cleanup callback"
+            )
+        if (
+            self._reload_operation_is_active()
+            and not self._owns_current_reload_operation()
+        ):
+            raise RuntimeError(
+                "repository shutdown cannot cross a registry reload operation"
+            )
 
-            first_failure = self._drain_retired()
+        # An external shutdown joins the complete reload operation first, then
+        # joins any cleanup drain. Slow builds hold only the reload lock, so
+        # unrelated request lease releases remain free to finish.
+        self._run_registry_lock(
+            self._registry_reload_lock,
+            lambda: self._run_serialized_cleanup(self._close_under_cleanup_lock),
+        )
 
-            orphan_failure = self._drain_orphan_cleanup()
-            if orphan_failure is not None:
-                first_failure = _retain_cleanup_failure(
-                    first_failure,
-                    orphan_failure,
-                )
-            if first_failure is not None:
-                raise first_failure
+    def _close_under_cleanup_lock(self) -> None:
+        """Close registry state while the current thread owns cleanup."""
+
+        with self._generation_lock:
+            self._closed = True
+            for instance_id in tuple(self._bundles):
+                self._retire_active_locked(instance_id)
+            # Claim owner-only failures before invoking any caller-owned close
+            # method. The orphan drain removes its queue before each callback,
+            # so a reentrant close cannot acquire the same owner.
+            owner_only_ids = tuple(self._source_cleanup_owners) + tuple(
+                instance_id
+                for instance_id in self._source_bindings
+                if instance_id not in self._source_cleanup_owners
+            )
+            for instance_id in owner_only_ids:
+                owner = self._source_cleanup_owners.get(instance_id)
+                binding = self._source_bindings.get(instance_id)
+                cleanup_owner = owner if owner is not None else binding
+                if cleanup_owner is not None and not any(
+                    candidate is cleanup_owner
+                    for candidate in self._orphan_cleanup_owners
+                ):
+                    # Publish retry ownership before removing either map entry,
+                    # so interruption leaves a reachable authority for retry.
+                    self._orphan_cleanup_owners.append(cleanup_owner)
+                self._source_cleanup_owners.pop(instance_id, None)
+                self._source_bindings.pop(instance_id, None)
+
+        first_failure = self._drain_retired()
+
+        orphan_failure = self._drain_orphan_cleanup()
+        if orphan_failure is not None:
+            first_failure = _retain_cleanup_failure(
+                first_failure,
+                orphan_failure,
+            )
+        if first_failure is not None:
+            raise first_failure
 
     def _load_vector_store(
         self,
@@ -2015,6 +2355,15 @@ class RepoRegistry:
     def pin(self, repo_id: str) -> Iterator[Optional[RepoBundle]]:
         """Pin the current generation for the complete caller operation."""
 
+        if self._cleanup_callback_is_active():
+            raise RuntimeError("repository pin cannot start during cleanup")
+        if (
+            self._reload_operation_is_active()
+            and not self._owns_current_reload_operation()
+        ):
+            raise RuntimeError(
+                "repository pin cannot cross a registry reload operation"
+            )
         lease_token = object()
         bundle: Optional[RepoBundle] = None
         keys: Tuple[int, ...] = ()
@@ -2054,6 +2403,15 @@ class RepoRegistry:
     def pin_all(self) -> Iterator[Tuple[RepoBundle, ...]]:
         """Pin one coherent snapshot of every currently published bundle."""
 
+        if self._cleanup_callback_is_active():
+            raise RuntimeError("repository pin cannot start during cleanup")
+        if (
+            self._reload_operation_is_active()
+            and not self._owns_current_reload_operation()
+        ):
+            raise RuntimeError(
+                "repository pin cannot cross a registry reload operation"
+            )
         lease_token = object()
         active = False
         bundles: Tuple[RepoBundle, ...] = ()
@@ -2105,16 +2463,21 @@ class RepoRegistry:
 
     def _release_bundle_lease(self, lease_token: object) -> None:
         self._drop_bundle_lease(lease_token)
-        with self._generation_lock:
-            closed = self._closed
-            preparing = bool(self._reload_preparations)
-        if not closed and preparing:
-            # The outermost reload performs a final drain after dropping its
-            # operation token. The lease itself is already gone, so this
-            # request need not wait for model/index candidate preparation.
+        cross_cleanup_callback = (
+            self._cleanup_callback_is_active()
+            and not self._owns_current_cleanup_callback()
+        )
+        cross_reload_operation = (
+            self._reload_operation_is_active()
+            and not self._owns_current_reload_operation()
+        )
+        if cross_cleanup_callback or cross_reload_operation:
+            # The pin may have been entered before this cross-registry cleanup
+            # callback or reload began. Its lease must still be dropped, but
+            # synchronously taking the other registry's cleanup lock would let
+            # reciprocal operations form an ABBA cycle. Leave the now-unleased
+            # generation durable for the next ordinary release or shutdown.
             return
-        # Shutdown and ordinary non-reload cleanup retain the blocking
-        # settlement contract: no other owner is responsible for a final drain.
         failure = self._drain_retired()
         if failure is not None:
             if not issubclass(type(failure), Exception):
