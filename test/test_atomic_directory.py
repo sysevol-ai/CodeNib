@@ -9267,6 +9267,64 @@ def test_authenticated_reader_subtree_is_prefix_relative_and_lifetime_bound(
             reader.inventory()
 
 
+@pytest.mark.parametrize(
+    "error_type",
+    (ValueError, KeyboardInterrupt, SystemExit),
+)
+@pytest.mark.parametrize("mutate", (False, True), ids=("clean", "mutated"))
+def test_authenticated_directory_final_capture_reconciles_exact_stop(
+    tmp_path: Path,
+    error_type: type[BaseException],
+    mutate: bool,
+) -> None:
+    directory = tmp_path / "owned"
+    directory.mkdir()
+    payload = directory / "payload.bin"
+    payload.write_bytes(b"current")
+    (directory / "second.bin").write_bytes(b"second")
+    ownership = capture_directory_ownership(directory)
+    stop = error_type("injected final ownership stop")
+    callback_returned = False
+    final_poll_seen = False
+
+    def check_cancelled() -> None:
+        nonlocal final_poll_seen
+        if final_poll_seen:
+            raise stop
+        if any(
+            frame.function == "validate_after_ownership" for frame in inspect.stack()
+        ):
+            final_poll_seen = True
+            if mutate:
+                payload.write_bytes(b"changed")
+            raise stop
+
+    def consume(_reader: atomic_module.PublicationDirectoryReader) -> object:
+        nonlocal callback_returned
+        callback_returned = True
+        return object()
+
+    with pytest.raises(BaseException) as caught:
+        atomic_module.reopen_authenticated_directory(
+            directory,
+            ownership,
+            consume,
+            check_cancelled=check_cancelled,
+        )
+
+    assert callback_returned
+    assert final_poll_seen
+    if mutate:
+        assert isinstance(caught.value, RuntimeError)
+        assert caught.value is not stop
+        assert caught.value.__cause__ is stop
+    else:
+        assert caught.value is stop
+        assert "suppressed authentication failure" not in "\n".join(
+            _exception_notes(stop)
+        )
+
+
 def test_fake_windows_reader_subtree_keeps_prefix_relative_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

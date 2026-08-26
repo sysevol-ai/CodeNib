@@ -4911,7 +4911,124 @@ def test_replacement_bind_rejects_native_mismatch_before_candidate_mutation(
         source_owner.close()
 
 
-def test_replacement_bind_threads_exact_cancellation_through_both_scans(
+@pytest.mark.parametrize(
+    "cancellation",
+    (
+        pytest.param(
+            SystemExit("exact outer receipt preflight stop"),
+            id="system-exit",
+        ),
+        pytest.param(
+            TypeError("exact outer receipt preflight type stop"),
+            id="type-error",
+        ),
+        pytest.param(
+            ValueError("exact outer receipt preflight value stop"),
+            id="value-error",
+        ),
+    ),
+)
+def test_replacement_bind_stops_in_real_outer_receipt_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cancellation: BaseException,
+) -> None:
+    parent = tmp_path / "replacement-bind-outer-preflight-stop"
+    destination, plan, source_owner = _publish_payload_generation(
+        parent,
+        destination_name="published",
+        payload=b"old",
+    )
+    binding = source_owner.destination_binding
+    native_owner = _leased_native_replacement_owner(parent, destination)
+    workspace = OwnedWorkspaceAuthority()
+    receipt_checks: list[object] = []
+    poison_consumed = False
+    real_receipt_capture = atomic_directory.PublicationDirectoryReader.capture_ownership
+    real_scandir = atomic_directory.os.scandir
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    def observe_real_receipt_capture(
+        reader: atomic_directory.PublicationDirectoryReader,
+        **kwargs: object,
+    ) -> _TreeOwnership:
+        receipt_checks.append(kwargs.get("check_cancelled"))
+        return real_receipt_capture(reader, **kwargs)  # type: ignore[arg-type]
+
+    def poison_future_record_scan(*_args: object, **_kwargs: object) -> object:
+        nonlocal poison_consumed
+        poison_consumed = True
+        raise AssertionError("cancelled outer preflight consumed its poisoned record")
+
+    monkeypatch.setattr(
+        atomic_directory.PublicationDirectoryReader,
+        "capture_ownership",
+        observe_real_receipt_capture,
+    )
+    monkeypatch.setattr(
+        atomic_directory.os,
+        "scandir",
+        poison_future_record_scan,
+    )
+    retry_owner: object | None = None
+    retry_workspace: OwnedWorkspaceAuthority | None = None
+    try:
+        with pytest.raises(type(cancellation)) as raised:
+            workspace.bind_replacement_source(
+                source_owner,
+                destination_binding=binding,
+                native_owner=native_owner,
+                stage_name=".replacement-stage",
+                plan=plan,
+                check_cancelled=check_cancelled,
+            )
+
+        assert raised.value is cancellation
+        assert receipt_checks == [check_cancelled]
+        assert not poison_consumed
+        assert workspace.state == "empty"
+        assert workspace_owner.owner_state(native_owner) == "destination-leased"
+        assert source_owner.active
+        assert destination.joinpath("payload").read_bytes() == b"old"
+        assert not parent.joinpath(".replacement-stage").exists()
+
+        workspace.close()
+        workspace_owner.abort_owner(native_owner)
+        assert workspace.state == "closed"
+        assert workspace_owner.owner_closed(native_owner)
+
+        monkeypatch.setattr(atomic_directory.os, "scandir", real_scandir)
+        monkeypatch.setattr(
+            atomic_directory.PublicationDirectoryReader,
+            "capture_ownership",
+            real_receipt_capture,
+        )
+        retry_owner = _leased_native_replacement_owner(parent, destination)
+        retry_workspace = OwnedWorkspaceAuthority()
+        retry_workspace.bind_replacement_source(
+            source_owner,
+            destination_binding=binding,
+            native_owner=retry_owner,
+            stage_name=".replacement-retry",
+            plan=plan,
+        )
+        assert retry_workspace.state == "replacement-bound"
+        assert source_owner.active
+    finally:
+        if retry_workspace is not None and retry_workspace.state != "closed":
+            retry_workspace.close()
+        if retry_owner is not None and not workspace_owner.owner_closed(retry_owner):
+            workspace_owner.abort_owner(retry_owner)
+        if workspace.state != "closed":
+            workspace.close()
+        if not workspace_owner.owner_closed(native_owner):
+            workspace_owner.abort_owner(native_owner)
+        source_owner.close()
+
+
+def test_replacement_bind_threads_exact_cancellation_through_all_scans(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4925,15 +5042,25 @@ def test_replacement_bind_threads_exact_cancellation_through_both_scans(
     native_owner = _leased_native_replacement_owner(parent, destination)
     workspace = OwnedWorkspaceAuthority()
     cancellation = SystemExit("exact replacement binding stop")
+    consume_checks: list[object] = []
     receipt_checks: list[object] = []
     native_checks: list[object] = []
     armed = False
+    real_consume = PublishedWorkspaceReceiptOwner.consume
     real_receipt_capture = atomic_directory.PublicationDirectoryReader.capture_ownership
     real_native_capture = captured_directory._capture_posix_directory_descriptor
 
     def check_cancelled() -> None:
         if armed:
             raise cancellation
+
+    def record_consume(
+        owner: PublishedWorkspaceReceiptOwner,
+        callback: object,
+        **kwargs: object,
+    ) -> object:
+        consume_checks.append(kwargs.get("check_cancelled"))
+        return real_consume(owner, callback, **kwargs)  # type: ignore[arg-type]
 
     def record_receipt_capture(
         reader: atomic_directory.PublicationDirectoryReader,
@@ -4948,6 +5075,7 @@ def test_replacement_bind_threads_exact_cancellation_through_both_scans(
         armed = True
         return real_native_capture(*args, **kwargs)  # type: ignore[arg-type]
 
+    monkeypatch.setattr(PublishedWorkspaceReceiptOwner, "consume", record_consume)
     monkeypatch.setattr(
         atomic_directory.PublicationDirectoryReader,
         "capture_ownership",
@@ -4970,6 +5098,7 @@ def test_replacement_bind_threads_exact_cancellation_through_both_scans(
             )
 
         assert raised.value is cancellation
+        assert consume_checks == [check_cancelled]
         assert check_cancelled in receipt_checks
         assert native_checks == [check_cancelled]
         assert workspace.state == "closed"
@@ -4982,6 +5111,153 @@ def test_replacement_bind_threads_exact_cancellation_through_both_scans(
             workspace.close()
         if not workspace_owner.owner_closed(native_owner):
             workspace_owner.abort_owner(native_owner)
+        source_owner.close()
+
+
+def test_replacement_bind_receipt_mutation_precedes_latched_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "replacement-bind-receipt-mutation"
+    destination, plan, source_owner = _publish_payload_generation(
+        parent,
+        destination_name="published",
+        payload=b"old",
+    )
+    binding = source_owner.destination_binding
+    native_owner = _leased_native_replacement_owner(parent, destination)
+    workspace = OwnedWorkspaceAuthority()
+    cancellation = KeyboardInterrupt("latched replacement receipt stop")
+    armed = False
+    real_native_capture = captured_directory._capture_posix_directory_descriptor
+
+    def check_cancelled() -> None:
+        if armed:
+            raise cancellation
+
+    def mutate_after_native_capture(
+        *args: object,
+        **kwargs: object,
+    ) -> _TreeOwnership:
+        nonlocal armed
+        ownership = real_native_capture(*args, **kwargs)  # type: ignore[arg-type]
+        destination.joinpath("payload").write_bytes(b"evil")
+        armed = True
+        return ownership
+
+    monkeypatch.setattr(
+        captured_directory,
+        "_capture_posix_directory_descriptor",
+        mutate_after_native_capture,
+    )
+    retry_owner: object | None = None
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="publication callback tree changed",
+        ) as raised:
+            workspace.bind_replacement_source(
+                source_owner,
+                destination_binding=binding,
+                native_owner=native_owner,
+                stage_name=".replacement-stage",
+                plan=plan,
+                check_cancelled=check_cancelled,
+            )
+
+        assert raised.value is not cancellation
+        assert workspace.state == "closed"
+        assert workspace_owner.owner_closed(native_owner)
+        assert source_owner.active
+        assert destination.joinpath("payload").read_bytes() == b"evil"
+        assert not parent.joinpath(".replacement-stage").exists()
+
+        retry_owner = _leased_native_replacement_owner(parent, destination)
+        assert workspace_owner.owner_state(retry_owner) == "destination-leased"
+    finally:
+        if workspace.state != "closed":
+            workspace.close()
+        if not workspace_owner.owner_closed(native_owner):
+            workspace_owner.abort_owner(native_owner)
+        if retry_owner is not None and not workspace_owner.owner_closed(retry_owner):
+            workspace_owner.abort_owner(retry_owner)
+        source_owner.close()
+
+
+def test_replacement_bind_authority_mutation_precedes_latched_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "replacement-bind-authority-mutation"
+    destination, plan, source_owner = _publish_payload_generation(
+        parent,
+        destination_name="published",
+        payload=b"old",
+    )
+    binding = source_owner.destination_binding
+    native_owner = _leased_native_replacement_owner(parent, destination)
+    workspace = OwnedWorkspaceAuthority()
+    cancellation = SystemExit("latched replacement authority stop")
+    moved_parent = tmp_path / "moved-replacement-authority"
+    armed = False
+    real_native_capture = captured_directory._capture_posix_directory_descriptor
+
+    def check_cancelled() -> None:
+        nonlocal armed
+        if armed:
+            armed = False
+            parent.rename(moved_parent)
+            parent.mkdir(mode=0o700)
+            destination.mkdir(mode=0o700)
+            raise cancellation
+
+    def arm_after_native_capture(
+        *args: object,
+        **kwargs: object,
+    ) -> _TreeOwnership:
+        nonlocal armed
+        ownership = real_native_capture(*args, **kwargs)  # type: ignore[arg-type]
+        armed = True
+        return ownership
+
+    monkeypatch.setattr(
+        captured_directory,
+        "_capture_posix_directory_descriptor",
+        arm_after_native_capture,
+    )
+    retry_owner: object | None = None
+    try:
+        with pytest.raises(
+            RuntimeError,
+            match="publication parent path changed",
+        ) as raised:
+            workspace.bind_replacement_source(
+                source_owner,
+                destination_binding=binding,
+                native_owner=native_owner,
+                stage_name=".replacement-stage",
+                plan=plan,
+                check_cancelled=check_cancelled,
+            )
+
+        assert raised.value is not cancellation
+        assert workspace.state == "closed"
+        assert workspace_owner.owner_closed(native_owner)
+        assert source_owner.active
+        assert moved_parent.joinpath("published/payload").read_bytes() == b"old"
+        assert tuple(destination.iterdir()) == ()
+        assert not parent.joinpath(".replacement-stage").exists()
+        assert not moved_parent.joinpath(".replacement-stage").exists()
+
+        retry_owner = _leased_native_replacement_owner(parent, destination)
+        assert workspace_owner.owner_state(retry_owner) == "destination-leased"
+    finally:
+        if workspace.state != "closed":
+            workspace.close()
+        if not workspace_owner.owner_closed(native_owner):
+            workspace_owner.abort_owner(native_owner)
+        if retry_owner is not None and not workspace_owner.owner_closed(retry_owner):
+            workspace_owner.abort_owner(retry_owner)
         source_owner.close()
 
 

@@ -2589,7 +2589,14 @@ class OwnedWorkspaceAuthority:
             )
 
         try:
-            consume_source_exact(source_owner, bind_active_source)
+            if check_cancelled is None:
+                consume_source_exact(source_owner, bind_active_source)
+            else:
+                consume_source_exact(
+                    source_owner,
+                    bind_active_source,
+                    check_cancelled=check_cancelled,
+                )
         except BaseException as bind_error:  # noqa: B036 - settle transferred owner
             primary_error = bind_error
 

@@ -7078,9 +7078,35 @@ def _run_authenticated_directory_callback(
         return callback(reader)
 
     def validate_after_ownership() -> None:
-        after = reader.capture_ownership(
-            check_cancelled=check_cancelled,
-        )
+        if check_cancelled is None:
+            after = reader.capture_ownership(check_cancelled=None)
+        else:
+            callback_errors: list[BaseException] = []
+            reader_was_invalid = reader._authentication_failed
+
+            def poll() -> None:
+                try:
+                    check_cancelled()
+                except BaseException as error:  # noqa: B036 - exact provenance
+                    callback_errors.append(error)
+                    raise
+
+            try:
+                after = reader.capture_ownership(check_cancelled=poll)
+            except BaseException as error:  # noqa: B036 - reconcile exact stop
+                if not any(error is candidate for candidate in callback_errors):
+                    raise
+                try:
+                    reconciled = reader.capture_ownership()
+                except BaseException as reconciliation_error:  # noqa: B036
+                    raise reconciliation_error from error
+                if reconciled != expected_ownership:
+                    raise RuntimeError(
+                        "authenticated directory changed while it was consumed"
+                    ) from error
+                if not reader_was_invalid:
+                    reader._authentication_failed = False
+                raise
         if after != expected_ownership:
             raise RuntimeError("authenticated directory changed while it was consumed")
 
