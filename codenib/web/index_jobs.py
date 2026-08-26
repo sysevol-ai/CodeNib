@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -30,6 +31,14 @@ from .schemas import (
 _PRIMARY_INDEX_ORDER = {"bm25": 0, "vector": 1, "symbol_graph": 2}
 _DEFAULT_EVENT_LIMIT = 64
 _MAX_EVENT_LIMIT = 64
+_MAX_PUBLIC_COUNT = 2**63 - 1
+_PUBLIC_COUNT_FIELDS = (
+    "changed_files",
+    "chunks_reembedded",
+    "chunks_from_cache",
+    "documents",
+)
+_COMMIT_CHARACTERS = frozenset("0123456789abcdef")
 _FAILED_MESSAGES = {
     "worker_resolver_failed": "The configured index worker could not accept this job.",
     "worker_executor_failed": "The index worker failed while preparing artifacts.",
@@ -134,6 +143,36 @@ def _safe_error_code(job: IndexJobRecord) -> str | None:
     return "index_update_failed"
 
 
+def _public_event_payload(event: IndexJobEventRecord) -> dict[str, object]:
+    """Project only explicitly public scalar metrics from an internal event."""
+
+    payload = event.payload
+    if type(payload) is not dict:
+        raise IndexJobReadError("catalog event returned an invalid payload")
+    result: dict[str, object] = {}
+    for field in _PUBLIC_COUNT_FIELDS:
+        value = payload.get(field)
+        if type(value) is int and 0 <= value <= _MAX_PUBLIC_COUNT:
+            result[field] = value
+    prepared = payload.get("prepared")
+    if type(prepared) is bool:
+        result["prepared"] = prepared
+    rate = payload.get("cache_hit_rate")
+    if type(rate) in {int, float}:
+        normalized_rate = float(rate)
+        if math.isfinite(normalized_rate) and 0.0 <= normalized_rate <= 1.0:
+            result["cache_hit_rate"] = normalized_rate
+    commit = payload.get("new_commit")
+    if type(commit) is str:
+        normalized_commit = commit.lower()
+        if (
+            7 <= len(normalized_commit) <= 64
+            and not set(normalized_commit) - _COMMIT_CHARACTERS
+        ):
+            result["new_commit"] = normalized_commit
+    return result
+
+
 def _surface(view: IndexJobViewRecord) -> IndexJobSurface:
     if type(view) is not IndexJobViewRecord:
         raise IndexJobReadError("catalog returned an invalid index job view")
@@ -146,11 +185,21 @@ def _surface(view: IndexJobViewRecord) -> IndexJobSurface:
     )
 
 
-def _event(event: IndexJobEventRecord) -> IndexJobEvent:
+def _event(
+    event: IndexJobEventRecord,
+    *,
+    job_id: str,
+    current_attempt_count: int,
+    requested_views: frozenset[str],
+) -> IndexJobEvent:
     if type(event) is not IndexJobEventRecord:
         raise IndexJobReadError("catalog returned an invalid index job event")
-    if event.view_type is not None and event.view_type not in _PRIMARY_INDEX_ORDER:
-        raise IndexJobReadError("catalog event contains a non-Web index surface")
+    if event.job_id != job_id:
+        raise IndexJobReadError("catalog event escaped its index job")
+    if event.attempt_count > current_attempt_count:
+        raise IndexJobReadError("catalog event names a future index job attempt")
+    if event.view_type is not None and event.view_type not in requested_views:
+        raise IndexJobReadError("catalog event names an unrequested index surface")
     return IndexJobEvent(
         sequence=event.sequence,
         attempt_count=event.attempt_count,
@@ -161,7 +210,7 @@ def _event(event: IndexJobEventRecord) -> IndexJobEvent:
             None if event.effective_mode is None else event.effective_mode.value
         ),
         outcome=None if event.outcome is None else event.outcome.value,
-        payload=event.payload,
+        payload=_public_event_payload(event),
         created_at_ms=event.created_at_ms,
     )
 
@@ -190,6 +239,7 @@ def _project_job(
     )
     if not surfaces or len(surfaces) > len(_PRIMARY_INDEX_ORDER):
         raise IndexJobReadError("catalog returned an invalid Web index job shape")
+    requested_views = frozenset(surface.index_type for surface in surfaces)
 
     raw_events = (
         ()
@@ -202,12 +252,25 @@ def _project_job(
     )
     if type(raw_events) is not tuple:
         raise IndexJobReadError("catalog returned an invalid index job event page")
-    events = [_event(event) for event in raw_events]
+    if len(raw_events) > event_limit:
+        raise IndexJobReadError("catalog event page exceeds the requested limit")
+    events = [
+        _event(
+            event,
+            job_id=job.job_id,
+            current_attempt_count=job.attempt_count,
+            requested_views=requested_views,
+        )
+        for event in raw_events
+    ]
     sequences = [event.sequence for event in events]
     if sequences != sorted(set(sequences)) or any(
         sequence <= after_sequence for sequence in sequences
     ):
         raise IndexJobReadError("catalog returned an incoherent index job event page")
+    attempts = [event.attempt_count for event in events]
+    if attempts != sorted(attempts):
+        raise IndexJobReadError("catalog returned regressing index job attempts")
     next_sequence = sequences[-1] if sequences else after_sequence
     return IndexJobStatusResponse(
         job_id=job.job_id,

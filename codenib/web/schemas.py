@@ -157,12 +157,15 @@ class IndexJobEvent(BaseModel):
 
     @model_validator(mode="after")
     def _require_event_shape(self) -> "IndexJobEvent":
-        result_fields = (self.index_type, self.effective_mode, self.outcome)
+        result_fields = (self.effective_mode, self.outcome)
         if self.kind == "progress" and any(
             value is not None for value in result_fields
         ):
             raise ValueError("progress events cannot carry a view result")
-        if self.kind == "view_result" and any(value is None for value in result_fields):
+        if self.kind == "view_result" and any(
+            value is None
+            for value in (self.index_type, self.effective_mode, self.outcome)
+        ):
             raise ValueError("view-result events require view, mode, and outcome")
         return self
 

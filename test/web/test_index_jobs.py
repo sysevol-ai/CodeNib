@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -26,6 +27,7 @@ from codenib.storage import (
 from codenib.web.index_jobs import (
     CatalogIndexJobReader,
     IndexJobNotFoundError,
+    IndexJobReadError,
     IndexJobRepoBinding,
     overlay_active_job,
 )
@@ -159,6 +161,18 @@ class _Catalog:
         )[:limit]
 
 
+class _UnattestedEventCatalog(_Catalog):
+    def list_job_events(
+        self,
+        job_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 128,
+    ):
+        self.event_calls.append((job_id, after_sequence, limit))
+        return self.events
+
+
 def _reader(catalog: _Catalog) -> CatalogIndexJobReader:
     @contextmanager
     def factory():
@@ -180,7 +194,11 @@ def _events(job: IndexJobRecord) -> tuple[IndexJobEventRecord, ...]:
             kind=IndexJobEventKind.PROGRESS,
             owner_id="private-worker",
             fencing_token=7,
-            payload={"phase": "capture"},
+            view_type="bm25",
+            payload={
+                "changed_files": 2,
+                "phase": "credential-bearing internal detail",
+            },
             created_at_ms=11,
         ),
         IndexJobEventRecord.create(
@@ -233,11 +251,39 @@ def test_catalog_reader_projects_bounded_events_without_worker_authority() -> No
     assert status.status == "running"
     assert status.next_event_sequence == 2
     assert [event.kind for event in status.events] == ["progress", "view_result"]
+    assert status.events[0].index_type == "bm25"
+    assert status.events[0].payload == {"changed_files": 2}
     assert status.events[1].effective_mode == "full"
+    assert status.events[1].payload == {"documents": 8}
     assert catalog.event_calls == [(job.job_id, 0, 2)]
     serialized = status.model_dump_json()
     assert "private-worker" not in serialized
     assert "fencing" not in serialized
+    assert "credential-bearing" not in serialized
+
+
+def test_catalog_reader_rejects_events_outside_the_attested_job() -> None:
+    job = _job()
+    event = _events(job)[0]
+    other = _job(idempotency_key="other")
+    invalid = (
+        (replace(event, job_id=other.job_id), "escaped"),
+        (replace(event, attempt_count=2), "future"),
+        (replace(event, view_type="vector"), "unrequested"),
+    )
+
+    for candidate, message in invalid:
+        catalog = _UnattestedEventCatalog((job,), (candidate,))
+        with pytest.raises(IndexJobReadError, match=message):
+            _reader(catalog).get(job.job_id)
+
+
+def test_catalog_reader_rejects_an_event_page_over_its_requested_limit() -> None:
+    job = _job()
+    catalog = _UnattestedEventCatalog((job,), _events(job))
+
+    with pytest.raises(IndexJobReadError, match="exceeds"):
+        _reader(catalog).get(job.job_id, event_limit=1)
 
 
 def test_catalog_reader_hides_raw_executor_error_messages() -> None:
