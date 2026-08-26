@@ -124,6 +124,33 @@ def test_repo_discovery_applies_exact_selection_before_file_reads(
     assert "src/private/secret.py" not in inspected
 
 
+def test_minified_file_scan_remains_streaming(monkeypatch):
+    chunker = CodeChunker(
+        language="javascript",
+        repo_config=RepoChunkingConfig(
+            languages=["javascript"],
+            minified_line_threshold=10,
+        ),
+    )
+
+    class StreamingSource:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback):
+            return False
+
+        def __iter__(self):
+            return iter(("short\n", "x" * 11))
+
+        def read(self):
+            pytest.fail("minified path scan read the complete file")
+
+    monkeypatch.setattr("builtins.open", lambda *_args, **_kwargs: StreamingSource())
+
+    assert chunker._is_minified_file(Path("bundle.js")) is True
+
+
 def test_repo_language_detection_ignores_excluded_subtrees(tmp_path: Path):
     excluded = tmp_path / "generated" / "main.go"
     excluded.parent.mkdir()

@@ -12,7 +12,7 @@ This file maintains backward compatibility with the old API and adds repository 
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set
 
 # Import from the new modular code chunking system
 from .code_chunking import CodeChunk, create_chunker
@@ -700,7 +700,7 @@ class CodeChunker:
         """
         try:
             with open(file_path, "r", errors="replace") as f:
-                return self._is_minified_source(f.read(), path=str(file_path))
+                return self._has_minified_line(f, path=str(file_path))
         except OSError as exc:
             logger.debug(
                 "Unable to inspect file for minification, treating as not minified: %s (%s)",
@@ -712,8 +712,13 @@ class CodeChunker:
     def _is_minified_source(self, source: str, *, path: str) -> bool:
         """Apply the shared long-line policy to already-read source text."""
 
+        return self._has_minified_line(source.splitlines(keepends=True), path=path)
+
+    def _has_minified_line(self, lines: Iterable[str], *, path: str) -> bool:
+        """Return whether a streamed or retained source has an oversized line."""
+
         threshold = self.repo_config.minified_line_threshold
-        for line in source.splitlines(keepends=True):
+        for line in lines:
             if len(line) > threshold:
                 logger.debug(
                     "Skipping minified file (line > %d chars): %s",
