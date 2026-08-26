@@ -916,6 +916,85 @@ def test_local_exact_posthandoff_failure_delegates_cleanup_to_workspace(
         source_owner.close()
 
 
+def test_local_exact_propagates_cancellation_into_source_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "authority"
+    provider = _require_native_provider(root)
+    source_owner = PublishedWorkspaceReceiptOwner()
+    source_request = _request(root)
+    run_strict_workspace(
+        provider,
+        source_request,
+        receipt_owner=source_owner,
+        operation=lambda session: _write_and_publish(session, b"old"),
+    )
+    request = _request(root, destination_binding=source_owner.destination_binding)
+    output_owner = PublishedWorkspaceReceiptOwner()
+    cancellation = KeyboardInterrupt("cancel during replacement source binding")
+    armed = False
+    forwarded: list[object] = []
+    operation_calls = 0
+
+    def check_cancelled() -> None:
+        if armed:
+            raise cancellation
+
+    def stop_during_bind(*_args: object, **kwargs: object) -> None:
+        nonlocal armed
+        callback = kwargs.pop("check_cancelled")
+        assert set(kwargs) == {
+            "destination_binding",
+            "native_owner",
+            "stage_name",
+            "plan",
+        }
+        assert callable(callback)
+        forwarded.append(callback)
+        armed = True
+        callback()
+
+    def forbidden_operation(_session: StrictWorkspaceSession) -> None:
+        nonlocal operation_calls
+        operation_calls += 1
+
+    monkeypatch.setattr(
+        workspace_provider_module,
+        "_BIND_REPLACEMENT_SOURCE_EXACT",
+        stop_during_bind,
+    )
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            run_strict_workspace(
+                provider,
+                request,
+                receipt_owner=output_owner,
+                operation=forbidden_operation,
+                source_owner=source_owner,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is cancellation
+        assert forwarded == [check_cancelled]
+        assert operation_calls == 0
+        assert output_owner.state == "empty"
+        assert source_owner.active
+        assert (
+            source_owner.consume(
+                lambda _receipt, reader: reader.read_bytes(
+                    "data/result.json",
+                    max_bytes=16,
+                )
+            )
+            == b"old"
+        )
+        assert not tuple(root.glob(".codenib-workspace-stage-*"))
+    finally:
+        output_owner.close()
+        source_owner.close()
+
+
 def test_local_exact_gate_bind_failure_releases_lease_before_handoff(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

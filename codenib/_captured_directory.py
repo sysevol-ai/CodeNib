@@ -2354,6 +2354,7 @@ class OwnedWorkspaceAuthority:
         native_owner: object,
         stage_name: str,
         plan: WorkspacePlan,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """Bind one leased native owner to an active incumbent generation.
 
@@ -2379,6 +2380,10 @@ class OwnedWorkspaceAuthority:
             is not _PUBLISHED_WORKSPACE_DESTINATION_BINDING_TYPE
         ):
             raise TypeError("workspace destination binding is invalid")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError(
+                "workspace replacement binding cancellation check must be callable"
+            )
         self._reject_reentrant("bind replacement source")
         detached_plan = _snapshot_workspace_plan(plan)
         destination = lexical_directory_path(destination_binding.destination)
@@ -2409,9 +2414,17 @@ class OwnedWorkspaceAuthority:
                 raise RuntimeError(
                     "workspace replacement source binding fields changed"
                 )
-            source_ownership = capture_ownership_exact(
-                reader,
-                allow_empty_root=True,
+            source_ownership = (
+                capture_ownership_exact(
+                    reader,
+                    allow_empty_root=True,
+                )
+                if check_cancelled is None
+                else capture_ownership_exact(
+                    reader,
+                    allow_empty_root=True,
+                    check_cancelled=check_cancelled,
+                )
             )
             if source_ownership != destination_binding.ownership:
                 raise RuntimeError("workspace replacement source generation changed")
@@ -2423,6 +2436,7 @@ class OwnedWorkspaceAuthority:
                     destination_binding=destination_binding,
                     source_ownership=source_ownership,
                     native_owner=owner,
+                    check_cancelled=check_cancelled,
                 )
             )
 
@@ -2456,6 +2470,7 @@ class OwnedWorkspaceAuthority:
         destination_binding: PublishedWorkspaceDestinationBinding,
         source_ownership: _TreeOwnership,
         native_owner: object,
+        check_cancelled: Callable[[], None] | None,
     ) -> None:
         self._require_owner_pid()
         if self._state != "empty" or self._native_owner is not None:
@@ -2482,12 +2497,23 @@ class OwnedWorkspaceAuthority:
             )
             parent_identity = publication_parent_identity(parent_descriptor)
             incumbent_identity = _root_identity(os.fstat(incumbent_descriptor))
-            native_incumbent = _capture_posix_directory_descriptor(
-                incumbent_descriptor,
-                destination,
-                required_root_file=None,
-                allow_empty_root=True,
-                entry_policy=None,
+            native_incumbent = (
+                _capture_posix_directory_descriptor(
+                    incumbent_descriptor,
+                    destination,
+                    required_root_file=None,
+                    allow_empty_root=True,
+                    entry_policy=None,
+                )
+                if check_cancelled is None
+                else _capture_posix_directory_descriptor(
+                    incumbent_descriptor,
+                    destination,
+                    required_root_file=None,
+                    allow_empty_root=True,
+                    entry_policy=None,
+                    check_cancelled=check_cancelled,
+                )
             )
             if parent_identity != destination_binding.parent_identity:
                 raise RuntimeError(
@@ -4119,10 +4145,12 @@ class OwnedWorkspaceAuthority:
             ):
                 raise RuntimeError("published workspace root handle changed")
             authority.verify_path_binding()
+            postflight_cancellation: BaseException | None = None
 
             def exact_reader(
                 reader: PublicationDirectoryReader,
             ) -> _WorkspaceResult:
+                nonlocal postflight_cancellation
                 before = reader.capture_ownership(
                     allow_empty_root=True,
                     check_cancelled=check_cancelled,
@@ -4132,10 +4160,41 @@ class OwnedWorkspaceAuthority:
                 if check_cancelled is not None:
                     check_cancelled()
                 result = callback(receipt, reader)
-                after = reader.capture_ownership(
-                    allow_empty_root=True,
-                    check_cancelled=check_cancelled,
-                )
+                if check_cancelled is None:
+                    after = reader.capture_ownership(
+                        allow_empty_root=True,
+                    )
+                else:
+                    final_scan_cancellation: BaseException | None = None
+                    reader_was_invalid = reader._authentication_failed
+
+                    def check_final_scan_cancelled() -> None:
+                        nonlocal final_scan_cancellation
+                        try:
+                            check_cancelled()
+                        except BaseException as cancellation:  # noqa: B036
+                            final_scan_cancellation = cancellation
+                            raise
+
+                    try:
+                        after = reader.capture_ownership(
+                            allow_empty_root=True,
+                            check_cancelled=check_final_scan_cancelled,
+                        )
+                    except BaseException as final_scan_error:  # noqa: B036
+                        if final_scan_error is not final_scan_cancellation:
+                            raise
+                        after = reader.capture_ownership(
+                            allow_empty_root=True,
+                        )
+                        if after != before:
+                            raise RuntimeError(
+                                "published workspace changed during receipt "
+                                "consumption"
+                            ) from final_scan_error
+                        if not reader_was_invalid:
+                            reader._authentication_failed = False
+                        postflight_cancellation = final_scan_error
                 if after != before:
                     raise RuntimeError(
                         "published workspace changed during receipt consumption"
@@ -4157,6 +4216,8 @@ class OwnedWorkspaceAuthority:
                 raise RuntimeError(
                     "published workspace root changed during receipt consumption"
                 )
+            if postflight_cancellation is not None:
+                raise postflight_cancellation
             return result
 
         return self._lock.run(consume_locked)

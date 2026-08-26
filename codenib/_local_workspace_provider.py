@@ -332,12 +332,21 @@ class LocalWorkspaceProvider:
             # This call synchronously consumes the active source owner and is
             # the sole native-owner handoff. Candidate mutation is impossible
             # before it returns successfully.
-            replacement_source.bind(
-                workspace,
-                native_owner,
-                stage_name,
-                detached_plan,
-            )
+            if check_cancelled is None:
+                replacement_source.bind(
+                    workspace,
+                    native_owner,
+                    stage_name,
+                    detached_plan,
+                )
+            else:
+                replacement_source.bind(
+                    workspace,
+                    native_owner,
+                    stage_name,
+                    detached_plan,
+                    check_cancelled=check_cancelled,
+                )
             self._require_private_root()
             provision_deadline_ns = time.monotonic_ns() + self.provision_timeout_ns
             if check_cancelled is None:

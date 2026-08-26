@@ -1246,12 +1246,13 @@ artifact scans, workspace refresh/seal/staged validation, bundle planning, and
 CAS ingestion. Provider support and gate activation precede one final
 pre-entry poll; the interruptible provider protocol then requires the same
 callback, so a legacy provider cannot silently run without it. Local carries
-the stop through plan detachment, native provision/replacement loops,
-descriptor adoption, skeleton capture, and native directory sealing. Returned
-records and receipts are attested before a newly
-observed stop can win; the staged namespace transition through authenticated
-receipt creation remains an uninterruptible commit section, and an exact
-cooperative stop does not poison the retained repository source.
+the stop through plan detachment, replacement-source receipt and incumbent
+scans, native provision/replacement loops, descriptor adoption, skeleton
+capture, and native directory sealing. Returned records, receipts, and
+receipt-consumption postflights are attested before a newly observed stop can
+win; the staged namespace transition through authenticated receipt creation
+remains an uninterruptible commit section, and an exact cooperative stop does
+not poison the retained repository source.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts

@@ -300,10 +300,16 @@ class _ReplacementSourceGate:
         native_owner: object,
         stage_name: str,
         plan: WorkspacePlan,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """Consume and bind the active source without returning its authority."""
 
         self._require_owner_pid()
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError(
+                "strict workspace replacement cancellation check must be callable"
+            )
         if self._lock.held_by_current_thread():
             raise RuntimeError("strict workspace replacement source bind is reentrant")
 
@@ -333,14 +339,25 @@ class _ReplacementSourceGate:
                     "strict workspace replacement source binding changed"
                 )
             try:
-                result = self._bind_replacement_source(
-                    workspace,
-                    self._source_owner,
-                    destination_binding=self._binding,
-                    native_owner=native_owner,
-                    stage_name=stage_name,
-                    plan=plan,
-                )
+                if check_cancelled is None:
+                    result = self._bind_replacement_source(
+                        workspace,
+                        self._source_owner,
+                        destination_binding=self._binding,
+                        native_owner=native_owner,
+                        stage_name=stage_name,
+                        plan=plan,
+                    )
+                else:
+                    result = self._bind_replacement_source(
+                        workspace,
+                        self._source_owner,
+                        destination_binding=self._binding,
+                        native_owner=native_owner,
+                        stage_name=stage_name,
+                        plan=plan,
+                        check_cancelled=check_cancelled,
+                    )
                 if result is not None:
                     raise RuntimeError(
                         "strict workspace replacement source bind result changed"
