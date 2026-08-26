@@ -23,6 +23,7 @@ import zipfile
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -347,6 +348,361 @@ def _zip_tree(source: Path, output: Path, *, prefix: str = "") -> None:
             if path.is_file():
                 relative = path.relative_to(source).as_posix()
                 archive.write(path, f"{prefix}{relative}")
+
+
+def test_context_record_derivation_stops_before_future_record() -> None:
+    first = runtime_module.TreeFileRecord(
+        path="first.json",
+        mode=0o644,
+        size=1,
+        sha256="a" * 64,
+    )
+    stop = RuntimeError("exact context record cancellation")
+    touched_poison = False
+
+    class PoisonRecord:
+        @property
+        def path(self) -> str:
+            nonlocal touched_poison
+            touched_poison = True
+            raise AssertionError("future context record was consumed after stop")
+
+    with pytest.raises(RuntimeError) as stopped:
+        runtime_module._ownership_record_map(
+            (first, PoisonRecord()),  # type: ignore[arg-type]
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+        )
+
+    assert stopped.value is stop
+    assert not touched_poison
+
+
+def test_context_inventory_derivation_stops_before_future_path(
+    tmp_path: Path,
+) -> None:
+    stop = RuntimeError("exact context inventory cancellation")
+    touched_poison = False
+
+    class PoisonInventory:
+        def __len__(self) -> int:
+            return 2
+
+        def __iter__(self) -> object:
+            nonlocal touched_poison
+            yield "first.json"
+            touched_poison = True
+            raise AssertionError("future inventory path was consumed after stop")
+
+    with pytest.raises(RuntimeError) as stopped:
+        runtime_module._validate_view_payloads(
+            tmp_path,
+            object(),  # type: ignore[arg-type]
+            PoisonInventory(),  # type: ignore[arg-type]
+            views=(),
+            require_document_source_paths=True,
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+        )
+
+    assert stopped.value is stop
+    assert not touched_poison
+
+
+@pytest.mark.parametrize("tail", [b"", b"TRAIL", b",]"])
+def test_context_document_tail_attestation_precedes_final_stop(
+    monkeypatch: pytest.MonkeyPatch,
+    tail: bytes,
+) -> None:
+    closing = b"]" if tail != b",]" else b""
+    payload = b'[{"page_content":"x","metadata":{"file":"sample.py"}}' + closing
+    payload += tail
+    stop = RuntimeError("exact final context document cancellation")
+    real_source_path = runtime_module._source_path
+    armed = False
+
+    class Reader:
+        @contextmanager
+        def open_file(self, *_args: object, **_kwargs: object) -> object:
+            yield io.BytesIO(payload)
+
+    def observed_source_path(value: object, *, label: str) -> str:
+        nonlocal armed
+        result = real_source_path(value, label=label)
+        armed = True
+        return result
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    monkeypatch.setattr(runtime_module, "_source_path", observed_source_path)
+
+    if tail:
+        message = "trailing data" if tail == b"TRAIL" else "trailing JSON array comma"
+        with pytest.raises(ValueError, match=message):
+            runtime_module._document_source_paths(
+                Reader(),  # type: ignore[arg-type]
+                "documents.json",
+                label="documents",
+                max_bytes=len(payload),
+                require_file=True,
+                check_cancelled=check_cancelled,
+            )
+        assert not armed
+    else:
+        with pytest.raises(RuntimeError) as stopped:
+            runtime_module._document_source_paths(
+                Reader(),  # type: ignore[arg-type]
+                "documents.json",
+                label="documents",
+                max_bytes=len(payload),
+                require_file=True,
+                check_cancelled=check_cancelled,
+            )
+        assert stopped.value is stop
+        assert armed
+
+
+def test_context_record_mismatch_precedes_stop_armed_by_current_record() -> None:
+    first = runtime_module.TreeFileRecord(
+        path="first.json",
+        mode=0o644,
+        size=1,
+        sha256="a" * 64,
+    )
+    stop = RuntimeError("late context record cancellation")
+    armed = False
+
+    class MismatchedRecord:
+        path = "second.json"
+
+        @property
+        def size(self) -> int:
+            nonlocal armed
+            armed = True
+            return 2
+
+        sha256 = "b" * 64
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(ValueError, match="file digest mismatch: second.json"):
+        runtime_module._attest_inventory_records(
+            {
+                CONTEXT_ARTIFACT_MANIFEST: runtime_module.TreeFileRecord(
+                    path=CONTEXT_ARTIFACT_MANIFEST,
+                    mode=0o644,
+                    size=1,
+                    sha256="c" * 64,
+                ),
+                "first.json": first,
+                "second.json": MismatchedRecord(),  # type: ignore[dict-item]
+            },
+            {
+                "first.json": (1, "a" * 64),
+                "second.json": (1, "b" * 64),
+            },
+            check_cancelled=check_cancelled,
+        )
+
+    assert armed
+
+
+@pytest.mark.parametrize("mutate_before_capture", [False, True])
+def test_context_initial_cancellation_reconciles_publication_ownership(
+    tmp_path: Path,
+    mutate_before_capture: bool,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    stop = KeyboardInterrupt("exact initial context cancellation")
+    fired = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if fired:
+            raise stop
+        fired = True
+        if mutate_before_capture:
+            (artifact / CONTEXT_ARTIFACT_MANIFEST).write_text("{}\n", encoding="utf-8")
+        raise stop
+
+    def verify(reader: PublicationDirectoryReader) -> object:
+        return runtime_module.verify_context_artifact_reader(
+            reader,
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_before_capture:
+        with pytest.raises((RuntimeError, ValueError), match="changed") as failed:
+            reopen_authenticated_directory(artifact, ownership, verify)
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(KeyboardInterrupt) as stopped:
+            reopen_authenticated_directory(artifact, ownership, verify)
+        assert stopped.value is stop
+    assert fired
+
+
+@pytest.mark.parametrize("error_type", [ValueError, TypeError, KeyError])
+def test_context_manifest_read_preserves_exact_cancellation_error(
+    error_type: type[BaseException],
+) -> None:
+    stop = error_type("exact context manifest cancellation")
+    poll = runtime_module._CancellationPoll(lambda: (_ for _ in ()).throw(stop))
+
+    class StoppedReader:
+        _check_cancelled = poll
+
+        def read_bytes(self, *_args: object, **_kwargs: object) -> bytes:
+            poll()
+            raise AssertionError("cancellation callback unexpectedly returned")
+
+    with pytest.raises(error_type) as stopped:
+        runtime_module._validate_manifest(
+            Path("/__context__"),
+            StoppedReader(),  # type: ignore[arg-type]
+            {
+                "manifest": {
+                    "repository_path": "source",
+                    "paths": "artifact-relative-posix",
+                    "path": runtime_module.MANIFEST_FILENAME,
+                }
+            },
+            commit="a" * 40,
+            source_fingerprint=f"sha256-v2:{'b' * 64}",
+            views=("bm25",),
+            inventoried_paths={runtime_module.MANIFEST_FILENAME: None},
+            expected_manifest_version=runtime_module.MANIFEST_VERSION,
+            check_cancelled=poll,
+        )
+
+    assert stopped.value is stop
+
+
+@pytest.mark.parametrize("mutate_after_capture", [False, True])
+def test_context_reader_cancellation_reconciles_final_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate_after_capture: bool,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    real_record_map = runtime_module._ownership_record_map
+    active = False
+    fired = False
+    stop = KeyboardInterrupt("exact context reader cancellation")
+
+    def observed_record_map(
+        records: tuple[runtime_module.TreeFileRecord, ...],
+        *,
+        check_cancelled: Callable[[], None] | None,
+    ) -> dict[str, runtime_module.TreeFileRecord]:
+        nonlocal active
+        active = True
+        try:
+            return real_record_map(
+                records,
+                check_cancelled=check_cancelled,
+            )
+        finally:
+            active = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if active and not fired:
+            fired = True
+            if mutate_after_capture:
+                (artifact / "views" / "bm25" / "documents.json").write_text(
+                    "[]\n",
+                    encoding="utf-8",
+                )
+            raise stop
+
+    monkeypatch.setattr(
+        runtime_module,
+        "_ownership_record_map",
+        observed_record_map,
+    )
+
+    def verify(reader: PublicationDirectoryReader) -> object:
+        return runtime_module.verify_context_artifact_reader(
+            reader,
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_after_capture:
+        with pytest.raises((RuntimeError, ValueError), match="changed") as failed:
+            reopen_authenticated_directory(artifact, ownership, verify)
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(KeyboardInterrupt) as stopped:
+            reopen_authenticated_directory(artifact, ownership, verify)
+        assert stopped.value is stop
+    assert fired
+
+
+@pytest.mark.parametrize("mutate_during_read", [False, True])
+def test_context_file_read_cancellation_reconciles_final_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate_during_read: bool,
+) -> None:
+    _repo, artifact, _commit = _bm25_artifact(tmp_path)
+    ownership = capture_directory_ownership(artifact)
+    real_read_bytes = runtime_module._PublicationContextReader.read_bytes
+    active = False
+    fired = False
+    stop = KeyboardInterrupt("exact context file-read cancellation")
+
+    def observed_read_bytes(
+        reader: object,
+        *args: object,
+        **kwargs: object,
+    ) -> bytes:
+        nonlocal active
+        active = True
+        try:
+            return real_read_bytes(reader, *args, **kwargs)  # type: ignore[arg-type]
+        finally:
+            active = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if active and not fired:
+            fired = True
+            if mutate_during_read:
+                (artifact / "views" / "bm25" / "documents.json").write_text(
+                    "[]\n",
+                    encoding="utf-8",
+                )
+            raise stop
+
+    monkeypatch.setattr(
+        runtime_module._PublicationContextReader,
+        "read_bytes",
+        observed_read_bytes,
+    )
+
+    def verify(reader: PublicationDirectoryReader) -> object:
+        return runtime_module.verify_context_artifact_reader(
+            reader,
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_during_read:
+        with pytest.raises((RuntimeError, ValueError), match="changed") as failed:
+            reopen_authenticated_directory(artifact, ownership, verify)
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(KeyboardInterrupt) as stopped:
+            reopen_authenticated_directory(artifact, ownership, verify)
+        assert stopped.value is stop
+    assert fired
 
 
 def test_verify_and_bind_artifact_before_loading_bm25(tmp_path: Path) -> None:

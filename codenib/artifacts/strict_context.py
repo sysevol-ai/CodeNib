@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -56,7 +57,10 @@ from .portable_views import (
     _validate_content_bound_portable_query_view_reader_with_identity,
 )
 from .runtime import verify_context_artifact_reader
-from .security import _assert_publishable_tree_reader_interruptibly
+from .security import (
+    _assert_publishable_tree_reader_interruptibly,
+    _interitem_cancellation,
+)
 from .strict_bm25 import (
     _assert_authenticated_publishable_json_value,
     _environment_snapshot,
@@ -71,6 +75,47 @@ _STRICT_CONTEXT_PLAN_DOMAIN = "codenib-portable-context-strict-workspace-v1"
 _MISSING = object()
 _JSON_CANCEL_POLL_CHUNKS = 256
 _Item = TypeVar("_Item")
+
+
+class _InterruptibleMapping(Mapping[str, Any]):
+    """Read-only mapping facade that polls before each future source key."""
+
+    def __init__(
+        self,
+        source: Mapping[str, Any],
+        check_cancelled: Callable[[], None],
+    ) -> None:
+        self._source = source
+        self._check_cancelled = check_cancelled
+
+    def __getitem__(self, key: str) -> Any:
+        return self._source[key]
+
+    def __iter__(self) -> Iterator[str]:
+        yield from _interitem_cancellation(self._source, self._check_cancelled)
+
+    def __len__(self) -> int:
+        return len(self._source)
+
+
+class _InterruptibleSequence(Sequence[Any]):
+    """Read-only sequence facade that polls between completed items."""
+
+    def __init__(
+        self,
+        source: Sequence[Any],
+        check_cancelled: Callable[[], None],
+    ) -> None:
+        self._source = source
+        self._check_cancelled = check_cancelled
+
+    def __getitem__(self, index: int) -> Any:
+        if index and index < len(self._source):
+            self._check_cancelled()
+        return self._source[index]
+
+    def __len__(self) -> int:
+        return len(self._source)
 
 
 def _interruptible_chunks(
@@ -467,16 +512,85 @@ class _FrozenContextInputs:
     environment: dict[str, str]
 
 
-def _snapshot_manifest(manifest: RepoManifest) -> dict[str, Any]:
+def _interruptible_manifest_copy(
+    manifest: RepoManifest,
+    check_cancelled: Callable[[], None],
+) -> RepoManifest:
+    """Wrap caller-owned manifest collections without mutating the caller."""
+
+    copied = copy.copy(manifest)
+    copied.languages = _InterruptibleSequence(
+        manifest.languages,
+        check_cancelled,
+    )  # type: ignore[assignment]
+    copied.capabilities = _InterruptibleMapping(
+        manifest.capabilities,
+        check_cancelled,
+    )  # type: ignore[assignment]
+    copied_indexes: dict[str, Any] = {}
+    for name, entry in _interitem_cancellation(
+        manifest.indexes.items(),
+        check_cancelled,
+    ):
+        copied_entry = copy.copy(entry)
+        copied_entry.config = _InterruptibleMapping(
+            entry.config,
+            check_cancelled,
+        )
+        copied_entry.metadata = _InterruptibleMapping(
+            entry.metadata,
+            check_cancelled,
+        )
+        copied_indexes[name] = copied_entry
+    copied.indexes = _InterruptibleMapping(
+        copied_indexes,
+        check_cancelled,
+    )  # type: ignore[assignment]
+    if copied.source_selection is not None:
+        copied_selection = copy.copy(copied.source_selection)
+        object.__setattr__(
+            copied_selection,
+            "exclude_subtrees",
+            _InterruptibleSequence(
+                copied.source_selection.exclude_subtrees,
+                check_cancelled,
+            ),
+        )
+        copied.source_selection = copied_selection
+    return copied
+
+
+def _snapshot_manifest(
+    manifest: RepoManifest,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     if type(manifest) is not RepoManifest:
         raise TypeError("strict context manifest must be a RepoManifest")
-    snapshot = _json_object_snapshot(
-        manifest.to_dict(),
-        label="strict context repository manifest",
-    )
+    if check_cancelled is None:
+        snapshot = _json_object_snapshot(
+            manifest.to_dict(),
+            label="strict context repository manifest",
+        )
+    else:
+        interruptible_manifest = _interruptible_manifest_copy(
+            manifest,
+            check_cancelled,
+        )
+        snapshot = _json_object_snapshot(
+            interruptible_manifest.to_dict(),
+            label="strict context repository manifest",
+            check_cancelled=check_cancelled,
+        )
     try:
         reconstructed = RepoManifest.from_dict(snapshot)
-        canonical = reconstructed.to_dict()
+        if check_cancelled is None:
+            canonical = reconstructed.to_dict()
+        else:
+            canonical = _interruptible_manifest_copy(
+                reconstructed,
+                check_cancelled,
+            ).to_dict()
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError("strict context repository manifest is invalid") from exc
     if canonical != snapshot:
@@ -486,9 +600,35 @@ def _snapshot_manifest(manifest: RepoManifest) -> dict[str, Any]:
 
 def _snapshot_view_generations(
     view_generations: Mapping[str, PublishedWorkspaceReceiptOwner],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[tuple[str, PublishedWorkspaceReceiptOwner], ...]:
     if not isinstance(view_generations, Mapping):
         raise TypeError("strict context view generations must be a mapping")
+    if check_cancelled is not None:
+        generations: dict[str, PublishedWorkspaceReceiptOwner] = {}
+        owner_ids: set[int] = set()
+        for name, owner in _interitem_cancellation(
+            view_generations.items(),
+            check_cancelled,
+        ):
+            if not isinstance(name, str):
+                raise TypeError("strict context view names must be text")
+            if name not in PORTABLE_CONTEXT_VIEWS:
+                raise ValueError(f"strict context does not support views: {name}")
+            if type(owner) is not PublishedWorkspaceReceiptOwner:
+                raise TypeError("strict context views must be workspace receipt owners")
+            if id(owner) in owner_ids:
+                raise ValueError(
+                    "strict context views must use distinct receipt owners"
+                )
+            if not owner.active:
+                raise RuntimeError("strict context view generation must be active")
+            generations[name] = owner
+            owner_ids.add(id(owner))
+        if not generations:
+            raise ValueError("strict context requires at least one portable view")
+        return tuple(sorted(generations.items()))
     generations = dict(view_generations)
     if not generations:
         raise ValueError("strict context requires at least one portable view")
@@ -519,6 +659,8 @@ def _freeze_inputs(
     environ: Mapping[str, str] | None,
     check_cancelled: Callable[[], None] | None = None,
 ) -> _FrozenContextInputs:
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("strict context cancellation check must be callable")
     if type(repository_source) is not RepositorySourceBinding:
         raise TypeError("strict context repository source has an invalid type")
     if not repository_source.usable:
@@ -539,13 +681,30 @@ def _freeze_inputs(
         normalized_repository
     ):
         raise ValueError("strict context repository must be a canonical slug")
+    if check_cancelled is None:
+        manifest_snapshot = _snapshot_manifest(manifest)
+        generations = _snapshot_view_generations(view_generations)
+        environment = _environment_snapshot(environ)
+    else:
+        manifest_snapshot = _snapshot_manifest(
+            manifest,
+            check_cancelled=check_cancelled,
+        )
+        generations = _snapshot_view_generations(
+            view_generations,
+            check_cancelled=check_cancelled,
+        )
+        environment = _environment_snapshot(
+            environ,
+            check_cancelled=check_cancelled,
+        )
     return _FrozenContextInputs(
-        manifest=_snapshot_manifest(manifest),
+        manifest=manifest_snapshot,
         repository=normalized_repository,
         repository_source=repository_source,
         repository_identity=repository_identity,
-        view_generations=_snapshot_view_generations(view_generations),
-        environment=_environment_snapshot(environ),
+        view_generations=generations,
+        environment=environment,
     )
 
 
@@ -1195,13 +1354,52 @@ def _require_expected_plan(
 
 def _candidate_inventory(
     planned: PlannedContextArtifact,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[tuple[str, str], ...]:
-    directories = tuple(
-        (directory.path.as_posix(), "directory")
-        for directory in planned.plan.directories
-    )
-    files = tuple((record.path, "file") for record in planned.output_records)
-    return tuple(sorted((*directories, *files)))
+    """Merge the two canonical plan inventories without one opaque sort."""
+
+    directories = planned.plan.directories
+    files = planned.output_records
+    directory_index = 0
+    file_index = 0
+    inventory: list[tuple[str, str]] = []
+    item_count = len(directories) + len(files)
+
+    while directory_index < len(directories) or file_index < len(files):
+        choose_directory = file_index >= len(files) or (
+            directory_index < len(directories)
+            and directories[directory_index].path.as_posix() <= files[file_index].path
+        )
+        if choose_directory:
+            directory = directories[directory_index]
+            inventory.append((directory.path.as_posix(), "directory"))
+            directory_index += 1
+        else:
+            record = files[file_index]
+            inventory.append((record.path, "file"))
+            file_index += 1
+        if check_cancelled is not None and len(inventory) < item_count:
+            check_cancelled()
+
+    return tuple(inventory)
+
+
+def _output_records_by_path(
+    records: Sequence[TreeFileRecord],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> dict[str, TreeFileRecord]:
+    """Index exact output records, polling only before a future record."""
+
+    by_path: dict[str, TreeFileRecord] = {}
+    record_count = len(records)
+    for index in range(record_count):
+        record = records[index]
+        by_path[record.path] = record
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+    return by_path
 
 
 def _validate_candidate(
@@ -1215,9 +1413,19 @@ def _validate_candidate(
     before = candidate.capture_ownership(
         check_cancelled=check_cancelled,
     )
-    records = tuple(directory_ownership_file_records(before))  # type: ignore[arg-type]
-    inventory = tuple(directory_ownership_inventory(before))  # type: ignore[arg-type]
-    if records != planned.output_records or inventory != _candidate_inventory(planned):
+    records = directory_ownership_file_records(before)  # type: ignore[arg-type]
+    inventory = directory_ownership_inventory(before)  # type: ignore[arg-type]
+    if records != planned.output_records:
+        raise RuntimeError("strict context candidate differs from its exact plan")
+    expected_inventory = (
+        _candidate_inventory(planned)
+        if check_cancelled is None
+        else _candidate_inventory(
+            planned,
+            check_cancelled=check_cancelled,
+        )
+    )
+    if inventory != expected_inventory:
         raise RuntimeError("strict context candidate differs from its exact plan")
     _assert_publishable_tree_reader_interruptibly(
         candidate,
@@ -1374,9 +1582,14 @@ def _publish_frozen(
             )
         )
         with source_session:
-            expected_by_path = {
-                record.path: record for record in planned.output_records
-            }
+            expected_by_path = (
+                _output_records_by_path(planned.output_records)
+                if check_cancelled is None
+                else _output_records_by_path(
+                    planned.output_records,
+                    check_cancelled=check_cancelled,
+                )
+            )
             written = [
                 session.write_file(MANIFEST_FILENAME, (planned.manifest_payload,)),
                 session.write_file(

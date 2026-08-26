@@ -2213,6 +2213,161 @@ def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
         fixture.close()
 
 
+def test_local_compiler_cache_scope_entry_stop_is_exact_and_mutation_free(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    publication_calls: list[str] = []
+    provider = LocalWorkspaceProvider(fixture.workspace)
+    scan_reached = threading.Event()
+    release_scan = threading.Event()
+    real_capture = job_resources_module.capture_repository_source
+    real_update = source_fingerprint_module._update_inventory_record
+    callbacks: list[Callable[[], None]] = []
+    failures: list[BaseException] = []
+    cleanup_resources: list[object] = []
+    outcomes: list[object] = []
+    worker_failures: list[BaseException] = []
+    active = True
+
+    def observe_capture(*args, **kwargs):
+        callback = kwargs.get("check_cancelled")
+        owner_sink = kwargs.get("_source_owner")
+        assert callable(callback)
+        assert callable(owner_sink)
+        callbacks.append(callback)
+
+        def observe_owner(resource: object) -> None:
+            cleanup_resources.append(resource)
+            owner_sink(resource)
+
+        kwargs["_source_owner"] = observe_owner
+        try:
+            return real_capture(*args, **kwargs)
+        except BaseException as exc:  # noqa: B036 - exact identity asserted below
+            failures.append(exc)
+            raise
+
+    def pause_after_first_record(*args, **kwargs):
+        real_update(*args, **kwargs)
+        if not active:
+            return
+        if scan_reached.is_set():
+            raise AssertionError("cancelled scope-entry scan consumed another record")
+        scan_reached.set()
+        assert release_scan.wait(timeout=3)
+
+    monkeypatch.setattr(
+        job_resources_module,
+        "capture_repository_source",
+        observe_capture,
+    )
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_update_inventory_record",
+        pause_after_first_record,
+    )
+    try:
+        try:
+            provider.require_support()
+        except UnsupportedWorkspaceCreation as exc:
+            pytest.skip(str(exc))
+        with _JobTrackingCAS(tmp_path / "cas") as cas:
+            with SQLiteCatalog(catalog_path) as catalog:
+                repository_id, source_revision_id, profile_id = (
+                    _register_bm25_job_subject(catalog, fixture, plan)
+                )
+                queued = _create_bm25_job(
+                    catalog,
+                    repository_id=repository_id,
+                    source_revision_id=source_revision_id,
+                    profile_id=profile_id,
+                )
+
+            target = LocalCompilerCacheJobTarget(
+                repository_root=fixture.repository,
+                cache_dir=fixture.cache,
+                workspace_provider=provider,
+                repository_key=_REPOSITORY_KEY,
+                environ={},
+            )
+            worker = IndexJobWorker(
+                catalog_factory=_CompilerCacheWorkerFactory(
+                    catalog_path,
+                    publication_calls,
+                ),
+                object_store=cas,
+                resolver=CompilerCacheJobResolver(
+                    resource_factory=LocalCompilerCacheJobResourceFactory((target,)),
+                    object_store=cas,
+                ),
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "scope-entry-stop-worker",
+            )
+
+            def run_worker() -> None:
+                try:
+                    outcomes.append(worker.run_once())
+                except BaseException as exc:  # noqa: B036 - asserted below
+                    worker_failures.append(exc)
+
+            thread = threading.Thread(target=run_worker)
+            thread.start()
+            assert scan_reached.wait(timeout=3)
+            assert len(callbacks) == 1
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                catalog.request_job_cancel(queued.job_id)
+
+            expected_stop: BaseException | None = None
+            for _attempt in range(300):
+                try:
+                    callbacks[0]()
+                except BaseException as exc:  # noqa: B036 - exact stop probe
+                    expected_stop = exc
+                    break
+                threading.Event().wait(0.01)
+            assert expected_stop is not None
+            release_scan.set()
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+
+            assert worker_failures == []
+            assert len(outcomes) == 1
+            assert outcomes[0].disposition is IndexJobWorkerDisposition.CANCELLED
+            assert len(failures) == 1
+            assert failures[0] is expected_stop
+            assert type(expected_stop).__name__ == "_CompilerCacheJobStopped"
+            with pytest.raises(RuntimeError) as replay:
+                callbacks[0]()
+            assert replay.value is expected_stop
+            assert cleanup_resources
+            assert all(resource.closed for resource in cleanup_resources)
+            assert publication_calls == []
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert not tuple(fixture.workspace.glob(".codenib-cache-job-*"))
+            assert not tuple(fixture.workspace.glob(".*.discarded-*"))
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                cancelled = catalog.get_job(queued.job_id)
+                assert cancelled.status is IndexJobStatus.CANCELLED
+                assert cancelled.result_snapshot_id is None
+
+            active = False
+            with capture_repository_source(
+                fixture.repository,
+                exclude_roots=(fixture.cache,),
+            ) as reusable:
+                assert reusable.fingerprint == fixture.source.fingerprint
+    finally:
+        active = False
+        release_scan.set()
+        fixture.close()
+
+
 @pytest.mark.parametrize("executor_fails", (False, True))
 def test_local_compiler_cache_job_factory_retains_failed_cleanup_owner(
     tmp_path: Path,

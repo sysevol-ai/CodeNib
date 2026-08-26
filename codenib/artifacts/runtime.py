@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import heapq
 import json
 import math
 import re
@@ -14,7 +15,7 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterator, Mapping, NoReturn
+from typing import Any, Callable, Iterable, Iterator, Mapping, NoReturn, TypeVar
 
 from .._atomic_directory import (
     PublicationAuthenticatedFile,
@@ -68,6 +69,39 @@ _DEFAULT_MAX_FILES = 100_000
 _DEFAULT_MAX_BYTES = 64 * 1024 * 1024 * 1024
 _MAX_METADATA_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_BYTES = 256 * 1024 * 1024
+_CANCELLATION_SORT_CHUNK = 1_024
+
+_T = TypeVar("_T")
+
+
+class _CancellationPoll:
+    """Record the exact exception raised by one cancellation callback."""
+
+    __slots__ = ("_callback", "_raised_exceptions")
+
+    def __init__(self, callback: Callable[[], None]) -> None:
+        self._callback = callback
+        self._raised_exceptions: list[BaseException] = []
+
+    def __call__(self) -> None:
+        try:
+            self._callback()
+        except BaseException as exc:  # noqa: B036 - identity is authoritative
+            if not any(candidate is exc for candidate in self._raised_exceptions):
+                self._raised_exceptions.append(exc)
+            raise
+
+    def raised_exactly(self, exc: BaseException) -> bool:
+        return any(candidate is exc for candidate in self._raised_exceptions)
+
+
+def _is_cancellation_failure(
+    check_cancelled: Callable[[], None] | None,
+    exc: BaseException,
+) -> bool:
+    return isinstance(check_cancelled, _CancellationPoll) and (
+        check_cancelled.raised_exactly(exc)
+    )
 
 
 class _InterruptibleReader:
@@ -84,6 +118,170 @@ class _InterruptibleReader:
     def read(self, size: int = -1) -> bytes:
         self._check_cancelled()
         return self._source.read(size)
+
+
+def _interitem_cancellation(
+    values: Iterable[_T],
+    *,
+    count: int,
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[_T]:
+    """Poll after a consumed item and before requesting another one."""
+
+    for index, value in enumerate(values):
+        yield value
+        if check_cancelled is not None and index + 1 < count:
+            check_cancelled()
+
+
+def _sorted_strings_interruptibly(
+    values: Iterable[str],
+    *,
+    count: int,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[str, ...]:
+    """Sort a bounded string collection without one monolithic large pass."""
+
+    if check_cancelled is None:
+        return tuple(sorted(values))
+
+    runs: list[tuple[str, ...]] = []
+    pending: list[str] = []
+    for value in _interitem_cancellation(
+        values,
+        count=count,
+        check_cancelled=check_cancelled,
+    ):
+        pending.append(value)
+        if len(pending) == _CANCELLATION_SORT_CHUNK:
+            pending.sort()
+            runs.append(tuple(pending))
+            pending.clear()
+    if pending:
+        pending.sort()
+        runs.append(tuple(pending))
+    if not runs:
+        return ()
+    if len(runs) == 1:
+        return runs[0]
+
+    result: list[str] = []
+    for value in _interitem_cancellation(
+        heapq.merge(*runs),
+        count=count,
+        check_cancelled=check_cancelled,
+    ):
+        result.append(value)
+    return tuple(result)
+
+
+def _ownership_record_map(
+    records: tuple[TreeFileRecord, ...],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> dict[str, TreeFileRecord]:
+    result: dict[str, TreeFileRecord] = {}
+    for record in _interitem_cancellation(
+        records,
+        count=len(records),
+        check_cancelled=check_cancelled,
+    ):
+        if record.path in result:
+            raise ValueError(
+                f"context artifact has duplicate captured file record: {record.path}"
+            )
+        result[record.path] = record
+    return result
+
+
+def _contains_path_or_descendant(
+    paths: Mapping[str, object],
+    prefix: str,
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    descendant_prefix = f"{prefix}/"
+    for relative in _interitem_cancellation(
+        paths,
+        count=len(paths),
+        check_cancelled=check_cancelled,
+    ):
+        if relative == prefix or relative.startswith(descendant_prefix):
+            return True
+    return False
+
+
+def _merge_ordered_paths(
+    target: dict[str, None],
+    source: Mapping[str, object],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> None:
+    for relative in _interitem_cancellation(
+        source,
+        count=len(source),
+        check_cancelled=check_cancelled,
+    ):
+        target[relative] = None
+
+
+def _attest_inventory_records(
+    records: Mapping[str, TreeFileRecord],
+    inventory: Mapping[str, tuple[int, str]],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> dict[str, None]:
+    """Match captured files to metadata before accepting an inter-item stop."""
+
+    missing: list[str] = []
+    extra: list[str] = []
+    manifest_present = CONTEXT_ARTIFACT_MANIFEST in records
+    if not manifest_present:
+        missing.append(CONTEXT_ARTIFACT_MANIFEST)
+    mismatch_known = not manifest_present
+    record_count = len(records)
+    for index, relative in enumerate(records):
+        if relative != CONTEXT_ARTIFACT_MANIFEST and relative not in inventory:
+            extra.append(relative)
+            mismatch_known = True
+        if (
+            check_cancelled is not None
+            and not mismatch_known
+            and index + 1 < record_count
+        ):
+            check_cancelled()
+
+    inventoried_paths: dict[str, None] = {}
+    digest_mismatch: str | None = None
+    inventory_count = len(inventory)
+    for index, (relative, (expected_size, expected_digest)) in enumerate(
+        inventory.items()
+    ):
+        inventoried_paths[relative] = None
+        record = records.get(relative)
+        if record is None:
+            missing.append(relative)
+            mismatch_known = True
+        elif digest_mismatch is None and (
+            record.size != expected_size or record.sha256 != expected_digest
+        ):
+            digest_mismatch = relative
+        if (
+            check_cancelled is not None
+            and not mismatch_known
+            and digest_mismatch is None
+            and index + 1 < inventory_count
+        ):
+            check_cancelled()
+
+    if missing or extra:
+        raise ValueError(
+            "context artifact file set differs from its inventory: "
+            f"missing={sorted(missing)}, extra={sorted(extra)}"
+        )
+    if digest_mismatch is not None:
+        raise ValueError(f"context artifact file digest mismatch: {digest_mismatch}")
+    return inventoried_paths
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -439,10 +637,10 @@ class _PublicationContextReader:
         self._ownership = ownership
         self._entry_policy_factory = entry_policy_factory
         self._check_cancelled = check_cancelled
-        self._records = {
-            record.path: record
-            for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
-        }
+        self._records = _ownership_record_map(
+            directory_ownership_file_records(ownership),  # type: ignore[arg-type]
+            check_cancelled=check_cancelled,
+        )
 
     def _record(self, relative: str | PurePosixPath) -> TreeFileRecord:
         normalized = PurePosixPath(relative) if isinstance(relative, str) else relative
@@ -517,6 +715,8 @@ def _load_json_object(
             parse_float=_bounded_json_float,
         )
     except ValueError as exc:
+        if _is_cancellation_failure(reader._check_cancelled, exc):
+            raise
         raise ValueError(f"{label} is not valid UTF-8 JSON: {relative}") from exc
     if not isinstance(value, dict):
         raise ValueError(f"{label} must be a JSON object: {relative}")
@@ -556,9 +756,12 @@ def _inventory(
 
     result: dict[str, tuple[int, str]] = {}
     total_bytes = 0
-    for index, record in enumerate(raw_files):
-        if check_cancelled is not None:
-            check_cancelled()
+    indexed_records = enumerate(raw_files)
+    for index, record in _interitem_cancellation(
+        indexed_records,
+        count=len(raw_files),
+        check_cancelled=check_cancelled,
+    ):
         if not isinstance(record, dict):
             raise ValueError(f"context artifact file record {index} must be an object")
         relative = _relative_path(
@@ -655,8 +858,8 @@ def _document_source_paths(
     max_bytes: int,
     require_file: bool,
     check_cancelled: Callable[[], None] | None = None,
-) -> set[str]:
-    result: set[str] = set()
+) -> dict[str, None]:
+    result: dict[str, None] = {}
     with reader.open_file(relative, max_bytes=max_bytes) as source:
         documents = iter_bounded_json_array(
             (
@@ -689,12 +892,12 @@ def _document_source_paths(
                         f"{label} document {index} must declare a source file"
                     )
             else:
-                result.add(
+                result[
                     _source_path(
                         raw_file,
                         label=f"{label} document {index} file",
                     )
-                )
+                ] = None
             for field in ("start_line", "end_line"):
                 value = metadata.get(field)
                 if value is not None and (
@@ -715,8 +918,14 @@ def _validate_view_payloads(
     require_document_source_paths: bool,
     check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[str, ...]:
-    source_paths: set[str] = set()
-    inventory_paths = set(inventory)
+    source_paths: dict[str, None] = {}
+    inventory_paths: dict[str, None] = {}
+    for relative in _interitem_cancellation(
+        inventory,
+        count=len(inventory),
+        check_cancelled=check_cancelled,
+    ):
+        inventory_paths[relative] = None
 
     if "bm25" in views:
         if check_cancelled is not None:
@@ -724,7 +933,7 @@ def _validate_view_payloads(
         metadata_relative = "views/bm25/bm25_metadata.json"
         documents_relative = "views/bm25/documents.json"
         required = {metadata_relative, documents_relative}
-        if not required <= inventory_paths:
+        if not all(relative in inventory_paths for relative in required):
             raise ValueError("portable BM25 view is missing its serving files")
         metadata = _load_json_object(
             reader,
@@ -734,31 +943,47 @@ def _validate_view_payloads(
         )
         if metadata.get("project_root") != "source":
             raise ValueError("portable BM25 project root must be 'source'")
-        source_paths.update(
-            _document_source_paths(
-                reader,
-                documents_relative,
-                label="portable BM25 documents",
-                max_bytes=_MAX_DOCUMENTS_BYTES,
-                require_file=require_document_source_paths,
-                check_cancelled=check_cancelled,
-            )
+        bm25_source_paths = _document_source_paths(
+            reader,
+            documents_relative,
+            label="portable BM25 documents",
+            max_bytes=_MAX_DOCUMENTS_BYTES,
+            require_file=require_document_source_paths,
+            check_cancelled=check_cancelled,
+        )
+        _merge_ordered_paths(
+            source_paths,
+            bm25_source_paths,
+            check_cancelled=check_cancelled,
         )
 
     if "vector" in views:
-        document_paths = sorted(
-            relative
-            for relative in inventory_paths
-            if PurePosixPath(relative).parent.name in {"l0", "l2"}
-            and PurePosixPath(relative).parent.parent.as_posix() == "views/vector"
-            and PurePosixPath(relative).name.startswith("documents_")
-            and PurePosixPath(relative).suffix == ".json"
+        document_path_candidates: list[str] = []
+        for relative in _interitem_cancellation(
+            inventory_paths,
+            count=len(inventory_paths),
+            check_cancelled=check_cancelled,
+        ):
+            path = PurePosixPath(relative)
+            if (
+                path.parent.name in {"l0", "l2"}
+                and path.parent.parent.as_posix() == "views/vector"
+                and path.name.startswith("documents_")
+                and path.suffix == ".json"
+            ):
+                document_path_candidates.append(relative)
+        document_paths = _sorted_strings_interruptibly(
+            document_path_candidates,
+            count=len(document_path_candidates),
+            check_cancelled=check_cancelled,
         )
         if not document_paths:
             raise ValueError("portable vector view has no JSON document store")
-        for relative in document_paths:
-            if check_cancelled is not None:
-                check_cancelled()
+        for relative in _interitem_cancellation(
+            document_paths,
+            count=len(document_paths),
+            check_cancelled=check_cancelled,
+        ):
             path = PurePosixPath(relative)
             suffix = path.name.removeprefix("documents_").removesuffix(".json")
             index_relative = (path.parent / f"index_{suffix}.faiss").as_posix()
@@ -766,17 +991,24 @@ def _validate_view_payloads(
                 raise ValueError(
                     f"portable vector documents have no matching FAISS index: {relative}"
                 )
-            source_paths.update(
-                _document_source_paths(
-                    reader,
-                    path,
-                    label=f"portable vector documents {relative}",
-                    max_bytes=_MAX_DOCUMENTS_BYTES,
-                    require_file=require_document_source_paths,
-                    check_cancelled=check_cancelled,
-                )
+            vector_source_paths = _document_source_paths(
+                reader,
+                path,
+                label=f"portable vector documents {relative}",
+                max_bytes=_MAX_DOCUMENTS_BYTES,
+                require_file=require_document_source_paths,
+                check_cancelled=check_cancelled,
             )
-    return tuple(sorted(source_paths))
+            _merge_ordered_paths(
+                source_paths,
+                vector_source_paths,
+                check_cancelled=check_cancelled,
+            )
+    return _sorted_strings_interruptibly(
+        source_paths,
+        count=len(source_paths),
+        check_cancelled=check_cancelled,
+    )
 
 
 def _validate_manifest(
@@ -787,7 +1019,7 @@ def _validate_manifest(
     commit: str,
     source_fingerprint: str,
     views: tuple[str, ...],
-    inventoried_paths: set[str],
+    inventoried_paths: Mapping[str, object],
     expected_manifest_version: str | None,
     check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[Path, RepoManifest]:
@@ -825,6 +1057,8 @@ def _validate_manifest(
         )
         manifest = RepoManifest.from_dict(manifest_payload)
     except (KeyError, TypeError, ValueError) as exc:
+        if _is_cancellation_failure(check_cancelled, exc):
+            raise
         raise ValueError("context artifact repository manifest is invalid") from exc
     if (
         expected_manifest_version is not None
@@ -885,9 +1119,11 @@ def _validate_manifest(
     ):
         raise ValueError("context artifact builder identity is invalid")
 
-    for view in views:
-        if check_cancelled is not None:
-            check_cancelled()
+    for view in _interitem_cancellation(
+        views,
+        count=len(views),
+        check_cancelled=check_cancelled,
+    ):
         entry = manifest.indexes[view]
         if not isinstance(entry.config, dict) or not isinstance(entry.metadata, dict):
             raise ValueError(f"context artifact view metadata is invalid: {view}")
@@ -956,9 +1192,10 @@ def _validate_manifest(
             label=f"context artifact {view} view path",
         )
         view_relative = view_path.relative_to(root).as_posix()
-        if not any(
-            relative == view_relative or relative.startswith(f"{view_relative}/")
-            for relative in inventoried_paths
+        if not _contains_path_or_descendant(
+            inventoried_paths,
+            view_relative,
+            check_cancelled=check_cancelled,
         ):
             raise ValueError(f"context artifact view has no inventoried files: {view}")
         if view == "vector" and entry.config.get("portable_document_format") != (
@@ -1053,25 +1290,12 @@ def _verify_context_artifact_reader(
             max_bytes=max_bytes,
             check_cancelled=check_cancelled,
         )
-        records = {
-            record.path: record
-            for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
-        }
-        expected_files = set(inventory) | {CONTEXT_ARTIFACT_MANIFEST}
-        actual_files = set(records)
-        if actual_files != expected_files:
-            missing = sorted(expected_files - actual_files)
-            extra = sorted(actual_files - expected_files)
-            raise ValueError(
-                "context artifact file set differs from its inventory: "
-                f"missing={missing}, extra={extra}"
-            )
-        for relative, (expected_size, expected_digest) in inventory.items():
-            if check_cancelled is not None:
-                check_cancelled()
-            record = records[relative]
-            if record.size != expected_size or record.sha256 != expected_digest:
-                raise ValueError(f"context artifact file digest mismatch: {relative}")
+        records = reader._records
+        inventoried_paths = _attest_inventory_records(
+            records,
+            inventory,
+            check_cancelled=check_cancelled,
+        )
 
         manifest_path, manifest = _validate_manifest(
             root,
@@ -1080,7 +1304,7 @@ def _verify_context_artifact_reader(
             commit=commit,
             source_fingerprint=source_fingerprint,
             views=views,
-            inventoried_paths=set(inventory),
+            inventoried_paths=inventoried_paths,
             expected_manifest_version=expected_manifest_version,
             check_cancelled=check_cancelled,
         )
@@ -1097,19 +1321,19 @@ def _verify_context_artifact_reader(
             if manifest.source_selection is not None
             else DEFAULT_REPOSITORY_SOURCE_SELECTION
         )
-        excluded_source_paths = [
-            path
-            for path in source_paths
+        for path in _interitem_cancellation(
+            source_paths,
+            count=len(source_paths),
+            check_cancelled=check_cancelled,
+        ):
             if not repository_path_is_visible(
                 path,
                 selection=source_selection,
-            )
-        ]
-        if excluded_source_paths:
-            raise ValueError(
-                "context artifact view contains source paths excluded by "
-                "its repository manifest: " + ", ".join(excluded_source_paths[:5])
-            )
+            ):
+                raise ValueError(
+                    "context artifact view contains source paths excluded by "
+                    f"its repository manifest: {path}"
+                )
         if expected_repository is not None:
             expected = normalize_repo(expected_repository)
             if repository != expected:
@@ -1165,38 +1389,59 @@ def verify_context_artifact_reader(
 
     if check_cancelled is not None and not callable(check_cancelled):
         raise TypeError("context artifact cancellation check must be callable")
+    cancellation_poll = (
+        None if check_cancelled is None else _CancellationPoll(check_cancelled)
+    )
     _validate_context_limits(max_files, max_bytes)
-    if check_cancelled is not None:
-        check_cancelled()
     policy_factory = lambda: _context_entry_policy(  # noqa: E731
         max_files=max_files,
         max_bytes=max_bytes,
     )
-    ownership = publication.capture_ownership(
-        entry_policy=policy_factory(),
-        check_cancelled=check_cancelled,
-    )
-    reader = _PublicationContextReader(
-        publication,
-        ownership,
-        entry_policy_factory=policy_factory,
-        check_cancelled=check_cancelled,
-    )
-    return _verify_context_artifact_reader(
-        Path("/__codenib_context_artifact__"),
-        ownership,
-        reader,
-        expected_repository=expected_repository,
-        expected_commit=expected_commit,
-        max_files=max_files,
-        max_bytes=max_bytes,
-        expected_manifest_version=expected_manifest_version,
-        capture_final=lambda: publication.capture_ownership(
+    try:
+        if cancellation_poll is not None:
+            cancellation_poll()
+        ownership = publication.capture_ownership(
             entry_policy=policy_factory(),
-            check_cancelled=check_cancelled,
-        ),
-        check_cancelled=check_cancelled,
-    )
+            check_cancelled=cancellation_poll,
+        )
+    except BaseException as exc:  # noqa: B036 - exact stop provenance
+        if cancellation_poll is None or not cancellation_poll.raised_exactly(exc):
+            raise
+        publication.capture_ownership(entry_policy=policy_factory())
+        raise
+    try:
+        reader = _PublicationContextReader(
+            publication,
+            ownership,
+            entry_policy_factory=policy_factory,
+            check_cancelled=cancellation_poll,
+        )
+        return _verify_context_artifact_reader(
+            Path("/__codenib_context_artifact__"),
+            ownership,
+            reader,
+            expected_repository=expected_repository,
+            expected_commit=expected_commit,
+            max_files=max_files,
+            max_bytes=max_bytes,
+            expected_manifest_version=expected_manifest_version,
+            capture_final=lambda: publication.capture_ownership(
+                entry_policy=policy_factory(),
+                check_cancelled=cancellation_poll,
+            ),
+            check_cancelled=cancellation_poll,
+        )
+    except BaseException as exc:  # noqa: B036 - exact stop provenance
+        if cancellation_poll is None or not cancellation_poll.raised_exactly(exc):
+            raise
+        observed = publication.capture_ownership(
+            entry_policy=policy_factory(),
+        )
+        if observed != ownership:
+            raise ValueError(
+                "context artifact changed during cancellation reconciliation"
+            ) from exc
+        raise
 
 
 def verify_context_artifact(

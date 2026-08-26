@@ -25,7 +25,16 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path, PurePosixPath
 from threading import RLock
-from typing import Any, BinaryIO, Callable, Iterable, Iterator, Mapping, TypeVar
+from typing import (
+    Any,
+    BinaryIO,
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+    TypeVar,
+)
 
 from .._atomic_directory import (
     _MAX_ORDERED_ACTION_CANCELLATION_RETRIES,
@@ -125,6 +134,99 @@ _SAFE_DIRECTORY_FDS = (
     and os.scandir in os.supports_fd
 )
 _T = TypeVar("_T")
+
+
+class _CancellationPoll:
+    """Track only the exact exception raised by a bundle stop callback."""
+
+    __slots__ = ("_callback", "_raised_exceptions")
+
+    def __init__(self, callback: Callable[[], None]) -> None:
+        self._callback = callback
+        self._raised_exceptions: list[BaseException] = []
+
+    def __call__(self) -> None:
+        try:
+            self._callback()
+        except BaseException as exc:  # noqa: B036 - identity is authoritative
+            if not any(candidate is exc for candidate in self._raised_exceptions):
+                self._raised_exceptions.append(exc)
+            raise
+
+    def raised_exactly(self, exc: BaseException) -> bool:
+        return any(candidate is exc for candidate in self._raised_exceptions)
+
+
+def _interitem_cancellation(
+    values: Iterable[_T],
+    *,
+    count: int,
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[_T]:
+    """Poll only after the current value is accepted and before the next."""
+
+    for index, value in enumerate(values):
+        yield value
+        if check_cancelled is not None and index + 1 < count:
+            check_cancelled()
+
+
+def _validate_bundle_source_inventory(
+    inventory: tuple[tuple[str, str], ...],
+    *,
+    max_files: int,
+    check_cancelled: Callable[[], None] | None,
+) -> None:
+    if len(inventory) > 2 * max_files + 1:
+        raise StorageValidationError("view bundle source has too many entries")
+    source_directories = 0
+    for _path, kind in _interitem_cancellation(
+        inventory,
+        count=len(inventory),
+        check_cancelled=check_cancelled,
+    ):
+        if kind == "directory":
+            source_directories += 1
+            if source_directories > max_files:
+                raise StorageValidationError(
+                    f"view bundle source exceeds {max_files + 1} directories"
+                )
+
+
+def _planned_view_bundle_members(
+    records: tuple[TreeFileRecord, ...],
+    *,
+    max_files: int,
+    max_bytes: int,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[tuple[ArtifactMember, ...], int]:
+    if not records:
+        raise StorageValidationError(
+            "view bundle payload must contain at least one file"
+        )
+    if len(records) > max_files:
+        raise StorageValidationError(f"view bundle payload exceeds {max_files} files")
+
+    members: list[ArtifactMember] = []
+    total_bytes = 0
+    for record in _interitem_cancellation(
+        records,
+        count=len(records),
+        check_cancelled=check_cancelled,
+    ):
+        member = ArtifactMember(
+            path=record.path,
+            digest=record.sha256,
+            byte_size=record.size,
+            mode=0o755 if record.mode & 0o111 else 0o644,
+        )
+        total_bytes += member.byte_size
+        if total_bytes > max_bytes:
+            raise StorageValidationError(
+                f"view bundle exceeds {max_bytes} expanded bytes"
+            )
+        members.append(member)
+    return tuple(members), total_bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -466,72 +568,106 @@ def plan_view_bundle_reader(
         raise TypeError("view bundle planning requires a publication reader")
     if check_cancelled is not None and not callable(check_cancelled):
         raise TypeError("view bundle cancellation check must be callable")
+    cancellation_poll = (
+        None if check_cancelled is None else _CancellationPoll(check_cancelled)
+    )
+    check_cancelled = cancellation_poll
     normalized_prefix = _publication_subtree_prefix(prefix)
     normalized_view_type = _validate_view_type(view_type)
     _validate_limits(max_files, max_bytes, max_metadata_bytes)
-    _validate_expected_subtree_ownership(expected_source_ownership)
-    if check_cancelled is not None:
-        check_cancelled()
+    expected_ownership_validated = False
 
-    outer_before = publication.capture_ownership(
-        check_cancelled=check_cancelled,
-    )
-    outer_snapshot = _canonical_ownership_snapshot(outer_before)
-    _require_publication_subtree_projection(
-        outer_before,
-        normalized_prefix,
-        expected_source_ownership,
-    )
-    if check_cancelled is not None:
-        check_cancelled()
+    def reconcile_initial_namespace() -> None:
+        observed = publication.capture_ownership()
+        if expected_ownership_validated:
+            _require_publication_subtree_projection(
+                observed,
+                normalized_prefix,
+                expected_source_ownership,
+            )
 
-    def plan() -> PlannedViewBundle:
-        source_inventory = tuple(
-            directory_ownership_inventory(expected_source_ownership)  # type: ignore[arg-type]
-        )
-        source_directories = sum(
-            1 for _path, kind in source_inventory if kind == "directory"
-        )
-        if source_directories > max_files:
-            raise StorageValidationError(
-                f"view bundle source exceeds {max_files + 1} directories"
+    try:
+        if check_cancelled is None:
+            _validate_expected_subtree_ownership(expected_source_ownership)
+        else:
+            _validate_expected_subtree_ownership(
+                expected_source_ownership,
+                check_cancelled=check_cancelled,
             )
-        if len(source_inventory) > 2 * max_files + 1:
-            raise StorageValidationError("view bundle source has too many entries")
-        records = tuple(
-            directory_ownership_file_records(expected_source_ownership)  # type: ignore[arg-type]
-        )
-        if not records:
-            raise StorageValidationError(
-                "view bundle payload must contain at least one file"
-            )
-        if len(records) > max_files:
-            raise StorageValidationError(
-                f"view bundle payload exceeds {max_files} files"
-            )
-        members = tuple(
-            ArtifactMember(
-                path=record.path,
-                digest=record.sha256,
-                byte_size=record.size,
-                mode=0o755 if record.mode & 0o111 else 0o644,
-            )
-            for record in records
-        )
+        expected_ownership_validated = True
         if check_cancelled is not None:
             check_cancelled()
-        _validate_member_paths(members, max_files=max_files)
-        total_bytes = sum(member.byte_size for member in members)
-        if total_bytes > max_bytes:
-            raise StorageValidationError(
-                f"view bundle exceeds {max_bytes} expanded bytes"
+
+        outer_before = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
+        if check_cancelled is None:
+            outer_snapshot = _canonical_ownership_snapshot(outer_before)
+            _require_publication_subtree_projection(
+                outer_before,
+                normalized_prefix,
+                expected_source_ownership,
+            )
+        else:
+            outer_snapshot = _canonical_ownership_snapshot(
+                outer_before,
+                check_cancelled=check_cancelled,
+            )
+            _require_publication_subtree_projection(
+                outer_before,
+                normalized_prefix,
+                expected_source_ownership,
+                check_cancelled=check_cancelled,
+            )
+            check_cancelled()
+    except BaseException as exc:  # noqa: B036 - exact stop provenance
+        if cancellation_poll is None or not cancellation_poll.raised_exactly(exc):
+            raise
+        reconcile_initial_namespace()
+        raise
+
+    def plan() -> PlannedViewBundle:
+        source_inventory = directory_ownership_inventory(  # type: ignore[arg-type]
+            expected_source_ownership
+        )
+        _validate_bundle_source_inventory(
+            source_inventory,
+            max_files=max_files,
+            check_cancelled=check_cancelled,
+        )
+        records = directory_ownership_file_records(  # type: ignore[arg-type]
+            expected_source_ownership
+        )
+        members, _total_bytes = _planned_view_bundle_members(
+            records,
+            max_files=max_files,
+            max_bytes=max_bytes,
+            check_cancelled=check_cancelled,
+        )
+        if check_cancelled is None:
+            _validate_member_paths(members, max_files=max_files)
+        else:
+            _validate_member_paths(
+                members,
+                max_files=max_files,
+                check_cancelled=check_cancelled,
             )
 
-        manifest_bytes = _manifest_bytes(normalized_view_type, members)
+        if check_cancelled is None:
+            manifest_bytes = _manifest_bytes(normalized_view_type, members)
+        else:
+            manifest_bytes = _manifest_bytes(
+                normalized_view_type,
+                members,
+                check_cancelled=check_cancelled,
+                max_bytes=max_metadata_bytes,
+            )
         if len(manifest_bytes) > max_metadata_bytes:
             raise StorageValidationError(
                 f"view bundle metadata exceeds {max_metadata_bytes} bytes"
             )
+        if check_cancelled is not None:
+            check_cancelled()
         payload_crcs = tuple(
             _publication_file_crc32(
                 publication,
@@ -541,16 +677,23 @@ def plan_view_bundle_reader(
             )
             for record in records
         )
-        receipt = _plan_canonical_zip(
-            publication=publication,
-            prefix=normalized_prefix,
-            outer_ownership=outer_before,
-            source_ownership=expected_source_ownership,
-            view_type=normalized_view_type,
-            members=members,
-            manifest_bytes=manifest_bytes,
-            payload_crcs=payload_crcs,
-        )
+        plan_zip_kwargs = {
+            "publication": publication,
+            "prefix": normalized_prefix,
+            "outer_ownership": outer_before,
+            "source_ownership": expected_source_ownership,
+            "view_type": normalized_view_type,
+            "members": members,
+            "manifest_bytes": manifest_bytes,
+            "payload_crcs": payload_crcs,
+        }
+        if check_cancelled is None:
+            receipt = _plan_canonical_zip(**plan_zip_kwargs)
+        else:
+            receipt = _plan_canonical_zip(
+                **plan_zip_kwargs,
+                check_cancelled=check_cancelled,
+            )
         validate_view_bundle_physical_size(
             receipt.byte_size,
             max_files=max_files,
@@ -606,9 +749,7 @@ def plan_view_bundle_reader(
         )
 
     def validate_after_namespace() -> None:
-        outer_after = publication.capture_ownership(
-            check_cancelled=check_cancelled,
-        )
+        outer_after = publication.capture_ownership()
         if _canonical_ownership_snapshot(outer_after) != outer_snapshot:
             raise RuntimeError("view bundle publication tree changed while planning")
         _require_publication_subtree_projection(
@@ -620,23 +761,29 @@ def plan_view_bundle_reader(
     final_cancellation_check = (
         (lambda: None) if check_cancelled is None else check_cancelled
     )
-    return _run_callback_with_post_validations(
-        plan,
-        (
+    try:
+        return _run_callback_with_post_validations(
+            plan,
             (
-                "view bundle planning namespace validation also failed",
-                validate_after_namespace,
+                (
+                    "view bundle planning namespace validation also failed",
+                    validate_after_namespace,
+                ),
+                (
+                    "view bundle planning reader validity validation also failed",
+                    publication._require_valid,
+                ),
+                (
+                    "view bundle planning final cancellation check also failed",
+                    final_cancellation_check,
+                ),
             ),
-            (
-                "view bundle planning reader validity validation also failed",
-                publication._require_valid,
-            ),
-            (
-                "view bundle planning final cancellation check also failed",
-                final_cancellation_check,
-            ),
-        ),
-    )
+        )
+    except BaseException as exc:  # noqa: B036 - exact stop provenance
+        if cancellation_poll is None or not cancellation_poll.raised_exactly(exc):
+            raise
+        validate_after_namespace()
+        raise
 
 
 def consume_planned_view_bundle(
@@ -664,27 +811,80 @@ def consume_planned_view_bundle(
         raise TypeError("planned view bundle consumer must be callable")
     if check_cancelled is not None and not callable(check_cancelled):
         raise TypeError("view bundle cancellation check must be callable")
-    receipt = _require_planned_view_bundle(plan)
-    if publication is not receipt.publication:
-        raise RuntimeError(
-            "planned view bundle must be consumed in its planning reader callback"
-        )
-    if check_cancelled is not None:
-        check_cancelled()
+    cancellation_poll = (
+        None if check_cancelled is None else _CancellationPoll(check_cancelled)
+    )
+    check_cancelled = cancellation_poll
+    receipt: _PlannedViewBundleReceipt | None = None
 
-    outer_before = publication.capture_ownership(
-        check_cancelled=check_cancelled,
-    )
-    outer_snapshot = _canonical_ownership_snapshot(outer_before)
-    if outer_snapshot != _canonical_ownership_snapshot(receipt.outer_ownership):
-        raise RuntimeError("planned view bundle outer ownership changed")
-    _require_publication_subtree_projection(
-        outer_before,
-        receipt.prefix,
-        receipt.source_ownership,
-    )
-    if check_cancelled is not None:
-        check_cancelled()
+    def reconcile_initial_namespace() -> None:
+        observed = publication.capture_ownership()
+        if receipt is None:
+            return
+        if _canonical_ownership_snapshot(observed) != _canonical_ownership_snapshot(
+            receipt.outer_ownership
+        ):
+            raise RuntimeError("planned view bundle outer ownership changed")
+        _require_publication_subtree_projection(
+            observed,
+            receipt.prefix,
+            receipt.source_ownership,
+        )
+
+    try:
+        if check_cancelled is None:
+            receipt = _require_planned_view_bundle(plan)
+        else:
+            receipt = _require_planned_view_bundle(
+                plan,
+                check_cancelled=check_cancelled,
+            )
+        if publication is not receipt.publication:
+            raise RuntimeError(
+                "planned view bundle must be consumed in its planning reader callback"
+            )
+        if check_cancelled is not None:
+            check_cancelled()
+
+        outer_before = publication.capture_ownership(
+            check_cancelled=check_cancelled,
+        )
+        if check_cancelled is None:
+            outer_snapshot = _canonical_ownership_snapshot(outer_before)
+            receipt_outer_snapshot = _canonical_ownership_snapshot(
+                receipt.outer_ownership
+            )
+        else:
+            outer_snapshot = _canonical_ownership_snapshot(
+                outer_before,
+                check_cancelled=check_cancelled,
+            )
+            receipt_outer_snapshot = _canonical_ownership_snapshot(
+                receipt.outer_ownership,
+                check_cancelled=check_cancelled,
+            )
+        if outer_snapshot != receipt_outer_snapshot:
+            raise RuntimeError("planned view bundle outer ownership changed")
+        if check_cancelled is None:
+            _require_publication_subtree_projection(
+                outer_before,
+                receipt.prefix,
+                receipt.source_ownership,
+            )
+        else:
+            _require_publication_subtree_projection(
+                outer_before,
+                receipt.prefix,
+                receipt.source_ownership,
+                check_cancelled=check_cancelled,
+            )
+            check_cancelled()
+    except BaseException as exc:  # noqa: B036 - exact stop provenance
+        if cancellation_poll is None or not cancellation_poll.raised_exactly(exc):
+            raise
+        reconcile_initial_namespace()
+        raise
+    assert receipt is not None
     chunks = _CallbackScopedBundleChunks(
         publication,
         receipt,
@@ -702,9 +902,7 @@ def consume_planned_view_bundle(
             raise
 
     def validate_after_namespace() -> None:
-        outer_after = publication.capture_ownership(
-            check_cancelled=check_cancelled,
-        )
+        outer_after = publication.capture_ownership()
         if _canonical_ownership_snapshot(outer_after) != outer_snapshot:
             raise RuntimeError("view bundle publication tree changed while consumed")
         _require_publication_subtree_projection(
@@ -716,28 +914,34 @@ def consume_planned_view_bundle(
     final_cancellation_check = (
         (lambda: None) if check_cancelled is None else check_cancelled
     )
-    return _run_bundle_stream_callback(
-        consume,
-        chunks,
-        (
+    try:
+        return _run_bundle_stream_callback(
+            consume,
+            chunks,
             (
-                "planned view bundle completeness validation also failed",
-                chunks._require_complete,
+                (
+                    "planned view bundle completeness validation also failed",
+                    chunks._require_complete,
+                ),
+                (
+                    "planned view bundle namespace validation also failed",
+                    validate_after_namespace,
+                ),
+                (
+                    "planned view bundle reader validity validation also failed",
+                    publication._require_valid,
+                ),
+                (
+                    "planned view bundle final cancellation check also failed",
+                    final_cancellation_check,
+                ),
             ),
-            (
-                "planned view bundle namespace validation also failed",
-                validate_after_namespace,
-            ),
-            (
-                "planned view bundle reader validity validation also failed",
-                publication._require_valid,
-            ),
-            (
-                "planned view bundle final cancellation check also failed",
-                final_cancellation_check,
-            ),
-        ),
-    )
+        )
+    except BaseException as exc:  # noqa: B036 - exact stop provenance
+        if cancellation_poll is None or not cancellation_poll.raised_exactly(exc):
+            raise
+        validate_after_namespace()
+        raise
 
 
 def verify_view_bundle(
@@ -1621,9 +1825,10 @@ def _canonical_member_path(value: str) -> str:
 
 
 def _validate_member_paths(
-    members: Iterable[ArtifactMember],
+    members: Sequence[ArtifactMember],
     *,
     max_files: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _MemberPathTrie:
     # A node-id trie keeps the work and retained keys linear in the number of
     # path components.  Materializing every tuple prefix is quadratic for deep
@@ -1632,7 +1837,11 @@ def _validate_member_paths(
     child_counts = [0]
     terminals: dict[int, str] = {}
     previous: str | None = None
-    for member in members:
+    for member in _interitem_cancellation(
+        members,
+        count=len(members),
+        check_cancelled=check_cancelled,
+    ):
         path = _canonical_member_path(member.path)
         if previous is not None and path <= previous:
             raise StorageValidationError(
@@ -1677,13 +1886,19 @@ def _validate_member_paths(
             )
         terminals[node] = path
 
-    directory_nodes = frozenset(
-        node for node in range(len(child_counts)) if node not in terminals
-    )
-    if len(directory_nodes) > max_files + 1:
-        raise StorageValidationError(
-            "view bundle path topology exceeds its implicit-directory budget"
-        )
+    directory_nodes_mutable: set[int] = set()
+    for node in _interitem_cancellation(
+        range(len(child_counts)),
+        count=len(child_counts),
+        check_cancelled=check_cancelled,
+    ):
+        if node not in terminals:
+            directory_nodes_mutable.add(node)
+            if len(directory_nodes_mutable) > max_files + 1:
+                raise StorageValidationError(
+                    "view bundle path topology exceeds its implicit-directory budget"
+                )
+    directory_nodes = frozenset(directory_nodes_mutable)
     return _MemberPathTrie(
         edges=edges,
         directory_nodes=directory_nodes,
@@ -1738,10 +1953,20 @@ def _publication_subtree_prefix(
     return normalized
 
 
-def _validate_expected_subtree_ownership(ownership: object) -> None:
+def _validate_expected_subtree_ownership(
+    ownership: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
     """Validate an opaque ownership token without invoking hostile scalars."""
 
-    _canonical_ownership_snapshot(ownership)
+    if check_cancelled is None:
+        _canonical_ownership_snapshot(ownership)
+    else:
+        _canonical_ownership_snapshot(
+            ownership,
+            check_cancelled=check_cancelled,
+        )
 
 
 def _exact_identity_tuple(value: object, *, label: str) -> tuple[int, ...]:
@@ -1750,7 +1975,11 @@ def _exact_identity_tuple(value: object, *, label: str) -> tuple[int, ...]:
     return value  # type: ignore[return-value]
 
 
-def _canonical_ownership_snapshot(ownership: object) -> tuple[object, ...]:
+def _canonical_ownership_snapshot(
+    ownership: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> tuple[object, ...]:
     """Return only exact built-in fields after full token validation."""
 
     if type(ownership) is not _TreeOwnership:
@@ -1773,6 +2002,30 @@ def _canonical_ownership_snapshot(ownership: object) -> tuple[object, ...]:
         or type(ownership.entry_identities) is not tuple
     ):
         raise TypeError("view bundle ownership fields must use exact built-in types")
+    if check_cancelled is None:
+        _validate_directory_ownership_token(
+            ownership,
+            require_exact_types=True,
+        )
+    else:
+        _validate_directory_ownership_token(
+            ownership,
+            check_cancelled=check_cancelled,
+            require_exact_types=True,
+        )
+
+    total_items = (
+        len(ownership.inventory)
+        + len(ownership.file_records)
+        + len(ownership.entry_identities)
+    )
+    processed_items = 0
+
+    def account_item() -> None:
+        nonlocal processed_items
+        processed_items += 1
+        if check_cancelled is not None and processed_items < total_items:
+            check_cancelled()
 
     inventory: list[tuple[str, str]] = []
     for item in ownership.inventory:
@@ -1784,6 +2037,7 @@ def _canonical_ownership_snapshot(ownership: object) -> tuple[object, ...]:
         ):
             raise TypeError("view bundle ownership inventory is not exact")
         inventory.append((item[0], item[1]))
+        account_item()
 
     records: list[tuple[str, int, int, str]] = []
     for record in ownership.file_records:
@@ -1796,6 +2050,7 @@ def _canonical_ownership_snapshot(ownership: object) -> tuple[object, ...]:
         ):
             raise TypeError("view bundle ownership file records are not exact")
         records.append((record.path, record.mode, record.size, record.sha256))
+        account_item()
 
     identities: list[tuple[str, str, tuple[int, ...]]] = []
     for item in ownership.entry_identities:
@@ -1813,8 +2068,8 @@ def _canonical_ownership_snapshot(ownership: object) -> tuple[object, ...]:
                 _exact_identity_tuple(item[2], label="ownership entry identity"),
             )
         )
+        account_item()
 
-    _validate_directory_ownership_token(ownership)
     return (
         root_identity,
         root_version,
@@ -1832,16 +2087,38 @@ def _require_publication_subtree_projection(
     outer_ownership: object,
     prefix: PurePosixPath,
     expected_source_ownership: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Match a public atomic projection to the exact expected subtree token."""
 
-    expected_snapshot = _canonical_ownership_snapshot(expected_source_ownership)
-    _canonical_ownership_snapshot(outer_ownership)
-    projected = project_directory_ownership_subtree(  # type: ignore[arg-type]
-        outer_ownership,
-        prefix,
-    )
-    if _canonical_ownership_snapshot(projected) != expected_snapshot:
+    if check_cancelled is None:
+        expected_snapshot = _canonical_ownership_snapshot(expected_source_ownership)
+        _canonical_ownership_snapshot(outer_ownership)
+        projected = project_directory_ownership_subtree(  # type: ignore[arg-type]
+            outer_ownership,
+            prefix,
+        )
+        projected_snapshot = _canonical_ownership_snapshot(projected)
+    else:
+        expected_snapshot = _canonical_ownership_snapshot(
+            expected_source_ownership,
+            check_cancelled=check_cancelled,
+        )
+        _canonical_ownership_snapshot(
+            outer_ownership,
+            check_cancelled=check_cancelled,
+        )
+        projected = project_directory_ownership_subtree(  # type: ignore[arg-type]
+            outer_ownership,
+            prefix,
+            check_cancelled=check_cancelled,
+        )
+        projected_snapshot = _canonical_ownership_snapshot(
+            projected,
+            check_cancelled=check_cancelled,
+        )
+    if projected_snapshot != expected_snapshot:
         raise RuntimeError("view bundle subtree root or contents differ from expected")
 
 
@@ -1962,6 +2239,7 @@ def _plan_canonical_zip(
     members: tuple[ArtifactMember, ...],
     manifest_bytes: bytes,
     payload_crcs: tuple[int, ...],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _PlannedViewBundleReceipt:
     if len(payload_crcs) != len(members):
         raise RuntimeError("view bundle CRC inventory is incomplete")
@@ -1978,20 +2256,24 @@ def _plan_canonical_zip(
             False,
         )
     ]
-    raw_members.extend(
-        (
-            f"{VIEW_BUNDLE_PAYLOAD}/{member.path}",
-            PurePosixPath(member.path),
-            None,
-            member.mode,
-            member.byte_size,
-            checksum,
-            index == len(members) - 1,
+    for index, (member, checksum) in _interitem_cancellation(
+        enumerate(zip(members, payload_crcs, strict=True)),
+        count=len(members),
+        check_cancelled=check_cancelled,
+    ):
+        raw_members.append(
+            (
+                f"{VIEW_BUNDLE_PAYLOAD}/{member.path}",
+                PurePosixPath(member.path),
+                None,
+                member.mode,
+                member.byte_size,
+                checksum,
+                index == len(members) - 1,
+            )
         )
-        for index, (member, checksum) in enumerate(
-            zip(members, payload_crcs, strict=True)
-        )
-    )
+    if check_cancelled is not None and raw_members:
+        check_cancelled()
 
     header_offset = 0
     planned: list[_PlannedZipMember] = []
@@ -2003,7 +2285,11 @@ def _plan_canonical_zip(
         byte_size,
         checksum,
         guarded,
-    ) in raw_members:
+    ) in _interitem_cancellation(
+        raw_members,
+        count=len(raw_members),
+        check_cancelled=check_cancelled,
+    ):
         encoded_name = _encoded_zip_name(archive_name)
         flags = 0 if archive_name.isascii() else 0x800
         local_extra = _zip_member_local_extra(byte_size, guarded=guarded)
@@ -2037,11 +2323,17 @@ def _plan_canonical_zip(
             )
         )
         header_offset += 30 + len(encoded_name) + len(local_extra) + byte_size
+    if check_cancelled is not None and planned:
+        check_cancelled()
 
     central_offset = header_offset
-    central_size = sum(
-        46 + len(member.encoded_name) + len(member.central_extra) for member in planned
-    )
+    central_size = 0
+    for member in _interitem_cancellation(
+        planned,
+        count=len(planned),
+        check_cancelled=check_cancelled,
+    ):
+        central_size += 46 + len(member.encoded_name) + len(member.central_extra)
     envelope = _zip_envelope_bytes(len(planned), central_size, central_offset)
     return _PlannedViewBundleReceipt(
         publication=publication,
@@ -2112,6 +2404,8 @@ def _central_zip_header(member: _PlannedZipMember) -> bytes:
 def _iter_planned_view_bundle_bytes(
     publication: PublicationDirectoryReader,
     receipt: _PlannedViewBundleReceipt,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterator[bytes]:
     for member in receipt.zip_members:
         yield _local_zip_header(member)
@@ -2127,6 +2421,7 @@ def _iter_planned_view_bundle_bytes(
             raise RuntimeError("planned bundle member has no byte source")
         observed_size = 0
         checksum = 0
+        pending_final_chunk: bytes | None = None
         source = receipt.prefix / member.source_relative
         with publication.iter_authenticated_chunks(
             source,
@@ -2136,11 +2431,23 @@ def _iter_planned_view_bundle_bytes(
             for chunk in chunks:
                 observed_size += len(chunk)
                 checksum = zlib.crc32(chunk, checksum)
+                if observed_size == member.byte_size:
+                    pending_final_chunk = chunk
+                    continue
                 yield chunk
         if observed_size != member.byte_size or checksum & 0xFFFFFFFF != member.crc32:
             raise StorageIntegrityError(
                 f"planned view bundle source changed: {member.source_relative}"
             )
+        if pending_final_chunk is not None:
+            yield pending_final_chunk
+        elif check_cancelled is not None:
+            # A zero-byte payload has no current chunk whose delivery can
+            # provide the usual inter-item cancellation boundary.  Its EOF,
+            # source authentication, and CRC must all finish first, but poll
+            # before this generator advances to a future member or the
+            # central directory.
+            check_cancelled()
 
     for member in receipt.zip_members:
         yield _central_zip_header(member)
@@ -2150,14 +2457,294 @@ def _iter_planned_view_bundle_bytes(
     yield receipt.envelope_bytes
 
 
+def _require_valid_artifact_member(member: ArtifactMember) -> None:
+    if (
+        type(member.path) is not str
+        or type(member.digest) is not str
+        or type(member.byte_size) is not int
+        or type(member.mode) is not int
+    ):
+        raise StorageIntegrityError("planned view bundle member is invalid")
+    try:
+        canonical = ArtifactMember(
+            path=member.path,
+            digest=member.digest,
+            byte_size=member.byte_size,
+            mode=member.mode,
+        )
+        _canonical_member_path(member.path)
+    except (StorageValidationError, TypeError, ValueError) as exc:
+        raise StorageIntegrityError("planned view bundle member is invalid") from exc
+    if canonical != member:
+        raise StorageIntegrityError("planned view bundle member is invalid")
+
+
+def _require_valid_planned_zip_member(member: object) -> None:
+    if type(member) is not _PlannedZipMember:
+        raise StorageIntegrityError("planned view bundle layout types are invalid")
+    if (
+        type(member.archive_name) is not str
+        or type(member.encoded_name) is not bytes
+        or (
+            member.source_relative is not None
+            and type(member.source_relative) is not PurePosixPath
+        )
+        or (
+            member.inline_payload is not None
+            and type(member.inline_payload) is not bytes
+        )
+        or any(
+            type(value) is not int
+            for value in (
+                member.mode,
+                member.byte_size,
+                member.crc32,
+                member.flags,
+                member.header_offset,
+                member.local_version,
+                member.central_version,
+            )
+        )
+        or type(member.local_extra) is not bytes
+        or type(member.central_extra) is not bytes
+        or member.mode not in {0o644, 0o755}
+        or member.byte_size < 0
+        or member.byte_size > DEFAULT_MAX_BUNDLE_BYTES
+        or member.crc32 < 0
+        or member.crc32 > 0xFFFFFFFF
+        or member.header_offset < 0
+        or member.header_offset > (1 << 64) - 1
+        or member.local_version not in {20, 45}
+        or member.central_version not in {20, 45}
+    ):
+        raise StorageIntegrityError("planned view bundle ZIP member is invalid")
+    if (member.source_relative is None) == (member.inline_payload is None):
+        raise StorageIntegrityError("planned view bundle ZIP member is invalid")
+    if member.inline_payload is not None:
+        if (
+            member.archive_name != VIEW_BUNDLE_MANIFEST
+            or member.mode != 0o644
+            or len(member.inline_payload) != member.byte_size
+            or zlib.crc32(member.inline_payload) & 0xFFFFFFFF != member.crc32
+        ):
+            raise StorageIntegrityError("planned view bundle ZIP member is invalid")
+    else:
+        assert member.source_relative is not None
+        source_relative = member.source_relative.as_posix()
+        try:
+            _canonical_member_path(source_relative)
+        except StorageValidationError as exc:
+            raise StorageIntegrityError(
+                "planned view bundle ZIP member is invalid"
+            ) from exc
+        if member.archive_name != f"{VIEW_BUNDLE_PAYLOAD}/{source_relative}":
+            raise StorageIntegrityError("planned view bundle ZIP member is invalid")
+    try:
+        expected_name = _encoded_zip_name(member.archive_name)
+    except (StorageValidationError, ValueError) as exc:
+        raise StorageIntegrityError(
+            "planned view bundle ZIP member is invalid"
+        ) from exc
+    if member.encoded_name != expected_name or member.flags != (
+        0 if member.archive_name.isascii() else 0x800
+    ):
+        raise StorageIntegrityError(
+            "planned view bundle canonical layout is inconsistent"
+        )
+    valid_layout = False
+    guarded_values = (False,) if member.inline_payload is not None else (False, True)
+    for guarded in guarded_values:
+        local_extra = _zip_member_local_extra(member.byte_size, guarded=guarded)
+        central_extra = _zip_member_central_extra(
+            member.byte_size,
+            member.header_offset,
+            guarded=guarded,
+        )
+        local_version = 45 if member.byte_size * 1.05 > _ZIP64_LIMIT else 20
+        central_version = (
+            45
+            if local_version == 45
+            or central_extra != (_ZIP_GUARD_EXTRA if guarded else b"")
+            else 20
+        )
+        if (
+            member.local_extra == local_extra
+            and member.central_extra == central_extra
+            and member.local_version == local_version
+            and member.central_version == central_version
+        ):
+            valid_layout = True
+            break
+    if not valid_layout:
+        raise StorageIntegrityError(
+            "planned view bundle canonical layout is inconsistent"
+        )
+
+
+def _require_manifest_zip_member_binding(receipt: _PlannedViewBundleReceipt) -> None:
+    """Attest the current manifest ZIP member before any long layout scan."""
+
+    member = receipt.zip_members[0]
+    _require_valid_planned_zip_member(member)
+    assert type(member) is _PlannedZipMember
+    if (
+        member.header_offset != 0
+        or member.archive_name != VIEW_BUNDLE_MANIFEST
+        or member.source_relative is not None
+        or member.inline_payload != receipt.manifest_bytes
+        or member.mode != 0o644
+    ):
+        raise StorageIntegrityError("planned view bundle metadata layout is invalid")
+
+
+def _require_manifest_and_zip_binding(
+    receipt: _PlannedViewBundleReceipt,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
+    """Attest each current manifest and ZIP record before polling."""
+
+    offset = 0
+    expected_header_offset = 0
+    expected_central_size = 0
+    zip_member_count = len(receipt.zip_members)
+
+    def compare(chunk: bytes) -> None:
+        nonlocal offset
+        next_offset = offset + len(chunk)
+        if receipt.manifest_bytes[offset:next_offset] != chunk:
+            raise StorageIntegrityError(
+                "planned view bundle manifest binding is invalid"
+            )
+        offset = next_offset
+
+    def validate_zip_member(
+        index: int,
+        member: object,
+        expected_member: ArtifactMember | None,
+    ) -> None:
+        nonlocal expected_central_size, expected_header_offset
+        _require_valid_planned_zip_member(member)
+        assert type(member) is _PlannedZipMember
+        if member.header_offset != expected_header_offset:
+            raise StorageIntegrityError(
+                "planned view bundle metadata layout is invalid"
+            )
+        if expected_member is None:
+            if (
+                member.archive_name != VIEW_BUNDLE_MANIFEST
+                or member.source_relative is not None
+                or member.inline_payload != receipt.manifest_bytes
+                or member.mode != 0o644
+            ):
+                raise StorageIntegrityError(
+                    "planned view bundle metadata layout is invalid"
+                )
+        else:
+            expected_relative = PurePosixPath(expected_member.path)
+            if (
+                member.archive_name != f"{VIEW_BUNDLE_PAYLOAD}/{expected_member.path}"
+                or member.source_relative != expected_relative
+                or member.inline_payload is not None
+                or member.mode != expected_member.mode
+                or member.byte_size != expected_member.byte_size
+            ):
+                raise StorageIntegrityError(
+                    "planned view bundle metadata layout is invalid"
+                )
+        guarded = index > 0 and index + 1 == zip_member_count
+        expected_local_extra = _zip_member_local_extra(
+            member.byte_size,
+            guarded=guarded,
+        )
+        expected_central_extra = _zip_member_central_extra(
+            member.byte_size,
+            member.header_offset,
+            guarded=guarded,
+        )
+        expected_local_version = 45 if member.byte_size * 1.05 > _ZIP64_LIMIT else 20
+        expected_central_version = (
+            45
+            if expected_local_version == 45
+            or expected_central_extra != (_ZIP_GUARD_EXTRA if guarded else b"")
+            else 20
+        )
+        if (
+            member.local_extra != expected_local_extra
+            or member.central_extra != expected_central_extra
+            or member.local_version != expected_local_version
+            or member.central_version != expected_central_version
+        ):
+            raise StorageIntegrityError(
+                "planned view bundle canonical layout is inconsistent"
+            )
+        expected_header_offset += (
+            30 + len(member.encoded_name) + len(member.local_extra) + member.byte_size
+        )
+        expected_central_size += (
+            46 + len(member.encoded_name) + len(member.central_extra)
+        )
+
+    compare(b'{"files":[')
+    validate_zip_member(0, receipt.zip_members[0], None)
+    member_count = len(receipt.members)
+    for index, member in enumerate(receipt.members):
+        _require_valid_artifact_member(member)
+        if index:
+            compare(b",")
+        compare(
+            canonical_json(
+                {
+                    "path": member.path,
+                    "size": member.byte_size,
+                    "sha256": member.digest,
+                    "mode": member.mode,
+                }
+            ).encode("utf-8")
+        )
+        validate_zip_member(index + 1, receipt.zip_members[index + 1], member)
+        if check_cancelled is not None and index + 1 < member_count:
+            check_cancelled()
+    compare(b'],"schema":')
+    compare(
+        json.dumps(
+            VIEW_BUNDLE_SCHEMA,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    )
+    compare(b',"view_type":')
+    compare(
+        json.dumps(
+            receipt.view_type,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    )
+    compare(b"}")
+    if offset != len(receipt.manifest_bytes):
+        raise StorageIntegrityError("planned view bundle manifest binding is invalid")
+    if (
+        expected_header_offset != receipt.central_offset
+        or expected_central_size != receipt.central_size
+    ):
+        raise StorageIntegrityError(
+            "planned view bundle canonical layout is inconsistent"
+        )
+
+
 def _require_planned_view_bundle(
     plan: PlannedViewBundle,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _PlannedViewBundleReceipt:
     if type(plan) is not PlannedViewBundle:
         raise TypeError("planned view bundle must use the exact plan type")
-    if type(plan.members) is not tuple or not all(
-        type(member) is ArtifactMember for member in plan.members
-    ):
+    if type(plan.members) is not tuple:
         raise TypeError("planned view bundle members must be artifact records")
     if type(plan.view_type) is not str or type(plan.digest) is not str:
         raise StorageValidationError("planned view bundle text fields are invalid")
@@ -2169,7 +2756,21 @@ def _require_planned_view_bundle(
         raise StorageValidationError("planned view bundle size is invalid")
     if plan.byte_size < 0:
         raise StorageValidationError("planned view bundle size is invalid")
-    _validate_expected_subtree_ownership(plan.source_ownership)
+    for member in _interitem_cancellation(
+        plan.members,
+        count=len(plan.members),
+        check_cancelled=check_cancelled,
+    ):
+        if type(member) is not ArtifactMember:
+            raise TypeError("planned view bundle members must be artifact records")
+        _require_valid_artifact_member(member)
+    if check_cancelled is None:
+        _validate_expected_subtree_ownership(plan.source_ownership)
+    else:
+        _validate_expected_subtree_ownership(
+            plan.source_ownership,
+            check_cancelled=check_cancelled,
+        )
     receipt = plan._receipt
     if type(receipt) is not _PlannedViewBundleReceipt:
         raise StorageIntegrityError("planned view bundle has no authority receipt")
@@ -2185,84 +2786,104 @@ def _require_planned_view_bundle(
         raise StorageIntegrityError(
             "planned view bundle fields differ from their authority receipt"
         )
-    _require_valid_planned_layout(receipt)
+    if check_cancelled is None:
+        _require_valid_planned_layout(receipt)
+    else:
+        _require_valid_planned_layout(
+            receipt,
+            check_cancelled=check_cancelled,
+        )
     return receipt
 
 
-def _require_valid_planned_layout(receipt: _PlannedViewBundleReceipt) -> None:
+def _require_valid_planned_layout(
+    receipt: _PlannedViewBundleReceipt,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
     if (
         type(receipt.prefix) is not PurePosixPath
+        or type(receipt.outer_ownership) is not _TreeOwnership
+        or type(receipt.source_ownership) is not _TreeOwnership
         or type(receipt.view_type) is not str
         or type(receipt.digest) is not str
         or type(receipt.byte_size) is not int
         or type(receipt.members) is not tuple
-        or any(type(member) is not ArtifactMember for member in receipt.members)
         or type(receipt.manifest_bytes) is not bytes
         or type(receipt.zip_members) is not tuple
-        or any(type(member) is not _PlannedZipMember for member in receipt.zip_members)
         or type(receipt.central_offset) is not int
         or type(receipt.central_size) is not int
         or type(receipt.envelope_bytes) is not bytes
     ):
         raise StorageIntegrityError("planned view bundle layout types are invalid")
-    if not receipt.zip_members or len(receipt.zip_members) != len(receipt.members) + 1:
+    try:
+        canonical_prefix = _publication_subtree_prefix(receipt.prefix)
+    except (StorageValidationError, TypeError) as exc:
+        raise StorageIntegrityError(
+            "planned view bundle subtree prefix is invalid"
+        ) from exc
+    if canonical_prefix != receipt.prefix:
+        raise StorageIntegrityError("planned view bundle subtree prefix is invalid")
+    zip_member_count = len(receipt.zip_members)
+    if not receipt.zip_members or zip_member_count != len(receipt.members) + 1:
         raise StorageIntegrityError("planned view bundle ZIP inventory is incomplete")
-    if receipt.manifest_bytes != _manifest_bytes(
-        receipt.view_type,
-        receipt.members,
-    ):
-        raise StorageIntegrityError("planned view bundle manifest binding is invalid")
-    for member in receipt.zip_members:
-        if (
-            type(member.archive_name) is not str
-            or type(member.encoded_name) is not bytes
-            or (
-                member.source_relative is not None
-                and type(member.source_relative) is not PurePosixPath
-            )
-            or (
-                member.inline_payload is not None
-                and type(member.inline_payload) is not bytes
-            )
-            or any(
-                type(value) is not int
-                for value in (
-                    member.mode,
-                    member.byte_size,
-                    member.crc32,
-                    member.flags,
-                    member.header_offset,
-                    member.local_version,
-                    member.central_version,
-                )
-            )
-            or type(member.local_extra) is not bytes
-            or type(member.central_extra) is not bytes
-            or member.byte_size < 0
-            or member.crc32 < 0
-            or member.crc32 > 0xFFFFFFFF
-        ):
-            raise StorageIntegrityError("planned view bundle ZIP member is invalid")
-
-    first = receipt.zip_members[0]
     if (
-        first.archive_name != VIEW_BUNDLE_MANIFEST
-        or first.source_relative is not None
-        or first.inline_payload != receipt.manifest_bytes
-        or first.header_offset != 0
-        or first.mode != 0o644
+        receipt.byte_size < 0
+        or receipt.central_offset < 0
+        or receipt.central_size < 0
+        or receipt.central_offset + receipt.central_size + len(receipt.envelope_bytes)
+        != receipt.byte_size
+        or receipt.envelope_bytes
+        != _zip_envelope_bytes(
+            zip_member_count,
+            receipt.central_size,
+            receipt.central_offset,
+        )
     ):
-        raise StorageIntegrityError("planned view bundle metadata layout is invalid")
-    rebuilt = _plan_canonical_zip(
-        publication=receipt.publication,
-        prefix=receipt.prefix,
-        outer_ownership=receipt.outer_ownership,
-        source_ownership=receipt.source_ownership,
-        view_type=receipt.view_type,
-        members=receipt.members,
-        manifest_bytes=receipt.manifest_bytes,
-        payload_crcs=tuple(member.crc32 for member in receipt.zip_members[1:]),
+        raise StorageIntegrityError(
+            "planned view bundle canonical layout is inconsistent"
+        )
+    _require_manifest_zip_member_binding(receipt)
+    if check_cancelled is None:
+        _canonical_ownership_snapshot(receipt.outer_ownership)
+        _canonical_ownership_snapshot(receipt.source_ownership)
+    else:
+        _canonical_ownership_snapshot(
+            receipt.outer_ownership,
+            check_cancelled=check_cancelled,
+        )
+        _canonical_ownership_snapshot(
+            receipt.source_ownership,
+            check_cancelled=check_cancelled,
+        )
+    _require_manifest_and_zip_binding(
+        receipt,
+        check_cancelled=check_cancelled,
     )
+    payload_crcs: list[int] = []
+    for index, member in enumerate(receipt.zip_members):
+        if index == 0:
+            continue
+        payload_crcs.append(member.crc32)
+        if check_cancelled is not None and index + 1 < zip_member_count:
+            check_cancelled()
+    rebuild_kwargs = {
+        "publication": receipt.publication,
+        "prefix": receipt.prefix,
+        "outer_ownership": receipt.outer_ownership,
+        "source_ownership": receipt.source_ownership,
+        "view_type": receipt.view_type,
+        "members": receipt.members,
+        "manifest_bytes": receipt.manifest_bytes,
+        "payload_crcs": tuple(payload_crcs),
+    }
+    if check_cancelled is None:
+        rebuilt = _plan_canonical_zip(**rebuild_kwargs)
+    else:
+        rebuilt = _plan_canonical_zip(
+            **rebuild_kwargs,
+            check_cancelled=check_cancelled,
+        )
     if (
         receipt.zip_members != rebuilt.zip_members
         or receipt.central_offset != rebuilt.central_offset
@@ -2329,10 +2950,17 @@ class _CallbackScopedBundleChunks:
         if self._check_cancelled is not None:
             self._check_cancelled()
         if self._iterator is None:
-            self._iterator = _iter_planned_view_bundle_bytes(
-                self._publication,
-                self._receipt,
-            )
+            if self._check_cancelled is None:
+                self._iterator = _iter_planned_view_bundle_bytes(
+                    self._publication,
+                    self._receipt,
+                )
+            else:
+                self._iterator = _iter_planned_view_bundle_bytes(
+                    self._publication,
+                    self._receipt,
+                    check_cancelled=self._check_cancelled,
+                )
         try:
             chunk = next(self._iterator)
         except StopIteration:
@@ -2615,25 +3243,84 @@ def _run_bundle_stream_callback(
 
 def _manifest_value(
     view_type: str,
-    members: Iterable[ArtifactMember],
+    members: Sequence[ArtifactMember],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    return {
-        "schema": VIEW_BUNDLE_SCHEMA,
-        "view_type": view_type,
-        "files": [
+    files: list[dict[str, object]] = []
+    for member in _interitem_cancellation(
+        members,
+        count=len(members),
+        check_cancelled=check_cancelled,
+    ):
+        files.append(
             {
                 "path": member.path,
                 "size": member.byte_size,
                 "sha256": member.digest,
                 "mode": member.mode,
             }
-            for member in members
-        ],
+        )
+    return {
+        "schema": VIEW_BUNDLE_SCHEMA,
+        "view_type": view_type,
+        "files": files,
     }
 
 
-def _manifest_bytes(view_type: str, members: Iterable[ArtifactMember]) -> bytes:
-    return canonical_json(_manifest_value(view_type, members)).encode("utf-8")
+def _manifest_bytes(
+    view_type: str,
+    members: Sequence[ArtifactMember],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+    max_bytes: int | None = None,
+) -> bytes:
+    value = (
+        _manifest_value(view_type, members)
+        if check_cancelled is None
+        else _manifest_value(
+            view_type,
+            members,
+            check_cancelled=check_cancelled,
+        )
+    )
+    if check_cancelled is None:
+        return canonical_json(value).encode("utf-8")
+
+    payload = bytearray()
+    try:
+        chunks = iter(
+            json.JSONEncoder(
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            ).iterencode(value)
+        )
+    except (TypeError, ValueError) as exc:
+        raise StorageValidationError(f"payload is not canonical JSON: {exc}") from exc
+    while True:
+        try:
+            chunk = next(chunks)
+        except StopIteration:
+            break
+        except (TypeError, ValueError) as exc:
+            raise StorageValidationError(
+                f"payload is not canonical JSON: {exc}"
+            ) from exc
+        try:
+            encoded = chunk.encode("utf-8")
+        except (AttributeError, UnicodeEncodeError) as exc:
+            raise StorageValidationError(
+                f"payload is not canonical JSON: {exc}"
+            ) from exc
+        payload.extend(encoded)
+        if max_bytes is not None and len(payload) > max_bytes:
+            raise StorageValidationError(
+                f"view bundle metadata exceeds {max_bytes} bytes"
+            )
+        check_cancelled()
+    return bytes(payload)
 
 
 def _canonical_zip_info(name: str, mode: int) -> zipfile.ZipInfo:

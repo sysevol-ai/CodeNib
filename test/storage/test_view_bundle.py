@@ -22,7 +22,7 @@ import warnings
 import zipfile
 from dataclasses import fields, replace
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, Iterable
+from typing import Any, BinaryIO, Callable, Iterable, Iterator
 
 import pytest
 
@@ -73,6 +73,1046 @@ def _source(root: Path) -> Path:
     executable.write_bytes(b"immutable shard")
     executable.chmod(0o751)
     return source
+
+
+def test_planned_members_stop_before_future_record() -> None:
+    first = atomic_module.TreeFileRecord(
+        path="first.json",
+        mode=0o644,
+        size=1,
+        sha256="a" * 64,
+    )
+    stop = RuntimeError("exact bundle member cancellation")
+    touched_poison = False
+
+    class PoisonRecord:
+        @property
+        def path(self) -> str:
+            nonlocal touched_poison
+            touched_poison = True
+            raise AssertionError("future bundle record was consumed after stop")
+
+    with pytest.raises(RuntimeError) as stopped:
+        bundle_module._planned_view_bundle_members(
+            (first, PoisonRecord()),  # type: ignore[arg-type]
+            max_files=2,
+            max_bytes=2,
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+        )
+
+    assert stopped.value is stop
+    assert not touched_poison
+
+
+def test_bundle_inventory_stops_before_future_entry() -> None:
+    stop = RuntimeError("exact bundle inventory cancellation")
+    touched_poison = False
+
+    class PoisonEntry:
+        def __iter__(self) -> object:
+            nonlocal touched_poison
+            touched_poison = True
+            raise AssertionError("future bundle inventory entry was consumed")
+
+    with pytest.raises(RuntimeError) as stopped:
+        bundle_module._validate_bundle_source_inventory(
+            (("first.json", "file"), PoisonEntry()),  # type: ignore[arg-type]
+            max_files=2,
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+        )
+
+    assert stopped.value is stop
+    assert not touched_poison
+
+
+def test_planned_members_attest_current_record_before_armed_stop() -> None:
+    first = atomic_module.TreeFileRecord(
+        path="first.json",
+        mode=0o644,
+        size=1,
+        sha256="a" * 64,
+    )
+    stop = RuntimeError("late bundle member cancellation")
+    armed = False
+
+    class InvalidRecord:
+        @property
+        def path(self) -> str:
+            nonlocal armed
+            armed = True
+            return "../escape"
+
+        mode = 0o644
+        size = 1
+        sha256 = "b" * 64
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(StorageValidationError, match="relative and contained"):
+        bundle_module._planned_view_bundle_members(
+            (first, InvalidRecord()),  # type: ignore[arg-type]
+            max_files=2,
+            max_bytes=2,
+            check_cancelled=check_cancelled,
+        )
+
+    assert armed
+
+
+def test_bundle_manifest_stops_before_future_member() -> None:
+    first = bundle_module.ArtifactMember(
+        path="first.json",
+        digest="a" * 64,
+        byte_size=1,
+    )
+    stop = RuntimeError("exact bundle manifest cancellation")
+    touched_poison = False
+
+    class PoisonMember:
+        @property
+        def path(self) -> str:
+            nonlocal touched_poison
+            touched_poison = True
+            raise AssertionError("future manifest member was consumed after stop")
+
+    with pytest.raises(RuntimeError) as stopped:
+        bundle_module._manifest_value(
+            "bm25",
+            (first, PoisonMember()),  # type: ignore[arg-type]
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+        )
+
+    assert stopped.value is stop
+    assert not touched_poison
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, ValueError, KeyboardInterrupt])
+def test_bundle_manifest_encoding_stops_before_future_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[BaseException],
+) -> None:
+    member = bundle_module.ArtifactMember(
+        path="first.json",
+        digest="a" * 64,
+        byte_size=1,
+    )
+    stop = error_type("exact bundle encoding cancellation")
+    touched_poison = False
+
+    class PoisonEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def iterencode(self, _value: object) -> object:
+            nonlocal touched_poison
+            yield '{"files":'
+            touched_poison = True
+            raise AssertionError("future JSON chunk was produced after stop")
+
+    monkeypatch.setattr(bundle_module.json, "JSONEncoder", PoisonEncoder)
+    with pytest.raises(error_type) as stopped:
+        bundle_module._manifest_bytes(
+            "bm25",
+            (member,),
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+            max_bytes=1024,
+        )
+
+    assert stopped.value is stop
+    assert not touched_poison
+
+
+@pytest.mark.parametrize("mutate_after_capture", [False, True])
+def test_bundle_plan_cancellation_reconciles_final_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate_after_capture: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_members = bundle_module._planned_view_bundle_members
+    active = False
+    fired = False
+    stop = KeyboardInterrupt("exact bundle plan cancellation")
+
+    def observed_members(*args: object, **kwargs: object) -> object:
+        nonlocal active
+        active = True
+        try:
+            return real_members(*args, **kwargs)
+        finally:
+            active = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if active and not fired:
+            fired = True
+            if mutate_after_capture:
+                (source / "documents.json").write_text("[1]\n", encoding="utf-8")
+            raise stop
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_planned_view_bundle_members",
+        observed_members,
+    )
+
+    def plan(reader: atomic_module.PublicationDirectoryReader) -> object:
+        return plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_after_capture:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(KeyboardInterrupt) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert stopped.value is stop
+    assert fired
+
+
+@pytest.mark.parametrize("mutate_during_preflight", [False, True])
+def test_bundle_plan_preflight_cancellation_reconciles_final_ownership(
+    tmp_path: Path,
+    mutate_during_preflight: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = ValueError("exact bundle plan preflight cancellation")
+    fired = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if not fired:
+            fired = True
+            if mutate_during_preflight:
+                (source / "documents.json").write_text("[1]\n", encoding="utf-8")
+        raise stop
+
+    def plan(reader: atomic_module.PublicationDirectoryReader) -> object:
+        return plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_during_preflight:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(ValueError) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert stopped.value is stop
+    assert fired
+
+
+def test_bundle_plan_preflight_stop_does_not_validate_future_ownership_item(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    forged_ownership = replace(
+        source_ownership,
+        inventory=(
+            source_ownership.inventory[0],
+            object(),
+            *source_ownership.inventory[2:],
+        ),
+    )
+    stop = RuntimeError("exact ownership preflight cancellation")
+
+    def plan(reader: atomic_module.PublicationDirectoryReader) -> object:
+        return plan_view_bundle_reader(
+            reader,
+            "view",
+            forged_ownership,
+            view_type="bm25",
+            check_cancelled=lambda: (_ for _ in ()).throw(stop),
+        )
+
+    with pytest.raises(RuntimeError) as stopped:
+        atomic_module.reopen_authenticated_directory(
+            artifact_root,
+            outer_ownership,
+            plan,
+        )
+    assert stopped.value is stop
+
+
+def test_ownership_snapshot_attests_current_record_before_stop(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path / "artifacts")
+    ownership = atomic_module.capture_directory_ownership(source)
+    current = replace(ownership.file_records[0], size=-1)
+    forged = replace(
+        ownership,
+        file_records=(current, *ownership.file_records[1:]),
+    )
+    stop = ValueError("late ownership snapshot cancellation")
+
+    def check_cancelled() -> None:
+        frame = inspect.currentframe()
+        while frame is not None:
+            if (
+                frame.f_code is bundle_module._canonical_ownership_snapshot.__code__
+                and frame.f_locals.get("record") is current
+            ):
+                raise stop
+            frame = frame.f_back
+
+    with pytest.raises(RuntimeError, match="file record is invalid"):
+        bundle_module._canonical_ownership_snapshot(
+            forged,
+            check_cancelled=check_cancelled,
+        )
+
+
+@pytest.mark.parametrize("mutate_after_capture", [False, True])
+def test_bundle_plan_reconciles_fresh_cancellation_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate_after_capture: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_members = bundle_module._planned_view_bundle_members
+    active = False
+    cancellation_started = False
+    raised: list[RuntimeError] = []
+
+    def observed_members(*args: object, **kwargs: object) -> object:
+        nonlocal active
+        active = True
+        try:
+            return real_members(*args, **kwargs)
+        finally:
+            active = False
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_started
+        if not active and not cancellation_started:
+            return
+        if not cancellation_started:
+            cancellation_started = True
+            if mutate_after_capture:
+                (source / "documents.json").write_text("[1]\n", encoding="utf-8")
+        error = RuntimeError(f"fresh bundle cancellation {len(raised) + 1}")
+        raised.append(error)
+        raise error
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_planned_view_bundle_members",
+        observed_members,
+    )
+
+    def plan(reader: atomic_module.PublicationDirectoryReader) -> object:
+        return plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_after_capture:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert failed.value is not raised[0]
+        assert raised[0] in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(RuntimeError) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert stopped.value is raised[0]
+    assert len(raised) >= 2
+
+
+@pytest.mark.parametrize("mutate_after_capture", [False, True])
+def test_bundle_consumption_cancellation_reconciles_final_ownership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate_after_capture: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_next = bundle_module._CallbackScopedBundleChunks.__next__
+    active = False
+    fired = False
+    stop = KeyboardInterrupt("exact bundle consumption cancellation")
+
+    def observed_next(chunks: object) -> bytes:
+        nonlocal active
+        active = True
+        try:
+            return real_next(chunks)  # type: ignore[arg-type]
+        finally:
+            active = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if active and not fired:
+            fired = True
+            if mutate_after_capture:
+                (source / "documents.json").write_text("[1]\n", encoding="utf-8")
+            raise stop
+
+    monkeypatch.setattr(
+        bundle_module._CallbackScopedBundleChunks,
+        "__next__",
+        observed_next,
+    )
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> object:
+        planned = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        return consume_planned_view_bundle(
+            reader,
+            planned,
+            lambda chunks: tuple(chunks),
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_after_capture:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(KeyboardInterrupt) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert stopped.value is stop
+    assert fired
+
+
+@pytest.mark.parametrize("corrupt_current_chunk", [False, True])
+def test_planned_bundle_attests_final_payload_before_armed_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    corrupt_current_chunk: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_init = atomic_module.PublicationAuthenticatedFile.__init__
+    consumer_reads = False
+    armed = False
+    delivered: list[bytes] = []
+    stop = RuntimeError("exact post-payload cancellation")
+
+    def intercept_authenticated_file(
+        authenticated: atomic_module.PublicationAuthenticatedFile,
+        *,
+        path: str,
+        mode: int,
+        size: int,
+        read_callback: Callable[[int], bytes],
+        verify_callback: Callable[[], None],
+    ) -> None:
+        if consumer_reads and path == "view/documents.json":
+            backend_read = read_callback
+
+            def armed_read(requested: int) -> bytes:
+                nonlocal armed
+                block = backend_read(requested)
+                if block == b"[]\n":
+                    armed = True
+                    return b"[0]" if corrupt_current_chunk else block
+                return block
+
+            read_callback = armed_read
+        real_init(
+            authenticated,
+            path=path,
+            mode=mode,
+            size=size,
+            read_callback=read_callback,
+            verify_callback=verify_callback,
+        )
+
+    monkeypatch.setattr(
+        atomic_module.PublicationAuthenticatedFile,
+        "__init__",
+        intercept_authenticated_file,
+    )
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal consumer_reads
+        planned = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        consumer_reads = True
+        consume_planned_view_bundle(
+            reader,
+            planned,
+            lambda chunks: delivered.extend(chunks),
+            check_cancelled=check_cancelled,
+        )
+
+    if corrupt_current_chunk:
+        with pytest.raises(RuntimeError, match="bytes differ") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert failed.value is not stop
+        assert b"[0]" not in delivered
+    else:
+        with pytest.raises(RuntimeError) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert stopped.value is stop
+        assert b"[]\n" in delivered
+    assert armed
+
+
+@pytest.mark.parametrize("empty_is_final", [False, True])
+@pytest.mark.parametrize("mutate_namespace", [False, True])
+def test_planned_bundle_polls_after_authenticated_empty_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_is_final: bool,
+    mutate_namespace: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = artifact_root / "view"
+    source.mkdir(parents=True)
+    if empty_is_final:
+        mutation_target = source / "a.bin"
+        mutation_target.write_bytes(b"current")
+        empty_file = source / "z.empty"
+        future_file = None
+    else:
+        empty_file = source / "a.empty"
+        future_file = source / "z.bin"
+        future_file.write_bytes(b"future")
+        mutation_target = future_file
+    empty_file.write_bytes(b"")
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_init = atomic_module.PublicationAuthenticatedFile.__init__
+    consumer_reads = False
+    armed = False
+    delivered_at_arm: int | None = None
+    future_provider_reads = 0
+    delivered: list[bytes] = []
+    escaped: list[object] = []
+    stop = RuntimeError("exact empty-payload postflight cancellation")
+
+    def intercept_authenticated_file(
+        authenticated: atomic_module.PublicationAuthenticatedFile,
+        *,
+        path: str,
+        mode: int,
+        size: int,
+        read_callback: Callable[[int], bytes],
+        verify_callback: Callable[[], None],
+    ) -> None:
+        if consumer_reads and path == f"view/{empty_file.name}":
+            backend_read = read_callback
+
+            def arm_after_empty_eof(requested: int) -> bytes:
+                nonlocal armed, delivered_at_arm
+                block = backend_read(requested)
+                assert block == b""
+                delivered_at_arm = len(delivered)
+                if mutate_namespace:
+                    mutation_target.write_bytes(b"changed")
+                armed = True
+                return block
+
+            read_callback = arm_after_empty_eof
+        elif (
+            consumer_reads
+            and future_file is not None
+            and path == f"view/{future_file.name}"
+        ):
+            backend_read = read_callback
+
+            def reject_future_provider_read(requested: int) -> bytes:
+                nonlocal future_provider_reads
+                future_provider_reads += 1
+                if armed:
+                    raise AssertionError(
+                        "future bundle member was read after empty-payload stop"
+                    )
+                return backend_read(requested)
+
+            read_callback = reject_future_provider_read
+        real_init(
+            authenticated,
+            path=path,
+            mode=mode,
+            size=size,
+            read_callback=read_callback,
+            verify_callback=verify_callback,
+        )
+
+    monkeypatch.setattr(
+        atomic_module.PublicationAuthenticatedFile,
+        "__init__",
+        intercept_authenticated_file,
+    )
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal consumer_reads
+        planned = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        consumer_reads = True
+
+        def collect(chunks: Iterable[bytes]) -> None:
+            escaped.append(chunks)
+            for chunk in chunks:
+                delivered.append(chunk)
+
+        consume_planned_view_bundle(
+            reader,
+            planned,
+            collect,
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_namespace:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(RuntimeError) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert stopped.value is stop
+
+    assert armed
+    assert delivered_at_arm is not None
+    assert len(delivered) == delivered_at_arm
+    assert future_provider_reads == 0
+    assert _source_file_descriptor_count(empty_file) == 0
+    assert len(escaped) == 1
+    with pytest.raises(RuntimeError, match="no longer active"):
+        iter(escaped[0])  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("empty_is_final", [False, True])
+@pytest.mark.parametrize("mutate_namespace", [False, True])
+def test_bundle_planning_polls_after_authenticated_empty_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_is_final: bool,
+    mutate_namespace: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = artifact_root / "view"
+    source.mkdir(parents=True)
+    if empty_is_final:
+        mutation_target = source / "a.bin"
+        mutation_target.write_bytes(b"current")
+        empty_file = source / "z.empty"
+        future_file = None
+    else:
+        empty_file = source / "a.empty"
+        future_file = source / "z.bin"
+        future_file.write_bytes(b"future")
+        mutation_target = future_file
+    empty_file.write_bytes(b"")
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_init = atomic_module.PublicationAuthenticatedFile.__init__
+    real_local_header = bundle_module._local_zip_header
+    real_central_header = bundle_module._central_zip_header
+    empty_eof_reads = 0
+    armed = False
+    future_provider_reads_after_arm = 0
+    future_zip_header_built = False
+    stop = RuntimeError("exact empty-payload planning cancellation")
+
+    def intercept_authenticated_file(
+        authenticated: atomic_module.PublicationAuthenticatedFile,
+        *,
+        path: str,
+        mode: int,
+        size: int,
+        read_callback: Callable[[int], bytes],
+        verify_callback: Callable[[], None],
+    ) -> None:
+        if path == f"view/{empty_file.name}":
+            backend_read = read_callback
+
+            def arm_during_hash_postflight(requested: int) -> bytes:
+                nonlocal armed, empty_eof_reads
+                block = backend_read(requested)
+                assert block == b""
+                empty_eof_reads += 1
+                if empty_eof_reads == 2:
+                    if mutate_namespace:
+                        mutation_target.write_bytes(b"changed")
+                    armed = True
+                return block
+
+            read_callback = arm_during_hash_postflight
+        elif future_file is not None and path == f"view/{future_file.name}":
+            backend_read = read_callback
+
+            def observe_future_provider_read(requested: int) -> bytes:
+                nonlocal future_provider_reads_after_arm
+                if armed:
+                    future_provider_reads_after_arm += 1
+                return backend_read(requested)
+
+            read_callback = observe_future_provider_read
+        real_init(
+            authenticated,
+            path=path,
+            mode=mode,
+            size=size,
+            read_callback=read_callback,
+            verify_callback=verify_callback,
+        )
+
+    def observe_local_header(member: object) -> bytes:
+        nonlocal future_zip_header_built
+        if armed:
+            future_zip_header_built = True
+        return real_local_header(member)  # type: ignore[arg-type]
+
+    def observe_central_header(member: object) -> bytes:
+        nonlocal future_zip_header_built
+        if armed:
+            future_zip_header_built = True
+        return real_central_header(member)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        atomic_module.PublicationAuthenticatedFile,
+        "__init__",
+        intercept_authenticated_file,
+    )
+    monkeypatch.setattr(bundle_module, "_local_zip_header", observe_local_header)
+    monkeypatch.setattr(bundle_module, "_central_zip_header", observe_central_header)
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def plan(reader: atomic_module.PublicationDirectoryReader) -> object:
+        return plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_namespace:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(RuntimeError) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                plan,
+            )
+        assert stopped.value is stop
+
+    assert armed
+    assert empty_eof_reads == 2
+    assert future_provider_reads_after_arm == 0
+    assert not future_zip_header_built
+    assert _source_file_descriptor_count(empty_file) == 0
+
+
+@pytest.mark.parametrize("empty_is_final", [False, True])
+def test_planned_bundle_empty_payload_keeps_default_iterator_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    empty_is_final: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = artifact_root / "view"
+    source.mkdir(parents=True)
+    empty_name = "z.empty" if empty_is_final else "a.empty"
+    payload_name = "a.bin" if empty_is_final else "z.bin"
+    (source / empty_name).write_bytes(b"")
+    (source / payload_name).write_bytes(b"payload")
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    observed: list[tuple[object, bytes]] = []
+    iterator_calls = 0
+    real_iterator = bundle_module._iter_planned_view_bundle_bytes
+
+    def legacy_two_argument_iterator(
+        publication: atomic_module.PublicationDirectoryReader,
+        receipt: object,
+    ) -> Iterator[bytes]:
+        nonlocal iterator_calls
+        iterator_calls += 1
+        return real_iterator(publication, receipt)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_iter_planned_view_bundle_bytes",
+        legacy_two_argument_iterator,
+    )
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        planned = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        payload = consume_planned_view_bundle(
+            reader,
+            planned,
+            lambda chunks: b"".join(chunks),
+        )
+        observed.append((planned, payload))
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+    planned, payload = observed[0]
+    assert iterator_calls == 2
+    assert len(payload) == planned.byte_size
+    assert hashlib.sha256(payload).hexdigest() == planned.digest
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        assert archive.read(f"payload/{empty_name}") == b""
+        assert archive.read(f"payload/{payload_name}") == b"payload"
+
+
+def test_planned_bundle_stop_does_not_read_future_payload_chunk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = artifact_root / "view"
+    source.mkdir(parents=True)
+    payload = b"x" * (bundle_module._COPY_CHUNK_BYTES + 1)
+    (source / "large.bin").write_bytes(payload)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_init = atomic_module.PublicationAuthenticatedFile.__init__
+    consumer_reads = False
+    armed = False
+    provider_reads = 0
+    touched_future = False
+    stop = RuntimeError("exact inter-payload cancellation")
+
+    def intercept_authenticated_file(
+        authenticated: atomic_module.PublicationAuthenticatedFile,
+        *,
+        path: str,
+        mode: int,
+        size: int,
+        read_callback: Callable[[int], bytes],
+        verify_callback: Callable[[], None],
+    ) -> None:
+        if consumer_reads and path == "view/large.bin":
+            backend_read = read_callback
+
+            def poison_future_read(requested: int) -> bytes:
+                nonlocal armed, provider_reads, touched_future
+                provider_reads += 1
+                if provider_reads > 1:
+                    touched_future = True
+                    raise AssertionError("future payload chunk was read after stop")
+                block = backend_read(requested)
+                armed = True
+                return block
+
+            read_callback = poison_future_read
+        real_init(
+            authenticated,
+            path=path,
+            mode=mode,
+            size=size,
+            read_callback=read_callback,
+            verify_callback=verify_callback,
+        )
+
+    monkeypatch.setattr(
+        atomic_module.PublicationAuthenticatedFile,
+        "__init__",
+        intercept_authenticated_file,
+    )
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal consumer_reads
+        planned = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        consumer_reads = True
+        consume_planned_view_bundle(
+            reader,
+            planned,
+            lambda chunks: tuple(chunks),
+            check_cancelled=check_cancelled,
+        )
+
+    with pytest.raises(RuntimeError) as stopped:
+        atomic_module.reopen_authenticated_directory(
+            artifact_root,
+            outer_ownership,
+            consume,
+        )
+    assert stopped.value is stop
+    assert provider_reads == 1
+    assert not touched_future
+
+
+@pytest.mark.parametrize("mutate_during_preflight", [False, True])
+def test_bundle_consumption_preflight_cancellation_reconciles_ownership(
+    tmp_path: Path,
+    mutate_during_preflight: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = RuntimeError("exact bundle consumption preflight cancellation")
+    fired = False
+
+    def check_cancelled() -> None:
+        nonlocal fired
+        if not fired:
+            fired = True
+            if mutate_during_preflight:
+                (source / "documents.json").write_text("[1]\n", encoding="utf-8")
+        raise stop
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> object:
+        planned = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        return consume_planned_view_bundle(
+            reader,
+            planned,
+            lambda chunks: tuple(chunks),
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate_during_preflight:
+        with pytest.raises(RuntimeError, match="changed") as failed:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert failed.value is not stop
+        assert stop in {failed.value.__cause__, failed.value.__context__}
+    else:
+        with pytest.raises(RuntimeError) as stopped:
+            atomic_module.reopen_authenticated_directory(
+                artifact_root,
+                outer_ownership,
+                consume,
+            )
+        assert stopped.value is stop
+    assert fired
 
 
 def test_public_physical_size_gate_rejects_before_archive_access() -> None:
@@ -898,6 +1938,8 @@ def test_planned_partial_stream_close_reconciles_interruption_without_fd_leak(
     artifact_root = tmp_path / "artifacts"
     source = _source(artifact_root)
     documents = source / "documents.json"
+    partial_payload = b"x" * bundle_module._COPY_CHUNK_BYTES
+    documents.write_bytes(partial_payload + b"x")
     outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
     source_ownership = atomic_module.capture_directory_ownership(source)
     real_close = bundle_module._close_bundle_iterator
@@ -923,7 +1965,7 @@ def test_planned_partial_stream_close_reconciles_interruption_without_fd_leak(
         )
 
         def fail_partial(chunks: object) -> None:
-            _consume_until_payload(chunks, b"[]\n")
+            _consume_until_payload(chunks, partial_payload)
             assert _source_file_descriptor_count(documents) == 1
             raise ConsumerFailure("consumer primary")
 
@@ -950,6 +1992,8 @@ def test_persistent_stream_close_keeps_retry_owner_on_actual_primary(
     artifact_root = tmp_path / "artifacts"
     source = _source(artifact_root)
     documents = source / "documents.json"
+    partial_payload = b"x" * bundle_module._COPY_CHUNK_BYTES
+    documents.write_bytes(partial_payload + b"x")
     outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
     source_ownership = atomic_module.capture_directory_ownership(source)
     real_close = bundle_module._close_bundle_iterator
@@ -968,7 +2012,7 @@ def test_persistent_stream_close_keeps_retry_owner_on_actual_primary(
         )
 
         def fail_partial(chunks: object) -> None:
-            _consume_until_payload(chunks, b"[]\n")
+            _consume_until_payload(chunks, partial_payload)
             raise ConsumerFailure("consumer primary")
 
         try:
@@ -1021,6 +2065,8 @@ def test_planning_hash_stream_preserves_iteration_primary_and_reconciles_close(
     artifact_root = tmp_path / "artifacts"
     source = _source(artifact_root)
     documents = source / "documents.json"
+    partial_payload = b"x" * bundle_module._COPY_CHUNK_BYTES
+    documents.write_bytes(partial_payload + b"x")
     outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
     source_ownership = atomic_module.capture_directory_ownership(source)
     real_next = bundle_module._CallbackScopedBundleChunks.__next__
@@ -1031,7 +2077,7 @@ def test_planning_hash_stream_preserves_iteration_primary_and_reconciles_close(
     def interrupt_during_payload(stream: object) -> bytes:
         nonlocal interrupted_iteration
         chunk = real_next(stream)  # type: ignore[arg-type]
-        if not interrupted_iteration and chunk == b"[]\n":
+        if not interrupted_iteration and chunk == partial_payload:
             interrupted_iteration = True
             assert _source_file_descriptor_count(documents) == 1
             raise PlanningIterationFailure("planning iteration primary")
@@ -1092,6 +2138,425 @@ def test_planned_bundle_rejects_forged_public_identity(tmp_path: Path) -> None:
                 reader,
                 forged,
                 lambda chunks: tuple(chunks),
+            )
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+def test_planned_bundle_preflight_stops_before_future_invalid_member(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = RuntimeError("exact planned bundle preflight cancellation")
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        forged = replace(
+            plan,
+            members=(plan.members[0], object()),  # type: ignore[arg-type]
+        )
+        consumer_called = False
+
+        def consumer(_chunks: object) -> None:
+            nonlocal consumer_called
+            consumer_called = True
+
+        with pytest.raises(RuntimeError) as stopped:
+            consume_planned_view_bundle(
+                reader,
+                forged,
+                consumer,
+                check_cancelled=lambda: (_ for _ in ()).throw(stop),
+            )
+        assert stopped.value is stop
+        assert not consumer_called
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+def test_planned_bundle_preflight_attests_current_invalid_member_before_stop(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = RuntimeError("late planned bundle preflight cancellation")
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        forged = replace(
+            plan,
+            members=(object(),),  # type: ignore[arg-type]
+        )
+        with pytest.raises(TypeError, match="artifact records"):
+            consume_planned_view_bundle(
+                reader,
+                forged,
+                lambda _chunks: None,
+                check_cancelled=lambda: (_ for _ in ()).throw(stop),
+            )
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+def test_planned_bundle_preflight_attests_top_level_size_before_stop(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = RuntimeError("late planned bundle size cancellation")
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        forged = replace(plan, byte_size=-1)
+        with pytest.raises(StorageValidationError, match="size is invalid"):
+            consume_planned_view_bundle(
+                reader,
+                forged,
+                lambda _chunks: None,
+                check_cancelled=lambda: (_ for _ in ()).throw(stop),
+            )
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+@pytest.mark.parametrize("invalid_is_current", [False, True])
+def test_planned_bundle_layout_attests_current_item_before_interitem_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_is_current: bool,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    real_layout = bundle_module._require_valid_planned_layout
+    real_zip_member = bundle_module._require_valid_planned_zip_member
+    stop = RuntimeError("exact planned layout cancellation")
+    layout_active = False
+    zip_item_validated = False
+
+    def observed_layout(*args: object, **kwargs: object) -> None:
+        nonlocal layout_active
+        layout_active = True
+        try:
+            real_layout(*args, **kwargs)  # type: ignore[arg-type]
+        finally:
+            layout_active = False
+
+    def check_cancelled() -> None:
+        if layout_active and zip_item_validated:
+            raise stop
+
+    def observed_zip_member(member: object) -> None:
+        nonlocal zip_item_validated
+        real_zip_member(member)
+        zip_item_validated = True
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_require_valid_planned_layout",
+        observed_layout,
+    )
+    monkeypatch.setattr(
+        bundle_module,
+        "_require_valid_planned_zip_member",
+        observed_zip_member,
+    )
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        if invalid_is_current:
+            forged_members = plan.members
+            forged_zip_members = (object(), *plan._receipt.zip_members[1:])
+        else:
+            forged_members = plan.members
+            forged_zip_members = (
+                plan._receipt.zip_members[0],
+                plan._receipt.zip_members[1],
+                object(),
+                *plan._receipt.zip_members[3:],
+            )
+        forged_receipt = replace(
+            plan._receipt,
+            members=forged_members,
+            zip_members=forged_zip_members,  # type: ignore[arg-type]
+        )
+        forged_plan = replace(
+            plan,
+            members=forged_members,
+            _receipt=forged_receipt,
+        )
+        if invalid_is_current:
+            with pytest.raises(StorageIntegrityError, match="layout types"):
+                consume_planned_view_bundle(
+                    reader,
+                    forged_plan,
+                    lambda _chunks: None,
+                    check_cancelled=check_cancelled,
+                )
+        else:
+            with pytest.raises(RuntimeError) as stopped:
+                consume_planned_view_bundle(
+                    reader,
+                    forged_plan,
+                    lambda _chunks: None,
+                    check_cancelled=check_cancelled,
+                )
+            assert stopped.value is stop
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("path", "../escape"), ("digest", "not-a-digest")],
+)
+def test_planned_bundle_attests_corrupted_exact_member_before_stop(
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = RuntimeError("late exact-member cancellation")
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        object.__setattr__(plan.members[0], field, value)
+        with pytest.raises(StorageIntegrityError, match="member is invalid"):
+            consume_planned_view_bundle(
+                reader,
+                plan,
+                lambda _chunks: None,
+                check_cancelled=lambda: (_ for _ in ()).throw(stop),
+            )
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("mode", -1, "ZIP member is invalid"),
+        ("header_offset", -1, "ZIP member is invalid"),
+        ("header_offset", 1, "metadata layout"),
+        ("flags", 1, "canonical layout"),
+        ("encoded_name", b"forged", "canonical layout"),
+    ],
+)
+def test_planned_bundle_attests_corrupted_zip_member_before_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = RuntimeError("late exact ZIP-member cancellation")
+    real_zip_member = bundle_module._require_valid_planned_zip_member
+    zip_item_validated = False
+
+    def observed_zip_member(member: object) -> None:
+        nonlocal zip_item_validated
+        real_zip_member(member)
+        zip_item_validated = True
+
+    def check_cancelled() -> None:
+        if zip_item_validated:
+            raise stop
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_require_valid_planned_zip_member",
+        observed_zip_member,
+    )
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        current_zip_member = replace(plan._receipt.zip_members[0])
+        object.__setattr__(current_zip_member, field, value)
+        forged_receipt = replace(
+            plan._receipt,
+            zip_members=(current_zip_member, *plan._receipt.zip_members[1:]),
+        )
+        with pytest.raises(StorageIntegrityError, match=message):
+            bundle_module._require_valid_planned_layout(
+                forged_receipt,
+                check_cancelled=check_cancelled,
+            )
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+def test_planned_bundle_attests_current_receipt_before_phase_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = KeyboardInterrupt("exact receipt-phase cancellation")
+    real_validate = bundle_module._validate_expected_subtree_ownership
+    armed = False
+    arm_after_validation = False
+
+    def validate_source_ownership(*args: object, **kwargs: object) -> None:
+        nonlocal armed, arm_after_validation
+        real_validate(*args, **kwargs)  # type: ignore[arg-type]
+        if arm_after_validation:
+            armed = True
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    monkeypatch.setattr(
+        bundle_module,
+        "_validate_expected_subtree_ownership",
+        validate_source_ownership,
+    )
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        nonlocal arm_after_validation
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        arm_after_validation = True
+        current_zip_member = replace(plan._receipt.zip_members[0])
+        object.__setattr__(current_zip_member, "mode", -1)
+        forged_receipt = replace(
+            plan._receipt,
+            zip_members=(current_zip_member, *plan._receipt.zip_members[1:]),
+        )
+        forged_plan = replace(
+            plan,
+            _receipt=forged_receipt,
+        )
+        with pytest.raises(StorageIntegrityError, match="ZIP member is invalid"):
+            consume_planned_view_bundle(
+                reader,
+                forged_plan,
+                lambda _chunks: None,
+                check_cancelled=check_cancelled,
+            )
+
+    atomic_module.reopen_authenticated_directory(
+        artifact_root,
+        outer_ownership,
+        consume,
+    )
+
+
+def test_planned_bundle_attests_outer_authority_before_layout_stop(
+    tmp_path: Path,
+) -> None:
+    artifact_root = tmp_path / "artifacts"
+    source = _source(artifact_root)
+    outer_ownership = atomic_module.capture_directory_ownership(artifact_root)
+    source_ownership = atomic_module.capture_directory_ownership(source)
+    stop = KeyboardInterrupt("exact layout-authority cancellation")
+
+    def check_cancelled() -> None:
+        frame = inspect.currentframe()
+        while frame is not None:
+            if frame.f_code is bundle_module._require_manifest_and_zip_binding.__code__:
+                raise stop
+            frame = frame.f_back
+
+    def consume(reader: atomic_module.PublicationDirectoryReader) -> None:
+        plan = plan_view_bundle_reader(
+            reader,
+            "view",
+            source_ownership,
+            view_type="bm25",
+        )
+        forged_outer = replace(plan._receipt.outer_ownership)
+        object.__setattr__(forged_outer, "entries", -1)
+        forged_receipt = replace(
+            plan._receipt,
+            outer_ownership=forged_outer,
+        )
+        forged_plan = replace(plan, _receipt=forged_receipt)
+        with pytest.raises(RuntimeError, match="invalid entry count"):
+            consume_planned_view_bundle(
+                reader,
+                forged_plan,
+                lambda _chunks: None,
+                check_cancelled=check_cancelled,
             )
 
     atomic_module.reopen_authenticated_directory(

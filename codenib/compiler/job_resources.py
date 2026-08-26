@@ -39,7 +39,11 @@ from ..storage.models import (
     StorageValidationError,
 )
 from ..storage.protocols import RetainedImportObjectStore
-from .cache_import import CompilerCacheJobExecutor, compiler_cache_source_selection
+from .cache_import import (
+    CompilerCacheJobExecutor,
+    _compiler_cache_job_stop_check,
+    compiler_cache_source_selection,
+)
 from .job_resolver import CompilerCacheJobResourceScope
 from .manifest_import import _snapshot_environment
 from .snapshot_store import normalize_repo
@@ -237,11 +241,6 @@ def _inherit_cleanup_owners(
         _attach_publication_cleanup_owner(target, owner)
 
 
-def _check_stopped(context: IndexJobExecutionContext) -> None:
-    if context.control.stop_token.is_set():
-        raise RuntimeError("compiler cache job resource preparation stopped")
-
-
 def _attempt_nonce() -> str:
     nonce = secrets.token_hex(_NONCE_BYTES)
     if len(nonce) != 2 * _NONCE_BYTES or any(
@@ -371,6 +370,9 @@ class LocalCompilerCacheJobResourceFactory:
         object_store: RetainedImportObjectStore,
         target: LocalCompilerCacheJobTarget,
     ) -> Iterator[CompilerCacheJobExecutor]:
+        check_cancelled = _compiler_cache_job_stop_check(context.control.stop_token)
+        if check_cancelled is None:  # pragma: no cover - context invariant
+            raise AssertionError("compiler cache job context has no stop check")
         nonce = _attempt_nonce()
         prefix = f".codenib-cache-job-{nonce}"
         view = context.views[0]
@@ -416,21 +418,21 @@ class LocalCompilerCacheJobResourceFactory:
 
         try:
             with _run_context_with_cleanup_actions(cleanup_actions):
-                _check_stopped(context)
+                check_cancelled()
                 target.workspace_provider.require_support()
                 source_selection = compiler_cache_source_selection(
                     target.cache_dir,
-                    check_cancelled=lambda: _check_stopped(context),
+                    check_cancelled=check_cancelled,
                 )
-                _check_stopped(context)
+                check_cancelled()
                 repository_source = capture_repository_source(
                     target.repository_root,
                     exclude_roots=(target.cache_dir, target.workspace_root),
                     selection=source_selection,
                     _source_owner=source_owner.retain,
+                    check_cancelled=check_cancelled,
                 )
                 source_owner.retain(repository_source)
-                _check_stopped(context)
                 source_revision = SourceRevision.dirty(
                     target.repository_id,
                     source_fingerprint=repository_source.fingerprint,
@@ -440,6 +442,7 @@ class LocalCompilerCacheJobResourceFactory:
                     raise StorageValidationError(
                         "compiler cache job source has no current trusted local target"
                     )
+                check_cancelled()
                 yield CompilerCacheJobExecutor(
                     cache_dir=target.cache_dir,
                     view_type=view.view_type,

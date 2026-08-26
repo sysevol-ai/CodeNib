@@ -244,6 +244,239 @@ def test_repository_source_binding_reads_exact_captured_records(
         assert binding.read_bytes("link.py", max_bytes=1024) == b"TARGET = 2\n"
 
 
+def test_capture_repository_source_none_preserves_legacy_fingerprint_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "source.py").write_bytes(b"VALUE = 1\n")
+    real_fingerprint = source_fingerprint_module._fingerprint_repository
+    observed_kwargs: list[dict[str, object]] = []
+
+    def observe_fingerprint(*args, **kwargs):
+        observed_kwargs.append(dict(kwargs))
+        return real_fingerprint(*args, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_fingerprint_repository",
+        observe_fingerprint,
+    )
+    with capture_repository_source(repo, check_cancelled=None) as binding:
+        assert binding.file_count == 1
+
+    assert len(observed_kwargs) == 1
+    assert "check_cancelled" not in observed_kwargs[0]
+
+
+def test_capture_repository_source_stops_inside_initial_inventory_exactly(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_bytes(b"A\n")
+    (repo / "b.py").write_bytes(b"B\n")
+    owner = SourceBindingCleanupOwner()
+    stop = ValueError("injected repository capture stop")
+    real_update = source_fingerprint_module._update_inventory_record
+    seen: list[str] = []
+    armed = False
+    active = True
+
+    def stop_after_first_record(*args, **kwargs):
+        nonlocal armed
+        if not active:
+            return real_update(*args, **kwargs)
+        if armed:
+            raise AssertionError("cancelled capture consumed another record")
+        real_update(*args, **kwargs)
+        seen.append(kwargs["relative"])
+        armed = True
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_update_inventory_record",
+        stop_after_first_record,
+    )
+    with pytest.raises(ValueError) as caught:
+        capture_repository_source(
+            repo,
+            _source_owner=owner.retain,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert seen == ["a.py"]
+    assert not owner.closed
+    assert owner.pending_sources == ()
+    owner.close()
+    assert owner.closed
+    active = False
+    with capture_repository_source(repo) as reusable:
+        assert reusable.file_count == 2
+
+
+def test_inventory_tuple_stop_does_not_request_poisoned_future() -> None:
+    stop = RuntimeError("injected inventory tuple stop")
+    armed = False
+    requested: list[str] = []
+
+    def entries():
+        nonlocal armed
+        requested.append("first")
+        armed = True
+        yield "first"
+        raise AssertionError("cancelled tuple conversion requested a future item")
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(RuntimeError) as caught:
+        source_fingerprint_module._tuple_interruptibly(
+            entries(),
+            count=2,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert requested == ["first"]
+
+
+def test_inventory_tuple_does_not_poll_after_final_returned_item() -> None:
+    stop = RuntimeError("late inventory tuple stop")
+    armed = False
+
+    def entries():
+        nonlocal armed
+        armed = True
+        yield "only"
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    assert source_fingerprint_module._tuple_interruptibly(
+        entries(),
+        count=1,
+        check_cancelled=check_cancelled,
+    ) == ("only",)
+
+
+def test_inventory_sort_polls_between_bounded_runs_exactly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = RuntimeError("injected inventory sort stop")
+    calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal calls
+        calls += 1
+        raise stop
+
+    monkeypatch.setattr(source_fingerprint_module, "_SOURCE_SORT_RUN_ENTRIES", 2)
+    with pytest.raises(RuntimeError) as caught:
+        source_fingerprint_module._interruptible_stable_sort(
+            ["d", "c", "b", "a"],
+            key=None,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert calls == 1
+
+
+def test_inventory_sort_matches_legacy_stable_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = [("b", 0), ("a", 1), ("b", 2), ("a", 3), ("b", 4)]
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+
+    monkeypatch.setattr(source_fingerprint_module, "_SOURCE_SORT_RUN_ENTRIES", 2)
+    assert source_fingerprint_module._interruptible_stable_sort(
+        values,
+        key=lambda item: item[0],
+        check_cancelled=check_cancelled,
+    ) == sorted(values, key=lambda item: item[0])
+    assert polls > 0
+
+
+@pytest.mark.parametrize("entry_kind", ["file", "link"])
+@pytest.mark.parametrize("mutate_after_hash", [False, True])
+def test_capture_final_hash_stop_waits_for_repository_postflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entry_kind: str,
+    mutate_after_hash: bool,
+) -> None:
+    if entry_kind == "link" and not contained_source_module.SECURE_CONTAINED_SYMLINKS:
+        pytest.skip("requires secure POSIX contained symlinks")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    if entry_kind == "file":
+        target = repo / "source.py"
+    else:
+        hidden = repo / ".codenib-cache"
+        hidden.mkdir()
+        target = hidden / "target.py"
+        (repo / "visible.py").symlink_to(".codenib-cache/target.py")
+    target.write_bytes(b"owned")
+    real_update_hash = contained_source_module._BoundRepositoryFile.update_hash
+    stop = ValueError(f"exact POSIX {entry_kind} post-hash stop")
+    hash_complete = False
+    mutation_done = False
+    post_hash_polls = 0
+
+    def observe_hash(binding, hasher, *, check_cancelled=None):
+        nonlocal hash_complete
+        if check_cancelled is None:
+            result = real_update_hash(binding, hasher)
+        else:
+            result = real_update_hash(
+                binding,
+                hasher,
+                check_cancelled=check_cancelled,
+            )
+        hash_complete = True
+        return result
+
+    def check_cancelled() -> None:
+        nonlocal mutation_done, post_hash_polls
+        if not hash_complete:
+            return
+        post_hash_polls += 1
+        if mutate_after_hash and not mutation_done:
+            target.write_bytes(b"mutated after current hash")
+            mutation_done = True
+        raise stop
+
+    monkeypatch.setattr(
+        contained_source_module._BoundRepositoryFile,
+        "update_hash",
+        observe_hash,
+    )
+    if mutate_after_hash:
+        with pytest.raises(RepositoryChangedError) as caught:
+            capture_repository_source(repo, check_cancelled=check_cancelled)
+        assert caught.value is not stop
+        assert mutation_done
+    else:
+        with pytest.raises(ValueError) as caught:
+            capture_repository_source(repo, check_cancelled=check_cancelled)
+        assert caught.value is stop
+    assert post_hash_polls == 1
+
+
 def test_repository_source_binding_maps_only_captured_paths_and_reads_prefix(
     tmp_path: Path,
 ) -> None:
@@ -2125,6 +2358,224 @@ class _FakeWindowsSourceApi:
         block = data[offset : offset + size]
         self.offsets[handle] += len(block)
         return block
+
+
+def test_windows_capture_none_preserves_scan_and_hash_call_shapes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    real_scan = source_fingerprint_module._scan_pinned_windows_repository
+    real_update_hash = contained_source_module._WindowsBoundRepositoryFile.update_hash
+    scan_kwargs: list[dict[str, object]] = []
+    hash_kwargs: list[dict[str, object]] = []
+
+    def observe_scan(*args, **kwargs):
+        scan_kwargs.append(dict(kwargs))
+        return real_scan(*args, **kwargs)
+
+    def observe_hash(binding, hasher, **kwargs):
+        hash_kwargs.append(dict(kwargs))
+        return real_update_hash(binding, hasher, **kwargs)
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "_scan_pinned_windows_repository",
+        observe_scan,
+    )
+    monkeypatch.setattr(
+        contained_source_module._WindowsBoundRepositoryFile,
+        "update_hash",
+        observe_hash,
+    )
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+        check_cancelled=None,
+    )
+
+    assert isinstance(binding, RepositorySourceBinding)
+    assert len(scan_kwargs) == 2
+    assert all("check_cancelled" not in kwargs for kwargs in scan_kwargs)
+    assert hash_kwargs == [{}]
+    binding.close()
+    assert api.handles == {}
+
+
+def test_windows_capture_content_hash_stop_preserves_exact_exception() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(
+        api.root_id,
+        "source.py",
+        b"x" * (contained_source_module._READ_CHUNK_BYTES * 3 + 1),
+    )
+    real_read = api.read
+    stop = ValueError("injected Windows capture hash stop")
+    armed = False
+    reads = 0
+
+    def observe_read(handle: int, size: int) -> bytes:
+        nonlocal armed, reads
+        block = real_read(handle, size)
+        if block:
+            reads += 1
+            armed = True
+        return block
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    api.read = observe_read  # type: ignore[method-assign]
+    with pytest.raises(ValueError) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+            retain_binding=True,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert reads == 1
+    assert api.handles == {}
+
+
+def test_windows_final_file_change_precedes_eof_armed_stop() -> None:
+    api = _FakeWindowsSourceApi()
+    file_id = api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    real_read = api.read
+    stop = ValueError("injected Windows EOF stop")
+    armed = False
+
+    def corrupt_after_eof(handle: int, size: int) -> bytes:
+        nonlocal armed
+        block = real_read(handle, size)
+        if size == 1 and not block and not armed:
+            node = api.nodes[file_id]
+            node["version"] = int(node["version"]) + 1
+            armed = True
+        return block
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    api.read = corrupt_after_eof  # type: ignore[method-assign]
+    with pytest.raises(RepositoryChangedError) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+            retain_binding=True,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is not stop
+    assert api.handles == {}
+
+
+def test_windows_clean_final_file_delivers_eof_armed_stop_exactly() -> None:
+    api = _FakeWindowsSourceApi()
+    api.add_file(api.root_id, "source.py", b"VALUE = 1\n")
+    real_read = api.read
+    stop = ValueError("injected clean Windows EOF stop")
+    armed = False
+
+    def arm_after_eof(handle: int, size: int) -> bytes:
+        nonlocal armed
+        block = real_read(handle, size)
+        if size == 1 and not block:
+            armed = True
+        return block
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    api.read = arm_after_eof  # type: ignore[method-assign]
+    with pytest.raises(ValueError) as caught:
+        source_fingerprint_module._fingerprint_windows_repository(
+            r"C:\repo",
+            exclude_roots=(),
+            version=SOURCE_FINGERPRINT_VERSION,
+            api=api,
+            retain_binding=True,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert api.handles == {}
+
+
+@pytest.mark.parametrize("entry_kind", ["file", "link"])
+@pytest.mark.parametrize("mutate_after_hash", [False, True])
+def test_windows_final_hash_stop_waits_for_repository_postflight(
+    entry_kind: str,
+    mutate_after_hash: bool,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    if entry_kind == "file":
+        target_id = api.add_file(api.root_id, "source.py", b"owned")
+    else:
+        hidden = api.add_directory(api.root_id, ".codenib-cache")
+        target_id = api.add_file(hidden, "target.py", b"owned")
+        api.add_symlink(api.root_id, "visible.py", r".codenib-cache\target.py")
+    real_read = api.read
+    stop = ValueError(f"exact Windows {entry_kind} post-hash stop")
+    hash_complete = False
+    mutation_done = False
+    post_hash_polls = 0
+
+    def observe_eof(handle: int, size: int) -> bytes:
+        nonlocal hash_complete
+        block = real_read(handle, size)
+        if api.handles[handle] == target_id and size == 1 and not block:
+            hash_complete = True
+        return block
+
+    def check_cancelled() -> None:
+        nonlocal mutation_done, post_hash_polls
+        if not hash_complete:
+            return
+        post_hash_polls += 1
+        if mutate_after_hash and not mutation_done:
+            node = api.nodes[target_id]
+            node["version"] = int(node["version"]) + 1
+            mutation_done = True
+        raise stop
+
+    api.read = observe_eof  # type: ignore[method-assign]
+    if mutate_after_hash:
+        with pytest.raises(RepositoryChangedError) as caught:
+            source_fingerprint_module._fingerprint_windows_repository(
+                r"C:\repo",
+                exclude_roots=(),
+                version=SOURCE_FINGERPRINT_VERSION,
+                api=api,
+                retain_binding=True,
+                check_cancelled=check_cancelled,
+            )
+        assert caught.value is not stop
+        assert mutation_done
+    else:
+        with pytest.raises(ValueError) as caught:
+            source_fingerprint_module._fingerprint_windows_repository(
+                r"C:\repo",
+                exclude_roots=(),
+                version=SOURCE_FINGERPRINT_VERSION,
+                api=api,
+                retain_binding=True,
+                check_cancelled=check_cancelled,
+            )
+        assert caught.value is stop
+    assert post_hash_polls == 1
+    assert api.handles == {}
 
 
 def test_windows_inventory_cancellation_does_not_resume_poisoned_tail() -> None:

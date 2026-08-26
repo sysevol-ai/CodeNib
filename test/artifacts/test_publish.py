@@ -8,6 +8,7 @@ import inspect
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -747,3 +748,667 @@ def test_publishability_reader_requires_every_streaming_json_path(
 
     with pytest.raises(ValueError, match="path is absent: documents.json"):
         reopen_authenticated_directory(root, ownership, validate)
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, ValueError, KeyboardInterrupt, BaseException],
+)
+def test_publishability_record_paths_stop_before_poisoned_future(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[BaseException],
+) -> None:
+    poisoned = False
+
+    class PoisonedRecords(tuple[object, ...]):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal poisoned
+            yield tuple.__getitem__(self, 0)
+            poisoned = True
+            raise AssertionError(
+                "publishability validation consumed its poisoned future record"
+            )
+
+    records = PoisonedRecords(
+        (
+            SimpleNamespace(path="documents.json", size=2),
+            SimpleNamespace(path="poison.json", size=2),
+        )
+    )
+    reader = SimpleNamespace(
+        capture_ownership=lambda **_kwargs: object(),
+        open_authenticated_file=lambda *_args, **_kwargs: pytest.fail(
+            "cancellation must precede file consumption"
+        ),
+    )
+    monkeypatch.setattr(
+        security_module,
+        "directory_ownership_file_records",
+        lambda _ownership: records,
+    )
+    stop = error_type("injected publishability record cancellation")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(BaseException) as caught:
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="poisoned publication",
+            streaming_json_paths=("documents.json",),
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_publishability_missing_streaming_path_precedes_armed_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    armed = False
+
+    class ArmingRecord:
+        size = 2
+
+        @property
+        def path(self) -> str:
+            nonlocal armed
+            armed = True
+            return "other.json"
+
+    reader = SimpleNamespace(capture_ownership=lambda **_kwargs: object())
+    monkeypatch.setattr(
+        security_module,
+        "directory_ownership_file_records",
+        lambda _ownership: (ArmingRecord(),),
+    )
+    stop = KeyboardInterrupt("must not precede the missing-path mismatch")
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(ValueError, match="path is absent: documents.json"):
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="missing streamed publication",
+            streaming_json_paths=("documents.json",),
+            check_cancelled=check_cancelled,
+        )
+
+    assert armed
+
+
+def test_publishability_final_streaming_path_error_precedes_armed_stop() -> None:
+    cancellation_calls = 0
+    stop = BaseException("must not precede the final duplicate-path error")
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        if cancellation_calls > 1:
+            raise stop
+
+    reader = SimpleNamespace(capture_ownership=lambda **_kwargs: object())
+    with pytest.raises(ValueError, match="path is duplicated"):
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="duplicate streamed publication",
+            streaming_json_paths=("documents.json", "documents.json"),
+            check_cancelled=check_cancelled,
+        )
+
+    assert cancellation_calls == 1
+
+
+def test_publishability_none_path_preserves_noninterruptible_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader = SimpleNamespace(capture_ownership=lambda **_kwargs: object())
+    monkeypatch.setattr(
+        security_module,
+        "directory_ownership_file_records",
+        lambda _ownership: (SimpleNamespace(path="other.json", size=2),),
+    )
+
+    def forbidden_interitem(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("None publishability path entered cancellation helper")
+
+    monkeypatch.setattr(
+        security_module,
+        "_interitem_cancellation",
+        forbidden_interitem,
+    )
+
+    with pytest.raises(ValueError, match="path is absent: documents.json"):
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="noninterruptible publication",
+            streaming_json_paths=("documents.json",),
+        )
+
+
+def test_publishable_json_forbidden_paths_stop_before_poisoned_future() -> None:
+    poisoned = False
+
+    class PoisonedPaths(tuple[Path, ...]):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal poisoned
+            yield tuple.__getitem__(self, 0)
+            poisoned = True
+            raise AssertionError("JSON policy consumed its poisoned forbidden path")
+
+    paths = PoisonedPaths((Path("safe"), Path("poison")))
+    stop = BaseException("injected forbidden-path cancellation")
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        if cancellation_calls == 2:
+            raise stop
+
+    with pytest.raises(BaseException) as caught:
+        assert_publishable_json_value(
+            None,
+            forbidden_paths=paths,
+            environ={},
+            label="poisoned JSON policy",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_publishable_json_final_pattern_match_precedes_armed_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    armed = False
+    cancellation_calls = 0
+    stop = KeyboardInterrupt("must not precede the final forbidden match")
+    monkeypatch.setattr(
+        security_module,
+        "_forbidden_path_strings",
+        lambda _paths, **_kwargs: ("absent", "forbidden"),
+    )
+
+    def check_cancelled() -> None:
+        nonlocal armed, cancellation_calls
+        cancellation_calls += 1
+        if armed:
+            raise stop
+        if cancellation_calls == 3:
+            armed = True
+
+    with pytest.raises(ValueError, match="absolute build-machine path"):
+        assert_publishable_json_value(
+            "contains forbidden",
+            forbidden_paths=(),
+            environ={},
+            label="matched JSON policy",
+            check_cancelled=check_cancelled,
+        )
+
+    assert armed
+    assert cancellation_calls == 3
+
+
+def test_publishable_json_environment_stops_before_poisoned_future() -> None:
+    poisoned = False
+
+    class PoisonedItems(tuple[tuple[str, str], ...]):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal poisoned
+            yield tuple.__getitem__(self, 0)
+            poisoned = True
+            raise AssertionError("JSON policy consumed its poisoned environment item")
+
+    class PoisonedEnvironment(dict[str, str]):
+        def items(self):  # type: ignore[override, no-untyped-def]
+            return PoisonedItems(
+                (
+                    ("OPENAI_API_KEY", "safe-value"),
+                    ("SECOND_API_KEY", "poison-value"),
+                )
+            )
+
+    stop = ValueError("injected environment cancellation")
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        if cancellation_calls == 2:
+            raise stop
+
+    with pytest.raises(ValueError) as caught:
+        assert_publishable_json_value(
+            None,
+            forbidden_paths=(),
+            environ=PoisonedEnvironment(),
+            label="poisoned JSON environment",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_matching_blocks_final_pattern_match_precedes_armed_stop() -> None:
+    armed = False
+    cancellation_calls = 0
+    stop = BaseException("must not precede the final byte-pattern match")
+
+    def check_cancelled() -> None:
+        nonlocal armed, cancellation_calls
+        cancellation_calls += 1
+        if armed:
+            raise stop
+        if cancellation_calls == 2:
+            armed = True
+
+    assert (
+        security_module._matching_kind_blocks(
+            (b"contains-secret",),
+            forbidden=(b"absent",),
+            secrets=(b"secret",),
+            check_cancelled=check_cancelled,
+        )
+        == "secret"
+    )
+    assert armed
+    assert cancellation_calls == 2
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, ValueError, KeyboardInterrupt, BaseException],
+)
+def test_publishable_json_complexity_stops_before_poisoned_future(
+    error_type: type[BaseException],
+) -> None:
+    poisoned = False
+
+    class PoisonedObject(dict[str, object]):
+        def __len__(self) -> int:
+            return 2
+
+        def items(self):  # type: ignore[override, no-untyped-def]
+            nonlocal poisoned
+            yield "current", None
+            poisoned = True
+            raise AssertionError("JSON complexity consumed its poisoned future item")
+
+    stop = error_type("injected JSON complexity cancellation")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(BaseException) as caught:
+        security_module._validate_json_complexity_interruptibly(
+            PoisonedObject(),
+            label="poisoned JSON complexity",
+            max_nodes=100_000,
+            max_depth=100,
+            max_key_bytes=1_024,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_publishable_json_complexity_current_error_precedes_armed_stop() -> None:
+    stop = KeyboardInterrupt("must not precede the current malformed key")
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        raise stop
+
+    with pytest.raises(ValueError, match="key exceeding 1 bytes"):
+        security_module._validate_json_complexity_interruptibly(
+            {"oversized": None},
+            label="malformed JSON complexity",
+            max_nodes=100_000,
+            max_depth=100,
+            max_key_bytes=1,
+            check_cancelled=check_cancelled,
+        )
+
+    assert cancellation_calls == 0
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, ValueError, KeyboardInterrupt, BaseException],
+)
+def test_payload_blocks_stop_before_poisoned_future(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[BaseException],
+) -> None:
+    monkeypatch.setattr(security_module, "_SCAN_CHUNK_BYTES", 4)
+    poisoned = False
+
+    class PoisonedPayload(bytes):
+        def __getitem__(self, item: object) -> object:
+            nonlocal poisoned
+            assert isinstance(item, slice)
+            if item.start and item.start >= 4:
+                poisoned = True
+                raise AssertionError("payload scan consumed its poisoned future block")
+            return bytes.__getitem__(self, item)
+
+    stop = error_type("injected payload block cancellation")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    blocks = security_module._interruptible_payload_blocks(
+        PoisonedPayload(b"safe-poison"),
+        check_cancelled,
+    )
+    assert next(blocks) == b"safe"
+    with pytest.raises(BaseException) as caught:
+        next(blocks)
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_payload_matching_attests_current_block_before_interblock_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(security_module, "_SCAN_CHUNK_BYTES", 8)
+    cancellation_calls = 0
+    stop = BaseException("must not precede the current block match")
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        raise stop
+
+    blocks = security_module._interruptible_payload_blocks(
+        b"secret!!future!!",
+        check_cancelled,
+    )
+    assert (
+        security_module._matching_kind_blocks(
+            blocks,
+            forbidden=(),
+            secrets=(b"secret",),
+            check_cancelled=check_cancelled,
+        )
+        == "secret"
+    )
+    assert cancellation_calls == 0
+
+
+def test_payload_matching_preserves_cross_block_patterns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(security_module, "_SCAN_CHUNK_BYTES", 8)
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+
+    blocks = security_module._interruptible_payload_blocks(
+        b"123456secre" b"t-future",
+        check_cancelled,
+    )
+    assert (
+        security_module._matching_kind_blocks(
+            blocks,
+            forbidden=(),
+            secrets=(b"secret",),
+            check_cancelled=check_cancelled,
+        )
+        == "secret"
+    )
+    assert cancellation_calls >= 1
+
+
+def test_publishability_malformed_current_payload_precedes_armed_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_bytes(b"not-json")
+    ownership = capture_directory_ownership(root)
+    real_blocks = security_module._interruptible_payload_blocks
+    armed = False
+    stop = BaseException("must not precede malformed current JSON")
+
+    def arm_after_current_payload(
+        payload: bytes,
+        check_cancelled: object,
+    ):
+        nonlocal armed
+        assert callable(check_cancelled)
+        for block in real_blocks(payload, check_cancelled):
+            yield block
+            armed = True
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    monkeypatch.setattr(
+        security_module,
+        "validate_bounded_json_stream",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        security_module,
+        "_interruptible_payload_blocks",
+        arm_after_current_payload,
+    )
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={"MY_TOKEN": "absent-secret-value"},
+            label="malformed current publication",
+            check_cancelled=check_cancelled,
+        )
+
+    with pytest.raises(ValueError, match="contains invalid JSON") as caught:
+        reopen_authenticated_directory(root, ownership, validate)
+
+    assert caught.value is not stop
+    assert armed
+
+
+def test_publishability_none_path_preserves_complexity_and_payload_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    (root / "config.json").write_text('{"safe":true}', encoding="utf-8")
+    ownership = capture_directory_ownership(root)
+    real_complexity = security_module.validate_json_complexity
+    complexity_calls: list[tuple[object, dict[str, object]]] = []
+
+    def observe_complexity(value: object, **kwargs: object) -> None:
+        complexity_calls.append((value, kwargs))
+        real_complexity(value, **kwargs)
+
+    def forbidden_interruptible_blocks(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("None payload scan used interruptible block derivation")
+
+    monkeypatch.setattr(
+        security_module,
+        "validate_json_complexity",
+        observe_complexity,
+    )
+    monkeypatch.setattr(
+        security_module,
+        "_interruptible_payload_blocks",
+        forbidden_interruptible_blocks,
+    )
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        assert_publishable_tree_reader(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="None-shaped publication",
+        )
+
+    reopen_authenticated_directory(root, ownership, validate)
+
+    assert len(complexity_calls) == 1
+    assert complexity_calls[0][1] == {
+        "label": "None-shaped publication JSON config.json",
+        "max_nodes": security_module._MAX_PUBLISHABLE_JSON_NODES,
+        "max_depth": security_module._MAX_PUBLISHABLE_JSON_DEPTH,
+        "max_key_bytes": security_module._MAX_PUBLISHABLE_JSON_KEY_BYTES,
+    }
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, ValueError, KeyboardInterrupt, BaseException],
+)
+@pytest.mark.parametrize("mutate", [False, True])
+def test_publishability_final_ownership_stop_reconciles_exactly(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[BaseException],
+    mutate: bool,
+) -> None:
+    expected_ownership = object()
+    changed_ownership = object()
+    stop = error_type("injected final ownership cancellation")
+
+    class FinalCaptureReader:
+        def __init__(self) -> None:
+            self.capture_calls = 0
+
+        def capture_ownership(self, **kwargs: object) -> object:
+            self.capture_calls += 1
+            check_cancelled = kwargs.get("check_cancelled")
+            if self.capture_calls == 1:
+                assert callable(check_cancelled)
+                return expected_ownership
+            if self.capture_calls == 2:
+                assert callable(check_cancelled)
+                check_cancelled()
+                raise AssertionError("final ownership callback returned")
+            assert self.capture_calls == 3
+            assert check_cancelled is None
+            return changed_ownership if mutate else expected_ownership
+
+        def open_authenticated_file(
+            self,
+            *_args: object,
+            **_kwargs: object,
+        ) -> object:
+            raise AssertionError("empty ownership must not open a file")
+
+    reader = FinalCaptureReader()
+    monkeypatch.setattr(
+        security_module,
+        "directory_ownership_file_records",
+        lambda ownership: () if ownership is expected_ownership else pytest.fail(),
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    expected_error = RuntimeError if mutate else error_type
+    with pytest.raises(expected_error) as caught:
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="postflight publication",
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate:
+        assert "changed during cancellation reconciliation" in str(caught.value)
+        assert caught.value.__cause__ is stop
+    else:
+        assert caught.value is stop
+    assert reader.capture_calls == 3
+
+
+@pytest.mark.parametrize("mutate", [False, True])
+def test_publishability_final_policy_stop_uses_tracked_reconciliation(
+    mutate: bool,
+) -> None:
+    expected_ownership = object()
+    changed_ownership = object()
+    stop = BaseException("injected final entry-policy cancellation")
+
+    class PolicyCaptureReader:
+        def __init__(self) -> None:
+            self.capture_calls = 0
+
+        def capture_ownership(self, **kwargs: object) -> object:
+            self.capture_calls += 1
+            policy = kwargs["entry_policy"]
+            assert callable(policy)
+            policy("candidate.bin", "file", 0o600, 1)
+            if self.capture_calls == 1:
+                raise AssertionError("tracked entry policy returned")
+            assert self.capture_calls == 2
+            assert kwargs.get("check_cancelled") is None
+            return changed_ownership if mutate else expected_ownership
+
+    def entry_policy(
+        _path: str,
+        _kind: str,
+        _mode: int,
+        _size: int,
+    ) -> None:
+        raise AssertionError("callback path reused the untracked entry policy")
+
+    def entry_validator(
+        _path: str,
+        _kind: str,
+        _mode: int,
+        _size: int,
+        cancellation_check: object,
+    ) -> None:
+        if cancellation_check is not None:
+            assert callable(cancellation_check)
+            cancellation_check()
+
+    reader = PolicyCaptureReader()
+
+    def check_cancelled() -> None:
+        raise stop
+
+    expected_error = RuntimeError if mutate else BaseException
+    with pytest.raises(expected_error) as caught:
+        security_module._capture_publishable_tree_postflight(
+            reader,
+            expected=expected_ownership,
+            entry_policy=entry_policy,
+            entry_validator=entry_validator,
+            check_cancelled=check_cancelled,
+        )
+
+    if mutate:
+        assert "changed during cancellation reconciliation" in str(caught.value)
+        assert caught.value.__cause__ is stop
+    else:
+        assert caught.value is stop
+    assert reader.capture_calls == 2

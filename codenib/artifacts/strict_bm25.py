@@ -29,6 +29,9 @@ from .._atomic_directory import (
     reopen_authenticated_directory,
 )
 from .._bounded_json import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_KEY_BYTES,
+    DEFAULT_MAX_NODES_PER_ELEMENT,
     canonical_json_array_chunks,
     canonical_json_value_chunks,
     iter_bounded_json_array,
@@ -54,7 +57,16 @@ from ..source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceIdentitySnapshot,
 )
-from .security import assert_publishable_json_value
+from .portable_views import (
+    _canonical_json_value_chunks_interruptibly,
+    _detach_repository_identity_snapshot,
+    _require_repository_identity_matches,
+)
+from .security import (
+    _interitem_cancellation,
+    _validate_json_complexity_interruptibly,
+    assert_publishable_json_value,
+)
 
 _MAX_CONFIG_JSON_BYTES = 16 * 1024 * 1024
 _MAX_DOCUMENTS_JSON_BYTES = 256 * 1024 * 1024
@@ -128,17 +140,40 @@ def _json_object_snapshot(
     value: Mapping[str, Any],
     *,
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} requires a mapping")
-    detached = dict(value)
-    validate_json_complexity(detached, label=label)
-    try:
-        payload = _bounded_canonical_json_bytes(
+    if check_cancelled is None:
+        detached = dict(value)
+        validate_json_complexity(detached, label=label)
+        chunks = canonical_json_value_chunks(detached)
+    else:
+        if not callable(check_cancelled):
+            raise TypeError("strict BM25 cancellation check must be callable")
+        detached = dict(_interitem_cancellation(value.items(), check_cancelled))
+        _validate_json_complexity_interruptibly(
             detached,
-            max_bytes=_MAX_CONFIG_JSON_BYTES,
             label=label,
+            max_nodes=DEFAULT_MAX_NODES_PER_ELEMENT,
+            max_depth=DEFAULT_MAX_DEPTH,
+            max_key_bytes=DEFAULT_MAX_KEY_BYTES,
+            check_cancelled=check_cancelled,
         )
+        chunks = _canonical_json_value_chunks_interruptibly(
+            detached,
+            check_cancelled=check_cancelled,
+        )
+    try:
+        payload_buffer = bytearray()
+        for chunk in chunks:
+            payload_buffer.extend(chunk)
+            if len(payload_buffer) + 1 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError(
+                    f"{label} exceeds its {_MAX_CONFIG_JSON_BYTES}-byte limit"
+                )
+        payload_buffer.extend(b"\n")
+        payload = bytes(payload_buffer)
         snapshot = json.loads(
             payload.decode("utf-8", errors="strict"),
             object_pairs_hook=_reject_duplicate_object,
@@ -151,17 +186,46 @@ def _json_object_snapshot(
     return snapshot
 
 
-def _environment_snapshot(environ: Mapping[str, str] | None) -> dict[str, str]:
+def _environment_snapshot(
+    environ: Mapping[str, str] | None,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> dict[str, str]:
     source = os.environ if environ is None else environ
     if not isinstance(source, Mapping):
         raise TypeError("strict BM25 environment must be a mapping")
-    snapshot = dict(source)
-    if any(
-        not isinstance(key, str) or not isinstance(value, str)
-        for key, value in snapshot.items()
-    ):
-        raise TypeError("strict BM25 environment must contain text pairs")
+    if check_cancelled is None:
+        snapshot = dict(source)
+        if any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in snapshot.items()
+        ):
+            raise TypeError("strict BM25 environment must contain text pairs")
+    else:
+        if not callable(check_cancelled):
+            raise TypeError("strict BM25 cancellation check must be callable")
+        snapshot = {}
+        for key, value in _interitem_cancellation(
+            source.items(),
+            check_cancelled,
+        ):
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise TypeError("strict BM25 environment must contain text pairs")
+            snapshot[key] = value
     return snapshot
+
+
+def _forbidden_paths_snapshot(
+    forbidden_paths: Iterable[Path],
+    *,
+    check_cancelled: Callable[[], None],
+) -> tuple[Path, ...]:
+    forbidden: list[Path] = []
+    for path in _interitem_cancellation(forbidden_paths, check_cancelled):
+        if type(path) is not type(Path()):
+            raise TypeError("strict BM25 forbidden paths must be exact Path values")
+        forbidden.append(path)
+    return tuple(forbidden)
 
 
 def _preflight_publication_authorities(
@@ -432,10 +496,36 @@ class _PublicationBm25Reader:
         self.ownership = ownership
         self._publication = publication
         self._check_cancelled = check_cancelled
-        self._records = {
-            record.path: record
-            for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
-        }
+        if check_cancelled is None:
+            self._records = {
+                record.path: record
+                for record in directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+            }
+        else:
+            records = directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+            records_by_path: dict[str, TreeFileRecord] = {}
+            record_count = len(records)
+            for index in range(record_count):
+                record = records[index]
+                if type(record) is not TreeFileRecord:
+                    raise TypeError(
+                        "strict BM25 publication records have an invalid type"
+                    )
+                if record.path in records_by_path:
+                    raise RuntimeError("strict BM25 publication repeats a file record")
+                records_by_path[record.path] = record
+                if index + 1 < record_count:
+                    try:
+                        check_cancelled()
+                    except BaseException:  # noqa: B036 - preserve exact stop
+                        observed = publication.capture_ownership()
+                        if observed != ownership:
+                            raise RuntimeError(
+                                "strict BM25 publication changed during record "
+                                "derivation"
+                            ) from None
+                        raise
+            self._records = records_by_path
 
     def _relative(self, path: Path | PurePosixPath | str) -> PurePosixPath:
         if isinstance(path, Path):
@@ -1001,12 +1091,20 @@ def _source_view(
 
 def _repository_files(
     repository_identity: RepositorySourceIdentitySnapshot,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> frozenset[str]:
     records = repository_identity.file_records
-    paths = frozenset(record.path for record in records)
-    if len(paths) != len(records):
-        raise RuntimeError("authenticated repository source repeats a file")
-    return paths
+    record_count = len(records)
+    paths: set[str] = set()
+    for index in range(record_count):
+        path = records[index].path
+        if path in paths:
+            raise RuntimeError("authenticated repository source repeats a file")
+        paths.add(path)
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+    return frozenset(paths)
 
 
 def _policy(
@@ -1015,6 +1113,7 @@ def _policy(
     *,
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[str, tuple[Path, ...], frozenset[str]]:
     has_selection_digest = "source_selection_digest" in view_config
     if (
@@ -1048,10 +1147,18 @@ def _policy(
         max_bytes=_MAX_CONFIG_JSON_BYTES,
         label="portable BM25 view config",
     )
+    authenticated_files = (
+        _repository_files(repository_identity)
+        if check_cancelled is None
+        else _repository_files(
+            repository_identity,
+            check_cancelled=check_cancelled,
+        )
+    )
     return (
         hashlib.sha256(config_bytes).hexdigest(),
         forbidden,
-        _repository_files(repository_identity),
+        authenticated_files,
     )
 
 
@@ -1468,14 +1575,42 @@ def _plan_recaptured_bm25_view_with_identity(
     environ: Mapping[str, str],
     check_cancelled: Callable[[], None] | None = None,
 ) -> PlannedBm25View:
-    if check_cancelled is not None:
-        check_cancelled()
-    config_digest, forbidden, authenticated_files = _policy(
+    repository_identity = _detach_repository_identity_snapshot(
         repository_identity,
-        view_config,
-        forbidden_paths=forbidden_paths,
-        environ=environ,
+        check_cancelled=check_cancelled,
     )
+    if check_cancelled is None:
+        retained_identity = repository_source.authenticated_identity_snapshot()
+        _require_repository_identity_matches(
+            repository_identity,
+            retained_identity,
+        )
+    else:
+        retained_identity = repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+        _require_repository_identity_matches(
+            repository_identity,
+            retained_identity,
+            check_cancelled=check_cancelled,
+        )
+    policy_arguments = {
+        "forbidden_paths": forbidden_paths,
+        "environ": environ,
+    }
+    if check_cancelled is None:
+        config_digest, forbidden, authenticated_files = _policy(
+            repository_identity,
+            view_config,
+            **policy_arguments,
+        )
+    else:
+        config_digest, forbidden, authenticated_files = _policy(
+            repository_identity,
+            view_config,
+            **policy_arguments,
+            check_cancelled=check_cancelled,
+        )
     source_ownership = capture_directory_ownership(
         lexical_source,
         entry_policy=_entry_policy,
@@ -1538,12 +1673,27 @@ def _plan_recaptured_bm25_view(
         destination,
         repository_identity=repository_identity,
     )
-    config_snapshot = _json_object_snapshot(
-        view_config,
-        label="portable BM25 view config",
-    )
-    environment = _environment_snapshot(environ)
-    forbidden_tail = tuple(forbidden_paths)
+    if check_cancelled is None:
+        config_snapshot = _json_object_snapshot(
+            view_config,
+            label="portable BM25 view config",
+        )
+        environment = _environment_snapshot(environ)
+        forbidden_tail = tuple(forbidden_paths)
+    else:
+        config_snapshot = _json_object_snapshot(
+            view_config,
+            label="portable BM25 view config",
+            check_cancelled=check_cancelled,
+        )
+        environment = _environment_snapshot(
+            environ,
+            check_cancelled=check_cancelled,
+        )
+        forbidden_tail = _forbidden_paths_snapshot(
+            forbidden_paths,
+            check_cancelled=check_cancelled,
+        )
     return _plan_recaptured_bm25_view_with_identity(
         lexical_source,
         repository_source=repository_source,
@@ -1569,14 +1719,42 @@ def _publish_recaptured_bm25_view_with_identity(
     environ: Mapping[str, str],
     check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    if check_cancelled is not None:
-        check_cancelled()
-    config_digest, forbidden, authenticated_files = _policy(
+    repository_identity = _detach_repository_identity_snapshot(
         repository_identity,
-        view_config,
-        forbidden_paths=forbidden_paths,
-        environ=environ,
+        check_cancelled=check_cancelled,
     )
+    if check_cancelled is None:
+        retained_identity = repository_source.authenticated_identity_snapshot()
+        _require_repository_identity_matches(
+            repository_identity,
+            retained_identity,
+        )
+    else:
+        retained_identity = repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+        _require_repository_identity_matches(
+            repository_identity,
+            retained_identity,
+            check_cancelled=check_cancelled,
+        )
+    policy_arguments = {
+        "forbidden_paths": forbidden_paths,
+        "environ": environ,
+    }
+    if check_cancelled is None:
+        config_digest, forbidden, authenticated_files = _policy(
+            repository_identity,
+            view_config,
+            **policy_arguments,
+        )
+    else:
+        config_digest, forbidden, authenticated_files = _policy(
+            repository_identity,
+            view_config,
+            **policy_arguments,
+            check_cancelled=check_cancelled,
+        )
     if type(planned) is not PlannedBm25View:
         raise TypeError("strict BM25 execution requires a PlannedBm25View")
     _require_plan_for_ownership(
@@ -1761,12 +1939,27 @@ def _publish_recaptured_bm25_view(
         destination,
         repository_identity=repository_identity,
     )
-    config_snapshot = _json_object_snapshot(
-        view_config,
-        label="portable BM25 view config",
-    )
-    environment = _environment_snapshot(environ)
-    forbidden_tail = tuple(forbidden_paths)
+    if check_cancelled is None:
+        config_snapshot = _json_object_snapshot(
+            view_config,
+            label="portable BM25 view config",
+        )
+        environment = _environment_snapshot(environ)
+        forbidden_tail = tuple(forbidden_paths)
+    else:
+        config_snapshot = _json_object_snapshot(
+            view_config,
+            label="portable BM25 view config",
+            check_cancelled=check_cancelled,
+        )
+        environment = _environment_snapshot(
+            environ,
+            check_cancelled=check_cancelled,
+        )
+        forbidden_tail = _forbidden_paths_snapshot(
+            forbidden_paths,
+            check_cancelled=check_cancelled,
+        )
     return _publish_recaptured_bm25_view_with_identity(
         lexical_source,
         lexical_destination,

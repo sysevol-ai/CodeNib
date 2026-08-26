@@ -154,6 +154,46 @@ def test_bounded_array_does_not_accept_a_number_prefix_at_a_chunk_end() -> None:
     ) == [123, 4]
 
 
+def test_bounded_array_attests_final_trailing_data_before_yield() -> None:
+    values = iter_bounded_json_array(
+        io.BytesIO(b'[{"page_content":"x"}]TRAIL'),
+        label="documents",
+    )
+
+    with pytest.raises(ValueError, match="trailing data"):
+        next(values)
+
+
+def test_bounded_array_attests_buffered_trailing_comma_before_yield() -> None:
+    values = iter_bounded_json_array(
+        io.BytesIO(b'[{"page_content":"x"},]'),
+        label="documents",
+    )
+
+    with pytest.raises(ValueError, match="trailing JSON array comma"):
+        next(values)
+
+
+@pytest.mark.parametrize("first_block", [b"[0]", b"[0,"])
+def test_bounded_array_does_not_read_future_block_before_yield(
+    first_block: bytes,
+) -> None:
+    class PoisonedTailReader:
+        calls = 0
+
+        def read(self, _size: int = -1) -> bytes:
+            self.calls += 1
+            if self.calls == 1:
+                return first_block
+            raise AssertionError("array parser consumed a future source block")
+
+    source = PoisonedTailReader()
+    values = iter_bounded_json_array(source, label="documents")
+
+    assert next(values) == 0
+    assert source.calls == 1
+
+
 @pytest.mark.parametrize("block", [bytearray(b"[]"), "[]", None])
 def test_bounded_array_rejects_non_bytes_reader_blocks(block: object) -> None:
     class InvalidReader:
@@ -292,6 +332,17 @@ def test_item_budget_rejects_the_next_element_before_decoding(
             )
         )
     assert decode_calls == 1
+
+
+def test_item_budget_rejects_current_continuation_before_yield() -> None:
+    values = iter_bounded_json_array(
+        io.BytesIO(b"[0,1]"),
+        label="documents",
+        max_items=1,
+    )
+
+    with pytest.raises(ValueError, match="1-item limit"):
+        next(values)
 
 
 @pytest.mark.parametrize(

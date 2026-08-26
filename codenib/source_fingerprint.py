@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import errno
 import hashlib
+import heapq
 import ntpath
 import os
 import re
@@ -18,7 +19,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping, TypeVar
 
 from ._contained_source import (
     SECURE_CONTAINED_SYMLINKS,
@@ -76,7 +77,9 @@ _MAX_SOURCE_COMPONENTS = 256
 _MAX_SOURCE_PATH_BYTES = 4_096
 _MAX_SOURCE_ENTRIES = 500_000
 _MAX_SOURCE_METADATA_BYTES = 128 * 1024 * 1024
+_SOURCE_SORT_RUN_ENTRIES = 1_024
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
+_T = TypeVar("_T")
 
 
 class RepositoryChangedError(RuntimeError):
@@ -126,6 +129,107 @@ def _cancellation_poll(
     if not callable(check_cancelled):
         raise TypeError("repository source cancellation check must be callable")
     return _CancellationPoll(check_cancelled)
+
+
+def _poll_after_repository_hash(
+    poll: _CancellationPoll,
+    *,
+    has_future_entry: bool,
+    deferred: BaseException | None,
+) -> BaseException | None:
+    """Poll now, but defer a final-entry stop until repository postflight."""
+
+    try:
+        poll()
+    except BaseException as exc:  # noqa: B036 - exact callback provenance
+        if has_future_entry or not poll.raised_exactly(exc):
+            raise
+        return _remember_interruption(deferred, exc)
+    return deferred
+
+
+def _interruptible_stable_sort(
+    values: list[_T],
+    *,
+    key: Callable[[_T], object] | None,
+    check_cancelled: Callable[[], None],
+) -> list[_T]:
+    """Sort through bounded stable runs with a poll before each future item."""
+
+    count = len(values)
+    runs: list[list[_T]] = []
+    for start in range(0, count, _SOURCE_SORT_RUN_ENTRIES):
+        end = min(start + _SOURCE_SORT_RUN_ENTRIES, count)
+        run = values[start:end]
+        run.sort(key=key)
+        runs.append(run)
+        if end < count:
+            check_cancelled()
+    if not runs:
+        return []
+    if len(runs) == 1:
+        return runs[0]
+
+    ordered: list[_T] = []
+    for index, value in enumerate(heapq.merge(*runs, key=key)):
+        ordered.append(value)
+        if index + 1 < count:
+            check_cancelled()
+    return ordered
+
+
+def _tuple_interruptibly(
+    values: Iterable[_T],
+    *,
+    count: int,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[_T, ...]:
+    """Freeze values without polling after the final returned item."""
+
+    if check_cancelled is None:
+        return tuple(values)
+
+    def checked_values() -> Iterator[_T]:
+        for index, value in enumerate(values):
+            yield value
+            if index + 1 < count:
+                check_cancelled()
+
+    return tuple(checked_values())
+
+
+class _WindowsContentHashPoll:
+    """Delay an EOF-armed stop until the current file validates cleanly."""
+
+    __slots__ = ("_poll", "_remaining")
+
+    def __init__(self, poll: Callable[[], None], size: int) -> None:
+        self._poll = poll
+        self._remaining = size
+
+    def __call__(self) -> None:
+        if self._remaining:
+            self._poll()
+
+    def consumed(self, block: bytes) -> None:
+        self._remaining = max(0, self._remaining - len(block))
+
+
+class _WindowsCancellationHashFanout:
+    """Forward a block and then mark it consumed for cancellation precedence."""
+
+    __slots__ = ("_hasher", "_poll")
+
+    def __init__(self, hasher: object, poll: _WindowsContentHashPoll) -> None:
+        self._hasher = hasher
+        self._poll = poll
+
+    def update(self, block: bytes) -> None:
+        update = getattr(self._hasher, "update", None)
+        if not callable(update):  # pragma: no cover - internal construction
+            raise AssertionError("source fingerprint hasher has no update method")
+        update(block)
+        self._poll.consumed(block)
 
 
 class _SourceLifecycleRLock:
@@ -2153,7 +2257,14 @@ def _scan_pinned_repository(
                     # entry rather than being materialized before limits run.
                     _reserve_scan_entry(budget, relative)
                     names.append(child.name)
-        names.sort()
+        if check_cancelled is None:
+            names.sort()
+        else:
+            names = _interruptible_stable_sort(
+                names,
+                key=None,
+                check_cancelled=check_cancelled,
+            )
 
         directories: list[tuple[str, os.stat_result, tuple[str, ...]]] = []
         if check_cancelled is not None and names:
@@ -2261,7 +2372,11 @@ def _scan_pinned_repository(
 
     scan_directory(root_descriptor, ())
     return _RepositoryScan(
-        entries=tuple(entries),
+        entries=_tuple_interruptibly(
+            entries,
+            count=len(entries),
+            check_cancelled=check_cancelled,
+        ),
         inventory_digest=inventory.hexdigest(),
         inventory_entries=budget.entries,
     )
@@ -2333,7 +2448,14 @@ def _scan_pinned_windows_repository(
                 continue
             _reserve_scan_entry(budget, relative)
             children.append((child.name, child))
-        children.sort(key=lambda item: item[0])
+        if check_cancelled is None:
+            children.sort(key=lambda item: item[0])
+        else:
+            children = _interruptible_stable_sort(
+                children,
+                key=lambda item: item[0],
+                check_cancelled=check_cancelled,
+            )
 
         directories: list[
             tuple[_WindowsDirectoryEntry, tuple[object, ...], tuple[str, ...]]
@@ -2476,7 +2598,11 @@ def _scan_pinned_windows_repository(
 
     scan_directory(root_handle, ())
     return _RepositoryScan(
-        entries=tuple(entries),
+        entries=_tuple_interruptibly(
+            entries,
+            count=len(entries),
+            check_cancelled=check_cancelled,
+        ),
         inventory_digest=inventory.hexdigest(),
         inventory_entries=budget.entries,
     )
@@ -3381,9 +3507,11 @@ def _fingerprint_windows_repository(
     cleanup_slot: _SourceCleanupSlot | None = None,
     identity_policy: object = _CURRENT_SOURCE_IDENTITY_POLICY,
     expected_root_authority: RepositorySourceRootAuthority | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> SourceFingerprint | RepositorySourceBinding:
     """Hash a Windows repository through one retained HANDLE authority."""
 
+    poll = _cancellation_poll(check_cancelled)
     if retain_binding and cleanup_slot is None:
         cleanup_slot = _SourceCleanupSlot()
         if source_owner is not None:
@@ -3406,6 +3534,7 @@ def _fingerprint_windows_repository(
     root_authority = None
     selected: _WindowsKernelApi | None = None
     completed = False
+    deferred_postflight_cancellation: BaseException | None = None
     try:
         selected, root_authority, root_identity = _open_windows_pinned_repository_root(
             root_path,
@@ -3433,14 +3562,27 @@ def _fingerprint_windows_repository(
             observed_hierarchy,
             verify_observed,
         )
-        initial_scan = _scan_pinned_windows_repository(
-            selected,
-            root_authority.handle,
-            excluded=excluded,
-            selection=selected_source,
-            collect_entries=True,
-        )
-        for entry in initial_scan.entries:
+        if poll is None:
+            initial_scan = _scan_pinned_windows_repository(
+                selected,
+                root_authority.handle,
+                excluded=excluded,
+                selection=selected_source,
+                collect_entries=True,
+            )
+        else:
+            initial_scan = _scan_pinned_windows_repository(
+                selected,
+                root_authority.handle,
+                excluded=excluded,
+                selection=selected_source,
+                collect_entries=True,
+                check_cancelled=poll,
+            )
+        for index, entry in enumerate(initial_scan.entries):
+            if poll is not None and index:
+                poll()
+            has_future_entry = index + 1 < len(initial_scan.entries)
             metadata = entry.metadata
             if not isinstance(metadata, _WindowsHandleMetadata):
                 raise AssertionError("Windows source scan returned POSIX metadata")
@@ -3454,16 +3596,30 @@ def _fingerprint_windows_repository(
                     raise AssertionError("Windows source link has no captured target")
                 target = raw_target.encode("utf-8", errors="strict")
                 try:
-                    with _resolved_windows_repository_file_at(
-                        root_path,
-                        root_authority,
-                        relative_text,
-                        expected_root_identity=root_identity,
-                        expected_final_identity=_windows_version_identity(metadata),
-                        expected_final_link_target=raw_target,
-                        expected_final_reparse_point=entry.windows_reparse_point,
-                        api=selected,
-                    ) as binding:
+                    if poll is None or not has_future_entry:
+                        resolver = _resolved_windows_repository_file_at(
+                            root_path,
+                            root_authority,
+                            relative_text,
+                            expected_root_identity=root_identity,
+                            expected_final_identity=_windows_version_identity(metadata),
+                            expected_final_link_target=raw_target,
+                            expected_final_reparse_point=entry.windows_reparse_point,
+                            api=selected,
+                        )
+                    else:
+                        resolver = _resolved_windows_repository_file_at(
+                            root_path,
+                            root_authority,
+                            relative_text,
+                            expected_root_identity=root_identity,
+                            expected_final_identity=_windows_version_identity(metadata),
+                            expected_final_link_target=raw_target,
+                            expected_final_reparse_point=entry.windows_reparse_point,
+                            api=selected,
+                            check_cancelled=poll,
+                        )
+                    with resolver as binding:
                         target_state = (
                             "regular"
                             if binding.is_regular
@@ -3510,7 +3666,20 @@ def _fingerprint_windows_repository(
                                     binding.opened_size,
                                 )
                             content_digest = hashlib.sha256()
-                            binding.update_hash(_HashFanout(hasher, content_digest))
+                            if poll is None:
+                                binding.update_hash(_HashFanout(hasher, content_digest))
+                            else:
+                                hash_poll = _WindowsContentHashPoll(
+                                    poll,
+                                    binding.opened_size,
+                                )
+                                binding.update_hash(
+                                    _WindowsCancellationHashFanout(
+                                        _HashFanout(hasher, content_digest),
+                                        hash_poll,
+                                    ),
+                                    check_cancelled=hash_poll,
+                                )
                             file_records.append(
                                 RepositorySourceFileRecord(
                                     path=relative_text,
@@ -3522,6 +3691,14 @@ def _fingerprint_windows_repository(
                                     link_target=raw_target,
                                 )
                             )
+                            if poll is not None:
+                                deferred_postflight_cancellation = (
+                                    _poll_after_repository_hash(
+                                        poll,
+                                        has_future_entry=has_future_entry,
+                                        deferred=deferred_postflight_cancellation,
+                                    )
+                                )
                         elif version != 1:
                             _update_frame(
                                 hasher,
@@ -3529,6 +3706,8 @@ def _fingerprint_windows_repository(
                                 b"unresolved",
                             )
                 except (OSError, ValueError) as exc:
+                    if poll is not None and poll.raised_exactly(exc):
+                        raise
                     raise RepositoryChangedError(
                         "repository link target could not be read consistently: "
                         f"{path}"
@@ -3549,18 +3728,43 @@ def _fingerprint_windows_repository(
                 _update_frame(hasher, b"entry-path", relative)
                 _update_frame_header(hasher, b"file-content", metadata.st_size)
             try:
-                with _resolved_windows_repository_file_at(
-                    root_path,
-                    root_authority,
-                    relative_text,
-                    expected_root_identity=root_identity,
-                    expected_final_identity=_windows_version_identity(metadata),
-                    api=selected,
-                ) as binding:
+                if poll is None or not has_future_entry:
+                    resolver = _resolved_windows_repository_file_at(
+                        root_path,
+                        root_authority,
+                        relative_text,
+                        expected_root_identity=root_identity,
+                        expected_final_identity=_windows_version_identity(metadata),
+                        api=selected,
+                    )
+                else:
+                    resolver = _resolved_windows_repository_file_at(
+                        root_path,
+                        root_authority,
+                        relative_text,
+                        expected_root_identity=root_identity,
+                        expected_final_identity=_windows_version_identity(metadata),
+                        api=selected,
+                        check_cancelled=poll,
+                    )
+                with resolver as binding:
                     if not binding.is_regular:
                         raise ValueError("Windows repository file became nonregular")
                     content_digest = hashlib.sha256()
-                    binding.update_hash(_HashFanout(hasher, content_digest))
+                    if poll is None:
+                        binding.update_hash(_HashFanout(hasher, content_digest))
+                    else:
+                        hash_poll = _WindowsContentHashPoll(
+                            poll,
+                            binding.opened_size,
+                        )
+                        binding.update_hash(
+                            _WindowsCancellationHashFanout(
+                                _HashFanout(hasher, content_digest),
+                                hash_poll,
+                            ),
+                            check_cancelled=hash_poll,
+                        )
                     file_records.append(
                         RepositorySourceFileRecord(
                             path=relative_text,
@@ -3569,7 +3773,15 @@ def _fingerprint_windows_repository(
                             lexical_identity=_windows_version_identity(metadata),
                         )
                     )
+                    if poll is not None:
+                        deferred_postflight_cancellation = _poll_after_repository_hash(
+                            poll,
+                            has_future_entry=has_future_entry,
+                            deferred=deferred_postflight_cancellation,
+                        )
             except (OSError, ValueError) as exc:
+                if poll is not None and poll.raised_exactly(exc):
+                    raise
                 raise RepositoryChangedError(
                     f"repository file could not be read consistently: {path}"
                 ) from exc
@@ -3614,12 +3826,16 @@ def _fingerprint_windows_repository(
             {record.path: record for record in file_records},
             api=selected,
         )
+        if deferred_postflight_cancellation is not None:
+            raise deferred_postflight_cancellation
         completed = True
     except RepositoryChangedError as exc:
         if isinstance(exc.__cause__, BaseException):
             _inherit_source_cleanup_owner(exc, exc.__cause__)
         raise
     except (OSError, RuntimeError, ValueError) as exc:
+        if poll is not None and poll.raised_exactly(exc):
+            raise
         failure = RepositoryChangedError(
             "repository changed while it was being fingerprinted"
         )
@@ -3702,18 +3918,31 @@ def _fingerprint_repository(
     source_owner: Callable[[object], None] | None = None,
     identity_policy: object = _CURRENT_SOURCE_IDENTITY_POLICY,
     expected_root_authority: RepositorySourceRootAuthority | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> SourceFingerprint | RepositorySourceBinding:
     """Hash visible repository contents with v2 or the diagnostic v1 format."""
 
     if version not in {1, SOURCE_FINGERPRINT_VERSION}:
         raise ValueError(f"unsupported source fingerprint version: {version}")
     selected_source = _snapshot_repository_source_selection(selection)
+    poll = _cancellation_poll(check_cancelled)
     cleanup_slot: _SourceCleanupSlot | None = None
     if retain_binding:
         cleanup_slot = _SourceCleanupSlot()
         if source_owner is not None:
             source_owner(cleanup_slot)
     if sys.platform == "win32":
+        if poll is None:
+            return _fingerprint_windows_repository(
+                root,
+                exclude_roots=exclude_roots,
+                selection=selected_source,
+                version=version,
+                retain_binding=retain_binding,
+                cleanup_slot=cleanup_slot,
+                identity_policy=identity_policy,
+                expected_root_authority=expected_root_authority,
+            )
         return _fingerprint_windows_repository(
             root,
             exclude_roots=exclude_roots,
@@ -3723,6 +3952,7 @@ def _fingerprint_repository(
             cleanup_slot=cleanup_slot,
             identity_policy=identity_policy,
             expected_root_authority=expected_root_authority,
+            check_cancelled=poll,
         )
 
     # Do not call Path.resolve() here. A reversible root-to-symlink swap during
@@ -3747,6 +3977,7 @@ def _fingerprint_repository(
     root_descriptor = -1
     root_authority: _PosixRepositoryRootAuthority | None = None
     completed = False
+    deferred_postflight_cancellation: BaseException | None = None
     try:
         root_authority = _open_pinned_repository_root(
             root_path,
@@ -3773,14 +4004,26 @@ def _fingerprint_repository(
             observed_hierarchy,
             verify_observed,
         )
-        initial_scan = _scan_pinned_repository(
-            root_descriptor,
-            excluded=excluded,
-            selection=selected_source,
-            collect_entries=True,
-        )
+        if poll is None:
+            initial_scan = _scan_pinned_repository(
+                root_descriptor,
+                excluded=excluded,
+                selection=selected_source,
+                collect_entries=True,
+            )
+        else:
+            initial_scan = _scan_pinned_repository(
+                root_descriptor,
+                excluded=excluded,
+                selection=selected_source,
+                collect_entries=True,
+                check_cancelled=poll,
+            )
 
-        for entry in initial_scan.entries:
+        for index, entry in enumerate(initial_scan.entries):
+            if poll is not None and index:
+                poll()
+            has_future_entry = index + 1 < len(initial_scan.entries)
             relative_text = entry.relative
             relative = os.fsencode(relative_text)
             initial_metadata = entry.metadata
@@ -3846,7 +4089,13 @@ def _fingerprint_repository(
                                 )
                             opened = os.fstat(binding.descriptor)
                             content_digest = hashlib.sha256()
-                            binding.update_hash(_HashFanout(hasher, content_digest))
+                            if poll is None:
+                                binding.update_hash(_HashFanout(hasher, content_digest))
+                            else:
+                                binding.update_hash(
+                                    _HashFanout(hasher, content_digest),
+                                    check_cancelled=poll,
+                                )
                             file_records.append(
                                 RepositorySourceFileRecord(
                                     path=relative_text,
@@ -3858,6 +4107,14 @@ def _fingerprint_repository(
                                     link_target=raw_target,
                                 )
                             )
+                            if poll is not None:
+                                deferred_postflight_cancellation = (
+                                    _poll_after_repository_hash(
+                                        poll,
+                                        has_future_entry=has_future_entry,
+                                        deferred=deferred_postflight_cancellation,
+                                    )
+                                )
                         elif version != 1:
                             _update_frame(
                                 hasher,
@@ -3865,6 +4122,8 @@ def _fingerprint_repository(
                                 b"unresolved",
                             )
                 except (OSError, ValueError) as exc:
+                    if poll is not None and poll.raised_exactly(exc):
+                        raise
                     raise RepositoryChangedError(
                         "repository link target could not be read consistently: "
                         f"{path}"
@@ -3900,7 +4159,13 @@ def _fingerprint_repository(
                     if not binding.is_regular:  # pragma: no cover - expected regular
                         raise ValueError("repository file became nonregular")
                     content_digest = hashlib.sha256()
-                    binding.update_hash(_HashFanout(hasher, content_digest))
+                    if poll is None:
+                        binding.update_hash(_HashFanout(hasher, content_digest))
+                    else:
+                        binding.update_hash(
+                            _HashFanout(hasher, content_digest),
+                            check_cancelled=poll,
+                        )
                     file_records.append(
                         RepositorySourceFileRecord(
                             path=relative_text,
@@ -3909,7 +4174,15 @@ def _fingerprint_repository(
                             lexical_identity=_version_identity(initial_metadata),
                         )
                     )
+                    if poll is not None:
+                        deferred_postflight_cancellation = _poll_after_repository_hash(
+                            poll,
+                            has_future_entry=has_future_entry,
+                            deferred=deferred_postflight_cancellation,
+                        )
             except (OSError, ValueError) as exc:
+                if poll is not None and poll.raised_exactly(exc):
+                    raise
                 raise RepositoryChangedError(
                     f"repository file could not be read consistently: {path}"
                 ) from exc
@@ -3948,12 +4221,16 @@ def _fingerprint_repository(
             tuple(link_records),
             {record.path: record for record in file_records},
         )
+        if deferred_postflight_cancellation is not None:
+            raise deferred_postflight_cancellation
         completed = True
     except RepositoryChangedError as exc:
         if isinstance(exc.__cause__, BaseException):
             _inherit_source_cleanup_owner(exc, exc.__cause__)
         raise
     except (OSError, ValueError) as exc:
+        if poll is not None and poll.raised_exactly(exc):
+            raise
         failure = RepositoryChangedError(
             "repository changed while it was being fingerprinted"
         )
@@ -4110,6 +4387,7 @@ def capture_repository_source(
     selection: RepositorySourceSelection = DEFAULT_REPOSITORY_SOURCE_SELECTION,
     _source_owner: Callable[[object], None] | None = None,
     expected_root_authority: RepositorySourceRootAuthority | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> RepositorySourceBinding:
     """Capture source fingerprint v2 and retain its exact read authority.
 
@@ -4117,18 +4395,32 @@ def capture_repository_source(
     a stable cleanup slot before acquisition and the completed binding before
     this Python frame returns. ``expected_root_authority`` requires the newly
     pinned hierarchy to be the same live object chain as an earlier preflight.
+    ``check_cancelled`` cooperatively interrupts the initial inventory and
+    streamed content hashes; final binding postconditions retain precedence.
     """
 
     with _expected_repository_root_capture_lease(expected_root_authority):
-        result = _fingerprint_repository(
-            root,
-            exclude_roots=exclude_roots,
-            selection=selection,
-            version=SOURCE_FINGERPRINT_VERSION,
-            retain_binding=True,
-            source_owner=_source_owner,
-            expected_root_authority=expected_root_authority,
-        )
+        if check_cancelled is None:
+            result = _fingerprint_repository(
+                root,
+                exclude_roots=exclude_roots,
+                selection=selection,
+                version=SOURCE_FINGERPRINT_VERSION,
+                retain_binding=True,
+                source_owner=_source_owner,
+                expected_root_authority=expected_root_authority,
+            )
+        else:
+            result = _fingerprint_repository(
+                root,
+                exclude_roots=exclude_roots,
+                selection=selection,
+                version=SOURCE_FINGERPRINT_VERSION,
+                retain_binding=True,
+                source_owner=_source_owner,
+                expected_root_authority=expected_root_authority,
+                check_cancelled=check_cancelled,
+            )
     if not isinstance(result, RepositorySourceBinding):  # pragma: no cover
         raise AssertionError("source capture did not retain repository authority")
     return result

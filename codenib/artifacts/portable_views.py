@@ -31,6 +31,9 @@ from .._atomic_directory import (
     directory_ownership_root_identity,
 )
 from .._bounded_json import (
+    DEFAULT_MAX_DEPTH,
+    DEFAULT_MAX_KEY_BYTES,
+    DEFAULT_MAX_NODES_PER_ELEMENT,
     canonical_json_array_chunks,
     canonical_json_value_chunks,
     iter_bounded_json_array,
@@ -55,13 +58,21 @@ from ..native_index_authorization import (
     require_native_index_authorization_preflight,
 )
 from ..provider_routes import normalize_provider, resolve_embedding_artifact_route
+from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import (
     RepositorySourceBinding,
+    RepositorySourceFileRecord,
     RepositorySourceIdentitySnapshot,
+    is_secure_source_fingerprint_v2,
 )
 from ..storage.models import StorageIntegrityError
 from ..storage.protocols import snapshot_retained_import_response
-from .security import assert_publishable_json_value
+from .security import (
+    _interitem_cancellation,
+    _interruptible_sorted_security_items,
+    _validate_json_complexity_interruptibly,
+    assert_publishable_json_value,
+)
 
 _VECTOR_LEVELS = ("l0", "l2")
 _REMOVABLE_MUTABLE_VECTOR_FILES = frozenset(
@@ -794,21 +805,60 @@ class _PublicationViewReader:
             # already installed in the callback reader. Fail closed rather
             # than letting fallback accessors recapture an unsandwiched tree.
             expected = publication._require_expected_ownership_token()
-            records = tuple(directory_ownership_file_records(expected))
-            inventory = tuple(directory_ownership_inventory(expected))
+            if check_cancelled is None:
+                records = tuple(directory_ownership_file_records(expected))
+                inventory = tuple(directory_ownership_inventory(expected))
+            else:
+                records = directory_ownership_file_records(expected)
+                inventory = directory_ownership_inventory(expected)
+            expected_ownership = expected
             self.ownership = self
         else:
-            records = tuple(
-                directory_ownership_file_records(ownership)  # type: ignore[arg-type]
-            )
-            inventory = tuple(
-                directory_ownership_inventory(ownership)  # type: ignore[arg-type]
-            )
+            if check_cancelled is None:
+                records = tuple(
+                    directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+                )
+                inventory = tuple(
+                    directory_ownership_inventory(ownership)  # type: ignore[arg-type]
+                )
+            else:
+                records = directory_ownership_file_records(ownership)  # type: ignore[arg-type]
+                inventory = directory_ownership_inventory(ownership)  # type: ignore[arg-type]
+            expected_ownership = ownership
             self.ownership = ownership
         self._inventory = inventory
-        self._records = {record.path: record for record in records}
-        if len(self._records) != len(records):
-            raise RuntimeError("publication view repeats a file record")
+        record_count = len(records)
+        records_by_path: dict[str, TreeFileRecord] = {}
+        for index in range(record_count):
+            record = records[index]
+            if type(record) is not TreeFileRecord or (
+                type(record.path) is not str
+                or type(record.mode) is not int
+                or type(record.size) is not int
+                or type(record.sha256) is not str
+            ):
+                raise TypeError("publication view file record fields are invalid")
+            if (
+                not record.path
+                or record.size < 0
+                or not re.fullmatch(r"[0-9a-f]{64}", record.sha256, re.ASCII)
+            ):
+                raise ValueError("publication view file record identity is invalid")
+            path = record.path
+            if path in records_by_path:
+                raise RuntimeError("publication view repeats a file record")
+            records_by_path[path] = record
+            if check_cancelled is not None and index + 1 < record_count:
+                try:
+                    check_cancelled()
+                except BaseException:  # noqa: B036 - preserve exact stop
+                    observed = publication.capture_ownership()
+                    if observed != expected_ownership:
+                        raise RuntimeError(
+                            "publication view changed during record derivation"
+                        ) from None
+                    raise
+        self._records = records_by_path
 
     def _relative_path(self, path: Path | PurePosixPath) -> PurePosixPath:
         if isinstance(path, Path):
@@ -1032,16 +1082,35 @@ def _bounded_json_object_snapshot(
     value: Mapping[str, Any],
     *,
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Detach caller-owned config into one bounded JSON object."""
 
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} requires a mapping")
-    detached = dict(value)
-    validate_json_complexity(detached, label=label)
+    if check_cancelled is None:
+        detached = dict(value)
+        validate_json_complexity(detached, label=label)
+        chunks = canonical_json_value_chunks(detached)
+    else:
+        if not callable(check_cancelled):
+            raise TypeError("portable validation cancellation check must be callable")
+        detached = dict(_interitem_cancellation(value.items(), check_cancelled))
+        _validate_json_complexity_interruptibly(
+            detached,
+            label=label,
+            max_nodes=DEFAULT_MAX_NODES_PER_ELEMENT,
+            max_depth=DEFAULT_MAX_DEPTH,
+            max_key_bytes=DEFAULT_MAX_KEY_BYTES,
+            check_cancelled=check_cancelled,
+        )
+        chunks = _canonical_json_value_chunks_interruptibly(
+            detached,
+            check_cancelled=check_cancelled,
+        )
     payload = bytearray()
     try:
-        for chunk in canonical_json_value_chunks(detached):
+        for chunk in chunks:
             payload.extend(chunk)
             if len(payload) + 1 > _MAX_CONFIG_JSON_BYTES:
                 raise ValueError(
@@ -1060,17 +1129,126 @@ def _bounded_json_object_snapshot(
     return snapshot
 
 
-def _environment_snapshot(environ: Mapping[str, str] | None) -> dict[str, str]:
+def _canonical_json_value_chunks_interruptibly(
+    value: Any,
+    *,
+    check_cancelled: Callable[[], None],
+    level: int = 0,
+) -> Iterator[bytes]:
+    """Encode canonical JSON while polling bounded containers and key sorts."""
+
+    if isinstance(value, str):
+        from json.encoder import encode_basestring_ascii
+
+        yield b'"'
+        value_length = len(value)
+        for offset in range(0, value_length, 64 * 1024):
+            encoded = encode_basestring_ascii(value[offset : offset + 64 * 1024])
+            yield encoded[1:-1].encode("ascii")
+            if offset + 64 * 1024 < value_length:
+                check_cancelled()
+        yield b'"'
+        return
+    if isinstance(value, list):
+        if not value:
+            yield b"[]"
+            return
+        yield b"[\n"
+        item_count = len(value)
+        for index, item in enumerate(value):
+            if index:
+                yield b",\n"
+            yield b"  " * (level + 1)
+            yield from _canonical_json_value_chunks_interruptibly(
+                item,
+                check_cancelled=check_cancelled,
+                level=level + 1,
+            )
+            if index + 1 < item_count:
+                check_cancelled()
+        yield b"\n" + b"  " * level + b"]"
+        return
+    if isinstance(value, dict):
+        if not value:
+            yield b"{}"
+            return
+        keys = list(_interitem_cancellation(value, check_cancelled))
+        ordered_keys = _interruptible_sorted_security_items(
+            keys,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
+        yield b"{\n"
+        key_count = len(ordered_keys)
+        for index, key in enumerate(ordered_keys):
+            if index:
+                yield b",\n"
+            yield b"  " * (level + 1)
+            yield from _canonical_json_value_chunks_interruptibly(
+                key,
+                check_cancelled=check_cancelled,
+                level=level + 1,
+            )
+            yield b": "
+            yield from _canonical_json_value_chunks_interruptibly(
+                value[key],
+                check_cancelled=check_cancelled,
+                level=level + 1,
+            )
+            if index + 1 < key_count:
+                check_cancelled()
+        yield b"\n" + b"  " * level + b"}"
+        return
+    yield from canonical_json_value_chunks(value, level=level)
+
+
+def _environment_snapshot(
+    environ: Mapping[str, str] | None,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> dict[str, str]:
     source = os.environ if environ is None else environ
     if not isinstance(source, Mapping):
         raise TypeError("portable validation environment must be a mapping")
-    snapshot = dict(source)
-    if any(
-        not isinstance(key, str) or not isinstance(value, str)
-        for key, value in snapshot.items()
-    ):
-        raise TypeError("portable validation environment must contain text pairs")
+    if check_cancelled is None:
+        snapshot = dict(source)
+        if any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in snapshot.items()
+        ):
+            raise TypeError("portable validation environment must contain text pairs")
+    else:
+        if not callable(check_cancelled):
+            raise TypeError("portable validation cancellation check must be callable")
+        snapshot = {}
+        for key, value in _interitem_cancellation(
+            source.items(),
+            check_cancelled,
+        ):
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise TypeError(
+                    "portable validation environment must contain text pairs"
+                )
+            snapshot[key] = value
     return snapshot
+
+
+def _forbidden_paths_snapshot(
+    forbidden_paths: Iterable[Path],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> tuple[Path, ...]:
+    if check_cancelled is None:
+        forbidden = tuple(forbidden_paths)
+        if any(not isinstance(path, Path) for path in forbidden):
+            raise TypeError("portable validation forbidden paths must be Path values")
+        return forbidden
+    forbidden_items: list[Path] = []
+    for path in _interitem_cancellation(forbidden_paths, check_cancelled):
+        if not isinstance(path, Path):
+            raise TypeError("portable validation forbidden paths must be Path values")
+        forbidden_items.append(path)
+    return tuple(forbidden_items)
 
 
 def _assert_authenticated_publishable_json_value(
@@ -3234,6 +3412,263 @@ def _validate_portable_vector_view(
             )
 
 
+def _exact_repository_identity_value(value: object) -> object:
+    if type(value) is tuple:
+        return tuple(_exact_repository_identity_value(item) for item in value)
+    if value is None or type(value) in {bool, int, str, bytes}:
+        return value
+    raise TypeError("portable repository identity contains a non-exact value")
+
+
+def _detach_repository_source_selection(
+    selection: RepositorySourceSelection | None,
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> RepositorySourceSelection | None:
+    if selection is None:
+        return None
+    values = selection.exclude_subtrees
+    if type(values) is not tuple:
+        raise TypeError(
+            "portable repository source selection fields must use exact types"
+        )
+    if check_cancelled is None:
+        if any(type(path) is not str for path in values):
+            raise TypeError(
+                "portable repository source selection fields must use exact types"
+            )
+        return RepositorySourceSelection(values)
+
+    if len(values) > 4096:
+        raise ValueError("portable repository source selection has too many exclusions")
+    detached: list[str] = []
+    selected: set[str] = set()
+    total_bytes = 0
+    previous: str | None = None
+    value_count = len(values)
+    for index in range(value_count):
+        value = values[index]
+        if type(value) is not str:
+            raise TypeError(
+                "portable repository source selection fields must use exact types"
+            )
+        path = PurePosixPath(value)
+        encoded = value.encode("utf-8", errors="strict")
+        if (
+            not value
+            or "\x00" in value
+            or "\\" in value
+            or path.is_absolute()
+            or value in {".", ".."}
+            or ".." in path.parts
+            or path.as_posix() != value
+            or len(encoded) > 4096
+            or len(path.parts) > 256
+            or (previous is not None and value <= previous)
+            or any(
+                "/".join(path.parts[:component_count]) in selected
+                for component_count in range(1, len(path.parts))
+            )
+        ):
+            raise ValueError("portable repository source selection is not canonical")
+        total_bytes += len(encoded)
+        if total_bytes > 1024 * 1024:
+            raise ValueError("portable repository source selection is too large")
+        detached.append(value)
+        selected.add(value)
+        previous = value
+        if index + 1 < value_count:
+            check_cancelled()
+
+    snapshot = RepositorySourceSelection()
+    object.__setattr__(snapshot, "exclude_subtrees", tuple(detached))
+    object.__setattr__(snapshot, "_exclude_index", frozenset(selected))
+    return snapshot
+
+
+def _detach_repository_identity_snapshot(
+    repository_identity: RepositorySourceIdentitySnapshot,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> RepositorySourceIdentitySnapshot:
+    """Validate and detach every caller-controlled identity field."""
+
+    if type(repository_identity) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("portable view repository identity has an invalid type")
+    if (
+        type(repository_identity.root) is not type(Path())
+        or type(repository_identity.fingerprint) is not str
+        or type(repository_identity.file_count) is not int
+        or type(repository_identity.file_records) is not tuple
+        or (
+            repository_identity.source_selection is not None
+            and type(repository_identity.source_selection)
+            is not RepositorySourceSelection
+        )
+    ):
+        raise TypeError("portable repository identity fields must use exact types")
+    if (
+        repository_identity.file_count < 0
+        or not is_secure_source_fingerprint_v2(repository_identity.fingerprint)
+        or repository_identity.file_count != len(repository_identity.file_records)
+    ):
+        raise ValueError("portable repository identity is invalid")
+
+    selection = _detach_repository_source_selection(
+        repository_identity.source_selection,
+        check_cancelled=check_cancelled,
+    )
+    records: list[RepositorySourceFileRecord] = []
+    paths: set[str] = set()
+    record_count = len(repository_identity.file_records)
+    for index in range(record_count):
+        record = repository_identity.file_records[index]
+        if type(record) is not RepositorySourceFileRecord:
+            raise TypeError(
+                "portable repository records must use the exact record type"
+            )
+        if (
+            type(record.path) is not str
+            or type(record.size) is not int
+            or type(record.sha256) is not str
+            or type(record.lexical_identity) is not tuple
+            or (record.link_target is not None and type(record.link_target) is not str)
+        ):
+            raise TypeError("portable repository record fields must use exact types")
+        if (
+            not record.path
+            or record.size < 0
+            or not re.fullmatch(r"[0-9a-f]{64}", record.sha256, re.ASCII)
+        ):
+            raise ValueError("portable repository record identity is invalid")
+        identity = _exact_repository_identity_value(record.lexical_identity)
+        if record.path in paths:
+            raise RuntimeError("authenticated repository source repeats a file record")
+        detached = RepositorySourceFileRecord(
+            path=record.path,
+            size=record.size,
+            sha256=record.sha256,
+            lexical_identity=identity,  # type: ignore[arg-type]
+            link_target=record.link_target,
+        )
+        paths.add(detached.path)
+        records.append(detached)
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+
+    return RepositorySourceIdentitySnapshot(
+        root=type(repository_identity.root)(os.fspath(repository_identity.root)),
+        fingerprint=repository_identity.fingerprint,
+        file_count=repository_identity.file_count,
+        file_records=tuple(records),
+        source_selection=selection,
+    )
+
+
+def _require_repository_identity_matches(
+    repository_identity: RepositorySourceIdentitySnapshot,
+    retained_identity: RepositorySourceIdentitySnapshot,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
+    if (
+        repository_identity.root != retained_identity.root
+        or repository_identity.fingerprint != retained_identity.fingerprint
+        or repository_identity.file_count != retained_identity.file_count
+        or len(repository_identity.file_records) != len(retained_identity.file_records)
+    ):
+        raise ValueError(
+            "portable repository identity differs from its retained binding"
+        )
+    selection = repository_identity.source_selection
+    retained_selection = retained_identity.source_selection
+    if selection is None or retained_selection is None:
+        if selection is not retained_selection:
+            raise ValueError(
+                "portable repository identity differs from its retained binding"
+            )
+    else:
+        selected = selection.exclude_subtrees
+        retained = retained_selection.exclude_subtrees
+        if len(selected) != len(retained):
+            raise ValueError(
+                "portable repository identity differs from its retained binding"
+            )
+        selection_count = len(selected)
+        for index in range(selection_count):
+            if selected[index] != retained[index]:
+                raise ValueError(
+                    "portable repository identity differs from its retained binding"
+                )
+            if check_cancelled is not None and index + 1 < selection_count:
+                check_cancelled()
+    record_count = len(repository_identity.file_records)
+    for index in range(record_count):
+        if (
+            repository_identity.file_records[index]
+            != retained_identity.file_records[index]
+        ):
+            raise ValueError(
+                "portable repository identity differs from its retained binding"
+            )
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+
+
+def _attest_repository_identity_snapshot(
+    repository_identity: RepositorySourceIdentitySnapshot,
+    retained_identity: RepositorySourceIdentitySnapshot,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> RepositorySourceIdentitySnapshot:
+    """Detach and match a supplied identity against retained binding authority."""
+
+    detached = _detach_repository_identity_snapshot(
+        repository_identity,
+        check_cancelled=check_cancelled,
+    )
+    _require_repository_identity_matches(
+        detached,
+        retained_identity,
+        check_cancelled=check_cancelled,
+    )
+    return detached
+
+
+def _authenticated_repository_source_files(
+    repository_identity: RepositorySourceIdentitySnapshot,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> frozenset[str]:
+    records = repository_identity.file_records
+    record_count = len(records)
+    paths: set[str] = set()
+    for index in range(record_count):
+        record = records[index]
+        if type(record) is not RepositorySourceFileRecord or (
+            type(record.path) is not str
+            or type(record.size) is not int
+            or type(record.sha256) is not str
+            or type(record.lexical_identity) is not tuple
+            or (record.link_target is not None and type(record.link_target) is not str)
+        ):
+            raise TypeError("authenticated repository source record fields are invalid")
+        if (
+            not record.path
+            or record.size < 0
+            or not re.fullmatch(r"[0-9a-f]{64}", record.sha256, re.ASCII)
+        ):
+            raise ValueError("authenticated repository source record is invalid")
+        _exact_repository_identity_value(record.lexical_identity)
+        path = record.path
+        if path in paths:
+            raise RuntimeError("authenticated repository source repeats a file record")
+        paths.add(path)
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+    return frozenset(paths)
+
+
 def _validate_content_bound_portable_query_view_reader_with_identity(
     publication: PublicationDirectoryReader,
     *,
@@ -3265,10 +3700,33 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
     if not isinstance(view_config, Mapping):
         raise ValueError(f"portable {view_type} validation requires its view config")
 
-    config_snapshot = _bounded_json_object_snapshot(
-        view_config,
-        label=f"portable {view_type} view config",
-    )
+    if not repository_source.usable:
+        raise RuntimeError("portable view repository source is not usable")
+    if check_cancelled is not None:
+        repository_identity = _detach_repository_identity_snapshot(
+            repository_identity,
+            check_cancelled=check_cancelled,
+        )
+        retained_identity = repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+        _require_repository_identity_matches(
+            repository_identity,
+            retained_identity,
+            check_cancelled=check_cancelled,
+        )
+
+    if check_cancelled is None:
+        config_snapshot = _bounded_json_object_snapshot(
+            view_config,
+            label=f"portable {view_type} view config",
+        )
+    else:
+        config_snapshot = _bounded_json_object_snapshot(
+            view_config,
+            label=f"portable {view_type} view config",
+            check_cancelled=check_cancelled,
+        )
     if view_type == "vector":
         route = resolve_embedding_artifact_route(config_snapshot, environ={})
         if route.provider == "huggingface":
@@ -3276,16 +3734,26 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
                 route.model,
                 route.compatibility_options,
             )
-    if not repository_source.usable:
-        raise RuntimeError("portable view repository source is not usable")
-    environment = _environment_snapshot(environ)
-    forbidden = tuple(forbidden_paths)
-    if any(not isinstance(path, Path) for path in forbidden):
-        raise TypeError("portable validation forbidden paths must be Path values")
-    repository_records = repository_identity.file_records
-    authenticated_source_files = frozenset(record.path for record in repository_records)
-    if len(authenticated_source_files) != len(repository_records):
-        raise RuntimeError("authenticated repository source repeats a file record")
+    if check_cancelled is None:
+        environment = _environment_snapshot(environ)
+        forbidden = _forbidden_paths_snapshot(forbidden_paths)
+    else:
+        environment = _environment_snapshot(
+            environ,
+            check_cancelled=check_cancelled,
+        )
+        forbidden = _forbidden_paths_snapshot(
+            forbidden_paths,
+            check_cancelled=check_cancelled,
+        )
+    authenticated_source_files = (
+        _authenticated_repository_source_files(repository_identity)
+        if check_cancelled is None
+        else _authenticated_repository_source_files(
+            repository_identity,
+            check_cancelled=check_cancelled,
+        )
+    )
 
     if not isinstance(_framework_sandwiched, bool):
         raise TypeError("portable framework sandwich selector must be a boolean")

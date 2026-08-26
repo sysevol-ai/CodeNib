@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import hashlib
+import heapq
 import logging
 import os
 import secrets
@@ -17,7 +18,7 @@ import sys
 from contextlib import contextmanager
 from dataclasses import InitVar, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterable, Iterator, Mapping, TypeVar
+from typing import Callable, Iterable, Iterator, Mapping, Sequence, TypeVar
 
 try:
     import fcntl as _fcntl
@@ -98,8 +99,67 @@ _WORKSPACE_RECEIPT_EMPTY = object()
 _WORKSPACE_RECEIPT_CLOSED = object()
 _WORKSPACE_RECEIPT_CLOSE = object()
 _WORKSPACE_OWNER_RECOVERY_LIMIT = 64
+_WORKSPACE_SORT_RUN_ENTRIES = 256
 _TREE_OWNERSHIP_TYPE = _TreeOwnership
 _WorkspaceResult = TypeVar("_WorkspaceResult")
+_WorkspaceSortItem = TypeVar("_WorkspaceSortItem")
+
+
+def _interruptible_sorted_workspace_items(
+    entries: Sequence[_WorkspaceSortItem],
+    *,
+    key: Callable[[_WorkspaceSortItem], object] | None,
+    check_cancelled: Callable[[], None] | None,
+    reverse: bool = False,
+) -> tuple[_WorkspaceSortItem, ...]:
+    """Sort through bounded stable runs and an interruptible stable merge."""
+
+    if check_cancelled is None:
+        return tuple(sorted(entries, key=key, reverse=reverse))
+    entry_count = len(entries)
+    runs: list[list[_WorkspaceSortItem]] = []
+    for start in range(0, entry_count, _WORKSPACE_SORT_RUN_ENTRIES):
+        end = min(start + _WORKSPACE_SORT_RUN_ENTRIES, entry_count)
+        run = list(entries[start:end])
+        run.sort(key=key, reverse=reverse)
+        runs.append(run)
+        if end < entry_count:
+            check_cancelled()
+    if not runs:
+        return ()
+    while len(runs) > 1:
+        check_cancelled()
+        merged_runs: list[list[_WorkspaceSortItem]] = []
+        run_count = len(runs)
+        for run_index in range(0, run_count, 2):
+            left = runs[run_index]
+            if run_index + 1 == run_count:
+                merged_runs.append(left)
+            else:
+                right = runs[run_index + 1]
+                merged_run: list[_WorkspaceSortItem] = []
+                merged_count = len(left) + len(right)
+                merged = (
+                    heapq.merge(left, right, key=key, reverse=True)
+                    if reverse
+                    else heapq.merge(left, right, key=key)
+                )
+                for index, item in enumerate(merged):
+                    merged_run.append(item)
+                    if index + 1 < merged_count:
+                        check_cancelled()
+                merged_runs.append(merged_run)
+            if run_index + 2 < run_count:
+                check_cancelled()
+        runs = merged_runs
+
+    def ordered_items() -> Iterator[_WorkspaceSortItem]:
+        for index, item in enumerate(runs[0]):
+            yield item
+            if index + 1 < entry_count:
+                check_cancelled()
+
+    return tuple(ordered_items())
 
 
 class _SnapshotUnavailable(RuntimeError):
@@ -343,7 +403,7 @@ def _relative_path(value: str | Path | PurePosixPath) -> PurePosixPath:
 
 def _workspace_mode(value: int, *, directory: bool) -> int:
     label = "workspace directory mode" if directory else "workspace file mode"
-    if isinstance(value, bool) or not isinstance(value, int):
+    if type(value) is not int:
         raise TypeError(f"{label} must be an integer")
     if value < 0 or value > 0o777:
         raise ValueError(f"{label} must contain only portable permission bits")
@@ -353,6 +413,26 @@ def _workspace_mode(value: int, *, directory: bool) -> int:
     if value & required != required:
         requirement = "owner rwx" if directory else "owner read"
         raise ValueError(f"{label} must grant {requirement} permission")
+    return value
+
+
+def _workspace_subject_digest(value: object) -> str:
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError("workspace plan subject digest must be lowercase sha256")
+    return value
+
+
+def _workspace_plan_digest(value: object) -> str:
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError("workspace plan digest must be lowercase sha256")
     return value
 
 
@@ -386,7 +466,7 @@ class WorkspaceFile:
     def __post_init__(self) -> None:
         object.__setattr__(self, "path", _relative_path(self.path))
         object.__setattr__(self, "mode", _workspace_mode(self.mode, directory=False))
-        if isinstance(self.max_bytes, bool) or not isinstance(self.max_bytes, int):
+        if type(self.max_bytes) is not int:
             raise TypeError("workspace file size limit must be an integer")
         if self.max_bytes < 0 or self.max_bytes > _MAX_WORKSPACE_FILE_BYTES:
             raise ValueError("workspace file size limit is out of bounds")
@@ -409,33 +489,25 @@ class WorkspacePlan:
     ) -> None:
         if check_cancelled is not None and not callable(check_cancelled):
             raise TypeError("workspace plan cancellation check must be callable")
-        subject = self.subject_digest
-        if (
-            not isinstance(subject, str)
-            or len(subject) != 64
-            or any(character not in "0123456789abcdef" for character in subject)
-        ):
-            raise ValueError("workspace plan subject digest must be lowercase sha256")
-        directories = tuple(self.directories)
-        files = tuple(self.files)
-        for index, directory_item in enumerate(directories):
-            if not isinstance(directory_item, WorkspaceDirectory):
-                raise TypeError("workspace plan directories must be WorkspaceDirectory")
-            if check_cancelled is not None and (
-                index + 1 < len(directories) or bool(files)
-            ):
-                check_cancelled()
-        for index, file_item in enumerate(files):
-            if not isinstance(file_item, WorkspaceFile):
-                raise TypeError("workspace plan files must be WorkspaceFile")
-            if check_cancelled is not None and index + 1 < len(files):
-                check_cancelled()
+        subject = _workspace_subject_digest(self.subject_digest)
+        source_directories = tuple(self.directories)
+        source_files = tuple(self.files)
         root_mode = _workspace_mode(self.root_mode, directory=True)
 
         directory_by_path: dict[str, WorkspaceDirectory] = {}
         file_by_path: dict[str, WorkspaceFile] = {}
         portable_paths: dict[str, str] = {}
-        for index, directory_item in enumerate(directories):
+        detached_directories: list[WorkspaceDirectory] = []
+        for index, directory_item in enumerate(source_directories):
+            if type(directory_item) is not WorkspaceDirectory:
+                raise TypeError("workspace plan directories must be WorkspaceDirectory")
+            path_value = directory_item.path
+            mode_value = directory_item.mode
+            if type(path_value) is not PurePosixPath or type(mode_value) is not int:
+                raise TypeError("workspace plan directory fields must use exact types")
+            detached = WorkspaceDirectory(path_value, mode=mode_value)
+            detached_directories.append(detached)
+            directory_item = detached
             path = directory_item.path.as_posix()
             if path in directory_by_path:
                 raise ValueError(f"workspace plan repeats directory: {path}")
@@ -448,12 +520,44 @@ class WorkspacePlan:
                 )
             portable_paths[portable] = path
             directory_by_path[path] = directory_item
+            if check_cancelled is not None and index + 1 < len(source_directories):
+                check_cancelled()
+        directories = tuple(detached_directories)
+
+        for index, path in enumerate(directory_by_path):
+            relative = PurePosixPath(path)
+            for depth in range(1, len(relative.parts)):
+                ancestor = "/".join(relative.parts[:depth])
+                if ancestor not in directory_by_path:
+                    raise ValueError(
+                        f"workspace plan is missing directory ancestor: {ancestor}"
+                    )
             if check_cancelled is not None and (
-                index + 1 < len(directories) or bool(files)
+                index + 1 < len(directory_by_path) or bool(source_files)
             ):
                 check_cancelled()
+
         total_bytes = 0
-        for index, file_item in enumerate(files):
+        detached_files: list[WorkspaceFile] = []
+        for index, file_item in enumerate(source_files):
+            if type(file_item) is not WorkspaceFile:
+                raise TypeError("workspace plan files must be WorkspaceFile")
+            path_value = file_item.path
+            mode_value = file_item.mode
+            max_bytes_value = file_item.max_bytes
+            if (
+                type(path_value) is not PurePosixPath
+                or type(mode_value) is not int
+                or type(max_bytes_value) is not int
+            ):
+                raise TypeError("workspace plan file fields must use exact types")
+            detached = WorkspaceFile(
+                path_value,
+                mode=mode_value,
+                max_bytes=max_bytes_value,
+            )
+            detached_files.append(detached)
+            file_item = detached
             path = file_item.path.as_posix()
             if path in file_by_path:
                 raise ValueError(f"workspace plan repeats file: {path}")
@@ -473,33 +577,29 @@ class WorkspacePlan:
             total_bytes += file_item.max_bytes
             if total_bytes > _MAX_WORKSPACE_TOTAL_BYTES:
                 raise ValueError("workspace plan total byte limit is out of bounds")
-            if check_cancelled is not None and index + 1 < len(files):
-                check_cancelled()
-
-        path_groups = (directory_by_path, file_by_path)
-        for group_index, paths in enumerate(path_groups):
-            for index, path in enumerate(paths):
-                relative = PurePosixPath(path)
-                for depth in range(1, len(relative.parts)):
-                    ancestor = "/".join(relative.parts[:depth])
-                    if ancestor not in directory_by_path:
-                        raise ValueError(
-                            "workspace plan is missing directory ancestor: "
-                            f"{ancestor}"
-                        )
-                if check_cancelled is not None and (
-                    index + 1 < len(paths)
-                    or (
-                        group_index + 1 < len(path_groups)
-                        and bool(path_groups[group_index + 1])
+            relative = PurePosixPath(path)
+            for depth in range(1, len(relative.parts)):
+                ancestor = "/".join(relative.parts[:depth])
+                if ancestor not in directory_by_path:
+                    raise ValueError(
+                        f"workspace plan is missing directory ancestor: {ancestor}"
                     )
-                ):
-                    check_cancelled()
+            if check_cancelled is not None and index + 1 < len(source_files):
+                check_cancelled()
+        files = tuple(detached_files)
 
-        canonical_directories = tuple(
-            sorted(directories, key=lambda item: item.path.as_posix())
+        canonical_directories = _interruptible_sorted_workspace_items(
+            directories,
+            key=lambda item: item.path.as_posix(),
+            check_cancelled=check_cancelled,
         )
-        canonical_files = tuple(sorted(files, key=lambda item: item.path.as_posix()))
+        if check_cancelled is not None and canonical_directories and files:
+            check_cancelled()
+        canonical_files = _interruptible_sorted_workspace_items(
+            files,
+            key=lambda item: item.path.as_posix(),
+            check_cancelled=check_cancelled,
+        )
 
         def encoded_plan_paths() -> Iterator[bytes]:
             nonlocal plan_path_cancellation_failure
@@ -601,9 +701,15 @@ def _snapshot_workspace_plan(
         or type(source_digest) is not str
     ):
         raise TypeError("owned workspace plan fields must use exact types")
+    subject_digest = _workspace_subject_digest(subject_digest)
+    source_digest = _workspace_plan_digest(source_digest)
+    root_mode = _workspace_mode(root_mode, directory=True)
 
-    directory_fields: list[tuple[str, int]] = []
-    file_fields: list[tuple[str, int, int]] = []
+    validated_directories: list[WorkspaceDirectory] = []
+    validated_files: list[WorkspaceFile] = []
+    directory_paths: dict[str, WorkspaceDirectory] = {}
+    file_paths: dict[str, WorkspaceFile] = {}
+    portable_paths: dict[str, str] = {}
 
     def snapshot_paths() -> Iterator[bytes]:
         nonlocal snapshot_cancellation_failure
@@ -614,17 +720,44 @@ def _snapshot_workspace_plan(
             mode = directory.mode
             if type(path) is not PurePosixPath or type(mode) is not int:
                 raise TypeError("owned workspace directory fields must use exact types")
-            path_text = path.as_posix()
-            directory_fields.append((path_text, mode))
+            detached = WorkspaceDirectory(path, mode=mode)
+            path_text = detached.path.as_posix()
+            if path_text in directory_paths:
+                raise ValueError(f"workspace plan repeats directory: {path_text}")
+            portable = path_text.casefold()
+            previous = portable_paths.get(portable)
+            if previous is not None:
+                raise ValueError(
+                    "workspace plan has a portable path collision: "
+                    f"{previous!r} and {path_text!r}"
+                )
+            portable_paths[portable] = path_text
+            directory_paths[path_text] = detached
+            validated_directories.append(detached)
             yield os.fsencode(path_text)
+            if check_cancelled is not None and index + 1 < len(source_directories):
+                try:
+                    check_cancelled()
+                except BaseException as exc:
+                    snapshot_cancellation_failure = exc
+                    raise
+        for index, path_text in enumerate(directory_paths):
+            relative = PurePosixPath(path_text)
+            for depth in range(1, len(relative.parts)):
+                ancestor = "/".join(relative.parts[:depth])
+                if ancestor not in directory_paths:
+                    raise ValueError(
+                        f"workspace plan is missing directory ancestor: {ancestor}"
+                    )
             if check_cancelled is not None and (
-                index + 1 < len(source_directories) or bool(source_files)
+                index + 1 < len(directory_paths) or bool(source_files)
             ):
                 try:
                     check_cancelled()
                 except BaseException as exc:
                     snapshot_cancellation_failure = exc
                     raise
+        total_bytes = 0
         for index, file in enumerate(source_files):
             if type(file) is not WorkspaceFile:
                 raise TypeError("owned workspace files must use exact types")
@@ -637,8 +770,34 @@ def _snapshot_workspace_plan(
                 or type(max_bytes) is not int
             ):
                 raise TypeError("owned workspace file fields must use exact types")
-            path_text = path.as_posix()
-            file_fields.append((path_text, mode, max_bytes))
+            detached = WorkspaceFile(path, mode=mode, max_bytes=max_bytes)
+            path_text = detached.path.as_posix()
+            if path_text in file_paths:
+                raise ValueError(f"workspace plan repeats file: {path_text}")
+            if path_text in directory_paths:
+                raise ValueError(
+                    f"workspace plan path is both file and directory: {path_text}"
+                )
+            portable = path_text.casefold()
+            previous = portable_paths.get(portable)
+            if previous is not None:
+                raise ValueError(
+                    "workspace plan has a portable path collision: "
+                    f"{previous!r} and {path_text!r}"
+                )
+            portable_paths[portable] = path_text
+            file_paths[path_text] = detached
+            total_bytes += detached.max_bytes
+            if total_bytes > _MAX_WORKSPACE_TOTAL_BYTES:
+                raise ValueError("workspace plan total byte limit is out of bounds")
+            relative = PurePosixPath(path_text)
+            for depth in range(1, len(relative.parts)):
+                ancestor = "/".join(relative.parts[:depth])
+                if ancestor not in directory_paths:
+                    raise ValueError(
+                        f"workspace plan is missing directory ancestor: {ancestor}"
+                    )
+            validated_files.append(detached)
             yield os.fsencode(path_text)
             if check_cancelled is not None and index + 1 < len(source_files):
                 try:
@@ -658,28 +817,17 @@ def _snapshot_workspace_plan(
         ) from exc
 
     detached_directories: list[WorkspaceDirectory] = []
-    for index, (path, mode) in enumerate(directory_fields):
-        detached_directories.append(
-            WorkspaceDirectory(
-                PurePosixPath(path),
-                mode=mode,
-            )
-        )
+    for index, directory in enumerate(validated_directories):
+        detached_directories.append(directory)
         if check_cancelled is not None and (
-            index + 1 < len(directory_fields) or bool(file_fields)
+            index + 1 < len(validated_directories) or bool(validated_files)
         ):
             check_cancelled()
     directories = tuple(detached_directories)
     detached_files: list[WorkspaceFile] = []
-    for index, (path, mode, max_bytes) in enumerate(file_fields):
-        detached_files.append(
-            WorkspaceFile(
-                PurePosixPath(path),
-                mode=mode,
-                max_bytes=max_bytes,
-            )
-        )
-        if check_cancelled is not None and index + 1 < len(file_fields):
+    for index, file in enumerate(validated_files):
+        detached_files.append(file)
+        if check_cancelled is not None and index + 1 < len(validated_files):
             check_cancelled()
     files = tuple(detached_files)
     detached = (
@@ -3585,14 +3733,31 @@ class OwnedWorkspaceAuthority:
                 )
             return
 
-        ordered_paths = sorted(
-            self._directory_descriptors,
-            key=lambda path: (path.count("/") + bool(path), path),
-            reverse=True,
-        )
-        for path in ordered_paths:
+        def order_key(path: str) -> tuple[int, str]:
+            return (path.count("/") + bool(path), path)
+
+        if check_cancelled is None:
+            ordered_paths = sorted(
+                self._directory_descriptors,
+                key=order_key,
+                reverse=True,
+            )
+        else:
+            descriptor_count = len(self._directory_descriptors)
+            paths: list[str] = []
+            for index, path in enumerate(self._directory_descriptors):
+                paths.append(path)
+                if index + 1 < descriptor_count:
+                    check_cancelled()
+            ordered_paths = _interruptible_sorted_workspace_items(
+                paths,
+                key=order_key,
+                check_cancelled=check_cancelled,
+                reverse=True,
+            )
+        for index, path in enumerate(ordered_paths):
             os.fsync(self._directory_descriptors[path])
-            if check_cancelled is not None:
+            if check_cancelled is not None and index + 1 < len(ordered_paths):
                 check_cancelled()
 
     def publish_into(
@@ -4389,10 +4554,17 @@ class OwnedWorkspaceAuthority:
         if check_cancelled is not None:
             check_cancelled()
 
-        directory_specs = {
-            item.path.as_posix(): item for item in self._plan.directories
-        }
-        for path, descriptor in self._directory_descriptors.items():
+        allowed_files = self._written_files
+        plan_directories = self._plan.directories
+        directory_specs: dict[str, WorkspaceDirectory] = {}
+        for index, item in enumerate(plan_directories):
+            path = item.path.as_posix()
+            directory_specs[path] = item
+            if check_cancelled is not None and index + 1 < len(plan_directories):
+                check_cancelled()
+
+        directory_descriptor_count = len(self._directory_descriptors)
+        for index, (path, descriptor) in enumerate(self._directory_descriptors.items()):
             metadata = os.fstat(descriptor)
             expected_identity = self._directory_identities[path]
             expected_mode = (
@@ -4420,10 +4592,26 @@ class OwnedWorkspaceAuthority:
                     raise RuntimeError(
                         f"owned workspace directory binding changed: {path}"
                     )
-            if check_cancelled is not None:
+            if check_cancelled is not None and index + 1 < directory_descriptor_count:
                 check_cancelled()
 
-        allowed_files = self._written_files
+        expected_inventory_items: list[tuple[str, str]] = []
+        for index, path in enumerate(directory_specs):
+            expected_inventory_items.append((path, "directory"))
+            if check_cancelled is not None and (
+                index + 1 < len(directory_specs) or bool(allowed_files)
+            ):
+                check_cancelled()
+        allowed_file_count = len(allowed_files)
+        for index, path in enumerate(allowed_files):
+            expected_inventory_items.append((path, "file"))
+            if check_cancelled is not None and index + 1 < allowed_file_count:
+                check_cancelled()
+        expected_inventory = _interruptible_sorted_workspace_items(
+            expected_inventory_items,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
 
         def entry_policy(path: str, kind: str, mode: int, size: int) -> None:
             if kind == "directory":
@@ -4456,39 +4644,50 @@ class OwnedWorkspaceAuthority:
                 check_cancelled=check_cancelled,
                 **capture_kwargs,
             )
-        expected_inventory = tuple(
-            sorted(
-                [(path, "directory") for path in directory_specs]
-                + [(path, "file") for path in allowed_files]
-            )
-        )
-        if directory_ownership_inventory(observed) != expected_inventory:
+        observed_inventory = directory_ownership_inventory(observed)
+        if len(observed_inventory) != len(expected_inventory):
             raise RuntimeError("owned workspace inventory differs from its plan")
+        for index, expected_item in enumerate(expected_inventory):
+            if observed_inventory[index] != expected_item:
+                raise RuntimeError("owned workspace inventory differs from its plan")
+            if check_cancelled is not None and index + 1 < len(expected_inventory):
+                check_cancelled()
         if directory_ownership_root_identity(observed) != self._root_identity:
             raise RuntimeError("owned workspace root changed during verification")
-        identities = {
-            path: identity
-            for path, _kind, identity in directory_ownership_entry_identities(observed)
-        }
-        records = {
-            record.path: record for record in directory_ownership_file_records(observed)
-        }
-        for path, identity in self._directory_identities.items():
-            if not path:
-                continue
-            observed_identity = identities.get(path)
-            if (
-                observed_identity is None
-                or (
-                    observed_identity[0],
-                    observed_identity[1],
-                    stat.S_IFMT(observed_identity[2]),
-                    observed_identity[4],
-                )
-                != identity
+        ownership_identities = directory_ownership_entry_identities(observed)
+        identities: dict[str, tuple[int, ...]] = {}
+        for index, (path, _kind, identity) in enumerate(ownership_identities):
+            identities[path] = identity
+            if check_cancelled is not None and index + 1 < len(ownership_identities):
+                check_cancelled()
+        ownership_records = directory_ownership_file_records(observed)
+        records: dict[str, TreeFileRecord] = {}
+        for index, record in enumerate(ownership_records):
+            records[record.path] = record
+            if check_cancelled is not None and index + 1 < len(ownership_records):
+                check_cancelled()
+        directory_identity_count = len(self._directory_identities)
+        for index, (path, identity) in enumerate(self._directory_identities.items()):
+            if path:
+                observed_identity = identities.get(path)
+                if (
+                    observed_identity is None
+                    or (
+                        observed_identity[0],
+                        observed_identity[1],
+                        stat.S_IFMT(observed_identity[2]),
+                        observed_identity[4],
+                    )
+                    != identity
+                ):
+                    raise RuntimeError(f"owned workspace directory changed: {path}")
+            if check_cancelled is not None and (
+                index + 1 < directory_identity_count or bool(allowed_files)
             ):
-                raise RuntimeError(f"owned workspace directory changed: {path}")
-        for path, (identity, mode, size, digest) in allowed_files.items():
+                check_cancelled()
+        for index, (path, (identity, mode, size, digest)) in enumerate(
+            allowed_files.items()
+        ):
             observed_identity = identities.get(path)
             record = records.get(path)
             if (
@@ -4505,14 +4704,34 @@ class OwnedWorkspaceAuthority:
                 or (record.mode, record.size, record.sha256) != (mode, size, digest)
             ):
                 raise RuntimeError(f"owned workspace file changed: {path}")
-        if require_complete and set(allowed_files) != set(self._file_specs):
-            missing = sorted(set(self._file_specs) - set(allowed_files))
-            raise RuntimeError(
-                "owned workspace is missing required files: " + ", ".join(missing)
-            )
+            if check_cancelled is not None and (
+                index + 1 < allowed_file_count
+                or (require_complete and bool(self._file_specs))
+            ):
+                check_cancelled()
+        if require_complete:
+            file_spec_count = len(self._file_specs)
+            if allowed_file_count != file_spec_count:
+                missing = [
+                    path for path in self._file_specs if path not in allowed_files
+                ]
+                raise RuntimeError(
+                    "owned workspace is missing required files: " + ", ".join(missing)
+                )
+            for index, path in enumerate(self._file_specs):
+                if path not in allowed_files:
+                    missing = [
+                        candidate
+                        for candidate in self._file_specs
+                        if candidate not in allowed_files
+                    ]
+                    raise RuntimeError(
+                        "owned workspace is missing required files: "
+                        + ", ".join(missing)
+                    )
+                if check_cancelled is not None and index + 1 < file_spec_count:
+                    check_cancelled()
         authority.verify_path_binding()
-        if check_cancelled is not None:
-            check_cancelled()
         return observed
 
     def close(self) -> None:

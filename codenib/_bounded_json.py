@@ -367,6 +367,17 @@ class _ByteStream:
         self.advance(1)
         return value
 
+    def next_buffered(self) -> tuple[bool, int | None]:
+        """Return one already-buffered byte without asking the source for more."""
+
+        if self._position < len(self._block):
+            value = self._block[self._position]
+            self.advance(1)
+            return True, value
+        if self._eof:
+            return True, None
+        return False, None
+
 
 _JSON_WHITESPACE = frozenset(b" \t\r\n")
 _ATOM_DELIMITERS = frozenset(b" \t\r\n,]}:")
@@ -379,6 +390,15 @@ def _next_non_whitespace(stream: _ByteStream) -> int | None:
         if value not in _JSON_WHITESPACE:
             return value
     return None
+
+
+def _next_buffered_non_whitespace(stream: _ByteStream) -> tuple[bool, int | None]:
+    """Inspect only bytes already returned by the source."""
+
+    while True:
+        known, value = stream.next_buffered()
+        if not known or value is None or value not in _JSON_WHITESPACE:
+            return known, value
 
 
 def _frame_json_element(
@@ -627,9 +647,22 @@ def iter_bounded_json_array(
             max_key_bytes=max_key_bytes,
         )
         item_count += 1
+        if delimiter != ord("]") and item_count >= max_items:
+            raise ValueError(f"{label} exceeds its {max_items}-item limit")
+        buffered_known, buffered_first = _next_buffered_non_whitespace(stream)
+        if delimiter == ord("]"):
+            if buffered_known and buffered_first is not None:
+                raise ValueError(f"{label} contains trailing data")
+        elif buffered_known:
+            if buffered_first is None:
+                raise ValueError(f"{label} is truncated JSON")
+            if buffered_first == ord("]"):
+                raise ValueError(f"{label} has a trailing JSON array comma")
         yield value
         if delimiter == ord("]"):
             first = None
+        elif buffered_known:
+            first = buffered_first
         else:
             first = _next_non_whitespace(stream)
             if first is None:

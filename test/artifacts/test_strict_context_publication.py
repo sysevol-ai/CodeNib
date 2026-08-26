@@ -15,6 +15,7 @@ from typing import Any, TypeVar
 
 import pytest
 
+import codenib._workspace_provider as workspace_provider_module
 import codenib.artifacts as artifacts_module
 import codenib.artifacts.portable_views as portable_views_module
 import codenib.artifacts.strict_context as strict_context_module
@@ -707,6 +708,121 @@ def test_strict_context_plan_stops_before_source_record_poison(
         fixture.close()
 
 
+def test_strict_context_manifest_snapshot_stops_before_poisoned_index(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25", "vector"))
+    stop = BaseException("injected strict context manifest stop")
+    armed = False
+    poison_consumed = False
+    indexes = dict(fixture.manifest.indexes)
+    first_name, first_entry = next(iter(indexes.items()))
+
+    class PoisonedIndexes(Mapping[str, IndexEntry]):
+        def __getitem__(self, key: str) -> IndexEntry:
+            if key == first_name:
+                return first_entry
+            raise AssertionError("strict context manifest consumed poisoned index")
+
+        def __iter__(self) -> Iterator[str]:
+            nonlocal armed, poison_consumed
+            armed = True
+            yield first_name
+            poison_consumed = True
+            raise AssertionError("strict context manifest consumed poisoned index")
+
+        def __len__(self) -> int:
+            return 2
+
+    fixture.manifest.indexes = PoisonedIndexes()  # type: ignore[assignment]
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    try:
+        with pytest.raises(BaseException) as caught:
+            strict_context_module._snapshot_manifest(
+                fixture.manifest,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is stop
+        assert not poison_consumed
+    finally:
+        fixture.close()
+
+
+def test_strict_context_view_snapshot_current_error_precedes_stop(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    stop = RuntimeError("injected strict context view snapshot stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise stop
+
+    try:
+        with pytest.raises(ValueError, match="does not support") as caught:
+            strict_context_module._snapshot_view_generations(
+                {"unsupported": fixture.owners["bm25"]},
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is not stop
+        assert polls == 0
+    finally:
+        fixture.close()
+
+
+def test_strict_context_freeze_none_uses_legacy_helper_shapes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    calls: list[str] = []
+
+    def snapshot_manifest(manifest: RepoManifest) -> dict[str, Any]:
+        calls.append("manifest")
+        return manifest.to_dict()
+
+    def snapshot_views(view_generations):
+        calls.append("views")
+        return tuple(sorted(view_generations.items()))
+
+    def snapshot_environment(environ):
+        calls.append("environment")
+        return dict(environ)
+
+    monkeypatch.setattr(strict_context_module, "_snapshot_manifest", snapshot_manifest)
+    monkeypatch.setattr(
+        strict_context_module,
+        "_snapshot_view_generations",
+        snapshot_views,
+    )
+    monkeypatch.setattr(
+        strict_context_module,
+        "_environment_snapshot",
+        snapshot_environment,
+    )
+    try:
+        frozen = strict_context_module._freeze_inputs(
+            fixture.manifest,
+            repository="owner/repo",
+            repository_source=fixture.repository_source,
+            view_generations=fixture.owners,
+            environ={},
+        )
+
+        assert frozen.view_generations
+        assert calls == ["manifest", "views", "environment"]
+    finally:
+        fixture.close()
+
+
 def test_strict_context_expected_plan_mismatch_precedes_terminal_stop(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -761,6 +877,211 @@ def test_strict_context_expected_plan_mismatch_precedes_terminal_stop(
         assert fixture.repository_source.usable
         assert all(owner.active for owner in fixture.owners.values())
     finally:
+        fixture.close()
+
+
+def test_strict_context_candidate_inventory_stops_before_poisoned_next_record() -> None:
+    first = strict_context_module._output_record("a.json", b"first")
+    interruption = RuntimeError("injected candidate inventory stop")
+    poison_consumed = False
+    armed = False
+
+    class PoisonedRecords:
+        def __len__(self) -> int:
+            return 2
+
+        def __getitem__(self, index: int):
+            nonlocal armed, poison_consumed
+            if index == 0:
+                armed = True
+                return first
+            if index == 1:
+                poison_consumed = True
+                raise AssertionError("candidate inventory consumed its poisoned tail")
+            raise IndexError(index)
+
+    class EmptyWorkspace:
+        directories = ()
+
+    class CandidatePlan:
+        plan = EmptyWorkspace()
+        output_records = PoisonedRecords()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise interruption
+
+    with pytest.raises(RuntimeError) as caught:
+        strict_context_module._candidate_inventory(
+            CandidatePlan(),
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is interruption
+    assert not poison_consumed
+
+
+def test_strict_context_output_record_index_stops_before_poisoned_next_record() -> None:
+    first = strict_context_module._output_record("a.json", b"first")
+    interruption = RuntimeError("injected output record index stop")
+    poison_consumed = False
+    armed = False
+
+    class PoisonedRecords:
+        def __len__(self) -> int:
+            return 2
+
+        def __getitem__(self, index: int):
+            nonlocal armed, poison_consumed
+            if index == 0:
+                armed = True
+                return first
+            if index == 1:
+                poison_consumed = True
+                raise AssertionError("output record index consumed its poisoned tail")
+            raise IndexError(index)
+
+    def check_cancelled() -> None:
+        if armed:
+            raise interruption
+
+    with pytest.raises(RuntimeError) as caught:
+        strict_context_module._output_records_by_path(
+            PoisonedRecords(),
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is interruption
+    assert not poison_consumed
+
+
+def test_strict_context_candidate_mismatch_precedes_armed_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    planned = plan_context_artifact_strict(
+        fixture.manifest,
+        repository="owner/repo",
+        repository_source=fixture.repository_source,
+        view_generations=fixture.owners,
+        environ={},
+    )
+    inputs = strict_context_module._freeze_inputs(
+        fixture.manifest,
+        repository="owner/repo",
+        repository_source=fixture.repository_source,
+        view_generations=fixture.owners,
+        environ={},
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    destination = tmp_path / "published" / "context"
+    interruption = RuntimeError("terminal candidate inventory stop")
+    real_candidate_inventory = strict_context_module._candidate_inventory
+    armed = False
+
+    def corrupt_final_inventory(
+        candidate_plan: PlannedContextArtifact,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> tuple[tuple[str, str], ...]:
+        nonlocal armed
+        inventory = real_candidate_inventory(
+            candidate_plan,
+            check_cancelled=check_cancelled,
+        )
+        corrupted = (*inventory[:-1], (inventory[-1][0], "corrupt"))
+        armed = True
+        return corrupted
+
+    def check_cancelled() -> None:
+        if armed:
+            raise interruption
+
+    monkeypatch.setattr(
+        strict_context_module,
+        "_candidate_inventory",
+        corrupt_final_inventory,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="candidate differs") as caught:
+            strict_context_module._publish_frozen(
+                destination,
+                planned=planned,
+                inputs=inputs,
+                workspace_provider=_TestWorkspaceProvider(),
+                output_receipt_owner=output_owner,
+                require_expected_plan=False,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is not interruption
+        assert armed
+        assert output_owner.state == "cleanup"
+        assert not destination.exists()
+    finally:
+        output_owner.close()
+        fixture.close()
+
+
+def test_strict_context_metadata_corruption_precedes_armed_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _fixture(tmp_path, ("bm25",))
+    planned = plan_context_artifact_strict(
+        fixture.manifest,
+        repository="owner/repo",
+        repository_source=fixture.repository_source,
+        view_generations=fixture.owners,
+        environ={},
+    )
+    output_owner = PublishedWorkspaceReceiptOwner()
+    destination = tmp_path / "published" / "context"
+    interruption = RuntimeError("terminal metadata replay stop")
+    real_write_file = workspace_provider_module._AdoptedWorkspaceSession.write_file
+    armed = False
+
+    def corrupt_final_metadata_write(self, relative, chunks):
+        nonlocal armed
+        record = real_write_file(self, relative, chunks)
+        if PurePosixPath(relative) == PurePosixPath(
+            strict_context_module.CONTEXT_ARTIFACT_MANIFEST
+        ):
+            armed = True
+            return replace(record, sha256="0" * 64)
+        return record
+
+    def check_cancelled() -> None:
+        if armed:
+            raise interruption
+
+    monkeypatch.setattr(
+        workspace_provider_module._AdoptedWorkspaceSession,
+        "write_file",
+        corrupt_final_metadata_write,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="metadata replay differs") as caught:
+            strict_context_module._publish_planned_context_artifact_strict_interruptibly(
+                destination,
+                planned=planned,
+                manifest=fixture.manifest,
+                repository="owner/repo",
+                repository_source=fixture.repository_source,
+                view_generations=fixture.owners,
+                workspace_provider=_TestWorkspaceProvider(),
+                output_receipt_owner=output_owner,
+                environ={},
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is not interruption
+        assert armed
+        assert output_owner.state == "empty"
+        assert not destination.exists()
+    finally:
+        output_owner.close()
         fixture.close()
 
 

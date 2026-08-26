@@ -9,6 +9,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import hashlib
+import heapq
 import os
 import secrets
 import stat
@@ -17,7 +18,6 @@ from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import partial
-from itertools import pairwise
 from pathlib import Path, PurePosixPath
 from threading import RLock
 from typing import (
@@ -27,6 +27,7 @@ from typing import (
     Iterator,
     Literal,
     Protocol,
+    Sequence,
     TypeVar,
 )
 
@@ -65,6 +66,7 @@ _RENAME_NOREPLACE = 1
 _RENAME_EXCL = 0x4
 _MAX_ORPHAN_NAME_ATTEMPTS = 128
 _MAX_ORDERED_ACTION_CANCELLATION_RETRIES = 8
+_OWNERSHIP_SORT_RUN_ENTRIES = 256
 _DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset(
     {"linux-native-workspace-owner", "linux-renameat2"}
 )
@@ -84,6 +86,96 @@ _SAFE_OWNERSHIP_DIRECTORY_FDS = (
 )
 
 _T = TypeVar("_T")
+
+
+def _interruptible_sorted_ownership_items(
+    entries: Sequence[_T],
+    *,
+    key: Callable[[_T], object] | None,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[_T, ...]:
+    """Sort through bounded stable runs and an interruptible stable merge."""
+
+    if check_cancelled is None:
+        return tuple(sorted(entries, key=key))
+    entry_count = len(entries)
+    runs: list[list[_T]] = []
+    for start in range(0, entry_count, _OWNERSHIP_SORT_RUN_ENTRIES):
+        end = min(start + _OWNERSHIP_SORT_RUN_ENTRIES, entry_count)
+        run = list(entries[start:end])
+        run.sort(key=key)
+        runs.append(run)
+        if end < entry_count:
+            check_cancelled()
+    if not runs:
+        return ()
+    while len(runs) > 1:
+        check_cancelled()
+        merged_runs: list[list[_T]] = []
+        run_count = len(runs)
+        for run_index in range(0, run_count, 2):
+            left = runs[run_index]
+            if run_index + 1 == run_count:
+                merged_runs.append(left)
+            else:
+                right = runs[run_index + 1]
+                merged_run: list[_T] = []
+                merged_count = len(left) + len(right)
+                for index, item in enumerate(heapq.merge(left, right, key=key)):
+                    merged_run.append(item)
+                    if index + 1 < merged_count:
+                        check_cancelled()
+                merged_runs.append(merged_run)
+            if run_index + 2 < run_count:
+                check_cancelled()
+        runs = merged_runs
+
+    def ordered_items() -> Iterator[_T]:
+        for index, item in enumerate(runs[0]):
+            yield item
+            if index + 1 < entry_count:
+                check_cancelled()
+
+    return tuple(ordered_items())
+
+
+def _contains_required_ownership_marker(
+    entries: Sequence[_T],
+    *,
+    matches: Callable[[_T], bool],
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    """Search a bounded collection without polling past its final result."""
+
+    if check_cancelled is None:
+        return any(matches(entry) for entry in entries)
+    entry_count = len(entries)
+    for index, entry in enumerate(entries):
+        if matches(entry):
+            return True
+        if index + 1 < entry_count:
+            check_cancelled()
+    return False
+
+
+def _interruptible_ownership_tuple(
+    entries: Sequence[_T],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[_T, ...]:
+    """Materialize a bounded tuple while polling only before future items."""
+
+    if check_cancelled is None:
+        return tuple(entries)
+    entry_count = len(entries)
+
+    def items() -> Iterator[_T]:
+        for index, entry in enumerate(entries):
+            yield entry
+            if index + 1 < entry_count:
+                check_cancelled()
+
+    return tuple(items())
 
 
 @dataclass(slots=True)
@@ -756,9 +848,18 @@ class PublicationDirectoryReader:
         marker = _required_root_file_bytes(required_root_file)
         if marker is not None:
             marker_name = os.fsdecode(marker)
-            roots = {
-                path: kind for path, kind in ownership.inventory if "/" not in path
-            }
+            if check_cancelled is None:
+                roots = {
+                    path: kind for path, kind in ownership.inventory if "/" not in path
+                }
+            else:
+                roots: dict[str, str] = {}
+                inventory_count = len(ownership.inventory)
+                for index, (path, kind) in enumerate(ownership.inventory):
+                    if "/" not in path:
+                        roots[path] = kind
+                    if index + 1 < inventory_count:
+                        check_cancelled()
             if (
                 not (allow_empty_root and not roots)
                 and roots.get(marker_name) != "file"
@@ -767,11 +868,29 @@ class PublicationDirectoryReader:
                     "directory ownership root is missing its required marker"
                 )
         if entry_policy is not None:
-            records = {record.path: record for record in ownership.file_records}
-            identities = {
-                path: identity for path, _kind, identity in ownership.entry_identities
-            }
-            for path, kind in ownership.inventory:
+            if check_cancelled is None:
+                records = {record.path: record for record in ownership.file_records}
+                identities = {
+                    path: identity
+                    for path, _kind, identity in ownership.entry_identities
+                }
+            else:
+                records = {}
+                record_count = len(ownership.file_records)
+                for index, record in enumerate(ownership.file_records):
+                    records[record.path] = record
+                    if index + 1 < record_count:
+                        check_cancelled()
+                identities = {}
+                identity_count = len(ownership.entry_identities)
+                for index, (path, _kind, identity) in enumerate(
+                    ownership.entry_identities
+                ):
+                    identities[path] = identity
+                    if index + 1 < identity_count:
+                        check_cancelled()
+            inventory_count = len(ownership.inventory)
+            for index, (path, kind) in enumerate(ownership.inventory):
                 if kind == "file":
                     record = records[path]
                     entry_policy(path, "file", record.mode, record.size)
@@ -782,7 +901,7 @@ class PublicationDirectoryReader:
                         stat.S_IMODE(identities[path][2]),
                         0,
                     )
-                if check_cancelled is not None:
+                if check_cancelled is not None and index + 1 < inventory_count:
                     check_cancelled()
         return ownership
 
@@ -4866,18 +4985,30 @@ def _scan_windows_owned_directory(
         entries.append((raw_name, entry))
         if check_cancelled is not None:
             check_cancelled()
-    entries.sort(key=lambda item: item[0])
+    if check_cancelled is None:
+        entries.sort(key=lambda item: item[0])
+        ordered_entries: Sequence[tuple[bytes, _WindowsDirectoryEntry]] = entries
+    else:
+        ordered_entries = _interruptible_sorted_ownership_items(
+            entries,
+            key=lambda item: item[0],
+            check_cancelled=check_cancelled,
+        )
     if (
         required_root_file is not None
-        and not (allow_empty_root and not entries)
-        and not any(entry.name == required_root_file for _raw, entry in entries)
+        and not (allow_empty_root and not ordered_entries)
+        and not _contains_required_ownership_marker(
+            ordered_entries,
+            matches=lambda item: item[1].name == required_root_file,
+            check_cancelled=check_cancelled,
+        )
     ):
         raise RuntimeError("directory ownership root is missing its required marker")
 
     hasher = hashlib.sha256()
     hasher.update(b"codenib.atomic-directory.v1\x00")
     hasher.update(stat.S_IMODE(before.st_mode).to_bytes(4, "big"))
-    for raw_name, entry in entries:
+    for raw_name, entry in ordered_entries:
         if check_cancelled is not None:
             check_cancelled()
         child_parts = parts + (raw_name,)
@@ -5049,6 +5180,26 @@ def _capture_windows_directory_handle(
     after = api.metadata(handle)
     if _ownership_version_identity(after) != _ownership_version_identity(opened):
         raise RuntimeError(f"directory ownership root changed: {path}")
+    if check_cancelled is None:
+        canonical_inventory = tuple(sorted(inventory))
+        canonical_records = tuple(sorted(file_records, key=lambda record: record.path))
+        canonical_identities = tuple(sorted(entry_identities))
+    else:
+        canonical_inventory = _interruptible_sorted_ownership_items(
+            inventory,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
+        canonical_records = _interruptible_sorted_ownership_items(
+            file_records,
+            key=lambda record: record.path,
+            check_cancelled=check_cancelled,
+        )
+        canonical_identities = _interruptible_sorted_ownership_items(
+            entry_identities,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
     return _TreeOwnership(
         root_identity=_directory_inode_identity(opened),
         root_version_identity=_ownership_version_identity(opened),
@@ -5056,9 +5207,9 @@ def _capture_windows_directory_handle(
         entries=budget.entries,
         byte_count=budget.byte_count,
         metadata_bytes=budget.metadata_bytes,
-        inventory=tuple(sorted(inventory)),
-        file_records=tuple(sorted(file_records, key=lambda record: record.path)),
-        entry_identities=tuple(sorted(entry_identities)),
+        inventory=canonical_inventory,
+        file_records=canonical_records,
+        entry_identities=canonical_identities,
     )
 
 
@@ -5839,18 +5990,30 @@ def _scan_owned_directory(
                 names.append((raw_name, entry.name))
                 if check_cancelled is not None:
                     check_cancelled()
-    names.sort(key=lambda item: item[0])
+    if check_cancelled is None:
+        names.sort(key=lambda item: item[0])
+        ordered_names: Sequence[tuple[bytes, str]] = names
+    else:
+        ordered_names = _interruptible_sorted_ownership_items(
+            names,
+            key=lambda item: item[0],
+            check_cancelled=check_cancelled,
+        )
     if (
         required_root_file is not None
-        and not (allow_empty_root and not names)
-        and not any(raw_name == required_root_file for raw_name, _name in names)
+        and not (allow_empty_root and not ordered_names)
+        and not _contains_required_ownership_marker(
+            ordered_names,
+            matches=lambda item: item[0] == required_root_file,
+            check_cancelled=check_cancelled,
+        )
     ):
         raise RuntimeError("directory ownership root is missing its required marker")
 
     hasher = hashlib.sha256()
     hasher.update(b"codenib.atomic-directory.v1\x00")
     hasher.update(stat.S_IMODE(before.st_mode).to_bytes(4, "big"))
-    for raw_name, name in names:
+    for raw_name, name in ordered_names:
         if check_cancelled is not None:
             check_cancelled()
         child_parts = parts + (raw_name,)
@@ -6051,6 +6214,26 @@ def _capture_posix_directory_descriptor(
     after = os.fstat(descriptor)
     if _ownership_version_identity(after) != _ownership_version_identity(opened):
         raise RuntimeError(f"directory ownership root changed: {path}")
+    if check_cancelled is None:
+        canonical_inventory = tuple(sorted(inventory))
+        canonical_records = tuple(sorted(file_records, key=lambda record: record.path))
+        canonical_identities = tuple(sorted(entry_identities))
+    else:
+        canonical_inventory = _interruptible_sorted_ownership_items(
+            inventory,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
+        canonical_records = _interruptible_sorted_ownership_items(
+            file_records,
+            key=lambda record: record.path,
+            check_cancelled=check_cancelled,
+        )
+        canonical_identities = _interruptible_sorted_ownership_items(
+            entry_identities,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
     return _TreeOwnership(
         root_identity=_directory_inode_identity(opened),
         root_version_identity=_ownership_version_identity(opened),
@@ -6058,9 +6241,9 @@ def _capture_posix_directory_descriptor(
         entries=budget.entries,
         byte_count=budget.byte_count,
         metadata_bytes=budget.metadata_bytes,
-        inventory=tuple(sorted(inventory)),
-        file_records=tuple(sorted(file_records, key=lambda record: record.path)),
-        entry_identities=tuple(sorted(entry_identities)),
+        inventory=canonical_inventory,
+        file_records=canonical_records,
+        entry_identities=canonical_identities,
     )
 
 
@@ -6262,9 +6445,12 @@ def _rebuild_ownership_digest(
     root_version_identity: tuple[int, ...],
     entries: dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]],
     records: dict[str, TreeFileRecord],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> str:
     children: dict[str, list[str]] = {"": []}
-    for path, (kind, _identity) in entries.items():
+    entry_count = len(entries)
+    for index, (path, (kind, _identity)) in enumerate(entries.items()):
         parts = PurePosixPath(path).parts
         parent = "/".join(parts[:-1])
         if parent:
@@ -6276,11 +6462,14 @@ def _rebuild_ownership_digest(
         children.setdefault(parent, []).append(path)
         if kind == "directory":
             children.setdefault(path, [])
+        if check_cancelled is not None and index + 1 < entry_count:
+            check_cancelled()
 
     def raw_byte_order(paths: list[str]) -> Iterator[str]:
         terminal = -1
         trie: dict[int, object] = {}
-        for candidate in paths:
+        path_count = len(paths)
+        for index, candidate in enumerate(paths):
             node = trie
             for octet in os.fsencode(PurePosixPath(candidate).name):
                 child = node.get(octet)
@@ -6297,6 +6486,8 @@ def _rebuild_ownership_digest(
                     "directory ownership token contains a duplicate raw name"
                 )
             node[terminal] = candidate
+            if check_cancelled is not None and index + 1 < path_count:
+                check_cancelled()
 
         def visit(node: dict[int, object]) -> Iterator[str]:
             candidate = node.get(terminal)
@@ -6323,7 +6514,9 @@ def _rebuild_ownership_digest(
         hasher = hashlib.sha256()
         hasher.update(b"codenib.atomic-directory.v1\x00")
         hasher.update(stat.S_IMODE(identity[2]).to_bytes(4, "big"))
-        for child in raw_byte_order(children.get(path, [])):
+        child_paths = children.get(path, [])
+        child_count = len(child_paths)
+        for index, child in enumerate(raw_byte_order(child_paths)):
             kind, child_identity = entries[child]
             relative = _ownership_token_path_bytes(child)
             entry_hasher = hashlib.sha256()
@@ -6340,6 +6533,8 @@ def _rebuild_ownership_digest(
                 entry_hasher.update(record.size.to_bytes(8, "big"))
                 entry_hasher.update(bytes.fromhex(record.sha256))
             hasher.update(entry_hasher.digest())
+            if check_cancelled is not None and index + 1 < child_count:
+                check_cancelled()
         return hasher.digest()
 
     return hash_directory("", root_version_identity).hex()
@@ -6347,11 +6542,33 @@ def _rebuild_ownership_digest(
 
 def _validate_directory_ownership_token(
     ownership: _TreeOwnership,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+    require_exact_types: bool = False,
 ) -> dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]]:
     """Validate canonical structure and every redundant ownership-token field."""
 
     if not isinstance(ownership, _TreeOwnership):
         raise TypeError("ownership must be a captured directory ownership token")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("directory ownership cancellation check must be callable")
+    if type(require_exact_types) is not bool:
+        raise TypeError("exact ownership type policy must be a boolean")
+    if require_exact_types and (
+        type(ownership) is not _TreeOwnership
+        or type(ownership.root_identity) is not tuple
+        or any(type(item) is not int for item in ownership.root_identity)
+        or type(ownership.root_version_identity) is not tuple
+        or any(type(item) is not int for item in ownership.root_version_identity)
+        or type(ownership.digest) is not str
+        or type(ownership.entries) is not int
+        or type(ownership.byte_count) is not int
+        or type(ownership.metadata_bytes) is not int
+        or type(ownership.inventory) is not tuple
+        or type(ownership.file_records) is not tuple
+        or type(ownership.entry_identities) is not tuple
+    ):
+        raise TypeError("directory ownership token fields are not exact")
     root_version = _validated_ownership_version_identity(
         ownership.root_version_identity,
         kind="directory",
@@ -6396,11 +6613,31 @@ def _validate_directory_ownership_token(
         )
     ):
         raise RuntimeError("directory ownership token collections are not canonical")
+    inventory_count = len(ownership.inventory)
+    if ownership.entries != inventory_count:
+        raise RuntimeError("directory ownership token entry count is inconsistent")
+    identity_count = len(ownership.entry_identities)
+    if identity_count != inventory_count:
+        raise RuntimeError("directory ownership token identity count is inconsistent")
+    record_count = len(ownership.file_records)
+    if record_count > inventory_count:
+        raise RuntimeError(
+            "directory ownership token file record count is inconsistent"
+        )
 
     entries: dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]] = {}
     inventory_kinds: dict[str, Literal["directory", "file"]] = {}
-    inventory: list[tuple[str, str]] = []
-    for inventory_item in ownership.inventory:
+    metadata_bytes = 0
+    expected_file_count = 0
+    previous_inventory: tuple[str, str] | None = None
+    for index, inventory_item in enumerate(ownership.inventory):
+        if require_exact_types and (
+            type(inventory_item) is not tuple
+            or len(inventory_item) != 2
+            or type(inventory_item[0]) is not str
+            or type(inventory_item[1]) is not str
+        ):
+            raise TypeError("directory ownership token inventory is not exact")
         if (
             not isinstance(inventory_item, tuple)
             or len(inventory_item) != 2
@@ -6409,19 +6646,31 @@ def _validate_directory_ownership_token(
             raise RuntimeError("directory ownership token inventory is invalid")
         path, raw_kind = inventory_item
         kind = _validated_ownership_kind(raw_kind)
-        _ownership_token_path_bytes(path)
+        path_bytes = _ownership_token_path_bytes(path)
         if path in inventory_kinds:
             raise RuntimeError("directory ownership token contains a duplicate path")
+        current_inventory = (path, kind)
+        if previous_inventory is not None and previous_inventory >= current_inventory:
+            raise RuntimeError("directory ownership token inventory is not canonical")
         inventory_kinds[path] = kind
-        inventory.append((path, kind))
-    if any(previous >= current for previous, current in pairwise(inventory)):
-        raise RuntimeError("directory ownership token inventory is not canonical")
-    if ownership.entries != len(inventory):
-        raise RuntimeError("directory ownership token entry count is inconsistent")
-
-    identities: list[tuple[str, str, tuple[int, ...]]] = []
+        previous_inventory = current_inventory
+        metadata_bytes += 8 + len(path_bytes) + 1 + 4 + 8 + 32
+        if kind == "file":
+            expected_file_count += 1
+        if check_cancelled is not None and index + 1 < inventory_count:
+            check_cancelled()
     seen_identities: set[str] = set()
-    for identity_item in ownership.entry_identities:
+    previous_identity: tuple[str, str, tuple[int, ...]] | None = None
+    for index, identity_item in enumerate(ownership.entry_identities):
+        if require_exact_types and (
+            type(identity_item) is not tuple
+            or len(identity_item) != 3
+            or type(identity_item[0]) is not str
+            or type(identity_item[1]) is not str
+            or type(identity_item[2]) is not tuple
+            or any(type(item) is not int for item in identity_item[2])
+        ):
+            raise TypeError("directory ownership token identities are not exact")
         if not isinstance(identity_item, tuple) or len(identity_item) != 3:
             raise RuntimeError("directory ownership token identities are invalid")
         path, raw_kind, raw_identity = identity_item
@@ -6435,15 +6684,27 @@ def _validate_directory_ownership_token(
         )
         entries[path] = (kind, identity)
         seen_identities.add(path)
-        identities.append((path, kind, identity))
-    if any(
-        previous >= current for previous, current in pairwise(identities)
-    ) or seen_identities != set(inventory_kinds):
+        current_identity = (path, kind, identity)
+        if previous_identity is not None and previous_identity >= current_identity:
+            raise RuntimeError("directory ownership token identities are not canonical")
+        previous_identity = current_identity
+        if check_cancelled is not None and index + 1 < identity_count:
+            check_cancelled()
+    if len(seen_identities) != len(inventory_kinds):
         raise RuntimeError("directory ownership token identities are not canonical")
 
     records: dict[str, TreeFileRecord] = {}
-    canonical_records: list[TreeFileRecord] = []
-    for record in ownership.file_records:
+    byte_count = 0
+    previous_record: TreeFileRecord | None = None
+    for index, record in enumerate(ownership.file_records):
+        if require_exact_types and (
+            type(record) is not TreeFileRecord
+            or type(record.path) is not str
+            or type(record.mode) is not int
+            or type(record.size) is not int
+            or type(record.sha256) is not str
+        ):
+            raise TypeError("directory ownership token file records are not exact")
         if not isinstance(record, TreeFileRecord):
             raise RuntimeError("directory ownership token file records are invalid")
         entry = entries.get(record.path)
@@ -6475,24 +6736,31 @@ def _validate_directory_ownership_token(
             character not in "0123456789abcdef" for character in record.sha256
         ):
             raise RuntimeError("directory ownership token file record is invalid")
+        if previous_record is not None and previous_record.path >= record.path:
+            raise RuntimeError(
+                "directory ownership token file records are not canonical"
+            )
         records[record.path] = record
-        canonical_records.append(record)
-    expected_files = {
-        path for path, (kind, _identity) in entries.items() if kind == "file"
-    }
-    if set(records) != expected_files or any(
-        previous.path >= current.path
-        for previous, current in pairwise(canonical_records)
-    ):
+        previous_record = record
+        byte_count += record.size
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+    if len(records) != expected_file_count:
         raise RuntimeError("directory ownership token file records are not canonical")
 
-    byte_count = sum(record.size for record in records.values())
-    metadata_bytes = sum(
-        8 + len(_ownership_token_path_bytes(path)) + 1 + 4 + 8 + 32 for path in entries
-    )
     if byte_count != ownership.byte_count or metadata_bytes != ownership.metadata_bytes:
         raise RuntimeError("directory ownership token accounting is inconsistent")
-    if _rebuild_ownership_digest(root_version, entries, records) != ownership.digest:
+    rebuilt_digest = (
+        _rebuild_ownership_digest(root_version, entries, records)
+        if check_cancelled is None
+        else _rebuild_ownership_digest(
+            root_version,
+            entries,
+            records,
+            check_cancelled=check_cancelled,
+        )
+    )
+    if rebuilt_digest != ownership.digest:
         raise RuntimeError("directory ownership token digest is inconsistent")
     return entries
 
@@ -6500,6 +6768,8 @@ def _validate_directory_ownership_token(
 def project_directory_ownership_subtree(
     outer: _TreeOwnership,
     prefix: str | PurePosixPath,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _TreeOwnership:
     """Derive an exact subtree token without reopening filesystem paths.
 
@@ -6508,7 +6778,14 @@ def project_directory_ownership_subtree(
     consume the corresponding bytes.
     """
 
-    entries = _validate_directory_ownership_token(outer)
+    entries = (
+        _validate_directory_ownership_token(outer)
+        if check_cancelled is None
+        else _validate_directory_ownership_token(
+            outer,
+            check_cancelled=check_cancelled,
+        )
+    )
     normalized = _ownership_subtree_prefix(prefix)
     selected = entries.get(normalized)
     if selected is None:
@@ -6518,41 +6795,89 @@ def project_directory_ownership_subtree(
     root_version = selected[1]
     descendant_prefix = f"{normalized}/"
 
-    projected_inventory = tuple(
-        (path[len(descendant_prefix) :], kind)
-        for path, kind in outer.inventory
-        if path.startswith(descendant_prefix)
+    projected_inventory_items: list[tuple[str, str]] = []
+    metadata_bytes = 0
+    inventory_count = len(outer.inventory)
+    for index, (path, kind) in enumerate(outer.inventory):
+        if path.startswith(descendant_prefix):
+            projected_path = path[len(descendant_prefix) :]
+            projected_inventory_items.append((projected_path, kind))
+            metadata_bytes += (
+                8 + len(_ownership_token_path_bytes(projected_path)) + 1 + 4 + 8 + 32
+            )
+        if check_cancelled is not None and index + 1 < inventory_count:
+            check_cancelled()
+
+    projected_record_items: list[TreeFileRecord] = []
+    records: dict[str, TreeFileRecord] = {}
+    byte_count = 0
+    record_count = len(outer.file_records)
+    for index, record in enumerate(outer.file_records):
+        if record.path.startswith(descendant_prefix):
+            projected_record = replace(
+                record,
+                path=record.path[len(descendant_prefix) :],
+            )
+            projected_record_items.append(projected_record)
+            records[projected_record.path] = projected_record
+            byte_count += projected_record.size
+        if check_cancelled is not None and index + 1 < record_count:
+            check_cancelled()
+
+    projected_identity_items: list[tuple[str, str, tuple[int, ...]]] = []
+    projected_entries: dict[
+        str, tuple[Literal["directory", "file"], tuple[int, ...]]
+    ] = {}
+    identity_count = len(outer.entry_identities)
+    for index, (path, kind, identity) in enumerate(outer.entry_identities):
+        if path.startswith(descendant_prefix):
+            projected_path = path[len(descendant_prefix) :]
+            validated_kind = _validated_ownership_kind(kind)
+            projected_identity_items.append((projected_path, validated_kind, identity))
+            projected_entries[projected_path] = (validated_kind, identity)
+        if check_cancelled is not None and index + 1 < identity_count:
+            check_cancelled()
+
+    projected_inventory = _interruptible_ownership_tuple(
+        projected_inventory_items,
+        check_cancelled=check_cancelled,
     )
-    projected_records = tuple(
-        replace(record, path=record.path[len(descendant_prefix) :])
-        for record in outer.file_records
-        if record.path.startswith(descendant_prefix)
+    projected_records = _interruptible_ownership_tuple(
+        projected_record_items,
+        check_cancelled=check_cancelled,
     )
-    projected_identities = tuple(
-        (path[len(descendant_prefix) :], kind, identity)
-        for path, kind, identity in outer.entry_identities
-        if path.startswith(descendant_prefix)
+    projected_identities = _interruptible_ownership_tuple(
+        projected_identity_items,
+        check_cancelled=check_cancelled,
     )
-    projected_entries = {
-        path: (_validated_ownership_kind(kind), identity)
-        for path, kind, identity in projected_identities
-    }
-    records = {record.path: record for record in projected_records}
+    digest = (
+        _rebuild_ownership_digest(root_version, projected_entries, records)
+        if check_cancelled is None
+        else _rebuild_ownership_digest(
+            root_version,
+            projected_entries,
+            records,
+            check_cancelled=check_cancelled,
+        )
+    )
     projected = _TreeOwnership(
         root_identity=_ownership_root_identity_from_version(root_version),
         root_version_identity=root_version,
-        digest=_rebuild_ownership_digest(root_version, projected_entries, records),
+        digest=digest,
         entries=len(projected_inventory),
-        byte_count=sum(record.size for record in projected_records),
-        metadata_bytes=sum(
-            8 + len(_ownership_token_path_bytes(path)) + 1 + 4 + 8 + 32
-            for path, _kind in projected_inventory
-        ),
+        byte_count=byte_count,
+        metadata_bytes=metadata_bytes,
         inventory=projected_inventory,
         file_records=projected_records,
         entry_identities=projected_identities,
     )
-    _validate_directory_ownership_token(projected)
+    if check_cancelled is None:
+        _validate_directory_ownership_token(projected)
+    else:
+        _validate_directory_ownership_token(
+            projected,
+            check_cancelled=check_cancelled,
+        )
     return projected
 
 

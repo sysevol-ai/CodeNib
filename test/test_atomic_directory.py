@@ -2259,6 +2259,130 @@ def test_directory_ownership_binds_required_root_marker(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, ValueError, KeyboardInterrupt, BaseException],
+)
+def test_ownership_sort_stops_before_poisoned_future_run(
+    error_type: type[BaseException],
+) -> None:
+    poisoned = False
+
+    class PoisonedRuns:
+        def __len__(self) -> int:
+            return atomic_module._OWNERSHIP_SORT_RUN_ENTRIES + 1
+
+        def __getitem__(self, item: object) -> object:
+            nonlocal poisoned
+            assert isinstance(item, slice)
+            if item.start == 0:
+                return list(range(atomic_module._OWNERSHIP_SORT_RUN_ENTRIES, 0, -1))
+            poisoned = True
+            raise AssertionError("ownership sort consumed its poisoned future run")
+
+    stop = error_type("injected ownership sort cancellation")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(BaseException) as caught:
+        atomic_module._interruptible_sorted_ownership_items(
+            PoisonedRuns(),  # type: ignore[arg-type]
+            key=None,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_ownership_sort_none_path_preserves_builtin_sort_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_merge(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("None ownership sort used the interruptible merge")
+
+    monkeypatch.setattr(atomic_module.heapq, "merge", forbidden_merge)
+
+    assert atomic_module._interruptible_sorted_ownership_items(
+        [3, 1, 2],
+        key=None,
+        check_cancelled=None,
+    ) == (1, 2, 3)
+
+
+def test_required_ownership_marker_final_mismatch_precedes_armed_stop() -> None:
+    armed = False
+    cancellation_calls = 0
+    stop = KeyboardInterrupt("armed after the final marker candidate")
+
+    def matches(value: str) -> bool:
+        nonlocal armed
+        if value == "final":
+            armed = True
+        return False
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        if armed:
+            raise stop
+
+    assert not atomic_module._contains_required_ownership_marker(
+        ("first", "final"),
+        matches=matches,
+        check_cancelled=check_cancelled,
+    )
+    assert armed
+    assert cancellation_calls == 1
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX ownership scan")
+def test_posix_ownership_callback_routes_all_bounded_sorts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "b").write_bytes(b"b")
+    (root / "a").write_bytes(b"a")
+    expected = capture_directory_ownership(root)
+    real_sort = atomic_module._interruptible_sorted_ownership_items
+    sort_calls = 0
+
+    def check_cancelled() -> None:
+        return None
+
+    def observe_sort(
+        entries: object,
+        *,
+        key: object,
+        check_cancelled: object,
+    ) -> object:
+        nonlocal sort_calls
+        assert check_cancelled is not None
+        sort_calls += 1
+        return real_sort(
+            entries,  # type: ignore[arg-type]
+            key=key,  # type: ignore[arg-type]
+            check_cancelled=check_cancelled,  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_interruptible_sorted_ownership_items",
+        observe_sort,
+    )
+
+    observed = capture_directory_ownership(
+        root,
+        check_cancelled=check_cancelled,
+    )
+
+    assert observed == expected
+    assert sort_calls == 4
+
+
 def test_directory_ownership_detects_same_size_rewrite_across_tokens(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2718,6 +2842,56 @@ def test_windows_ownership_uses_streaming_directory_enumeration() -> None:
         api.close(root_handle)
 
     assert ownership.inventory == (("one.txt", "file"), ("two.txt", "file"))
+
+
+def test_windows_ownership_callback_routes_all_bounded_sorts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = _FakeWindowsApi()
+    api.add_file(api.root_id, "two.txt", b"two")
+    api.add_file(api.root_id, "one.txt", b"one")
+    root_handle = api.create_directory_handle(Path("C:/authority"))
+    real_sort = atomic_module._interruptible_sorted_ownership_items
+    sort_calls = 0
+
+    def check_cancelled() -> None:
+        return None
+
+    def observe_sort(
+        entries: object,
+        *,
+        key: object,
+        check_cancelled: object,
+    ) -> object:
+        nonlocal sort_calls
+        assert check_cancelled is not None
+        sort_calls += 1
+        return real_sort(
+            entries,  # type: ignore[arg-type]
+            key=key,  # type: ignore[arg-type]
+            check_cancelled=check_cancelled,  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_interruptible_sorted_ownership_items",
+        observe_sort,
+    )
+    try:
+        ownership = atomic_module._capture_windows_directory_handle(
+            api,
+            root_handle,
+            Path("C:/authority"),
+            required_root_file=None,
+            allow_empty_root=False,
+            entry_policy=None,
+            check_cancelled=check_cancelled,
+        )
+    finally:
+        api.close(root_handle)
+
+    assert ownership.inventory == (("one.txt", "file"), ("two.txt", "file"))
+    assert sort_calls == 4
 
 
 def test_windows_ownership_stops_stream_when_entry_budget_is_exceeded(
@@ -8798,6 +8972,200 @@ def test_project_directory_ownership_subtree_rejects_forged_token(
     for token in forged:
         with pytest.raises(RuntimeError, match="directory ownership token"):
             atomic_module.project_directory_ownership_subtree(token, "selected")
+
+
+@pytest.mark.parametrize(
+    "error_type",
+    [RuntimeError, ValueError, KeyboardInterrupt, BaseException],
+)
+def test_directory_ownership_token_validation_stops_before_poisoned_future(
+    tmp_path: Path,
+    error_type: type[BaseException],
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a").write_bytes(b"a")
+    (root / "b").write_bytes(b"b")
+    ownership = capture_directory_ownership(root)
+    poisoned = False
+
+    class PoisonedInventory(tuple[tuple[str, str], ...]):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal poisoned
+            yield tuple.__getitem__(self, 0)
+            poisoned = True
+            raise AssertionError(
+                "ownership token validation consumed its poisoned future item"
+            )
+
+    forged = replace(
+        ownership,
+        inventory=PoisonedInventory(ownership.inventory),
+    )
+    stop = error_type("injected ownership token cancellation")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(BaseException) as caught:
+        atomic_module._validate_directory_ownership_token(
+            forged,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("entries", "entry count is inconsistent"),
+        ("identities", "identity count is inconsistent"),
+        ("too-many-records", "file record count is inconsistent"),
+    ],
+)
+def test_directory_ownership_token_top_count_error_precedes_first_poll(
+    tmp_path: Path,
+    case: str,
+    message: str,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "a").write_bytes(b"a")
+    (root / "b").write_bytes(b"b")
+    ownership = capture_directory_ownership(root)
+    if case == "entries":
+        forged = replace(ownership, entries=ownership.entries + 1)
+    elif case == "identities":
+        forged = replace(
+            ownership,
+            entry_identities=ownership.entry_identities[:-1],
+        )
+    else:
+        forged = replace(
+            ownership,
+            file_records=ownership.file_records + (ownership.file_records[-1],),
+        )
+    stop = KeyboardInterrupt("pending ownership inventory stop")
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        raise stop
+
+    with pytest.raises(RuntimeError, match=message) as raised:
+        atomic_module._validate_directory_ownership_token(
+            forged,
+            check_cancelled=check_cancelled,
+            require_exact_types=True,
+        )
+
+    assert raised.value is not stop
+    assert cancellation_calls == 0
+
+
+def test_directory_ownership_token_final_accounting_mismatch_precedes_stop(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "only").write_bytes(b"payload")
+    ownership = capture_directory_ownership(root)
+    forged = replace(ownership, byte_count=ownership.byte_count + 1)
+    stop = KeyboardInterrupt("must not precede final token accounting")
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        raise stop
+
+    with pytest.raises(RuntimeError, match="accounting is inconsistent"):
+        atomic_module._validate_directory_ownership_token(
+            forged,
+            check_cancelled=check_cancelled,
+        )
+
+    assert cancellation_calls == 0
+
+
+def test_project_directory_ownership_subtree_stops_before_projection_poison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outer = tmp_path / "outer"
+    selected = outer / "selected"
+    selected.mkdir(parents=True)
+    (selected / "a").write_bytes(b"a")
+    (selected / "b").write_bytes(b"b")
+    ownership = capture_directory_ownership(outer)
+    selected_entry = next(
+        (kind, identity)
+        for path, kind, identity in ownership.entry_identities
+        if path == "selected"
+    )
+    poisoned = False
+
+    class PoisonedInventory(tuple[tuple[str, str], ...]):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal poisoned
+            yield tuple.__getitem__(self, 0)
+            poisoned = True
+            raise AssertionError("subtree projection consumed its poisoned future")
+
+    poisoned_ownership = replace(
+        ownership,
+        inventory=PoisonedInventory(ownership.inventory),
+    )
+    stop = BaseException("injected subtree projection cancellation")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    def accept_outer_token(
+        token: object,
+        *,
+        check_cancelled: object = None,
+    ) -> dict[str, object]:
+        assert token is poisoned_ownership
+        assert check_cancelled is not None
+        return {"selected": selected_entry}
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_validate_directory_ownership_token",
+        accept_outer_token,
+    )
+
+    with pytest.raises(BaseException) as caught:
+        atomic_module.project_directory_ownership_subtree(
+            poisoned_ownership,
+            "selected",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poisoned
+
+
+def test_ownership_token_cancellation_parameters_are_keyword_only() -> None:
+    validation = inspect.signature(atomic_module._validate_directory_ownership_token)
+    projection = inspect.signature(atomic_module.project_directory_ownership_subtree)
+
+    assert validation.parameters["check_cancelled"].kind is (
+        inspect.Parameter.KEYWORD_ONLY
+    )
+    assert validation.parameters["check_cancelled"].default is None
+    assert validation.parameters["require_exact_types"].kind is (
+        inspect.Parameter.KEYWORD_ONLY
+    )
+    assert validation.parameters["require_exact_types"].default is False
+    assert projection.parameters["check_cancelled"].kind is (
+        inspect.Parameter.KEYWORD_ONLY
+    )
+    assert projection.parameters["check_cancelled"].default is None
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX raw path names")

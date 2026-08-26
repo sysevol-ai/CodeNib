@@ -1381,6 +1381,293 @@ def test_workspace_plan_polls_between_directory_and_file_records() -> None:
     assert raised.value is cancellation
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error_type", "message"),
+    [
+        (
+            "subject_digest",
+            type("DigestSubclass", (str,), {})("d" * 64),
+            ValueError,
+            "digest",
+        ),
+        (
+            "root_mode",
+            type("ModeSubclass", (int,), {})(0o700),
+            TypeError,
+            "mode",
+        ),
+    ],
+)
+def test_workspace_plan_rejects_nonexact_top_level_scalars_before_poll(
+    field: str,
+    value: object,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    cancellation = KeyboardInterrupt(f"pending nonexact {field} stop")
+    kwargs = {
+        "subject_digest": "d" * 64,
+        "directories": (WorkspaceDirectory("first"), WorkspaceDirectory("second")),
+        field: value,
+    }
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    with pytest.raises(error_type, match=message) as raised:
+        WorkspacePlan(check_cancelled=check_cancelled, **kwargs)
+
+    assert raised.value is not cancellation
+
+
+@pytest.mark.parametrize("bad_index", [0, 1])
+@pytest.mark.parametrize("entry_kind", ["directory", "file"])
+def test_workspace_plan_current_field_error_precedes_pending_stop(
+    entry_kind: str,
+    bad_index: int,
+) -> None:
+    cancellation = SystemExit(f"pending {entry_kind} field stop")
+    polls = 0
+    entries: list[WorkspaceDirectory | WorkspaceFile]
+    if entry_kind == "directory":
+        entries = [WorkspaceDirectory("first"), WorkspaceDirectory("second")]
+        object.__setattr__(entries[bad_index], "path", object())
+        kwargs = {"directories": tuple(entries)}
+        expected_error = TypeError
+        message = "directory fields must use exact types"
+    else:
+        entries = [WorkspaceFile("first"), WorkspaceFile("second")]
+        object.__setattr__(entries[bad_index], "max_bytes", -1)
+        kwargs = {"files": tuple(entries)}
+        expected_error = ValueError
+        message = "size limit is out of bounds"
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls > bad_index:
+            raise cancellation
+
+    with pytest.raises(expected_error, match=message) as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            check_cancelled=check_cancelled,
+            **kwargs,
+        )
+
+    assert raised.value is not cancellation
+    assert polls == bad_index
+
+
+@pytest.mark.parametrize("entry_kind", ["directory", "file"])
+def test_workspace_plan_stop_precedes_poisoned_future_fields(entry_kind: str) -> None:
+    cancellation = KeyboardInterrupt(f"exact future {entry_kind} stop")
+    if entry_kind == "directory":
+        first = WorkspaceDirectory("first")
+        poisoned = WorkspaceDirectory("second")
+        object.__setattr__(poisoned, "path", object())
+        kwargs = {"directories": (first, poisoned)}
+    else:
+        first = WorkspaceFile("first")
+        poisoned = WorkspaceFile("second")
+        object.__setattr__(poisoned, "max_bytes", -1)
+        kwargs = {"files": (first, poisoned)}
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            check_cancelled=check_cancelled,
+            **kwargs,
+        )
+
+    assert raised.value is cancellation
+
+
+def test_workspace_plan_none_detaches_valid_frozen_items() -> None:
+    source_directory = WorkspaceDirectory("nested")
+    source_file = WorkspaceFile("nested/payload", max_bytes=8)
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        directories=(source_directory,),
+        files=(source_file,),
+    )
+
+    assert plan.directories[0] == source_directory
+    assert plan.directories[0] is not source_directory
+    assert plan.files[0] == source_file
+    assert plan.files[0] is not source_file
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["directory-group", "file-current", "mutated-directory"],
+)
+def test_workspace_plan_ancestor_error_precedes_pending_stop(case: str) -> None:
+    cancellation = SystemExit(f"pending {case} ancestor stop")
+    if case == "directory-group":
+        directories = (WorkspaceDirectory("missing/child"),)
+        files = (WorkspaceFile("future"),)
+    elif case == "file-current":
+        directories = ()
+        files = (WorkspaceFile("missing/child"), WorkspaceFile("future"))
+    else:
+        forged = WorkspaceDirectory("valid")
+        object.__setattr__(forged, "path", PurePosixPath("missing/child"))
+        directories = (forged,)
+        files = (WorkspaceFile("future"),)
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise cancellation
+
+    with pytest.raises(ValueError, match="missing directory ancestor") as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=directories,
+            files=files,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is not cancellation
+    assert polls == 0
+
+
+def test_workspace_plan_stop_precedes_future_directory_ancestor() -> None:
+    cancellation = KeyboardInterrupt("exact future directory ancestor stop")
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=(
+                WorkspaceDirectory("missing/child"),
+                WorkspaceDirectory("missing"),
+            ),
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+
+
+@pytest.mark.parametrize("entry_kind", ["directories", "files"])
+def test_workspace_plan_sort_stops_before_poisoned_next_item(
+    monkeypatch: pytest.MonkeyPatch,
+    entry_kind: str,
+) -> None:
+    cancellation = SystemExit(f"exact {entry_kind} sort cancellation")
+    real_merge = captured_directory.heapq.merge
+    armed = False
+    poison_consumed = False
+
+    def poisoned_merge(*runs: object, key: object = None) -> Iterator[object]:
+        nonlocal armed, poison_consumed
+        merged = real_merge(*runs, key=key)  # type: ignore[arg-type]
+        first = next(merged)
+        armed = True
+        yield first
+        poison_consumed = True
+        raise AssertionError("workspace plan sort consumed its poisoned next item")
+
+    def check_cancelled() -> None:
+        if armed:
+            raise cancellation
+
+    monkeypatch.setattr(captured_directory, "_WORKSPACE_SORT_RUN_ENTRIES", 1)
+    monkeypatch.setattr(captured_directory.heapq, "merge", poisoned_merge)
+    directories = (
+        (WorkspaceDirectory("second"), WorkspaceDirectory("first"))
+        if entry_kind == "directories"
+        else ()
+    )
+    files = (
+        (WorkspaceFile("second"), WorkspaceFile("first"))
+        if entry_kind == "files"
+        else ()
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=directories,
+            files=files,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+    assert not poison_consumed
+
+
+def test_workspace_plan_none_sort_keeps_canonical_output_without_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden_merge(*_args: object, **_kwargs: object) -> Iterator[object]:
+        raise AssertionError("None workspace plan sort used interruptible merge")
+        yield  # pragma: no cover - retain the iterator call shape
+
+    monkeypatch.setattr(captured_directory, "_WORKSPACE_SORT_RUN_ENTRIES", 1)
+    monkeypatch.setattr(captured_directory.heapq, "merge", forbidden_merge)
+
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        directories=(WorkspaceDirectory("second"), WorkspaceDirectory("first")),
+        files=(WorkspaceFile("zeta"), WorkspaceFile("alpha")),
+    )
+
+    assert tuple(item.path.as_posix() for item in plan.directories) == (
+        "first",
+        "second",
+    )
+    assert tuple(item.path.as_posix() for item in plan.files) == (
+        "alpha",
+        "zeta",
+    )
+
+
+def test_workspace_plan_interruptible_sort_matches_canonical_none_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directories = (
+        WorkspaceDirectory("zeta"),
+        WorkspaceDirectory("alpha"),
+        WorkspaceDirectory("middle"),
+    )
+    files = (
+        WorkspaceFile("zeta/payload"),
+        WorkspaceFile("alpha/payload"),
+        WorkspaceFile("middle/payload"),
+    )
+    expected = WorkspacePlan(
+        subject_digest="d" * 64,
+        directories=directories,
+        files=files,
+    )
+    calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(captured_directory, "_WORKSPACE_SORT_RUN_ENTRIES", 1)
+
+    actual = WorkspacePlan(
+        subject_digest="d" * 64,
+        directories=directories,
+        files=files,
+        check_cancelled=check_cancelled,
+    )
+
+    assert calls > len(directories) + len(files)
+    assert actual == expected
+    assert actual.digest == expected.digest
+
+
 def test_workspace_plan_snapshot_preserves_runtime_cancellation() -> None:
     plan = WorkspacePlan(
         subject_digest="d" * 64,
@@ -1398,6 +1685,218 @@ def test_workspace_plan_snapshot_preserves_runtime_cancellation() -> None:
         )
 
     assert raised.value is cancellation
+
+
+@pytest.mark.parametrize("bad_index", [0, 1])
+@pytest.mark.parametrize("entry_kind", ["directory", "file"])
+def test_workspace_plan_snapshot_current_semantics_precede_pending_stop(
+    entry_kind: str,
+    bad_index: int,
+) -> None:
+    if entry_kind == "directory":
+        plan = WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=(WorkspaceDirectory("first"), WorkspaceDirectory("second")),
+        )
+        object.__setattr__(
+            plan.directories[bad_index],
+            "path",
+            PurePosixPath("../invalid"),
+        )
+        message = "normalized and bounded"
+    else:
+        plan = WorkspacePlan(
+            subject_digest="d" * 64,
+            files=(WorkspaceFile("first"), WorkspaceFile("second")),
+        )
+        object.__setattr__(plan.files[bad_index], "max_bytes", -1)
+        message = "size limit is out of bounds"
+    cancellation = SystemExit(f"pending snapshot {entry_kind} stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls > bad_index:
+            raise cancellation
+
+    with pytest.raises(ValueError, match=message) as raised:
+        captured_directory._snapshot_workspace_plan(
+            plan,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is not cancellation
+    assert polls == bad_index
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("subject_digest", "x" * 64, "lowercase sha256"),
+        ("digest", "x" * 64, "plan digest must be lowercase sha256"),
+        ("root_mode", -1, "portable permission bits"),
+    ],
+)
+def test_workspace_plan_snapshot_top_level_error_precedes_first_item_stop(
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        files=(WorkspaceFile("first"), WorkspaceFile("second")),
+    )
+    object.__setattr__(plan, field, value)
+    cancellation = SystemExit(f"pending snapshot {field} stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise cancellation
+
+    with pytest.raises(ValueError, match=message) as raised:
+        captured_directory._snapshot_workspace_plan(
+            plan,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is not cancellation
+    assert polls == 0
+
+
+def test_workspace_plan_snapshot_none_rejects_malformed_source_digest() -> None:
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        files=(WorkspaceFile("first"), WorkspaceFile("second")),
+    )
+    object.__setattr__(plan, "digest", "x" * 64)
+
+    with pytest.raises(ValueError, match="plan digest must be lowercase sha256"):
+        captured_directory._snapshot_workspace_plan(plan)
+
+
+def test_workspace_plan_snapshot_none_rejects_well_formed_wrong_digest() -> None:
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        files=(WorkspaceFile("first"), WorkspaceFile("second")),
+    )
+    wrong_digest = "0" * 64 if plan.digest != "0" * 64 else "1" * 64
+    object.__setattr__(plan, "digest", wrong_digest)
+
+    with pytest.raises(ValueError, match="plan digest is inconsistent"):
+        captured_directory._snapshot_workspace_plan(plan)
+
+
+def test_workspace_snapshot_stop_precedes_wrong_digest_and_future_poison() -> None:
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        files=(WorkspaceFile("first"), WorkspaceFile("second")),
+    )
+    wrong_digest = "0" * 64 if plan.digest != "0" * 64 else "1" * 64
+    object.__setattr__(plan, "digest", wrong_digest)
+    object.__setattr__(plan.files[1], "max_bytes", -1)
+    cancellation = KeyboardInterrupt("exact wrong-digest future stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise cancellation
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        captured_directory._snapshot_workspace_plan(
+            plan,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+    assert polls == 1
+
+
+@pytest.mark.parametrize("entry_kind", ["directory", "file"])
+def test_workspace_plan_snapshot_ancestor_error_precedes_pending_stop(
+    entry_kind: str,
+) -> None:
+    if entry_kind == "directory":
+        plan = WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=(WorkspaceDirectory("valid"),),
+            files=(WorkspaceFile("future"),),
+        )
+        object.__setattr__(
+            plan.directories[0],
+            "path",
+            PurePosixPath("missing/child"),
+        )
+    else:
+        plan = WorkspacePlan(
+            subject_digest="d" * 64,
+            files=(WorkspaceFile("first"), WorkspaceFile("future")),
+        )
+        object.__setattr__(plan.files[0], "path", PurePosixPath("missing/child"))
+    cancellation = SystemExit(f"pending snapshot {entry_kind} ancestor stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise cancellation
+
+    with pytest.raises(ValueError, match="missing directory ancestor") as raised:
+        captured_directory._snapshot_workspace_plan(
+            plan,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is not cancellation
+    assert polls == 0
+
+
+@pytest.mark.parametrize("entry_kind", ["directory", "file"])
+def test_workspace_plan_snapshot_stop_precedes_poisoned_future_semantics(
+    entry_kind: str,
+) -> None:
+    if entry_kind == "directory":
+        plan = WorkspacePlan(
+            subject_digest="d" * 64,
+            directories=(WorkspaceDirectory("first"), WorkspaceDirectory("second")),
+        )
+        object.__setattr__(plan.directories[1], "path", PurePosixPath("../poison"))
+    else:
+        plan = WorkspacePlan(
+            subject_digest="d" * 64,
+            files=(WorkspaceFile("first"), WorkspaceFile("second")),
+        )
+        object.__setattr__(plan.files[1], "max_bytes", -1)
+    cancellation = KeyboardInterrupt(f"exact future snapshot {entry_kind} stop")
+
+    def check_cancelled() -> None:
+        raise cancellation
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        captured_directory._snapshot_workspace_plan(
+            plan,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is cancellation
+
+
+def test_workspace_plan_snapshot_none_revalidates_and_detaches_items() -> None:
+    plan = WorkspacePlan(
+        subject_digest="d" * 64,
+        directories=(WorkspaceDirectory("nested"),),
+        files=(WorkspaceFile("nested/payload", max_bytes=8),),
+    )
+
+    detached = captured_directory._snapshot_workspace_plan(plan)
+
+    assert detached == plan
+    assert detached is not plan
+    assert detached.directories[0] is not plan.directories[0]
+    assert detached.files[0] is not plan.files[0]
 
 
 def test_owned_workspace_publication_support_gate_is_side_effect_free(
@@ -1932,6 +2431,385 @@ def test_workspace_refresh_integrity_precedes_latched_cancellation(
             workspace.close()
 
 
+def test_workspace_refresh_stops_before_poisoned_next_inventory_item(
+    tmp_path: Path,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        files=(
+            WorkspaceFile("first", max_bytes=1),
+            WorkspaceFile("second", max_bytes=1),
+        ),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("first", (b"1",))
+        workspace.write_file("second", (b"2",))
+        cancellation = KeyboardInterrupt("exact refresh inventory stop")
+        armed = False
+        poison_consumed = False
+
+        class PoisonedKeys(dict):
+            def __iter__(self) -> Iterator[str]:
+                nonlocal armed, poison_consumed
+                iterator = super().__iter__()
+                first = next(iterator)
+                armed = True
+                yield first
+                poison_consumed = True
+                raise AssertionError(
+                    "workspace refresh consumed its poisoned inventory item"
+                )
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        workspace._written_files = PoisonedKeys(workspace._written_files)
+        try:
+            with pytest.raises(KeyboardInterrupt) as raised:
+                workspace.seal(check_cancelled=check_cancelled)
+
+            assert raised.value is cancellation
+            assert not poison_consumed
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
+
+
+@pytest.mark.parametrize(
+    "projection_name",
+    [
+        "directory_ownership_entry_identities",
+        "directory_ownership_file_records",
+    ],
+)
+def test_workspace_refresh_stops_before_poisoned_next_projection_item(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    projection_name: str,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        files=(
+            WorkspaceFile("first", max_bytes=1),
+            WorkspaceFile("second", max_bytes=1),
+        ),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("first", (b"1",))
+        workspace.write_file("second", (b"2",))
+        cancellation = SystemExit(f"exact refresh {projection_name} stop")
+        armed = False
+        poison_consumed = False
+        real_projection = getattr(captured_directory, projection_name)
+
+        class PoisonedProjection(tuple):
+            def __iter__(self) -> Iterator[object]:
+                nonlocal armed, poison_consumed
+                iterator = super().__iter__()
+                first = next(iterator)
+                armed = True
+                yield first
+                poison_consumed = True
+                raise AssertionError(
+                    "workspace refresh consumed its poisoned projection item"
+                )
+
+        def poisoned_projection(ownership: object) -> PoisonedProjection:
+            projected = real_projection(ownership)
+            assert len(projected) >= 2
+            return PoisonedProjection(projected)
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        monkeypatch.setattr(
+            captured_directory,
+            projection_name,
+            poisoned_projection,
+        )
+        try:
+            with pytest.raises(SystemExit) as raised:
+                workspace.seal(check_cancelled=check_cancelled)
+
+            assert raised.value is cancellation
+            assert not poison_consumed
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
+
+
+@pytest.mark.parametrize("validation_kind", ["directory", "file"])
+def test_workspace_refresh_stops_before_poisoned_next_validation_item(
+    tmp_path: Path,
+    validation_kind: str,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        directories=(
+            (
+                WorkspaceDirectory("first"),
+                WorkspaceDirectory("second"),
+            )
+            if validation_kind == "directory"
+            else ()
+        ),
+        files=(
+            (
+                WorkspaceFile("first", max_bytes=1),
+                WorkspaceFile("second", max_bytes=1),
+            )
+            if validation_kind == "file"
+            else ()
+        ),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        if validation_kind == "file":
+            workspace.write_file("first", (b"1",))
+            workspace.write_file("second", (b"2",))
+        cancellation = SystemExit(f"exact refresh {validation_kind} validation stop")
+        armed = False
+        poison_consumed = False
+
+        class PoisonedItems(dict):
+            def items(self) -> Iterator[tuple[object, object]]:
+                nonlocal armed, poison_consumed
+                iterator = iter(super().items())
+                first = next(iterator)
+                armed = True
+                yield first
+                poison_consumed = True
+                raise AssertionError(
+                    "workspace refresh consumed its poisoned validation item"
+                )
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        if validation_kind == "directory":
+            workspace._directory_identities = PoisonedItems(
+                workspace._directory_identities
+            )
+        else:
+            workspace._written_files = PoisonedItems(workspace._written_files)
+        try:
+            with pytest.raises(SystemExit) as raised:
+                workspace.seal(check_cancelled=check_cancelled)
+
+            assert raised.value is cancellation
+            assert not poison_consumed
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
+
+
+def test_workspace_refresh_current_file_mismatch_precedes_pending_stop(
+    tmp_path: Path,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        files=(
+            WorkspaceFile("first", max_bytes=1),
+            WorkspaceFile("second", max_bytes=1),
+        ),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("first", (b"1",))
+        workspace.write_file("second", (b"2",))
+        cancellation = KeyboardInterrupt("pending refresh mismatch stop")
+        armed = False
+        forged = dict(workspace._written_files)
+        first_path = next(iter(forged))
+        identity, mode, size, digest = forged[first_path]
+        forged[first_path] = (
+            (identity[0], identity[1] + 1, *identity[2:]),
+            mode,
+            size,
+            digest,
+        )
+
+        class ArmCurrentItems(dict):
+            def items(self) -> Iterator[tuple[object, object]]:
+                nonlocal armed
+                iterator = iter(super().items())
+                first = next(iterator)
+                armed = True
+                yield first
+                yield from iterator
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        workspace._written_files = ArmCurrentItems(forged)
+        try:
+            with pytest.raises(RuntimeError, match="file changed") as raised:
+                workspace.seal(check_cancelled=check_cancelled)
+
+            assert raised.value is not cancellation
+            assert armed
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
+
+
+def test_workspace_refresh_has_no_terminal_poll_before_caller_postcondition(
+    tmp_path: Path,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        files=(WorkspaceFile("payload", max_bytes=1),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("payload", (b"1",))
+        cancellation = KeyboardInterrupt("forbidden terminal refresh stop")
+        armed = False
+        terminal_polls = 0
+        caller_postcondition = False
+
+        class ArmLastSpec(dict):
+            def __iter__(self) -> Iterator[str]:
+                nonlocal armed
+                iterator = super().__iter__()
+                for index, path in enumerate(iterator):
+                    if index + 1 == len(self):
+                        armed = True
+                    yield path
+
+        def check_cancelled() -> None:
+            nonlocal terminal_polls
+            if armed:
+                terminal_polls += 1
+                raise cancellation
+
+        workspace._file_specs = ArmLastSpec(workspace._file_specs)
+
+        def refresh_then_finish_caller() -> object:
+            nonlocal caller_postcondition
+            ownership = workspace._refresh_locked(
+                require_complete=True,
+                check_cancelled=check_cancelled,
+            )
+            caller_postcondition = True
+            return ownership
+
+        try:
+            ownership = workspace._lock.run(refresh_then_finish_caller)
+
+            assert ownership is not None
+            assert caller_postcondition
+            assert armed
+            assert terminal_polls == 0
+        finally:
+            workspace.close()
+
+
+def test_workspace_refresh_none_preserves_capture_call_shape(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="8" * 64,
+        files=(WorkspaceFile("payload", max_bytes=1),),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace.write_file("payload", (b"1",))
+        capture_kwargs: list[dict[str, object]] = []
+        real_capture = atomic_directory._PublicationAuthority.capture_child
+
+        def record_capture(
+            authority: object,
+            name: str,
+            **kwargs: object,
+        ) -> _TreeOwnership:
+            capture_kwargs.append(dict(kwargs))
+            return real_capture(authority, name, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(
+            atomic_directory._PublicationAuthority,
+            "capture_child",
+            record_capture,
+        )
+        try:
+            ownership = workspace._lock.run(
+                lambda: workspace._refresh_locked(require_complete=True)
+            )
+
+            assert ownership is not None
+            assert len(capture_kwargs) == 1
+            assert "check_cancelled" not in capture_kwargs[0]
+        finally:
+            workspace.close()
+
+
 def test_preopened_workspace_rejects_producer_reentrant_close(
     tmp_path: Path,
 ) -> None:
@@ -2366,6 +3244,212 @@ def test_owned_workspace_seal_flushes_directories_bottom_up(
 
         assert observed == ["nested/deeper", "nested", ""]
         workspace.close()
+
+
+def test_owned_workspace_seal_stops_before_future_directory_fsync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="2" * 64,
+        directories=(
+            WorkspaceDirectory("nested"),
+            WorkspaceDirectory("nested/deeper"),
+        ),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        descriptor_paths = {
+            descriptor: path
+            for path, descriptor in workspace._directory_descriptors.items()
+        }
+        real_fsync = captured_directory.os.fsync
+        cancellation = KeyboardInterrupt("exact directory fsync stop")
+        observed: list[str] = []
+        armed = False
+
+        def poison_future_fsync(descriptor: int) -> None:
+            nonlocal armed
+            path = descriptor_paths.get(descriptor)
+            if path is not None:
+                if observed:
+                    raise AssertionError("cancelled seal reached a future fsync")
+                observed.append(path)
+                armed = True
+            real_fsync(descriptor)
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        monkeypatch.setattr(captured_directory, "_WORKSPACE_SORT_RUN_ENTRIES", 1)
+        monkeypatch.setattr(captured_directory.os, "fsync", poison_future_fsync)
+        try:
+            with pytest.raises(KeyboardInterrupt) as raised:
+                workspace.seal(check_cancelled=check_cancelled)
+
+            assert raised.value is cancellation
+            assert observed == ["nested/deeper"]
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
+
+
+def test_owned_workspace_fsync_sort_stops_before_poisoned_future_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = WorkspacePlan(
+        subject_digest="2" * 64,
+        directories=(WorkspaceDirectory("first"), WorkspaceDirectory("second")),
+    )
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        real_merge = captured_directory.heapq.merge
+        cancellation = SystemExit("exact directory sort stop")
+        armed = False
+        poison_consumed = False
+
+        def poisoned_merge(
+            *runs: object,
+            key: object = None,
+            reverse: bool = False,
+        ) -> Iterator[object]:
+            nonlocal armed, poison_consumed
+            merged = real_merge(
+                *runs,
+                key=key,  # type: ignore[arg-type]
+                reverse=reverse,
+            )
+            first = next(merged)
+            armed = True
+            yield first
+            poison_consumed = True
+            raise AssertionError("directory sort consumed its poisoned future path")
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        def forbidden_fsync(_descriptor: int) -> None:
+            raise AssertionError("cancelled directory sort reached fsync")
+
+        monkeypatch.setattr(captured_directory, "_WORKSPACE_SORT_RUN_ENTRIES", 1)
+        monkeypatch.setattr(captured_directory.heapq, "merge", poisoned_merge)
+        monkeypatch.setattr(captured_directory.os, "fsync", forbidden_fsync)
+        try:
+            with pytest.raises(SystemExit) as raised:
+                workspace._lock.run(
+                    lambda: workspace._fsync_directories_locked(
+                        check_cancelled=check_cancelled
+                    )
+                )
+
+            assert raised.value is cancellation
+            assert not poison_consumed
+        finally:
+            workspace.close()
+
+
+@pytest.mark.parametrize("mutate_final_binding", [False, True])
+def test_owned_workspace_final_directory_fsync_reaches_seal_postflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate_final_binding: bool,
+) -> None:
+    plan = WorkspacePlan(subject_digest="2" * 64)
+    with _preopened_workspace(tmp_path, plan) as opened:
+        destination, stage, parent_fd, root_fd, directories = opened
+        workspace = OwnedWorkspaceAuthority()
+        workspace.adopt(
+            destination=destination,
+            stage_name=stage.name,
+            parent_descriptor=parent_fd,
+            root_descriptor=root_fd,
+            directory_descriptors=directories,
+            plan=plan,
+            destination_binding=None,
+        )
+        workspace_root_descriptor = workspace._root_descriptor
+        real_fsync = captured_directory.os.fsync
+        real_child_metadata = atomic_directory._PublicationAuthority.child_metadata
+        cancellation = KeyboardInterrupt("exact final directory fsync stop")
+        armed = False
+        corrupted_postflight = False
+
+        def arm_after_final_fsync(descriptor: int) -> None:
+            nonlocal armed
+            real_fsync(descriptor)
+            if descriptor == workspace_root_descriptor:
+                armed = True
+
+        def observe_postflight_metadata(
+            authority: object,
+            name: str,
+            **kwargs: object,
+        ) -> os.stat_result | None:
+            nonlocal corrupted_postflight
+            metadata = real_child_metadata(
+                authority,  # type: ignore[arg-type]
+                name,
+                **kwargs,
+            )
+            if (
+                mutate_final_binding
+                and armed
+                and not corrupted_postflight
+                and metadata is not None
+            ):
+                values = list(metadata)
+                values[stat.ST_INO] += 1
+                corrupted_postflight = True
+                return os.stat_result(values)
+            return metadata
+
+        def check_cancelled() -> None:
+            if armed:
+                raise cancellation
+
+        monkeypatch.setattr(captured_directory.os, "fsync", arm_after_final_fsync)
+        monkeypatch.setattr(
+            atomic_directory._PublicationAuthority,
+            "child_metadata",
+            observe_postflight_metadata,
+        )
+        try:
+            if mutate_final_binding:
+                with pytest.raises(RuntimeError, match="root changed") as raised:
+                    workspace.seal(check_cancelled=check_cancelled)
+                assert raised.value is not cancellation
+                assert corrupted_postflight
+            else:
+                with pytest.raises(KeyboardInterrupt) as raised:
+                    workspace.seal(check_cancelled=check_cancelled)
+                assert raised.value is cancellation
+            assert armed
+            assert workspace.state == "closed"
+        finally:
+            workspace.close()
 
 
 def test_owned_workspace_publish_installs_fresh_durable_receipt(

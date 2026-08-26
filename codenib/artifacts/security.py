@@ -7,12 +7,13 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import json
 import math
 import os
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence, Sized
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, TypeVar
 
 from .._atomic_directory import (
     PublicationDirectoryReader,
@@ -54,6 +55,140 @@ _MAX_PUBLISHABLE_JSON_DEPTH = DEFAULT_MAX_DEPTH
 _MAX_PUBLISHABLE_JSON_KEY_BYTES = DEFAULT_MAX_KEY_BYTES
 _MAX_PUBLISHABLE_JSON_STRING_BYTES = DEFAULT_MAX_STRING_BYTES
 _MAX_PUBLISHABLE_JSON_ATOM_BYTES = DEFAULT_MAX_ATOM_BYTES
+_SECURITY_SORT_RUN_ENTRIES = 256
+_SecurityItem = TypeVar("_SecurityItem")
+
+
+def _interitem_cancellation(
+    values: Iterable[_SecurityItem],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[_SecurityItem]:
+    """Poll after each completed item only when another item may follow."""
+
+    if check_cancelled is None:
+        yield from values
+        return
+    value_count = len(values) if isinstance(values, Sized) else None
+    for index, value in enumerate(values):
+        yield value
+        if value_count is None or index + 1 < value_count:
+            check_cancelled()
+
+
+def _interruptible_sorted_security_items(
+    values: Sequence[_SecurityItem],
+    *,
+    key: Callable[[_SecurityItem], object] | None,
+    check_cancelled: Callable[[], None] | None,
+) -> tuple[_SecurityItem, ...]:
+    """Sort bounded stable runs while keeping cancellation inter-item."""
+
+    if check_cancelled is None:
+        return tuple(sorted(values, key=key))
+    value_count = len(values)
+    runs: list[list[_SecurityItem]] = []
+    for start in range(0, value_count, _SECURITY_SORT_RUN_ENTRIES):
+        end = min(start + _SECURITY_SORT_RUN_ENTRIES, value_count)
+        run = list(values[start:end])
+        run.sort(key=key)
+        runs.append(run)
+        if end < value_count:
+            check_cancelled()
+    if not runs:
+        return ()
+    while len(runs) > 1:
+        check_cancelled()
+        merged_runs: list[list[_SecurityItem]] = []
+        run_count = len(runs)
+        for run_index in range(0, run_count, 2):
+            left = runs[run_index]
+            if run_index + 1 == run_count:
+                merged_runs.append(left)
+            else:
+                right = runs[run_index + 1]
+                merged: list[_SecurityItem] = []
+                merged_count = len(left) + len(right)
+                for index, value in enumerate(heapq.merge(left, right, key=key)):
+                    merged.append(value)
+                    if index + 1 < merged_count:
+                        check_cancelled()
+                merged_runs.append(merged)
+            if run_index + 2 < run_count:
+                check_cancelled()
+        runs = merged_runs
+    return tuple(_interitem_cancellation(runs[0], check_cancelled))
+
+
+def _contains_pattern(
+    value: Any,
+    patterns: Sequence[Any],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    """Match one bounded pattern sequence without a terminal poll."""
+
+    if check_cancelled is None:
+        return any(pattern in value for pattern in patterns)
+    pattern_count = len(patterns)
+    for index, pattern in enumerate(patterns):
+        if pattern in value:
+            return True
+        if index + 1 < pattern_count:
+            check_cancelled()
+    return False
+
+
+def _validate_json_complexity_interruptibly(
+    value: Any,
+    *,
+    label: str,
+    max_nodes: int,
+    max_depth: int,
+    max_key_bytes: int,
+    check_cancelled: Callable[[], None],
+) -> None:
+    """Mirror the bounded decoded-tree pass with inter-item polling."""
+
+    stack: list[tuple[Any, int]] = [(value, 1)]
+    nodes = 0
+    while stack:
+        current, depth = stack.pop()
+        nodes += 1
+        if nodes > max_nodes:
+            raise ValueError(f"{label} exceeds its {max_nodes}-node limit")
+        if depth > max_depth:
+            raise ValueError(f"{label} exceeds its {max_depth}-level depth limit")
+        if isinstance(current, dict):
+            item_count = len(current)
+            for index, (key, child) in enumerate(current.items()):
+                if len(key.encode("utf-8", errors="surrogatepass")) > max_key_bytes:
+                    raise ValueError(
+                        f"{label} contains a key exceeding {max_key_bytes} bytes"
+                    )
+                stack.append((child, depth + 1))
+                if index + 1 < item_count:
+                    check_cancelled()
+        elif isinstance(current, list):
+            item_count = len(current)
+            for index, child in enumerate(current):
+                stack.append((child, depth + 1))
+                if index + 1 < item_count:
+                    check_cancelled()
+        if stack:
+            check_cancelled()
+
+
+def _interruptible_payload_blocks(
+    payload: bytes,
+    check_cancelled: Callable[[], None],
+) -> Iterator[bytes]:
+    """Yield bounded payload blocks and never poll after the final block."""
+
+    block_count = (len(payload) + _SCAN_CHUNK_BYTES - 1) // _SCAN_CHUNK_BYTES
+    for index, offset in enumerate(range(0, len(payload), _SCAN_CHUNK_BYTES)):
+        yield payload[offset : offset + _SCAN_CHUNK_BYTES]
+        if index + 1 < block_count:
+            check_cancelled()
 
 
 class _InterruptibleReader:
@@ -122,9 +257,18 @@ def assert_no_credential_fields(
             check_cancelled()
 
 
-def _forbidden_path_strings(paths: Iterable[Path]) -> tuple[str, ...]:
+def _forbidden_path_strings(
+    paths: Iterable[Path],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> tuple[str, ...]:
     values: set[str] = set()
-    for path in paths:
+    selected_paths = (
+        paths
+        if check_cancelled is None
+        else _interitem_cancellation(paths, check_cancelled)
+    )
+    for path in selected_paths:
         expanded = path.expanduser()
         try:
             raw = os.fsdecode(os.fspath(expanded))
@@ -142,7 +286,17 @@ def _forbidden_path_strings(paths: Iterable[Path]) -> tuple[str, ...]:
         as_posix = getattr(canonical, "as_posix", None)
         if callable(as_posix):
             values.add(as_posix())
-    return tuple(sorted(value for value in values if value))
+    if check_cancelled is None:
+        return tuple(sorted(value for value in values if value))
+    present: list[str] = []
+    for value in _interitem_cancellation(values, check_cancelled):
+        if value:
+            present.append(value)
+    return _interruptible_sorted_security_items(
+        present,
+        key=None,
+        check_cancelled=check_cancelled,
+    )
 
 
 def assert_publishable_json_value(
@@ -163,22 +317,51 @@ def assert_publishable_json_value(
             source=label,
             check_cancelled=check_cancelled,
         )
-    forbidden = _forbidden_path_strings(forbidden_paths)
-    secrets = tuple(
-        value
-        for name, value in environ.items()
-        if isinstance(value, str)
-        and len(value) >= 8
-        and (
-            name.upper() in _SENSITIVE_ENV_NAMES
-            or name.upper().endswith(_SENSITIVE_ENV_SUFFIXES)
+    if check_cancelled is None:
+        forbidden = _forbidden_path_strings(forbidden_paths)
+        secrets: Sequence[str] = tuple(
+            value
+            for name, value in environ.items()
+            if isinstance(value, str)
+            and len(value) >= 8
+            and (
+                name.upper() in _SENSITIVE_ENV_NAMES
+                or name.upper().endswith(_SENSITIVE_ENV_SUFFIXES)
+            )
         )
-    )
+    else:
+        forbidden = _forbidden_path_strings(
+            forbidden_paths,
+            check_cancelled=check_cancelled,
+        )
+        secret_items: list[str] = []
+        for name, value in _interitem_cancellation(
+            environ.items(),
+            check_cancelled,
+        ):
+            if (
+                isinstance(value, str)
+                and len(value) >= 8
+                and (
+                    name.upper() in _SENSITIVE_ENV_NAMES
+                    or name.upper().endswith(_SENSITIVE_ENV_SUFFIXES)
+                )
+            ):
+                secret_items.append(value)
+        secrets = secret_items
 
     def check_text(text: str) -> None:
-        if any(pattern in text for pattern in forbidden):
+        if _contains_pattern(
+            text,
+            forbidden,
+            check_cancelled=check_cancelled,
+        ):
             raise ValueError(f"{label} contains an absolute build-machine path")
-        if any(pattern in text for pattern in secrets):
+        if _contains_pattern(
+            text,
+            secrets,
+            check_cancelled=check_cancelled,
+        ):
             raise ValueError(f"{label} contains a configured credential")
 
     if check_cancelled is not None:
@@ -226,27 +409,55 @@ def assert_publishable_json_value(
             check_cancelled()
 
 
-def _serialized_patterns(values: Iterable[str]) -> tuple[bytes, ...]:
+def _serialized_patterns(
+    values: Iterable[str],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> tuple[bytes, ...]:
     patterns: set[bytes] = set()
-    for value in values:
+    selected_values = (
+        values
+        if check_cancelled is None
+        else _interitem_cancellation(values, check_cancelled)
+    )
+    for value in selected_values:
         if not value:
             continue
         patterns.add(value.encode("utf-8"))
         escaped = json.dumps(value, ensure_ascii=True)[1:-1]
         patterns.add(escaped.encode("utf-8"))
-    return tuple(sorted(patterns, key=lambda item: (-len(item), item)))
+    if check_cancelled is None:
+        return tuple(sorted(patterns, key=lambda item: (-len(item), item)))
+    pattern_items = list(_interitem_cancellation(patterns, check_cancelled))
+    return _interruptible_sorted_security_items(
+        pattern_items,
+        key=lambda item: (-len(item), item),
+        check_cancelled=check_cancelled,
+    )
 
 
-def _secret_values(environ: Mapping[str, str]) -> tuple[bytes, ...]:
+def _secret_values(
+    environ: Mapping[str, str],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> tuple[bytes, ...]:
     values: set[str] = set()
-    for name, value in environ.items():
+    environment_items = environ.items()
+    selected_items = (
+        environment_items
+        if check_cancelled is None
+        else _interitem_cancellation(environment_items, check_cancelled)
+    )
+    for name, value in selected_items:
         upper = name.upper()
         sensitive = upper in _SENSITIVE_ENV_NAMES or upper.endswith(
             _SENSITIVE_ENV_SUFFIXES
         )
         if sensitive and len(value) >= 8:
             values.add(value)
-    return _serialized_patterns(values)
+    if check_cancelled is None:
+        return _serialized_patterns(values)
+    return _serialized_patterns(values, check_cancelled=check_cancelled)
 
 
 def file_sha256(path: Path) -> tuple[int, str]:
@@ -292,20 +503,40 @@ def _matching_kind_blocks(
     *,
     forbidden: tuple[bytes, ...],
     secrets: tuple[bytes, ...],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> str | None:
-    needles = tuple(
-        (kind, needle)
-        for kind, values in (("path", forbidden), ("secret", secrets))
-        for needle in values
-        if needle
-    )
+    if check_cancelled is None:
+        needles: Sequence[tuple[str, bytes]] = tuple(
+            (kind, needle)
+            for kind, values in (("path", forbidden), ("secret", secrets))
+            for needle in values
+            if needle
+        )
+    else:
+        needle_items: list[tuple[str, bytes]] = []
+        for kind, values in (("path", forbidden), ("secret", secrets)):
+            for needle in _interitem_cancellation(values, check_cancelled):
+                if needle:
+                    needle_items.append((kind, needle))
+        needles = needle_items
     if not needles:
         return None
-    overlap = max(len(needle) for _kind, needle in needles) - 1
+    if check_cancelled is None:
+        overlap = max(len(needle) for _kind, needle in needles) - 1
+    else:
+        largest = 0
+        for _kind, needle in _interitem_cancellation(needles, check_cancelled):
+            largest = max(largest, len(needle))
+        overlap = largest - 1
     tail = b""
     for chunk in blocks:
         window = tail + chunk
-        for kind, needle in needles:
+        selected_needles = (
+            needles
+            if check_cancelled is None
+            else _interitem_cancellation(needles, check_cancelled)
+        )
+        for kind, needle in selected_needles:
             if needle in window:
                 return kind
         tail = window[-overlap:] if overlap else b""
@@ -342,6 +573,66 @@ def _reject_publication_constant(value: str) -> None:
     raise ValueError(f"publication JSON constant is not finite: {value}")
 
 
+def _capture_publishable_tree_postflight(
+    reader: PublicationDirectoryReader,
+    *,
+    expected: object,
+    entry_policy: Callable[[str, str, int, int], None],
+    entry_validator: Callable[[str, str, int, int, Callable[[], None] | None], None],
+    check_cancelled: Callable[[], None] | None,
+) -> None:
+    """Reconcile an exact final-capture stop without masking tree changes."""
+
+    if check_cancelled is None:
+        reader.capture_ownership(
+            entry_policy=entry_policy,
+            check_cancelled=None,
+        )
+        return
+
+    callback_errors: list[BaseException] = []
+
+    def poll() -> None:
+        try:
+            check_cancelled()
+        except BaseException as error:  # noqa: B036 - preserve exact callback fault
+            callback_errors.append(error)
+            raise
+
+    def tracked_entry_policy(path: str, kind: str, mode: int, size: int) -> None:
+        entry_validator(path, kind, mode, size, poll)
+
+    def reconciliation_entry_policy(
+        path: str,
+        kind: str,
+        mode: int,
+        size: int,
+    ) -> None:
+        entry_validator(path, kind, mode, size, None)
+
+    try:
+        observed = reader.capture_ownership(
+            entry_policy=tracked_entry_policy,
+            check_cancelled=poll,
+        )
+    except BaseException as error:  # noqa: B036 - exact-stop reconciliation
+        if not any(error is callback_error for callback_error in callback_errors):
+            raise
+        try:
+            reconciled = reader.capture_ownership(
+                entry_policy=reconciliation_entry_policy
+            )
+        except BaseException as reconciliation_error:  # noqa: B036 - integrity wins
+            raise reconciliation_error from error
+        if reconciled != expected:
+            raise RuntimeError(
+                "publishable tree changed during cancellation reconciliation"
+            ) from error
+        raise
+    if observed != expected:
+        raise RuntimeError("publishable tree changed during final validation")
+
+
 def _assert_publishable_tree_reader_interruptibly(
     reader: PublicationDirectoryReader,
     *,
@@ -371,7 +662,13 @@ def _assert_publishable_tree_reader_interruptibly(
     ):
         raise ValueError("publishable JSON byte limit is out of bounds")
     streaming_json: set[str] = set()
-    for raw_relative in streaming_json_paths:
+    streaming_json_items: list[str] = []
+    selected_streaming_paths = (
+        streaming_json_paths
+        if check_cancelled is None
+        else _interitem_cancellation(streaming_json_paths, check_cancelled)
+    )
+    for raw_relative in selected_streaming_paths:
         if isinstance(raw_relative, PurePosixPath):
             raw_text: object = raw_relative.as_posix()
         else:
@@ -402,19 +699,43 @@ def _assert_publishable_tree_reader_interruptibly(
         if normalized in streaming_json:
             raise ValueError("streaming publication JSON path is duplicated")
         streaming_json.add(normalized)
-    if check_cancelled is not None:
-        check_cancelled()
-    roots = tuple(forbidden_paths)
-    forbidden = _serialized_patterns(_forbidden_path_strings(roots))
-    secrets = _secret_values(environ)
+        streaming_json_items.append(normalized)
+    roots: Iterable[Path]
+    if check_cancelled is None:
+        roots = tuple(forbidden_paths)
+        forbidden = _serialized_patterns(_forbidden_path_strings(roots))
+        secrets = _secret_values(environ)
+    else:
+        roots = list(_interitem_cancellation(forbidden_paths, check_cancelled))
+        forbidden = _serialized_patterns(
+            _forbidden_path_strings(
+                roots,
+                check_cancelled=check_cancelled,
+            ),
+            check_cancelled=check_cancelled,
+        )
+        secrets = _secret_values(
+            environ,
+            check_cancelled=check_cancelled,
+        )
 
     def is_json_path(path: str) -> bool:
         return path.casefold().endswith(".json")
 
-    def entry_policy(path: str, kind: str, mode: int, size: int) -> None:
+    def validate_entry(
+        path: str,
+        kind: str,
+        mode: int,
+        size: int,
+        cancellation_check: Callable[[], None] | None,
+    ) -> None:
         del mode
         encoded = path.encode("utf-8", errors="strict")
-        if any(secret in encoded for secret in secrets):
+        if _contains_pattern(
+            encoded,
+            secrets,
+            check_cancelled=cancellation_check,
+        ):
             raise ValueError(f"{label} contains a configured credential in {path}")
         if (
             kind == "file"
@@ -435,20 +756,64 @@ def _assert_publishable_tree_reader_interruptibly(
                 f"{label} JSON file exceeds its {max_json_bytes}-byte limit: {path}"
             )
 
+    def entry_policy(path: str, kind: str, mode: int, size: int) -> None:
+        validate_entry(
+            path,
+            kind,
+            mode,
+            size,
+            check_cancelled,
+        )
+
+    def matching_kind_blocks(blocks: Iterable[bytes]) -> str | None:
+        if check_cancelled is None:
+            return _matching_kind_blocks(
+                blocks,
+                forbidden=forbidden,
+                secrets=secrets,
+            )
+        return _matching_kind_blocks(
+            blocks,
+            forbidden=forbidden,
+            secrets=secrets,
+            check_cancelled=check_cancelled,
+        )
+
     ownership = reader.capture_ownership(
         entry_policy=entry_policy,
         check_cancelled=check_cancelled,
     )
-    records = tuple(directory_ownership_file_records(ownership))
-    missing_streaming_json = streaming_json - {record.path for record in records}
-    if missing_streaming_json:
-        raise ValueError(
-            "streaming publication JSON path is absent: "
-            f"{sorted(missing_streaming_json)[0]}"
+    records = directory_ownership_file_records(ownership)
+    if check_cancelled is None:
+        missing_streaming_json = streaming_json - {record.path for record in records}
+        if missing_streaming_json:
+            raise ValueError(
+                "streaming publication JSON path is absent: "
+                f"{sorted(missing_streaming_json)[0]}"
+            )
+    else:
+        record_paths: set[str] = set()
+        for record in _interitem_cancellation(records, check_cancelled):
+            record_paths.add(record.path)
+        ordered_streaming_json = _interruptible_sorted_security_items(
+            streaming_json_items,
+            key=None,
+            check_cancelled=check_cancelled,
         )
-    for record in records:
-        if check_cancelled is not None:
-            check_cancelled()
+        for relative in _interitem_cancellation(
+            ordered_streaming_json,
+            check_cancelled,
+        ):
+            if relative not in record_paths:
+                raise ValueError(
+                    "streaming publication JSON path is absent: " f"{relative}"
+                )
+    selected_records = (
+        records
+        if check_cancelled is None
+        else _interitem_cancellation(records, check_cancelled)
+    )
+    for record in selected_records:
         relative = record.path
         if relative in streaming_json:
             json_label = f"{label} JSON {relative}"
@@ -479,13 +844,11 @@ def _assert_publishable_tree_reader_interruptibly(
                 relative,
                 max_bytes=record.size,
             ) as source:
-                match = _matching_kind_blocks(
+                match = matching_kind_blocks(
                     _interruptible_chunks(
                         source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
                         check_cancelled,
                     ),
-                    forbidden=forbidden,
-                    secrets=secrets,
                 )
         elif is_json_path(relative):
             json_label = f"{label} JSON {relative}"
@@ -519,11 +882,12 @@ def _assert_publishable_tree_reader_interruptibly(
                 ):
                     payload_buffer.extend(chunk)
             payload = bytes(payload_buffer)
-            match = _matching_kind_blocks(
-                (payload,),
-                forbidden=forbidden,
-                secrets=secrets,
+            payload_blocks: Iterable[bytes] = (
+                (payload,)
+                if check_cancelled is None
+                else _interruptible_payload_blocks(payload, check_cancelled)
             )
+            match = matching_kind_blocks(payload_blocks)
             try:
                 serialized = payload.decode("utf-8", errors="strict")
                 decoded = json.loads(
@@ -538,13 +902,23 @@ def _assert_publishable_tree_reader_interruptibly(
                     f"{label} contains invalid JSON "
                     f"(UTF-8 without BOM required) in {relative}"
                 ) from exc
-            validate_json_complexity(
-                decoded,
-                label=json_label,
-                max_nodes=_MAX_PUBLISHABLE_JSON_NODES,
-                max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
-                max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
-            )
+            if check_cancelled is None:
+                validate_json_complexity(
+                    decoded,
+                    label=json_label,
+                    max_nodes=_MAX_PUBLISHABLE_JSON_NODES,
+                    max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
+                    max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
+                )
+            else:
+                _validate_json_complexity_interruptibly(
+                    decoded,
+                    label=json_label,
+                    max_nodes=_MAX_PUBLISHABLE_JSON_NODES,
+                    max_depth=_MAX_PUBLISHABLE_JSON_DEPTH,
+                    max_key_bytes=_MAX_PUBLISHABLE_JSON_KEY_BYTES,
+                    check_cancelled=check_cancelled,
+                )
             if check_cancelled is None:
                 assert_publishable_json_value(
                     decoded,
@@ -565,13 +939,11 @@ def _assert_publishable_tree_reader_interruptibly(
                 relative,
                 max_bytes=record.size,
             ) as source:
-                match = _matching_kind_blocks(
+                match = matching_kind_blocks(
                     _interruptible_chunks(
                         source.iter_bytes(chunk_size=_SCAN_CHUNK_BYTES),
                         check_cancelled,
                     ),
-                    forbidden=forbidden,
-                    secrets=secrets,
                 )
         if match == "path":
             raise ValueError(
@@ -579,8 +951,11 @@ def _assert_publishable_tree_reader_interruptibly(
             )
         if match == "secret":
             raise ValueError(f"{label} contains a configured credential in {relative}")
-    reader.capture_ownership(
+    _capture_publishable_tree_postflight(
+        reader,
+        expected=ownership,
         entry_policy=entry_policy,
+        entry_validator=validate_entry,
         check_cancelled=check_cancelled,
     )
 

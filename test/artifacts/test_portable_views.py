@@ -11,6 +11,8 @@ import os
 import pickle
 import subprocess
 import sys
+from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 
@@ -3310,6 +3312,321 @@ def test_content_bound_reader_keeps_semantic_primary_through_all_final_checks(
     assert "final ownership validation" in notes
     assert "reader cleanup" in notes
     assert "reader cleanup secondary" in notes
+
+
+def test_content_bound_reader_stops_before_repository_record_poison(
+    tmp_path: Path,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    (repo / "helper.py").write_text("HELPER = 1\n", encoding="utf-8")
+    repository_source = capture_repository_source(repo)
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    records = repository_identity.file_records
+    assert len(records) == 2
+    ownership = capture_directory_ownership(bm25)
+    stop = RuntimeError("injected portable repository record stop")
+    poison_consumed = False
+
+    class PoisonedRecord:
+        @property
+        def path(self) -> str:
+            nonlocal poison_consumed
+            poison_consumed = True
+            raise AssertionError(
+                "portable validation consumed its poisoned repository tail"
+            )
+
+    object.__setattr__(
+        repository_identity,
+        "file_records",
+        (records[0], PoisonedRecord()),
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+            publication,
+            repository_source=repository_source,
+            repository_identity=repository_identity,
+            view_type="bm25",
+            view_config=view_config,
+            environ={},
+            check_cancelled=check_cancelled,
+        )
+
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            reopen_authenticated_directory(bm25, ownership, validate)
+
+        assert caught.value is stop
+        assert not poison_consumed
+        assert repository_source.usable
+    finally:
+        repository_source.close()
+
+
+def test_portable_callback_snapshots_stop_before_poisoned_future_items() -> None:
+    stop = KeyboardInterrupt("injected portable snapshot stop")
+    armed = False
+    poison_consumed = False
+
+    class PoisonedConfig(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            return 1
+
+        def __iter__(self) -> Iterator[str]:
+            nonlocal armed, poison_consumed
+            armed = True
+            yield "first"
+            poison_consumed = True
+            raise AssertionError("portable config consumed its poisoned tail")
+
+        def __len__(self) -> int:
+            return 2
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            PoisonedConfig(),
+            label="portable test config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poison_consumed
+
+
+def test_portable_snapshot_current_errors_precede_armed_stop() -> None:
+    stop = RuntimeError("injected portable snapshot stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise stop
+
+    with pytest.raises(TypeError, match="text pairs") as environment_error:
+        portable_views_module._environment_snapshot(
+            {"bad": object()},  # type: ignore[dict-item]
+            check_cancelled=check_cancelled,
+        )
+    with pytest.raises(TypeError, match="Path values") as forbidden_error:
+        portable_views_module._forbidden_paths_snapshot(
+            (object(),),  # type: ignore[arg-type]
+            check_cancelled=check_cancelled,
+        )
+
+    assert environment_error.value is not stop
+    assert forbidden_error.value is not stop
+    assert polls == 0
+
+
+def test_portable_snapshot_none_uses_legacy_single_pass_shapes() -> None:
+    class SinglePassMapping(Mapping[str, object]):
+        def __init__(self, values: dict[str, object]) -> None:
+            self.values = values
+            self.iterations = 0
+
+        def __getitem__(self, key: str) -> object:
+            return self.values[key]
+
+        def __iter__(self) -> Iterator[str]:
+            self.iterations += 1
+            if self.iterations > 1:
+                raise AssertionError("portable snapshot reread caller mapping")
+            return iter(self.values)
+
+        def __len__(self) -> int:
+            return len(self.values)
+
+    config = SinglePassMapping({"value": 1})
+    environment = SinglePassMapping({"NAME": "value"})
+
+    assert portable_views_module._bounded_json_object_snapshot(
+        config,
+        label="portable test config",
+    ) == {"value": 1}
+    assert portable_views_module._environment_snapshot(environment) == {"NAME": "value"}
+    assert config.iterations == 1
+    assert environment.iterations == 1
+
+
+@pytest.mark.parametrize("forgery", ("path", "size", "path-subclass"))
+def test_portable_repository_identity_forgery_precedes_armed_stop(
+    tmp_path: Path,
+    forgery: str,
+) -> None:
+    repo, _bm25 = _bm25_view(tmp_path)
+    repository_source = capture_repository_source(repo)
+    try:
+        retained = repository_source.authenticated_identity_snapshot()
+        assert len(retained.file_records) == 1
+        record = retained.file_records[0]
+
+        class ForgedPath(str):
+            pass
+
+        if forgery == "path":
+            forged_record = replace(record, path="forged.py")
+            expected = ValueError
+        elif forgery == "size":
+            forged_record = replace(record, size=record.size + 1)
+            expected = ValueError
+        else:
+            forged_record = replace(record, path=ForgedPath(record.path))
+            expected = TypeError
+        forged = replace(retained, file_records=(forged_record,))
+        stop = BaseException("injected portable identity stop")
+        polls = 0
+
+        def check_cancelled() -> None:
+            nonlocal polls
+            polls += 1
+            raise stop
+
+        with pytest.raises(expected) as caught:
+            portable_views_module._attest_repository_identity_snapshot(
+                forged,
+                retained,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is not stop
+        assert polls == 0
+    finally:
+        repository_source.close()
+
+
+def test_content_bound_repository_mismatch_precedes_terminal_stop(
+    tmp_path: Path,
+) -> None:
+    repo, _bm25 = _bm25_view(tmp_path)
+    (repo / "helper.py").write_text("HELPER = 1\n", encoding="utf-8")
+    repository_source = capture_repository_source(repo)
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    first, second = repository_identity.file_records
+    object.__setattr__(
+        repository_identity,
+        "file_records",
+        (first, replace(second, path=first.path)),
+    )
+    stop = RuntimeError("terminal portable repository record stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls > 1:
+            raise stop
+
+    try:
+        with pytest.raises(RuntimeError, match="repeats a file record") as caught:
+            portable_views_module._authenticated_repository_source_files(
+                repository_identity,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is not stop
+        assert polls == 1
+        assert repository_source.usable
+    finally:
+        repository_source.close()
+
+
+def test_publication_view_records_stop_before_poisoned_tail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, bm25 = _bm25_view(tmp_path)
+    ownership = capture_directory_ownership(bm25)
+    records = tuple(portable_views_module.directory_ownership_file_records(ownership))
+    assert len(records) == 2
+    stop = ValueError("injected portable publication record stop")
+    poison_consumed = False
+
+    class PoisonedRecord:
+        @property
+        def path(self) -> str:
+            nonlocal poison_consumed
+            poison_consumed = True
+            raise AssertionError("publication reader consumed its poisoned record")
+
+    def guarded_records(_ownership: object) -> tuple[object, ...]:
+        return (records[0], PoisonedRecord())
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "directory_ownership_file_records",
+        guarded_records,
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module._PublicationViewReader(
+            publication,
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+
+    with pytest.raises(ValueError) as caught:
+        reopen_authenticated_directory(bm25, ownership, validate)
+
+    assert caught.value is stop
+    assert not poison_consumed
+
+
+def test_publication_view_record_mismatch_precedes_terminal_stop(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _repo, bm25 = _bm25_view(tmp_path)
+    ownership = capture_directory_ownership(bm25)
+    records = tuple(portable_views_module.directory_ownership_file_records(ownership))
+    assert len(records) == 2
+    duplicate = replace(records[1], path=records[0].path)
+    stop = RuntimeError("terminal portable publication record stop")
+    polls = 0
+
+    def duplicate_records(_ownership: object) -> tuple[object, ...]:
+        return (records[0], duplicate)
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "directory_ownership_file_records",
+        duplicate_records,
+    )
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls > 1:
+            raise stop
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module._PublicationViewReader(
+            publication,
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+
+    with pytest.raises(RuntimeError, match="repeats a file record") as caught:
+        reopen_authenticated_directory(bm25, ownership, validate)
+
+    assert caught.value is not stop
+    assert polls == 1
 
 
 @pytest.mark.parametrize("mutate", (False, True))

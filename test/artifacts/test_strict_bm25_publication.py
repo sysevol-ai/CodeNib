@@ -788,6 +788,339 @@ def test_strict_bm25_recapture_rejects_included_repository_source_before_capture
         repository_source.close()
 
 
+def test_strict_bm25_policy_stops_before_repository_record_poison(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    (repository / "helper.py").write_text("HELPER = 1\n", encoding="utf-8")
+    source = tmp_path / "legacy-bm25"
+    _write_raw_bm25_source(source, repository)
+    repository_source = capture_repository_source(repository)
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    records = repository_identity.file_records
+    assert len(records) == 2
+    stop = RuntimeError("injected strict BM25 repository policy stop")
+    poison_consumed = False
+
+    class PoisonedRecord:
+        @property
+        def path(self) -> str:
+            nonlocal poison_consumed
+            poison_consumed = True
+            raise AssertionError(
+                "strict BM25 policy consumed its poisoned repository tail"
+            )
+
+    object.__setattr__(
+        repository_identity,
+        "file_records",
+        (records[0], PoisonedRecord()),
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    try:
+        with pytest.raises(RuntimeError) as caught:
+            strict_bm25_module._plan_recaptured_bm25_view_with_identity(
+                source,
+                repository_source=repository_source,
+                repository_identity=repository_identity,
+                view_config={},
+                forbidden_paths=(),
+                environ={},
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is stop
+        assert not poison_consumed
+        assert repository_source.usable
+    finally:
+        repository_source.close()
+
+
+def test_strict_bm25_repository_mismatch_precedes_terminal_policy_stop(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path)
+    (repository / "helper.py").write_text("HELPER = 1\n", encoding="utf-8")
+    repository_source = capture_repository_source(repository)
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    first, second = repository_identity.file_records
+    object.__setattr__(
+        repository_identity,
+        "file_records",
+        (first, replace(second, path=first.path)),
+    )
+    stop = RuntimeError("terminal strict BM25 repository policy stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls > 1:
+            raise stop
+
+    try:
+        with pytest.raises(RuntimeError, match="repeats a file") as caught:
+            strict_bm25_module._repository_files(
+                repository_identity,
+                check_cancelled=check_cancelled,
+            )
+
+        assert caught.value is not stop
+        assert polls == 1
+        assert repository_source.usable
+    finally:
+        repository_source.close()
+
+
+def test_strict_bm25_snapshot_stops_before_poisoned_future_item() -> None:
+    stop = BaseException("injected strict BM25 snapshot stop")
+    armed = False
+    poison_consumed = False
+
+    class PoisonedConfig(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            return 1
+
+        def __iter__(self) -> Iterator[str]:
+            nonlocal armed, poison_consumed
+            armed = True
+            yield "first"
+            poison_consumed = True
+            raise AssertionError("strict BM25 config consumed its poisoned tail")
+
+        def __len__(self) -> int:
+            return 2
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(BaseException) as caught:
+        strict_bm25_module._json_object_snapshot(
+            PoisonedConfig(),
+            label="strict BM25 test config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poison_consumed
+
+
+def test_strict_bm25_snapshot_current_error_precedes_armed_stop() -> None:
+    stop = RuntimeError("injected strict BM25 snapshot stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise stop
+
+    with pytest.raises(TypeError, match="text pairs") as environment_error:
+        strict_bm25_module._environment_snapshot(
+            {"bad": object()},  # type: ignore[dict-item]
+            check_cancelled=check_cancelled,
+        )
+    with pytest.raises(TypeError, match="exact Path") as forbidden_error:
+        strict_bm25_module._forbidden_paths_snapshot(
+            (object(),),  # type: ignore[arg-type]
+            check_cancelled=check_cancelled,
+        )
+
+    assert environment_error.value is not stop
+    assert forbidden_error.value is not stop
+    assert polls == 0
+
+
+def test_strict_bm25_snapshot_none_uses_legacy_single_pass_shapes() -> None:
+    config = _ReadOnceMapping({"value": 1})
+    environment = _ReadOnceMapping({"NAME": "value"})
+
+    assert strict_bm25_module._json_object_snapshot(
+        config,
+        label="strict BM25 test config",
+    ) == {"value": 1}
+    assert strict_bm25_module._environment_snapshot(environment) == {"NAME": "value"}
+    assert config.iterations == 1
+    assert environment.iterations == 1
+
+
+@pytest.mark.parametrize("operation", ("plan", "publish"))
+def test_strict_bm25_identity_error_precedes_initial_stop(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    repository = _repository(tmp_path)
+    repository_source = capture_repository_source(repository)
+    try:
+        identity = repository_source.authenticated_identity_snapshot()
+        forged = replace(identity, file_count=-1)
+        stop = KeyboardInterrupt("injected strict BM25 initial stop")
+        polls = 0
+
+        def check_cancelled() -> None:
+            nonlocal polls
+            polls += 1
+            raise stop
+
+        if operation == "plan":
+
+            def invoke() -> object:
+                return strict_bm25_module._plan_recaptured_bm25_view_with_identity(
+                    tmp_path / "source",
+                    repository_source=repository_source,
+                    repository_identity=forged,
+                    view_config={},
+                    forbidden_paths=(),
+                    environ={},
+                    check_cancelled=check_cancelled,
+                )
+
+        else:
+
+            def invoke() -> object:
+                return strict_bm25_module._publish_recaptured_bm25_view_with_identity(
+                    tmp_path / "source",
+                    tmp_path / "destination",
+                    planned=None,  # type: ignore[arg-type]
+                    repository_source=repository_source,
+                    repository_identity=forged,
+                    workspace_provider=None,  # type: ignore[arg-type]
+                    output_receipt_owner=None,  # type: ignore[arg-type]
+                    view_config={},
+                    forbidden_paths=(),
+                    environ={},
+                    check_cancelled=check_cancelled,
+                )
+
+        with pytest.raises(ValueError, match="identity is invalid") as caught:
+            invoke()
+
+        assert caught.value is not stop
+        assert polls == 0
+    finally:
+        repository_source.close()
+
+
+def test_publication_bm25_reader_polling_attests_current_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = TreeFileRecord(path="a", mode=0o600, size=1, sha256="0" * 64)
+    duplicate = replace(first, size=2)
+    ownership = object()
+    publication = SimpleNamespace(capture_ownership=lambda: ownership)
+    stop = RuntimeError("injected strict BM25 record stop")
+    polls = 0
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "directory_ownership_file_records",
+        lambda _ownership: (first, duplicate),
+    )
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls > 1:
+            raise stop
+
+    with pytest.raises(RuntimeError, match="repeats a file record") as caught:
+        strict_bm25_module._PublicationBm25Reader(
+            publication,  # type: ignore[arg-type]
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is not stop
+    assert polls == 1
+
+
+def test_publication_bm25_reader_stops_before_poisoned_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = TreeFileRecord(path="a", mode=0o600, size=1, sha256="0" * 64)
+    ownership = object()
+    publication = SimpleNamespace(capture_ownership=lambda: ownership)
+    stop = ValueError("injected strict BM25 record stop")
+    poison_consumed = False
+
+    class PoisonedRecord:
+        @property
+        def path(self) -> str:
+            nonlocal poison_consumed
+            poison_consumed = True
+            raise AssertionError("strict BM25 reader consumed its poisoned record")
+
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "directory_ownership_file_records",
+        lambda _ownership: (first, PoisonedRecord()),
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(ValueError) as caught:
+        strict_bm25_module._PublicationBm25Reader(
+            publication,  # type: ignore[arg-type]
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poison_consumed
+
+
+def test_publication_bm25_reader_none_keeps_legacy_overwrite_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = TreeFileRecord(path="a", mode=0o600, size=1, sha256="0" * 64)
+    replacement = replace(first, size=2)
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "directory_ownership_file_records",
+        lambda _ownership: (first, replacement),
+    )
+
+    reader = strict_bm25_module._PublicationBm25Reader(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        object(),
+    )
+
+    assert reader.record("a") is replacement
+
+
+def test_publication_bm25_reader_mutation_precedes_exact_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = TreeFileRecord(path="a", mode=0o600, size=1, sha256="0" * 64)
+    ownership = object()
+    stop = BaseException("injected strict BM25 record stop")
+    monkeypatch.setattr(
+        strict_bm25_module,
+        "directory_ownership_file_records",
+        lambda _ownership: (first, replace(first, path="b")),
+    )
+
+    class MutatedPublication:
+        def capture_ownership(self) -> object:
+            return object()
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(RuntimeError, match="changed during record") as caught:
+        strict_bm25_module._PublicationBm25Reader(
+            MutatedPublication(),  # type: ignore[arg-type]
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is not stop
+
+
 @pytest.mark.parametrize("destination_kind", ["existing", "repository"])
 def test_strict_bm25_recapture_rejects_destination_preflight_without_mutation(
     tmp_path: Path,
