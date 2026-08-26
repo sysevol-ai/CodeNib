@@ -1265,6 +1265,16 @@ win; the staged namespace transition through authenticated receipt creation
 remains an uninterruptible commit section, and an exact cooperative stop does
 not poison the retained repository source.
 
+The first retained-source cache-building primitive now covers BM25 without
+reopening repository files by pathname. A retained `RepositorySourceBinding`
+supplies the authenticated inventory and bytes to the existing tree-sitter
+chunkers, which preserve normal filtering, relative-path, line, and
+compatibility contracts while parsing already-captured text. The builder writes
+only to a missing caller-owned private generation and attests the resulting
+BM25 artifact fingerprints. Durable source-job adapters, attempt resource and
+cleanup ownership, CLI/Web binding, vector source building, and graph source
+building remain absent.
+
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
 only one required `full` BM25 or vector view, binds the exact
@@ -1314,8 +1324,10 @@ runtime now has the generation-safe refresh boundary described under M3.
 
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
 and the explicit BM25 and schema-8 vector compiler-cache adapters, including
-their prepare-only worker bridge, are implemented; graph, generic source
-builders, cache-building execution, and remaining runtime wiring remain.
+their prepare-only worker bridge, are implemented. The first caller-scoped
+retained-source BM25 builder now produces a unique private generation; durable
+source-job adapters, vector and graph source builders, generic builder routing,
+and remaining runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
@@ -1348,8 +1360,8 @@ bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
 generation identity. The first #266 status, durable-read, and explicitly
-injected one-view write slices are present; source builders, a production Web
-planner/default binding, success-triggered refresh, MCP, UI controls, and
+injected one-view write slices are present; source-job adapters, a production
+Web planner/default binding, success-triggered refresh, MCP, UI controls, and
 default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
