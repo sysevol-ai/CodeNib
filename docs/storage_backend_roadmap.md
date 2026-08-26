@@ -1423,6 +1423,11 @@ and default routing remain absent.
   state. Update capability is explicit and defaults to `unavailable` until an
   owning Web job service is configured, so the read API never implies that the
   current server can write or incrementally patch an index.
+- The durable job catalog now has an additive, read-only active-job query for
+  Web status consumers. It prefers the fenced running attempt and otherwise
+  returns the oldest queued job for the exact repository/ref, while terminal
+  jobs and bounded events remain addressable by job ID. This avoids an
+  in-memory repo-to-job map that would lose state across Web process restarts.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization

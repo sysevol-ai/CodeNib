@@ -494,6 +494,57 @@ def test_create_job_is_idempotent_and_conflicts_on_any_request_change(tmp_path) 
             )
 
 
+def test_find_active_job_prefers_running_then_oldest_queued_per_ref(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id = _repository(catalog)
+        profile_id = catalog.create_view_profile("bm25", {})
+        request = _request(profile_id)
+
+        assert catalog.find_active_job(repository_id) is None
+        first = catalog.create_job(
+            repository_id,
+            source_revision_id,
+            "first",
+            request,
+        )
+        second = catalog.create_job(
+            repository_id,
+            source_revision_id,
+            "second",
+            request,
+        )
+        other_ref = catalog.create_job(
+            repository_id,
+            source_revision_id,
+            "other-ref",
+            request,
+            ref_name="release",
+        )
+
+        assert catalog.find_active_job(repository_id) == first
+        assert catalog.find_active_job(repository_id, "release") == other_ref
+
+        catalog.acquire_job_lease(
+            second.job_id,
+            owner_id="worker",
+            lease_duration_ms=60_000,
+        )
+
+        active = catalog.find_active_job(repository_id)
+        assert active is not None
+        assert active.job_id == second.job_id
+
+
+def test_find_active_job_validates_repository_and_ref(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, _source_revision_id = _repository(catalog)
+
+        with pytest.raises(CatalogNotFoundError, match="not found"):
+            catalog.find_active_job("repo_" + "f" * 64)
+        with pytest.raises(StorageValidationError, match="NUL"):
+            catalog.find_active_job(repository_id, "bad\x00ref")
+
+
 def test_job_views_and_contract_are_revalidated_against_canonical_request(
     tmp_path,
 ) -> None:

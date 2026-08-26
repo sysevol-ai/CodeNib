@@ -40,6 +40,7 @@ from codenib.storage.protocols import (
     JobCycleWorkerCatalog,
     JobExecutionCatalog,
     JobPublicationCatalog,
+    JobQueryCatalog,
     JobWorkerCatalog,
     ObjectStore,
     ReceiptVerifyingObjectStore,
@@ -62,6 +63,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(catalog, RetainedImportCatalog)
         assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
+        assert isinstance(catalog, JobQueryCatalog)
         assert isinstance(catalog, JobExecutionCatalog)
         assert isinstance(catalog, JobWorkerCatalog)
         assert isinstance(catalog, JobCycleWorkerCatalog)
@@ -103,6 +105,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "InterruptibleStreamingObjectStore",
         "JobCycleWorkerCatalog",
         "JobExecutionCatalog",
+        "JobQueryCatalog",
         "JobWorkerCatalog",
     }
 
@@ -140,6 +143,7 @@ def test_execution_catalog_is_additive_to_publication_only_adapters() -> None:
 
     assert isinstance(adapter, JobCatalog)
     assert isinstance(adapter, JobPublicationCatalog)
+    assert not isinstance(adapter, JobQueryCatalog)
     assert not isinstance(adapter, JobExecutionCatalog)
     assert not isinstance(adapter, JobWorkerCatalog)
     assert not isinstance(adapter, JobCycleWorkerCatalog)

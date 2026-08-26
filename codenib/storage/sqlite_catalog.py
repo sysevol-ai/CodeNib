@@ -6929,6 +6929,52 @@ class SQLiteCatalog:
             return self._job_views(job)
 
     @_coordinated_catalog_method
+    def find_active_job(
+        self,
+        repository_id: str,
+        ref_name: str = "main",
+    ) -> IndexJobRecord | None:
+        """Return the running or next queued job for one repository/ref."""
+
+        repository = _bounded_text(
+            repository_id,
+            "repository ID",
+            max_length=96,
+        )
+        ref = _bounded_text(ref_name, "ref name", max_length=512)
+        with self._transaction(immediate=False):
+            self._require_record("repositories", "repository_id", repository)
+            running_rows = self._connection.execute(
+                """
+                SELECT * FROM index_jobs
+                WHERE repository_id = ? AND ref_name = ? AND status = 'running'
+                ORDER BY created_at_ms, job_id
+                LIMIT 2
+                """,
+                (repository, ref),
+            ).fetchall()
+            if len(running_rows) > 1:
+                raise CatalogConflictError(
+                    "multiple running index jobs conflict for one repository ref"
+                )
+            row = running_rows[0] if running_rows else None
+            if row is None:
+                row = self._connection.execute(
+                    """
+                    SELECT * FROM index_jobs
+                    WHERE repository_id = ? AND ref_name = ? AND status = 'queued'
+                    ORDER BY created_at_ms, job_id
+                    LIMIT 1
+                    """,
+                    (repository, ref),
+                ).fetchone()
+            if row is None:
+                return None
+            job = self._job_from_row(row)
+            self._job_views(job)
+            return job
+
+    @_coordinated_catalog_method
     def get_job_attempt(
         self,
         job_id: str,
