@@ -1265,6 +1265,15 @@ wiring remain absent.
   in canonical order. Cross-page fairness, cursor scheduling, and continuous
   draining remain responsibilities of the future runtime scheduler rather than
   silently making one worker call unbounded.
+- File-backed SQLite sessions in one interpreter coordinate existing-only
+  validation, transactions, and connection close by resolved catalog path, so
+  a heartbeat cannot invalidate a concurrent cancellation or worker-session
+  startup copy. Exact same-inode main/WAL/SHM drift is recaptured with a bounded
+  attempt count, and each retry start and backoff is limited by a
+  busy-timeout-derived deadline; structural namespace, schema, identity, and
+  cleanup failures remain immediate fail-closed errors. Independent processes
+  must pre-open their SQLite sessions or quiesce high-frequency writers until
+  the future runtime adds a cross-process startup coordinator.
 - Ordinary response loss is reconciled against the immutable attempt closure
   before the worker reports a disposition. Explicit storage-integrity alarms
   remain infrastructure failures even when the catalog mutation committed;

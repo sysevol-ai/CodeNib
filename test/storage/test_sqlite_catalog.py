@@ -9,9 +9,12 @@ from __future__ import annotations
 import io
 import os
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
+import threading
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Barrier
@@ -389,6 +392,823 @@ def test_existing_only_accepts_schema_and_data_from_uncheckpointed_wal(tmp_path)
                 ).fetchone()[0]
                 == repository_id
             )
+
+
+def test_existing_only_retries_changed_wal_with_a_fresh_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "retry-live-wal.sqlite3"
+
+    with SQLiteCatalog(path) as writer:
+        writer._connection.execute("PRAGMA wal_autocheckpoint = 0")
+        repository_id = writer.create_repository("owner/retry-live-wal")
+        assert Path(f"{path}-wal").stat().st_size > 0
+        original_copy = sqlite_catalog_module._copy_validation_source
+        wal_destinations: list[Path] = []
+
+        def change_first_wal_copy(
+            descriptor,
+            expected,
+            destination,
+            *,
+            label,
+        ):
+            if label == "WAL sidecar":
+                wal_destinations.append(destination)
+                original_copy(
+                    descriptor,
+                    expected,
+                    destination,
+                    label=label,
+                )
+                if len(wal_destinations) == 1:
+                    raise sqlite_catalog_module._CatalogValidationNamespaceChanged(
+                        "injected one-shot WAL change"
+                    )
+                return None
+            return original_copy(
+                descriptor,
+                expected,
+                destination,
+                label=label,
+            )
+
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_copy_validation_source",
+            change_first_wal_copy,
+        )
+
+        with SQLiteCatalog(path, create=False) as reader:
+            observed = reader._connection.execute(
+                "SELECT repository_id FROM repositories WHERE repository_key = ?",
+                ("owner/retry-live-wal",),
+            ).fetchone()
+
+        assert observed[0] == repository_id
+        assert len(wal_destinations) == 2
+        assert wal_destinations[0].parent != wal_destinations[1].parent
+
+
+def test_existing_only_does_not_retry_main_inode_replacement(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "identity-bound.sqlite3"
+    replacement = tmp_path / "replacement.sqlite3"
+    _prepare_supported_schema_version(path, LATEST_SCHEMA_VERSION)
+    _prepare_supported_schema_version(replacement, LATEST_SCHEMA_VERSION)
+    original_open = os.open
+    main_opens = 0
+    swapped = False
+
+    def replace_before_open(target, flags, mode=0o777, *, dir_fd=None):
+        nonlocal main_opens, swapped
+        if dir_fd is None and Path(target) == path:
+            main_opens += 1
+            if not swapped:
+                swapped = True
+                os.replace(replacement, path)
+        if dir_fd is None:
+            return original_open(target, flags, mode)
+        return original_open(target, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", replace_before_open)
+
+    with pytest.raises(
+        CatalogError,
+        match="main file identity changed before copy",
+    ) as caught:
+        SQLiteCatalog(path, create=False)
+
+    assert type(caught.value) is CatalogError
+    assert main_opens == 1
+    assert swapped
+
+
+def test_existing_only_bounds_repeated_validation_namespace_changes(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "repeated-live-wal.sqlite3"
+
+    with SQLiteCatalog(path) as writer:
+        writer._connection.execute("PRAGMA wal_autocheckpoint = 0")
+        writer.create_repository("owner/repeated-live-wal")
+        assert Path(f"{path}-wal").stat().st_size > 0
+        attempts = 0
+        clock = [10.0]
+        retry_delays: list[float] = []
+
+        def monotonic() -> float:
+            return clock[0]
+
+        def sleep(delay: float) -> None:
+            retry_delays.append(delay)
+            clock[0] += delay
+
+        def change_every_wal_copy(
+            _descriptor,
+            _expected,
+            _destination,
+            *,
+            label,
+        ):
+            nonlocal attempts
+            assert label in {"main file", "WAL sidecar"}
+            if label == "WAL sidecar":
+                attempts += 1
+                raise sqlite_catalog_module._CatalogValidationNamespaceChanged(
+                    "injected sustained WAL change"
+                )
+
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_VALIDATION_NAMESPACE_MAX_ATTEMPTS",
+            3,
+        )
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_VALIDATION_RETRY_INITIAL_SECONDS",
+            0.000_001,
+        )
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_VALIDATION_RETRY_MAX_SECONDS",
+            0.000_001,
+        )
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_copy_validation_source",
+            change_every_wal_copy,
+        )
+        monkeypatch.setattr(sqlite_catalog_module.time, "monotonic", monotonic)
+        monkeypatch.setattr(sqlite_catalog_module.time, "sleep", sleep)
+
+        with pytest.raises(
+            sqlite_catalog_module._CatalogValidationNamespaceChanged,
+            match="injected sustained WAL change",
+        ):
+            SQLiteCatalog(path, create=False, busy_timeout_ms=1_000)
+
+        assert attempts == 3
+        assert retry_delays == [0.000_001, 0.000_001]
+
+
+def test_existing_only_does_not_retry_after_backoff_crosses_deadline(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "validation-retry-deadline.sqlite3"
+
+    with SQLiteCatalog(path) as writer:
+        writer._connection.execute("PRAGMA wal_autocheckpoint = 0")
+        writer.create_repository("owner/validation-retry-deadline")
+        clock = [10.0]
+        attempts = 0
+        retry_delays: list[float] = []
+
+        def monotonic() -> float:
+            return clock[0]
+
+        def oversleep(delay: float) -> None:
+            retry_delays.append(delay)
+            clock[0] += 0.020
+
+        def change_every_copy(
+            _descriptor,
+            _expected,
+            _destination,
+            *,
+            label,
+        ):
+            nonlocal attempts
+            assert label in {"main file", "WAL sidecar"}
+            attempts += 1
+            raise sqlite_catalog_module._CatalogValidationNamespaceChanged(
+                "injected validation drift"
+            )
+
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_copy_validation_source",
+            change_every_copy,
+        )
+        monkeypatch.setattr(sqlite_catalog_module.time, "monotonic", monotonic)
+        monkeypatch.setattr(sqlite_catalog_module.time, "sleep", oversleep)
+
+        with pytest.raises(
+            sqlite_catalog_module._CatalogValidationNamespaceChanged,
+            match="injected validation drift",
+        ):
+            SQLiteCatalog(path, create=False, busy_timeout_ms=10)
+
+        assert attempts == 1
+        assert retry_delays == [0.001]
+
+
+@pytest.mark.parametrize("retains_cleanup_owner", (False, True))
+def test_existing_only_does_not_retry_hard_or_retained_cleanup_failures(
+    tmp_path,
+    monkeypatch,
+    retains_cleanup_owner,
+):
+    path = tmp_path / f"hard-live-wal-{retains_cleanup_owner}.sqlite3"
+
+    class CleanupOwner:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    with SQLiteCatalog(path) as writer:
+        writer._connection.execute("PRAGMA wal_autocheckpoint = 0")
+        writer.create_repository("owner/hard-live-wal")
+        assert Path(f"{path}-wal").stat().st_size > 0
+        attempts = 0
+        cleanup_owner = CleanupOwner()
+        if retains_cleanup_owner:
+            failure = sqlite_catalog_module._CatalogValidationNamespaceChanged(
+                "injected retained cleanup failure"
+            )
+            failure.publication_cleanup_owners = (cleanup_owner,)
+        else:
+            failure = CatalogError("injected hard validation failure")
+
+        def fail_wal_copy(
+            _descriptor,
+            _expected,
+            _destination,
+            *,
+            label,
+        ):
+            nonlocal attempts
+            if label == "WAL sidecar":
+                attempts += 1
+                raise failure
+
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_copy_validation_source",
+            fail_wal_copy,
+        )
+
+        with pytest.raises(CatalogError) as caught:
+            SQLiteCatalog(path, create=False)
+
+        assert caught.value is failure
+        assert attempts == 1
+        assert not cleanup_owner.closed
+        cleanup_owner.close()
+        assert cleanup_owner.closed
+
+
+def test_existing_only_serializes_slow_wal_copy_with_public_writer(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "coordinated-live-wal.sqlite3"
+    with SQLiteCatalog(path):
+        pass
+
+    writer_ready = threading.Event()
+    begin_writes = threading.Event()
+    writer_lock_attempted = threading.Event()
+    writes_completed = threading.Event()
+    slow_copy_started = threading.Event()
+    wal_destinations: list[Path] = []
+    preexisting_repository: list[str] = []
+    writer_coordinations: list[sqlite_catalog_module._CatalogPathCoordination] = []
+    opener_thread = threading.get_ident()
+    original_copy = sqlite_catalog_module._copy_validation_source
+    original_lock_acquire = sqlite_catalog_module._CancellationSafeRLock._acquire
+
+    def slow_wal_copy(
+        descriptor,
+        expected,
+        destination,
+        *,
+        label,
+    ):
+        if (
+            label == "WAL sidecar"
+            and threading.get_ident() == opener_thread
+            and not slow_copy_started.is_set()
+        ):
+            wal_destinations.append(destination)
+            slow_copy_started.set()
+            begin_writes.set()
+            assert writer_lock_attempted.wait(timeout=5)
+            assert not writes_completed.is_set()
+        return original_copy(
+            descriptor,
+            expected,
+            destination,
+            label=label,
+        )
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_copy_validation_source",
+        slow_wal_copy,
+    )
+
+    def write_repositories() -> tuple[str, ...]:
+        with SQLiteCatalog(path, create=False) as writer:
+            writer._connection.execute("PRAGMA wal_autocheckpoint = 0")
+            before = writer.create_repository("owner/coordinated-before")
+            preexisting_repository.append(before)
+            writer_coordinations.append(writer._path_coordination)
+            writer_ready.set()
+            assert begin_writes.wait(timeout=5)
+            during = tuple(
+                writer.create_repository(f"owner/coordinated-during-{index}")
+                for index in range(3)
+            )
+            writes_completed.set()
+            return (before, *during)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        writer_future = pool.submit(write_repositories)
+        assert writer_ready.wait(timeout=5)
+        assert len(writer_coordinations) == 1
+        coordination = writer_coordinations[0]
+
+        def observe_writer_lock(lock) -> None:
+            if lock is coordination.lock and threading.get_ident() != opener_thread:
+                writer_lock_attempted.set()
+            original_lock_acquire(lock)
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_acquire",
+            observe_writer_lock,
+        )
+        assert Path(f"{path}-wal").stat().st_size > 0
+        try:
+            with SQLiteCatalog(path, create=False) as reader:
+                assert reader.schema_version == LATEST_SCHEMA_VERSION
+                observed = reader._connection.execute(
+                    """
+                    SELECT repository_id FROM repositories
+                    WHERE repository_key = 'owner/coordinated-before'
+                    """
+                ).fetchone()
+                assert observed[0] == preexisting_repository[0]
+        finally:
+            begin_writes.set()
+        repository_ids = writer_future.result(timeout=5)
+
+    assert slow_copy_started.is_set()
+    assert writer_lock_attempted.is_set()
+    assert writes_completed.is_set()
+    assert len(wal_destinations) == 1
+    assert len(repository_ids) == 4
+    assert len(set(repository_ids)) == 4
+
+
+def test_path_coordination_guard_recovers_interrupted_acquire(
+    tmp_path,
+    monkeypatch,
+):
+    guard = sqlite_catalog_module._CATALOG_PATH_COORDINATION_STATES[os.getpid()][0]
+    original_acquire = sqlite_catalog_module._CancellationSafeRLock._acquire
+    interruption = KeyboardInterrupt("after coordination guard acquire")
+    injected = False
+
+    def acquire_then_interrupt(lock) -> None:
+        nonlocal injected
+        original_acquire(lock)
+        if lock is guard and not injected:
+            injected = True
+            raise interruption
+
+    monkeypatch.setattr(
+        sqlite_catalog_module._CancellationSafeRLock,
+        "_acquire",
+        acquire_then_interrupt,
+    )
+    with pytest.raises(KeyboardInterrupt) as caught:
+        sqlite_catalog_module._catalog_path_coordination(
+            tmp_path / "guard-interruption.sqlite3"
+        )
+    assert caught.value is interruption
+    assert injected
+
+    monkeypatch.setattr(
+        sqlite_catalog_module._CancellationSafeRLock,
+        "_acquire",
+        original_acquire,
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        observed = pool.submit(
+            sqlite_catalog_module._catalog_path_coordination,
+            tmp_path / "guard-interruption.sqlite3",
+        ).result(timeout=5)
+    assert type(observed) is sqlite_catalog_module._CatalogPathCoordination
+
+
+def test_concurrent_child_first_lookup_uses_one_process_coordination(
+    tmp_path,
+    monkeypatch,
+):
+    actual_pid = os.getpid()
+    child_pid = actual_pid + 1_000_000
+    states = sqlite_catalog_module._CATALOG_PATH_COORDINATION_STATES
+    states.pop(child_pid, None)
+    original_new_state = sqlite_catalog_module._new_catalog_path_coordination_state
+    first_touch = threading.Barrier(2)
+    created_states: list[sqlite_catalog_module._CatalogPathCoordinationState] = []
+
+    def synchronized_new_state():
+        state = original_new_state()
+        created_states.append(state)
+        first_touch.wait(timeout=5)
+        return state
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_new_catalog_path_coordination_state",
+        synchronized_new_state,
+    )
+    monkeypatch.setattr(sqlite_catalog_module.os, "getpid", lambda: child_pid)
+    path = tmp_path / "child-first-touch.sqlite3"
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = tuple(
+                pool.submit(sqlite_catalog_module._catalog_path_coordination, path)
+                for _index in range(2)
+            )
+            coordinations = tuple(future.result(timeout=5) for future in futures)
+
+        assert len(created_states) == 2
+        assert coordinations[0] is coordinations[1]
+        assert states[child_pid] in created_states
+    finally:
+        states.pop(child_pid, None)
+
+
+def test_fork_reset_discards_recycled_pid_coordination_state(
+    tmp_path,
+    monkeypatch,
+):
+    owner_pid = os.getpid()
+    stale_state = sqlite_catalog_module._new_catalog_path_coordination_state()
+    stale_guard = stale_state[0]
+    inherited_state = sqlite_catalog_module._new_catalog_path_coordination_state()
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "_CATALOG_PATH_COORDINATION_STATES",
+        {owner_pid - 1: inherited_state, owner_pid: stale_state},
+    )
+    guard_entered = threading.Event()
+    release_guard = threading.Event()
+
+    def hold_stale_guard() -> None:
+        def wait_for_release() -> None:
+            guard_entered.set()
+            assert release_guard.wait(timeout=5)
+
+        stale_guard.run(wait_for_release)
+
+    holder = threading.Thread(target=hold_stale_guard)
+    holder.start()
+    assert guard_entered.wait(timeout=5)
+    try:
+        sqlite_catalog_module._reset_catalog_path_coordination_after_fork()
+        states = sqlite_catalog_module._CATALOG_PATH_COORDINATION_STATES
+        assert tuple(states) == (owner_pid,)
+        assert states[owner_pid] is not stale_state
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            observed = pool.submit(
+                sqlite_catalog_module._catalog_path_coordination,
+                tmp_path / "recycled-pid.sqlite3",
+            ).result(timeout=5)
+        assert type(observed) is sqlite_catalog_module._CatalogPathCoordination
+    finally:
+        release_guard.set()
+        holder.join(timeout=5)
+    assert not holder.is_alive()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_fork_child_discards_inherited_path_coordination_registry(tmp_path):
+    path = tmp_path / "fork-reset-coordination.sqlite3"
+    guard = sqlite_catalog_module._CATALOG_PATH_COORDINATION_STATES[os.getpid()][0]
+    guard_entered = threading.Event()
+    release_guard = threading.Event()
+
+    def hold_registry_guard() -> None:
+        def wait_for_release() -> None:
+            guard_entered.set()
+            assert release_guard.wait(timeout=5)
+
+        guard.run(wait_for_release)
+
+    holder = threading.Thread(target=hold_registry_guard)
+    holder.start()
+    assert guard_entered.wait(timeout=5)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="This process .* is multi-threaded.*",
+            category=DeprecationWarning,
+        )
+        child_pid = os.fork()
+    if child_pid == 0:
+        signal.alarm(2)
+        try:
+            coordination = sqlite_catalog_module._catalog_path_coordination(path)
+        except BaseException:  # noqa: B036 - report any child failure to parent
+            os._exit(2)
+        os._exit(
+            0
+            if type(coordination) is sqlite_catalog_module._CatalogPathCoordination
+            else 3
+        )
+    try:
+        _waited_pid, status = os.waitpid(child_pid, 0)
+        assert os.WIFEXITED(status)
+        assert os.WEXITSTATUS(status) == 0
+    finally:
+        release_guard.set()
+        holder.join(timeout=5)
+    assert not holder.is_alive()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_inherited_catalog_rejects_before_acquiring_parent_path_lock(tmp_path):
+    path = tmp_path / "inherited-catalog.sqlite3"
+    catalog = SQLiteCatalog(path)
+    lock_entered = threading.Event()
+    release_lock = threading.Event()
+
+    def hold_path_lock() -> None:
+        def wait_for_release() -> None:
+            lock_entered.set()
+            assert release_lock.wait(timeout=5)
+
+        catalog._path_coordination.lock.run(wait_for_release)
+
+    holder = threading.Thread(target=hold_path_lock)
+    holder.start()
+    assert lock_entered.wait(timeout=5)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message="This process .* is multi-threaded.*",
+            category=DeprecationWarning,
+        )
+        child_pid = os.fork()
+    if child_pid == 0:
+        signal.alarm(2)
+        try:
+            catalog.create_repository("owner/inherited-catalog")
+        except CatalogError as error:
+            os._exit(0 if "PID boundary" in str(error) else 2)
+        except BaseException:  # noqa: B036 - report any child failure to parent
+            os._exit(3)
+        os._exit(4)
+    try:
+        _waited_pid, status = os.waitpid(child_pid, 0)
+        assert os.WIFEXITED(status)
+        assert os.WEXITSTATUS(status) == 0
+    finally:
+        release_lock.set()
+        holder.join(timeout=5)
+        catalog.close()
+    assert not holder.is_alive()
+
+
+def test_catalog_open_recovers_interrupted_path_lock_acquire(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "open-lock-interruption.sqlite3"
+    with SQLiteCatalog(path) as keeper:
+        coordination = keeper._path_coordination
+        original_acquire = sqlite_catalog_module._CancellationSafeRLock._acquire
+        interruption = KeyboardInterrupt("after catalog path lock acquire")
+        injected = False
+
+        def acquire_then_interrupt(lock) -> None:
+            nonlocal injected
+            original_acquire(lock)
+            if lock is coordination.lock and not injected:
+                injected = True
+                raise interruption
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_acquire",
+            acquire_then_interrupt,
+        )
+        with pytest.raises(KeyboardInterrupt) as caught:
+            SQLiteCatalog(path, create=False)
+        assert caught.value is interruption
+        assert injected
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_acquire",
+            original_acquire,
+        )
+
+        def reopen() -> int:
+            with SQLiteCatalog(path, create=False) as catalog:
+                return catalog.schema_version
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(reopen).result(timeout=5) == LATEST_SCHEMA_VERSION
+
+
+def test_catalog_transaction_recovers_interrupted_path_lock_acquire(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "transaction-lock-interruption.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        coordination = catalog._path_coordination
+        original_acquire = sqlite_catalog_module._CancellationSafeRLock._acquire
+        interruption = KeyboardInterrupt("after transaction path lock acquire")
+        injected = False
+
+        def acquire_then_interrupt(lock) -> None:
+            nonlocal injected
+            original_acquire(lock)
+            if lock is coordination.lock and not injected:
+                injected = True
+                raise interruption
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_acquire",
+            acquire_then_interrupt,
+        )
+        with pytest.raises(KeyboardInterrupt) as caught:
+            catalog.create_repository("owner/interrupted-transaction-acquire")
+        assert caught.value is interruption
+        assert injected
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_acquire",
+            original_acquire,
+        )
+
+        def create_after_interruption() -> str:
+            with SQLiteCatalog(path, create=False) as observer:
+                return observer.create_repository(
+                    "owner/after-transaction-acquire-interruption"
+                )
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            repository_id = pool.submit(create_after_interruption).result(timeout=5)
+        assert repository_id.startswith("repo_")
+
+
+@pytest.mark.parametrize("phase", ("before", "after"))
+def test_catalog_transaction_recovers_interrupted_path_lock_release(
+    tmp_path,
+    monkeypatch,
+    phase,
+):
+    path = tmp_path / f"transaction-release-{phase}.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        coordination = catalog._path_coordination
+        original_release = sqlite_catalog_module._CancellationSafeRLock._release
+        interruption = SystemExit(f"{phase} transaction path lock release")
+        injected = False
+
+        def release_with_interruption(lock) -> None:
+            nonlocal injected
+            if lock is coordination.lock and not injected and phase == "before":
+                injected = True
+                raise interruption
+            original_release(lock)
+            if lock is coordination.lock and not injected and phase == "after":
+                injected = True
+                raise interruption
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_release",
+            release_with_interruption,
+        )
+        with pytest.raises(SystemExit) as caught:
+            catalog.create_repository(f"owner/interrupted-release-{phase}")
+        assert caught.value is interruption
+        assert injected
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_release",
+            original_release,
+        )
+
+        def reopen() -> int:
+            with SQLiteCatalog(path, create=False) as observer:
+                return observer.schema_version
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(reopen).result(timeout=5) == LATEST_SCHEMA_VERSION
+
+
+def test_catalog_path_lock_release_preserves_transaction_body_primary(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "transaction-primary.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        coordination = catalog._path_coordination
+        original_release = sqlite_catalog_module._CancellationSafeRLock._release
+        primary = KeyboardInterrupt("transaction body primary")
+        secondary = SystemExit("before transaction path lock release")
+        injected = False
+
+        def release_then_interrupt(lock) -> None:
+            nonlocal injected
+            if lock is coordination.lock and not injected:
+                injected = True
+                raise secondary
+            original_release(lock)
+
+        def fail_transaction() -> None:
+            with catalog._transaction():
+                raise primary
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_release",
+            release_then_interrupt,
+        )
+        with pytest.raises(KeyboardInterrupt) as caught:
+            coordination.lock.run(fail_transaction)
+        assert caught.value is primary
+        assert injected
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_release",
+            original_release,
+        )
+
+        def reopen() -> int:
+            with SQLiteCatalog(path, create=False) as observer:
+                return observer.schema_version
+
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(reopen).result(timeout=5) == LATEST_SCHEMA_VERSION
+
+
+@pytest.mark.parametrize("phase", ("before", "after"))
+def test_catalog_close_recovers_interrupted_path_lock_release(
+    tmp_path,
+    monkeypatch,
+    phase,
+):
+    path = tmp_path / f"close-release-{phase}.sqlite3"
+    catalog = SQLiteCatalog(path)
+    coordination = catalog._path_coordination
+    original_release = sqlite_catalog_module._CancellationSafeRLock._release
+    interruption = SystemExit(f"{phase} close path lock release")
+    injected = False
+
+    def release_with_interruption(lock) -> None:
+        nonlocal injected
+        if lock is coordination.lock and not injected and phase == "before":
+            injected = True
+            raise interruption
+        original_release(lock)
+        if lock is coordination.lock and not injected and phase == "after":
+            injected = True
+            raise interruption
+
+    monkeypatch.setattr(
+        sqlite_catalog_module._CancellationSafeRLock,
+        "_release",
+        release_with_interruption,
+    )
+    with pytest.raises(SystemExit) as caught:
+        catalog.close()
+    assert caught.value is interruption
+    assert injected
+
+    monkeypatch.setattr(
+        sqlite_catalog_module._CancellationSafeRLock,
+        "_release",
+        original_release,
+    )
+
+    def reopen() -> int:
+        with SQLiteCatalog(path, create=False) as observer:
+            return observer.schema_version
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(reopen).result(timeout=5) == LATEST_SCHEMA_VERSION
 
 
 def test_existing_only_revalidates_original_before_wal_or_migration(
@@ -874,6 +1694,9 @@ def test_validation_copy_preserves_primary_and_retains_destination_cleanup(
                 label="main file",
             )
 
+        assert type(caught.value) is (
+            sqlite_catalog_module._CatalogValidationNamespaceChanged
+        )
         retained = caught.value.publication_cleanup_owners  # type: ignore[attr-defined]
         assert len(retained) == 1
         assert not retained[0].closed
@@ -882,6 +1705,45 @@ def test_validation_copy_preserves_primary_and_retains_destination_cleanup(
         assert retained[0].closed
     finally:
         original_close(source_descriptor)
+
+
+def test_validation_copy_prioritizes_structural_identity_change(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "structural-source"
+    source.write_bytes(b"source")
+    destination = tmp_path / "structural-destination"
+    source_descriptor = os.open(source, os.O_RDONLY)
+    expected_fields = list(os.fstat(source_descriptor))
+    expected_fields[6] += 1
+    expected = os.stat_result(expected_fields)
+    original_fstat = os.fstat
+
+    def changed_source_identity(descriptor):
+        observed = original_fstat(descriptor)
+        if descriptor != source_descriptor:
+            return observed
+        fields = list(observed)
+        fields[1] += 1
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(os, "fstat", changed_source_identity)
+    try:
+        with pytest.raises(
+            CatalogError,
+            match="main file identity changed during copy",
+        ) as caught:
+            sqlite_catalog_module._copy_validation_source(
+                source_descriptor,
+                expected,
+                destination,
+                label="main file",
+            )
+
+        assert type(caught.value) is CatalogError
+    finally:
+        os.close(source_descriptor)
 
 
 @pytest.mark.skipif(

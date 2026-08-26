@@ -22,14 +22,17 @@ import sqlite3
 import stat
 import sys
 import tempfile
+import time
+import weakref
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime, timezone
-from functools import partial
+from functools import partial, wraps
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
+from .._owned_file_publication import _CancellationSafeRLock
 from .models import (
     DEFAULT_NAMESPACE_ID,
     DEFAULT_NAMESPACE_NAME,
@@ -84,6 +87,86 @@ CatalogConflictError = PublishConflict
 CatalogNotFoundError = StorageNotFound
 CatalogValidationError = StorageValidationError
 
+
+class _CatalogValidationNamespaceChanged(CatalogError):
+    """A validated catalog namespace changed during its private copy."""
+
+
+class _CatalogPathCoordination:
+    """Process-local serialization for one resolved SQLite catalog path."""
+
+    __slots__ = ("lock", "__weakref__")
+
+    def __init__(self) -> None:
+        self.lock = _CancellationSafeRLock()
+
+
+_CatalogPathCoordinationState = tuple[
+    _CancellationSafeRLock,
+    weakref.WeakValueDictionary[str, _CatalogPathCoordination],
+]
+
+
+def _new_catalog_path_coordination_state() -> _CatalogPathCoordinationState:
+    return _CancellationSafeRLock(), weakref.WeakValueDictionary()
+
+
+_CATALOG_PATH_COORDINATION_STATES: dict[int, _CatalogPathCoordinationState] = {
+    os.getpid(): _new_catalog_path_coordination_state()
+}
+
+
+def _reset_catalog_path_coordination_after_fork() -> None:
+    """Discard every inherited path lock before a child can use the registry."""
+
+    global _CATALOG_PATH_COORDINATION_STATES
+    owner_pid = os.getpid()
+    _CATALOG_PATH_COORDINATION_STATES = {
+        owner_pid: _new_catalog_path_coordination_state()
+    }
+
+
+if hasattr(os, "register_at_fork"):  # pragma: no branch - POSIX runtime gate
+    os.register_at_fork(after_in_child=_reset_catalog_path_coordination_after_fork)
+
+
+def _catalog_path_coordination(path: Path | None) -> _CatalogPathCoordination:
+    """Return a fork-safe, process-local coordinator for one resolved path."""
+
+    if path is None:
+        return _CatalogPathCoordination()
+    owner_pid = os.getpid()
+    # CPython publishes one process-local state atomically even if a fork child
+    # starts several threads before its first catalog lookup. Never acquire an
+    # inherited guard: its owning parent thread may not exist in this process.
+    guard, coordinations = _CATALOG_PATH_COORDINATION_STATES.setdefault(
+        owner_pid,
+        _new_catalog_path_coordination_state(),
+    )
+    key = os.path.normcase(str(path))
+
+    def registered_coordination() -> _CatalogPathCoordination:
+        coordination = coordinations.get(key)
+        if coordination is None:
+            coordination = _CatalogPathCoordination()
+            coordinations[key] = coordination
+        return coordination
+
+    return guard.run(registered_coordination)
+
+
+def _coordinated_catalog_method(method: Any) -> Any:
+    """Run one complete catalog method under its cancellation-safe path lock."""
+
+    @wraps(method)
+    def coordinated(self: Any, *args: Any, **kwargs: Any) -> Any:
+        self._require_owner_pid()
+        callback = partial(method, self, *args, **kwargs)
+        return self._path_coordination.lock.run(callback)
+
+    return coordinated
+
+
 _DB_NOW_MS_SQL = "CAST((julianday('now') - 2440587.5) * 86400000 AS INTEGER)"
 _INDEX_JOB_EXECUTION_WITNESS_SQL = """
 SELECT initial_created_at_ms AS evidence_at_ms
@@ -121,6 +204,9 @@ _SQLITE_CONNECT_OPTIONS = (
 _MAX_VALIDATION_NAMESPACE_BYTES = 1_073_741_824
 _MAX_VALIDATION_SHM_BYTES = 16_777_216
 _VALIDATION_COPY_CHUNK_BYTES = 1_048_576
+_VALIDATION_NAMESPACE_MAX_ATTEMPTS = 16
+_VALIDATION_RETRY_INITIAL_SECONDS = 0.001
+_VALIDATION_RETRY_MAX_SECONDS = 0.025
 _MAX_VALIDATION_MOUNTINFO_ENTRIES = 100_000
 _MAX_VALIDATION_MOUNTINFO_LINE_BYTES = 65_536
 _WINDOWS_REPARSE_POINT_ATTRIBUTE = 0x400
@@ -3581,6 +3667,18 @@ def _validation_source_identity(metadata: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _validation_source_structural_identity(
+    metadata: os.stat_result,
+) -> tuple[int, ...]:
+    return (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_mode),
+        int(metadata.st_nlink),
+        int(getattr(metadata, "st_file_attributes", 0)),
+    )
+
+
 def _validation_linux_mount_points() -> frozenset[str]:
     """Read a bounded Linux mount table without a fail-open fallback."""
 
@@ -3683,12 +3781,25 @@ def _open_validation_source(
         after = os.fstat(descriptor)
         if (
             not stat.S_ISREG(after.st_mode)
+            or after.st_dev < 1
+            or after.st_ino < 1
             or after.st_nlink != 1
             or getattr(after, "st_file_attributes", 0)
             & _WINDOWS_REPARSE_POINT_ATTRIBUTE
-            or _validation_source_identity(before) != _validation_source_identity(after)
         ):
-            raise CatalogError(f"existing SQLite catalog {label} changed before copy")
+            raise CatalogError(
+                f"existing SQLite catalog {label} must be a single-linked regular file"
+            )
+        if _validation_source_structural_identity(
+            before
+        ) != _validation_source_structural_identity(after):
+            raise CatalogError(
+                f"existing SQLite catalog {label} identity changed before copy"
+            )
+        if _validation_source_identity(before) != _validation_source_identity(after):
+            raise _CatalogValidationNamespaceChanged(
+                f"existing SQLite catalog {label} changed before copy"
+            )
         _require_validation_source_not_mount(path, label=label)
     except BaseException as primary_error:  # noqa: B036 - retain failed cleanup
         _close_validation_descriptor(
@@ -3821,6 +3932,7 @@ def _copy_validation_source(
         raise
     primary_error: BaseException | None = None
     try:
+        content_changed = False
         remaining = int(expected.st_size)
         while remaining:
             chunk = os.read(
@@ -3828,9 +3940,8 @@ def _copy_validation_source(
                 min(remaining, _VALIDATION_COPY_CHUNK_BYTES),
             )
             if not chunk:
-                raise CatalogError(
-                    f"existing SQLite catalog {label} changed during copy"
-                )
+                content_changed = True
+                break
             view = memoryview(chunk)
             while view:
                 written = os.write(destination_descriptor, view)
@@ -3840,8 +3951,26 @@ def _copy_validation_source(
                     )
                 view = view[written:]
             remaining -= len(chunk)
-        if os.read(descriptor, 1):
-            raise CatalogError(f"existing SQLite catalog {label} changed during copy")
+        if not content_changed and os.read(descriptor, 1):
+            content_changed = True
+        try:
+            observed = os.fstat(descriptor)
+        except OSError as exc:
+            raise CatalogError(
+                f"existing SQLite catalog {label} could not be rechecked after copy"
+            ) from exc
+        if _validation_source_structural_identity(
+            observed
+        ) != _validation_source_structural_identity(expected):
+            raise CatalogError(
+                f"existing SQLite catalog {label} identity changed during copy"
+            )
+        if content_changed or _validation_source_identity(
+            observed
+        ) != _validation_source_identity(expected):
+            raise _CatalogValidationNamespaceChanged(
+                f"existing SQLite catalog {label} changed during copy"
+            )
     except OSError as exc:
         primary_error = CatalogError(
             f"existing SQLite catalog {label} could not be copied safely"
@@ -3856,14 +3985,6 @@ def _copy_validation_source(
             primary_error=primary_error,
             label=f"private {label}",
         )
-    try:
-        observed = os.fstat(descriptor)
-    except OSError as exc:
-        raise CatalogError(
-            f"existing SQLite catalog {label} could not be rechecked after copy"
-        ) from exc
-    if _validation_source_identity(observed) != _validation_source_identity(expected):
-        raise CatalogError(f"existing SQLite catalog {label} changed during copy")
 
 
 def _require_no_rollback_journal(path: Path) -> None:
@@ -3901,10 +4022,16 @@ def _require_safe_shared_memory(path: Path) -> None:
             raise CatalogError(
                 "existing SQLite catalog SHM sidecar could not be rechecked"
             ) from exc
+        if _validation_source_structural_identity(
+            observed
+        ) != _validation_source_structural_identity(expected):
+            raise CatalogError("existing SQLite catalog SHM sidecar identity changed")
         if _validation_source_identity(observed) != _validation_source_identity(
             expected
         ):
-            raise CatalogError("existing SQLite catalog SHM sidecar changed")
+            raise _CatalogValidationNamespaceChanged(
+                "existing SQLite catalog SHM sidecar changed"
+            )
     except BaseException as exc:  # noqa: B036 - preserve primary across cleanup
         primary_error = exc
         raise
@@ -3994,7 +4121,10 @@ class SQLiteCatalog:
         corrupt databases.  A recognized older CodeNib catalog is still opened
         read-write, switched to WAL, and forward-migrated transactionally.  An
         expected file identity binds that existing-only open to one resolved
-        single-linked regular inode across ``sqlite3.connect``.
+        single-linked regular inode across ``sqlite3.connect``.  Catalogs in one
+        interpreter coordinate validation, transactions, and close by resolved
+        path; exact same-inode namespace drift is recaptured with bounded
+        attempts whose retry starts and backoff honor the busy-timeout deadline.
         """
 
         self._owner_pid = os.getpid()
@@ -4043,54 +4173,109 @@ class SQLiteCatalog:
                 "an in-memory SQLite catalog cannot be opened existing-only"
             )
         self.path = raw_path
+        self._path_coordination = _catalog_path_coordination(resolved)
+        self._path_coordination.lock.run(
+            partial(
+                self._initialize_connection,
+                resolved=resolved,
+                raw_path=raw_path,
+                connection_target=connection_target,
+                use_uri=use_uri,
+                busy_timeout_ms=busy_timeout_ms,
+                create=create,
+                expected_file_identity=expected_file_identity,
+            )
+        )
+
+    def _initialize_connection(
+        self,
+        *,
+        resolved: Path | None,
+        raw_path: str,
+        connection_target: str,
+        use_uri: bool,
+        busy_timeout_ms: int,
+        create: bool,
+        expected_file_identity: tuple[int, int, int] | None,
+    ) -> None:
+        """Validate and open one connection while local writers are quiescent."""
+
         if expected_file_identity is not None:
             assert resolved is not None
             self._require_expected_file_identity(resolved, expected_file_identity)
         if not create:
             assert resolved is not None
-            with _catalog_validation_snapshot(resolved) as validation_path:
-                validation_target = f"{validation_path.as_uri()}?mode=rw"
+            validation_deadline = time.monotonic() + busy_timeout_ms / 1_000
+            validation_failures = 0
+            while True:
                 try:
-                    validation_connection = sqlite3.connect(
-                        validation_target,
-                        timeout=busy_timeout_ms / 1_000,
-                        isolation_level=None,
-                        uri=True,
-                        **_SQLITE_CONNECT_OPTIONS,
+                    with _catalog_validation_snapshot(resolved) as validation_path:
+                        validation_target = f"{validation_path.as_uri()}?mode=rw"
+                        try:
+                            validation_connection = sqlite3.connect(
+                                validation_target,
+                                timeout=busy_timeout_ms / 1_000,
+                                isolation_level=None,
+                                uri=True,
+                                **_SQLITE_CONNECT_OPTIONS,
+                            )
+                        except sqlite3.Error as exc:
+                            raise CatalogError(
+                                "existing SQLite catalog could not be opened: "
+                                f"{raw_path}"
+                            ) from exc
+                        try:
+                            if expected_file_identity is not None:
+                                self._require_expected_file_identity(
+                                    resolved,
+                                    expected_file_identity,
+                                )
+                            validation_connection.row_factory = sqlite3.Row
+                            self._connection = validation_connection
+                            self._require_existing_catalog_identity()
+                            if expected_file_identity is not None:
+                                self._require_expected_file_identity(
+                                    resolved,
+                                    expected_file_identity,
+                                )
+                        except sqlite3.Error as exc:
+                            raise CatalogError(
+                                "existing SQLite catalog could not be initialized: "
+                                f"{raw_path}"
+                            ) from exc
+                        finally:
+                            validation_connection.close()
+                    _require_no_rollback_journal(resolved)
+                    # The SHM file is a derived WAL index, so the private copy
+                    # rebuilds it. Authenticate the original before SQLite may
+                    # map or update it.
+                    _require_safe_shared_memory(resolved)
+                    if expected_file_identity is not None:
+                        self._require_expected_file_identity(
+                            resolved,
+                            expected_file_identity,
+                        )
+                except _CatalogValidationNamespaceChanged as exc:
+                    validation_failures += 1
+                    now = time.monotonic()
+                    if (
+                        getattr(exc, "publication_cleanup_owners", ())
+                        or validation_failures >= _VALIDATION_NAMESPACE_MAX_ATTEMPTS
+                        or now >= validation_deadline
+                    ):
+                        raise
+                    retry_delay = min(
+                        _VALIDATION_RETRY_INITIAL_SECONDS
+                        * 2 ** min(validation_failures - 1, 5),
+                        _VALIDATION_RETRY_MAX_SECONDS,
                     )
-                except sqlite3.Error as exc:
-                    raise CatalogError(
-                        f"existing SQLite catalog could not be opened: {raw_path}"
-                    ) from exc
-                try:
-                    if expected_file_identity is not None:
-                        self._require_expected_file_identity(
-                            resolved,
-                            expected_file_identity,
-                        )
-                    validation_connection.row_factory = sqlite3.Row
-                    self._connection = validation_connection
-                    self._require_existing_catalog_identity()
-                    if expected_file_identity is not None:
-                        self._require_expected_file_identity(
-                            resolved,
-                            expected_file_identity,
-                        )
-                except sqlite3.Error as exc:
-                    raise CatalogError(
-                        f"existing SQLite catalog could not be initialized: {raw_path}"
-                    ) from exc
-                finally:
-                    validation_connection.close()
-            _require_no_rollback_journal(resolved)
-            # The SHM file is a derived WAL index, so the private copy rebuilds
-            # it.  Authenticate the original before SQLite may map or update it.
-            _require_safe_shared_memory(resolved)
-            if expected_file_identity is not None:
-                self._require_expected_file_identity(
-                    resolved,
-                    expected_file_identity,
-                )
+                    if retry_delay <= 0 or retry_delay >= validation_deadline - now:
+                        raise
+                    time.sleep(retry_delay)
+                    if time.monotonic() >= validation_deadline:
+                        raise
+                    continue
+                break
         try:
             connection = sqlite3.connect(
                 connection_target,
@@ -4176,6 +4361,9 @@ class SQLiteCatalog:
     def close(self) -> None:
         """Close the underlying database connection."""
         self._require_owner_pid()
+        self._path_coordination.lock.run(self._close_connection)
+
+    def _close_connection(self) -> None:
         owner = self._transaction_owner
         if owner is not None and not owner.settled:
             raise CatalogError("cannot close a catalog with an active transaction")
@@ -4240,6 +4428,7 @@ class SQLiteCatalog:
         self.close()
 
     @property
+    @_coordinated_catalog_method
     def schema_version(self) -> int:
         """Return the latest successfully applied schema migration."""
         self._require_owner_pid()
@@ -4250,6 +4439,8 @@ class SQLiteCatalog:
 
     @contextmanager
     def _transaction(self, *, immediate: bool = True) -> Iterator[None]:
+        """Settle one transaction inside a coordinated catalog method."""
+
         self._require_owner_pid()
         existing_owner = self._transaction_owner
         if existing_owner is not None and existing_owner.settled:
@@ -4285,6 +4476,7 @@ class SQLiteCatalog:
         if owner.primary_error is not None:
             raise owner.primary_error
 
+    @_coordinated_catalog_method
     def _migrate(self) -> None:
         with self._transaction():
             self._connection.execute(_SCHEMA_MIGRATIONS_SQL)
@@ -6477,6 +6669,7 @@ class SQLiteCatalog:
                     "persisted index job time exceeds its durable content clock"
                 )
 
+    @_coordinated_catalog_method
     def create_job(
         self,
         repository_id: str,
@@ -6599,6 +6792,7 @@ class SQLiteCatalog:
             self._job_views(job)
             return job
 
+    @_coordinated_catalog_method
     def get_job(self, job_id: str) -> IndexJobRecord:
         """Return one persisted index job after validating its canonical request."""
         normalized = _bounded_text(job_id, "job ID", max_length=80)
@@ -6609,6 +6803,7 @@ class SQLiteCatalog:
             self._job_views(job)
             return job
 
+    @_coordinated_catalog_method
     def get_job_views(self, job_id: str) -> tuple[IndexJobViewRecord, ...]:
         """Return the immutable requested view mapping for one index job."""
         normalized = _bounded_text(job_id, "job ID", max_length=80)
@@ -6618,6 +6813,7 @@ class SQLiteCatalog:
             )
             return self._job_views(job)
 
+    @_coordinated_catalog_method
     def get_job_attempt(
         self,
         job_id: str,
@@ -6636,6 +6832,7 @@ class SQLiteCatalog:
             self._job_views(job)
             return self._job_attempt(job.job_id, attempt_number)
 
+    @_coordinated_catalog_method
     def list_job_attempts(
         self,
         job_id: str,
@@ -6657,6 +6854,7 @@ class SQLiteCatalog:
             ).fetchall()
             return tuple(self._job_attempt_from_row(row) for row in rows)
 
+    @_coordinated_catalog_method
     def get_job_attempt_completion(
         self,
         job_id: str,
@@ -6688,6 +6886,7 @@ class SQLiteCatalog:
                 )
             return self._job_attempt_completion_from_row(row)
 
+    @_coordinated_catalog_method
     def list_job_attempt_completions(
         self,
         job_id: str,
@@ -6709,6 +6908,7 @@ class SQLiteCatalog:
             ).fetchall()
             return tuple(self._job_attempt_completion_from_row(row) for row in rows)
 
+    @_coordinated_catalog_method
     def scan_runnable_jobs(
         self,
         *,
@@ -6956,6 +7156,7 @@ class SQLiteCatalog:
         if cursor.rowcount != 1:
             raise CatalogConflictError("index job lease changed before release")
 
+    @_coordinated_catalog_method
     def acquire_job_lease(
         self,
         job_id: str,
@@ -7383,6 +7584,7 @@ class SQLiteCatalog:
             raise AssertionError("successful lease acquisition produced no lease")
         return lease
 
+    @_coordinated_catalog_method
     def renew_job_lease(
         self,
         job_id: str,
@@ -7459,6 +7661,7 @@ class SQLiteCatalog:
                 self._validate_current_job_attempt(job, lease)
             return lease
 
+    @_coordinated_catalog_method
     def heartbeat_job_attempt(
         self,
         job_id: str,
@@ -7552,6 +7755,7 @@ class SQLiteCatalog:
                 lease=lease,
             )
 
+    @_coordinated_catalog_method
     def request_job_cancel(self, job_id: str) -> IndexJobRecord:
         """Cancel a queued job or request cooperative cancellation while running."""
         normalized = _bounded_text(job_id, "job ID", max_length=80)
@@ -7674,6 +7878,7 @@ class SQLiteCatalog:
                 self._require_record("index_jobs", "job_id", job.job_id)
             )
 
+    @_coordinated_catalog_method
     def _write_job_event(
         self,
         job_id: str,
@@ -7981,6 +8186,7 @@ class SQLiteCatalog:
             outcome=outcome,
         )
 
+    @_coordinated_catalog_method
     def list_job_events(
         self,
         job_id: str,
@@ -8015,6 +8221,7 @@ class SQLiteCatalog:
             ).fetchall()
             return tuple(self._job_event_from_row(row) for row in rows)
 
+    @_coordinated_catalog_method
     def complete_job_attempt(
         self,
         job_id: str,
@@ -8227,6 +8434,7 @@ class SQLiteCatalog:
             error_message=error_message,
         )
 
+    @_coordinated_catalog_method
     def publish_job_outputs(
         self,
         job_id: str,
@@ -8587,6 +8795,7 @@ class SQLiteCatalog:
             raise AssertionError("job publication produced no completed job")
         return completed
 
+    @_coordinated_catalog_method
     def create_namespace(self, name: str) -> str:
         """Create an idempotent logical namespace and return its stable ID."""
         namespace = NamespaceIdentity(name)
@@ -8609,6 +8818,7 @@ class SQLiteCatalog:
                 )
         return namespace_id
 
+    @_coordinated_catalog_method
     def create_repository(
         self,
         repository_key: str,
@@ -8644,6 +8854,7 @@ class SQLiteCatalog:
                 )
         return repository_id
 
+    @_coordinated_catalog_method
     def create_source_revision(
         self,
         repository_id: str,
@@ -8718,6 +8929,7 @@ class SQLiteCatalog:
                 raise CatalogConflictError("source revision identity conflict")
         return source_revision_id
 
+    @_coordinated_catalog_method
     def create_view_profile(
         self,
         view_type: str,
@@ -8760,6 +8972,7 @@ class SQLiteCatalog:
                 raise CatalogConflictError("view profile identity conflict")
         return profile_id
 
+    @_coordinated_catalog_method
     def register_object(
         self,
         digest: str,
@@ -8814,6 +9027,7 @@ class SQLiteCatalog:
                 )
         return normalized_digest
 
+    @_coordinated_catalog_method
     def stage_view_generation(
         self,
         repository_id: str,
@@ -8965,6 +9179,7 @@ class SQLiteCatalog:
                 )
         return view_generation_id
 
+    @_coordinated_catalog_method
     def publish_snapshot(
         self,
         repository_id: str,
@@ -9531,6 +9746,7 @@ class SQLiteCatalog:
                     "existing ready snapshot membership conflicts"
                 ) from exc
 
+    @_coordinated_catalog_method
     def resolve_ref(self, repository_id: str, ref_name: str = "main") -> dict[str, Any]:
         """Resolve a named ref and return its pinned manifest summary."""
         repository = _required_text(repository_id, "repository ID")
@@ -9581,6 +9797,7 @@ class SQLiteCatalog:
                     "ref response exceeds retained-import bounds"
                 ) from exc
 
+    @_coordinated_catalog_method
     def get_manifest_summary(self, snapshot_id: str) -> dict[str, Any]:
         """Return the identity-closed summary for a published, ready snapshot."""
         normalized_snapshot = _required_text(snapshot_id, "snapshot ID")

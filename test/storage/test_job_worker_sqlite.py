@@ -13,6 +13,7 @@ from typing import Any, Callable
 
 import pytest
 
+import codenib.storage.sqlite_catalog as sqlite_catalog_module
 from codenib.storage import (
     INDEX_JOB_REQUEST_CONTRACT,
     BlobInfo,
@@ -436,13 +437,62 @@ def test_slow_executor_observes_repeated_independent_heartbeats(
 
 def test_running_cancel_is_observed_and_closes_only_cancelled(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     path = tmp_path / "cancel.sqlite3"
     job, _profiles = _create_job(path, view_types=("bm25",))
     probe = _CatalogProbe()
     factory = _SQLiteSessionFactory(path, probe)
+    main_thread = threading.get_ident()
     with _TrackingCAS(tmp_path / "cas") as object_store:
         executor = _CancellationExecutor(object_store)
+        copy_started = threading.Event()
+        heartbeat_attempted = threading.Event()
+        coordination = sqlite_catalog_module._catalog_path_coordination(path.resolve())
+        original_copy = sqlite_catalog_module._copy_validation_source
+        original_lock_acquire = sqlite_catalog_module._CancellationSafeRLock._acquire
+
+        def observe_heartbeat_lock(lock) -> None:
+            if (
+                lock is coordination.lock
+                and threading.get_ident() != main_thread
+                and copy_started.is_set()
+            ):
+                heartbeat_attempted.set()
+            original_lock_acquire(lock)
+
+        def slow_cancellation_wal_copy(
+            descriptor,
+            expected,
+            destination,
+            *,
+            label,
+        ):
+            if (
+                label == "WAL sidecar"
+                and threading.get_ident() == main_thread
+                and executor.entered.is_set()
+                and not copy_started.is_set()
+            ):
+                copy_started.set()
+                assert heartbeat_attempted.wait(timeout=5)
+            return original_copy(
+                descriptor,
+                expected,
+                destination,
+                label=label,
+            )
+
+        monkeypatch.setattr(
+            sqlite_catalog_module._CancellationSafeRLock,
+            "_acquire",
+            observe_heartbeat_lock,
+        )
+        monkeypatch.setattr(
+            sqlite_catalog_module,
+            "_copy_validation_source",
+            slow_cancellation_wal_copy,
+        )
         worker = _worker(
             factory,
             object_store,
@@ -457,6 +507,8 @@ def test_running_cancel_is_observed_and_closes_only_cancelled(
                 assert requested.cancel_requested
             result = future.result(timeout=10)
 
+        assert copy_started.is_set()
+        assert heartbeat_attempted.is_set()
         assert executor.observed.is_set()
         assert result.disposition is IndexJobWorkerDisposition.CANCELLED
         assert probe.publication_calls == 0
