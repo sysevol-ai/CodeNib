@@ -10,6 +10,7 @@ import inspect
 import json
 import os
 import subprocess
+import threading
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -18,6 +19,7 @@ from typing import TypeVar
 
 import pytest
 
+import codenib.artifacts.strict_vector as strict_vector_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
 import codenib.index.embedding.vector_store as vector_store_module
@@ -53,6 +55,7 @@ from codenib.compiler.cache_import import (
     publish_compiler_cache_bm25_job,
     publish_compiler_cache_vector_job,
 )
+from codenib.compiler.cache_lock import compiler_cache_lock
 from codenib.compiler.index_builders import (
     BM25IndexBuilder,
     IndexBuilderRegistry,
@@ -86,6 +89,7 @@ from codenib.storage import (
     VIEW_BUNDLE_SCHEMA,
     BlobInfo,
     IndexJobStatus,
+    IndexJobStopReason,
     IndexJobWorker,
     IndexJobWorkerDisposition,
     LocalCAS,
@@ -98,6 +102,35 @@ from codenib.storage import (
 _Result = TypeVar("_Result")
 _COMMIT = "a" * 40
 _REPOSITORY_KEY = "owner/repo"
+
+
+class _TestStopToken:
+    def __init__(self, *, notify_after_checks: int | None = None) -> None:
+        self._event = threading.Event()
+        self._lock = threading.Lock()
+        self._checks = 0
+        self._notify_after_checks = notify_after_checks
+        self.polled = threading.Event()
+
+    @property
+    def reason(self) -> IndexJobStopReason | None:
+        if self._event.is_set():
+            return IndexJobStopReason.CANCEL_REQUESTED
+        return None
+
+    def is_set(self) -> bool:
+        with self._lock:
+            self._checks += 1
+            threshold = self._notify_after_checks
+            if threshold is not None and self._checks >= threshold:
+                self.polled.set()
+        return self._event.is_set()
+
+    def wait(self, timeout: float | None = None) -> bool:
+        return self._event.wait(timeout)
+
+    def set(self) -> None:
+        self._event.set()
 
 
 class _DeterministicEmbedding:
@@ -793,6 +826,7 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "embedding_model",
         "native_index_authorization",
     } & set(preparation_signature.parameters)
+    assert "stop_token" in preparation_signature.parameters
     executor_signature = inspect.signature(CompilerCacheJobExecutor)
     assert not {
         "catalog",
@@ -924,6 +958,7 @@ def _prepare_bm25_job(
     job,
     views,
     cas: LocalCAS,
+    stop_token: _TestStopToken | None = None,
 ) -> CompilerCacheJobPreparationResult:
     return prepare_compiler_cache_job_view(
         fixture.cache,
@@ -938,6 +973,7 @@ def _prepare_bm25_job(
         workspace_provider=fixture.provider,
         repository_key=_REPOSITORY_KEY,
         object_store=cas,
+        stop_token=stop_token,
         environ={},
     )
 
@@ -991,6 +1027,72 @@ def test_prepare_compiler_cache_job_view_leaves_catalog_running(
             assert len(cas.put_chunk_receipts) == 3
             assert cas.retained_receipt_sets == []
             assert fixture.provider.run_count == 2
+    finally:
+        fixture.close()
+
+
+@pytest.mark.timeout(10)
+def test_prepare_compiler_cache_job_stops_while_waiting_for_cache_lock(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    token = _TestStopToken(notify_after_checks=4)
+    failures: list[BaseException] = []
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="cancelled-prepare-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            def prepare() -> None:
+                try:
+                    _prepare_bm25_job(
+                        fixture,
+                        job=running,
+                        views=views,
+                        cas=cas,
+                        stop_token=token,
+                    )
+                except BaseException as exc:  # noqa: B036 - asserted below
+                    failures.append(exc)
+
+            with compiler_cache_lock(fixture.cache, create=False):
+                thread = threading.Thread(target=prepare)
+                thread.start()
+                assert token.polled.wait(timeout=3)
+                token.set()
+                thread.join(timeout=3)
+                assert not thread.is_alive()
+
+            assert len(failures) == 1
+            assert type(failures[0]).__name__ == "_CompilerCacheJobStopped"
+            assert str(failures[0]) == "compiler cache job preparation stopped"
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.bm25_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.bm25_destination.exists()
+            assert not fixture.context_destination.exists()
     finally:
         fixture.close()
 
@@ -2971,6 +3073,32 @@ def _publish_vector_job(
     )
 
 
+def _prepare_vector_job(
+    fixture: _VectorJobFixture,
+    *,
+    job,
+    views,
+    cas: LocalCAS,
+    stop_token: _TestStopToken | None = None,
+) -> CompilerCacheJobPreparationResult:
+    return prepare_compiler_cache_job_view(
+        fixture.cache,
+        view_type="vector",
+        job=job,
+        views=views,
+        repository_source=fixture.source,
+        view_output_owner=fixture.vector_owner,
+        context_output_owner=fixture.context_owner,
+        view_destination=fixture.vector_destination,
+        context_destination=fixture.context_destination,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        object_store=cas,
+        stop_token=stop_token,
+        environ={},
+    )
+
+
 def test_prepare_compiler_cache_vector_job_uses_only_portable_schema8(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3043,6 +3171,125 @@ def test_prepare_compiler_cache_vector_job_uses_only_portable_schema8(
             assert len(cas.put_chunk_receipts) == 5
             assert cas.retained_receipt_sets == []
             assert catalog.get_job(queued.job_id) == running
+            assert fixture.provider.run_count == 2
+    finally:
+        fixture.close()
+
+
+def test_prepare_compiler_cache_vector_job_stops_during_document_recapture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="STOP_RECAPTURE")
+    plan = _expected_vector_job_plan(fixture)
+    token = _TestStopToken()
+    real_normalized_documents = strict_vector_module._normalized_documents
+
+    def stop_after_first_document(*args, **kwargs):
+        for document in real_normalized_documents(*args, **kwargs):
+            token.set()
+            yield document
+
+    monkeypatch.setattr(
+        strict_vector_module,
+        "_normalized_documents",
+        stop_after_first_document,
+    )
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            queued = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="stopped-vector-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+
+            with pytest.raises(
+                RuntimeError,
+                match="compiler cache job preparation stopped",
+            ):
+                _prepare_vector_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert cas.put_chunk_receipts == []
+            assert cas.retained_receipt_sets == []
+            assert fixture.provider.run_count == 0
+            assert fixture.vector_owner.state == "empty"
+            assert fixture.context_owner.state == "empty"
+            assert not fixture.vector_destination.exists()
+            assert not fixture.context_destination.exists()
+    finally:
+        fixture.close()
+
+
+def test_prepare_compiler_cache_vector_job_stops_between_cas_objects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixture = _vector_job_fixture(tmp_path, monkeypatch, marker="STOP_CAS")
+    plan = _expected_vector_job_plan(fixture)
+    token = _TestStopToken()
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = (
+                _register_vector_job_subject(catalog, fixture, plan)
+            )
+            queued = _create_vector_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="stopped-cas-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            views = catalog.get_job_views(queued.job_id)
+            cas.after_put = lambda count: token.set() if count == 1 else None
+
+            with pytest.raises(
+                RuntimeError,
+                match="compiler cache job preparation stopped",
+            ):
+                _prepare_vector_job(
+                    fixture,
+                    job=running,
+                    views=views,
+                    cas=cas,
+                    stop_token=token,
+                )
+
+            assert token.reason is IndexJobStopReason.CANCEL_REQUESTED
+            assert catalog.get_job(queued.job_id) == running
+            assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
+            assert len(cas.put_chunk_receipts) == 1
+            assert cas.retained_receipt_sets == []
             assert fixture.provider.run_count == 2
     finally:
         fixture.close()

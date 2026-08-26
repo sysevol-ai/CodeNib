@@ -30,6 +30,7 @@ COMPILER_CACHE_LOCK_FILENAME = ".index-compiler.lock"
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 _LOCK_OPEN_RETRIES = 8
 _WINDOWS_LOCK_RETRY_SECONDS = 0.05
+_INTERRUPTIBLE_LOCK_RETRY_SECONDS = 0.05
 _ACTIVE_POSIX_LOCK_DESCRIPTORS: set[int] = set()
 _POSIX_FORK_GENERATION = 0
 _POSIX_LOCK_LIFECYCLE_DEPTH = threading.local()
@@ -855,6 +856,7 @@ def _posix_compiler_cache_lock(
     cache_dir: str | Path,
     *,
     create: bool = True,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterator[None]:
     cache_directory = (
         _open_posix_cache_directory(cache_dir)
@@ -891,8 +893,22 @@ def _posix_compiler_cache_lock(
                     create=False,
                 )
             assert fcntl is not None  # narrowed by _require_posix_primitives
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            if check_cancelled is None:
+                fcntl.flock(descriptor, fcntl.LOCK_EX)
+            else:
+                while True:
+                    check_cancelled()
+                    try:
+                        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except OSError as exc:
+                        if exc.errno not in {errno.EACCES, errno.EAGAIN}:
+                            raise
+                        time.sleep(_INTERRUPTIBLE_LOCK_RETRY_SECONDS)
+                        continue
+                    break
             locked = True
+            if check_cancelled is not None:
+                check_cancelled()
             _validate_posix_lock_entry(
                 descriptor,
                 directory_descriptor,
@@ -1067,11 +1083,17 @@ def _open_windows_lock_file(
     raise RuntimeError(f"compiler cache lock changed repeatedly: {lock_path}")
 
 
-def _acquire_windows_lock(descriptor: int) -> None:
+def _acquire_windows_lock(
+    descriptor: int,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
     assert msvcrt is not None
     runtime: Any = msvcrt
     contention = {errno.EACCES, errno.EAGAIN, errno.EDEADLK}
     while True:
+        if check_cancelled is not None:
+            check_cancelled()
         # The CRT permits a locked range to extend beyond EOF, so an empty
         # coordination inode needs no initialization write.
         os.lseek(descriptor, 0, os.SEEK_SET)
@@ -1120,6 +1142,7 @@ def _windows_compiler_cache_lock(
     cache_dir: str | Path,
     *,
     create: bool = True,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterator[None]:
     if msvcrt is None:
         raise RuntimeError("compiler cache locking requires Windows msvcrt support")
@@ -1150,8 +1173,16 @@ def _windows_compiler_cache_lock(
                 descriptor_owner,
                 create=False,
             )
-        _acquire_windows_lock(descriptor)
+        if check_cancelled is None:
+            _acquire_windows_lock(descriptor)
+        else:
+            _acquire_windows_lock(
+                descriptor,
+                check_cancelled=check_cancelled,
+            )
         locked = True
+        if check_cancelled is not None:
+            check_cancelled()
         if _validate_windows_cache(cache) != cache_identity:
             raise RuntimeError(f"compiler cache path changed: {cache}")
         _validate_windows_lock_entry(
@@ -1196,6 +1227,7 @@ def compiler_cache_lock(
     cache_dir: str | Path,
     *,
     create: bool = True,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterator[None]:
     """Serialize cooperating users of one private compiler cache.
 
@@ -1209,6 +1241,12 @@ def compiler_cache_lock(
     and its fixed lock file must already exist, and neither is created while
     acquiring the lease.
 
+    ``check_cancelled`` may be supplied by a cooperative caller that needs
+    bounded lock-wait cancellation. It is called before each nonblocking lock
+    attempt and once after acquisition; it must return normally to continue or
+    raise the caller's cancellation exception. Existing callers retain the
+    blocking lock path when no callback is supplied.
+
     This helper protects participating compiler/importer operations from each
     other.  It does not validate or defend the manifest and view tree against
     a user who actively replaces paths while the lock is held.
@@ -1216,19 +1254,35 @@ def compiler_cache_lock(
 
     if type(create) is not bool:
         raise TypeError("compiler cache lock create policy must be an exact bool")
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("compiler cache lock cancellation check must be callable")
     if os.name == "nt":
         lock = (
-            _windows_compiler_cache_lock(cache_dir)
+            _windows_compiler_cache_lock(
+                cache_dir,
+                check_cancelled=check_cancelled,
+            )
             if create
-            else _windows_compiler_cache_lock(cache_dir, create=False)
+            else _windows_compiler_cache_lock(
+                cache_dir,
+                create=False,
+                check_cancelled=check_cancelled,
+            )
         )
         with lock:
             yield
         return
     lock = (
-        _posix_compiler_cache_lock(cache_dir)
+        _posix_compiler_cache_lock(
+            cache_dir,
+            check_cancelled=check_cancelled,
+        )
         if create
-        else _posix_compiler_cache_lock(cache_dir, create=False)
+        else _posix_compiler_cache_lock(
+            cache_dir,
+            create=False,
+            check_cancelled=check_cancelled,
+        )
     )
     with lock:
         yield

@@ -25,7 +25,7 @@ import inspect
 import json
 import os
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -714,8 +714,22 @@ def _validate_context_matches_plan(
         )
 
 
-def _drain(chunks: Iterable[bytes]) -> None:
-    for _chunk in chunks:
+def _interruptible_chunks(
+    chunks: Iterable[bytes],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[bytes]:
+    for chunk in chunks:
+        if check_cancelled is not None:
+            check_cancelled()
+        yield chunk
+
+
+def _drain(
+    chunks: Iterable[bytes],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
+    for _chunk in _interruptible_chunks(chunks, check_cancelled):
         pass
 
 
@@ -735,11 +749,14 @@ def _prepare_manifest_views_inside_authority(
     max_bundle_files: int,
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedManifestViews:
     if type(receipt) is not PublishedWorkspaceReceipt:
         raise TypeError("retained context receipt has an invalid type")
     if type(publication) is not PublicationDirectoryReader:
         raise TypeError("retained context reader has an invalid type")
+    if check_cancelled is not None:
+        check_cancelled()
     artifact_plan_digest = _snapshot_workspace_plan_digest(receipt)
     verified = verify_context_artifact_reader(
         publication,
@@ -754,6 +771,8 @@ def _prepare_manifest_views_inside_authority(
         verified=verified,
         repository_key=repository_key,
     )
+    if check_cancelled is not None:
+        check_cancelled()
 
     planned: list[
         tuple[ViewImportIntent, PublicationDirectoryReader, PlannedViewBundle]
@@ -761,6 +780,8 @@ def _prepare_manifest_views_inside_authority(
     # Every selected view is semantically validated and fully bundle-planned
     # before the first object-store producer is invoked.
     for intent in plan.views:
+        if check_cancelled is not None:
+            check_cancelled()
         prefix = PurePosixPath("views") / intent.view_type
         view_reader = publication.subtree(prefix)
         validate_content_bound_portable_query_view_reader(
@@ -781,20 +802,26 @@ def _prepare_manifest_views_inside_authority(
             max_bytes=max_bundle_bytes,
             max_metadata_bytes=max_bundle_metadata_bytes,
         )
+        if check_cancelled is not None:
+            check_cancelled()
         planned.append((intent, view_reader, bundle))
 
     prepared_views: list[_PreparedView] = []
     stored_by_digest: dict[str, _StoredObject] = {}
     for intent, view_reader, bundle in planned:
+        if check_cancelled is not None:
+            check_cancelled()
         raw_bundle = consume_planned_view_bundle(
             publication,
             bundle,
             lambda chunks, bundle=bundle: object_store.put_chunks(  # type: ignore[attr-defined]
-                chunks,
+                _interruptible_chunks(chunks, check_cancelled),
                 bundle.digest,
                 bundle.byte_size,
             ),
         )
+        if check_cancelled is not None:
+            check_cancelled()
         bundle_object = _exact_blob_object(
             raw_bundle,
             expected_digest=bundle.digest,
@@ -811,6 +838,8 @@ def _prepare_manifest_views_inside_authority(
 
         members: list[tuple[str, int, int, _StoredObject]] = []
         for member in bundle.members:
+            if check_cancelled is not None:
+                check_cancelled()
             existing = stored_by_digest.get(member.digest)
             with view_reader.iter_authenticated_chunks(
                 member.path,
@@ -818,10 +847,12 @@ def _prepare_manifest_views_inside_authority(
             ) as chunks:
                 if existing is None:
                     raw_member = object_store.put_chunks(  # type: ignore[attr-defined]
-                        chunks,
+                        _interruptible_chunks(chunks, check_cancelled),
                         member.digest,
                         member.byte_size,
                     )
+                    if check_cancelled is not None:
+                        check_cancelled()
                     stored = _exact_blob_object(
                         raw_member,
                         expected_digest=member.digest,
@@ -831,7 +862,7 @@ def _prepare_manifest_views_inside_authority(
                     )
                     stored_by_digest[stored.record.digest] = stored
                 else:
-                    _drain(chunks)
+                    _drain(chunks, check_cancelled=check_cancelled)
                     if (
                         existing.record.byte_size != member.byte_size
                         or existing.record.media_type != _MEMBER_MEDIA_TYPE
@@ -860,6 +891,9 @@ def _prepare_manifest_views_inside_authority(
             )
         )
 
+    if check_cancelled is not None:
+        check_cancelled()
+
     return _PreparedManifestViews(
         artifact_plan_digest=artifact_plan_digest,
         views=tuple(prepared_views),
@@ -882,6 +916,7 @@ def _prepare_job_view_artifacts_inside_authority(
     max_bundle_files: int,
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[IndexJobViewArtifact, ...]:
     """Ingest exact selected-view receipts without a manifest projection."""
 
@@ -900,9 +935,12 @@ def _prepare_job_view_artifacts_inside_authority(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        check_cancelled=check_cancelled,
     )
     artifacts: list[IndexJobViewArtifact] = []
     for view in prepared.views:
+        if check_cancelled is not None:
+            check_cancelled()
         members = _unique_stored_objects(member[3] for member in view.members)
         artifact = IndexJobViewArtifact.create(
             view.intent.view_type,
@@ -931,7 +969,11 @@ def _prepare_job_view_artifacts_inside_authority(
                 "retained job artifact differs from its prepared view generation"
             )
         artifacts.append(artifact)
+    if check_cancelled is not None:
+        check_cancelled()
     repository_source.verify_snapshot()
+    if check_cancelled is not None:
+        check_cancelled()
     return tuple(artifacts)
 
 

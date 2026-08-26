@@ -478,6 +478,51 @@ def test_serializes_threads(tmp_path: Path) -> None:
     assert errors == []
 
 
+@pytest.mark.timeout(5)
+def test_interruptible_wait_releases_claim_without_entering_cache(
+    tmp_path: Path,
+) -> None:
+    cache = tmp_path / "cache"
+    polled = threading.Event()
+    cancelled = threading.Event()
+    entered = threading.Event()
+    failures: list[BaseException] = []
+
+    class LockWaitCancelled(RuntimeError):
+        pass
+
+    def check_cancelled() -> None:
+        polled.set()
+        if cancelled.is_set():
+            raise LockWaitCancelled("stop requested")
+
+    def contender() -> None:
+        try:
+            with compiler_cache_lock(
+                cache,
+                create=False,
+                check_cancelled=check_cancelled,
+            ):
+                entered.set()
+        except BaseException as exc:  # noqa: B036 - asserted in parent
+            failures.append(exc)
+
+    with compiler_cache_lock(cache):
+        thread = threading.Thread(target=contender)
+        thread.start()
+        assert polled.wait(timeout=2)
+        assert not entered.is_set()
+        cancelled.set()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+
+    assert not entered.is_set()
+    assert len(failures) == 1
+    assert type(failures[0]) is LockWaitCancelled
+    with compiler_cache_lock(cache, create=False):
+        pass
+
+
 @pytest.mark.skipif(
     os.name not in {"posix", "nt"},
     reason="requires a supported process-locking platform",

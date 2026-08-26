@@ -19,7 +19,7 @@ import hashlib
 import inspect
 import re
 import stat
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -63,6 +63,7 @@ from ..source_fingerprint import (
 from ..storage.job_worker import (
     IndexJobExecutionContext,
     IndexJobExecutionResult,
+    IndexJobStopToken,
     IndexJobViewExecutionResult,
 )
 from ..storage.models import (
@@ -127,6 +128,25 @@ from .snapshot_store import normalize_repo
 _COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
 _SUPPORTED_CACHE_VIEWS = ("bm25", "vector")
 _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
+
+
+class _CompilerCacheJobStopped(RuntimeError):
+    """Internal cooperative stop signal for prepare-only worker work."""
+
+
+def _compiler_cache_job_stop_check(
+    stop_token: IndexJobStopToken | None,
+) -> Callable[[], None] | None:
+    if stop_token is None:
+        return None
+    if not isinstance(stop_token, IndexJobStopToken):
+        raise TypeError("compiler cache job stop token is invalid")
+
+    def check_cancelled() -> None:
+        if stop_token.is_set():
+            raise _CompilerCacheJobStopped("compiler cache job preparation stopped")
+
+    return check_cancelled
 
 
 class CompilerCacheTopologyGuard(Protocol):
@@ -1553,6 +1573,7 @@ def _plan_cache_view(
     view_config: Mapping[str, Any],
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Any:
     if view == "bm25":
         return _plan_recaptured_bm25_view(
@@ -1562,6 +1583,7 @@ def _plan_cache_view(
             view_config=view_config,
             forbidden_paths=forbidden_paths,
             environ=environ,
+            check_cancelled=check_cancelled,
         )
     if view == "vector":
         return _plan_recaptured_vector_view(
@@ -1571,6 +1593,7 @@ def _plan_cache_view(
             view_config=view_config,
             forbidden_paths=forbidden_paths,
             environ=environ,
+            check_cancelled=check_cancelled,
         )
     raise AssertionError(f"unsupported compiler cache view: {view}")
 
@@ -1587,6 +1610,7 @@ def _publish_cache_view(
     view_config: Mapping[str, Any],
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     if view == "bm25":
         return _publish_recaptured_bm25_view(
@@ -1599,6 +1623,7 @@ def _publish_cache_view(
             view_config=view_config,
             forbidden_paths=forbidden_paths,
             environ=environ,
+            check_cancelled=check_cancelled,
         )
     if view == "vector":
         return _publish_recaptured_vector_view(
@@ -1611,6 +1636,7 @@ def _publish_cache_view(
             view_config=view_config,
             forbidden_paths=forbidden_paths,
             environ=environ,
+            check_cancelled=check_cancelled,
         )
     raise AssertionError(f"unsupported compiler cache view: {view}")
 
@@ -1811,11 +1837,14 @@ def _prepare_compiler_cache_import_locked(
     workspace_provider: StrictWorkspaceProvider,
     expected_manifest: RepoManifest | None = None,
     job_binding: _CompilerCacheJobBinding | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedCompilerCacheImport:
     """Recapture selected views while the caller holds the cache lease."""
 
     cache = operation.cache
     inputs = operation.inputs
+    if check_cancelled is not None:
+        check_cancelled()
     source_manifest_bytes = _read_manifest(
         cache,
         max_manifest_bytes=inputs.max_manifest_bytes,
@@ -1824,6 +1853,8 @@ def _prepare_compiler_cache_import_locked(
         source_manifest_bytes,
         max_manifest_bytes=inputs.max_manifest_bytes,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     if expected_manifest is not None:
         if type(expected_manifest) is not RepoManifest:
             raise TypeError("compiler update returned an invalid repository manifest")
@@ -1854,6 +1885,8 @@ def _prepare_compiler_cache_import_locked(
     )
     if source_views != operation.fixed_source_views:  # pragma: no cover
         raise AssertionError("compiler cache fixed view sources changed")
+    if check_cancelled is not None:
+        check_cancelled()
 
     # Every raw-cache recapture plan plus the exact portable manifest and
     # retained import plan exists before the first provider call can mutate
@@ -1862,6 +1895,8 @@ def _prepare_compiler_cache_import_locked(
     # workspace mutation.
     planned_views: dict[str, Any] = {}
     for view in views:
+        if check_cancelled is not None:
+            check_cancelled()
         planned = _plan_cache_view(
             view,
             source_views[view],
@@ -1870,7 +1905,10 @@ def _prepare_compiler_cache_import_locked(
             view_config=entries[view].config,
             forbidden_paths=operation.policy_forbidden,
             environ=inputs.environment,
+            check_cancelled=check_cancelled,
         )
+        if check_cancelled is not None:
+            check_cancelled()
         if view == "bm25":
             _require_source_fingerprints(entries[view], planned)
         _planned_adjustments(view, planned)
@@ -1885,6 +1923,8 @@ def _prepare_compiler_cache_import_locked(
         views=views,
         max_manifest_bytes=inputs.max_manifest_bytes,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     if (
         import_plan.selection.selected_views != views
         or import_plan.manifest.to_dict() != portable_manifest.to_dict()
@@ -1903,6 +1943,8 @@ def _prepare_compiler_cache_import_locked(
 
     recaptures: list[CompilerCacheViewRecaptureResult] = []
     for view in views:
+        if check_cancelled is not None:
+            check_cancelled()
         planned = planned_views[view]
         adjustments = _publish_cache_view(
             view,
@@ -1915,7 +1957,10 @@ def _prepare_compiler_cache_import_locked(
             view_config=entries[view].config,
             forbidden_paths=operation.policy_forbidden,
             environ=inputs.environment,
+            check_cancelled=check_cancelled,
         )
+        if check_cancelled is not None:
+            check_cancelled()
         if adjustments != _planned_adjustments(view, planned):
             raise StorageIntegrityError(
                 f"compiler cache {view} publication differs from its exact plan"
@@ -1930,6 +1975,8 @@ def _prepare_compiler_cache_import_locked(
             )
         )
 
+    if check_cancelled is not None:
+        check_cancelled()
     planned_context = plan_context_artifact_strict(
         portable_manifest,
         repository=inputs.repository_key,
@@ -1944,6 +1991,8 @@ def _prepare_compiler_cache_import_locked(
         raise StorageIntegrityError(
             "compiler cache context plan differs from its portable manifest"
         )
+    if check_cancelled is not None:
+        check_cancelled()
     context_artifact = publish_planned_context_artifact_strict(
         operation.context_output,
         planned=planned_context,
@@ -1955,6 +2004,8 @@ def _prepare_compiler_cache_import_locked(
         output_receipt_owner=context_output_owner,
         environ=inputs.environment,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     observed_manifest_bytes = _read_context_manifest(
         context_output_owner,
         max_manifest_bytes=inputs.max_manifest_bytes,
@@ -1974,6 +2025,8 @@ def _prepare_compiler_cache_import_locked(
         raise StorageIntegrityError(
             "compiler cache repository manifest changed during recapture"
         )
+    if check_cancelled is not None:
+        check_cancelled()
     return _PreparedCompilerCacheImport(
         manifest=manifest,
         recaptures=tuple(recaptures),
@@ -2032,6 +2085,7 @@ def _ingest_prepared_compiler_cache_job(
     repository_source: RepositorySourceBinding,
     context_output_owner: PublishedWorkspaceReceiptOwner,
     object_store: RetainedImportObjectStore,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> IndexJobViewArtifact:
     """Ingest one prepared cache view without granting catalog authority."""
 
@@ -2041,6 +2095,8 @@ def _ingest_prepared_compiler_cache_job(
         raise TypeError("compiler cache job operation is invalid")
     if type(binding) is not _CompilerCacheJobBinding:
         raise TypeError("compiler cache job binding is invalid")
+    if check_cancelled is not None:
+        check_cancelled()
     _require_compiler_cache_job_profile(
         binding,
         preparation.import_plan,
@@ -2062,8 +2118,11 @@ def _ingest_prepared_compiler_cache_job(
             max_bundle_files=operation.inputs.max_bundle_files,
             max_bundle_bytes=operation.inputs.max_bundle_bytes,
             max_bundle_metadata_bytes=operation.inputs.max_bundle_metadata_bytes,
+            check_cancelled=check_cancelled,
         )
     )
+    if check_cancelled is not None:
+        check_cancelled()
     if type(artifacts) is not tuple or len(artifacts) != 1:
         raise StorageIntegrityError(
             f"compiler cache {view_type} ingestion returned invalid job artifacts"
@@ -2081,6 +2140,8 @@ def _ingest_prepared_compiler_cache_job(
         raise StorageIntegrityError(
             "compiler cache ingestion returned a different requested view"
         )
+    if check_cancelled is not None:
+        check_cancelled()
     return artifact
 
 
@@ -2180,6 +2241,7 @@ def prepare_compiler_cache_job_view(
     repository_key: str,
     object_store: RetainedImportObjectStore,
     namespace_name: str = DEFAULT_NAMESPACE_NAME,
+    stop_token: IndexJobStopToken | None = None,
     max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
     max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
     max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
@@ -2195,9 +2257,14 @@ def prepare_compiler_cache_job_view(
     token. It authenticates the already-claimed worker job, recaptures the
     requested FULL cache view, and stores the immutable publication closure in
     the caller-provided object store. The durable worker remains the sole
-    authority that may publish the returned artifact.
+    authority that may publish the returned artifact. When supplied, the
+    worker's read-only stop token makes lock waits, recapture, and CAS
+    ingestion cooperatively interruptible without exposing mutation authority.
     """
 
+    check_cancelled = _compiler_cache_job_stop_check(stop_token)
+    if check_cancelled is not None:
+        check_cancelled()
     operation, binding = _preflight_cache_job_preparation_operation(
         cache_dir,
         view_type=view_type,
@@ -2221,7 +2288,13 @@ def prepare_compiler_cache_job_view(
         forbidden_paths=forbidden_paths,
         environ=environ,
     )
-    with compiler_cache_lock(operation.cache, create=False):
+    if check_cancelled is not None:
+        check_cancelled()
+    with compiler_cache_lock(
+        operation.cache,
+        create=False,
+        check_cancelled=check_cancelled,
+    ):
         preparation = _prepare_compiler_cache_import_locked(
             operation,
             views=(view_type,),
@@ -2229,7 +2302,10 @@ def prepare_compiler_cache_job_view(
             context_output_owner=context_output_owner,
             workspace_provider=workspace_provider,
             job_binding=binding,
+            check_cancelled=check_cancelled,
         )
+    if check_cancelled is not None:
+        check_cancelled()
     artifact = _ingest_prepared_compiler_cache_job(
         preparation,
         operation,
@@ -2238,11 +2314,14 @@ def prepare_compiler_cache_job_view(
         repository_source=repository_source,
         context_output_owner=context_output_owner,
         object_store=object_store,
+        check_cancelled=check_cancelled,
     )
     if len(preparation.recaptures) != 1:
         raise StorageIntegrityError(
             "compiler cache job preparation returned invalid recapture evidence"
         )
+    if check_cancelled is not None:
+        check_cancelled()
     return CompilerCacheJobPreparationResult(
         job=binding.job,
         view=binding.view,
@@ -2306,6 +2385,7 @@ class CompilerCacheJobExecutor:
             repository_key=self.repository_key,
             object_store=self.object_store,
             namespace_name=self.namespace_name,
+            stop_token=context.control.stop_token,
             max_manifest_bytes=self.max_manifest_bytes,
             max_context_files=self.max_context_files,
             max_context_bytes=self.max_context_bytes,

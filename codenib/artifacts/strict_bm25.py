@@ -10,7 +10,7 @@ import hashlib
 import inspect
 import json
 import os
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -67,6 +67,30 @@ _WINDOWS_DRIVE_PREFIX = tuple(
 _CURRENT_BM25_BUILDER_SCHEMA = 8
 _STRICT_BM25_PLAN_DOMAIN = b"codenib-portable-bm25-strict-workspace-v1"
 _STRICT_BM25_FILES = frozenset({"documents.json", "bm25_metadata.json"})
+
+
+class _InterruptibleReader:
+    __slots__ = ("_source", "_check_cancelled")
+
+    def __init__(self, source: Any, check_cancelled: Callable[[], None]) -> None:
+        self._source = source
+        self._check_cancelled = check_cancelled
+
+    def read(self, size: int = -1) -> bytes:
+        self._check_cancelled()
+        block = self._source.read(size)
+        self._check_cancelled()
+        return block
+
+
+def _interruptible_chunks(
+    chunks: Iterable[bytes],
+    check_cancelled: Callable[[], None] | None,
+) -> Iterator[bytes]:
+    for chunk in chunks:
+        if check_cancelled is not None:
+            check_cancelled()
+        yield chunk
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -575,16 +599,25 @@ def _normalized_documents(
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> Iterable[dict[str, Any]]:
+    if check_cancelled is not None:
+        check_cancelled()
     with reader.open_file(
         "documents.json",
         max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
     ) as source:
         documents = iter_bounded_json_array(
-            source,
+            (
+                source
+                if check_cancelled is None
+                else _InterruptibleReader(source, check_cancelled)
+            ),
             label="portable BM25 documents",
         )
         for index, document in enumerate(documents):
+            if check_cancelled is not None:
+                check_cancelled()
             if not isinstance(document, dict) or set(document) != {
                 "page_content",
                 "metadata",
@@ -624,6 +657,8 @@ def _normalized_documents(
                 label=f"portable BM25 document {index}",
             )
             yield normalized
+    if check_cancelled is not None:
+        check_cancelled()
 
 
 def _record_chunks(
@@ -631,6 +666,7 @@ def _record_chunks(
     chunks: Iterable[bytes],
     *,
     max_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> TreeFileRecord:
     iterator = iter(chunks)
     digest = hashlib.sha256()
@@ -638,6 +674,8 @@ def _record_chunks(
     primary_error: BaseException | None = None
     try:
         for chunk in iterator:
+            if check_cancelled is not None:
+                check_cancelled()
             if not isinstance(chunk, bytes):
                 raise TypeError("strict BM25 output chunks must be bytes")
             size += len(chunk)
@@ -677,7 +715,10 @@ def _payloads(
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[bytes, Iterable[bytes]]:
+    if check_cancelled is not None:
+        check_cancelled()
     # Apply whole-file lexical framing before any decoded document allocation.
     # Aggregate counts are bounded by authenticated bytes; the iterator below
     # independently preserves the stricter per-document complexity budgets.
@@ -688,12 +729,18 @@ def _payloads(
         max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
     ) as source:
         validate_bounded_json_stream(
-            source,
+            (
+                source
+                if check_cancelled is None
+                else _InterruptibleReader(source, check_cancelled)
+            ),
             label="portable BM25 documents",
             max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
             max_nodes=lexical_budget,
             max_lexical_tokens=lexical_budget,
         )
+    if check_cancelled is not None:
+        check_cancelled()
     metadata = _load_json_object(
         reader,
         "bm25_metadata.json",
@@ -740,6 +787,7 @@ def _payloads(
             forbidden_paths=forbidden_paths,
             environ=environ,
             authenticated_source_files=authenticated_source_files,
+            check_cancelled=check_cancelled,
         )
     )
     return metadata_bytes, documents
@@ -948,7 +996,10 @@ def _planned_view_from_publication(
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
     source_label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> PlannedBm25View:
+    if check_cancelled is not None:
+        check_cancelled()
     ownership, source_records, reader = _captured_source_view(
         expected_ownership,
         publication,
@@ -960,12 +1011,16 @@ def _planned_view_from_publication(
         forbidden_paths=forbidden_paths,
         environ=environ,
         authenticated_source_files=authenticated_source_files,
+        check_cancelled=check_cancelled,
     )
     documents_record = _record_chunks(
         "documents.json",
         document_chunks,
         max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
+        check_cancelled=check_cancelled,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     metadata_record = TreeFileRecord(
         path="bm25_metadata.json",
         mode=0o600,
@@ -1124,7 +1179,10 @@ def _candidate_records(
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[TreeFileRecord, ...]:
+    if check_cancelled is not None:
+        check_cancelled()
     ownership = candidate.capture_ownership(entry_policy=_entry_policy)
     observed = tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
     if (
@@ -1143,6 +1201,7 @@ def _candidate_records(
         forbidden_paths=forbidden_paths,
         environ=environ,
         authenticated_source_files=authenticated_source_files,
+        check_cancelled=check_cancelled,
     )
     records = tuple(
         sorted(
@@ -1151,6 +1210,7 @@ def _candidate_records(
                     "documents.json",
                     document_chunks,
                     max_bytes=_MAX_DOCUMENTS_JSON_BYTES,
+                    check_cancelled=check_cancelled,
                 ),
                 TreeFileRecord(
                     path="bm25_metadata.json",
@@ -1163,6 +1223,8 @@ def _candidate_records(
         )
     )
     reader.verify_root()
+    if check_cancelled is not None:
+        check_cancelled()
     return records
 
 
@@ -1328,7 +1390,10 @@ def _plan_recaptured_bm25_view_with_identity(
     view_config: Mapping[str, Any],
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> PlannedBm25View:
+    if check_cancelled is not None:
+        check_cancelled()
     config_digest, forbidden, authenticated_files = _policy(
         repository_identity,
         view_config,
@@ -1339,6 +1404,8 @@ def _plan_recaptured_bm25_view_with_identity(
         lexical_source,
         entry_policy=_entry_policy,
     )
+    if check_cancelled is not None:
+        check_cancelled()
 
     def consume_source(publication: PublicationDirectoryReader) -> PlannedBm25View:
         return _planned_view_from_publication(
@@ -1350,6 +1417,7 @@ def _plan_recaptured_bm25_view_with_identity(
             environ=environ,
             authenticated_source_files=authenticated_files,
             source_label="strict BM25 recapture source",
+            check_cancelled=check_cancelled,
         )
 
     with repository_source.read_session():
@@ -1368,6 +1436,7 @@ def _plan_recaptured_bm25_view(
     view_config: Mapping[str, Any],
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> PlannedBm25View:
     """Privately pre-plan an ordinary BM25 tree without workspace mutation."""
 
@@ -1375,6 +1444,8 @@ def _plan_recaptured_bm25_view(
         raise TypeError("strict BM25 repository source has an invalid type")
     if not repository_source.usable:
         raise RuntimeError("strict BM25 repository source is not usable")
+    if check_cancelled is not None:
+        check_cancelled()
     repository_identity = _authenticated_repository_identity(repository_source)
     lexical_source, _lexical_destination = _recapture_locations(
         source,
@@ -1394,6 +1465,7 @@ def _plan_recaptured_bm25_view(
         view_config=config_snapshot,
         forbidden_paths=forbidden_tail,
         environ=environment,
+        check_cancelled=check_cancelled,
     )
 
 
@@ -1409,7 +1481,10 @@ def _publish_recaptured_bm25_view_with_identity(
     view_config: Mapping[str, Any],
     forbidden_paths: tuple[Path, ...],
     environ: Mapping[str, str],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
+    if check_cancelled is not None:
+        check_cancelled()
     config_digest, forbidden, authenticated_files = _policy(
         repository_identity,
         view_config,
@@ -1428,6 +1503,8 @@ def _publish_recaptured_bm25_view_with_identity(
         lexical_source,
         entry_policy=_entry_policy,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     _require_plan_for_ownership(
         planned,
         source_ownership=observed_source_ownership,
@@ -1442,6 +1519,8 @@ def _publish_recaptured_bm25_view_with_identity(
     )
 
     def operation(session: StrictWorkspaceSession) -> None:
+        if check_cancelled is not None:
+            check_cancelled()
         if session.request != request:
             raise RuntimeError("strict BM25 provider changed its request")
 
@@ -1462,11 +1541,18 @@ def _publish_recaptured_bm25_view_with_identity(
                 forbidden_paths=forbidden,
                 environ=environ,
                 authenticated_source_files=authenticated_files,
+                check_cancelled=check_cancelled,
             )
             written = tuple(
                 sorted(
                     (
-                        session.write_file("documents.json", document_chunks),
+                        session.write_file(
+                            "documents.json",
+                            _interruptible_chunks(
+                                document_chunks,
+                                check_cancelled,
+                            ),
+                        ),
                         session.write_file("bm25_metadata.json", (metadata_bytes,)),
                     ),
                     key=lambda item: item.path,
@@ -1486,6 +1572,7 @@ def _publish_recaptured_bm25_view_with_identity(
                         forbidden_paths=forbidden,
                         environ=environ,
                         authenticated_source_files=authenticated_files,
+                        check_cancelled=check_cancelled,
                     )
                     != planned.output_records
                 ):
@@ -1497,7 +1584,11 @@ def _publish_recaptured_bm25_view_with_identity(
                 planned.source_ownership,  # type: ignore[arg-type]
                 replay_source,
             )
+        if check_cancelled is not None:
+            check_cancelled()
         session.publish_validated(validate_candidate)
+        if check_cancelled is not None:
+            check_cancelled()
 
     # Recheck mutable authority state after the potentially long source scan
     # and immediately before the provider can provision its first workspace.
@@ -1506,6 +1597,8 @@ def _publish_recaptured_bm25_view_with_identity(
         workspace_provider=workspace_provider,
         output_receipt_owner=output_receipt_owner,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     _require_missing_recapture_destination(lexical_destination)
     run_strict_workspace(
         workspace_provider,
@@ -1513,6 +1606,8 @@ def _publish_recaptured_bm25_view_with_identity(
         receipt_owner=output_receipt_owner,
         operation=operation,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     if not output_receipt_owner.active:
         raise RuntimeError("strict BM25 publication returned without a receipt")
     receipt = output_receipt_owner.receipt
@@ -1532,6 +1627,7 @@ def _publish_recaptured_bm25_view(
     view_config: Mapping[str, Any],
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Privately publish one exact pre-planned ordinary BM25 tree."""
 
@@ -1540,6 +1636,8 @@ def _publish_recaptured_bm25_view(
         workspace_provider=workspace_provider,
         output_receipt_owner=output_receipt_owner,
     )
+    if check_cancelled is not None:
+        check_cancelled()
     repository_identity = _authenticated_repository_identity(repository_source)
     lexical_source, lexical_destination = _recapture_locations(
         source,
@@ -1563,6 +1661,7 @@ def _publish_recaptured_bm25_view(
         view_config=config_snapshot,
         forbidden_paths=forbidden_tail,
         environ=environment,
+        check_cancelled=check_cancelled,
     )
 
 
