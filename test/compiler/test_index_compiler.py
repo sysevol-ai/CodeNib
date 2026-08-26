@@ -76,6 +76,7 @@ from codenib.repository_filters import (
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
     RepositoryChangedError,
+    RepositorySourceBinding,
     capture_repository_source,
     is_secure_source_fingerprint_v2,
 )
@@ -459,6 +460,43 @@ class TestBM25IndexBuilder:
                 )
 
         assert not output.exists()
+
+    def test_build_from_repository_source_threads_cancellation_into_identity(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text("def app():\n    return 1\n", encoding="utf-8")
+        private_root = tmp_path / "private"
+        private_root.mkdir()
+        output = private_root / "bm25"
+        real_snapshot = RepositorySourceBinding.authenticated_identity_snapshot
+        observed = []
+
+        def tracked_snapshot(binding, *args, **kwargs):
+            observed.append(kwargs.get("check_cancelled"))
+            return real_snapshot(binding, *args, **kwargs)
+
+        monkeypatch.setattr(
+            RepositorySourceBinding,
+            "authenticated_identity_snapshot",
+            tracked_snapshot,
+        )
+
+        def check_cancelled() -> None:
+            return None
+
+        with capture_repository_source(repo) as source:
+            BM25IndexBuilder().build_from_repository_source(
+                "current_repo",
+                repository_source=source,
+                output_dir=str(output),
+                check_cancelled=check_cancelled,
+            )
+
+        assert observed == [check_cancelled, check_cancelled]
 
     def test_build_from_repository_source_rejects_changed_authority(
         self,

@@ -378,7 +378,9 @@ class BM25IndexBuilder:
         )
         if check_cancelled is not None:
             check_cancelled()
-        identity = repository_source.authenticated_identity_snapshot()
+        identity = repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
         if check_cancelled is not None:
             check_cancelled()
         if identity.source_selection != selected:
