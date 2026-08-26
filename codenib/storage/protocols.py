@@ -528,14 +528,18 @@ class JobCatalog(Protocol):
 
 
 @runtime_checkable
-class JobQueryCatalog(JobCatalog, Protocol):
-    """Additive read surface for durable job status consumers.
+class JobQueryCatalog(Protocol):
+    """Read-only durable job surface for status consumers.
 
     ``find_active_job`` returns the running job for one repository/ref when it
     exists, otherwise the oldest queued job that can become the next active
     attempt. Terminal jobs remain addressable through ``get_job`` and event
     pages stay bounded by the caller-supplied limit.
     """
+
+    def get_job(self, job_id: str) -> IndexJobRecord: ...
+
+    def get_job_views(self, job_id: str) -> tuple[IndexJobViewRecord, ...]: ...
 
     def find_active_job(
         self,

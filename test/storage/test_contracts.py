@@ -149,6 +149,26 @@ def test_execution_catalog_is_additive_to_publication_only_adapters() -> None:
     assert not isinstance(adapter, JobCycleWorkerCatalog)
 
 
+def test_job_query_catalog_does_not_require_mutation_authority() -> None:
+    class QueryOnlyCatalog:
+        def get_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def get_job_views(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def find_active_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def list_job_events(self, *args, **kwargs):
+            raise NotImplementedError
+
+    adapter = QueryOnlyCatalog()
+
+    assert isinstance(adapter, JobQueryCatalog)
+    assert not isinstance(adapter, JobCatalog)
+
+
 def test_retained_import_response_budgets_are_public_capability_contracts() -> None:
     assert RETAINED_IMPORT_RESPONSE_MAX_DEPTH == 64
     assert RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS == 4_096
