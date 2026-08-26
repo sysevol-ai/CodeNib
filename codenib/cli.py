@@ -3759,8 +3759,8 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         raise
 
 
-def _run_jobs_run_once(args: argparse.Namespace) -> int:
-    """Run one bounded prepare-only compiler-cache worker scan."""
+def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
+    """Run one callback while retaining an exact local worker topology."""
 
     from . import LocalWorkspaceProvider
     from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
@@ -3787,7 +3787,10 @@ def _run_jobs_run_once(args: argparse.Namespace) -> int:
         _inherit_publication_cleanup_owners(wrapped, exc)
         raise wrapped from exc
 
-    result = None
+    if not callable(operation):
+        raise TypeError("local index job worker operation must be callable")
+    missing_result = object()
+    result = missing_result
     try:
         object_store_owner = _RetainedMaterializationResourceOwner()
         cleanup_actions = (
@@ -3830,32 +3833,10 @@ def _run_jobs_run_once(args: argparse.Namespace) -> int:
                 scan_limit=args.scan_limit,
                 candidate_filter=resources.accepts_candidate,
             )
-            result = worker.run_once()
-        if result is None:  # pragma: no cover - worker always returns a result
-            raise RuntimeError("index job worker returned no run result")
-        payload = {
-            "attempt_count": result.attempt_count,
-            "disposition": result.disposition.value,
-            "job_id": result.job_id,
-        }
-        if args.json:
-            print(
-                json.dumps(
-                    payload,
-                    allow_nan=False,
-                    ensure_ascii=True,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-            )
-        else:
-            print(f"Disposition: {result.disposition.value}")
-            print(f"Job:         {result.job_id or '-'}")
-            print(
-                "Attempt:     "
-                + ("-" if result.attempt_count is None else str(result.attempt_count))
-            )
-        return 0
+            result = operation(worker)
+        if result is missing_result:  # pragma: no cover - callback always returns
+            raise RuntimeError("index job worker operation returned no result")
+        return result
     except BaseException as primary_error:  # noqa: B036 - preserve cancellation
         if isinstance(primary_error, CLIError):
             raise
@@ -3867,6 +3848,134 @@ def _run_jobs_run_once(args: argparse.Namespace) -> int:
             _inherit_publication_cleanup_owners(wrapped, primary_error)
             raise wrapped from primary_error
         raise
+
+
+def _index_job_run_payload(result) -> dict[str, object]:
+    return {
+        "attempt_count": result.attempt_count,
+        "disposition": result.disposition.value,
+        "job_id": result.job_id,
+    }
+
+
+def _compact_json_line(payload: dict[str, object]) -> str:
+    return json.dumps(
+        payload,
+        allow_nan=False,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _run_jobs_run_once(args: argparse.Namespace) -> int:
+    """Run one bounded prepare-only compiler-cache worker scan."""
+
+    result = _run_with_local_index_job_worker(args, lambda worker: worker.run_once())
+    payload = _index_job_run_payload(result)
+    if args.json:
+        print(_compact_json_line(payload))
+    else:
+        print(f"Disposition: {result.disposition.value}")
+        print(f"Job:         {result.job_id or '-'}")
+        print(
+            "Attempt:     "
+            + ("-" if result.attempt_count is None else str(result.attempt_count))
+        )
+    return 0
+
+
+@contextmanager
+def _jobs_scheduler_stop_signal():
+    """Translate SIGTERM into a cooperative stop after the active worker page."""
+
+    import signal
+    import threading
+
+    if threading.current_thread() is not threading.main_thread():
+        raise CLIError("continuous index job scheduling must run on the main thread")
+    stop_signal = threading.Event()
+    termination_signal = getattr(signal, "SIGTERM", None)
+    if termination_signal is None:  # pragma: no cover - POSIX production route
+        yield stop_signal
+        return
+    previous_handler = signal.getsignal(termination_signal)
+
+    def request_stop(_signum, _frame) -> None:
+        stop_signal.set()
+
+    try:
+        signal.signal(termination_signal, request_stop)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(f"cannot install scheduler SIGTERM handler: {exc}") from exc
+    primary_error: BaseException | None = None
+    try:
+        yield stop_signal
+    except BaseException as exc:  # noqa: B036 - preserve scheduler failure
+        primary_error = exc
+        raise
+    finally:
+        try:
+            signal.signal(termination_signal, previous_handler)
+        except (OSError, RuntimeError, ValueError) as exc:
+            if primary_error is None:
+                raise CLIError(
+                    f"cannot restore scheduler SIGTERM handler: {exc}"
+                ) from exc
+            try:
+                primary_error.add_note(
+                    "scheduler SIGTERM handler restoration also failed: "
+                    f"{type(exc).__name__}"
+                )
+            except BaseException:  # noqa: B036 - best-effort diagnostic only
+                pass
+
+
+def _run_jobs_continuous(args: argparse.Namespace) -> int:
+    """Continuously traverse eligible compiler-cache jobs with cursor fairness."""
+
+    from .storage import IndexJobWorkerScheduler
+
+    def emit_result(result) -> None:
+        if args.json:
+            payload = {"type": "job", **_index_job_run_payload(result)}
+            print(_compact_json_line(payload), flush=True)
+        else:
+            print(
+                f"Job {result.job_id} attempt {result.attempt_count}: "
+                f"{result.disposition.value}",
+                flush=True,
+            )
+
+    with _jobs_scheduler_stop_signal() as stop_signal:
+
+        def run_scheduler(worker):
+            scheduler = IndexJobWorkerScheduler(
+                worker=worker,
+                initial_idle_delay_ms=args.initial_idle_delay_ms,
+                max_idle_delay_ms=args.max_idle_delay_ms,
+                on_result=emit_result,
+            )
+            return scheduler.run(stop_signal, max_cycles=args.max_cycles)
+
+        summary = _run_with_local_index_job_worker(args, run_scheduler)
+
+    payload = {
+        "cycle_count": summary.cycle_count,
+        "job_count": summary.job_count,
+        "page_count": summary.page_count,
+        "type": "summary",
+    }
+    if args.json:
+        print(_compact_json_line(payload), flush=True)
+    else:
+        print(
+            "Scheduler stopped: "
+            f"{summary.job_count} jobs, {summary.page_count} pages, "
+            f"{summary.cycle_count} cycles",
+            flush=True,
+        )
+    return 0
 
 
 def _run_artifact_mcp_config(args: argparse.Namespace) -> int:
@@ -5608,6 +5717,68 @@ def _add_source_selection_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_jobs_worker_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add exact local worker topology and lease arguments."""
+
+    parser.add_argument(
+        "repo",
+        help="trusted local repository source for eligible jobs",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        required=True,
+        help="existing compiler cache containing current BM25/vector views",
+    )
+    parser.add_argument(
+        "--catalog",
+        required=True,
+        help="existing initialized SQLite catalog path",
+    )
+    parser.add_argument(
+        "--cas-root",
+        required=True,
+        help="existing fully preprovisioned local CAS root",
+    )
+    parser.add_argument(
+        "--workspace-root",
+        required=True,
+        help="existing private owner-only LocalWorkspaceProvider root",
+    )
+    parser.add_argument(
+        "--repository",
+        required=True,
+        help="canonical owner/repository key eligible for this worker",
+    )
+    parser.add_argument(
+        "--namespace",
+        default="default",
+        help="logical catalog namespace",
+    )
+    parser.add_argument(
+        "--lease-duration-ms",
+        type=_argparse_positive_int,
+        default=30_000,
+        help="job lease duration",
+    )
+    parser.add_argument(
+        "--heartbeat-interval-ms",
+        type=_argparse_positive_int,
+        default=5_000,
+        help="worker heartbeat interval (must be less than one third of the lease)",
+    )
+    parser.add_argument(
+        "--scan-limit",
+        type=_argparse_positive_int,
+        default=64,
+        help="maximum advisory candidates examined per page (at most 256)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable compact JSON output",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="codenib",
@@ -6016,64 +6187,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="scan one bounded page and execute at most one supported job",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    jobs_run_once_parser.add_argument(
-        "repo",
-        help="trusted local repository source for eligible jobs",
+    _add_jobs_worker_arguments(jobs_run_once_parser)
+    jobs_run_once_parser.set_defaults(handler=_run_jobs_run_once)
+
+    jobs_run_parser = jobs_subparsers.add_parser(
+        "run",
+        help="continuously execute supported jobs with cursor-fair scanning",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    jobs_run_once_parser.add_argument(
-        "--cache-dir",
-        required=True,
-        help="existing compiler cache containing current BM25/vector views",
-    )
-    jobs_run_once_parser.add_argument(
-        "--catalog",
-        required=True,
-        help="existing initialized SQLite catalog path",
-    )
-    jobs_run_once_parser.add_argument(
-        "--cas-root",
-        required=True,
-        help="existing fully preprovisioned local CAS root",
-    )
-    jobs_run_once_parser.add_argument(
-        "--workspace-root",
-        required=True,
-        help="existing private owner-only LocalWorkspaceProvider root",
-    )
-    jobs_run_once_parser.add_argument(
-        "--repository",
-        required=True,
-        help="canonical owner/repository key eligible for this worker",
-    )
-    jobs_run_once_parser.add_argument(
-        "--namespace",
-        default="default",
-        help="logical catalog namespace",
-    )
-    jobs_run_once_parser.add_argument(
-        "--lease-duration-ms",
+    _add_jobs_worker_arguments(jobs_run_parser)
+    jobs_run_parser.add_argument(
+        "--initial-idle-delay-ms",
         type=_argparse_positive_int,
-        default=30_000,
-        help="job lease duration",
+        default=250,
+        help="delay after the first complete idle catalog cycle",
     )
-    jobs_run_once_parser.add_argument(
-        "--heartbeat-interval-ms",
+    jobs_run_parser.add_argument(
+        "--max-idle-delay-ms",
         type=_argparse_positive_int,
         default=5_000,
-        help="worker heartbeat interval (must be less than one third of the lease)",
+        help="maximum exponential delay between complete idle cycles",
     )
-    jobs_run_once_parser.add_argument(
-        "--scan-limit",
+    jobs_run_parser.add_argument(
+        "--max-cycles",
         type=_argparse_positive_int,
-        default=64,
-        help="maximum advisory candidates examined in this pass (at most 256)",
+        help="stop after this many complete keyspace cycles instead of running forever",
     )
-    jobs_run_once_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="print the canonical run result as compact JSON",
-    )
-    jobs_run_once_parser.set_defaults(handler=_run_jobs_run_once)
+    jobs_run_parser.set_defaults(handler=_run_jobs_continuous)
 
     publish_parser = subparsers.add_parser(
         "publish",

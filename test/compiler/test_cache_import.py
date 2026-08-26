@@ -1881,6 +1881,89 @@ def test_jobs_run_once_cli_publishes_one_trusted_local_cache_job(
         fixture.close()
 
 
+def test_jobs_run_cli_completes_one_cursor_fair_cycle(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    catalog_path = tmp_path / "worker.sqlite"
+    cas_root = tmp_path / "cas"
+    provider = LocalWorkspaceProvider(fixture.workspace)
+    try:
+        try:
+            provider.require_support()
+        except UnsupportedWorkspaceCreation as exc:
+            pytest.skip(str(exc))
+        with LocalCAS.provision(cas_root):
+            pass
+        with SQLiteCatalog(catalog_path) as catalog:
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog, fixture, plan
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+        args = cli_module.build_parser().parse_args(
+            [
+                "jobs",
+                "run",
+                str(fixture.repository),
+                "--cache-dir",
+                str(fixture.cache),
+                "--catalog",
+                str(catalog_path),
+                "--cas-root",
+                str(cas_root),
+                "--workspace-root",
+                str(fixture.workspace),
+                "--repository",
+                _REPOSITORY_KEY,
+                "--lease-duration-ms",
+                "60000",
+                "--heartbeat-interval-ms",
+                "5",
+                "--scan-limit",
+                "1",
+                "--max-cycles",
+                "1",
+                "--json",
+            ]
+        )
+
+        assert args.handler is cli_module._run_jobs_continuous
+        assert cli_module._run_jobs_continuous(args) == 0
+
+        output = tuple(
+            json.loads(line) for line in capsys.readouterr().out.splitlines()
+        )
+        assert output == (
+            {
+                "attempt_count": 1,
+                "disposition": "succeeded",
+                "job_id": queued.job_id,
+                "type": "job",
+            },
+            {
+                "cycle_count": 1,
+                "job_count": 1,
+                "page_count": 2,
+                "type": "summary",
+            },
+        )
+        assert not tuple(fixture.workspace.glob(".codenib-cache-job-*"))
+        assert len(tuple(fixture.workspace.glob(".*.discarded-*"))) == 2
+        with SQLiteCatalog(catalog_path, create=False) as catalog:
+            completed = catalog.get_job(queued.job_id)
+            assert completed.status is IndexJobStatus.SUCCEEDED
+            assert completed.result_snapshot_id is not None
+    finally:
+        fixture.close()
+
+
 def test_compiler_cache_resolver_rejects_declared_foreign_store_before_scope(
     tmp_path: Path,
 ) -> None:

@@ -10,6 +10,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
@@ -583,6 +584,68 @@ def test_jobs_run_once_parser_exposes_bounded_worker_inputs() -> None:
     with pytest.raises(SystemExit) as invalid:
         cli.build_parser().parse_args([*base, "--scan-limit", "0"])
     assert invalid.value.code == 2
+
+
+def test_jobs_run_parser_exposes_continuous_scheduler_inputs() -> None:
+    base = [
+        "jobs",
+        "run",
+        "/src/repo",
+        "--cache-dir",
+        "/src/repo/.codenib_index",
+        "--catalog",
+        "/state/catalog.sqlite3",
+        "--cas-root",
+        "/state/cas",
+        "--workspace-root",
+        "/state/workspaces",
+        "--repository",
+        "owner/repo",
+    ]
+    defaults = cli.build_parser().parse_args(base)
+    configured = cli.build_parser().parse_args(
+        [
+            *base,
+            "--initial-idle-delay-ms",
+            "100",
+            "--max-idle-delay-ms",
+            "2000",
+            "--max-cycles",
+            "3",
+            "--scan-limit",
+            "128",
+            "--json",
+        ]
+    )
+
+    assert defaults.handler is cli._run_jobs_continuous
+    assert defaults.jobs_command == "run"
+    assert defaults.initial_idle_delay_ms == 250
+    assert defaults.max_idle_delay_ms == 5_000
+    assert defaults.max_cycles is None
+    assert defaults.scan_limit == 64
+    assert defaults.json is False
+    assert configured.initial_idle_delay_ms == 100
+    assert configured.max_idle_delay_ms == 2_000
+    assert configured.max_cycles == 3
+    assert configured.scan_limit == 128
+    assert configured.json is True
+
+    with pytest.raises(SystemExit) as invalid:
+        cli.build_parser().parse_args([*base, "--max-cycles", "0"])
+    assert invalid.value.code == 2
+
+
+def test_jobs_scheduler_sigterm_handler_requests_stop_and_restores() -> None:
+    previous = signal.getsignal(signal.SIGTERM)
+
+    with cli._jobs_scheduler_stop_signal() as stop_signal:
+        installed = signal.getsignal(signal.SIGTERM)
+        assert callable(installed)
+        installed(signal.SIGTERM, None)
+        assert stop_signal.is_set()
+
+    assert signal.getsignal(signal.SIGTERM) is previous
 
 
 def test_artifact_import_cache_freezes_missing_disjoint_topology(
