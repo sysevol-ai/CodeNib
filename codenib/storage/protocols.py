@@ -477,6 +477,29 @@ class RetainedImportCatalog(IndexCatalog, RetainedSnapshotCatalog, Protocol):
 
 
 @runtime_checkable
+class JobCreationCatalog(Protocol):
+    """Least-authority atomic creation for one repository/ref job slot.
+
+    Exact idempotent replay returns the original job. A different request is
+    created only when the repository/ref has no queued or running job, so Web
+    and other control planes cannot race two active updates into the same
+    publication slot.
+    """
+
+    def create_job_if_idle(
+        self,
+        repository_id: str,
+        source_revision_id: str,
+        idempotency_key: str,
+        request: Mapping[str, Any],
+        *,
+        ref_name: str = "main",
+        expected_ref_generation: int = 0,
+        max_attempts: int = 3,
+    ) -> IndexJobRecord: ...
+
+
+@runtime_checkable
 class JobCatalog(Protocol):
     """Durable index-job coordination, separate from snapshot publication."""
 
@@ -769,6 +792,7 @@ __all__ = [
     "InterruptibleReceiptVerifyingObjectStore",
     "InterruptibleStreamingObjectStore",
     "JobCatalog",
+    "JobCreationCatalog",
     "JobCycleWorkerCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",

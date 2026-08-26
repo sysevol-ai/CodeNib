@@ -494,6 +494,105 @@ def test_create_job_is_idempotent_and_conflicts_on_any_request_change(tmp_path) 
             )
 
 
+def test_create_job_if_idle_is_idempotent_and_scoped_per_ref(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id = _repository(catalog)
+        profile_id = catalog.create_view_profile("bm25", {})
+        request = _request(profile_id, mode="full")
+        first = catalog.create_job_if_idle(
+            repository_id,
+            source_revision_id,
+            "first",
+            request,
+        )
+
+        assert (
+            catalog.create_job_if_idle(
+                repository_id,
+                source_revision_id,
+                "first",
+                request,
+            )
+            == first
+        )
+        with pytest.raises(CatalogConflictError, match="already has an active"):
+            catalog.create_job_if_idle(
+                repository_id,
+                source_revision_id,
+                "blocked",
+                request,
+            )
+
+        release = catalog.create_job_if_idle(
+            repository_id,
+            source_revision_id,
+            "release",
+            request,
+            ref_name="release",
+        )
+        assert release.ref_name == "release"
+        catalog.acquire_job_lease(
+            release.job_id,
+            owner_id="worker",
+            lease_duration_ms=60_000,
+        )
+        with pytest.raises(CatalogConflictError, match="already has an active"):
+            catalog.create_job_if_idle(
+                repository_id,
+                source_revision_id,
+                "release-blocked",
+                request,
+                ref_name="release",
+            )
+
+        cancelled = catalog.request_job_cancel(first.job_id)
+        assert cancelled.status is IndexJobStatus.CANCELLED
+        replacement = catalog.create_job_if_idle(
+            repository_id,
+            source_revision_id,
+            "replacement",
+            request,
+        )
+        assert replacement.job_id != first.job_id
+
+
+def test_two_connections_atomically_create_only_one_idle_ref_job(tmp_path) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        repository_id, source_revision_id = _repository(catalog)
+        profile_id = catalog.create_view_profile("bm25", {})
+    request = _request(profile_id, mode="full")
+    barrier = threading.Barrier(2)
+
+    def create(idempotency_key: str) -> tuple[str, str]:
+        with SQLiteCatalog(path) as catalog:
+            barrier.wait(timeout=5)
+            try:
+                job = catalog.create_job_if_idle(
+                    repository_id,
+                    source_revision_id,
+                    idempotency_key,
+                    request,
+                )
+                return "created", job.job_id
+            except CatalogConflictError as exc:
+                return "conflict", str(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(create, ("first", "second")))
+
+    assert sorted(result[0] for result in results) == ["conflict", "created"]
+    with SQLiteCatalog(path) as catalog:
+        queued = catalog._connection.execute(
+            """
+            SELECT COUNT(*) FROM index_jobs
+            WHERE repository_id = ? AND ref_name = 'main' AND status = 'queued'
+            """,
+            (repository_id,),
+        ).fetchone()[0]
+        assert queued == 1
+
+
 def test_find_active_job_prefers_running_then_oldest_queued_per_ref(tmp_path) -> None:
     with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
         repository_id, source_revision_id = _repository(catalog)

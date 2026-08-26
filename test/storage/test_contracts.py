@@ -37,6 +37,7 @@ from codenib.storage.models import (
 from codenib.storage.protocols import (
     IndexCatalog,
     JobCatalog,
+    JobCreationCatalog,
     JobCycleWorkerCatalog,
     JobExecutionCatalog,
     JobPublicationCatalog,
@@ -63,6 +64,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(catalog, RetainedImportCatalog)
         assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
+        assert isinstance(catalog, JobCreationCatalog)
         assert isinstance(catalog, JobQueryCatalog)
         assert isinstance(catalog, JobExecutionCatalog)
         assert isinstance(catalog, JobWorkerCatalog)
@@ -105,6 +107,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "InterruptibleStreamingObjectStore",
         "JobCycleWorkerCatalog",
         "JobExecutionCatalog",
+        "JobCreationCatalog",
         "JobQueryCatalog",
         "JobWorkerCatalog",
     }
@@ -167,6 +170,18 @@ def test_job_query_catalog_does_not_require_mutation_authority() -> None:
 
     assert isinstance(adapter, JobQueryCatalog)
     assert not isinstance(adapter, JobCatalog)
+
+
+def test_job_creation_catalog_requires_only_atomic_enqueue_authority() -> None:
+    class CreationOnlyCatalog:
+        def create_job_if_idle(self, *args, **kwargs):
+            raise NotImplementedError
+
+    adapter = CreationOnlyCatalog()
+
+    assert isinstance(adapter, JobCreationCatalog)
+    assert not isinstance(adapter, JobCatalog)
+    assert not isinstance(adapter, JobQueryCatalog)
 
 
 def test_retained_import_response_budgets_are_public_capability_contracts() -> None:

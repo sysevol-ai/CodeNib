@@ -6784,6 +6784,127 @@ class SQLiteCatalog:
                     "persisted index job time exceeds its durable content clock"
                 )
 
+    def _create_job_request(
+        self,
+        job_request: IndexJobRequest,
+        *,
+        require_idle_ref: bool,
+    ) -> IndexJobRecord:
+        """Create one validated request inside the caller's write transaction."""
+
+        self._require_record("repositories", "repository_id", job_request.repository_id)
+        row = self._connection.execute(
+            """
+            SELECT * FROM index_jobs
+            WHERE repository_id = ? AND idempotency_key = ?
+            """,
+            (job_request.repository_id, job_request.idempotency_key),
+        ).fetchone()
+        if row is not None:
+            job = self._job_from_row(row)
+            if (
+                job.job_id != job_request.job_id
+                or job.request_digest != job_request.request_digest
+            ):
+                raise CatalogConflictError(
+                    "idempotency key is already bound to another " "index-job request"
+                )
+            self._job_views(job)
+            return job
+
+        if require_idle_ref:
+            active = self._connection.execute(
+                """
+                SELECT job_id FROM index_jobs
+                WHERE repository_id = ? AND ref_name = ?
+                  AND status IN ('queued', 'running')
+                ORDER BY created_at_ms, job_id
+                LIMIT 1
+                """,
+                (job_request.repository_id, job_request.ref_name),
+            ).fetchone()
+            if active is not None:
+                raise CatalogConflictError(
+                    "repository ref already has an active index job"
+                )
+
+        source = self._require_record(
+            "source_revisions",
+            "source_revision_id",
+            job_request.source_revision_id,
+        )
+        if source["repository_id"] != job_request.repository_id:
+            raise CatalogValidationError(
+                "index job source revision belongs to another repository"
+            )
+        for view in job_request.view_requests:
+            profile = self._require_record(
+                "view_profiles", "profile_id", view.profile_id
+            )
+            if profile["view_type"] != view.view_type:
+                raise CatalogValidationError(
+                    f"job view does not match its profile: {view.view_type}"
+                )
+
+        now_ms = (
+            self._advance_job_execution_clock(
+                causal_floor_ms=0,
+                action="index job creation",
+            )
+            if self.schema_version >= 6
+            else self._db_now_ms()
+        )
+        self._connection.execute(
+            """
+                INSERT INTO index_jobs(
+                    job_id, repository_id, source_revision_id, ref_name,
+                    idempotency_key, expected_ref_generation, max_attempts,
+                    request_contract, request_json, request_digest, status,
+                    cancel_requested, attempt_count, result_snapshot_id,
+                    error_code, error_message, created_at_ms, updated_at_ms,
+                    started_at_ms, finished_at_ms
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, 0,
+                    NULL, NULL, NULL, ?, ?, NULL, NULL
+                )
+                """,
+            (
+                job_request.job_id,
+                job_request.repository_id,
+                job_request.source_revision_id,
+                job_request.ref_name,
+                job_request.idempotency_key,
+                job_request.expected_ref_generation,
+                job_request.max_attempts,
+                job_request.contract,
+                job_request.request_json,
+                job_request.request_digest,
+                now_ms,
+                now_ms,
+            ),
+        )
+        self._connection.executemany(
+            """
+                INSERT INTO index_job_views(
+                    job_id, view_type, profile_id, requested_mode, required
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+            [
+                (
+                    view.job_id,
+                    view.view_type,
+                    view.profile_id,
+                    view.requested_mode.value,
+                    int(view.required),
+                )
+                for view in job_request.view_requests
+            ],
+        )
+        row = self._require_record("index_jobs", "job_id", job_request.job_id)
+        job = self._job_from_row(row)
+        self._job_views(job)
+        return job
+
     @_coordinated_catalog_method
     def create_job(
         self,
@@ -6807,105 +6928,39 @@ class SQLiteCatalog:
             max_attempts=max_attempts,
         )
         with self._transaction():
-            self._require_record(
-                "repositories", "repository_id", job_request.repository_id
+            return self._create_job_request(
+                job_request,
+                require_idle_ref=False,
             )
-            row = self._connection.execute(
-                """
-                SELECT * FROM index_jobs
-                WHERE repository_id = ? AND idempotency_key = ?
-                """,
-                (job_request.repository_id, job_request.idempotency_key),
-            ).fetchone()
-            if row is not None:
-                job = self._job_from_row(row)
-                if (
-                    job.job_id != job_request.job_id
-                    or job.request_digest != job_request.request_digest
-                ):
-                    raise CatalogConflictError(
-                        "idempotency key is already bound to another "
-                        "index-job request"
-                    )
-                self._job_views(job)
-                return job
 
-            source = self._require_record(
-                "source_revisions",
-                "source_revision_id",
-                job_request.source_revision_id,
-            )
-            if source["repository_id"] != job_request.repository_id:
-                raise CatalogValidationError(
-                    "index job source revision belongs to another repository"
-                )
-            for view in job_request.view_requests:
-                profile = self._require_record(
-                    "view_profiles", "profile_id", view.profile_id
-                )
-                if profile["view_type"] != view.view_type:
-                    raise CatalogValidationError(
-                        f"job view does not match its profile: {view.view_type}"
-                    )
+    @_coordinated_catalog_method
+    def create_job_if_idle(
+        self,
+        repository_id: str,
+        source_revision_id: str,
+        idempotency_key: str,
+        request: Mapping[str, Any],
+        *,
+        ref_name: str = "main",
+        expected_ref_generation: int = 0,
+        max_attempts: int = 3,
+    ) -> IndexJobRecord:
+        """Idempotently create a job only while its repository/ref is idle."""
 
-            now_ms = (
-                self._advance_job_execution_clock(
-                    causal_floor_ms=0,
-                    action="index job creation",
-                )
-                if self.schema_version >= 6
-                else self._db_now_ms()
+        job_request = IndexJobRequest.create(
+            repository_id,
+            source_revision_id,
+            idempotency_key,
+            request,
+            ref_name=ref_name,
+            expected_ref_generation=expected_ref_generation,
+            max_attempts=max_attempts,
+        )
+        with self._transaction():
+            return self._create_job_request(
+                job_request,
+                require_idle_ref=True,
             )
-            self._connection.execute(
-                """
-                    INSERT INTO index_jobs(
-                        job_id, repository_id, source_revision_id, ref_name,
-                        idempotency_key, expected_ref_generation, max_attempts,
-                        request_contract, request_json, request_digest, status,
-                        cancel_requested, attempt_count, result_snapshot_id,
-                        error_code, error_message, created_at_ms, updated_at_ms,
-                        started_at_ms, finished_at_ms
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, 0,
-                        NULL, NULL, NULL, ?, ?, NULL, NULL
-                    )
-                    """,
-                (
-                    job_request.job_id,
-                    job_request.repository_id,
-                    job_request.source_revision_id,
-                    job_request.ref_name,
-                    job_request.idempotency_key,
-                    job_request.expected_ref_generation,
-                    job_request.max_attempts,
-                    job_request.contract,
-                    job_request.request_json,
-                    job_request.request_digest,
-                    now_ms,
-                    now_ms,
-                ),
-            )
-            self._connection.executemany(
-                """
-                    INSERT INTO index_job_views(
-                        job_id, view_type, profile_id, requested_mode, required
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                [
-                    (
-                        view.job_id,
-                        view.view_type,
-                        view.profile_id,
-                        view.requested_mode.value,
-                        int(view.required),
-                    )
-                    for view in job_request.view_requests
-                ],
-            )
-            row = self._require_record("index_jobs", "job_id", job_request.job_id)
-            job = self._job_from_row(row)
-            self._job_views(job)
-            return job
 
     @_coordinated_catalog_method
     def get_job(self, job_id: str) -> IndexJobRecord:

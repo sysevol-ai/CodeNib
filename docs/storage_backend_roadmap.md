@@ -1343,10 +1343,13 @@ schema-8 vector artifacts without catalog authority. Its resource-scoped
 resolver and trusted local target factory guarantee attempt-local cleanup,
 same-store binding, and exact configured repository/source identity, while
 the explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
-over the current cache. The Web registry now supports complete-candidate RCU
-replacement and request-lifetime generation leases. Source builders, the #266
-job handoff and update path, success-triggered runtime refresh, MCP, UI controls,
-and default routing remain absent.
+over the current cache. The Web registry now prepares a complete replacement
+bundle before atomically publishing it, pins the exact generation for each
+in-flight request, defers old vector/source cleanup until the final pin exits,
+and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
+generation identity. The first #266 status and durable-read slices are present;
+source builders, Web job creation/refresh handoff, success-triggered runtime
+refresh, MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1436,6 +1439,13 @@ and default routing remain absent.
   Repository status overlays queued/running jobs only after releasing its RCU
   bundle pin. The default server still has no job reader or writer, so this read
   API returns unavailable until production storage bindings are configured.
+- A separate least-authority job-creation catalog can now atomically enqueue an
+  exact idempotent request only when its repository/ref has no queued or running
+  job. Exact replay returns the existing job, while two concurrent new requests
+  serialize to one creation and one conflict. This prevents a Web control plane
+  from racing multiple updates into one publication slot without granting it
+  lease, cancellation, execution, or publication authority; the trusted source
+  and profile planner plus the Web POST binding remain follow-up work.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
