@@ -18,6 +18,7 @@ from .job_worker import (
 )
 from .models import (
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     StorageIntegrityError,
     StorageValidationError,
 )
@@ -70,14 +71,31 @@ def _attest_page_result(value: object) -> IndexJobWorkerPageResult:
     return normalized
 
 
+def _attest_cycle(value: object) -> IndexJobRunnableCycle:
+    if type(value) is not IndexJobRunnableCycle:
+        raise StorageIntegrityError("scheduler worker returned a non-exact cycle")
+    try:
+        normalized = IndexJobRunnableCycle(value.max_job_sequence)
+    except (AttributeError, StorageValidationError) as exc:
+        raise StorageIntegrityError(
+            "scheduler worker returned an invalid cycle"
+        ) from exc
+    if normalized != value:
+        raise StorageIntegrityError("scheduler worker returned a noncanonical cycle")
+    return normalized
+
+
 @runtime_checkable
 class IndexJobPageWorker(Protocol):
-    """Run one bounded worker page after an optional keyset cursor."""
+    """Freeze and traverse bounded worker pages using one cycle watermark."""
+
+    def begin_cycle(self) -> IndexJobRunnableCycle: ...
 
     def run_page(
         self,
         *,
         cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle,
     ) -> IndexJobWorkerPageResult: ...
 
 
@@ -114,7 +132,7 @@ class IndexJobSchedulerRunSummary:
 
 
 class IndexJobWorkerScheduler:
-    """Continuously traverse worker pages with fair cursor wrap and idle backoff."""
+    """Traverse frozen worker cycles with fair cursor wrap and idle backoff."""
 
     def __init__(
         self,
@@ -154,7 +172,7 @@ class IndexJobWorkerScheduler:
         *,
         max_cycles: int | None = None,
     ) -> IndexJobSchedulerRunSummary:
-        """Run until stopped or after an optional number of complete keyspace cycles."""
+        """Run until stopped or after complete frozen-keyspace cycles."""
 
         if not isinstance(stop_signal, IndexJobSchedulerStopSignal):
             raise TypeError("scheduler stop signal does not implement its protocol")
@@ -180,6 +198,7 @@ class IndexJobWorkerScheduler:
         cycle_limit: int | None,
     ) -> IndexJobSchedulerRunSummary:
         cursor: IndexJobRunnableCursor | None = None
+        cycle: IndexJobRunnableCycle | None = None
         page_count = 0
         cycle_count = 0
         job_count = 0
@@ -187,7 +206,11 @@ class IndexJobWorkerScheduler:
         idle_delay_ms = self._initial_idle_delay_ms
 
         while not self._is_stopped(stop_signal):
-            page = _attest_page_result(self._worker.run_page(cursor=cursor))
+            if cycle is None:
+                cycle = _attest_cycle(self._worker.begin_cycle())
+            page = _attest_page_result(
+                self._worker.run_page(cursor=cursor, cycle=cycle)
+            )
             page_count = self._increment(page_count, "scheduler page count")
             result = page.result
             if result.disposition is not IndexJobWorkerDisposition.IDLE:
@@ -209,6 +232,7 @@ class IndexJobWorkerScheduler:
                 continue
 
             cursor = None
+            cycle = None
             cycle_count = self._increment(cycle_count, "scheduler cycle count")
             if cycle_limit is not None and cycle_count >= cycle_limit:
                 break

@@ -21,6 +21,7 @@ from codenib.storage.job_worker import (
 )
 from codenib.storage.models import (
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     StorageIntegrityError,
     StorageValidationError,
 )
@@ -49,13 +50,22 @@ def _succeeded(sequence: int) -> IndexJobWorkerPageResult:
 class _ScriptedWorker:
     pages: list[object]
     cursors: list[IndexJobRunnableCursor | None] = field(default_factory=list)
+    begun_cycles: list[IndexJobRunnableCycle] = field(default_factory=list)
+    page_cycles: list[IndexJobRunnableCycle] = field(default_factory=list)
+
+    def begin_cycle(self) -> IndexJobRunnableCycle:
+        cycle = IndexJobRunnableCycle(100 + len(self.begun_cycles))
+        self.begun_cycles.append(cycle)
+        return cycle
 
     def run_page(
         self,
         *,
         cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle,
     ) -> IndexJobWorkerPageResult:
         self.cursors.append(cursor)
+        self.page_cycles.append(cycle)
         if not self.pages:
             raise AssertionError("scheduler requested an unexpected page")
         page = self.pages.pop(0)
@@ -106,6 +116,7 @@ def test_scheduler_traverses_all_pages_before_completing_one_cycle() -> None:
 
     assert summary == IndexJobSchedulerRunSummary(4, 1, 1)
     assert worker.cursors == [None, first, second, third]
+    assert worker.page_cycles == [worker.begun_cycles[0]] * 4
     assert [result.job_id for result in observed] == ["job-3"]
     assert stop.waits == []
 
@@ -188,6 +199,43 @@ def test_scheduler_rejects_nonadvancing_worker_continuation() -> None:
         scheduler.run(_StopSignal())
 
     assert worker.cursors == [None, cursor]
+
+
+@dataclass
+class _ContinuouslyGrowingWorker:
+    visible_sequence: int = 2
+    begun_cycles: list[IndexJobRunnableCycle] = field(default_factory=list)
+    page_cycles: list[IndexJobRunnableCycle] = field(default_factory=list)
+
+    def begin_cycle(self) -> IndexJobRunnableCycle:
+        cycle = IndexJobRunnableCycle(self.visible_sequence)
+        self.begun_cycles.append(cycle)
+        return cycle
+
+    def run_page(
+        self,
+        *,
+        cursor: IndexJobRunnableCursor | None = None,
+        cycle: IndexJobRunnableCycle,
+    ) -> IndexJobWorkerPageResult:
+        self.page_cycles.append(cycle)
+        self.visible_sequence += 1
+        next_sequence = 1 if cursor is None else cursor.created_at_ms + 1
+        if next_sequence > cycle.max_job_sequence:
+            return _idle(None)
+        return _idle(_cursor(next_sequence))
+
+
+def test_scheduler_cycle_finishes_while_larger_job_sequences_keep_arriving() -> None:
+    worker = _ContinuouslyGrowingWorker()
+    scheduler = IndexJobWorkerScheduler(worker=worker)
+
+    summary = scheduler.run(_StopSignal(), max_cycles=1)
+
+    assert summary == IndexJobSchedulerRunSummary(3, 1, 0)
+    assert worker.begun_cycles == [IndexJobRunnableCycle(2)]
+    assert worker.page_cycles == [IndexJobRunnableCycle(2)] * 3
+    assert worker.visible_sequence == 5
 
 
 @pytest.mark.parametrize(

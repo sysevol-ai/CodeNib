@@ -20,6 +20,7 @@ from codenib.storage.models import (
     IndexJobCompletion,
     IndexJobEffectiveMode,
     IndexJobRunnableCursor,
+    IndexJobRunnableCycle,
     IndexJobStatus,
     IndexJobViewOutcome,
     StorageIntegrityError,
@@ -4190,18 +4191,36 @@ def test_runnable_scan_uses_stable_keyset_pages_and_is_advisory(tmp_path) -> Non
                 )
             )
         expected = tuple(sorted(jobs, key=lambda job: (job.created_at_ms, job.job_id)))
-        first_page = catalog.scan_runnable_jobs(limit=2)
+        cycle = catalog.begin_runnable_job_cycle()
+        assert type(cycle) is IndexJobRunnableCycle
+        first_page = catalog.scan_runnable_jobs(cycle=cycle, limit=2)
         assert first_page.jobs == expected[:2]
         assert first_page.next_cursor == IndexJobRunnableCursor(
             expected[1].created_at_ms,
             expected[1].job_id,
         )
+        late = catalog.create_job(
+            first.repository_id,
+            first.source_revision_id,
+            "request-late",
+            first.request,
+            ref_name="ref-late",
+        )
         second_page = catalog.scan_runnable_jobs(
             cursor=first_page.next_cursor,
+            cycle=cycle,
             limit=2,
         )
         assert second_page.jobs == expected[2:]
         assert second_page.next_cursor is None
+        fresh_cycle = catalog.begin_runnable_job_cycle()
+        assert (
+            late
+            in catalog.scan_runnable_jobs(
+                cycle=fresh_cycle,
+                limit=64,
+            ).jobs
+        )
         assert all(job.status is IndexJobStatus.QUEUED for job in jobs)
         with pytest.raises(CatalogValidationError, match="cannot exceed"):
             catalog.scan_runnable_jobs(limit=257)
