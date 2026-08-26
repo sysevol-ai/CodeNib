@@ -24,6 +24,7 @@ from codenib._atomic_directory import (
     capture_directory_ownership,
     reopen_authenticated_directory,
 )
+from codenib._bounded_json import canonical_json_array_chunks
 from codenib.artifacts import normalize_owned_query_view, validate_portable_query_view
 from codenib.compiler.artifact_fingerprints import bm25_artifact_file_fingerprints
 from codenib.index.embedding.artifact_integrity import (
@@ -3314,6 +3315,193 @@ def test_content_bound_reader_keeps_semantic_primary_through_all_final_checks(
     assert "reader cleanup secondary" in notes
 
 
+def test_content_bound_semantic_stop_closes_reader_and_source_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(tmp_path)
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    ownership = capture_directory_ownership(bm25)
+    repository_source = capture_repository_source(repo)
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    stop = KeyboardInterrupt("injected portable semantic-policy stop")
+    armed = False
+    close_calls = 0
+    real_policy = portable_views_module._assert_authenticated_publishable_json_value
+    real_close = portable_views_module._PublicationViewReader.close
+
+    def stop_in_policy(*args: object, **kwargs: object) -> None:
+        nonlocal armed
+        if str(kwargs.get("label", "")).endswith("view config"):
+            armed = True
+            callback = kwargs.get("check_cancelled")
+            assert callable(callback)
+            callback()
+        real_policy(*args, **kwargs)  # type: ignore[arg-type]
+
+    def track_close(reader: object) -> None:
+        nonlocal close_calls
+        close_calls += 1
+        real_close(reader)  # type: ignore[arg-type]
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+            publication,
+            repository_source=repository_source,
+            repository_identity=repository_identity,
+            view_type="bm25",
+            view_config=view_config,
+            environ={},
+            check_cancelled=check_cancelled,
+        )
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_assert_authenticated_publishable_json_value",
+        stop_in_policy,
+    )
+    monkeypatch.setattr(
+        portable_views_module._PublicationViewReader,
+        "close",
+        track_close,
+    )
+    try:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            reopen_authenticated_directory(bm25, ownership, validate)
+        assert caught.value is stop
+        assert close_calls == 1
+        assert repository_source.usable
+    finally:
+        repository_source.close()
+
+
+def test_content_bound_document_preserves_exact_stop_iteration_and_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, bm25 = _bm25_view(
+        tmp_path,
+        documents=[
+            {
+                "page_content": "VALUE = 1",
+                "metadata": {"file": "sample.py"},
+            }
+        ],
+    )
+    view_config = normalize_owned_query_view(
+        bm25,
+        repo_path=repo,
+        view_type="bm25",
+        view_config={},
+    )
+    ownership = capture_directory_ownership(bm25)
+    repository_source = capture_repository_source(repo)
+    repository_identity = repository_source.authenticated_identity_snapshot()
+    stop = StopIteration("injected portable document stop")
+    armed = False
+    close_calls = 0
+    real_secret_policy = portable_views_module._assert_no_secret_fields_interruptibly
+    real_close = portable_views_module._PublicationViewReader.close
+
+    def arm_document_policy(*args: object, **kwargs: object) -> None:
+        nonlocal armed
+        if "document 0 metadata" in str(kwargs.get("source", "")):
+            armed = True
+        real_secret_policy(*args, **kwargs)  # type: ignore[arg-type]
+
+    def track_close(reader: object) -> None:
+        nonlocal close_calls
+        close_calls += 1
+        real_close(reader)  # type: ignore[arg-type]
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+            publication,
+            repository_source=repository_source,
+            repository_identity=repository_identity,
+            view_type="bm25",
+            view_config=view_config,
+            environ={},
+            check_cancelled=check_cancelled,
+        )
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_assert_no_secret_fields_interruptibly",
+        arm_document_policy,
+    )
+    monkeypatch.setattr(
+        portable_views_module._PublicationViewReader,
+        "close",
+        track_close,
+    )
+    try:
+        with pytest.raises(StopIteration) as caught:
+            reopen_authenticated_directory(bm25, ownership, validate)
+        assert caught.value is stop
+        assert close_calls == 1
+        assert repository_source.usable
+    finally:
+        repository_source.close()
+
+
+def test_content_bound_vector_applies_callback_policy_to_level_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, vector, original_config = _production_vector_view(tmp_path)
+    adjustments = normalize_owned_query_view(
+        vector,
+        repo_path=repo,
+        view_type="vector",
+        view_config=original_config,
+    )
+    view_config = {**original_config, **adjustments}
+    ownership = capture_directory_ownership(vector)
+    labels: list[str] = []
+    real_policy = portable_views_module._assert_authenticated_publishable_json_value
+
+    def record_policy(*args: object, **kwargs: object) -> None:
+        labels.append(str(kwargs["label"]))
+        real_policy(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_assert_authenticated_publishable_json_value",
+        record_policy,
+    )
+    with capture_repository_source(repo) as repository_source:
+        repository_identity = repository_source.authenticated_identity_snapshot()
+
+        def validate(publication: PublicationDirectoryReader) -> None:
+            portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+                publication,
+                repository_source=repository_source,
+                repository_identity=repository_identity,
+                view_type="vector",
+                view_config=view_config,
+                environ={},
+                check_cancelled=lambda: None,
+            )
+
+        reopen_authenticated_directory(vector, ownership, validate)
+
+    assert "portable vector l2 config" in labels
+
+
 def test_content_bound_reader_stops_before_repository_record_poison(
     tmp_path: Path,
 ) -> None:
@@ -3407,6 +3595,595 @@ def test_portable_callback_snapshots_stop_before_poisoned_future_items() -> None
     assert not poison_consumed
 
 
+def test_portable_snapshot_does_not_trust_mapping_length_for_cancellation() -> None:
+    stop = KeyboardInterrupt("injected portable lying-mapping stop")
+    armed = False
+    poison_consumed = False
+
+    class LyingConfig(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            assert key == "first"
+            return 1
+
+        def __iter__(self) -> Iterator[str]:
+            nonlocal armed, poison_consumed
+            armed = True
+            yield "first"
+            poison_consumed = True
+            raise AssertionError("portable config consumed its poisoned tail")
+
+        def __len__(self) -> int:
+            return 1
+
+        def items(self):  # type: ignore[no-untyped-def]
+            nonlocal poison_consumed
+            poison_consumed = True
+            raise AssertionError("portable config requested poisoned items")
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            LyingConfig(),
+            label="portable lying config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not poison_consumed
+
+
+def test_portable_snapshot_polls_before_caller_mapping_methods() -> None:
+    stop = SystemExit("injected portable entry stop")
+    mapping_called = False
+
+    class PoisonedConfig(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            nonlocal mapping_called
+            mapping_called = True
+            raise AssertionError("portable snapshot read a poisoned mapping value")
+
+        def __iter__(self) -> Iterator[str]:
+            nonlocal mapping_called
+            mapping_called = True
+            raise AssertionError("portable snapshot iterated a poisoned mapping")
+
+        def __len__(self) -> int:
+            nonlocal mapping_called
+            mapping_called = True
+            raise AssertionError("portable snapshot measured a poisoned mapping")
+
+        def items(self):  # type: ignore[no-untyped-def]
+            nonlocal mapping_called
+            mapping_called = True
+            raise AssertionError("portable snapshot requested poisoned items")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(SystemExit) as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            PoisonedConfig(),
+            label="portable entry config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not mapping_called
+
+
+def test_portable_environment_polls_after_hostile_iterator_acquisition() -> None:
+    stop = RuntimeError("injected environment iterator stop")
+    armed = False
+    next_called = False
+
+    class PoisonedItems(Iterator[tuple[str, str]]):
+        def __iter__(self) -> Iterator[tuple[str, str]]:
+            nonlocal armed
+            armed = True
+            return self
+
+        def __next__(self) -> tuple[str, str]:
+            nonlocal next_called
+            next_called = True
+            raise AssertionError("portable environment consumed a poisoned item")
+
+    class PoisonedEnvironment(Mapping[str, str]):
+        def __getitem__(self, key: str) -> str:
+            raise KeyError(key)
+
+        def __iter__(self) -> Iterator[str]:
+            raise AssertionError("portable environment used raw key iteration")
+
+        def __len__(self) -> int:
+            return 1
+
+        def keys(self) -> PoisonedItems:  # type: ignore[override]
+            return PoisonedItems()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(RuntimeError) as caught:
+        portable_views_module._environment_snapshot(
+            PoisonedEnvironment(),
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not next_called
+
+
+def test_portable_forbidden_paths_poll_after_hostile_iter() -> None:
+    stop = RuntimeError("injected forbidden-path iterator stop")
+    armed = False
+    next_called = False
+
+    class PoisonedIterator(Iterator[Path]):
+        def __iter__(self) -> Iterator[Path]:
+            return self
+
+        def __next__(self) -> Path:
+            nonlocal next_called
+            next_called = True
+            raise AssertionError("portable paths consumed a poisoned item")
+
+    class PoisonedPaths:
+        def __iter__(self) -> Iterator[Path]:
+            nonlocal armed
+            armed = True
+            return PoisonedIterator()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(RuntimeError) as caught:
+        portable_views_module._forbidden_paths_snapshot(
+            PoisonedPaths(),
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not next_called
+
+
+def test_portable_snapshot_attests_current_mapping_value_before_stop() -> None:
+    stop = RuntimeError("injected portable current-value stop")
+    armed = False
+
+    class InvalidConfig(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            nonlocal armed
+            assert key == "current"
+            armed = True
+            return object()
+
+        def __iter__(self) -> Iterator[str]:
+            yield "current"
+
+        def __len__(self) -> int:
+            return 1
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(ValueError, match="not canonical JSON data") as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            InvalidConfig(),
+            label="portable invalid config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is not stop
+
+
+def test_portable_snapshot_detaches_current_before_future_poll() -> None:
+    value = {"current": {"nested": 1}, "future": 2}
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls == 1:
+            value["current"]["nested"] = 9  # type: ignore[index]
+
+    assert portable_views_module._bounded_json_object_snapshot(
+        value,
+        label="portable detached config",
+        check_cancelled=check_cancelled,
+    ) == {"current": {"nested": 1}, "future": 2}
+
+
+def test_portable_snapshot_rejects_detached_key_collision() -> None:
+    class CollidingKey(str):
+        __hash__ = object.__hash__
+
+        def __eq__(self, other: object) -> bool:
+            return self is other
+
+    first = CollidingKey("same")
+    second = CollidingKey("same")
+    value = {"nested": {first: 1, second: 2}}
+
+    for callback in (None, lambda: None):
+        with pytest.raises(ValueError, match="not canonical JSON data"):
+            portable_views_module._bounded_json_object_snapshot(
+                value,
+                label="portable colliding-key config",
+                check_cancelled=callback,
+            )
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_portable_snapshot_attests_lazy_current_key_collision_before_stop(
+    nested: bool,
+) -> None:
+    class CollidingKey(str):
+        __hash__ = object.__hash__
+
+        def __eq__(self, other: object) -> bool:
+            return self is other
+
+    first = CollidingKey("same")
+    second = CollidingKey("same")
+    stop = RuntimeError("injected colliding-key future stop")
+    armed = False
+    second_value_touched = False
+
+    class LazyKeys:
+        def __iter__(self) -> Iterator[CollidingKey]:
+            nonlocal armed
+            yield first
+            armed = True
+            yield second
+
+    class LazyMapping(Mapping[CollidingKey, object]):
+        def keys(self) -> LazyKeys:
+            return LazyKeys()
+
+        def __getitem__(self, key: CollidingKey) -> object:
+            nonlocal second_value_touched
+            if key is second:
+                second_value_touched = True
+                raise AssertionError("snapshot touched duplicate-key value")
+            return 1
+
+        def __iter__(self) -> Iterator[CollidingKey]:
+            return iter(LazyKeys())
+
+        def __len__(self) -> int:
+            return 2
+
+    class LazyDict(dict[CollidingKey, object]):
+        def keys(self) -> LazyKeys:  # type: ignore[override]
+            return LazyKeys()
+
+        def __getitem__(self, key: CollidingKey) -> object:
+            nonlocal second_value_touched
+            if key is second:
+                second_value_touched = True
+                raise AssertionError("snapshot touched nested duplicate-key value")
+            return 1
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    value: Mapping[str, object]
+    if nested:
+        value = {"nested": LazyDict({first: 1, second: 2})}
+    else:
+        value = LazyMapping()  # type: ignore[assignment]
+    with pytest.raises(ValueError, match="not canonical JSON data") as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            value,
+            label="portable lazy-collision config",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is not stop
+    assert not second_value_touched
+
+
+def test_portable_snapshot_rejects_huge_current_key_before_armed_stop() -> None:
+    stop = RuntimeError("injected huge-key stop")
+    armed = False
+
+    class ArmedKey(str):
+        def __len__(self) -> int:
+            nonlocal armed
+            armed = True
+            return super().__len__()
+
+    key = ArmedKey("k" * (16 * 1024 * 1024))
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(ValueError, match="key exceeding") as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            {key: 1},
+            label="portable huge-key config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is not stop
+
+
+def test_portable_snapshot_preserves_exact_encoding_stop() -> None:
+    stop = ValueError("injected portable encoder stop")
+    armed = False
+
+    class ArmedText(str):
+        def __len__(self) -> int:
+            nonlocal armed
+            armed = True
+            return super().__len__()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(ValueError) as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            {"value": ArmedText("x" * (64 * 1024 + 1))},
+            label="portable encoder config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+
+
+def test_portable_snapshot_preserves_hostile_stop_iteration_identity() -> None:
+    armed = False
+
+    class HostileStop(StopIteration):
+        def __str__(self) -> str:
+            raise AssertionError("portable carrier stringified the callback stop")
+
+    stop = HostileStop()
+
+    class ArmedText(str):
+        def __len__(self) -> int:
+            nonlocal armed
+            armed = True
+            return super().__len__()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(HostileStop) as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            {"value": ArmedText("x" * (64 * 1024 + 1))},
+            label="portable hostile-stop config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+
+
+def test_portable_outer_carrier_is_identity_gated_and_transfers_settlement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = StopIteration("injected outer portable stop")
+    owner = object()
+    source_owner = object()
+
+    def settled_impl(*args: object, **kwargs: object) -> None:
+        callback = kwargs["check_cancelled"]
+        assert callable(callback)
+        try:
+            callback()
+        except BaseException as carrier:
+            add_note = getattr(BaseException, "add_note", None)
+            if add_note is not None:
+                add_note(carrier, "portable cleanup settlement")
+            else:
+                BaseException.__setattr__(
+                    carrier,
+                    "_codenib_cleanup_notes",
+                    ("portable cleanup settlement",),
+                )
+            BaseException.__setattr__(
+                carrier,
+                "publication_cleanup_owners",
+                (owner,),
+            )
+            BaseException.__setattr__(
+                carrier,
+                "source_cleanup_owner",
+                source_owner,
+            )
+            raise
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_validate_content_bound_portable_query_view_reader_with_identity_impl",
+        settled_impl,
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(StopIteration) as caught:
+        portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+            object(),
+            repository_source=object(),
+            repository_identity=object(),
+            view_type="bm25",
+            view_config={},
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    notes = (
+        *getattr(stop, "__notes__", ()),
+        *getattr(stop, "_codenib_cleanup_notes", ()),
+    )
+    assert "portable cleanup settlement" in notes
+    assert stop.publication_cleanup_owners == (owner,)  # type: ignore[attr-defined]
+    assert stop.source_cleanup_owner is source_owner  # type: ignore[attr-defined]
+
+    foreign = portable_views_module._CallbackIterationStop(stop)
+
+    def foreign_impl(*args: object, **kwargs: object) -> None:
+        raise foreign
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_validate_content_bound_portable_query_view_reader_with_identity_impl",
+        foreign_impl,
+    )
+    with pytest.raises(portable_views_module._CallbackIterationStop) as foreign_caught:
+        portable_views_module._validate_content_bound_portable_query_view_reader_with_identity(
+            object(),
+            repository_source=object(),
+            repository_identity=object(),
+            view_type="bm25",
+            view_config={},
+            check_cancelled=lambda: None,
+        )
+    assert foreign_caught.value is foreign
+
+
+def test_portable_carrier_merges_source_cleanup_owners_descriptor_safely() -> None:
+    class CleanupOwner:
+        def __init__(self) -> None:
+            self.closed = False
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            if self.close_calls > 1:
+                raise AssertionError("cleanup owner closed twice")
+            self.closed = True
+
+    class HostileStop(StopIteration):
+        def __getattribute__(self, name: str) -> object:
+            if name == "source_cleanup_owner":
+                raise AssertionError("callback descriptor was invoked")
+            return super().__getattribute__(name)
+
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "source_cleanup_owner":
+                raise AssertionError("callback descriptor was invoked")
+            super().__setattr__(name, value)
+
+    stop = HostileStop("injected hostile cleanup-owner stop")
+    carrier = portable_views_module._CallbackIterationStop(stop)
+    existing_owner = CleanupOwner()
+    new_owner = CleanupOwner()
+    BaseException.__setattr__(stop, "source_cleanup_owner", existing_owner)
+    BaseException.__setattr__(carrier, "source_cleanup_owner", new_owner)
+
+    portable_views_module._transfer_callback_exception_settlement(carrier, stop)
+
+    merged = BaseException.__getattribute__(stop, "source_cleanup_owner")
+    assert merged.pending_sources == (existing_owner, new_owner)
+    merged.close()
+    assert existing_owner.closed
+    assert new_owner.closed
+
+    overlapping_owner = CleanupOwner()
+    overlapping_stop = StopIteration("injected overlapping cleanup-owner stop")
+    overlapping_carrier = portable_views_module._CallbackIterationStop(overlapping_stop)
+    BaseException.__setattr__(
+        overlapping_stop,
+        "source_cleanup_owner",
+        portable_views_module._SourceCleanupGroup(overlapping_owner),
+    )
+    BaseException.__setattr__(
+        overlapping_carrier,
+        "source_cleanup_owner",
+        overlapping_owner,
+    )
+    portable_views_module._transfer_callback_exception_settlement(
+        overlapping_carrier,
+        overlapping_stop,
+    )
+    overlapping_group = BaseException.__getattribute__(
+        overlapping_stop,
+        "source_cleanup_owner",
+    )
+    overlapping_group.close()
+    assert overlapping_owner.close_calls == 1
+
+
+def test_portable_load_json_preserves_exact_predecode_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = ValueError("injected predecode stop")
+    loads_called = False
+
+    class FakeReader:
+        _check_cancelled = staticmethod(lambda: (_ for _ in ()).throw(stop))
+
+        def validate_json(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        def read_bytes(self, *args: object, **kwargs: object) -> bytes:
+            return b"{}\n"
+
+    def poisoned_loads(*args: object, **kwargs: object) -> object:
+        nonlocal loads_called
+        loads_called = True
+        raise AssertionError("portable load entered JSON decode after cancellation")
+
+    monkeypatch.setattr(portable_views_module, "_PublicationViewReader", FakeReader)
+    monkeypatch.setattr(portable_views_module.json, "loads", poisoned_loads)
+    with pytest.raises(ValueError) as caught:
+        portable_views_module._load_json(
+            Path("unused.json"),
+            label="portable test JSON",
+            max_bytes=1024,
+            require_canonical=True,
+            reader=FakeReader(),  # type: ignore[arg-type]
+        )
+    assert caught.value is stop
+    assert not loads_called
+
+
+def test_portable_snapshot_polls_before_json_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = ValueError("injected portable pre-decode stop")
+    armed = False
+    loads_called = False
+
+    class ArmedText(str):
+        def __len__(self) -> int:
+            nonlocal armed
+            armed = True
+            return super().__len__()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    def poisoned_loads(*args: object, **kwargs: object) -> object:
+        nonlocal loads_called
+        loads_called = True
+        raise AssertionError("portable snapshot entered its JSON round trip")
+
+    monkeypatch.setattr(portable_views_module.json, "loads", poisoned_loads)
+
+    with pytest.raises(ValueError) as caught:
+        portable_views_module._bounded_json_object_snapshot(
+            {"value": ArmedText("x")},
+            label="portable pre-decode config",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert not loads_called
+
+
 def test_portable_snapshot_current_errors_precede_armed_stop() -> None:
     stop = RuntimeError("injected portable snapshot stop")
     polls = 0
@@ -3462,6 +4239,276 @@ def test_portable_snapshot_none_uses_legacy_single_pass_shapes() -> None:
     assert environment.iterations == 1
 
 
+def test_portable_semantic_scans_poll_one_maximum_string_exactly() -> None:
+    value = "x" * (64 * 1024 * 1024)
+    stop = BaseException("injected portable maximum-string stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls == 3:
+            raise stop
+
+    with pytest.raises(BaseException) as caught:
+        portable_views_module._assert_no_secret_fields_interruptibly(
+            {"description": value},
+            source="portable maximum string",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert polls == 3
+
+
+def test_portable_semantic_current_string_matches_precede_armed_stop() -> None:
+    stop = RuntimeError("injected portable current-string stop")
+    armed = False
+
+    class ArmedText(str):
+        def __len__(self) -> int:
+            nonlocal armed
+            armed = True
+            return super().__len__()
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    credential = ArmedText(
+        "https://user:password@example.test/" + "x" * (64 * 1024 * 1024)
+    )
+    with pytest.raises(ValueError, match="URL credentials") as caught:
+        portable_views_module._assert_no_secret_fields_interruptibly(
+            {"description": credential},
+            source="portable credential string",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is not stop
+
+    path_text = ArmedText("/forbidden/build/root" + "x" * (64 * 1024 * 1024))
+    assert portable_views_module._contains_pattern(
+        path_text,
+        ("/forbidden/build/root",),
+        check_cancelled=check_cancelled,
+    )
+
+
+def test_portable_route_scalar_equality_attests_current_chunk() -> None:
+    stop = RuntimeError("injected portable route-equality stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        raise stop
+
+    assert not portable_views_module._json_values_equal_interruptibly(
+        "a" + "x" * (128 * 1024),
+        "b" + "x" * (128 * 1024),
+        check_cancelled=check_cancelled,
+    )
+    assert polls == 0
+
+    left = "".join(("x" * (64 * 1024), "x" * (64 * 1024)))
+    right = "".join(("x" * (64 * 1024), "x" * (64 * 1024)))
+    assert left is not right
+    with pytest.raises(RuntimeError) as caught:
+        portable_views_module._json_values_equal_interruptibly(
+            left,
+            right,
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+
+
+def test_portable_vector_model_suffix_is_interruptible_and_equivalent() -> None:
+    model = "vendor/" + "m" * (16 * 1024 * 1024)
+    stop = RuntimeError("injected model-suffix stop")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(RuntimeError) as caught:
+        portable_views_module._vector_model_suffix(
+            model,
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+    assert portable_views_module._vector_model_suffix(
+        "vendor/model",
+        check_cancelled=lambda: None,
+    ) == portable_views_module._vector_model_suffix(
+        "vendor/model",
+        check_cancelled=None,
+    )
+
+
+def test_portable_document_canonicalization_polls_nested_key_sort() -> None:
+    document = {
+        "page_content": "VALUE = 1",
+        "metadata": {f"key_{index:06d}": index for index in range(100_000)},
+    }
+    expected = b"".join(canonical_json_array_chunks((document,)))
+    assert (
+        b"".join(
+            portable_views_module._canonical_json_array_chunks_interruptibly(
+                (document,),
+                check_cancelled=lambda: None,
+            )
+        )
+        == expected
+    )
+
+    stop = RuntimeError("injected nested document-key stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls == 2:
+            raise stop
+
+    with pytest.raises(RuntimeError) as caught:
+        b"".join(
+            portable_views_module._canonical_json_array_chunks_interruptibly(
+                (document,),
+                check_cancelled=check_cancelled,
+            )
+        )
+    assert caught.value is stop
+
+
+def test_portable_canonical_payload_comparison_is_interruptible() -> None:
+    value = {"value": "x" * (128 * 1024)}
+    payload = portable_views_module._json_bytes(value)
+    stop = StopIteration("injected canonical payload stop")
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(StopIteration) as caught:
+        portable_views_module._canonical_json_payload_matches_interruptibly(
+            value,
+            payload,
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+
+    assert not portable_views_module._canonical_json_payload_matches_interruptibly(
+        value,
+        b"!" + payload[1:],
+        check_cancelled=check_cancelled,
+    )
+
+
+def test_portable_route_and_inventory_long_passes_are_interruptible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = KeyboardInterrupt("injected portable long-semantic stop")
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls == 8:
+            raise stop
+
+    route_config = {
+        "builder_schema": 2,
+        "embedding_model": "test/model",
+        "embedding_provider": "huggingface",
+        "embedding_dimension": 4,
+        "dimension": 4,
+        "embedding_kwargs": {
+            f"public_option_{index}": index for index in range(100_000)
+        },
+    }
+    with pytest.raises(KeyboardInterrupt) as route_caught:
+        portable_views_module.resolve_embedding_artifact_route(
+            route_config,
+            environ={},
+            check_cancelled=check_cancelled,
+        )
+    assert route_caught.value is stop
+
+    inventory = tuple((f"nested/file-{index}.bin", "file") for index in range(100_000))
+    monkeypatch.setattr(
+        portable_views_module,
+        "_view_inventory",
+        lambda _ownership: inventory,
+    )
+    polls = 0
+    with pytest.raises(KeyboardInterrupt) as inventory_caught:
+        portable_views_module._owned_inventory_paths(
+            Path("/portable-view"),
+            object(),
+            kind="file",
+            check_cancelled=check_cancelled,
+        )
+    assert inventory_caught.value is stop
+
+
+def test_portable_inventory_current_policy_error_precedes_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stop = RuntimeError("injected portable inventory stop")
+    inventory = (("unexpected.bin", "file"), ("future.bin", "file"))
+    monkeypatch.setattr(
+        portable_views_module,
+        "_view_inventory",
+        lambda _ownership: inventory,
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(ValueError, match="unexpected file") as caught:
+        portable_views_module._assert_exact_view_tree(
+            ownership=object(),
+            allowed_files=set(),
+            required_files=set(),
+            label="portable test view",
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is not stop
+
+
+def test_portable_none_route_resolution_uses_legacy_call_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = object()
+    calls = 0
+
+    def legacy_resolve(
+        config: Mapping[str, object],
+        *,
+        environ: Mapping[str, str] | None,
+    ) -> object:
+        nonlocal calls
+        calls += 1
+        assert config == {"dimension": 4}
+        assert environ == {}
+        return expected
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "resolve_embedding_artifact_route",
+        legacy_resolve,
+    )
+
+    assert (
+        portable_views_module._resolve_embedding_artifact_route_interruptibly(
+            {"dimension": 4},
+            environ={},
+            check_cancelled=None,
+        )
+        is expected
+    )
+    assert calls == 1
+
+
 @pytest.mark.parametrize("forgery", ("path", "size", "path-subclass"))
 def test_portable_repository_identity_forgery_precedes_armed_stop(
     tmp_path: Path,
@@ -3510,6 +4557,7 @@ def test_portable_repository_identity_forgery_precedes_armed_stop(
 
 def test_content_bound_repository_mismatch_precedes_terminal_stop(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo, _bm25 = _bm25_view(tmp_path)
     (repo / "helper.py").write_text("HELPER = 1\n", encoding="utf-8")
@@ -3523,9 +4571,25 @@ def test_content_bound_repository_mismatch_precedes_terminal_stop(
     )
     stop = RuntimeError("terminal portable repository record stop")
     polls = 0
+    armed = False
+    real_detach = portable_views_module._exact_repository_identity_value
+
+    def detach_then_arm(value: object, **kwargs: object) -> object:
+        nonlocal armed
+        result = real_detach(value, **kwargs)  # type: ignore[arg-type]
+        armed = True
+        return result
+
+    monkeypatch.setattr(
+        portable_views_module,
+        "_exact_repository_identity_value",
+        detach_then_arm,
+    )
 
     def check_cancelled() -> None:
         nonlocal polls
+        if not armed:
+            return
         polls += 1
         if polls > 1:
             raise stop
@@ -3665,6 +4729,62 @@ def test_publication_view_root_reconciles_exact_cancellation(
     assert polls == 1
     if mutate:
         assert "changed" in str(caught.value)
+        assert caught.value is not stop
+    else:
+        assert caught.value is stop
+
+
+@pytest.mark.parametrize("operation", ("read_bytes", "validate_json"))
+@pytest.mark.parametrize("mutate", (False, True))
+def test_publication_file_reconciles_callback_before_leaving_authenticated_context(
+    tmp_path: Path,
+    operation: str,
+    mutate: bool,
+) -> None:
+    _repo, bm25 = _bm25_view(tmp_path)
+    target = bm25 / "large.json"
+    payload = _canonical_json_bytes({"value": "x" * (2 * 1024 * 1024)})
+    target.write_bytes(payload)
+    ownership = capture_directory_ownership(bm25)
+    stop = KeyboardInterrupt("injected authenticated file stop")
+    reading = False
+    polls = 0
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        if not reading:
+            return
+        polls += 1
+        if mutate:
+            replacement = payload.replace(b"x", b"y")
+            assert len(replacement) == len(payload)
+            target.write_bytes(replacement)
+        raise stop
+
+    def validate(publication: PublicationDirectoryReader) -> None:
+        nonlocal reading
+        reader = portable_views_module._PublicationViewReader(
+            publication,
+            ownership,
+            check_cancelled=check_cancelled,
+        )
+        reading = True
+        path = reader.root / "large.json"
+        if operation == "read_bytes":
+            reader.read_bytes(path, max_bytes=len(payload))
+        else:
+            reader.validate_json(
+                path,
+                label="portable authenticated callback JSON",
+                max_bytes=len(payload),
+            )
+
+    expected = RuntimeError if mutate else KeyboardInterrupt
+    with pytest.raises(expected) as caught:
+        reopen_authenticated_directory(bm25, ownership, validate)
+
+    assert polls == 1
+    if mutate:
         assert caught.value is not stop
     else:
         assert caught.value is stop

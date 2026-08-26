@@ -10,6 +10,7 @@ import hashlib
 import importlib
 import io
 import json
+import math
 import os
 import re
 import stat
@@ -34,13 +35,12 @@ from .._bounded_json import (
     DEFAULT_MAX_DEPTH,
     DEFAULT_MAX_KEY_BYTES,
     DEFAULT_MAX_NODES_PER_ELEMENT,
-    canonical_json_array_chunks,
     canonical_json_value_chunks,
     iter_bounded_json_array,
     validate_bounded_json_stream,
     validate_json_complexity,
 )
-from .._contained_source import validate_repository_file
+from .._contained_source import _SourceCleanupGroup, validate_repository_file
 from .._secret_fields import assert_no_secret_fields
 from ..index.embedding.artifact_integrity import (
     VECTOR_PERSISTENCE_SCHEMA,
@@ -68,9 +68,10 @@ from ..source_fingerprint import (
 from ..storage.models import StorageIntegrityError
 from ..storage.protocols import snapshot_retained_import_response
 from .security import (
+    _contains_pattern,
     _interitem_cancellation,
     _interruptible_sorted_security_items,
-    _validate_json_complexity_interruptibly,
+    assert_no_credential_fields,
     assert_publishable_json_value,
 )
 
@@ -99,11 +100,121 @@ MAX_PORTABLE_FAISS_INDEX_BYTES = 8 * 1024 * 1024 * 1024
 _JSON_READ_CHUNK_BYTES = 1024 * 1024
 _MAX_SOURCE_PATH_BYTES = 4_096
 _MAX_SOURCE_PATH_COMPONENTS = 256
+_SEMANTIC_SCAN_CHARS = 64 * 1024
+
+
+class _CallbackIterationStop(BaseException):
+    """Carry iteration-sentinel callback failures across generator boundaries."""
+
+    def __init__(self, error: StopIteration | StopAsyncIteration) -> None:
+        super().__init__(error)
+        self.error = error
+
+
+def _transfer_callback_exception_settlement(
+    source: BaseException,
+    target: BaseException,
+) -> None:
+    """Move cleanup observability from an internal carrier to the exact stop."""
+
+    try:
+        notes = BaseException.__getattribute__(source, "__notes__")
+    except AttributeError:
+        notes = ()
+    if type(notes) is list:
+        add_note = getattr(BaseException, "add_note", None)
+        if add_note is not None:
+            for note in notes:
+                if type(note) is str:
+                    try:
+                        add_note(target, note)
+                    except BaseException:  # noqa: B036 - diagnostics only
+                        break
+    try:
+        fallback_notes = BaseException.__getattribute__(
+            source,
+            "_codenib_cleanup_notes",
+        )
+    except AttributeError:
+        fallback_notes = ()
+    if type(fallback_notes) is tuple:
+        try:
+            existing_notes = BaseException.__getattribute__(
+                target,
+                "_codenib_cleanup_notes",
+            )
+        except AttributeError:
+            existing_notes = ()
+        if type(existing_notes) is not tuple:
+            existing_notes = ()
+        try:
+            BaseException.__setattr__(
+                target,
+                "_codenib_cleanup_notes",
+                (*existing_notes, *fallback_notes),
+            )
+        except BaseException:  # noqa: B036 - diagnostics only
+            pass
+    try:
+        owners = BaseException.__getattribute__(source, "publication_cleanup_owners")
+    except AttributeError:
+        owners = ()
+    if type(owners) is tuple:
+        try:
+            existing_owners = BaseException.__getattribute__(
+                target,
+                "publication_cleanup_owners",
+            )
+        except AttributeError:
+            existing_owners = ()
+        if type(existing_owners) is not tuple:
+            existing_owners = ()
+        try:
+            BaseException.__setattr__(
+                target,
+                "publication_cleanup_owners",
+                (*existing_owners, *owners),
+            )
+        except BaseException:  # noqa: B036 - diagnostics only
+            pass
+    try:
+        source_owner = BaseException.__getattribute__(source, "source_cleanup_owner")
+    except AttributeError:
+        source_owner = None
+    if source_owner is not None:
+        try:
+            existing_owner = BaseException.__getattribute__(
+                target,
+                "source_cleanup_owner",
+            )
+        except AttributeError:
+            existing_owner = None
+        if existing_owner is None:
+            try:
+                BaseException.__setattr__(
+                    target,
+                    "source_cleanup_owner",
+                    source_owner,
+                )
+            except BaseException:  # noqa: B036 - diagnostics only
+                pass
+        elif existing_owner is not source_owner:
+            try:
+                merged_owner = _SourceCleanupGroup(existing_owner, source_owner)
+                BaseException.__setattr__(
+                    target,
+                    "source_cleanup_owner",
+                    merged_owner,
+                )
+            except BaseException:  # noqa: B036 - exact callback stays primary
+                pass
+
+
 SourceTrust = Literal["portable-inert", "trusted-local"]
 
 
 class _InterruptibleReader:
-    __slots__ = ("_source", "_check_cancelled")
+    __slots__ = ("_source", "_check_cancelled", "_remaining")
 
     def __init__(
         self,
@@ -112,10 +223,14 @@ class _InterruptibleReader:
     ) -> None:
         self._source = source
         self._check_cancelled = check_cancelled
+        self._remaining = source.size
 
     def read(self, size: int = -1) -> bytes:
-        self._check_cancelled()
-        return self._source.read(size)
+        if self._remaining > 0:
+            self._check_cancelled()
+        payload = self._source.read(size)
+        self._remaining = max(0, self._remaining - len(payload))
+        return payload
 
 
 def _view_file_identity(metadata: os.stat_result) -> tuple[int, ...]:
@@ -799,7 +914,21 @@ class _PublicationViewReader:
         # a filesystem authority.
         self.root = Path("/__codenib_publication_view__")
         self._publication = publication
-        self._check_cancelled = check_cancelled
+        self._callback_failure: BaseException | None = None
+        self._callback_failure_generation = 0
+        if check_cancelled is None:
+            self._check_cancelled = None
+        else:
+
+            def tracked_check_cancelled() -> None:
+                try:
+                    check_cancelled()
+                except BaseException as failure:  # noqa: B036 - exact provenance
+                    self._callback_failure = failure
+                    self._callback_failure_generation += 1
+                    raise
+
+            self._check_cancelled = tracked_check_cancelled
         if ownership is None:
             # Private framework-sandwiched validators reuse the exact token
             # already installed in the callback reader. Fail closed rather
@@ -826,6 +955,7 @@ class _PublicationViewReader:
                 inventory = directory_ownership_inventory(ownership)  # type: ignore[arg-type]
             expected_ownership = ownership
             self.ownership = ownership
+        self._expected_ownership = expected_ownership
         self._inventory = inventory
         record_count = len(records)
         records_by_path: dict[str, TreeFileRecord] = {}
@@ -890,8 +1020,25 @@ class _PublicationViewReader:
                 f"publication view has no initial file record: {relative}"
             ) from exc
 
-    def file_records(self) -> tuple[TreeFileRecord, ...]:
-        return tuple(sorted(self._records.values(), key=lambda record: record.path))
+    def file_records(
+        self,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> tuple[TreeFileRecord, ...]:
+        if check_cancelled is None:
+            values = tuple(self._records.values())
+            return tuple(sorted(values, key=lambda record: record.path))
+        values_list: list[TreeFileRecord] = []
+        record_count = len(self._records)
+        for index, record in enumerate(self._records.values()):
+            values_list.append(record)
+            if index + 1 < record_count:
+                check_cancelled()
+        return _interruptible_sorted_security_items(
+            values_list,
+            key=lambda record: record.path,
+            check_cancelled=check_cancelled,
+        )
 
     def inventory(self) -> tuple[tuple[str, str], ...]:
         return self._inventory
@@ -906,16 +1053,40 @@ class _PublicationViewReader:
         relative = self._relative_path(path)
         expected = self.record(relative)
         limit = expected.size if max_bytes is None else max_bytes
-        with self._publication.open_authenticated_file(
-            relative,
-            max_bytes=limit,
-        ) as source:
-            yield source
+        callback_generation = self._callback_failure_generation
+        callback_failure: BaseException | None = None
+        try:
+            with self._publication.open_authenticated_file(
+                relative,
+                max_bytes=limit,
+            ) as source:
+                try:
+                    yield source
+                except BaseException as failure:  # noqa: B036 - reconcile callback
+                    if not (
+                        self._callback_failure_generation > callback_generation
+                        and failure is self._callback_failure
+                    ):
+                        raise
+                    # Let the inner authenticated context take its successful
+                    # exit path.  It drains only raw bytes, verifies the live
+                    # binding/digest, and compares the captured record before
+                    # the exact callback failure is re-raised below.
+                    callback_failure = failure
+        except BaseException as authentication_failure:  # noqa: B036
+            if callback_failure is not None:
+                raise authentication_failure from callback_failure
+            raise
         observed = source.record
         if observed != expected:
-            raise RuntimeError(
+            mismatch = RuntimeError(
                 f"publication view file differs from its initial record: {relative}"
             )
+            if callback_failure is not None:
+                raise mismatch from callback_failure
+            raise mismatch
+        if callback_failure is not None:
+            raise callback_failure
 
     def read_bytes(self, path: Path, *, max_bytes: int) -> bytes:
         relative = self._relative_path(path)
@@ -923,7 +1094,7 @@ class _PublicationViewReader:
         with self.open_file(relative, max_bytes=max_bytes) as source:
             for chunk in source.iter_bytes(chunk_size=_JSON_READ_CHUNK_BYTES):
                 payload.extend(chunk)
-                if self._check_cancelled is not None:
+                if self._check_cancelled is not None and len(payload) < source.size:
                     self._check_cancelled()
         return bytes(payload)
 
@@ -957,9 +1128,11 @@ class _PublicationViewReader:
         expected_fields = {"size", "sha256"}
         if "file" in expected:
             expected_fields.add("file")
-        if set(expected) != expected_fields or (
-            "file" in expected and expected.get("file") != relative.name
-        ):
+        if not _mapping_has_exact_keys(
+            expected,
+            expected_fields,
+            check_cancelled=self._check_cancelled,
+        ) or ("file" in expected and expected.get("file") != relative.name):
             raise ValueError(f"portable view fingerprint is invalid: {relative}")
         if expected.get("size") != record.size or expected.get("sha256") != (
             record.sha256
@@ -1045,9 +1218,13 @@ def _view_inventory(ownership: object) -> tuple[tuple[str, str], ...]:
     return tuple(directory_ownership_inventory(ownership))  # type: ignore[arg-type]
 
 
-def _view_file_records(ownership: object) -> tuple[TreeFileRecord, ...]:
+def _view_file_records(
+    ownership: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> tuple[TreeFileRecord, ...]:
     if isinstance(ownership, _PublicationViewReader):
-        return ownership.file_records()
+        return ownership.file_records(check_cancelled=check_cancelled)
     return tuple(directory_ownership_file_records(ownership))  # type: ignore[arg-type]
 
 
@@ -1064,6 +1241,43 @@ def _reject_nonfinite_number(value: str) -> None:
     raise ValueError(f"non-finite JSON number: {value}")
 
 
+def _mapping_has_exact_keys(
+    value: Mapping[Any, Any],
+    expected: set[str],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    """Compare exact key sets while polling only before a possible future key."""
+
+    if check_cancelled is None:
+        return set(value) == expected
+    if len(value) != len(expected):
+        return False
+    item_count = len(value)
+    observed: set[Any] = set()
+    for index, key in enumerate(value):
+        if key not in expected or key in observed:
+            return False
+        observed.add(key)
+        if index + 1 < item_count:
+            check_cancelled()
+    return len(observed) == len(expected)
+
+
+def _mapping_keys_are_subset(
+    value: Mapping[Any, Any],
+    allowed: set[str],
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    if check_cancelled is None:
+        return set(value) <= allowed
+    for key in _interitem_cancellation(value, check_cancelled):
+        if key not in allowed:
+            return False
+    return True
+
+
 def _json_bytes(value: Any) -> bytes:
     return (
         json.dumps(
@@ -1078,7 +1292,281 @@ def _json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
-def _bounded_json_object_snapshot(
+def _attest_json_value_interruptibly(
+    value: Any,
+    *,
+    label: str,
+    check_cancelled: Callable[[], None],
+    active: set[int] | None = None,
+    depth: int = 1,
+) -> tuple[Any, int, int]:
+    """Detach one JSON value and attest its subtree before polling future input.
+
+    The returned tuple contains the exact-builtin snapshot, its decoded node
+    count, and its canonical byte size at the value's current indentation
+    level.  Keeping those results together matters: a cancellation check after
+    a current mapping item must not leave a caller-owned nested container live,
+    or defer a current complexity/serialized-size failure until after that
+    check.
+    """
+
+    if depth > DEFAULT_MAX_DEPTH:
+        raise ValueError(f"{label} exceeds its {DEFAULT_MAX_DEPTH}-level depth limit")
+    if value is None or type(value) is bool:
+        if value is None:
+            return None, 1, 4
+        return value, 1, 4 if value else 5
+    if isinstance(value, str):
+        from json.encoder import encode_basestring_ascii
+
+        value_length = len(value)
+        if value_length > _MAX_CONFIG_JSON_BYTES:
+            raise ValueError(f"{label} contains an oversized JSON string")
+        encoded_size = 2
+        detached_parts: list[str] | None = [] if type(value) is not str else None
+        for offset in range(0, value_length, _SEMANTIC_SCAN_CHARS):
+            end = min(value_length, offset + _SEMANTIC_SCAN_CHARS)
+            piece = str.__getitem__(value, slice(offset, end))
+            encoded_size += len(encode_basestring_ascii(piece)) - 2
+            if encoded_size + 1 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError(f"{label} contains an oversized JSON string")
+            if detached_parts is not None:
+                detached_parts.append(piece)
+            if end < value_length:
+                check_cancelled()
+        detached_text = value if detached_parts is None else "".join(detached_parts)
+        return detached_text, 1, encoded_size
+    if isinstance(value, int):
+        detached_integer = value if type(value) is int else int.__int__(value)
+        digit_limit = getattr(sys, "get_int_max_str_digits", lambda: 0)()
+        if digit_limit and int.bit_length(detached_integer) > (digit_limit + 1) * 4:
+            raise ValueError(f"{label} contains an oversized JSON integer")
+        rendered_integer = int.__repr__(detached_integer)
+        return detached_integer, 1, len(rendered_integer)
+    if isinstance(value, float):
+        detached_float = value if type(value) is float else float.__float__(value)
+        if not math.isfinite(detached_float):
+            raise ValueError(f"{label} contains a non-finite JSON number")
+        return detached_float, 1, len(repr(detached_float))
+    if active is None:
+        active = set()
+    if isinstance(value, dict):
+        identity = id(value)
+        if identity in active:
+            raise ValueError(f"{label} contains a circular JSON object")
+        active.add(identity)
+        node_count = 1
+        detached_object: dict[str, Any] = {}
+        canonical_size = 2
+        copied_items = 0
+
+        def detach_current_key(key: Any) -> str:
+            if not isinstance(key, str):
+                raise TypeError(f"{label} contains a non-text JSON object key")
+            if str.__len__(key) > DEFAULT_MAX_KEY_BYTES:
+                raise ValueError(
+                    f"{label} contains a key exceeding {DEFAULT_MAX_KEY_BYTES} bytes"
+                )
+            encoded_key = str.encode(key, "utf-8", errors="surrogatepass")
+            if len(encoded_key) > DEFAULT_MAX_KEY_BYTES:
+                raise ValueError(
+                    f"{label} contains a key exceeding {DEFAULT_MAX_KEY_BYTES} bytes"
+                )
+            detached_key = encoded_key.decode("utf-8", errors="surrogatepass")
+            if detached_key in detached_object:
+                raise TypeError(f"{label} contains a duplicate JSON object key")
+            return detached_key
+
+        def add_current(detached_key: str, child: Any) -> None:
+            nonlocal node_count, canonical_size, copied_items
+            detached_child, child_nodes, child_size = _attest_json_value_interruptibly(
+                child,
+                label=label,
+                check_cancelled=check_cancelled,
+                active=active,
+                depth=depth + 1,
+            )
+            node_count += child_nodes
+            if node_count > DEFAULT_MAX_NODES_PER_ELEMENT:
+                raise ValueError(
+                    f"{label} exceeds its "
+                    f"{DEFAULT_MAX_NODES_PER_ELEMENT}-node limit"
+                )
+            from json.encoder import encode_basestring_ascii
+
+            key_size = len(encode_basestring_ascii(detached_key))
+            if copied_items:
+                canonical_size += 2
+            canonical_size += 2 * depth + key_size + 2 + child_size
+            copied_items += 1
+            if canonical_size + 2 + 2 * (depth - 1) > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError(f"{label} contains an oversized JSON object")
+            detached_object[detached_key] = detached_child
+
+        try:
+            if type(value) is dict:
+                item_count = len(value)
+                for index, (key, child) in enumerate(value.items()):
+                    add_current(detach_current_key(key), child)
+                    if index + 1 < item_count:
+                        check_cancelled()
+            else:
+                check_cancelled()
+                keys_source = value.keys()
+                check_cancelled()
+                keys = iter(keys_source)
+                check_cancelled()
+                while True:
+                    try:
+                        key = next(keys)
+                    except StopIteration:
+                        break
+                    detached_key = detach_current_key(key)
+                    check_cancelled()
+                    child = value[key]
+                    add_current(detached_key, child)
+                    check_cancelled()
+        finally:
+            active.remove(identity)
+        if copied_items:
+            canonical_size += 2 + 2 * (depth - 1)
+        return detached_object, node_count, canonical_size
+    if isinstance(value, list):
+        identity = id(value)
+        if identity in active:
+            raise ValueError(f"{label} contains a circular JSON array")
+        active.add(identity)
+        node_count = 1
+        detached_array: list[Any] = []
+        canonical_size = 2
+
+        def add_current(child: Any) -> None:
+            nonlocal node_count, canonical_size
+            detached_child, child_nodes, child_size = _attest_json_value_interruptibly(
+                child,
+                label=label,
+                check_cancelled=check_cancelled,
+                active=active,
+                depth=depth + 1,
+            )
+            node_count += child_nodes
+            if node_count > DEFAULT_MAX_NODES_PER_ELEMENT:
+                raise ValueError(
+                    f"{label} exceeds its "
+                    f"{DEFAULT_MAX_NODES_PER_ELEMENT}-node limit"
+                )
+            if detached_array:
+                canonical_size += 2
+            canonical_size += 2 * depth + child_size
+            if canonical_size + 2 + 2 * (depth - 1) > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError(f"{label} contains an oversized JSON array")
+            detached_array.append(detached_child)
+
+        try:
+            if type(value) is list:
+                item_count = len(value)
+                for index, child in enumerate(value):
+                    add_current(child)
+                    if index + 1 < item_count:
+                        check_cancelled()
+            else:
+                check_cancelled()
+                iterator = iter(value)
+                check_cancelled()
+                while True:
+                    try:
+                        child = next(iterator)
+                    except StopIteration:
+                        break
+                    add_current(child)
+                    check_cancelled()
+        finally:
+            active.remove(identity)
+        if detached_array:
+            canonical_size += 2 + 2 * (depth - 1)
+        return detached_array, node_count, canonical_size
+    raise TypeError(f"unsupported decoded JSON value: {type(value).__name__}")
+
+
+def _canonical_json_value_size_interruptibly(
+    value: Any,
+    *,
+    level: int,
+    check_cancelled: Callable[[], None],
+) -> int:
+    """Count canonical bytes without materializing an attacker-sized scalar."""
+
+    if value is None:
+        return 4
+    if value is True:
+        return 4
+    if value is False:
+        return 5
+    if isinstance(value, str):
+        from json.encoder import encode_basestring_ascii
+
+        size = 2
+        value_length = len(value)
+        for offset in range(0, value_length, _SEMANTIC_SCAN_CHARS):
+            end = min(value_length, offset + _SEMANTIC_SCAN_CHARS)
+            size += len(encode_basestring_ascii(value[offset:end])) - 2
+            if size + 1 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError("canonical JSON value exceeds its byte limit")
+            if end < value_length:
+                check_cancelled()
+        return size
+    if isinstance(value, int):
+        return len(str(value))
+    if isinstance(value, float):
+        return len(repr(value))
+    if isinstance(value, list):
+        if not value:
+            return 2
+        size = 2
+        item_count = len(value)
+        for index, item in enumerate(value):
+            if index:
+                size += 2
+            size += 2 * (level + 1)
+            size += _canonical_json_value_size_interruptibly(
+                item,
+                level=level + 1,
+                check_cancelled=check_cancelled,
+            )
+            if size + 1 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError("canonical JSON value exceeds its byte limit")
+            if index + 1 < item_count:
+                check_cancelled()
+        return size + 2 + 2 * level
+    if isinstance(value, dict):
+        if not value:
+            return 2
+        size = 2
+        item_count = len(value)
+        for index, (key, item) in enumerate(value.items()):
+            if index:
+                size += 2
+            size += 2 * (level + 1)
+            size += _canonical_json_value_size_interruptibly(
+                key,
+                level=level + 1,
+                check_cancelled=check_cancelled,
+            )
+            size += 2
+            size += _canonical_json_value_size_interruptibly(
+                item,
+                level=level + 1,
+                check_cancelled=check_cancelled,
+            )
+            if size + 1 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError("canonical JSON value exceeds its byte limit")
+            if index + 1 < item_count:
+                check_cancelled()
+        return size + 2 + 2 * level
+    raise TypeError(f"unsupported decoded JSON value: {type(value).__name__}")
+
+
+def _bounded_json_object_snapshot_impl(
     value: Mapping[str, Any],
     *,
     label: str,
@@ -1088,6 +1576,7 @@ def _bounded_json_object_snapshot(
 
     if not isinstance(value, Mapping):
         raise ValueError(f"{label} requires a mapping")
+    callback_errors: list[BaseException] = []
     if check_cancelled is None:
         detached = dict(value)
         validate_json_complexity(detached, label=label)
@@ -1095,18 +1584,100 @@ def _bounded_json_object_snapshot(
     else:
         if not callable(check_cancelled):
             raise TypeError("portable validation cancellation check must be callable")
-        detached = dict(_interitem_cancellation(value.items(), check_cancelled))
-        _validate_json_complexity_interruptibly(
-            detached,
-            label=label,
-            max_nodes=DEFAULT_MAX_NODES_PER_ELEMENT,
-            max_depth=DEFAULT_MAX_DEPTH,
-            max_key_bytes=DEFAULT_MAX_KEY_BYTES,
-            check_cancelled=check_cancelled,
-        )
+
+        def poll() -> None:
+            try:
+                check_cancelled()
+            except BaseException as error:  # noqa: B036 - exact provenance
+                callback_errors.append(error)
+                raise
+
+        total_nodes = 1
+        serialized_size = 2
+        copied_items = 0
+        detached: dict[str, Any] = {}
+
+        def detach_outer_key(key: Any) -> str:
+            if not isinstance(key, str):
+                raise TypeError(f"{label} contains a non-text JSON object key")
+            if str.__len__(key) > DEFAULT_MAX_KEY_BYTES:
+                raise ValueError(
+                    f"{label} contains a key exceeding {DEFAULT_MAX_KEY_BYTES} bytes"
+                )
+            encoded_key = str.encode(key, "utf-8", errors="surrogatepass")
+            if len(encoded_key) > DEFAULT_MAX_KEY_BYTES:
+                raise ValueError(
+                    f"{label} contains a key exceeding {DEFAULT_MAX_KEY_BYTES} bytes"
+                )
+            detached_key = encoded_key.decode("utf-8", errors="surrogatepass")
+            if detached_key in detached:
+                raise TypeError(f"{label} contains a duplicate JSON object key")
+            return detached_key
+
+        def attest_outer_current(detached_key: str, current: Any) -> Any:
+            nonlocal total_nodes, serialized_size, copied_items
+            detached_current, current_nodes, current_size = (
+                _attest_json_value_interruptibly(
+                    current,
+                    label=label,
+                    check_cancelled=poll,
+                    depth=2,
+                )
+            )
+            total_nodes += current_nodes
+            if total_nodes > DEFAULT_MAX_NODES_PER_ELEMENT:
+                raise ValueError(
+                    f"{label} exceeds its "
+                    f"{DEFAULT_MAX_NODES_PER_ELEMENT}-node limit"
+                )
+            from json.encoder import encode_basestring_ascii
+
+            key_size = len(encode_basestring_ascii(detached_key))
+            if copied_items:
+                serialized_size += 2
+            serialized_size += 2 + key_size + 2 + current_size
+            copied_items += 1
+            # Add the root's final newline/indent/brace and file newline.
+            if serialized_size + 3 > _MAX_CONFIG_JSON_BYTES:
+                raise ValueError(
+                    f"{label} exceeds its {_MAX_CONFIG_JSON_BYTES}-byte limit"
+                )
+            return detached_current
+
+        # Reject an already-latched stop before invoking any caller-owned
+        # Mapping method.  Exact dicts have a trustworthy item count, so their
+        # final item needs no terminal poll.  Arbitrary Mapping implementations
+        # may lie about ``__len__`` or eagerly override ``items``; consume those
+        # through the minimal key/getitem protocol and poll before asking for
+        # any possible future key instead.
+        if type(value) is dict:
+            item_count = len(value)
+            for index, (key, current) in enumerate(value.items()):
+                detached_key = detach_outer_key(key)
+                detached_current = attest_outer_current(detached_key, current)
+                detached[detached_key] = detached_current
+                if index + 1 < item_count:
+                    poll()
+        else:
+            poll()
+            keys_source = value.keys()
+            poll()
+            keys = iter(keys_source)
+            poll()
+            while True:
+                try:
+                    key = next(keys)
+                except StopIteration:
+                    break
+                detached_key = detach_outer_key(key)
+                poll()
+                current = value[key]
+                detached_current = attest_outer_current(detached_key, current)
+                detached[detached_key] = detached_current
+                poll()
         chunks = _canonical_json_value_chunks_interruptibly(
             detached,
-            check_cancelled=check_cancelled,
+            check_cancelled=poll,
         )
     payload = bytearray()
     try:
@@ -1117,16 +1688,74 @@ def _bounded_json_object_snapshot(
                     f"{label} exceeds its {_MAX_CONFIG_JSON_BYTES}-byte limit"
                 )
         payload.extend(b"\n")
+        if check_cancelled is not None:
+            poll()
         snapshot = json.loads(
             payload.decode("utf-8", errors="strict"),
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_number,
         )
     except (RecursionError, TypeError, ValueError) as exc:
+        if any(exc is callback_error for callback_error in callback_errors):
+            raise
         raise ValueError(f"{label} is not canonical JSON data") from exc
     if not isinstance(snapshot, dict):  # pragma: no cover - detached is a dict
         raise AssertionError(f"{label} snapshot is not an object")
     return snapshot
+
+
+def _bounded_json_object_snapshot(
+    value: Mapping[str, Any],
+    *,
+    label: str,
+    check_cancelled: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    """Preserve iteration-sentinel callback identity across JSON generators."""
+
+    if check_cancelled is None or not callable(check_cancelled):
+        return _bounded_json_object_snapshot_impl(
+            value,
+            label=label,
+            check_cancelled=check_cancelled,
+        )
+
+    iteration_error: StopIteration | StopAsyncIteration | None = None
+    iteration_carrier: _CallbackIterationStop | None = None
+    callback_errors: list[BaseException] = []
+
+    def preserve_iteration_stop() -> None:
+        nonlocal iteration_error, iteration_carrier
+        try:
+            check_cancelled()
+        except (StopIteration, StopAsyncIteration) as error:
+            if error is not iteration_error:
+                iteration_error = error
+                iteration_carrier = _CallbackIterationStop(error)
+            assert iteration_carrier is not None
+            raise iteration_carrier from None
+        except BaseException as error:  # noqa: B036 - exact provenance
+            callback_errors.append(error)
+            raise
+
+    try:
+        return _bounded_json_object_snapshot_impl(
+            value,
+            label=label,
+            check_cancelled=preserve_iteration_stop,
+        )
+    except _CallbackIterationStop as failure:
+        if failure is not iteration_carrier:
+            raise
+        raise failure.error from None
+    except (RecursionError, TypeError) as error:
+        if any(error is callback_error for callback_error in callback_errors):
+            raise
+        raise ValueError(f"{label} is not canonical JSON data") from error
+    except ValueError:
+        # Complexity and canonical-byte budgets are policy results, just like
+        # the pre-serialization checks in the legacy branch.  Callback-raised
+        # ValueError objects and current policy errors both escape unchanged.
+        raise
 
 
 def _canonical_json_value_chunks_interruptibly(
@@ -1202,6 +1831,78 @@ def _canonical_json_value_chunks_interruptibly(
     yield from canonical_json_value_chunks(value, level=level)
 
 
+def _canonical_json_array_chunks_interruptibly(
+    values: Iterable[Any],
+    *,
+    check_cancelled: Callable[[], None],
+) -> Iterator[bytes]:
+    """Encode a canonical array with interruptible nested value ordering."""
+
+    iterator = iter(values)
+    emitted = False
+    try:
+        for value in iterator:
+            if not emitted:
+                yield b"[\n"
+                emitted = True
+            else:
+                yield b",\n"
+            yield b"  "
+            yield from _canonical_json_value_chunks_interruptibly(
+                value,
+                check_cancelled=check_cancelled,
+                level=1,
+            )
+        yield b"\n]\n" if emitted else b"[]\n"
+    finally:
+        close_iterator = getattr(iterator, "close", None)
+        if callable(close_iterator):
+            close_iterator()
+
+
+def _canonical_json_payload_matches_interruptibly(
+    value: Any,
+    payload: bytes,
+    *,
+    check_cancelled: Callable[[], None],
+) -> bool:
+    """Compare canonical bytes incrementally without one nested ``json.dumps``."""
+
+    iteration_error: StopIteration | StopAsyncIteration | None = None
+    iteration_carrier: _CallbackIterationStop | None = None
+
+    def preserve_iteration_stop() -> None:
+        nonlocal iteration_error, iteration_carrier
+        try:
+            check_cancelled()
+        except (StopIteration, StopAsyncIteration) as error:
+            if error is not iteration_error:
+                iteration_error = error
+                iteration_carrier = _CallbackIterationStop(error)
+            assert iteration_carrier is not None
+            raise iteration_carrier from None
+
+    offset = 0
+    chunks = _canonical_json_value_chunks_interruptibly(
+        value,
+        check_cancelled=preserve_iteration_stop,
+    )
+    try:
+        try:
+            for chunk in chunks:
+                end = offset + len(chunk)
+                if payload[offset:end] != chunk:
+                    return False
+                offset = end
+        finally:
+            chunks.close()
+    except _CallbackIterationStop as failure:
+        if failure is not iteration_carrier:
+            raise
+        raise failure.error from None
+    return len(payload) == offset + 1 and payload[offset] == 10
+
+
 def _environment_snapshot(
     environ: Mapping[str, str] | None,
     *,
@@ -1221,15 +1922,39 @@ def _environment_snapshot(
         if not callable(check_cancelled):
             raise TypeError("portable validation cancellation check must be callable")
         snapshot = {}
-        for key, value in _interitem_cancellation(
-            source.items(),
-            check_cancelled,
-        ):
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise TypeError(
-                    "portable validation environment must contain text pairs"
-                )
-            snapshot[key] = value
+        if type(source) is dict:
+            item_count = len(source)
+            for index, (key, value) in enumerate(source.items()):
+                if not isinstance(key, str) or not isinstance(value, str):
+                    raise TypeError(
+                        "portable validation environment must contain text pairs"
+                    )
+                snapshot[key] = value
+                if index + 1 < item_count:
+                    check_cancelled()
+        else:
+            check_cancelled()
+            keys = source.keys()
+            check_cancelled()
+            iterator = iter(keys)
+            check_cancelled()
+            while True:
+                try:
+                    key = next(iterator)
+                except StopIteration:
+                    break
+                if not isinstance(key, str):
+                    raise TypeError(
+                        "portable validation environment must contain text pairs"
+                    )
+                check_cancelled()
+                value = source[key]
+                if not isinstance(key, str) or not isinstance(value, str):
+                    raise TypeError(
+                        "portable validation environment must contain text pairs"
+                    )
+                snapshot[key] = value
+                check_cancelled()
     return snapshot
 
 
@@ -1243,11 +1968,34 @@ def _forbidden_paths_snapshot(
         if any(not isinstance(path, Path) for path in forbidden):
             raise TypeError("portable validation forbidden paths must be Path values")
         return forbidden
+    if not callable(check_cancelled):
+        raise TypeError("portable validation cancellation check must be callable")
     forbidden_items: list[Path] = []
-    for path in _interitem_cancellation(forbidden_paths, check_cancelled):
-        if not isinstance(path, Path):
-            raise TypeError("portable validation forbidden paths must be Path values")
-        forbidden_items.append(path)
+    if type(forbidden_paths) in {tuple, list}:
+        path_count = len(forbidden_paths)  # type: ignore[arg-type]
+        for index, path in enumerate(forbidden_paths):
+            if not isinstance(path, Path):
+                raise TypeError(
+                    "portable validation forbidden paths must be Path values"
+                )
+            forbidden_items.append(path)
+            if index + 1 < path_count:
+                check_cancelled()
+    else:
+        check_cancelled()
+        iterator = iter(forbidden_paths)
+        check_cancelled()
+        while True:
+            try:
+                path = next(iterator)
+            except StopIteration:
+                break
+            if not isinstance(path, Path):
+                raise TypeError(
+                    "portable validation forbidden paths must be Path values"
+                )
+            forbidden_items.append(path)
+            check_cancelled()
     return tuple(forbidden_items)
 
 
@@ -1257,37 +2005,225 @@ def _assert_authenticated_publishable_json_value(
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Apply publication policy without resolving authority display paths."""
 
-    assert_publishable_json_value(
-        value,
-        forbidden_paths=(),
-        environ=environ,
-        label=label,
-    )
+    if check_cancelled is None:
+        assert_publishable_json_value(
+            value,
+            forbidden_paths=(),
+            environ=environ,
+            label=label,
+        )
+    else:
+        assert_publishable_json_value(
+            value,
+            forbidden_paths=(),
+            environ=environ,
+            label=label,
+            check_cancelled=check_cancelled,
+        )
     forbidden: set[str] = set()
-    for path in forbidden_paths:
+    selected_paths = (
+        forbidden_paths
+        if check_cancelled is None
+        else _interitem_cancellation(forbidden_paths, check_cancelled)
+    )
+    for path in selected_paths:
         raw = os.fsdecode(os.fspath(path))
         lexical = os.path.abspath(raw)
         if os.path.isabs(raw):
             forbidden.add(raw)
         forbidden.update((lexical, Path(lexical).as_posix()))
-    patterns = tuple(sorted(pattern for pattern in forbidden if pattern))
+    if check_cancelled is None:
+        present_patterns = tuple(pattern for pattern in forbidden if pattern)
+    else:
+        present_pattern_items: list[str] = []
+        pattern_count = len(forbidden)
+        for index, pattern in enumerate(forbidden):
+            if pattern:
+                present_pattern_items.append(pattern)
+            if index + 1 < pattern_count:
+                check_cancelled()
+        present_patterns = tuple(present_pattern_items)
+    patterns = (
+        tuple(sorted(present_patterns))
+        if check_cancelled is None
+        else _interruptible_sorted_security_items(
+            present_patterns,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
+    )
+    if check_cancelled is not None:
+        check_cancelled()
     stack = [value]
     while stack:
         current = stack.pop()
         if isinstance(current, Mapping):
-            for key, child in current.items():
-                if any(pattern in key for pattern in patterns):
+            item_count = len(current)
+            for index, (key, child) in enumerate(current.items()):
+                if _contains_pattern(
+                    key,
+                    patterns,
+                    check_cancelled=check_cancelled,
+                ):
                     raise ValueError(f"{label} contains an absolute build-machine path")
                 stack.append(child)
+                if check_cancelled is not None and index + 1 < item_count:
+                    check_cancelled()
         elif isinstance(current, (list, tuple)):
-            stack.extend(current)
-        elif isinstance(current, str) and any(
-            pattern in current for pattern in patterns
+            item_count = len(current)
+            for index, child in enumerate(current):
+                stack.append(child)
+                if check_cancelled is not None and index + 1 < item_count:
+                    check_cancelled()
+        elif isinstance(current, str) and _contains_pattern(
+            current,
+            patterns,
+            check_cancelled=check_cancelled,
         ):
             raise ValueError(f"{label} contains an absolute build-machine path")
+        if check_cancelled is not None and stack:
+            check_cancelled()
+
+
+def _assert_no_secret_fields_interruptibly(
+    value: Any,
+    *,
+    source: str,
+    check_cancelled: Callable[[], None] | None,
+) -> None:
+    if check_cancelled is None:
+        assert_no_secret_fields(value, source=source)
+    else:
+        assert_no_credential_fields(
+            value,
+            source=source,
+            check_cancelled=check_cancelled,
+        )
+
+
+def _resolve_embedding_artifact_route_interruptibly(
+    config: Mapping[str, Any],
+    *,
+    environ: Mapping[str, str] | None,
+    check_cancelled: Callable[[], None] | None,
+) -> Any:
+    if check_cancelled is None:
+        return resolve_embedding_artifact_route(config, environ=environ)
+    return resolve_embedding_artifact_route(
+        config,
+        environ=environ,
+        check_cancelled=check_cancelled,
+    )
+
+
+def _route_compatibility_options_interruptibly(
+    route: Any,
+    check_cancelled: Callable[[], None] | None,
+) -> Mapping[str, Any]:
+    if check_cancelled is None:
+        return route.compatibility_options
+    return route.interruptible_compatibility_options(check_cancelled)
+
+
+def _route_public_identity_interruptibly(
+    route: Any,
+    check_cancelled: Callable[[], None] | None,
+) -> Mapping[str, Any]:
+    if check_cancelled is None:
+        return route.public_identity()
+    return route.public_identity(check_cancelled=check_cancelled)
+
+
+def _json_values_equal_interruptibly(
+    left: Any,
+    right: Any,
+    *,
+    check_cancelled: Callable[[], None],
+) -> bool:
+    if type(left) is not type(right):
+        return False
+    if type(left) is dict:
+        if len(left) != len(right):
+            return False
+        item_count = len(left)
+        for index, (key, item) in enumerate(left.items()):
+            if key not in right or not _json_values_equal_interruptibly(
+                item,
+                right[key],
+                check_cancelled=check_cancelled,
+            ):
+                return False
+            if index + 1 < item_count:
+                check_cancelled()
+        return True
+    if type(left) is list:
+        if len(left) != len(right):
+            return False
+        item_count = len(left)
+        for index, (left_item, right_item) in enumerate(zip(left, right, strict=True)):
+            if not _json_values_equal_interruptibly(
+                left_item,
+                right_item,
+                check_cancelled=check_cancelled,
+            ):
+                return False
+            if index + 1 < item_count:
+                check_cancelled()
+        return True
+    if type(left) in {str, bytes}:
+        if left is right:
+            return True
+        if len(left) != len(right):
+            return False
+        value_length = len(left)
+        for offset in range(0, value_length, _SEMANTIC_SCAN_CHARS):
+            end = min(value_length, offset + _SEMANTIC_SCAN_CHARS)
+            if left[offset:end] != right[offset:end]:
+                return False
+            if end < value_length:
+                check_cancelled()
+        return True
+    return bool(left == right)
+
+
+def _route_public_identities_match_interruptibly(
+    left_route: Any,
+    right_route: Any,
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    if check_cancelled is None:
+        return _route_public_identity_interruptibly(
+            left_route,
+            None,
+        ) == _route_public_identity_interruptibly(right_route, None)
+    left = _route_public_identity_interruptibly(left_route, check_cancelled)
+    right = _route_public_identity_interruptibly(right_route, check_cancelled)
+    return _json_values_equal_interruptibly(
+        left,
+        right,
+        check_cancelled=check_cancelled,
+    )
+
+
+def _vector_model_suffix(
+    model: str,
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> str:
+    if check_cancelled is None:
+        return model.replace("/", "__")
+    pieces: list[str] = []
+    model_length = len(model)
+    for offset in range(0, model_length, _SEMANTIC_SCAN_CHARS):
+        end = min(model_length, offset + _SEMANTIC_SCAN_CHARS)
+        pieces.append(model[offset:end].replace("/", "__"))
+        if end < model_length:
+            check_cancelled()
+    return "".join(pieces)
 
 
 def _json_file_signature(metadata: os.stat_result) -> tuple[int, ...]:
@@ -1370,6 +2306,9 @@ def _load_json(
     require_canonical: bool = False,
     reader: _ViewReader | None = None,
 ) -> Any:
+    check_cancelled = (
+        reader._check_cancelled if isinstance(reader, _PublicationViewReader) else None
+    )
     if isinstance(reader, _PublicationViewReader):
         reader.validate_json(path, label=label, max_bytes=max_bytes)
     payload = (
@@ -1377,6 +2316,8 @@ def _load_json(
         if reader is None
         else reader.read_bytes(path, max_bytes=max_bytes)
     )
+    if check_cancelled is not None:
+        check_cancelled()
     try:
         value = json.loads(
             payload,
@@ -1385,8 +2326,18 @@ def _load_json(
         )
     except ValueError as exc:
         raise ValueError(f"{label} is invalid JSON: {path}") from exc
-    if require_canonical and payload != _json_bytes(value):
-        raise ValueError(f"{label} is not canonical JSON: {path}")
+    if require_canonical:
+        canonical = (
+            payload == _json_bytes(value)
+            if check_cancelled is None
+            else _canonical_json_payload_matches_interruptibly(
+                value,
+                payload,
+                check_cancelled=check_cancelled,
+            )
+        )
+        if not canonical:
+            raise ValueError(f"{label} is not canonical JSON: {path}")
     return value
 
 
@@ -1443,6 +2394,8 @@ def _portable_source_path(
     raw = str(value or "")
     if not raw:
         return ""
+    if len(raw) > _MAX_SOURCE_PATH_BYTES:
+        raise ValueError(f"{source} exceeds {_MAX_SOURCE_PATH_BYTES} UTF-8 path bytes")
     try:
         encoded = raw.encode("utf-8", errors="strict")
     except UnicodeEncodeError as exc:
@@ -1570,12 +2523,22 @@ def _normalize_pickle_documents(
     return payload
 
 
-def _owned_inventory_paths(root: Path, ownership: object, *, kind: str) -> set[Path]:
-    return {
-        root.joinpath(*PurePosixPath(relative).parts)
-        for relative, observed_kind in _view_inventory(ownership)
-        if observed_kind == kind
-    }
+def _owned_inventory_paths(
+    root: Path,
+    ownership: object,
+    *,
+    kind: str,
+    check_cancelled: Callable[[], None] | None = None,
+) -> set[Path]:
+    inventory = _view_inventory(ownership)
+    selected: set[Path] = set()
+    for relative, observed_kind in _interitem_cancellation(
+        inventory,
+        check_cancelled,
+    ):
+        if observed_kind == kind:
+            selected.add(root.joinpath(*PurePosixPath(relative).parts))
+    return selected
 
 
 def _authenticate_initial_file(
@@ -1587,14 +2550,17 @@ def _authenticate_initial_file(
     max_bytes: int,
     cache_bytes: bool = False,
     keep_descriptor: bool = False,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Bind one later read/parser to the bytes in the initial tree capture."""
 
     relative = path.relative_to(root).as_posix()
-    record = next(
-        (item for item in _view_file_records(ownership) if item.path == relative),
-        None,
-    )
+    records = _view_file_records(ownership, check_cancelled=check_cancelled)
+    record = None
+    for item in _interitem_cancellation(records, check_cancelled):
+        if item.path == relative:
+            record = item
+            break
     if record is None:
         raise ValueError(f"portable vector artifact is missing: {relative}")
     reader.authenticate(
@@ -1606,16 +2572,45 @@ def _authenticate_initial_file(
     )
 
 
-def _pickle_paths(root: Path, ownership: object) -> list[Path]:
-    return sorted(
+def _pickle_paths(
+    root: Path,
+    ownership: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> list[Path]:
+    inventory = _owned_inventory_paths(
+        root,
+        ownership,
+        kind="file",
+        check_cancelled=check_cancelled,
+    )
+    selected = [
         path
-        for path in _owned_inventory_paths(root, ownership, kind="file")
+        for path in _interitem_cancellation(inventory, check_cancelled)
         if path.suffix.casefold() in _PICKLE_SUFFIXES
+    ]
+    if check_cancelled is None:
+        return sorted(selected)
+    return list(
+        _interruptible_sorted_security_items(
+            selected,
+            key=None,
+            check_cancelled=check_cancelled,
+        )
     )
 
 
-def _reject_inert_pickles(root: Path, ownership: object) -> None:
-    pickles = _pickle_paths(root, ownership)
+def _reject_inert_pickles(
+    root: Path,
+    ownership: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> None:
+    pickles = _pickle_paths(
+        root,
+        ownership,
+        check_cancelled=check_cancelled,
+    )
     if pickles:
         raise ValueError(
             "portable-inert query view must not contain pickle: "
@@ -1689,35 +2684,36 @@ def _iter_content_bound_documents(
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str],
     authenticated_source_files: frozenset[str],
-) -> Iterable[dict[str, Any]]:
+    consume: Callable[[dict[str, Any]], None],
+) -> int:
     check_cancelled = (
         reader._check_cancelled if isinstance(reader, _PublicationViewReader) else None
     )
+    semantic_check = check_cancelled
     relative = PurePosixPath(path.relative_to(reader.root).as_posix())
+    document_count = 0
     with reader.open_file(
         relative,
         max_bytes=MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
     ) as source:
+        interruptible_reader: _InterruptibleReader | None = None
+        if semantic_check is not None:
+            interruptible_reader = _InterruptibleReader(source, semantic_check)
         documents = iter_bounded_json_array(
-            (
-                source
-                if check_cancelled is None
-                else _InterruptibleReader(source, check_cancelled)
-            ),
+            (source if interruptible_reader is None else interruptible_reader),
             label=f"portable {view_type} documents",
         )
         iterator = enumerate(documents)
         while True:
-            if check_cancelled is not None:
-                check_cancelled()
             try:
                 index, document = next(iterator)
             except StopIteration:
                 break
-            if not isinstance(document, dict) or set(document) != {
-                "page_content",
-                "metadata",
-            }:
+            if not isinstance(document, dict) or not _mapping_has_exact_keys(
+                document,
+                {"page_content", "metadata"},
+                check_cancelled=semantic_check,
+            ):
                 raise ValueError(
                     f"portable {view_type} document {index} has an invalid shape"
                 )
@@ -1728,16 +2724,26 @@ def _iter_content_bound_documents(
                     f"portable {view_type} document {index} has invalid content or "
                     "metadata"
                 )
-            assert_no_secret_fields(
+            _assert_no_secret_fields_interruptibly(
                 metadata,
                 source=f"portable {view_type} document {index} metadata",
+                check_cancelled=semantic_check,
             )
             raw_file = metadata.get("file")
             if raw_file is not None and not isinstance(raw_file, str):
                 raise ValueError(
                     f"portable {view_type} document {index} has an invalid source path"
                 )
-            normalized_metadata = dict(metadata)
+            normalized_metadata = (
+                dict(metadata)
+                if semantic_check is None
+                else dict(
+                    _interitem_cancellation(
+                        metadata.items(),
+                        semantic_check,
+                    )
+                )
+            )
             if view_type.startswith("vector") or raw_file is not None:
                 normalized_metadata["file"] = _portable_source_path(
                     raw_file,
@@ -1754,10 +2760,11 @@ def _iter_content_bound_documents(
                 forbidden_paths=forbidden_paths,
                 environ=environ,
                 label=f"portable {view_type} document {index}",
+                check_cancelled=semantic_check,
             )
-            if check_cancelled is not None:
-                check_cancelled()
-            yield normalized_document
+            consume(normalized_document)
+            document_count += 1
+    return document_count
 
 
 def _require_content_bound_canonical_documents(
@@ -1773,31 +2780,45 @@ def _require_content_bound_canonical_documents(
     check_cancelled = (
         reader._check_cancelled if isinstance(reader, _PublicationViewReader) else None
     )
-    count = 0
     size = 0
     digest = hashlib.sha256()
+    emitted = False
 
-    def values() -> Iterable[dict[str, Any]]:
-        nonlocal count
-        for document in _iter_content_bound_documents(
-            path,
-            repo_path,
-            reader=reader,
-            view_type=view_type,
-            forbidden_paths=forbidden_paths,
-            environ=environ,
-            authenticated_source_files=authenticated_source_files,
-        ):
-            count += 1
-            yield document
-
-    for chunk in canonical_json_array_chunks(values()):
+    def add_chunk(chunk: bytes) -> None:
+        nonlocal size
         size += len(chunk)
         if size > MAX_PORTABLE_DOCUMENTS_JSON_BYTES:
             raise ValueError(f"portable {view_type} documents exceed their byte limit")
         digest.update(chunk)
-        if check_cancelled is not None:
-            check_cancelled()
+
+    def consume(document: dict[str, Any]) -> None:
+        nonlocal emitted
+        add_chunk(b"[\n" if not emitted else b",\n")
+        emitted = True
+        add_chunk(b"  ")
+        chunks = (
+            canonical_json_value_chunks(document, level=1)
+            if check_cancelled is None
+            else _canonical_json_value_chunks_interruptibly(
+                document,
+                check_cancelled=check_cancelled,
+                level=1,
+            )
+        )
+        for chunk in chunks:
+            add_chunk(chunk)
+
+    count = _iter_content_bound_documents(
+        path,
+        repo_path,
+        reader=reader,
+        view_type=view_type,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
+        authenticated_source_files=authenticated_source_files,
+        consume=consume,
+    )
+    add_chunk(b"\n]\n" if emitted else b"[]\n")
     record = reader.record(path)
     if size != record.size or digest.hexdigest() != record.sha256:
         raise ValueError(f"portable {view_type} documents are not canonical JSON")
@@ -1871,6 +2892,7 @@ def _validate_vector_model_policy(
     ownership: object,
     model_suffix: str,
     native_authorized: bool,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Reject ambiguous multi-model trees and untrusted serialized objects."""
 
@@ -1887,12 +2909,28 @@ def _validate_vector_model_policy(
                 root / level / f"index_{model_suffix}.pkl",
             }
         )
-    inventory_files = _owned_inventory_paths(root, ownership, kind="file")
-    unexpected_model_artifacts = sorted(
+    inventory_files = _owned_inventory_paths(
+        root,
+        ownership,
+        kind="file",
+        check_cancelled=check_cancelled,
+    )
+    unexpected_items = [
         path
-        for path in inventory_files
+        for path in _interitem_cancellation(inventory_files, check_cancelled)
         if path.name.casefold().startswith(("config_", "documents_", "index_"))
         and path not in allowed_model_artifacts
+    ]
+    unexpected_model_artifacts = (
+        sorted(unexpected_items)
+        if check_cancelled is None
+        else list(
+            _interruptible_sorted_security_items(
+                unexpected_items,
+                key=None,
+                check_cancelled=check_cancelled,
+            )
+        )
     )
     if unexpected_model_artifacts:
         raise ValueError(
@@ -1900,9 +2938,17 @@ def _validate_vector_model_policy(
             f"{unexpected_model_artifacts[0].relative_to(root)}"
         )
 
-    pickles = _pickle_paths(root, ownership)
+    pickles = _pickle_paths(
+        root,
+        ownership,
+        check_cancelled=check_cancelled,
+    )
     if not native_authorized:
-        _reject_inert_pickles(root, ownership)
+        _reject_inert_pickles(
+            root,
+            ownership,
+            check_cancelled=check_cancelled,
+        )
         return
 
     allowed_pickles = {
@@ -1927,6 +2973,7 @@ def _validate_vector_semantics(
     view_config: Mapping[str, Any],
     *,
     portable_artifact_policy: bool = False,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[str, int, str | None, str, str]:
     """Close the manifest-route to persisted-config compatibility contract."""
 
@@ -1936,14 +2983,27 @@ def _validate_vector_semantics(
         if portable_artifact_policy
         else resolve_embedding_load_policy_from_options
     )
-    route = resolve_embedding_artifact_route(
+    route = _resolve_embedding_artifact_route_interruptibly(
         view_config,
         environ=route_environment,
+        check_cancelled=check_cancelled,
+    )
+    route_options = _route_compatibility_options_interruptibly(
+        route,
+        check_cancelled,
     )
     expected_revision = (
-        load_policy_resolver(
-            route.model,
-            route.compatibility_options,
+        (
+            load_policy_resolver(
+                route.model,
+                route_options,
+                check_cancelled=check_cancelled,
+            )
+            if portable_artifact_policy and check_cancelled is not None
+            else load_policy_resolver(
+                route.model,
+                route_options,
+            )
         ).revision
         if route.provider == "huggingface"
         else None
@@ -1954,7 +3014,17 @@ def _validate_vector_semantics(
         ("embedding_revision", expected_revision),
     )
     for key, expected in required_checks:
-        if config.get(key) != expected:
+        actual = config.get(key)
+        matches = (
+            actual == expected
+            if check_cancelled is None
+            else _json_values_equal_interruptibly(
+                actual,
+                expected,
+                check_cancelled=check_cancelled,
+            )
+        )
+        if not matches:
             raise ValueError(
                 f"portable vector persistence {key} does not match its view route"
             )
@@ -1965,9 +3035,29 @@ def _validate_vector_semantics(
             "portable vector persistence embedding_dimension does not match its "
             "view route"
         )
+    callback_errors: list[BaseException] = []
+
+    def provider_poll() -> None:
+        assert check_cancelled is not None
+        try:
+            check_cancelled()
+        except BaseException as error:  # noqa: B036 - exact provenance
+            callback_errors.append(error)
+            raise
+
     try:
-        provider = normalize_provider(str(config.get("embedding_provider", "")))
+        provider_value = str(config.get("embedding_provider", ""))
+        provider = (
+            normalize_provider(provider_value)
+            if check_cancelled is None
+            else normalize_provider(
+                provider_value,
+                check_cancelled=provider_poll,
+            )
+        )
     except ValueError as exc:
+        if any(exc is callback_error for callback_error in callback_errors):
+            raise
         raise ValueError(
             "portable vector persistence has an invalid embedding provider"
         ) from exc
@@ -1978,23 +3068,48 @@ def _validate_vector_semantics(
         )
 
     expected_metric = view_config.get("index_metric", "ip")
-    if expected_metric not in {"ip", "l2"}:
+    if (
+        type(expected_metric) is not str
+        or len(expected_metric) > 2
+        or expected_metric not in {"ip", "l2"}
+    ):
         raise ValueError(
             f"portable vector view has unsupported index metric: {expected_metric!r}"
         )
     persisted_metric = config.get("index_metric")
-    if persisted_metric != expected_metric:
+    if not (
+        persisted_metric == expected_metric
+        if check_cancelled is None
+        else _json_values_equal_interruptibly(
+            persisted_metric,
+            expected_metric,
+            check_cancelled=check_cancelled,
+        )
+    ):
         raise ValueError(
             "portable vector persistence index metric does not match its view config"
         )
 
     expected_index_type = view_config.get("index_type", "flat")
-    if expected_index_type not in {"flat", "ivf"}:
+    if (
+        type(expected_index_type) is not str
+        or len(expected_index_type) > 4
+        or expected_index_type not in {"flat", "ivf"}
+    ):
         raise ValueError(
             "portable vector view has unsupported index type: "
             f"{expected_index_type!r}"
         )
-    if config.get("index_type") != expected_index_type:
+    persisted_index_type = config.get("index_type")
+    if not (
+        persisted_index_type == expected_index_type
+        if check_cancelled is None
+        else _json_values_equal_interruptibly(
+            persisted_index_type,
+            expected_index_type,
+            check_cancelled=check_cancelled,
+        )
+    ):
         raise ValueError(
             "portable vector persistence index type does not match its view config"
         )
@@ -2008,44 +3123,84 @@ def _validate_vector_semantics(
             and not isinstance(builder_schema, bool)
             and builder_schema >= 3
         )
-        or bool(route.compatibility_options)
+        or bool(route_options)
     )
     if persisted_identity is not None:
         if not isinstance(persisted_identity, Mapping):
             raise ValueError("portable vector persistence artifact identity is invalid")
-        persisted_route = resolve_embedding_artifact_route(
+        persisted_route = _resolve_embedding_artifact_route_interruptibly(
             persisted_identity,
             environ=route_environment,
+            check_cancelled=check_cancelled,
         )
-        if persisted_route.public_identity() != route.public_identity():
+        if not _route_public_identities_match_interruptibly(
+            persisted_route,
+            route,
+            check_cancelled,
+        ):
             raise ValueError(
                 "portable vector persistence route identity does not match its view "
                 "route"
             )
         expected_fingerprint = view_config.get("embedding_fingerprint")
-        if (
-            expected_fingerprint is not None
-            and persisted_identity.get("embedding_fingerprint") != expected_fingerprint
-        ):
+        persisted_fingerprint = persisted_identity.get("embedding_fingerprint")
+        fingerprint_matches = (
+            persisted_fingerprint == expected_fingerprint
+            if check_cancelled is None
+            else _json_values_equal_interruptibly(
+                persisted_fingerprint,
+                expected_fingerprint,
+                check_cancelled=check_cancelled,
+            )
+        )
+        if expected_fingerprint is not None and not fingerprint_matches:
             raise ValueError(
                 "portable vector persistence embedding fingerprint does not match "
                 "its view config"
             )
         persisted_revision = (
-            load_policy_resolver(
-                persisted_route.model,
-                persisted_route.compatibility_options,
+            (
+                load_policy_resolver(
+                    persisted_route.model,
+                    persisted_route.interruptible_compatibility_options(
+                        check_cancelled
+                    ),
+                    check_cancelled=check_cancelled,
+                )
+                if portable_artifact_policy and check_cancelled is not None
+                else load_policy_resolver(
+                    persisted_route.model,
+                    persisted_route.compatibility_options,
+                )
             ).revision
             if persisted_route.provider == "huggingface"
             else None
         )
-        if persisted_revision != expected_revision:
+        revision_matches = (
+            persisted_revision == expected_revision
+            if check_cancelled is None
+            else _json_values_equal_interruptibly(
+                persisted_revision,
+                expected_revision,
+                check_cancelled=check_cancelled,
+            )
+        )
+        if not revision_matches:
             raise ValueError(
                 "portable vector persistence artifact revision does not match its "
                 "view config"
             )
         persisted_identity_metric = persisted_identity.get("index_metric")
-        if persisted_identity_metric != expected_metric:
+        identity_metric_matches = (
+            persisted_identity_metric == expected_metric
+            if check_cancelled is None
+            else _json_values_equal_interruptibly(
+                persisted_identity_metric,
+                expected_metric,
+                check_cancelled=check_cancelled,
+            )
+        )
+        if not identity_metric_matches:
             raise ValueError(
                 "portable vector persistence identity metric does not match its "
                 "view config"
@@ -2057,11 +3212,16 @@ def _validate_vector_semantics(
     elif "embedding_kwargs" in config:
         # Legacy configs sometimes expose the semantic options directly. When
         # present, absence is not treated as a wildcard.
-        persisted_route = resolve_embedding_artifact_route(
+        persisted_route = _resolve_embedding_artifact_route_interruptibly(
             config,
             environ=route_environment,
+            check_cancelled=check_cancelled,
         )
-        if persisted_route.public_identity() != route.public_identity():
+        if not _route_public_identities_match_interruptibly(
+            persisted_route,
+            route,
+            check_cancelled,
+        ):
             raise ValueError(
                 "portable vector persistence options do not match its view route"
             )
@@ -2097,7 +3257,10 @@ def _validate_vector_semantics(
     if route.dimension is None:
         raise ValueError("portable vector route is missing its embedding dimension")
     return (
-        route.model.replace("/", "__"),
+        _vector_model_suffix(
+            route.model,
+            check_cancelled=check_cancelled,
+        ),
         route.dimension,
         expected_revision,
         expected_metric,
@@ -2194,6 +3357,7 @@ def _validate_level_semantics(
     count: int,
     reader: _ViewReader,
     canonicalize: bool = True,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     if not present:
         return
@@ -2209,9 +3373,10 @@ def _validate_level_semantics(
         require_canonical=not canonicalize,
         reader=reader,
     )
-    assert_no_secret_fields(
+    _assert_no_secret_fields_interruptibly(
         config,
         source=f"portable vector {level} config",
+        check_cancelled=check_cancelled,
     )
     expected_fields = {
         "embedding_model",
@@ -2223,7 +3388,11 @@ def _validate_level_semantics(
         "level",
         "num_documents",
     }
-    if set(config) != expected_fields:
+    if not _mapping_has_exact_keys(
+        config,
+        expected_fields,
+        check_cancelled=check_cancelled,
+    ):
         raise ValueError(
             f"portable vector {level} persistence config has an invalid shape"
         )
@@ -2237,15 +3406,43 @@ def _validate_level_semantics(
         ("num_documents", count),
     )
     for key, expected in checks:
-        if config.get(key) != expected:
+        actual = config.get(key)
+        matches = (
+            actual == expected
+            if check_cancelled is None
+            else _json_values_equal_interruptibly(
+                actual,
+                expected,
+                check_cancelled=check_cancelled,
+            )
+        )
+        if not matches:
             raise ValueError(
                 f"portable vector {level} persistence {key} does not match"
             )
+    callback_errors: list[BaseException] = []
+
+    def provider_poll() -> None:
+        assert check_cancelled is not None
+        try:
+            check_cancelled()
+        except BaseException as error:  # noqa: B036 - exact provenance
+            callback_errors.append(error)
+            raise
+
     try:
-        persisted_provider = normalize_provider(
-            str(config.get("embedding_provider", ""))
+        provider_value = str(config.get("embedding_provider", ""))
+        persisted_provider = (
+            normalize_provider(provider_value)
+            if check_cancelled is None
+            else normalize_provider(
+                provider_value,
+                check_cancelled=provider_poll,
+            )
         )
     except ValueError as exc:
+        if any(exc is callback_error for callback_error in callback_errors):
+            raise
         raise ValueError(
             f"portable vector {level} persistence provider is invalid"
         ) from exc
@@ -2275,6 +3472,7 @@ def _validate_vector_layout(
     authenticated_source_files: frozenset[str] | None = None,
     document_forbidden_paths: Iterable[Path] = (),
     document_environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[
     str,
     dict[Path, list[dict[str, Any]]],
@@ -2298,7 +3496,12 @@ def _validate_vector_layout(
 
     derived_counts: dict[str, int] = {}
     stale_paths: set[Path] = set()
-    inventory_files = _owned_inventory_paths(root, ownership, kind="file")
+    inventory_files = _owned_inventory_paths(
+        root,
+        ownership,
+        kind="file",
+        check_cancelled=check_cancelled,
+    )
 
     for level in _VECTOR_LEVELS:
         count = config.get(f"{level}_documents") if not legacy_counts else None
@@ -2366,6 +3569,7 @@ def _validate_vector_layout(
                 path,
                 max_bytes=MAX_PORTABLE_DOCUMENTS_JSON_BYTES,
                 cache_bytes=True,
+                check_cancelled=check_cancelled,
             )
             payload = _normalize_pickle_documents(path, repo_path, reader=reader)
         else:
@@ -2406,6 +3610,7 @@ def _validate_vector_layout(
             index_path,
             max_bytes=MAX_PORTABLE_FAISS_INDEX_BYTES,
             keep_descriptor=native_authorized,
+            check_cancelled=check_cancelled,
         )
         derived_counts[level] = count
         if legacy_counts and count == 0:
@@ -2463,6 +3668,7 @@ def _validate_vector_layout(
             count=count,
             canonicalize=canonicalize_level_configs,
             reader=reader,
+            check_cancelled=check_cancelled,
         )
         formats.add(document_format)
         selected[path] = payload
@@ -2472,13 +3678,33 @@ def _validate_vector_layout(
     if len(formats) != 1:
         raise ValueError("portable vector view mixes pickle and JSON documents")
 
-    candidates = {
-        path
-        for path in inventory_files
-        if path.suffix.casefold() in {".json", ".pkl", ".pickle"}
-        and path.name.startswith("documents_")
-    }
-    unexpected_documents = sorted(candidates - expected_documents)
+    candidates: set[Path] = set()
+    for path in _interitem_cancellation(inventory_files, check_cancelled):
+        if path.suffix.casefold() in {
+            ".json",
+            ".pkl",
+            ".pickle",
+        } and path.name.startswith("documents_"):
+            candidates.add(path)
+    if check_cancelled is None:
+        unexpected_items = tuple(candidates - expected_documents)
+    else:
+        unexpected_list: list[Path] = []
+        for path in _interitem_cancellation(candidates, check_cancelled):
+            if path not in expected_documents:
+                unexpected_list.append(path)
+        unexpected_items = unexpected_list
+    unexpected_documents = (
+        sorted(unexpected_items)
+        if check_cancelled is None
+        else list(
+            _interruptible_sorted_security_items(
+                unexpected_items,
+                key=None,
+                check_cancelled=check_cancelled,
+            )
+        )
+    )
     if unexpected_documents:
         raise ValueError(
             "portable vector view contains an unexpected document store: "
@@ -2489,22 +3715,33 @@ def _validate_vector_layout(
     allowed_pickles.update(
         path for path in stale_paths if path.suffix.casefold() in _PICKLE_SUFFIXES
     )
-    allowed_pickles.update(
-        path
-        for path in inventory_files
-        if path.parent.name in _VECTOR_LEVELS
-        and path.name.startswith("index_")
-        and path.suffix.casefold() == ".pkl"
-    )
+    for path in _interitem_cancellation(inventory_files, check_cancelled):
+        if (
+            path.parent.name in _VECTOR_LEVELS
+            and path.name.startswith("index_")
+            and path.suffix.casefold() == ".pkl"
+        ):
+            allowed_pickles.add(path)
     allowed_pickles.update(
         root / name
         for name in _REMOVABLE_MUTABLE_VECTOR_FILES
         if name.endswith(".pkl") and (root / name) in inventory_files
     )
-    residual_pickles = sorted(
+    residual_pickle_items = [
         path
-        for path in inventory_files
+        for path in _interitem_cancellation(inventory_files, check_cancelled)
         if path.suffix.casefold() in _PICKLE_SUFFIXES and path not in allowed_pickles
+    ]
+    residual_pickles = (
+        sorted(residual_pickle_items)
+        if check_cancelled is None
+        else list(
+            _interruptible_sorted_security_items(
+                residual_pickle_items,
+                key=None,
+                check_cancelled=check_cancelled,
+            )
+        )
     )
     if residual_pickles:
         raise ValueError(
@@ -2513,10 +3750,21 @@ def _validate_vector_layout(
         )
 
     removable_mutable = {root / name for name in _REMOVABLE_MUTABLE_VECTOR_FILES}
-    residual_mutable = sorted(
+    residual_mutable_items = [
         path
-        for path in inventory_files
+        for path in _interitem_cancellation(inventory_files, check_cancelled)
         if _is_mutable_vector_state(path) and path not in removable_mutable
+    ]
+    residual_mutable = (
+        sorted(residual_mutable_items)
+        if check_cancelled is None
+        else list(
+            _interruptible_sorted_security_items(
+                residual_mutable_items,
+                key=None,
+                check_cancelled=check_cancelled,
+            )
+        )
     )
     if residual_mutable:
         raise ValueError(
@@ -2589,6 +3837,8 @@ def _refresh_vector_persistence_records(
 def _validate_view_document_count(
     view_config: Mapping[str, Any],
     counts: Mapping[str, int],
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     if "document_count" not in view_config:
         return
@@ -2598,7 +3848,11 @@ def _validate_view_document_count(
     expected = {
         level: count for level in _VECTOR_LEVELS if (count := counts[level]) > 0
     }
-    if set(raw) != set(expected):
+    if not _mapping_has_exact_keys(
+        raw,
+        set(expected),
+        check_cancelled=check_cancelled,
+    ):
         raise ValueError(
             "portable vector document_count must contain exactly the non-empty "
             "levels"
@@ -2622,6 +3876,7 @@ def _assert_exact_view_tree(
     allowed_files: set[PurePosixPath],
     required_files: set[PurePosixPath],
     label: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     allowed_directories = {
         parent
@@ -2630,7 +3885,11 @@ def _assert_exact_view_tree(
         if parent != PurePosixPath(".")
     }
     observed_files: set[PurePosixPath] = set()
-    for raw_relative, kind in _view_inventory(ownership):
+    inventory = _view_inventory(ownership)
+    for raw_relative, kind in _interitem_cancellation(
+        inventory,
+        check_cancelled,
+    ):
         relative = PurePosixPath(raw_relative)
         if kind == "directory":
             if relative not in allowed_directories:
@@ -2652,6 +3911,7 @@ def _assert_normalized_vector_tree(
     ownership: object,
     model_suffix: str,
     counts: Mapping[str, int],
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     root_config = PurePosixPath(f"config_{model_suffix}.json")
     allowed_files = {root_config}
@@ -2675,6 +3935,7 @@ def _assert_normalized_vector_tree(
         allowed_files=allowed_files,
         required_files=required_files,
         label="portable vector view",
+        check_cancelled=check_cancelled,
     )
 
 
@@ -3109,6 +4370,7 @@ def _authenticate_vector_generation(
     model_suffix: str,
     expected_config: object | None,
     require_canonical: bool = True,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     config_path = root / f"config_{model_suffix}.json"
     if expected_config is not None:
@@ -3132,7 +4394,11 @@ def _authenticate_vector_generation(
     if config.get("persistence_schema") != VECTOR_PERSISTENCE_SCHEMA:
         raise ValueError("portable vector generation has an invalid persistence schema")
     committed = config.get("level_artifacts")
-    if not isinstance(committed, Mapping) or not set(committed) <= set(_VECTOR_LEVELS):
+    if not isinstance(committed, Mapping) or not _mapping_keys_are_subset(
+        committed,
+        set(_VECTOR_LEVELS),
+        check_cancelled=check_cancelled,
+    ):
         raise ValueError("portable vector generation has invalid committed levels")
     for level in _VECTOR_LEVELS:
         count = config.get(f"{level}_documents")
@@ -3145,10 +4411,11 @@ def _authenticate_vector_generation(
                     f"portable vector generation commits empty {level} artifacts"
                 )
             continue
-        if not isinstance(records, Mapping) or set(records) != {
-            "index",
-            "documents",
-        }:
+        if not isinstance(records, Mapping) or not _mapping_has_exact_keys(
+            records,
+            {"index", "documents"},
+            check_cancelled=check_cancelled,
+        ):
             raise ValueError(
                 f"portable vector generation has invalid {level} artifacts"
             )
@@ -3202,13 +4469,19 @@ def _validate_portable_bm25_view(
     initial_tree: object,
     reader: _ViewReader,
     authenticated_source_files: frozenset[str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    assert_no_secret_fields(view_config, source="portable BM25 view config")
+    _assert_no_secret_fields_interruptibly(
+        view_config,
+        source="portable BM25 view config",
+        check_cancelled=check_cancelled,
+    )
     fingerprints = view_config.get("artifact_file_fingerprints")
-    if not isinstance(fingerprints, Mapping) or set(fingerprints) != {
-        "documents.json",
-        "bm25_metadata.json",
-    }:
+    if not isinstance(fingerprints, Mapping) or not _mapping_has_exact_keys(
+        fingerprints,
+        {"documents.json", "bm25_metadata.json"},
+        check_cancelled=check_cancelled,
+    ):
         raise ValueError(
             "portable BM25 validation requires complete artifact file fingerprints"
         )
@@ -3221,6 +4494,7 @@ def _validate_portable_bm25_view(
         allowed_files=expected_files,
         required_files=expected_files,
         label="portable BM25 view",
+        check_cancelled=check_cancelled,
     )
     reader.authenticate(
         root / "documents.json",
@@ -3240,19 +4514,32 @@ def _validate_portable_bm25_view(
         require_canonical=True,
         reader=reader,
     )
-    assert_no_secret_fields(metadata, source="portable BM25 metadata")
-    publishable_guard = (
-        assert_publishable_json_value
-        if authenticated_source_files is None
-        else _assert_authenticated_publishable_json_value
-    )
-    publishable_guard(
+    _assert_no_secret_fields_interruptibly(
         metadata,
-        forbidden_paths=forbidden,
-        environ=environment,
-        label="portable BM25 metadata",
+        source="portable BM25 metadata",
+        check_cancelled=check_cancelled,
     )
-    if set(metadata) != {"project_root", "max_k", "language"}:
+    if authenticated_source_files is None:
+        assert_publishable_json_value(
+            metadata,
+            forbidden_paths=forbidden,
+            environ=environment,
+            label="portable BM25 metadata",
+            check_cancelled=check_cancelled,
+        )
+    else:
+        _assert_authenticated_publishable_json_value(
+            metadata,
+            forbidden_paths=forbidden,
+            environ=environment,
+            label="portable BM25 metadata",
+            check_cancelled=check_cancelled,
+        )
+    if not _mapping_has_exact_keys(
+        metadata,
+        {"project_root", "max_k", "language"},
+        check_cancelled=check_cancelled,
+    ):
         raise ValueError("portable BM25 metadata has an invalid normalized shape")
     if metadata.get("project_root") != "source":
         raise ValueError("portable BM25 metadata project_root is not normalized")
@@ -3261,9 +4548,9 @@ def _validate_portable_bm25_view(
         or not isinstance(metadata.get("max_k"), int)
         or metadata["max_k"] <= 0
         or not isinstance(metadata.get("language"), str)
+        or len(metadata["language"]) > 256
         or not metadata["language"].strip()
         or "\x00" in metadata["language"]
-        or len(metadata["language"]) > 256
     ):
         raise ValueError("portable BM25 metadata is invalid")
     configured_max_k = view_config.get("max_k")
@@ -3295,21 +4582,46 @@ def _validate_portable_vector_view(
     initial_tree: object,
     reader: _ViewReader,
     authenticated_source_files: frozenset[str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    assert_no_secret_fields(view_config, source="portable vector view config")
+    _assert_no_secret_fields_interruptibly(
+        view_config,
+        source="portable vector view config",
+        check_cancelled=check_cancelled,
+    )
     portable_artifact_policy = authenticated_source_files is not None
-    route = resolve_embedding_artifact_route(
+    route = _resolve_embedding_artifact_route_interruptibly(
         view_config,
         environ={} if portable_artifact_policy else None,
+        check_cancelled=check_cancelled,
     )
-    expected_suffix = route.model.replace("/", "__")
-    inventory_files = _owned_inventory_paths(root, initial_tree, kind="file")
-    root_configs = sorted(
+    expected_suffix = _vector_model_suffix(
+        route.model,
+        check_cancelled=check_cancelled,
+    )
+    inventory_files = _owned_inventory_paths(
+        root,
+        initial_tree,
+        kind="file",
+        check_cancelled=check_cancelled,
+    )
+    root_config_items = [
         path
-        for path in inventory_files
+        for path in _interitem_cancellation(inventory_files, check_cancelled)
         if path.parent == root
         and path.name.startswith("config_")
         and path.name.endswith(".json")
+    ]
+    root_configs = (
+        sorted(root_config_items)
+        if check_cancelled is None
+        else list(
+            _interruptible_sorted_security_items(
+                root_config_items,
+                key=None,
+                check_cancelled=check_cancelled,
+            )
+        )
     )
     if len(root_configs) != 1:
         raise ValueError("portable vector view must contain one root config")
@@ -3322,6 +4634,7 @@ def _validate_portable_vector_view(
         ownership=initial_tree,
         model_suffix=model_suffix,
         native_authorized=False,
+        check_cancelled=check_cancelled,
     )
     expected_config = view_config.get("persistence_config_fingerprint")
     if expected_config is None:
@@ -3331,19 +4644,29 @@ def _validate_portable_vector_view(
         root,
         model_suffix=model_suffix,
         expected_config=expected_config,
+        check_cancelled=check_cancelled,
     )
-    assert_no_secret_fields(config, source="portable vector config")
-    publishable_guard = (
-        assert_publishable_json_value
-        if authenticated_source_files is None
-        else _assert_authenticated_publishable_json_value
-    )
-    publishable_guard(
+    _assert_no_secret_fields_interruptibly(
         config,
-        forbidden_paths=forbidden,
-        environ=environment,
-        label="portable vector config",
+        source="portable vector config",
+        check_cancelled=check_cancelled,
     )
+    if authenticated_source_files is None:
+        assert_publishable_json_value(
+            config,
+            forbidden_paths=forbidden,
+            environ=environment,
+            label="portable vector config",
+            check_cancelled=check_cancelled,
+        )
+    else:
+        _assert_authenticated_publishable_json_value(
+            config,
+            forbidden_paths=forbidden,
+            environ=environment,
+            label="portable vector config",
+            check_cancelled=check_cancelled,
+        )
     (
         semantic_suffix,
         expected_dimension,
@@ -3354,6 +4677,7 @@ def _validate_portable_vector_view(
         config,
         view_config,
         portable_artifact_policy=portable_artifact_policy,
+        check_cancelled=check_cancelled,
     )
     if semantic_suffix != model_suffix:
         raise ValueError("portable vector config embedding model does not match")
@@ -3375,14 +4699,20 @@ def _validate_portable_vector_view(
         authenticated_source_files=authenticated_source_files,
         document_forbidden_paths=forbidden,
         document_environ=environment,
+        check_cancelled=check_cancelled,
     )
     if document_format != "json" or stale_paths:
         raise ValueError("portable vector view is not in its normalized final form")
-    _validate_view_document_count(view_config, counts)
+    _validate_view_document_count(
+        view_config,
+        counts,
+        check_cancelled=check_cancelled,
+    )
     _assert_normalized_vector_tree(
         ownership=initial_tree,
         model_suffix=model_suffix,
         counts=counts,
+        check_cancelled=check_cancelled,
     )
     for level in _VECTOR_LEVELS:
         if counts[level] <= 0:
@@ -3390,17 +4720,28 @@ def _validate_portable_vector_view(
         level_root = root / level
         level_config = level_root / f"config_{model_suffix}.json"
         if level_config in inventory_files:
-            publishable_guard(
-                _load_json_object(
-                    level_config,
-                    label=f"portable vector {level} config",
-                    require_canonical=True,
-                    reader=reader,
-                ),
-                forbidden_paths=forbidden,
-                environ=environment,
+            level_value = _load_json_object(
+                level_config,
                 label=f"portable vector {level} config",
+                require_canonical=True,
+                reader=reader,
             )
+            if authenticated_source_files is None:
+                assert_publishable_json_value(
+                    level_value,
+                    forbidden_paths=forbidden,
+                    environ=environment,
+                    label=f"portable vector {level} config",
+                    check_cancelled=check_cancelled,
+                )
+            else:
+                _assert_authenticated_publishable_json_value(
+                    level_value,
+                    forbidden_paths=forbidden,
+                    environ=environment,
+                    label=f"portable vector {level} config",
+                    check_cancelled=check_cancelled,
+                )
         if authenticated_source_files is None:
             _validate_normalized_document_sources(
                 level_root / f"documents_{model_suffix}.json",
@@ -3412,12 +4753,91 @@ def _validate_portable_vector_view(
             )
 
 
-def _exact_repository_identity_value(value: object) -> object:
+def _exact_repository_identity_value(
+    value: object,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> object:
     if type(value) is tuple:
-        return tuple(_exact_repository_identity_value(item) for item in value)
+        if check_cancelled is None:
+            return tuple(_exact_repository_identity_value(item) for item in value)
+        detached: list[object] = []
+        item_count = len(value)
+        for index in range(item_count):
+            item = value[index]
+            if not (
+                type(item) is tuple
+                or item is None
+                or type(item) in {bool, int, str, bytes}
+            ):
+                raise TypeError(
+                    "portable repository identity contains a non-exact value"
+                )
+            if type(item) is tuple:
+                check_cancelled()
+                item = _exact_repository_identity_value(
+                    item,
+                    check_cancelled=check_cancelled,
+                )
+            detached.append(item)
+            if index + 1 < item_count:
+                check_cancelled()
+        return tuple(detached)
     if value is None or type(value) in {bool, int, str, bytes}:
         return value
     raise TypeError("portable repository identity contains a non-exact value")
+
+
+def _repository_identity_values_equal_interruptibly(
+    left: object,
+    right: object,
+    *,
+    check_cancelled: Callable[[], None],
+) -> bool:
+    if type(left) is not type(right):
+        return False
+    if type(left) is tuple:
+        assert type(right) is tuple
+        if len(left) != len(right):
+            return False
+        item_count = len(left)
+        for index in range(item_count):
+            left_item = left[index]
+            right_item = right[index]
+            if type(left_item) is not type(right_item):
+                return False
+            if type(left_item) is tuple:
+                check_cancelled()
+                matches = _repository_identity_values_equal_interruptibly(
+                    left_item,
+                    right_item,
+                    check_cancelled=check_cancelled,
+                )
+            else:
+                matches = _repository_identity_values_equal_interruptibly(
+                    left_item,
+                    right_item,
+                    check_cancelled=check_cancelled,
+                )
+            if not matches:
+                return False
+            if index + 1 < item_count:
+                check_cancelled()
+        return True
+    if type(left) in {str, bytes}:
+        if left is right:
+            return True
+        if len(left) != len(right):  # type: ignore[arg-type]
+            return False
+        value_length = len(left)  # type: ignore[arg-type]
+        for offset in range(0, value_length, _SEMANTIC_SCAN_CHARS):
+            end = min(value_length, offset + _SEMANTIC_SCAN_CHARS)
+            if left[offset:end] != right[offset:end]:  # type: ignore[index]
+                return False
+            if end < value_length:
+                check_cancelled()
+        return True
+    return bool(left == right)
 
 
 def _detach_repository_source_selection(
@@ -3452,6 +4872,8 @@ def _detach_repository_source_selection(
             raise TypeError(
                 "portable repository source selection fields must use exact types"
             )
+        if len(value) > 4096:
+            raise ValueError("portable repository source selection is not canonical")
         path = PurePosixPath(value)
         encoded = value.encode("utf-8", errors="strict")
         if (
@@ -3490,6 +4912,7 @@ def _detach_repository_identity_snapshot(
     repository_identity: RepositorySourceIdentitySnapshot,
     *,
     check_cancelled: Callable[[], None] | None = None,
+    retained_identity: RepositorySourceIdentitySnapshot | None = None,
 ) -> RepositorySourceIdentitySnapshot:
     """Validate and detach every caller-controlled identity field."""
 
@@ -3513,6 +4936,15 @@ def _detach_repository_identity_snapshot(
         or repository_identity.file_count != len(repository_identity.file_records)
     ):
         raise ValueError("portable repository identity is invalid")
+    if retained_identity is not None and (
+        repository_identity.root != retained_identity.root
+        or repository_identity.fingerprint != retained_identity.fingerprint
+        or repository_identity.file_count != retained_identity.file_count
+        or len(repository_identity.file_records) != len(retained_identity.file_records)
+    ):
+        raise ValueError(
+            "portable repository identity differs from its retained binding"
+        )
 
     selection = _detach_repository_source_selection(
         repository_identity.source_selection,
@@ -3537,13 +4969,32 @@ def _detach_repository_identity_snapshot(
             raise TypeError("portable repository record fields must use exact types")
         if (
             not record.path
+            or len(record.path) > _MAX_SOURCE_PATH_BYTES
+            or (
+                record.link_target is not None
+                and len(record.link_target) > _MAX_SOURCE_PATH_BYTES
+            )
             or record.size < 0
             or not re.fullmatch(r"[0-9a-f]{64}", record.sha256, re.ASCII)
         ):
             raise ValueError("portable repository record identity is invalid")
-        identity = _exact_repository_identity_value(record.lexical_identity)
+        if retained_identity is not None:
+            retained_record = retained_identity.file_records[index]
+            if (
+                record.path != retained_record.path
+                or record.size != retained_record.size
+                or record.sha256 != retained_record.sha256
+                or record.link_target != retained_record.link_target
+            ):
+                raise ValueError(
+                    "portable repository identity differs from its retained binding"
+                )
         if record.path in paths:
             raise RuntimeError("authenticated repository source repeats a file record")
+        identity = _exact_repository_identity_value(
+            record.lexical_identity,
+            check_cancelled=check_cancelled,
+        )
         detached = RepositorySourceFileRecord(
             path=record.path,
             size=record.size,
@@ -3604,10 +5055,23 @@ def _require_repository_identity_matches(
                 check_cancelled()
     record_count = len(repository_identity.file_records)
     for index in range(record_count):
-        if (
-            repository_identity.file_records[index]
-            != retained_identity.file_records[index]
-        ):
+        current_record = repository_identity.file_records[index]
+        retained_record = retained_identity.file_records[index]
+        if check_cancelled is None:
+            matches = current_record == retained_record
+        else:
+            matches = (
+                current_record.path == retained_record.path
+                and current_record.size == retained_record.size
+                and current_record.sha256 == retained_record.sha256
+                and current_record.link_target == retained_record.link_target
+                and _repository_identity_values_equal_interruptibly(
+                    current_record.lexical_identity,
+                    retained_record.lexical_identity,
+                    check_cancelled=check_cancelled,
+                )
+            )
+        if not matches:
             raise ValueError(
                 "portable repository identity differs from its retained binding"
             )
@@ -3626,6 +5090,7 @@ def _attest_repository_identity_snapshot(
     detached = _detach_repository_identity_snapshot(
         repository_identity,
         check_cancelled=check_cancelled,
+        retained_identity=retained_identity,
     )
     _require_repository_identity_matches(
         detached,
@@ -3655,21 +5120,29 @@ def _authenticated_repository_source_files(
             raise TypeError("authenticated repository source record fields are invalid")
         if (
             not record.path
+            or len(record.path) > _MAX_SOURCE_PATH_BYTES
+            or (
+                record.link_target is not None
+                and len(record.link_target) > _MAX_SOURCE_PATH_BYTES
+            )
             or record.size < 0
             or not re.fullmatch(r"[0-9a-f]{64}", record.sha256, re.ASCII)
         ):
             raise ValueError("authenticated repository source record is invalid")
-        _exact_repository_identity_value(record.lexical_identity)
         path = record.path
         if path in paths:
             raise RuntimeError("authenticated repository source repeats a file record")
+        _exact_repository_identity_value(
+            record.lexical_identity,
+            check_cancelled=check_cancelled,
+        )
         paths.add(path)
         if check_cancelled is not None and index + 1 < record_count:
             check_cancelled()
     return frozenset(paths)
 
 
-def _validate_content_bound_portable_query_view_reader_with_identity(
+def _validate_content_bound_portable_query_view_reader_with_identity_impl(
     publication: PublicationDirectoryReader,
     *,
     repository_source: RepositorySourceBinding,
@@ -3703,14 +5176,10 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
     if not repository_source.usable:
         raise RuntimeError("portable view repository source is not usable")
     if check_cancelled is not None:
-        repository_identity = _detach_repository_identity_snapshot(
-            repository_identity,
-            check_cancelled=check_cancelled,
-        )
         retained_identity = repository_source.authenticated_identity_snapshot(
             check_cancelled=check_cancelled,
         )
-        _require_repository_identity_matches(
+        repository_identity = _attest_repository_identity_snapshot(
             repository_identity,
             retained_identity,
             check_cancelled=check_cancelled,
@@ -3728,12 +5197,27 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
             check_cancelled=check_cancelled,
         )
     if view_type == "vector":
-        route = resolve_embedding_artifact_route(config_snapshot, environ={})
+        route = _resolve_embedding_artifact_route_interruptibly(
+            config_snapshot,
+            environ={},
+            check_cancelled=check_cancelled,
+        )
         if route.provider == "huggingface":
-            resolve_embedding_artifact_load_policy_from_options(
-                route.model,
-                route.compatibility_options,
+            route_options = _route_compatibility_options_interruptibly(
+                route,
+                check_cancelled,
             )
+            if check_cancelled is None:
+                resolve_embedding_artifact_load_policy_from_options(
+                    route.model,
+                    route_options,
+                )
+            else:
+                resolve_embedding_artifact_load_policy_from_options(
+                    route.model,
+                    route_options,
+                    check_cancelled=check_cancelled,
+                )
     if check_cancelled is None:
         environment = _environment_snapshot(environ)
         forbidden = _forbidden_paths_snapshot(forbidden_paths)
@@ -3793,6 +5277,7 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
                 forbidden_paths=policy_paths,
                 environ=environment,
                 label=f"portable {view_type} view config",
+                check_cancelled=check_cancelled,
             )
             if view_type == "bm25":
                 _validate_portable_bm25_view(
@@ -3804,6 +5289,7 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
                     initial_tree=initial_tree,
                     reader=reader,
                     authenticated_source_files=authenticated_source_files,
+                    check_cancelled=check_cancelled,
                 )
             else:
                 _validate_portable_vector_view(
@@ -3815,6 +5301,7 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
                     initial_tree=initial_tree,
                     reader=reader,
                     authenticated_source_files=authenticated_source_files,
+                    check_cancelled=check_cancelled,
                 )
 
     final_checks = [
@@ -3835,6 +5322,65 @@ def _validate_content_bound_portable_query_view_reader_with_identity(
         validate_semantics,
         tuple(final_checks),
     )
+
+
+def _validate_content_bound_portable_query_view_reader_with_identity(
+    publication: PublicationDirectoryReader,
+    *,
+    repository_source: RepositorySourceBinding,
+    repository_identity: RepositorySourceIdentitySnapshot,
+    view_type: str,
+    view_config: Mapping[str, Any] | None = None,
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+    check_cancelled: Callable[[], None] | None = None,
+    _framework_sandwiched: bool = False,
+) -> None:
+    if check_cancelled is None or not callable(check_cancelled):
+        _validate_content_bound_portable_query_view_reader_with_identity_impl(
+            publication,
+            repository_source=repository_source,
+            repository_identity=repository_identity,
+            view_type=view_type,
+            view_config=view_config,
+            forbidden_paths=forbidden_paths,
+            environ=environ,
+            check_cancelled=check_cancelled,
+            _framework_sandwiched=_framework_sandwiched,
+        )
+        return
+
+    iteration_error: StopIteration | StopAsyncIteration | None = None
+    iteration_carrier: _CallbackIterationStop | None = None
+
+    def preserve_iteration_stop() -> None:
+        nonlocal iteration_error, iteration_carrier
+        try:
+            check_cancelled()
+        except (StopIteration, StopAsyncIteration) as error:
+            if error is not iteration_error:
+                iteration_error = error
+                iteration_carrier = _CallbackIterationStop(error)
+            assert iteration_carrier is not None
+            raise iteration_carrier from None
+
+    try:
+        _validate_content_bound_portable_query_view_reader_with_identity_impl(
+            publication,
+            repository_source=repository_source,
+            repository_identity=repository_identity,
+            view_type=view_type,
+            view_config=view_config,
+            forbidden_paths=forbidden_paths,
+            environ=environ,
+            check_cancelled=preserve_iteration_stop,
+            _framework_sandwiched=_framework_sandwiched,
+        )
+    except _CallbackIterationStop as failure:
+        if failure is not iteration_carrier:
+            raise
+        _transfer_callback_exception_settlement(failure, failure.error)
+        raise failure.error from None
 
 
 def validate_content_bound_portable_query_view_reader(

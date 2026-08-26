@@ -7,11 +7,13 @@ from __future__ import annotations
 import inspect
 import json
 import subprocess
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+import codenib._secret_fields as secret_fields_module
 import codenib.artifacts.security as security_module
 from codenib import cli
 from codenib._atomic_directory import (
@@ -1412,3 +1414,533 @@ def test_publishability_final_policy_stop_uses_tracked_reconciliation(
     else:
         assert caught.value is stop
     assert reader.capture_calls == 2
+
+
+@pytest.mark.parametrize("mutate", [False, True])
+def test_publishability_file_stop_finalizes_current_authentication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate: bool,
+) -> None:
+    root = tmp_path / "publication"
+    root.mkdir()
+    config = root / "config.json"
+    config.write_bytes(b'{"x":1}\n')
+    ownership = capture_directory_ownership(root)
+    stop = StopIteration("injected authenticated-file stop")
+    armed = False
+    mutated = False
+
+    def stop_inside_reader(source: object, **_kwargs: object) -> None:
+        nonlocal armed
+        armed = True
+        source.read(1)  # type: ignore[attr-defined]
+        raise AssertionError("authenticated reader callback returned")
+
+    def check_cancelled() -> None:
+        nonlocal mutated
+        if not armed:
+            return
+        if mutate and not mutated:
+            config.write_bytes(b'{"x":2}\n')
+            mutated = True
+        raise stop
+
+    monkeypatch.setattr(
+        security_module,
+        "validate_bounded_json_stream",
+        stop_inside_reader,
+    )
+
+    def validate(reader: PublicationDirectoryReader) -> None:
+        security_module._assert_publishable_tree_reader_interruptibly(
+            reader,
+            forbidden_paths=(),
+            environ={},
+            label="authenticated publication",
+            check_cancelled=check_cancelled,
+        )
+
+    if not mutate:
+        with pytest.raises(StopIteration) as caught:
+            reopen_authenticated_directory(root, ownership, validate)
+        assert caught.value is stop
+    else:
+        with pytest.raises(BaseException) as caught:
+            reopen_authenticated_directory(root, ownership, validate)
+        assert caught.value is not stop
+        assert isinstance(caught.value, (RuntimeError, ValueError))
+        assert caught.value.__cause__ is not None
+    assert armed
+    assert mutated is mutate
+
+
+def test_publishability_carrier_merges_source_cleanup_owners_safely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CleanupOwner:
+        def __init__(self) -> None:
+            self.closed = False
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+            if self.close_calls > 1:
+                raise AssertionError("cleanup owner closed twice")
+            self.closed = True
+
+    class HostileStop(StopIteration):
+        def __getattribute__(self, name: str) -> object:
+            if name == "source_cleanup_owner":
+                raise AssertionError("callback descriptor was invoked")
+            return super().__getattribute__(name)
+
+        def __setattr__(self, name: str, value: object) -> None:
+            if name == "source_cleanup_owner":
+                raise AssertionError("callback descriptor was invoked")
+            super().__setattr__(name, value)
+
+    stop = HostileStop("injected security cleanup-owner stop")
+    existing_owner = CleanupOwner()
+    new_owner = CleanupOwner()
+    BaseException.__setattr__(stop, "source_cleanup_owner", existing_owner)
+
+    def settled_impl(*_args: object, **kwargs: object) -> None:
+        callback = kwargs["check_cancelled"]
+        assert callable(callback)
+        try:
+            callback()
+        except BaseException as carrier:
+            BaseException.__setattr__(
+                carrier,
+                "source_cleanup_owner",
+                new_owner,
+            )
+            raise
+
+    monkeypatch.setattr(
+        security_module,
+        "_assert_publishable_tree_reader_interruptibly_impl",
+        settled_impl,
+    )
+
+    def check_cancelled() -> None:
+        raise stop
+
+    with pytest.raises(HostileStop) as caught:
+        security_module._assert_publishable_tree_reader_interruptibly(
+            object(),  # type: ignore[arg-type]
+            forbidden_paths=(),
+            environ={},
+            label="settled publication",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+    merged = BaseException.__getattribute__(stop, "source_cleanup_owner")
+    assert merged.pending_sources == (existing_owner, new_owner)
+    merged.close()
+    assert existing_owner.closed
+    assert new_owner.closed
+
+    overlapping_owner = CleanupOwner()
+    overlapping_stop = StopIteration("injected overlapping cleanup-owner stop")
+    overlapping_carrier = security_module._CallbackIterationStop(overlapping_stop)
+    BaseException.__setattr__(
+        overlapping_stop,
+        "source_cleanup_owner",
+        security_module._SourceCleanupGroup(overlapping_owner),
+    )
+    BaseException.__setattr__(
+        overlapping_carrier,
+        "source_cleanup_owner",
+        overlapping_owner,
+    )
+    security_module._transfer_callback_exception_settlement(
+        overlapping_carrier,
+        overlapping_stop,
+    )
+    overlapping_group = BaseException.__getattribute__(
+        overlapping_stop,
+        "source_cleanup_owner",
+    )
+    overlapping_group.close()
+    assert overlapping_owner.close_calls == 1
+
+
+def test_publishable_json_arbitrary_mapping_polls_before_poisoned_tail() -> None:
+    stop = StopIteration("injected publishable mapping future stop")
+    armed = False
+    poison_touched = False
+    iterations = 0
+
+    class StatefulMapping(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            nonlocal poison_touched
+            if iterations == 1:
+                assert key == "safe"
+                return "value"
+            poison_touched = True
+            raise AssertionError("publishable mapping touched a poisoned value")
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal iterations
+            iterations += 1
+            if iterations == 1:
+                return iter(("safe",))
+
+            def poisoned():  # type: ignore[no-untyped-def]
+                nonlocal armed, poison_touched
+                armed = True
+                yield "safe"
+                poison_touched = True
+                raise AssertionError("publishable mapping consumed a poisoned tail")
+
+            return poisoned()
+
+        def __len__(self) -> int:
+            return 1
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(StopIteration) as caught:
+        assert_publishable_json_value(
+            StatefulMapping(),
+            forbidden_paths=(),
+            environ={},
+            label="stateful publication JSON",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+    assert iterations == 2
+    assert not poison_touched
+
+
+@pytest.mark.parametrize(
+    ("key", "child", "expected_error"),
+    [
+        ("safe", "safe", StopIteration),
+        ("api_key", "unused", secret_fields_module.SecretFieldError),
+        ("description", "Bearer current-secret", secret_fields_module.SecretFieldError),
+    ],
+)
+def test_secret_walk_separates_lazy_mapping_key_and_value_boundaries(
+    key: str,
+    child: str,
+    expected_error: type[BaseException],
+) -> None:
+    stop = StopIteration("injected lazy secret-mapping stop")
+    armed = False
+    value_touched = False
+
+    class LazyMapping(Mapping[str, object]):
+        def __getitem__(self, current_key: str) -> object:
+            nonlocal armed, value_touched
+            value_touched = True
+            if key == "safe":
+                raise AssertionError("secret mapping touched a poisoned future value")
+            armed = True
+            assert current_key == key
+            return child
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal armed
+            if key != "description":
+                armed = True
+            yield key
+
+        def __len__(self) -> int:
+            return 1
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(expected_error) as caught:
+        secret_fields_module.assert_no_secret_fields(
+            LazyMapping(),
+            source="lazy secret mapping",
+            check_cancelled=check_cancelled,
+        )
+    if expected_error is StopIteration:
+        assert caught.value is stop
+        assert not value_touched
+    else:
+        assert caught.value is not stop
+        assert key == "description" or not value_touched
+
+
+def test_publishable_environment_polls_between_lazy_key_and_value() -> None:
+    stop = StopIteration("injected lazy environment stop")
+    armed = False
+    value_touched = False
+
+    class LazyEnvironment(Mapping[str, str]):
+        def __getitem__(self, key: str) -> str:
+            nonlocal value_touched
+            value_touched = True
+            raise AssertionError("environment touched a poisoned future value")
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal armed
+            armed = True
+            yield "SAFE_VAR"
+
+        def __len__(self) -> int:
+            return 1
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(StopIteration) as caught:
+        assert_publishable_json_value(
+            "safe",
+            forbidden_paths=(),
+            environ=LazyEnvironment(),
+            label="lazy environment publication",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+    assert not value_touched
+
+
+def test_secret_values_poll_between_lazy_environment_key_and_value() -> None:
+    stop = SystemExit("injected secret-value environment stop")
+    armed = False
+    value_touched = False
+
+    class LazyEnvironment(Mapping[str, str]):
+        def __getitem__(self, key: str) -> str:
+            nonlocal value_touched
+            value_touched = True
+            raise AssertionError("secret values touched a poisoned future value")
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            nonlocal armed
+            armed = True
+            yield "SAFE_VAR"
+
+        def __len__(self) -> int:
+            return 1
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stop
+
+    with pytest.raises(SystemExit) as caught:
+        security_module._secret_values(
+            LazyEnvironment(),
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+    assert not value_touched
+
+
+@pytest.mark.parametrize("container_kind", ["dict", "list", "tuple"])
+def test_secret_walk_validates_current_exact_child_before_future_stop(
+    container_kind: str,
+) -> None:
+    stop = StopIteration("injected current secret stop")
+    polls = 0
+    if container_kind == "dict":
+        value: object = {
+            "description": "Bearer current-secret",
+            "future": "safe",
+        }
+    elif container_kind == "list":
+        value = ["Bearer current-secret", "safe"]
+    else:
+        value = ("Bearer current-secret", "safe")
+
+    def check_cancelled() -> None:
+        nonlocal polls
+        polls += 1
+        if polls == 2:
+            raise stop
+
+    with pytest.raises(secret_fields_module.SecretFieldError) as caught:
+        secret_fields_module.assert_no_secret_fields(
+            value,
+            source="current secret value",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is not stop
+    assert polls == 1
+
+
+@pytest.mark.parametrize("base", [list, tuple])
+@pytest.mark.parametrize("current", ["safe", "Bearer current-secret"])
+def test_secret_walk_ignores_subclass_length_before_poisoned_tail(
+    base: type[list[object]] | type[tuple[object, ...]],
+    current: object,
+) -> None:
+    stop = StopIteration("injected secret sequence future stop")
+    state = SimpleNamespace(armed=False, poison_touched=False)
+
+    class LyingSequence(base):  # type: ignore[misc, valid-type]
+        def __len__(self) -> int:
+            return 1
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            def poisoned():  # type: ignore[no-untyped-def]
+                state.armed = True
+                yield current
+                state.poison_touched = True
+                raise AssertionError("secret walk consumed a poisoned tail")
+
+            return poisoned()
+
+    def check_cancelled() -> None:
+        if state.armed:
+            raise stop
+
+    if current == "safe":
+        with pytest.raises(StopIteration) as caught:
+            secret_fields_module.assert_no_secret_fields(
+                LyingSequence(("unused",)),
+                source="lying secret sequence",
+                check_cancelled=check_cancelled,
+            )
+        assert caught.value is stop
+    else:
+        with pytest.raises(secret_fields_module.SecretFieldError) as caught:
+            secret_fields_module.assert_no_secret_fields(
+                LyingSequence(("unused",)),
+                source="lying current secret",
+                check_cancelled=check_cancelled,
+            )
+        assert caught.value is not stop
+    assert not state.poison_touched
+
+
+@pytest.mark.parametrize("base", [list, tuple])
+def test_secret_walk_none_preserves_sequence_tail_protocol(
+    base: type[list[object]] | type[tuple[object, ...]],
+) -> None:
+    class PoisonedSequence(base):  # type: ignore[misc, valid-type]
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            yield "Bearer current-secret"
+            raise AssertionError("legacy secret walk consumed the sequence tail")
+
+    with pytest.raises(AssertionError, match="legacy secret walk"):
+        secret_fields_module.assert_no_secret_fields(
+            PoisonedSequence(("unused",)),
+            source="legacy secret sequence",
+        )
+
+
+@pytest.mark.parametrize("base", [list, tuple])
+@pytest.mark.parametrize("current", ["safe", object()])
+def test_publishable_second_walk_polls_lying_sequence_before_poisoned_tail(
+    base: type[list[object]] | type[tuple[object, ...]],
+    current: object,
+) -> None:
+    stop = StopIteration("injected publishable sequence future stop")
+    state = SimpleNamespace(iterations=0, armed=False, poison_touched=False)
+
+    class StatefulSequence(base):  # type: ignore[misc, valid-type]
+        def __len__(self) -> int:
+            return 1
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            state.iterations += 1
+            if state.iterations == 1:
+                return base.__iter__(self)
+
+            def poisoned():  # type: ignore[no-untyped-def]
+                state.armed = True
+                yield current
+                state.poison_touched = True
+                raise AssertionError("publishable walk consumed a poisoned tail")
+
+            return poisoned()
+
+    def check_cancelled() -> None:
+        if state.armed:
+            raise stop
+
+    value = StatefulSequence(("safe",))
+    if current == "safe":
+        with pytest.raises(StopIteration) as caught:
+            assert_publishable_json_value(
+                value,
+                forbidden_paths=(),
+                environ={},
+                label="stateful publication sequence",
+                check_cancelled=check_cancelled,
+            )
+        assert caught.value is stop
+    else:
+        with pytest.raises(ValueError, match="unsupported JSON value") as caught:
+            assert_publishable_json_value(
+                value,
+                forbidden_paths=(),
+                environ={},
+                label="stateful publication sequence",
+                check_cancelled=check_cancelled,
+            )
+        assert caught.value is not stop
+    assert state.iterations == 2
+    assert not state.poison_touched
+
+
+@pytest.mark.parametrize("base", [list, tuple])
+def test_publishable_second_walk_none_preserves_sequence_tail_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+    base: type[list[object]] | type[tuple[object, ...]],
+) -> None:
+    class PoisonedSequence(base):  # type: ignore[misc, valid-type]
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            yield object()
+            raise AssertionError("legacy publishable walk consumed the sequence tail")
+
+    monkeypatch.setattr(
+        security_module,
+        "assert_no_credential_fields",
+        lambda *_args, **_kwargs: None,
+    )
+    with pytest.raises(AssertionError, match="legacy publishable walk"):
+        assert_publishable_json_value(
+            PoisonedSequence(("unused",)),
+            forbidden_paths=(),
+            environ={},
+            label="legacy publication sequence",
+        )
+
+
+@pytest.mark.parametrize("base", [list, tuple])
+def test_forbidden_paths_ignore_sequence_subclass_length_before_future(
+    base: type[list[Path]] | type[tuple[Path, ...]],
+) -> None:
+    stop = StopIteration("injected forbidden-path future stop")
+    state = SimpleNamespace(armed=False, poison_touched=False)
+
+    class LyingPaths(base):  # type: ignore[misc, valid-type]
+        def __len__(self) -> int:
+            return 1
+
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            def poisoned():  # type: ignore[no-untyped-def]
+                state.armed = True
+                yield Path("relative-safe-path")
+                state.poison_touched = True
+                raise AssertionError("forbidden paths consumed a poisoned tail")
+
+            return poisoned()
+
+    def check_cancelled() -> None:
+        if state.armed:
+            raise stop
+
+    with pytest.raises(StopIteration) as caught:
+        assert_publishable_json_value(
+            "safe",
+            forbidden_paths=LyingPaths((Path("unused"),)),
+            environ={},
+            label="lying forbidden paths",
+            check_cancelled=check_cancelled,
+        )
+    assert caught.value is stop
+    assert not state.poison_touched
