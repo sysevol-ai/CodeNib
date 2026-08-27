@@ -66,6 +66,13 @@ class _LoopOutcome:
     failure: BaseException | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class _CloseResult:
+    owned: bool = False
+    summary: IndexJobBackgroundServiceSummary | None = None
+    failure: BaseException | None = None
+
+
 class _ThreadLaunch:
     """Gate one non-daemon start behind a cancellation-safe daemon launcher."""
 
@@ -470,11 +477,14 @@ class IndexJobBackgroundService:
 
     def _begin_close_locked(self) -> tuple[bool, tuple[_ThreadLaunch, ...]]:
         if self._state == "new":
+            if self._summary is None:
+                self._summary = IndexJobBackgroundServiceSummary(
+                    worker=IndexJobSchedulerRunSummary(0, 0, 0),
+                    runtime=IndexJobRuntimeLoopSummary(0, 0, 0),
+                )
+            # The summary is recoverable before the terminal state becomes
+            # visible, so an interrupted transition remains idempotent.
             self._state = "closed"
-            self._summary = IndexJobBackgroundServiceSummary(
-                worker=IndexJobSchedulerRunSummary(0, 0, 0),
-                runtime=IndexJobRuntimeLoopSummary(0, 0, 0),
-            )
             return False, ()
         if self._state in {"running", "starting", "stopping"}:
             self._state = "stopping"
@@ -548,20 +558,70 @@ class IndexJobBackgroundService:
             raise interruption
         return self._lifecycle_lock.run(self._closed_result_locked)
 
-    def _called_from_owned_thread(self) -> bool:
-        current = current_thread()
-        return self._lifecycle_lock.run(
-            lambda: any(launch.thread is current for launch in self._threads)
-        )
+    def _close_entry_serialized(self) -> _CloseResult:
+        first_failure: BaseException | None = None
+
+        def remember(candidate: BaseException) -> None:
+            nonlocal first_failure
+            if first_failure is None:
+                first_failure = candidate
+
+        while True:
+            try:
+                summary = self._close_serialized()
+            except BaseException as close_failure:  # noqa: B036 - prove terminal
+                remember(close_failure)
+                while True:
+                    try:
+                        state = self._lifecycle_lock.run(lambda: self._state)
+                        break
+                    except BaseException as state_failure:  # noqa: B036 - retry read
+                        remember(state_failure)
+                if state == "closed":
+                    return _CloseResult(failure=first_failure)
+                continue
+            return _CloseResult(summary=summary, failure=first_failure)
 
     def close(self) -> IndexJobBackgroundServiceSummary:
         """Stop and join both loops before shared resources may be released."""
 
-        if self._called_from_owned_thread():
+        first_failure: BaseException | None = None
+
+        def remember(candidate: BaseException) -> None:
+            nonlocal first_failure
+            if first_failure is None:
+                first_failure = candidate
+
+        # Ownership lookup must precede settlement acquisition so an owned
+        # callback can reject self-close while an external close is joining it.
+        # The whole entry is replayed after interruption; an external caller
+        # cannot observe a failure until close has proven the service terminal.
+        while True:
+            try:
+                current = current_thread()
+                owned = self._lifecycle_lock.run(
+                    lambda current=current: any(
+                        launch.thread is current for launch in self._threads
+                    )
+                )
+                if owned:
+                    result = _CloseResult(owned=True)
+                else:
+                    result = self._settlement_lock.run(self._close_entry_serialized)
+                break
+            except BaseException as entry_failure:  # noqa: B036 - replay entry
+                remember(entry_failure)
+
+        if result.owned:
             raise IndexJobBackgroundServiceError(
                 "background index service cannot close from an owned loop"
             )
-        return self._settlement_lock.run(self._close_serialized)
+        failure = first_failure if first_failure is not None else result.failure
+        if failure is not None:
+            raise failure
+        if result.summary is None:
+            raise RuntimeError("background index service close result is incomplete")
+        return result.summary
 
 
 __all__ = [

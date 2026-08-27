@@ -429,6 +429,40 @@ def test_interrupted_close_transition_still_stops_and_joins_loops() -> None:
     )
 
 
+def test_interrupted_close_preflight_still_settles_before_rethrow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker = _Loop(_worker_summary())
+    runtime = _Loop(_runtime_summary())
+    service = IndexJobBackgroundService(worker, runtime)
+    service.start()
+    assert runtime.entered.wait(1)
+    assert worker.entered.wait(1)
+    real_current_thread = service_module.current_thread
+    interrupted = False
+
+    def read_current_thread() -> Thread:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt
+        return real_current_thread()
+
+    monkeypatch.setattr(service_module, "current_thread", read_current_thread)
+
+    with pytest.raises(KeyboardInterrupt):
+        service.close()
+
+    assert interrupted is True
+    assert worker.exited.is_set()
+    assert runtime.exited.is_set()
+    assert service.state == "closed"
+    assert service.close() == IndexJobBackgroundServiceSummary(
+        worker=_worker_summary(),
+        runtime=_runtime_summary(),
+    )
+
+
 def test_close_replays_settlement_after_interrupted_state_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -527,6 +561,42 @@ def test_background_service_closes_cleanly_before_start_and_rejects_restart() ->
     )
     with pytest.raises(RuntimeError, match="only once"):
         service.start()
+
+
+def test_interrupted_close_before_start_retains_empty_summary() -> None:
+    class InterruptClosedPublicationLock:
+        def __init__(self, lock, service) -> None:
+            self.lock = lock
+            self.service = service
+            self.interrupted = False
+
+        def run(self, callback):
+            result = self.lock.run(callback)
+            if self.service._state == "closed" and not self.interrupted:
+                self.interrupted = True
+                raise KeyboardInterrupt
+            return result
+
+    service = IndexJobBackgroundService(
+        _Loop(_worker_summary()),
+        _Loop(_runtime_summary()),
+    )
+    lifecycle_lock = InterruptClosedPublicationLock(
+        service._lifecycle_lock,
+        service,
+    )
+    service._lifecycle_lock = lifecycle_lock
+
+    with pytest.raises(KeyboardInterrupt):
+        service.close()
+
+    expected = IndexJobBackgroundServiceSummary(
+        worker=_worker_summary(),
+        runtime=_runtime_summary(),
+    )
+    assert lifecycle_lock.interrupted is True
+    assert service.state == "closed"
+    assert service.close() == expected
 
 
 def test_second_start_is_rejected_without_stopping_running_service() -> None:
