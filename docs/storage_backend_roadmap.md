@@ -1289,8 +1289,9 @@ separately supplied full Git SHA remains display provenance only. The returned
 `IndexJobExecutionResult` carries no catalog, lease, fencing, ref, or final
 generation publication authority; the worker remains the sole publisher and
 the caller retains cleanup ownership for every attempt. Source-job resource
-factory, resolver, and production CLI wiring are described below; Web binding,
-vector source building, and graph source building remain absent.
+factory, resolver, production CLI wiring, and the explicit injected Web planner
+are described below; default Web installation, vector source building, and
+graph source building remain absent.
 
 A general caller-owned path-build directory now supplies a retained attempt
 boundary for arbitrary path writers and the implemented source-job resource
@@ -1366,12 +1367,19 @@ directory descriptor directly
 and fail closed on any name under the declared quiescence contract, without
 claiming a hostile-writer allocation budget. Interrupted rename, removal, and
 synchronization likewise retain an explicit retry owner. It acquires no
-cross-process lease and contains no BM25 name discovery or policy; the remaining
-follow-up is the attempt-pool coordinator that invokes it only after worker
-quiescence. The
-legacy one-shot directory-discard and plain stage-construction return contracts
-remain unchanged; cancellation-safe integrations must use the retained owner
-and explicit receipt acknowledgement.
+cross-process lease and contains no BM25 name discovery or policy. A separate
+target-bound BM25 coordinator now supplies that policy only after successful
+worker settlement and an exact caller assertion that no other cooperative
+process can enter the pool. It snapshots and classifies the complete bounded
+parent before mutation, recognizes only the fixed current and legacy
+source-attempt lineages, rejects malformed reserved and provenance-free hashed
+fallback names, routes only already-discarded lineage to direct cleanup, and
+requires the final snapshot to contain exactly the original unrelated names.
+It carries no catalog, publication, or global retained-owner routing authority;
+automatic multi-target cleanup and a cross-process writer/reaper lease remain
+pending. The legacy one-shot directory-discard and plain stage-construction
+return contracts remain unchanged; cancellation-safe integrations must use the
+retained owner and explicit receipt acknowledgement.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1419,8 +1427,10 @@ returning the prepared result, and binds every attempt/view/context provision
 to the retained startup workspace identity while rechecking the complete
 storage topology. The planner captures that same topology-guarded retained
 source and registers only its content-addressed planning identities through a
-least-authority catalog surface. No default Web installation, runtime refresh
-trigger, or default route selects either production binding yet.
+least-authority catalog surface. The guarded result reconciler, retained
+publisher, and polling loop remain dependency-injected; no default Web lifespan
+installation, local storage configuration, or default route selects either
+production binding yet.
 
 The production CLI binding exposes both trusted local adapters through
 `codenib jobs run-once` and `codenib jobs run`, with an explicit mutually
@@ -1436,6 +1446,13 @@ publication rather than stamping later source bytes with the startup commit.
 The source candidate filter rechecks retained topology before lease acquisition,
 and every later attempt verifier promotes topology loss to a storage-integrity
 alarm, so a continuous scheduler terminates instead of consuming job retries.
+A default-off `--reclaim-quiescent-attempts` source-mode flag runs the bounded
+coordinator exactly once after a successful `run-once` worker return or
+continuous-scheduler shutdown, while retained topology and CAS owners are still
+open. The flag is an operator assertion that no other cooperative process can
+enter that workspace through the post-worker sweep; exceptional worker unwind
+never invokes it, cache mode rejects it before path or storage setup, stdout
+remains unchanged, and stderr receives only bounded count diagnostics.
 A trusted candidate filter runs on a detached canonical job before owner
 allocation or lease acquisition, so foreign repositories and unsupported view
 requests remain untouched. `run-once`
@@ -1466,9 +1483,10 @@ are implemented. Its three transient destinations now share one retained
 caller-owned path-build root whose authenticated cleanup receipt is accepted
 before ownership is released. The descriptor-owned quiescent directory
 reclamation primitive, bounded descriptor child snapshot, and direct
-already-quarantined-child cleanup are implemented; BM25 attempt-name
-classification, multi-target retry routing, worker-lifecycle quiescence, and
-CLI wiring remain pending.
+already-quarantined-child cleanup are implemented. Exact BM25 attempt-name
+classification, the caller-asserted post-worker coordinator, and default-off
+CLI wiring are also implemented; automatic multi-target retry routing and a
+cross-process writer/reaper lease remain pending.
 Vector and graph source builders, generic builder routing, and remaining
 runtime wiring remain.
 
@@ -1506,9 +1524,11 @@ bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
 generation identity.
-The first #266 status, durable-read, explicitly injected one-view write, and
-retained-source BM25 planning slices are present; a default Web binding,
-success-triggered refresh, MCP, UI controls, and default routing remain absent.
+The first #266 status, durable-read, explicitly injected one-view write,
+retained-source BM25 planning, guarded reconciliation, retained publication,
+and polling slices are present. The success callback exists but is not installed
+by the default server; Web lifespan ownership, local storage configuration,
+MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1559,15 +1579,19 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
 - The retained-source BM25 attempt resource factory/resolver, production CLI
   entry, and explicit Web planner are implemented. The generic descriptor-bound
   quiescent directory reclamation primitive, bounded descriptor child snapshot,
-  and direct already-quarantined cleanup are also implemented without BM25 name
-  policy or publication authority. The planner captures the same frozen local
-  target as the worker, revalidates source after planning, and uses a separate
-  least-authority catalog surface that can register only content-addressed
-  source/profile identities and read one ref generation. Add the
-  worker-lifecycle attempt-pool coordinator, then add vector and graph source
-  adapters and wire successful worker results into runtime, Web, MCP, and
-  default routes. Older self-publishing ingress APIs remain compatibility paths
-  and are never nested inside the worker.
+  and direct already-quarantined cleanup remain policy-free and carry no
+  publication authority. A separate exact-target coordinator and default-off
+  CLI flag now add bounded BM25 attempt-name policy only after successful worker
+  settlement under caller-asserted process quiescence. The planner captures the
+  same frozen local target as the worker, revalidates source after planning, and
+  uses a separate least-authority catalog surface that can register only
+  content-addressed source/profile identities and read one ref generation. Add
+  a cooperative cross-process writer/reaper lease and automatic multi-target
+  routing, then add vector and graph source adapters, install the existing
+  reconciler and polling loop in the production server lifespan, invoke its
+  callback from attested worker success, and wire MCP, UI, and default routes.
+  Older self-publishing ingress APIs remain compatibility paths and are never
+  nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
@@ -1584,8 +1608,9 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   cancellation-class cleanup failures never demoted behind ordinary errors.
   Bundle-derived Wiki, edge-label, and commit-window helpers are generation
   keyed and stale entries are pruned after replacement, removal, and shutdown.
-  The remaining #266 work is to invoke this refresh boundary only after an
-  attested update job succeeds and expose its status/results to the UI.
+  The remaining #266 work is to own the existing reconciliation loop in the
+  production server lifespan, invoke its existing callback only after an
+  attested update job succeeds, and expose its status/results to the UI.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle
