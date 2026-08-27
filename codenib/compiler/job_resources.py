@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 import secrets
 from contextlib import contextmanager
 from dataclasses import InitVar, dataclass, field
@@ -16,8 +18,10 @@ from typing import Callable, Iterator, Mapping
 
 from .._atomic_directory import (
     DirectoryOrphan,
+    QuiescentDirectoryReclaimer,
     _attach_publication_cleanup_owner,
     _OrderedAction,
+    _run_callback_with_post_validations,
     _run_context_with_cleanup_actions,
     directory_ownership_root_identity,
     discard_owned_directory,
@@ -76,6 +80,91 @@ logger = logging.getLogger(__name__)
 _MAX_LOCAL_TARGETS = 4_096
 _NONCE_BYTES = 16
 _SUPPORTED_CACHE_VIEWS = frozenset({"bm25", "vector"})
+_BM25_ATTEMPT_NONCE = rb"[0-9a-f]{32}"
+_BM25_STAGE_NONCE = rb"[0-9a-f]{24}"
+_BM25_ATTEMPT_ROLE = rb"(?:attempt|bm25|context)"
+_BM25_ATTEMPT_POOL_PATTERNS = (
+    (
+        re.compile(
+            rb"\.codenib-source-job-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"\.normalize-"
+            + _BM25_STAGE_NONCE
+            + rb"\Z"
+        ),
+        "current",
+        False,
+    ),
+    (
+        re.compile(
+            rb"\.\.codenib-source-job-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"\.normalize-"
+            + _BM25_STAGE_NONCE
+            + rb"\.discarded-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"\Z"
+        ),
+        "current",
+        True,
+    ),
+    (
+        re.compile(
+            rb"\.codenib-source-job-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"-"
+            + _BM25_ATTEMPT_ROLE
+            + rb"\Z"
+        ),
+        "legacy",
+        False,
+    ),
+    (
+        re.compile(
+            rb"\.\.codenib-source-job-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"-"
+            + _BM25_ATTEMPT_ROLE
+            + rb"\.normalize-"
+            + _BM25_STAGE_NONCE
+            + rb"\Z"
+        ),
+        "legacy",
+        False,
+    ),
+    (
+        re.compile(
+            rb"\.\.codenib-source-job-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"-"
+            + _BM25_ATTEMPT_ROLE
+            + rb"\.discarded-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"\Z"
+        ),
+        "legacy",
+        True,
+    ),
+    (
+        re.compile(
+            rb"\.\.\.codenib-source-job-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"-"
+            + _BM25_ATTEMPT_ROLE
+            + rb"\.normalize-"
+            + _BM25_STAGE_NONCE
+            + rb"\.discarded-"
+            + _BM25_ATTEMPT_NONCE
+            + rb"\Z"
+        ),
+        "legacy",
+        True,
+    ),
+)
+_BM25_ATTEMPT_POOL_RESERVED_PREFIXES = (
+    b"codenib-source-job-",
+    b"codenib-discarded-",
+)
 
 
 def _paths_overlap(first: Path, second: Path) -> bool:
@@ -406,6 +495,12 @@ class LocalBM25SourceJobTarget:
         return self.workspace_provider.allowed_root
 
     @property
+    def attempt_pool_identity(self) -> tuple[int, ...] | None:
+        """Return the retained identity for the source-job attempt parent."""
+
+        return self.workspace_parent_identity
+
+    @property
     def profile_id(self) -> str:
         return self._profile_id
 
@@ -491,6 +586,174 @@ class LocalBM25SourceJobTarget:
             orphan.entries,
             orphan.byte_count,
             orphan.verified_at_isolation,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _BM25AttemptPoolChild:
+    """One exact, policy-recognized source-job attempt child."""
+
+    lineage: str
+    discarded: bool
+
+
+def _classify_bm25_attempt_pool_child_name(
+    name: str,
+) -> _BM25AttemptPoolChild | None:
+    """Classify one bounded snapshot name without granting broad discovery."""
+
+    if type(name) is not str:
+        raise TypeError("BM25 attempt-pool child name must be exact text")
+    raw_name = os.fsencode(name)
+    for pattern, lineage, discarded in _BM25_ATTEMPT_POOL_PATTERNS:
+        if pattern.fullmatch(raw_name) is not None:
+            return _BM25AttemptPoolChild(
+                lineage=lineage,
+                discarded=discarded,
+            )
+    reserved = raw_name.lstrip(b".").lower()
+    if reserved.startswith(_BM25_ATTEMPT_POOL_RESERVED_PREFIXES):
+        raise StorageValidationError(
+            "BM25 attempt pool contains an unrecognized reserved child"
+        )
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class BM25AttemptPoolReclamation:
+    """Bounded count-only result from one explicit-quiescent attempt sweep."""
+
+    scanned_children: int
+    reclaimed_children: int
+    current_children: int
+    legacy_children: int
+    discarded_children: int
+    retained_unrelated_children: int
+
+
+@dataclass(frozen=True, slots=True)
+class LocalBM25AttemptPoolCoordinator:
+    """Apply exact BM25 name policy under a caller-asserted quiescent boundary."""
+
+    target: LocalBM25SourceJobTarget
+
+    def __post_init__(self) -> None:
+        if type(self) is not LocalBM25AttemptPoolCoordinator:
+            raise TypeError("local BM25 attempt-pool coordinator must use exact type")
+        if type(self.target) is not LocalBM25SourceJobTarget:
+            raise TypeError(
+                "local BM25 attempt-pool coordinator requires an exact target"
+            )
+
+    def _require_target(self) -> tuple[Path, tuple[int, ...]]:
+        target = self.target
+        if target.topology_verifier is None:
+            raise StorageValidationError(
+                "BM25 attempt-pool reclamation requires retained topology"
+            )
+        attempt_pool_root = target.attempt_pool_root
+        if attempt_pool_root != target.workspace_root:
+            raise StorageValidationError(
+                "BM25 attempt-pool reclamation target changed its workspace root"
+            )
+        identity = target.attempt_pool_identity
+        if (
+            type(identity) is not tuple
+            or len(identity) != 4
+            or any(type(value) is not int for value in identity)
+        ):
+            raise StorageValidationError(
+                "BM25 attempt-pool reclamation requires an exact parent identity"
+            )
+        return attempt_pool_root, identity
+
+    def reclaim(
+        self,
+        *,
+        caller_asserts_quiescence: bool = False,
+    ) -> BM25AttemptPoolReclamation:
+        """Reclaim recognized stale attempts after an exact caller assertion."""
+
+        if type(caller_asserts_quiescence) is not bool:
+            raise TypeError("BM25 attempt-pool quiescence assertion must be exact bool")
+        if caller_asserts_quiescence is not True:
+            raise StorageValidationError(
+                "BM25 attempt-pool reclamation requires caller-asserted quiescence"
+            )
+        attempt_pool_root, identity = self._require_target()
+        target = self.target
+
+        def run_with_topology(label: str, callback):
+            target.verify_topology()
+            return _run_callback_with_post_validations(
+                callback,
+                (
+                    (
+                        f"BM25 attempt-pool {label} topology validation also failed",
+                        target.verify_topology,
+                    ),
+                ),
+            )
+
+        def sweep() -> BM25AttemptPoolReclamation:
+            with QuiescentDirectoryReclaimer(
+                attempt_pool_root,
+                expected_parent_identity=identity,
+            ) as reclaimer:
+                child_names = run_with_topology(
+                    "snapshot",
+                    reclaimer.snapshot_child_names,
+                )
+
+                classified = tuple(
+                    (name, _classify_bm25_attempt_pool_child_name(name))
+                    for name in child_names
+                )
+                candidates = tuple(
+                    (name, child) for name, child in classified if child is not None
+                )
+                retained = tuple(name for name, child in classified if child is None)
+
+                for name, child in candidates:
+                    if child.discarded:
+                        reclaim = reclaimer.reclaim_quarantined_child
+                    else:
+                        reclaim = reclaimer.reclaim_child
+                    reclaimed = run_with_topology(
+                        "child reclamation",
+                        lambda name=name, reclaim=reclaim: reclaim(name),
+                    )
+                    if reclaimed is not True:
+                        raise StorageIntegrityError(
+                            "BM25 attempt-pool child disappeared despite quiescence"
+                        )
+
+                final_names = run_with_topology(
+                    "final snapshot",
+                    reclaimer.snapshot_child_names,
+                )
+                if final_names != retained:
+                    raise StorageIntegrityError(
+                        "BM25 attempt pool changed during quiescent reclamation"
+                    )
+
+            current_children = sum(
+                child.lineage == "current" for _name, child in candidates
+            )
+            legacy_children = len(candidates) - current_children
+            discarded_children = sum(child.discarded for _name, child in candidates)
+            return BM25AttemptPoolReclamation(
+                scanned_children=len(child_names),
+                reclaimed_children=len(candidates),
+                current_children=current_children,
+                legacy_children=legacy_children,
+                discarded_children=discarded_children,
+                retained_unrelated_children=len(retained),
+            )
+
+        return run_with_topology(
+            "reclaimer lifetime",
+            sweep,
         )
 
 
@@ -1184,6 +1447,8 @@ class LocalBM25SourceJobResourceFactory:
 
 
 __all__ = [
+    "BM25AttemptPoolReclamation",
+    "LocalBM25AttemptPoolCoordinator",
     "LocalBM25SourceJobResourceFactory",
     "LocalBM25SourceJobTarget",
     "LocalCompilerCacheJobResourceFactory",

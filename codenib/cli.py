@@ -3881,7 +3881,17 @@ def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
 
     if not callable(operation):
         raise TypeError("local index job worker operation must be callable")
-    if bool(getattr(args, "source_bm25", False)):
+    source_bm25 = bool(getattr(args, "source_bm25", False))
+    reclaim_quiescent_attempts = getattr(
+        args,
+        "reclaim_quiescent_attempts",
+        False,
+    )
+    if type(reclaim_quiescent_attempts) is not bool:
+        raise CLIError("--reclaim-quiescent-attempts state must be an exact boolean")
+    if reclaim_quiescent_attempts and not source_bm25:
+        raise CLIError("--reclaim-quiescent-attempts requires --source-bm25")
+    if source_bm25:
         if getattr(args, "cache_dir", None) is not None:
             raise CLIError("--cache-dir cannot be combined with --source-bm25")
         return _run_with_local_bm25_source_job_worker(args, operation)
@@ -3984,6 +3994,44 @@ def _run_with_local_compiler_cache_job_worker(
             _inherit_publication_cleanup_owners(wrapped, primary_error)
             raise wrapped from primary_error
         raise
+
+
+def _reclaim_local_bm25_source_attempt_pool(target) -> None:
+    """Run one count-only explicit-quiescent sweep and report it on stderr."""
+
+    from .compiler.job_resources import LocalBM25AttemptPoolCoordinator
+
+    reclamation = LocalBM25AttemptPoolCoordinator(target).reclaim(
+        caller_asserts_quiescence=True,
+    )
+    print(
+        "BM25 attempt-pool reclamation: "
+        f"scanned={reclamation.scanned_children} "
+        f"reclaimed={reclamation.reclaimed_children} "
+        f"current={reclamation.current_children} "
+        f"legacy={reclamation.legacy_children} "
+        f"discarded={reclamation.discarded_children} "
+        f"retained={reclamation.retained_unrelated_children}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _run_local_bm25_source_worker_operation(
+    args: argparse.Namespace,
+    operation,
+    worker,
+    target,
+    topology_verifier: Callable[[], None],
+):
+    """Run once, then optionally sweep only after worker resources settle."""
+
+    result = operation(worker)
+    topology_verifier()
+    if getattr(args, "reclaim_quiescent_attempts", False):
+        _reclaim_local_bm25_source_attempt_pool(target)
+        topology_verifier()
+    return result
 
 
 def _run_with_local_bm25_source_job_worker(
@@ -4114,8 +4162,13 @@ def _run_with_local_bm25_source_job_worker(
                 ),
             )
             topology.verify()
-            result = operation(worker)
-            topology.verify()
+            result = _run_local_bm25_source_worker_operation(
+                args,
+                operation,
+                worker,
+                target,
+                topology.verify,
+            )
         if result is missing_result:  # pragma: no cover - callback always returns
             raise RuntimeError("index job worker operation returned no result")
         return result
@@ -6027,6 +6080,14 @@ def _add_jobs_worker_arguments(parser: argparse.ArgumentParser) -> None:
         "--source-bm25",
         action="store_true",
         help="build matching FULL BM25 jobs directly from retained source",
+    )
+    parser.add_argument(
+        "--reclaim-quiescent-attempts",
+        action="store_true",
+        help=(
+            "after a successful source-worker run, reclaim recognized stale "
+            "attempts while asserting that no other process can enter the pool"
+        ),
     )
     parser.add_argument(
         "--language",

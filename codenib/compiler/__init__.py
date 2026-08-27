@@ -56,6 +56,8 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         CompilerCacheJobResourceScope,
     )
     from codenib.compiler.job_resources import (
+        BM25AttemptPoolReclamation,
+        LocalBM25AttemptPoolCoordinator,
         LocalBM25SourceJobResourceFactory,
         LocalBM25SourceJobTarget,
         LocalCompilerCacheJobResourceFactory,
@@ -105,6 +107,10 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     )
 
 _EXPORTS = {
+    "BM25AttemptPoolReclamation": (
+        "codenib.compiler.job_resources",
+        "BM25AttemptPoolReclamation",
+    ),
     "BM25SourceJobResolver": (
         "codenib.compiler.job_resolver",
         "BM25SourceJobResolver",
@@ -204,6 +210,10 @@ _EXPORTS = {
     "LocalCompilerCacheJobTarget": (
         "codenib.compiler.job_resources",
         "LocalCompilerCacheJobTarget",
+    ),
+    "LocalBM25AttemptPoolCoordinator": (
+        "codenib.compiler.job_resources",
+        "LocalBM25AttemptPoolCoordinator",
     ),
     "LocalBM25SourceJobResourceFactory": (
         "codenib.compiler.job_resources",
@@ -319,6 +329,7 @@ _EXPORTS = {
 }
 
 __all__ = [
+    "BM25AttemptPoolReclamation",
     "BM25SourceJobResolver",
     "BM25SourceJobResourceFactory",
     "BM25SourceJobResourceScope",
@@ -333,6 +344,7 @@ __all__ = [
     "CompilerCacheJobResourceScope",
     "LocalCompilerCacheJobResourceFactory",
     "LocalCompilerCacheJobTarget",
+    "LocalBM25AttemptPoolCoordinator",
     "LocalBM25SourceJobResourceFactory",
     "LocalBM25SourceJobTarget",
     "CompilerCacheMultiViewImportResult",
