@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import builtins
+import dis
 import inspect
 import json
 import os
 import subprocess
+import sys
 import threading
+from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +22,7 @@ import pytest
 import codenib.cli as cli_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
+import codenib.compiler.job_resolver as job_resolver_module
 import codenib.compiler.job_resources as job_resources_module
 import codenib.compiler.source_job as source_job_module
 from codenib import LocalWorkspaceProvider
@@ -34,6 +38,7 @@ from codenib.compiler.job_resolver import (
     BM25SourceJobResolver,
     BM25SourceJobResourceFactory,
     BM25SourceJobResourceScope,
+    CompilerCacheJobResourceScope,
 )
 from codenib.compiler.job_resources import (
     LocalBM25SourceJobResourceFactory,
@@ -2066,15 +2071,18 @@ def test_local_bm25_source_scope_rejects_replaced_retained_workspace(
         fixture.close()
 
 
+@pytest.mark.parametrize("malformed_notes", ((), None))
 def test_bm25_source_scope_cleanup_cannot_replace_executor_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    malformed_notes: object,
 ) -> None:
     builder = BM25IndexBuilder()
     fixture = _source_fixture(tmp_path)
     view_owner = PublishedWorkspaceReceiptOwner()
     context_owner = PublishedWorkspaceReceiptOwner()
     primary = StorageIntegrityError("primary BM25 source failure")
+    BaseException.__setattr__(primary, "__notes__", malformed_notes)
     cleanup = OSError("injected BM25 source cleanup failure")
     try:
         with (
@@ -2128,10 +2136,10 @@ def test_bm25_source_scope_cleanup_cannot_replace_executor_failure(
                 resolved.execute(context)
 
             assert caught.value is primary
-            notes = (
-                *getattr(primary, "__notes__", ()),
-                *getattr(primary, "_codenib_cleanup_notes", ()),
-            )
+            native_notes = getattr(primary, "__notes__", ())
+            if type(native_notes) is not list:
+                native_notes = ()
+            notes = (*native_notes, *getattr(primary, "_codenib_cleanup_notes", ()))
             assert any(
                 "BM25 source resource cleanup also failed: OSError" in note
                 for note in notes
@@ -2140,6 +2148,1045 @@ def test_bm25_source_scope_cleanup_cannot_replace_executor_failure(
         context_owner.close()
         view_owner.close()
         fixture.close()
+
+
+def _run_in_isolated_thread(callback: Callable[[], None]) -> None:
+    """Keep trace-raised exception state out of the pytest worker thread."""
+
+    failures: list[str] = []
+
+    def run() -> None:
+        try:
+            callback()
+        except (Exception, KeyboardInterrupt) as failure:
+            failures.append(type(failure).__name__)
+
+    worker = threading.Thread(target=run)
+    worker.start()
+    worker.join()
+    assert not worker.is_alive()
+    assert failures == []
+
+
+def _warm_scoped_job_capture_tracing(capture: Callable[..., object]) -> None:
+    """Warm one handler under tracing without injecting an exception."""
+
+    warm_error = RuntimeError("warm scoped capture tracing")
+    warm_outcome = job_resolver_module._ScopedJobExecutionOutcome()
+
+    @contextmanager
+    def warm_resources():
+        yield object()
+
+    def fail_warm_operation(_executor):
+        raise warm_error
+
+    def warm_trace(frame, _event, _arg):
+        if frame.f_code is capture.__code__:
+            frame.f_trace_opcodes = True
+        return warm_trace
+
+    sys.settrace(warm_trace)
+    try:
+        job_resolver_module._capture_scoped_job_resource_exit(
+            warm_resources(),
+            fail_warm_operation,
+            warm_outcome,
+        )
+    finally:
+        sys.settrace(None)
+    assert warm_outcome.operation_error is warm_error
+    assert warm_outcome.scope_error is warm_error
+
+
+def _native_handler_offset(capture: Callable[..., object]) -> int:
+    instructions = tuple(dis.get_instructions(capture))
+    return next(
+        instruction.offset
+        for instruction in instructions
+        if instruction.opname in {"PUSH_EXC_INFO", "WITH_EXCEPT_START"}
+    )
+
+
+@pytest.mark.parametrize("scope_kind", ("cache", "source"))
+@pytest.mark.parametrize(
+    ("capture_name", "trace_point", "cleanup_mode"),
+    (
+        ("_capture_scoped_job_execution", "handler-entry", "raise"),
+        ("_capture_scoped_job_execution", "handler-after-store", "raise"),
+        ("_capture_scoped_job_execution", "handler-entry", "suppress"),
+        ("_capture_scoped_job_execution", "handler-after-store", "suppress"),
+        ("_capture_scoped_job_resource_exit", "handler-entry", "raise"),
+        ("_capture_scoped_job_resource_exit", "handler-after-store", "raise"),
+    ),
+)
+def test_scoped_job_handler_interruption_preserves_executor_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scope_kind: str,
+    capture_name: str,
+    trace_point: str,
+    cleanup_mode: str,
+) -> None:
+    primary = StorageIntegrityError("primary scoped executor failure")
+    cleanup = OSError("scoped resource cleanup failure")
+    injected = KeyboardInterrupt("handler interrupted")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    exits: list[str] = []
+
+    class FakeExecutor:
+        def __init__(self, object_store) -> None:
+            self.object_store = object_store
+            self.view_type = "bm25"
+
+        def execute(self, _context):
+            raise primary
+
+    if capture_name == "_capture_scoped_job_execution":
+        capture_type = job_resolver_module._ScopedJobOperationCapture
+        captured_attribute = "operation_error"
+    else:
+        capture_type = job_resolver_module._ScopedJobResourceExitCapture
+        captured_attribute = "scope_error"
+    capture = capture_type.__exit__
+    instructions = tuple(dis.get_instructions(capture))
+    error_store_index = next(
+        index
+        for index, instruction in enumerate(instructions)
+        if instruction.opname == "STORE_ATTR"
+        and instruction.argval == captured_attribute
+    )
+    if trace_point == "handler-entry":
+        handler_offset = next(
+            instruction.offset
+            for instruction in instructions[:error_store_index]
+            if instruction.opname not in {"CACHE", "COPY_FREE_VARS", "NOP", "RESUME"}
+        )
+    else:
+        handler_offset = instructions[error_store_index + 1].offset
+    hit = False
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is capture.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == handler_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    with LocalCAS(tmp_path / "cas") as cas:
+        executor = FakeExecutor(cas)
+
+        @contextmanager
+        def failing_cleanup():
+            try:
+                yield executor
+            except BaseException as exiting:  # noqa: B036 - inspect scope exit
+                exits.append("exit")
+                assert exiting is primary
+                if cleanup_mode == "raise":
+                    raise cleanup
+
+        if scope_kind == "cache":
+            monkeypatch.setattr(
+                job_resolver_module,
+                "CompilerCacheJobExecutor",
+                FakeExecutor,
+            )
+            scope = CompilerCacheJobResourceScope(
+                object_store=cas,
+                view_type="bm25",
+                resources=failing_cleanup(),
+            )
+            execute = job_resolver_module._execute_in_resource_scope
+            expected_note = "compiler cache resource cleanup also failed: OSError"
+        else:
+            monkeypatch.setattr(
+                job_resolver_module,
+                "BM25SourceJobExecutor",
+                FakeExecutor,
+            )
+            scope = BM25SourceJobResourceScope(
+                object_store=cas,
+                resources=failing_cleanup(),
+            )
+            execute = job_resolver_module._execute_in_bm25_source_resource_scope
+            expected_note = "BM25 source resource cleanup also failed: OSError"
+
+        def run_traced_execute() -> None:
+            _warm_scoped_job_capture_tracing(capture)
+            sys.settrace(trace)
+            try:
+                with pytest.raises(StorageIntegrityError) as caught:
+                    execute(scope, object())
+            finally:
+                sys.settrace(None)
+            assert caught.value is primary
+
+        _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == ["exit"]
+    retained_owners = getattr(primary, "publication_cleanup_owners", ())
+    if cleanup_mode == "raise":
+        assert retained_owners == (cleanup_owner,)
+    else:
+        assert retained_owners == ()
+    notes = (
+        *getattr(primary, "__notes__", ()),
+        *getattr(primary, "_codenib_cleanup_notes", ()),
+    )
+    assert (expected_note in notes) is (cleanup_mode == "raise")
+
+
+@pytest.mark.parametrize("cleanup_mode", ("raise", "suppress", "propagate"))
+@pytest.mark.parametrize("primary_context", ("none", "internal", "ambient"))
+def test_scoped_job_native_operation_handler_preserves_provenance(
+    cleanup_mode: str,
+    primary_context: str,
+) -> None:
+    primary = StorageIntegrityError("primary scoped executor failure")
+    internal = ValueError("operation-internal context")
+    ambient = RuntimeError("caller ambient context")
+    cleanup = OSError("scoped resource cleanup failure")
+    injected = KeyboardInterrupt("native operation handler interrupted")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    capture = job_resolver_module._capture_scoped_job_execution
+    handler_offset = _native_handler_offset(capture)
+    hit = False
+    exits: list[BaseException] = []
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is capture.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == handler_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        try:
+            yield object()
+        except BaseException as exiting:  # noqa: B036 - inspect scope exit
+            exits.append(exiting)
+            if cleanup_mode == "raise":
+                raise cleanup from exiting
+            if cleanup_mode == "propagate":
+                raise
+
+    def operation(_executor):
+        if primary_context == "internal":
+            try:
+                raise internal
+            except ValueError as internal_error:
+                raise primary from internal_error
+        raise primary
+
+    def execute_once() -> None:
+        _warm_scoped_job_capture_tracing(capture)
+        sys.settrace(trace)
+        try:
+            with pytest.raises(StorageIntegrityError) as caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert caught.value is primary
+
+    def run_traced_execute() -> None:
+        if primary_context == "ambient":
+            try:
+                raise ambient
+            except RuntimeError as active_error:
+                assert active_error is ambient
+                execute_once()
+        else:
+            execute_once()
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == [primary]
+    retained_owners = getattr(primary, "publication_cleanup_owners", ())
+    if cleanup_mode == "raise":
+        assert retained_owners == (cleanup_owner,)
+        notes = (
+            *getattr(primary, "__notes__", ()),
+            *getattr(primary, "_codenib_cleanup_notes", ()),
+        )
+        assert "test resource cleanup also failed: OSError" in notes
+    else:
+        assert retained_owners == ()
+
+
+@pytest.mark.parametrize("caller_ambient", (False, True))
+def test_scoped_job_native_resource_handler_preserves_cleanup_failure(
+    caller_ambient: bool,
+) -> None:
+    class HostileCleanupError(OSError):
+        def __bool__(self) -> bool:
+            raise AssertionError("cleanup exception truthiness was evaluated")
+
+    cleanup = HostileCleanupError("scoped resource cleanup failure")
+    injected = KeyboardInterrupt("native resource handler interrupted")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    ambient = RuntimeError("caller ambient context")
+    capture = job_resolver_module._capture_scoped_job_resource_exit
+    handler_offset = _native_handler_offset(capture)
+    hit = False
+    exits = 0
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is capture.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == handler_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+            raise cleanup
+
+    def execute_once() -> None:
+        _warm_scoped_job_capture_tracing(capture)
+        sys.settrace(trace)
+        try:
+            with pytest.raises(OSError) as caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    lambda _executor: object(),
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert caught.value is cleanup
+
+    def run_traced_execute() -> None:
+        if caller_ambient:
+            try:
+                raise ambient
+            except RuntimeError as active_error:
+                assert active_error is ambient
+                execute_once()
+        else:
+            execute_once()
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == 1
+    assert getattr(cleanup, "publication_cleanup_owners", ()) == (cleanup_owner,)
+
+
+def test_scoped_job_resource_recovery_entry_preserves_boundary_error() -> None:
+    injected = KeyboardInterrupt("scoped resource recovery interrupted")
+    recover = job_resolver_module._recover_scoped_job_resource_exit
+    target_offset = next(
+        instruction.offset
+        for instruction in dis.get_instructions(recover)
+        if instruction.argval == "_invoke_scoped_job_resource_exit"
+    )
+    hit = False
+    resource_enters = 0
+    operation_calls = 0
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is recover.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == target_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        nonlocal resource_enters
+        resource_enters += 1
+        yield object()
+
+    def operation(_executor):
+        nonlocal operation_calls
+        operation_calls += 1
+        return object()
+
+    def run_traced_execute() -> None:
+        warm_outcome = job_resolver_module._ScopedJobExecutionOutcome()
+
+        def warm_trace(frame, _event, _arg):
+            if frame.f_code is recover.__code__:
+                frame.f_trace_opcodes = True
+            return warm_trace
+
+        sys.settrace(warm_trace)
+        try:
+            recover(resources(), operation, warm_outcome)
+        finally:
+            sys.settrace(None)
+        resource_enters_before = resource_enters
+        operation_calls_before = operation_calls
+
+        sys.settrace(trace)
+        try:
+            with pytest.raises(KeyboardInterrupt) as caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert caught.value is injected
+        assert resource_enters == resource_enters_before
+        assert operation_calls == operation_calls_before
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+
+
+def test_scoped_job_same_ambient_instance_remains_local_primary() -> None:
+    execute = job_resolver_module._execute_scoped_job_resource
+    sys_loads = tuple(
+        instruction.offset
+        for instruction in dis.get_instructions(execute)
+        if instruction.opname == "LOAD_GLOBAL" and instruction.argval == "sys"
+    )
+    target_offset = sys_loads[1]
+    ambient = RuntimeError("caller and local scoped failure")
+    cleanup = OSError("scoped resource cleanup failure")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    hit = False
+    exits = 0
+    operation_calls = 0
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is execute.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == target_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise ambient
+        return trace
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+            raise cleanup
+
+    def operation(_executor):
+        nonlocal operation_calls
+        operation_calls += 1
+        return object()
+
+    def run_traced_execute() -> None:
+        def warm_trace(frame, _event, _arg):
+            if frame.f_code is execute.__code__:
+                frame.f_trace_opcodes = True
+            return warm_trace
+
+        warm_primary = RuntimeError("warm scoped execution")
+        sys.settrace(warm_trace)
+        try:
+            with pytest.raises(RuntimeError) as warm_caught:
+                execute(
+                    resources(),
+                    lambda _executor: (_ for _ in ()).throw(warm_primary),
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert warm_caught.value is warm_primary
+        exits_before = exits
+
+        try:
+            raise ambient
+        except RuntimeError as active_error:
+            assert active_error is ambient
+            sys.settrace(trace)
+            try:
+                with pytest.raises(RuntimeError) as caught:
+                    execute(
+                        resources(),
+                        operation,
+                        label="test resource",
+                        missing_result_message="test resource returned no result",
+                    )
+            finally:
+                sys.settrace(None)
+            assert caught.value is ambient
+        assert exits == exits_before + 1
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == 2
+    assert operation_calls == 1
+    assert getattr(ambient, "publication_cleanup_owners", ()) == (cleanup_owner,)
+    notes = (
+        *getattr(ambient, "__notes__", ()),
+        *getattr(ambient, "_codenib_cleanup_notes", ()),
+    )
+    assert "test resource cleanup also failed: OSError" in notes
+
+
+@pytest.mark.parametrize("cleanup_mode", ("success", "raise"))
+def test_scoped_job_caught_ambient_reuse_does_not_become_primary(
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_mode: str,
+) -> None:
+    class FakeResult:
+        pass
+
+    monkeypatch.setattr(job_resolver_module, "IndexJobExecutionResult", FakeResult)
+    result = FakeResult()
+    ambient = RuntimeError("caller ambient reused inside operation")
+    cleanup = OSError("scoped resource cleanup failure")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    exits = 0
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+            if cleanup_mode == "raise":
+                raise cleanup
+
+    def operation(_executor):
+        try:
+            raise ambient
+        except RuntimeError as caught:
+            assert caught is ambient
+        return result
+
+    try:
+        raise ambient
+    except RuntimeError as active_error:
+        assert active_error is ambient
+        if cleanup_mode == "success":
+            assert (
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+                is result
+            )
+        else:
+            with pytest.raises(OSError) as caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+            assert caught.value is cleanup
+
+    assert exits == 1
+    assert getattr(ambient, "publication_cleanup_owners", ()) == ()
+    assert getattr(cleanup, "publication_cleanup_owners", ()) == (cleanup_owner,)
+
+
+def test_scoped_job_ambient_classification_interruption_becomes_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResult:
+        pass
+
+    monkeypatch.setattr(job_resolver_module, "IndexJobExecutionResult", FakeResult)
+    result = FakeResult()
+    ambient = RuntimeError("caller ambient reused inside operation")
+    injected = KeyboardInterrupt("ambient classification interrupted")
+    classify = job_resolver_module._has_current_scoped_job_execution_provenance
+    target_offset = next(
+        instruction.offset
+        for instruction in dis.get_instructions(classify)
+        if instruction.argval == "__traceback__"
+    )
+    hit = False
+    exits = 0
+    operation_calls = 0
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is classify.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == target_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+
+    def operation(active_ambient):
+        def run(_executor):
+            nonlocal operation_calls
+            operation_calls += 1
+            try:
+                raise active_ambient
+            except RuntimeError as caught:
+                assert caught is active_ambient
+            return result
+
+        return run
+
+    def execute_with_ambient(active_ambient) -> FakeResult:
+        try:
+            raise active_ambient
+        except RuntimeError as caught:
+            assert caught is active_ambient
+            return job_resolver_module._execute_scoped_job_resource(
+                resources(),
+                operation(active_ambient),
+                label="test resource",
+                missing_result_message="test resource returned no result",
+            )
+
+    def run_traced_execute() -> None:
+        def warm_trace(frame, _event, _arg):
+            if frame.f_code is classify.__code__:
+                frame.f_trace_opcodes = True
+            return warm_trace
+
+        sys.settrace(warm_trace)
+        try:
+            assert execute_with_ambient(RuntimeError("warm ambient")) is result
+        finally:
+            sys.settrace(None)
+
+        sys.settrace(trace)
+        try:
+            with pytest.raises(KeyboardInterrupt) as caught:
+                execute_with_ambient(ambient)
+        finally:
+            sys.settrace(None)
+        assert caught.value is injected
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == 2
+    assert operation_calls == 2
+
+
+def test_scoped_job_final_delivery_interruption_retains_settled_outcome() -> None:
+    execute = job_resolver_module._execute_scoped_job_resource
+    instructions = tuple(dis.get_instructions(execute))
+    target_offset = next(
+        instruction.offset
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "RAISE_VARARGS"
+        and instructions[index + 1].opname == "LOAD_GLOBAL"
+        and instructions[index + 1].argval == "type"
+    )
+    primary = StorageIntegrityError("primary scoped executor failure")
+    cleanup = OSError("scoped resource cleanup failure")
+    injected = KeyboardInterrupt("final scoped delivery interrupted")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    hit = False
+    exits = 0
+    observed_outcomes: list[object] = []
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is execute.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == target_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+            raise cleanup
+
+    def operation(_executor):
+        raise primary
+
+    def run_traced_execute() -> None:
+        def warm_trace(frame, _event, _arg):
+            if frame.f_code is execute.__code__:
+                frame.f_trace_opcodes = True
+            return warm_trace
+
+        warm_primary = RuntimeError("warm scoped primary")
+
+        @contextmanager
+        def warm_resources():
+            try:
+                yield object()
+            finally:
+                raise OSError("warm scoped cleanup")
+
+        sys.settrace(warm_trace)
+        try:
+            with pytest.raises(RuntimeError) as warm_caught:
+                execute(
+                    warm_resources(),
+                    lambda _executor: (_ for _ in ()).throw(warm_primary),
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert warm_caught.value is warm_primary
+
+        sys.settrace(trace)
+        try:
+            with pytest.raises(KeyboardInterrupt) as caught:
+                execute(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert caught.value is injected
+        traceback = BaseException.__traceback__.__get__(injected, type(injected))
+        while traceback is not None:
+            frame = traceback.tb_frame
+            if frame.f_code is execute.__code__:
+                observed_outcomes.append(frame.f_locals["outcome"])
+                break
+            traceback = traceback.tb_next
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == 1
+    assert len(observed_outcomes) == 1
+    outcome = observed_outcomes[0]
+    assert type(outcome) is job_resolver_module._ScopedJobExecutionOutcome
+    assert outcome.settlement_started
+    assert outcome.settlement_complete
+    assert outcome.operation_error is primary
+    assert outcome.scope_error is cleanup
+    assert outcome.settled_primary is primary
+    assert getattr(primary, "publication_cleanup_owners", ()) == (cleanup_owner,)
+    assert getattr(cleanup, "publication_cleanup_owners", ()) == (cleanup_owner,)
+    notes = (
+        *getattr(primary, "__notes__", ()),
+        *getattr(primary, "_codenib_cleanup_notes", ()),
+    )
+    assert "test resource cleanup also failed: OSError" in notes
+
+
+def test_scoped_job_unattachable_primary_retains_cleanup_owner_in_outcome() -> None:
+    class UnattachablePrimary(StorageIntegrityError):
+        @property
+        def publication_cleanup_owners(self):
+            return ()
+
+        @publication_cleanup_owners.setter
+        def publication_cleanup_owners(self, _value):
+            raise RuntimeError("primary rejects cleanup-owner attachment")
+
+    execute = job_resolver_module._execute_scoped_job_resource
+    primary = UnattachablePrimary("primary scoped executor failure")
+    cleanup = OSError("scoped resource cleanup failure")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    exits = 0
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+            raise cleanup
+
+    with pytest.raises(UnattachablePrimary) as caught:
+        execute(
+            resources(),
+            lambda _executor: (_ for _ in ()).throw(primary),
+            label="test resource",
+            missing_result_message="test resource returned no result",
+        )
+
+    assert caught.value is primary
+    assert exits == 1
+    observed_outcome = None
+    traceback = BaseException.__traceback__.__get__(primary, type(primary))
+    while traceback is not None:
+        frame = traceback.tb_frame
+        if frame.f_code is execute.__code__:
+            observed_outcome = frame.f_locals["outcome"]
+            break
+        traceback = traceback.tb_next
+    assert type(observed_outcome) is job_resolver_module._ScopedJobExecutionOutcome
+    assert observed_outcome.settlement_complete
+    assert observed_outcome.settled_primary is primary
+    assert observed_outcome.scope_error is cleanup
+    assert cleanup.publication_cleanup_owners == (cleanup_owner,)
+    notes = (
+        *getattr(primary, "__notes__", ()),
+        *getattr(primary, "_codenib_cleanup_notes", ()),
+    )
+    assert "test resource cleanup also failed: OSError" in notes
+
+
+def test_scoped_job_post_invoke_handler_keeps_captured_primary() -> None:
+    invoke = job_resolver_module._invoke_scoped_job_execution
+    instructions = tuple(dis.get_instructions(invoke))
+    boundary_store_indices = tuple(
+        index
+        for index, instruction in enumerate(instructions)
+        if instruction.opname == "STORE_FAST" and instruction.argval == "boundary_error"
+    )
+    handler_store_index = boundary_store_indices[-1]
+    pop_except_index = next(
+        index
+        for index in range(handler_store_index + 1, len(instructions))
+        if instructions[index].opname == "POP_EXCEPT"
+    )
+    target_offset = instructions[pop_except_index + 1].offset
+    primary = StorageIntegrityError("primary scoped executor failure")
+    cleanup = OSError("scoped resource cleanup failure")
+    injected = KeyboardInterrupt("post-handler interruption")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    hit = False
+    exits: list[BaseException] = []
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is invoke.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == target_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        try:
+            yield object()
+        except BaseException as exiting:  # noqa: B036 - inspect exact primary
+            exits.append(exiting)
+            raise cleanup
+
+    def run_traced_execute() -> None:
+        def warm_trace(frame, _event, _arg):
+            if frame.f_code is invoke.__code__:
+                frame.f_trace_opcodes = True
+            return warm_trace
+
+        warm_primary = RuntimeError("warm invoke handler")
+        warm_outcome = job_resolver_module._ScopedJobExecutionOutcome()
+        sys.settrace(warm_trace)
+        try:
+            with pytest.raises(RuntimeError) as warm_caught:
+                invoke(
+                    object(),
+                    lambda _executor: (_ for _ in ()).throw(warm_primary),
+                    warm_outcome,
+                )
+        finally:
+            sys.settrace(None)
+        assert warm_caught.value is warm_primary
+
+        sys.settrace(trace)
+        try:
+            with pytest.raises(StorageIntegrityError) as caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    lambda _executor: (_ for _ in ()).throw(primary),
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert caught.value is primary
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == [primary]
+    assert getattr(primary, "publication_cleanup_owners", ()) == (cleanup_owner,)
+    notes = (
+        *getattr(primary, "__notes__", ()),
+        *getattr(primary, "_codenib_cleanup_notes", ()),
+    )
+    assert "test resource cleanup also failed: OSError" in notes
+
+
+def test_scoped_job_recovery_interruption_keeps_captured_scope_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResult:
+        pass
+
+    monkeypatch.setattr(job_resolver_module, "IndexJobExecutionResult", FakeResult)
+    result = FakeResult()
+    cleanup = OSError("scoped resource cleanup failure")
+    injected = KeyboardInterrupt("operation-context recovery interrupted")
+    cleanup_owner = object()
+    BaseException.__setattr__(
+        cleanup,
+        "publication_cleanup_owners",
+        (cleanup_owner,),
+    )
+    recover_operation = job_resolver_module._scoped_job_operation_context
+    target_offset = next(
+        instruction.offset
+        for instruction in dis.get_instructions(recover_operation)
+        if instruction.opname not in {"CACHE", "COPY_FREE_VARS", "NOP", "RESUME"}
+    )
+    hit = False
+    exits = 0
+    operation_calls = 0
+
+    def trace(frame, event, _arg):
+        nonlocal hit
+        if frame.f_code is recover_operation.__code__:
+            frame.f_trace_opcodes = True
+            if event == "opcode" and frame.f_lasti == target_offset and not hit:
+                hit = True
+                sys.settrace(None)
+                raise injected
+        return trace
+
+    @contextmanager
+    def resources():
+        nonlocal exits
+        try:
+            yield object()
+        finally:
+            exits += 1
+            raise cleanup
+
+    def operation(_executor):
+        nonlocal operation_calls
+        operation_calls += 1
+        return result
+
+    def run_traced_execute() -> None:
+        def warm_trace(frame, _event, _arg):
+            if frame.f_code is recover_operation.__code__:
+                frame.f_trace_opcodes = True
+            return warm_trace
+
+        sys.settrace(warm_trace)
+        try:
+            with pytest.raises(OSError) as warm_caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert warm_caught.value is cleanup
+        exits_before = exits
+        operation_calls_before = operation_calls
+
+        sys.settrace(trace)
+        try:
+            with pytest.raises(OSError) as caught:
+                job_resolver_module._execute_scoped_job_resource(
+                    resources(),
+                    operation,
+                    label="test resource",
+                    missing_result_message="test resource returned no result",
+                )
+        finally:
+            sys.settrace(None)
+        assert caught.value is cleanup
+        assert exits == exits_before + 1
+        assert operation_calls == operation_calls_before + 1
+
+    _run_in_isolated_thread(run_traced_execute)
+
+    assert hit
+    assert exits == 2
+    assert operation_calls == 2
+    assert getattr(cleanup, "publication_cleanup_owners", ()) == (cleanup_owner,)
 
 
 def test_local_bm25_source_scope_rejects_physical_workspace_overlap_before_capture(
