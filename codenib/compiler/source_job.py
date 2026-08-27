@@ -204,12 +204,21 @@ class _RetainedCacheWorkspaceProvider:
     delegate: LocalWorkspaceProvider
     parent_authority: _PublicationAuthority = field(repr=False, compare=False)
     parent_identity: tuple[int, ...]
+    topology_verifier: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def _verify_parent(self) -> None:
+        if self.topology_verifier is not None:
+            self.topology_verifier()
         self.parent_authority.verify_path_binding()
         observed = publication_parent_identity(self.parent_authority.resource)
         if observed != self.parent_identity:
             raise RuntimeError("BM25 source cache parent authority changed")
+        if self.topology_verifier is not None:
+            self.topology_verifier()
 
     def require_support(self) -> None:
         self._verify_parent()
@@ -853,6 +862,12 @@ class BM25SourceJobExecutor:
         repr=False,
         compare=False,
     )
+    attempt_parent_identity: tuple[int, ...] | None = None
+    attempt_topology_verifier: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _builder: _BM25BuilderConfiguration = field(init=False, repr=False)
     _profile: ViewProfile = field(init=False, repr=False)
 
@@ -901,6 +916,21 @@ class BM25SourceJobExecutor:
         _require_attempt_provider_destination(
             self.attempt_generation,
             self.attempt_workspace_provider,
+        )
+        parent_identity = self.attempt_parent_identity
+        if parent_identity is not None and (
+            type(parent_identity) is not tuple
+            or len(parent_identity) < 2
+            or any(type(value) is not int for value in parent_identity)
+        ):
+            raise TypeError("BM25 source job attempt parent identity is invalid")
+        topology_verifier = self.attempt_topology_verifier
+        if topology_verifier is not None and not callable(topology_verifier):
+            raise TypeError("BM25 source job topology verifier must be callable")
+        object.__setattr__(
+            self,
+            "attempt_parent_identity",
+            None if parent_identity is None else tuple(parent_identity),
         )
         object.__setattr__(self, "_builder", configuration)
         object.__setattr__(self, "_profile", configuration.profile())
@@ -967,6 +997,8 @@ class BM25SourceJobExecutor:
             forbidden_paths=operation.inputs.forbidden_paths,
         )
         check_cancelled()
+        if self.attempt_topology_verifier is not None:
+            self.attempt_topology_verifier()
         with _PublicationAuthorityOwner() as parent_owner:
             parent_authority = _open_publication_authority(
                 self.attempt_generation.parent,
@@ -975,10 +1007,18 @@ class BM25SourceJobExecutor:
                 authority_owner=parent_owner,
             )
             parent_identity = publication_parent_identity(parent_authority.resource)
+            if (
+                self.attempt_parent_identity is not None
+                and parent_identity != self.attempt_parent_identity
+            ):
+                raise RuntimeError(
+                    "BM25 source attempt parent differs from retained topology"
+                )
             retained_provider = _RetainedCacheWorkspaceProvider(
                 delegate=self.attempt_workspace_provider,
                 parent_authority=parent_authority,
                 parent_identity=parent_identity,
+                topology_verifier=self.attempt_topology_verifier,
             )
             parent_authority.verify_path_binding()
             _preflight_source_job_topology(

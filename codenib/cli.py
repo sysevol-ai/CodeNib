@@ -4047,6 +4047,11 @@ def _run_with_local_bm25_source_job_worker(
                 namespace_name=namespace,
                 repository_root_authority=repository_authority,
                 environ=_publication_environment(),
+                display_commit_resolver=lambda: _bm25_source_job_display_commit(
+                    paths.repo_path
+                ),
+                workspace_parent_identity=topology.workspace_binding.identity,
+                topology_verifier=topology.verify,
             )
             resources = LocalBM25SourceJobResourceFactory((target,))
             worker = IndexJobWorker(

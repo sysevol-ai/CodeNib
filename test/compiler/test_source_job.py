@@ -22,6 +22,7 @@ import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.job_resources as job_resources_module
 import codenib.compiler.source_job as source_job_module
 from codenib import LocalWorkspaceProvider
+from codenib._atomic_directory import publication_parent_identity
 from codenib._captured_directory import (
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
@@ -155,6 +156,27 @@ def _source_fixture(
         attempt_provider=LocalWorkspaceProvider(tmp_path),
         owners=[],
     )
+
+
+def _git_head(repository: Path) -> str:
+    return subprocess.run(
+        ("git", "-C", os.fspath(repository), "rev-parse", "HEAD"),
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _commit_source(repository: Path, content: str, message: str) -> str:
+    (repository / "sample.py").write_text(content, encoding="utf-8")
+    for command in (("add", "sample.py"), ("commit", "-m", message)):
+        subprocess.run(
+            ("git", "-C", os.fspath(repository), *command),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    return _git_head(repository)
 
 
 def _execution_context(
@@ -1943,6 +1965,103 @@ def test_local_bm25_source_scope_threads_repository_root_authority(
 
             assert observed == [authority]
             assert not tuple(fixture.workspace.iterdir())
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_resolves_display_commit_per_attempt(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    fixture = _source_fixture(tmp_path, git_checkout=True)
+    initial_commit = _git_head(fixture.repository)
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=initial_commit,
+        builder=builder,
+        display_commit_resolver=lambda: _git_head(fixture.repository),
+        environ={},
+    )
+    try:
+        fixture.source.close()
+        current_commit = _commit_source(
+            fixture.repository,
+            "def answer():\n    return 43\n",
+            "advance fixture",
+        )
+        fixture.source = capture_repository_source(fixture.repository)
+        assert current_commit != initial_commit
+
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with resources.create_scope(
+                context,
+                object_store=cas,
+            ).resources as executor:
+                assert executor.display_commit == current_commit
+
+        assert not tuple(fixture.workspace.iterdir())
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_rejects_replaced_retained_workspace(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    fixture = _source_fixture(tmp_path)
+    descriptor = os.open(fixture.workspace, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        workspace_identity = publication_parent_identity(descriptor)
+    finally:
+        os.close(descriptor)
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        workspace_parent_identity=workspace_identity,
+        environ={},
+    )
+    displaced = tmp_path / "displaced-workspace"
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+            resolved = BM25SourceJobResolver(
+                resource_factory=resources,
+                object_store=cas,
+            ).resolve(context.job, context.views)
+            fixture.workspace.rename(displaced)
+            fixture.workspace.mkdir(mode=0o700)
+
+            with pytest.raises(
+                RuntimeError,
+                match="attempt parent differs from retained topology",
+            ):
+                resolved.execute(context)
+
+            assert not tuple(fixture.workspace.iterdir())
+            assert not tuple(displaced.iterdir())
     finally:
         fixture.close()
 

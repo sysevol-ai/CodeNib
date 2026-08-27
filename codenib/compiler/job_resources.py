@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from dataclasses import InitVar, dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Iterator, Mapping
+from typing import Callable, Iterator, Mapping
 
 from .._atomic_directory import (
     DirectoryOrphan,
@@ -24,8 +24,10 @@ from .._atomic_directory import (
 )
 from .._captured_directory import PublishedWorkspaceReceiptOwner
 from .._local_workspace_provider import LocalWorkspaceProvider
+from .._workspace_provider import StrictWorkspaceRequest, StrictWorkspaceSession
 from ..artifacts.runtime import SourceBindingCleanupOwner
 from ..source_fingerprint import (
+    RepositorySourceBinding,
     RepositorySourceRootAuthority,
     capture_repository_source,
     lexical_repository_path,
@@ -87,6 +89,53 @@ def _require_physical_roots_disjoint(
         raise ValueError(f"{label} cannot be authenticated") from exc
     if _paths_overlap(physical_first, physical_second):
         raise ValueError(f"{label} must not overlap")
+
+
+@dataclass(frozen=True, slots=True)
+class _RetainedBM25WorkspaceProvider:
+    """Bind every source-job provision to one retained worker topology."""
+
+    delegate: LocalWorkspaceProvider
+    parent_identity: tuple[int, ...] | None
+    topology_verifier: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
+    def _verify(self) -> None:
+        if self.topology_verifier is not None:
+            self.topology_verifier()
+
+    def require_support(self) -> None:
+        self._verify()
+        self.delegate.require_support()
+        self._verify()
+
+    def run_workspace(
+        self,
+        request: StrictWorkspaceRequest,
+        *,
+        receipt_owner: PublishedWorkspaceReceiptOwner,
+        operation: Callable[[StrictWorkspaceSession], object],
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> object:
+        self._verify()
+        arguments = {
+            "receipt_owner": receipt_owner,
+            "operation": operation,
+            "_expected_parent_identity": self.parent_identity,
+        }
+        if check_cancelled is None:
+            result = self.delegate.run_workspace(request, **arguments)
+        else:
+            result = self.delegate.run_workspace(
+                request,
+                **arguments,
+                check_cancelled=check_cancelled,
+            )
+        self._verify()
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +258,21 @@ class LocalBM25SourceJobTarget:
         repr=False,
         compare=False,
     )
+    display_commit_resolver: Callable[[], str] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    workspace_parent_identity: tuple[int, ...] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    topology_verifier: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _repository_id: str = field(init=False, repr=False)
     _builder: _BM25BuilderConfiguration = field(init=False, repr=False)
     _profile_id: str = field(init=False, repr=False)
@@ -248,6 +312,21 @@ class LocalBM25SourceJobTarget:
                 raise ValueError(
                     "BM25 source target repository authority differs from its root"
                 )
+        display_commit_resolver = self.display_commit_resolver
+        if display_commit_resolver is not None and not callable(
+            display_commit_resolver
+        ):
+            raise TypeError("BM25 source target display commit resolver is invalid")
+        workspace_parent_identity = self.workspace_parent_identity
+        if workspace_parent_identity is not None and (
+            type(workspace_parent_identity) is not tuple
+            or len(workspace_parent_identity) < 2
+            or any(type(value) is not int for value in workspace_parent_identity)
+        ):
+            raise TypeError("BM25 source target workspace identity is invalid")
+        topology_verifier = self.topology_verifier
+        if topology_verifier is not None and not callable(topology_verifier):
+            raise TypeError("BM25 source target topology verifier is invalid")
         namespace = NamespaceIdentity(self.namespace_name)
         repository = RepositoryIdentity(
             namespace_id=namespace.namespace_id,
@@ -282,6 +361,15 @@ class LocalBM25SourceJobTarget:
         object.__setattr__(self, "_repository_id", repository.repository_id)
         object.__setattr__(self, "_builder", configuration)
         object.__setattr__(self, "_profile_id", profile.profile_id)
+        object.__setattr__(
+            self,
+            "workspace_parent_identity",
+            (
+                None
+                if workspace_parent_identity is None
+                else tuple(workspace_parent_identity)
+            ),
+        )
 
     @property
     def repository_id(self) -> str:
@@ -294,6 +382,57 @@ class LocalBM25SourceJobTarget:
     @property
     def profile_id(self) -> str:
         return self._profile_id
+
+    def verify_topology(self) -> None:
+        """Recheck the optional caller-retained worker topology."""
+
+        if self.topology_verifier is not None:
+            self.topology_verifier()
+
+    def current_display_commit(self) -> str:
+        """Resolve provenance while the configured root/topology stays live."""
+
+        self.verify_topology()
+        authority = self.repository_root_authority
+        if authority is not None:
+            authority.verify()
+        resolver = self.display_commit_resolver
+        commit = self.display_commit if resolver is None else resolver()
+        if authority is not None:
+            authority.verify()
+        self.verify_topology()
+        return _exact_display_commit(commit)
+
+    def capture_source(
+        self,
+        *,
+        source_owner: SourceBindingCleanupOwner,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> RepositorySourceBinding:
+        """Capture the exact source policy under the retained worker topology."""
+
+        if type(source_owner) is not SourceBindingCleanupOwner:
+            raise TypeError("BM25 source target requires an exact source cleanup owner")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("BM25 source target stop check must be callable")
+        self.verify_topology()
+        self.workspace_provider.require_support()
+        _require_physical_roots_disjoint(
+            self.workspace_root,
+            self.repository_root,
+            label="BM25 source target physical workspace and repository",
+        )
+        self.verify_topology()
+        source = capture_repository_source(
+            self.repository_root,
+            exclude_roots=(self.workspace_root,),
+            selection=self._builder.source_selection,
+            _source_owner=source_owner.retain,
+            expected_root_authority=self.repository_root_authority,
+            check_cancelled=check_cancelled,
+        )
+        self.verify_topology()
+        return source
 
 
 @dataclass(slots=True)
@@ -831,18 +970,9 @@ class LocalBM25SourceJobResourceFactory:
         try:
             with _run_context_with_cleanup_actions(cleanup_actions):
                 check_cancelled()
-                target.workspace_provider.require_support()
-                _require_physical_roots_disjoint(
-                    target.workspace_root,
-                    target.repository_root,
-                    label="BM25 source target physical workspace and repository",
-                )
-                repository_source = capture_repository_source(
-                    target.repository_root,
-                    exclude_roots=(target.workspace_root,),
-                    selection=target._builder.source_selection,
-                    _source_owner=source_owner.retain,
-                    expected_root_authority=target.repository_root_authority,
+                display_commit = target.current_display_commit()
+                repository_source = target.capture_source(
+                    source_owner=source_owner,
                     check_cancelled=check_cancelled,
                 )
                 source_owner.retain(repository_source)
@@ -855,10 +985,25 @@ class LocalBM25SourceJobResourceFactory:
                     raise StorageValidationError(
                         "BM25 source job source has no current trusted local target"
                     )
+                repository_source.verify_snapshot(check_cancelled=check_cancelled)
+                if target.current_display_commit() != display_commit:
+                    raise StorageValidationError(
+                        "BM25 source job Git HEAD changed during source capture"
+                    )
+                workspace_provider = (
+                    target.workspace_provider
+                    if target.workspace_parent_identity is None
+                    and target.topology_verifier is None
+                    else _RetainedBM25WorkspaceProvider(
+                        delegate=target.workspace_provider,
+                        parent_identity=target.workspace_parent_identity,
+                        topology_verifier=target.topology_verifier,
+                    )
+                )
                 check_cancelled()
                 yield BM25SourceJobExecutor(
                     attempt_generation=attempt_destination,
-                    display_commit=target.display_commit,
+                    display_commit=display_commit,
                     builder=target._builder.builder(),
                     attempt_output_owner=attempt_owner,
                     attempt_workspace_provider=target.workspace_provider,
@@ -867,12 +1012,20 @@ class LocalBM25SourceJobResourceFactory:
                     context_output_owner=context_owner,
                     view_destination=view_destination,
                     context_destination=context_destination,
-                    workspace_provider=target.workspace_provider,
+                    workspace_provider=workspace_provider,
                     repository_key=target.repository_key,
                     object_store=object_store,
                     namespace_name=target.namespace_name,
                     environ=target.environ,
+                    attempt_parent_identity=target.workspace_parent_identity,
+                    attempt_topology_verifier=target.topology_verifier,
                 )
+                check_cancelled()
+                repository_source.verify_snapshot(check_cancelled=check_cancelled)
+                if target.current_display_commit() != display_commit:
+                    raise StorageValidationError(
+                        "BM25 source job Git HEAD changed before publication"
+                    )
         except BaseException as error:  # noqa: B036 - retain cleanup authority
             pending = tuple(
                 owner for owner in cleanup_owners if _cleanup_owner_pending(owner)
