@@ -51,7 +51,10 @@ from ..repository_source_selection import (
     RepositorySourceSelection,
     repository_relative_source_path,
 )
-from ..source_fingerprint import RepositorySourceBinding
+from ..source_fingerprint import (
+    RepositorySourceBinding,
+    RepositorySourceIdentitySnapshot,
+)
 from .resources import IndexState, IndexStatus
 from .verification import NullVerifier, UpdateVerifier, VerificationResult
 
@@ -274,6 +277,18 @@ class IndexBuilderRegistry:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class PreparedBm25Build:
+    """Canonical in-memory BM25 documents ready for bound persistence."""
+
+    scope: str
+    repository_root: str
+    indexer: Any = field(repr=False, compare=False)
+    artifact_identity: Dict[str, Any]
+    chunk_count: int
+    source_file_count: int
+
+
 @dataclass
 class BM25IndexBuilder:
     """Build a BM25 sparse index by wrapping ``BM25CodeIndexer``."""
@@ -380,21 +395,11 @@ class BM25IndexBuilder:
             raise TypeError("BM25 source build output must be non-empty exact text")
         if check_cancelled is not None and not callable(check_cancelled):
             raise TypeError("BM25 source build cancellation must be callable")
-        selected = _source_selection_for_build(
-            self.source_selection,
-            source_selection,
-        )
-        if check_cancelled is not None:
-            check_cancelled()
-        identity = repository_source.authenticated_identity_snapshot(
+        selected, identity = self._source_build_identity(
+            repository_source,
+            source_selection=source_selection,
             check_cancelled=check_cancelled,
         )
-        if check_cancelled is not None:
-            check_cancelled()
-        if identity.source_selection != selected:
-            raise RuntimeError(
-                "BM25 source binding selection differs from builder policy"
-            )
         output = Path(os.path.abspath(os.path.expanduser(output_dir)))
         repository_root = identity.root
         resolved_output = output.resolve(strict=False)
@@ -415,12 +420,86 @@ class BM25IndexBuilder:
             raise FileExistsError(
                 "BM25 source build requires a missing private generation"
             )
+        prepared = self._prepare_authenticated_repository_source(
+            scope,
+            repository_source=repository_source,
+            repository_root=str(repository_root),
+            source_selection=selected,
+            check_cancelled=check_cancelled,
+        )
+        return self._persist_prepared_chunks(
+            prepared,
+            output_dir=str(output),
+            require_missing_output=True,
+            check_cancelled=check_cancelled,
+        )
+
+    def prepare_from_repository_source(
+        self,
+        scope: str,
+        *,
+        repository_source: RepositorySourceBinding,
+        source_selection: RepositorySourceSelection | None = None,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> PreparedBm25Build:
+        """Prepare canonical BM25 documents without filesystem mutation."""
+
+        if type(repository_source) is not RepositorySourceBinding:
+            raise TypeError("BM25 source build requires an exact source binding")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("BM25 source build cancellation must be callable")
+        selected, identity = self._source_build_identity(
+            repository_source,
+            source_selection=source_selection,
+            check_cancelled=check_cancelled,
+        )
+        return self._prepare_authenticated_repository_source(
+            scope,
+            repository_source=repository_source,
+            repository_root=str(identity.root),
+            source_selection=selected,
+            check_cancelled=check_cancelled,
+        )
+
+    def _source_build_identity(
+        self,
+        repository_source: RepositorySourceBinding,
+        *,
+        source_selection: RepositorySourceSelection | None,
+        check_cancelled: Callable[[], None] | None,
+    ) -> tuple[RepositorySourceSelection, RepositorySourceIdentitySnapshot]:
+        selected = _source_selection_for_build(
+            self.source_selection,
+            source_selection,
+        )
+        if check_cancelled is not None:
+            check_cancelled()
+        identity = repository_source.authenticated_identity_snapshot(
+            check_cancelled=check_cancelled,
+        )
+        if check_cancelled is not None:
+            check_cancelled()
+        if identity.source_selection != selected:
+            raise RuntimeError(
+                "BM25 source binding selection differs from builder policy"
+            )
+        return selected, identity
+
+    def _prepare_authenticated_repository_source(
+        self,
+        scope: str,
+        *,
+        repository_source: RepositorySourceBinding,
+        repository_root: str,
+        source_selection: RepositorySourceSelection,
+        check_cancelled: Callable[[], None] | None,
+    ) -> PreparedBm25Build:
         from ..code_chunker import CodeChunker, RepoChunkingConfig
 
         primary = self.languages[0] if self.languages else "python"
         repo_config = RepoChunkingConfig(
             languages=self.languages,
-            source_selection=selected,
+            source_selection=source_selection,
         )
         repo_config.ignore_dirs.update(self.additional_ignore_dirs)
         chunker = CodeChunker(
@@ -434,23 +513,20 @@ class BM25IndexBuilder:
             check_cancelled=check_cancelled,
         )
         _require_selected_paths(
-            selected,
+            source_selection,
             (getattr(chunk, "file", None) for chunk in chunks),
-            repository_root=str(repository_root),
+            repository_root=repository_root,
             subject="BM25 chunks",
             check_cancelled=check_cancelled,
         )
         if check_cancelled is not None:
             check_cancelled()
-        return self._build_chunks(
+        return self._prepare_chunks(
             scope,
-            repo_path=str(repository_root),
-            output_dir=str(output),
-            source_selection=selected,
-            artifact_identity=self._artifact_identity_for_selection(selected),
+            repo_path=repository_root,
+            source_selection=source_selection,
+            artifact_identity=self._artifact_identity_for_selection(source_selection),
             chunks=chunks,
-            prepare_only=True,
-            require_missing_output=True,
             check_cancelled=check_cancelled,
         )
 
@@ -468,6 +544,35 @@ class BM25IndexBuilder:
         check_cancelled: Callable[[], None] | None,
     ) -> IndexStatus:
         """Persist and attest one already-captured BM25 chunk generation."""
+
+        prepared = self._prepare_chunks(
+            scope,
+            repo_path=repo_path,
+            source_selection=source_selection,
+            artifact_identity=artifact_identity,
+            chunks=chunks,
+            prepare_only=prepare_only,
+            check_cancelled=check_cancelled,
+        )
+        return self._persist_prepared_chunks(
+            prepared,
+            output_dir=output_dir,
+            require_missing_output=require_missing_output,
+            check_cancelled=check_cancelled,
+        )
+
+    def _prepare_chunks(
+        self,
+        scope: str,
+        *,
+        repo_path: str,
+        source_selection: RepositorySourceSelection,
+        artifact_identity: Dict[str, Any],
+        chunks: List[Any],
+        check_cancelled: Callable[[], None] | None,
+        prepare_only: bool = True,
+    ) -> PreparedBm25Build:
+        """Construct canonical BM25 documents entirely in memory."""
 
         from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
@@ -495,6 +600,33 @@ class BM25IndexBuilder:
         )
         if check_cancelled is not None:
             check_cancelled()
+        source_files: set[str] = set()
+        for chunk in chunks:
+            if check_cancelled is not None:
+                check_cancelled()
+            source_path = getattr(chunk, "file", "")
+            if source_path:
+                source_files.add(source_path)
+        return PreparedBm25Build(
+            scope=scope,
+            repository_root=repo_path,
+            indexer=indexer,
+            artifact_identity=artifact_identity,
+            chunk_count=len(chunks),
+            source_file_count=len(source_files),
+        )
+
+    def _persist_prepared_chunks(
+        self,
+        prepared: PreparedBm25Build,
+        *,
+        output_dir: str,
+        require_missing_output: bool,
+        check_cancelled: Callable[[], None] | None,
+    ) -> IndexStatus:
+        """Persist and attest one prepared BM25 document generation."""
+
+        indexer = prepared.indexer
         if require_missing_output:
             os.mkdir(output_dir, mode=0o700)
         else:
@@ -519,28 +651,20 @@ class BM25IndexBuilder:
         if check_cancelled is not None:
             check_cancelled()
 
-        source_files: set[str] = set()
-        for chunk in chunks:
-            if check_cancelled is not None:
-                check_cancelled()
-            source_path = getattr(chunk, "file", "")
-            if source_path:
-                source_files.add(source_path)
-
         return IndexStatus(
             index_type="bm25",
             state=IndexState.FRESH,
             last_built=time.time(),
             age_seconds=0.0,
-            scope=scope,
+            scope=prepared.scope,
             path=output_dir,
             metadata={
-                **artifact_identity,
+                **prepared.artifact_identity,
                 "artifact_file_fingerprints": artifact_files,
-                "chunk_count": len(chunks),
-                "source_file_count": len(source_files),
+                "chunk_count": prepared.chunk_count,
+                "source_file_count": prepared.source_file_count,
                 # Retain the legacy field for existing manifest consumers.
-                "file_count": len(chunks),
+                "file_count": prepared.chunk_count,
             },
         )
 

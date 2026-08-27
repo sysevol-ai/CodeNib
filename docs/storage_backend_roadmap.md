@@ -1269,21 +1269,26 @@ The first retained-source cache-building primitive now covers BM25 without
 reopening repository files by pathname. A retained `RepositorySourceBinding`
 supplies the authenticated inventory and bytes to the existing tree-sitter
 chunkers, which preserve normal filtering, relative-path, line, and
-compatibility contracts while parsing already-captured text. The builder writes
-only to a missing caller-owned private generation and attests the resulting
-BM25 artifact fingerprints. The first durable source-job adapter now snapshots
-that builder's complete portable profile, authenticates exactly one active
-required `full` BM25 request and its dirty fingerprint source revision before
-creating output, and builds a caller-owned missing attempt root. It wraps the
-new BM25 generation in an exact single-view manifest, using a separately
-supplied full Git SHA only as display provenance, then delegates strict
-recapture, context evidence, and bundle/member CAS ingestion to the existing
-public prepare-only compiler-cache bridge. The returned
-`IndexJobExecutionResult` carries no catalog, lease, fencing, ref, or generation
-publication authority; the worker remains the sole publisher and the caller
-retains cleanup ownership for every attempt. Source-job resource factories and
-resolver/CLI/Web binding, vector source building, and graph source building
-remain absent.
+compatibility contracts while parsing already-captured text. Durable
+preparation stops after canonical BM25 documents are built in memory; it does
+not construct the serving-time `BM25Okapi` ranker. The first durable source-job
+adapter snapshots that builder's complete portable profile, authenticates
+exactly one active required `full` BM25 request and its dirty fingerprint source
+revision before creating output, and serializes the documents, metadata,
+fingerprints, lock file, and exact single-view manifest into one immutable
+workspace plan. A retained no-follow authority pins the attempt parent before
+the source build, the caller's strict provider publishes only against that
+parent identity, and a caller-owned receipt retains the exact resulting
+generation through recapture and CAS ingestion. Preparation consumes the
+receipt's callback-scoped directory reader and BM25 subtree directly; it never
+reopens the diagnostic cache pathname, so parent retargeting or a renamed
+generation plus pathname decoy fails before any output or CAS mutation. The
+separately supplied full Git SHA remains display provenance only. The returned
+`IndexJobExecutionResult` carries no catalog, lease, fencing, ref, or final
+generation publication authority; the worker remains the sole publisher and
+the caller retains cleanup ownership for every attempt. Source-job resource
+factories and resolver/CLI/Web binding, vector source building, and graph source
+building remain absent.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1335,10 +1340,11 @@ runtime now has the generation-safe refresh boundary described under M3.
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
 and the explicit BM25 and schema-8 vector compiler-cache adapters, including
 their prepare-only worker bridge, are implemented. The first caller-scoped
-retained-source BM25 builder and its prepare-only source-job adapter now produce
-and ingest a unique private generation without publication authority; vector
-and graph source builders, generic builder routing, source-job resource wiring,
-and remaining runtime wiring remain.
+retained-source BM25 builder and its prepare-only source-job adapter now publish
+and ingest a unique private generation under an exact retained parent and
+generation receipt, without final publication authority or a cache-path reopen;
+vector and graph source builders, generic builder routing, source-job resource
+wiring, and remaining runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility

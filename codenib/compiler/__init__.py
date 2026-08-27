@@ -41,6 +41,7 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         import_compiler_cache,
         import_compiler_cache_bm25,
         prepare_compiler_cache_job_view,
+        prepare_compiler_cache_job_view_from_generation,
         publish_compiler_cache_bm25_job,
         publish_compiler_cache_vector_job,
     )
@@ -154,6 +155,10 @@ _EXPORTS = {
     "prepare_compiler_cache_job_view": (
         "codenib.compiler.cache_import",
         "prepare_compiler_cache_job_view",
+    ),
+    "prepare_compiler_cache_job_view_from_generation": (
+        "codenib.compiler.cache_import",
+        "prepare_compiler_cache_job_view_from_generation",
     ),
     "publish_compiler_cache_bm25_job": (
         "codenib.compiler.cache_import",
@@ -309,6 +314,7 @@ __all__ = [
     "import_compiler_cache",
     "import_compiler_cache_bm25",
     "prepare_compiler_cache_job_view",
+    "prepare_compiler_cache_job_view_from_generation",
     "publish_compiler_cache_bm25_job",
     "publish_compiler_cache_vector_job",
     "IndexCompiler",

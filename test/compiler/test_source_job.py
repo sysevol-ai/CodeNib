@@ -81,8 +81,17 @@ class _SourceFixture:
     source: RepositorySourceBinding
     workspace: Path
     provider: LocalWorkspaceProvider
+    attempt_provider: LocalWorkspaceProvider
+    owners: list[PublishedWorkspaceReceiptOwner]
+
+    def owner(self) -> PublishedWorkspaceReceiptOwner:
+        owner = PublishedWorkspaceReceiptOwner()
+        self.owners.append(owner)
+        return owner
 
     def close(self) -> None:
+        for owner in reversed(self.owners):
+            owner.close()
         self.source.close()
 
 
@@ -106,6 +115,8 @@ def _source_fixture(
         source=source,
         workspace=workspace,
         provider=LocalWorkspaceProvider(workspace),
+        attempt_provider=LocalWorkspaceProvider(tmp_path),
+        owners=[],
     )
 
 
@@ -181,6 +192,8 @@ def _executor(
     attempt_generation: Path,
     view_owner: PublishedWorkspaceReceiptOwner,
     context_owner: PublishedWorkspaceReceiptOwner,
+    attempt_owner: PublishedWorkspaceReceiptOwner | None = None,
+    attempt_provider=None,
     forbidden_paths=(),
     environ=None,
 ) -> BM25SourceJobExecutor:
@@ -188,6 +201,8 @@ def _executor(
         attempt_generation=attempt_generation,
         display_commit=_COMMIT,
         builder=builder,
+        attempt_output_owner=attempt_owner or fixture.owner(),
+        attempt_workspace_provider=attempt_provider or fixture.attempt_provider,
         repository_source=fixture.source,
         view_output_owner=view_owner,
         context_output_owner=context_owner,
@@ -299,22 +314,27 @@ def test_bm25_source_executor_prepares_exact_artifact_without_lexical_reads(
             builder.source_selection = RepositorySourceSelection(("sample.py",))
             environment["CODENIB_SOURCE_JOB_TEST"] = "after"
 
-            real_prepare = source_job_module.prepare_compiler_cache_job_view
+            real_prepare = (
+                source_job_module.prepare_compiler_cache_job_view_from_generation
+            )
 
-            def delegated_prepare(cache_dir, **kwargs):
-                delegated.append(Path(cache_dir))
-                manifest = RepoManifest.load(Path(cache_dir) / "repo_manifest.json")
+            def delegated_prepare(cache_generation, **kwargs):
+                assert cache_generation.active
+                cache_dir = cache_generation.receipt.path
+                delegated.append(cache_dir)
+                manifest = RepoManifest.load(cache_dir / "repo_manifest.json")
                 assert manifest.commit == _COMMIT
                 assert manifest.indexes["bm25"].config["max_k"] == 17
                 assert manifest.indexes["bm25"].config["languages"] == ["python"]
+                assert kwargs["expected_manifest"].to_dict() == manifest.to_dict()
                 assert kwargs["forbidden_paths"] == (forbidden,)
                 assert kwargs["environ"]["CODENIB_SOURCE_JOB_TEST"] == "before"
-                return real_prepare(cache_dir, **kwargs)
+                return real_prepare(cache_generation, **kwargs)
 
             with monkeypatch.context() as guard:
                 guard.setattr(
                     source_job_module,
-                    "prepare_compiler_cache_job_view",
+                    "prepare_compiler_cache_job_view_from_generation",
                     delegated_prepare,
                 )
                 _guard_lexical_repository_reads(guard, fixture.repository)
@@ -338,6 +358,7 @@ def test_bm25_source_executor_prepares_exact_artifact_without_lexical_reads(
             for member in artifact.member_artifacts:
                 assert cas.verify(member.receipt.digest) == member.receipt
             assert delegated == [attempt]
+            assert executor.attempt_output_owner.active
             assert attempt.is_dir()
             manifest = RepoManifest.load(attempt / "repo_manifest.json")
             assert manifest.repo_path == str(fixture.repository)
@@ -367,7 +388,7 @@ def test_bm25_source_executor_prepares_exact_artifact_without_lexical_reads(
         fixture.close()
 
 
-def test_bm25_source_executor_threads_stop_check_into_attempt_lock(
+def test_bm25_source_executor_refuses_replaced_generation_before_prepare(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -375,15 +396,209 @@ def test_bm25_source_executor_threads_stop_check_into_attempt_lock(
     fixture = _source_fixture(tmp_path)
     view_owner = PublishedWorkspaceReceiptOwner()
     context_owner = PublishedWorkspaceReceiptOwner()
-    observed: list[object] = []
-    real_lock = source_job_module.compiler_cache_lock
+    attempt = tmp_path / "attempt-generation"
+    retained_attempt = tmp_path / "retained-attempt-generation"
+    real_prepare = source_job_module.prepare_compiler_cache_job_view_from_generation
+    attacked = False
+
+    def replace_generation(cache_generation, **kwargs):
+        nonlocal attacked
+        assert cache_generation.active
+        assert cache_generation.receipt.path == attempt
+        attacked = True
+        attempt.rename(retained_attempt)
+        attempt.mkdir(mode=0o700)
+        (attempt / "decoy-marker").write_text("untrusted", encoding="utf-8")
+        return real_prepare(cache_generation, **kwargs)
+
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            executor = _executor(
+                fixture,
+                cas,
+                builder,
+                attempt_generation=attempt,
+                view_owner=view_owner,
+                context_owner=context_owner,
+            )
+            monkeypatch.setattr(
+                source_job_module,
+                "prepare_compiler_cache_job_view_from_generation",
+                replace_generation,
+            )
+
+            with pytest.raises(
+                RuntimeError,
+                match="published workspace root handle changed",
+            ):
+                executor.execute(context)
+
+            assert attacked
+            assert executor.attempt_output_owner.active
+            assert retained_attempt.joinpath("repo_manifest.json").is_file()
+            assert attempt.joinpath("decoy-marker").read_text(encoding="utf-8") == (
+                "untrusted"
+            )
+            assert view_owner.state == "empty"
+            assert context_owner.state == "empty"
+            assert not (fixture.workspace / "published-bm25").exists()
+            assert not (fixture.workspace / "published-context").exists()
+            assert not any(path.is_file() for path in (tmp_path / "cas").rglob("*"))
+    finally:
+        context_owner.close()
+        view_owner.close()
+        fixture.close()
+
+
+def test_bm25_source_executor_rejects_retargeted_local_attempt_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    fixture = _source_fixture(tmp_path)
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    scratch = tmp_path / "attempt-workspace"
+    scratch.mkdir(mode=0o700)
+    retained_scratch = tmp_path / "retained-attempt-workspace"
+    attempt = scratch / "attempt-generation"
+    attempt_provider = LocalWorkspaceProvider(scratch)
+    real_run = LocalWorkspaceProvider.run_workspace
+    attacked = False
+
+    def retarget_before_native_provision(
+        self,
+        request,
+        *,
+        receipt_owner,
+        operation,
+        check_cancelled=None,
+        _expected_parent_identity=None,
+        _replacement_source=None,
+    ):
+        nonlocal attacked
+        if self is attempt_provider and not attacked:
+            assert request.destination == attempt
+            assert _expected_parent_identity is not None
+            assert _replacement_source is None
+            attacked = True
+            scratch.rename(retained_scratch)
+            scratch.mkdir(mode=0o700)
+        return real_run(
+            self,
+            request,
+            receipt_owner=receipt_owner,
+            operation=operation,
+            check_cancelled=check_cancelled,
+            _expected_parent_identity=_expected_parent_identity,
+            _replacement_source=_replacement_source,
+        )
+
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            executor = _executor(
+                fixture,
+                cas,
+                builder,
+                attempt_generation=attempt,
+                view_owner=view_owner,
+                context_owner=context_owner,
+                attempt_provider=attempt_provider,
+            )
+            monkeypatch.setattr(
+                LocalWorkspaceProvider,
+                "run_workspace",
+                retarget_before_native_provision,
+            )
+
+            with pytest.raises(
+                RuntimeError,
+                match="native workspace parent differs from retained authority",
+            ):
+                executor.execute(context)
+
+            assert attacked
+            assert executor.attempt_output_owner.state == "empty"
+            assert not attempt.exists()
+            quarantined = tuple(scratch.iterdir())
+            assert quarantined
+            assert all(
+                entry.name.startswith(".codenib-workspace-orphan-") and entry.is_dir()
+                for entry in quarantined
+            )
+            assert not any(
+                descendant.is_file()
+                for entry in quarantined
+                for descendant in entry.rglob("*")
+            )
+            assert not tuple(retained_scratch.iterdir())
+            assert view_owner.state == "empty"
+            assert context_owner.state == "empty"
+            assert not any(path.is_file() for path in (tmp_path / "cas").rglob("*"))
+    finally:
+        context_owner.close()
+        view_owner.close()
+        fixture.close()
+
+
+def test_bm25_source_executor_threads_stop_check_into_attempt_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    fixture = _source_fixture(tmp_path)
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    observed: list[tuple[str, object, tuple[int, ...] | None]] = []
 
     def expected_check() -> None:
         return None
 
-    def tracked_lock(cache_dir, **kwargs):
-        observed.append(kwargs.get("check_cancelled"))
-        return real_lock(cache_dir, **kwargs)
+    class TrackingAttemptProvider:
+        def require_support(self) -> None:
+            fixture.attempt_provider.require_support()
+
+        def run_workspace(
+            self,
+            request,
+            *,
+            receipt_owner,
+            operation,
+            check_cancelled=None,
+            _expected_parent_identity=None,
+        ):
+            observed.append(
+                (
+                    request.purpose,
+                    check_cancelled,
+                    _expected_parent_identity,
+                )
+            )
+            return fixture.attempt_provider.run_workspace(
+                request,
+                receipt_owner=receipt_owner,
+                operation=operation,
+                check_cancelled=check_cancelled,
+                _expected_parent_identity=_expected_parent_identity,
+            )
+
+    attempt_provider = TrackingAttemptProvider()
 
     try:
         with (
@@ -402,22 +617,20 @@ def test_bm25_source_executor_threads_stop_check_into_attempt_lock(
                 attempt_generation=tmp_path / "attempt-generation",
                 view_owner=view_owner,
                 context_owner=context_owner,
+                attempt_provider=attempt_provider,
             )
             monkeypatch.setattr(
                 source_job_module,
                 "_compiler_cache_job_stop_check",
                 lambda _token: expected_check,
             )
-            monkeypatch.setattr(
-                source_job_module,
-                "compiler_cache_lock",
-                tracked_lock,
-            )
-
             result = executor.execute(context)
 
             assert result.publishable
-            assert observed == [expected_check]
+            assert len(observed) == 1
+            assert observed[0][0] == "private-bm25-compiler-cache"
+            assert observed[0][1] is expected_check
+            assert observed[0][2] is not None
     finally:
         context_owner.close()
         view_owner.close()
@@ -470,7 +683,7 @@ def test_bm25_source_executor_rejects_job_mismatch_before_output_mutation(
             )
             monkeypatch.setattr(
                 BM25IndexBuilder,
-                "build_from_repository_source",
+                "prepare_from_repository_source",
                 lambda *_args, **_kwargs: pytest.fail(
                     "builder ran before source-job preflight completed"
                 ),
@@ -522,7 +735,7 @@ def test_bm25_source_executor_rejects_symlinked_attempt_inside_repository(
             )
             monkeypatch.setattr(
                 BM25IndexBuilder,
-                "build_from_repository_source",
+                "prepare_from_repository_source",
                 lambda *_args, **_kwargs: pytest.fail(
                     "builder ran for a repository-overlapping attempt"
                 ),
@@ -579,7 +792,7 @@ def test_bm25_source_executor_rejects_attempt_output_and_policy_overlap(
             )
             monkeypatch.setattr(
                 BM25IndexBuilder,
-                "build_from_repository_source",
+                "prepare_from_repository_source",
                 lambda *_args, **_kwargs: pytest.fail(
                     "builder ran for an overlapping attempt"
                 ),
@@ -613,12 +826,12 @@ def test_bm25_source_executor_preserves_stop_and_caller_retry_ownership(
         if armed:
             raise stopped
 
-    real_prepare = source_job_module.prepare_compiler_cache_job_view
+    real_prepare = source_job_module.prepare_compiler_cache_job_view_from_generation
 
-    def stop_during_prepare(cache_dir, **kwargs):
+    def stop_during_prepare(cache_generation, **kwargs):
         nonlocal armed
         armed = True
-        return real_prepare(cache_dir, **kwargs)
+        return real_prepare(cache_generation, **kwargs)
 
     try:
         with (
@@ -645,7 +858,7 @@ def test_bm25_source_executor_preserves_stop_and_caller_retry_ownership(
             )
             monkeypatch.setattr(
                 source_job_module,
-                "prepare_compiler_cache_job_view",
+                "prepare_compiler_cache_job_view_from_generation",
                 stop_during_prepare,
             )
 
@@ -655,11 +868,12 @@ def test_bm25_source_executor_preserves_stop_and_caller_retry_ownership(
             assert attempt.is_dir()
             assert (attempt / "bm25").is_dir()
             assert (attempt / "repo_manifest.json").is_file()
+            assert executor.attempt_output_owner.active
             assert view_owner.state == "empty"
             assert context_owner.state == "empty"
 
             armed = False
-            with pytest.raises(FileExistsError, match="must be missing"):
+            with pytest.raises(RuntimeError, match="attempt owner must be empty"):
                 executor.execute(context)
             assert attempt.is_dir()
     finally:
@@ -672,8 +886,6 @@ def test_bm25_source_executor_preserves_stop_during_source_build(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import codenib.index.sparse_idx.bm25_index as bm25_module
-
     builder = BM25IndexBuilder()
     fixture = _source_fixture(tmp_path)
     view_owner = PublishedWorkspaceReceiptOwner()
@@ -681,24 +893,20 @@ def test_bm25_source_executor_preserves_stop_during_source_build(
     attempt = tmp_path / "attempt-generation"
     stopped = KeyboardInterrupt("injected source-build stop")
     armed = False
-    write_calls = 0
-    real_dump = bm25_module._dump_json_interruptibly
+    chunk_calls = 0
+    real_json_chunks = source_job_module._json_byte_chunks
 
     def check_cancelled() -> None:
         if armed:
             raise stopped
 
-    def stop_during_dump(value, handle, checker):
-        class ArmAfterWrite:
-            def write(self, payload):
-                nonlocal armed, write_calls
-                written = handle.write(payload)
-                write_calls += 1
-                if write_calls == 3:
-                    armed = True
-                return written
-
-        return real_dump(value, ArmAfterWrite(), checker)
+    def stop_during_json(value, checker):
+        nonlocal armed, chunk_calls
+        for chunk in real_json_chunks(value, checker):
+            chunk_calls += 1
+            if chunk_calls == 3:
+                armed = True
+            yield chunk
 
     try:
         with (
@@ -724,13 +932,13 @@ def test_bm25_source_executor_preserves_stop_during_source_build(
                 lambda _token: check_cancelled,
             )
             monkeypatch.setattr(
-                bm25_module,
-                "_dump_json_interruptibly",
-                stop_during_dump,
+                source_job_module,
+                "_json_byte_chunks",
+                stop_during_json,
             )
             monkeypatch.setattr(
                 source_job_module,
-                "prepare_compiler_cache_job_view",
+                "prepare_compiler_cache_job_view_from_generation",
                 lambda *_args, **_kwargs: pytest.fail(
                     "cache preparation ran after source-build cancellation"
                 ),
@@ -740,12 +948,10 @@ def test_bm25_source_executor_preserves_stop_during_source_build(
                 executor.execute(context)
 
             assert raised.value is stopped
-            assert write_calls == 3
+            assert chunk_calls == 3
             assert fixture.source.usable
-            assert attempt.is_dir()
-            assert (attempt / "bm25").is_dir()
-            assert (attempt / "bm25" / "documents.json").stat().st_size > 0
-            assert not (attempt / "bm25" / "bm25_metadata.json").exists()
+            assert not attempt.exists()
+            assert executor.attempt_output_owner.state == "empty"
             assert view_owner.state == "empty"
             assert context_owner.state == "empty"
             assert not (fixture.workspace / "published-bm25").exists()
@@ -761,11 +967,17 @@ def test_bm25_source_executor_preserves_stop_during_source_build(
 def test_bm25_source_executor_api_has_no_publication_authority() -> None:
     assert compiler_module.BM25SourceJobExecutor is BM25SourceJobExecutor
     assert compiler_module.bm25_source_job_profile is bm25_source_job_profile
+    assert (
+        compiler_module.prepare_compiler_cache_job_view_from_generation
+        is source_job_module.prepare_compiler_cache_job_view_from_generation
+    )
     parameters = inspect.signature(BM25SourceJobExecutor).parameters
-    assert list(parameters)[:11] == [
+    assert list(parameters)[:13] == [
         "attempt_generation",
         "display_commit",
         "builder",
+        "attempt_output_owner",
+        "attempt_workspace_provider",
         "repository_source",
         "view_output_owner",
         "context_output_owner",
@@ -793,22 +1005,40 @@ def test_bm25_source_executor_repr_does_not_expose_environment(
     variable = "CODENIB_SOURCE_JOB_SECRET_SENTINEL"
     secret = "source-job-secret-marker"
     monkeypatch.setenv(variable, secret)
-    executor = BM25SourceJobExecutor(
-        attempt_generation=tmp_path / "attempt",
-        display_commit=_COMMIT,
-        builder=BM25IndexBuilder(),
-        repository_source=object(),  # type: ignore[arg-type]
-        view_output_owner=object(),  # type: ignore[arg-type]
-        context_output_owner=object(),  # type: ignore[arg-type]
-        view_destination=tmp_path / "view",
-        context_destination=tmp_path / "context",
-        workspace_provider=object(),  # type: ignore[arg-type]
-        repository_key=_REPOSITORY_KEY,
-        object_store=object(),  # type: ignore[arg-type]
-    )
 
-    assert executor.environ[variable] == secret
-    assert secret not in repr(executor)
+    class UnusedProvider:
+        def require_support(self) -> None:
+            return None
+
+        def run_workspace(self, *_args, **_kwargs):
+            raise AssertionError("repr test unexpectedly used a workspace")
+
+    attempt_owner = PublishedWorkspaceReceiptOwner()
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        executor = BM25SourceJobExecutor(
+            attempt_generation=tmp_path / "attempt",
+            display_commit=_COMMIT,
+            builder=BM25IndexBuilder(),
+            attempt_output_owner=attempt_owner,
+            attempt_workspace_provider=UnusedProvider(),
+            repository_source=object(),  # type: ignore[arg-type]
+            view_output_owner=view_owner,
+            context_output_owner=context_owner,
+            view_destination=tmp_path / "view",
+            context_destination=tmp_path / "context",
+            workspace_provider=object(),  # type: ignore[arg-type]
+            repository_key=_REPOSITORY_KEY,
+            object_store=object(),  # type: ignore[arg-type]
+        )
+
+        assert executor.environ[variable] == secret
+        assert secret not in repr(executor)
+    finally:
+        context_owner.close()
+        view_owner.close()
+        attempt_owner.close()
 
 
 def test_bm25_source_job_profile_covers_builder_schema_axes() -> None:
@@ -837,6 +1067,8 @@ def test_bm25_source_executor_rejects_noncanonical_display_commit(
         "attempt_generation": attempt,
         "display_commit": "A" * 40,
         "builder": BM25IndexBuilder(),
+        "attempt_output_owner": object(),
+        "attempt_workspace_provider": object(),
         "repository_source": object(),
         "view_output_owner": object(),
         "context_output_owner": object(),

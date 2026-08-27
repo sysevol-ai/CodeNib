@@ -39,7 +39,9 @@ from ..artifacts.portable_views import _read_bounded_json
 from ..artifacts.strict_bm25 import (
     PlannedBm25View,
     _plan_recaptured_bm25_view,
+    _plan_retained_bm25_publication_view,
     _publish_recaptured_bm25_view,
+    _publish_retained_bm25_publication_view,
 )
 from ..artifacts.strict_context import (
     _canonical_json_bytes,
@@ -95,7 +97,7 @@ from ..storage.view_bundle import (
     DEFAULT_MAX_BUNDLE_METADATA_BYTES,
     VIEW_BUNDLE_SCHEMA,
 )
-from .cache_lock import compiler_cache_lock
+from .cache_lock import COMPILER_CACHE_LOCK_FILENAME, compiler_cache_lock
 from .index_compiler import IndexCompiler
 from .manifest import MANIFEST_FILENAME, MANIFEST_VERSION, IndexEntry, RepoManifest
 from .manifest_import import (
@@ -2337,6 +2339,344 @@ def import_compiler_cache(
     )
 
 
+def _retained_cache_manifest_bytes(
+    publication: PublicationDirectoryReader,
+    *,
+    max_manifest_bytes: int,
+    check_cancelled: Callable[[], None] | None,
+) -> bytes:
+    before = publication.capture_ownership(check_cancelled=check_cancelled)
+    with publication.open_authenticated_file(
+        MANIFEST_FILENAME,
+        max_bytes=max_manifest_bytes,
+    ) as source:
+        payload = b"".join(_interruptible_chunks(source.iter_bytes(), check_cancelled))
+    if publication.capture_ownership(check_cancelled=check_cancelled) != before:
+        raise StorageIntegrityError(
+            "retained compiler cache changed while reading its manifest"
+        )
+    return payload
+
+
+def _prepare_retained_bm25_cache_generation(
+    operation: _ImportOperation,
+    binding: _CompilerCacheJobBinding,
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    *,
+    expected_manifest: RepoManifest,
+    repository_source: RepositorySourceBinding,
+    context_output_owner: PublishedWorkspaceReceiptOwner,
+    workspace_provider: StrictWorkspaceProvider,
+    check_cancelled: Callable[[], None] | None,
+) -> _PreparedCompilerCacheImport:
+    """Prepare BM25 while one exact cache-generation authority stays active."""
+
+    cache = operation.cache
+    inputs = operation.inputs
+    if receipt.path != cache:
+        raise StorageIntegrityError(
+            "retained compiler cache receipt belongs to another destination"
+        )
+    initial_ownership = publication.capture_ownership(
+        check_cancelled=check_cancelled,
+    )
+    expected_inventory = {
+        (COMPILER_CACHE_LOCK_FILENAME, "file"),
+        ("bm25", "directory"),
+        ("bm25/bm25_metadata.json", "file"),
+        ("bm25/documents.json", "file"),
+        (MANIFEST_FILENAME, "file"),
+    }
+    if set(publication.inventory()) != expected_inventory:
+        raise StorageIntegrityError(
+            "retained compiler cache generation has an unexpected layout"
+        )
+    source_manifest_bytes = _retained_cache_manifest_bytes(
+        publication,
+        max_manifest_bytes=inputs.max_manifest_bytes,
+        check_cancelled=check_cancelled,
+    )
+    manifest = _parse_exact_manifest(
+        source_manifest_bytes,
+        max_manifest_bytes=inputs.max_manifest_bytes,
+    )
+    if (
+        type(expected_manifest) is not RepoManifest
+        or expected_manifest.to_dict() != manifest.to_dict()
+    ):
+        raise StorageIntegrityError(
+            "retained compiler cache differs from its prepared manifest"
+        )
+    if _COMMIT_RE.fullmatch(manifest.commit) is None:
+        raise ValueError(
+            "compiler cache repository manifest commit must be a full "
+            "lowercase Git SHA"
+        )
+    identity = repository_source.authenticated_identity_snapshot(
+        check_cancelled=check_cancelled,
+    )
+    if type(identity) is not RepositorySourceIdentitySnapshot:
+        raise TypeError("compiler cache repository identity has an invalid type")
+    repository = lexical_directory_path(identity.root)
+    if _path_relation(cache, repository) != "disjoint":
+        raise ValueError("retained compiler cache overlaps its repository")
+    _require_manifest_source(manifest, identity)
+    entry = _require_current_view(manifest, view="bm25")
+    source_view = _view_source(cache, entry, view="bm25")
+    if source_view != operation.fixed_source_views["bm25"]:
+        raise AssertionError("compiler cache fixed BM25 source changed")
+    for output in (*operation.view_outputs.values(), operation.context_output):
+        if any(
+            _path_relation(output, boundary) != "disjoint"
+            for boundary in (cache, source_view, repository)
+        ):
+            raise ValueError(
+                "compiler cache output overlaps a retained input authority"
+            )
+    if check_cancelled is not None:
+        check_cancelled()
+
+    source_publication = publication.subtree("bm25")
+    planned = _plan_retained_bm25_publication_view(
+        source_publication,
+        repository_source=repository_source,
+        repository_identity=identity,
+        view_config=entry.config,
+        forbidden_paths=operation.policy_forbidden,
+        environ=inputs.environment,
+        check_cancelled=check_cancelled,
+    )
+    _require_source_fingerprints(entry, planned)
+    _planned_adjustments("bm25", planned)
+    portable_manifest, canonical_manifest_bytes = _portable_manifest(
+        manifest,
+        views=("bm25",),
+        planned_views={"bm25": planned},
+    )
+    import_plan = plan_repo_manifest_import_bytes(
+        canonical_manifest_bytes,
+        views=("bm25",),
+        max_manifest_bytes=inputs.max_manifest_bytes,
+    )
+    if (
+        import_plan.selection.selected_views != ("bm25",)
+        or import_plan.manifest.to_dict() != portable_manifest.to_dict()
+    ):
+        raise StorageIntegrityError(
+            "compiler cache portable manifest changed during import planning"
+        )
+    _require_compiler_cache_job_profile(
+        binding,
+        import_plan,
+        view_type="bm25",
+    )
+    if check_cancelled is not None:
+        check_cancelled()
+
+    adjustments = _publish_retained_bm25_publication_view(
+        source_publication,
+        operation.view_outputs["bm25"],
+        planned=planned,
+        repository_source=repository_source,
+        repository_identity=identity,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=operation.view_owners["bm25"],
+        view_config=entry.config,
+        forbidden_paths=operation.policy_forbidden,
+        environ=inputs.environment,
+        check_cancelled=check_cancelled,
+    )
+    if adjustments != _planned_adjustments("bm25", planned):
+        raise StorageIntegrityError(
+            "compiler cache BM25 publication differs from its exact plan"
+        )
+    recapture = CompilerCacheViewRecaptureResult(
+        view_type="bm25",
+        source_view=source_view,
+        output_view=operation.view_outputs["bm25"],
+        source_records=planned.source_records,
+        output_records=planned.output_records,
+    )
+    if check_cancelled is not None:
+        check_cancelled()
+
+    planned_context = plan_context_artifact_strict(
+        portable_manifest,
+        repository=inputs.repository_key,
+        repository_source=repository_source,
+        view_generations=operation.view_owners,
+        environ=inputs.environment,
+        check_cancelled=check_cancelled,
+    )
+    if (
+        planned_context.views != ("bm25",)
+        or planned_context.manifest_payload != canonical_manifest_bytes
+    ):
+        raise StorageIntegrityError(
+            "compiler cache context plan differs from its portable manifest"
+        )
+    context_artifact = publish_planned_context_artifact_strict(
+        operation.context_output,
+        planned=planned_context,
+        manifest=portable_manifest,
+        repository=inputs.repository_key,
+        repository_source=repository_source,
+        view_generations=operation.view_owners,
+        workspace_provider=workspace_provider,
+        output_receipt_owner=context_output_owner,
+        environ=inputs.environment,
+        check_cancelled=check_cancelled,
+    )
+    if (
+        _read_context_manifest(
+            context_output_owner,
+            max_manifest_bytes=inputs.max_manifest_bytes,
+            check_cancelled=check_cancelled,
+        )
+        != canonical_manifest_bytes
+    ):
+        raise StorageIntegrityError(
+            "compiler cache context manifest differs from its preplanned bytes"
+        )
+    final_identity = repository_source.authenticated_identity_snapshot(
+        check_cancelled=check_cancelled,
+    )
+    if final_identity != identity:
+        raise StorageIntegrityError(
+            "compiler cache repository source changed during recapture"
+        )
+    if (
+        _retained_cache_manifest_bytes(
+            publication,
+            max_manifest_bytes=inputs.max_manifest_bytes,
+            check_cancelled=check_cancelled,
+        )
+        != source_manifest_bytes
+        or publication.capture_ownership(check_cancelled=check_cancelled)
+        != initial_ownership
+    ):
+        raise StorageIntegrityError("retained compiler cache changed during recapture")
+    return _PreparedCompilerCacheImport(
+        manifest=manifest,
+        recaptures=(recapture,),
+        canonical_manifest_bytes=canonical_manifest_bytes,
+        import_plan=import_plan,
+        context_artifact=context_artifact,
+    )
+
+
+def prepare_compiler_cache_job_view_from_generation(
+    cache_generation: PublishedWorkspaceReceiptOwner,
+    *,
+    expected_manifest: RepoManifest,
+    job: IndexJobRecord,
+    views: tuple[IndexJobViewRecord, ...],
+    repository_source: RepositorySourceBinding,
+    view_output_owner: PublishedWorkspaceReceiptOwner,
+    context_output_owner: PublishedWorkspaceReceiptOwner,
+    view_destination: Path,
+    context_destination: Path,
+    workspace_provider: StrictWorkspaceProvider,
+    repository_key: str,
+    object_store: RetainedImportObjectStore,
+    namespace_name: str = DEFAULT_NAMESPACE_NAME,
+    stop_token: IndexJobStopToken | None = None,
+    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
+    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
+    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
+    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
+    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
+    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    forbidden_paths: Iterable[Path] = (),
+    environ: Mapping[str, str] | None = None,
+) -> CompilerCacheJobPreparationResult:
+    """Prepare BM25 from one retained cache generation without path reopening."""
+
+    if type(cache_generation) is not PublishedWorkspaceReceiptOwner:
+        raise TypeError("compiler cache generation must be an exact receipt owner")
+    if not cache_generation.active:
+        raise RuntimeError("compiler cache generation must be active")
+    if (
+        cache_generation is view_output_owner
+        or cache_generation is context_output_owner
+    ):
+        raise ValueError("compiler cache generation must use a distinct receipt owner")
+    check_cancelled = _compiler_cache_job_stop_check(stop_token)
+    if check_cancelled is not None:
+        check_cancelled()
+    cache = cache_generation.receipt.path
+    operation, binding = _preflight_cache_job_preparation_operation(
+        cache,
+        view_type="bm25",
+        job=job,
+        views=views,
+        repository_source=repository_source,
+        view_output_owner=view_output_owner,
+        context_output_owner=context_output_owner,
+        view_destination=view_destination,
+        context_destination=context_destination,
+        workspace_provider=workspace_provider,
+        repository_key=repository_key,
+        object_store=object_store,
+        namespace_name=namespace_name,
+        max_manifest_bytes=max_manifest_bytes,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
+        check_cancelled=check_cancelled,
+    )
+
+    def prepare(
+        receipt: PublishedWorkspaceReceipt,
+        publication: PublicationDirectoryReader,
+    ) -> _PreparedCompilerCacheImport:
+        return _prepare_retained_bm25_cache_generation(
+            operation,
+            binding,
+            receipt,
+            publication,
+            expected_manifest=expected_manifest,
+            repository_source=repository_source,
+            context_output_owner=context_output_owner,
+            workspace_provider=workspace_provider,
+            check_cancelled=check_cancelled,
+        )
+
+    preparation = cache_generation.consume(
+        prepare,
+        check_cancelled=check_cancelled,
+    )
+    if check_cancelled is not None:
+        check_cancelled()
+    artifact = _ingest_prepared_compiler_cache_job(
+        preparation,
+        operation,
+        binding,
+        view_type="bm25",
+        repository_source=repository_source,
+        context_output_owner=context_output_owner,
+        object_store=object_store,
+        check_cancelled=check_cancelled,
+    )
+    result = CompilerCacheJobPreparationResult(
+        job=binding.job,
+        view=binding.view,
+        manifest=preparation.import_plan.manifest,
+        import_plan=preparation.import_plan,
+        recapture=preparation.recaptures[0],
+        context_artifact=preparation.context_artifact,
+        artifact=artifact,
+    )
+    if check_cancelled is not None:
+        check_cancelled()
+    return result
+
+
 def prepare_compiler_cache_job_view(
     cache_dir: str | Path,
     *,
@@ -2550,32 +2890,36 @@ def _publish_compiler_cache_job(
 ) -> tuple[_PreparedCompilerCacheImport, IndexJobRecord]:
     """Recapture and atomically publish one exact compiler-cache job view."""
 
-    operation, binding, normalized_job_id, normalized_owner_id, token = (
-        _preflight_cache_job_operation(
-            cache_dir,
-            view_type=view_type,
-            job_id=job_id,
-            owner_id=owner_id,
-            fencing_token=fencing_token,
-            repository_source=repository_source,
-            view_output_owner=view_output_owner,
-            context_output_owner=context_output_owner,
-            view_destination=view_destination,
-            context_destination=context_destination,
-            workspace_provider=workspace_provider,
-            repository_key=repository_key,
-            catalog=catalog,
-            object_store=object_store,
-            namespace_name=namespace_name,
-            max_manifest_bytes=max_manifest_bytes,
-            max_context_files=max_context_files,
-            max_context_bytes=max_context_bytes,
-            max_bundle_files=max_bundle_files,
-            max_bundle_bytes=max_bundle_bytes,
-            max_bundle_metadata_bytes=max_bundle_metadata_bytes,
-            forbidden_paths=forbidden_paths,
-            environ=environ,
-        )
+    (
+        operation,
+        binding,
+        normalized_job_id,
+        normalized_owner_id,
+        token,
+    ) = _preflight_cache_job_operation(
+        cache_dir,
+        view_type=view_type,
+        job_id=job_id,
+        owner_id=owner_id,
+        fencing_token=fencing_token,
+        repository_source=repository_source,
+        view_output_owner=view_output_owner,
+        context_output_owner=context_output_owner,
+        view_destination=view_destination,
+        context_destination=context_destination,
+        workspace_provider=workspace_provider,
+        repository_key=repository_key,
+        catalog=catalog,
+        object_store=object_store,
+        namespace_name=namespace_name,
+        max_manifest_bytes=max_manifest_bytes,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        forbidden_paths=forbidden_paths,
+        environ=environ,
     )
     with compiler_cache_lock(operation.cache, create=False):
         preparation = _prepare_compiler_cache_import_locked(
@@ -3036,6 +3380,7 @@ __all__ = [
     "import_compiler_cache",
     "import_compiler_cache_bm25",
     "prepare_compiler_cache_job_view",
+    "prepare_compiler_cache_job_view_from_generation",
     "publish_compiler_cache_bm25_job",
     "publish_compiler_cache_vector_job",
 ]
