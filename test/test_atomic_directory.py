@@ -11,6 +11,7 @@ import inspect
 import os
 import stat
 import sys
+import threading
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
@@ -31,6 +32,201 @@ from codenib._atomic_directory import (
 def _write_tree(root: Path, name: str, value: str) -> None:
     root.mkdir()
     (root / name).write_text(value, encoding="utf-8")
+
+
+def _private_reclaimer_parent(
+    tmp_path: Path,
+    *,
+    name: str = "attempt-pool",
+) -> tuple[Path, tuple[int, ...]]:
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
+        pytest.skip("quiescent directory reclamation is POSIX-only")
+    parent = tmp_path / name
+    parent.mkdir(mode=0o700)
+    parent.chmod(0o700)
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        identity = publication_parent_identity(descriptor)
+    finally:
+        os.close(descriptor)
+    return parent, identity
+
+
+def _assert_quiescent_reclaimer_publicly_retryable(
+    reclaimer: atomic_module.QuiescentDirectoryReclaimer,
+    *,
+    first_result: bool = False,
+) -> None:
+    """Prove the public lease is free in this and another thread."""
+
+    results: list[bool] = []
+    failures: list[BaseException] = []
+
+    def retry_in_worker() -> None:
+        try:
+            results.append(reclaimer.retry())
+        except BaseException as error:  # noqa: B036 - report thread failure
+            failures.append(error)
+
+    worker = threading.Thread(target=retry_in_worker)
+    worker.start()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert failures == []
+    assert results == [first_result]
+    assert reclaimer.retry() is False
+
+
+def _raise_from_quiescent_reclaimer_context(
+    reclaimer: atomic_module.QuiescentDirectoryReclaimer,
+    error: BaseException,
+) -> None:
+    with reclaimer:
+        raise error
+
+
+def _exception_chain_cleanup_owners(
+    error: BaseException,
+) -> tuple[object, ...]:
+    """Collect bounded owner tuples reachable through built-in error links."""
+
+    pending = [error]
+    seen: set[int] = set()
+    owners: list[object] = []
+    while pending and len(seen) < 32:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        try:
+            retained = BaseException.__getattribute__(
+                current,
+                "publication_cleanup_owners",
+            )
+        except BaseException:  # noqa: B036 - hostile metadata stays on a carrier
+            retained = ()
+        if type(retained) is tuple and len(retained) <= 64:
+            for owner in retained:
+                if not any(candidate is owner for candidate in owners):
+                    owners.append(owner)
+        for attribute in ("__cause__", "__context__"):
+            try:
+                linked = vars(BaseException)[attribute].__get__(
+                    current,
+                    type(current),
+                )
+            except BaseException:  # noqa: B036 - test only inspects inert links
+                continue
+            if isinstance(linked, BaseException):
+                pending.append(linked)
+    return tuple(owners)
+
+
+def _exception_chain_contains(
+    error: BaseException,
+    target: BaseException,
+) -> bool:
+    """Return whether built-in cause/context links retain one exact error."""
+
+    pending = [error]
+    seen: set[int] = set()
+    while pending and len(seen) < 32:
+        current = pending.pop()
+        if current is target:
+            return True
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for attribute in ("__cause__", "__context__"):
+            linked = vars(BaseException)[attribute].__get__(current, type(current))
+            if isinstance(linked, BaseException):
+                pending.append(linked)
+    return False
+
+
+def _exception_link_graph_is_acyclic(error: BaseException) -> bool:
+    """Independently reject a cycle in bounded raw cause/context links."""
+
+    pending: list[tuple[BaseException, bool]] = [(error, False)]
+    visiting: set[int] = set()
+    complete: set[int] = set()
+    while pending:
+        current, leaving = pending.pop()
+        identity = id(current)
+        if leaving:
+            visiting.discard(identity)
+            complete.add(identity)
+            continue
+        if identity in visiting:
+            return False
+        if identity in complete:
+            continue
+        if len(visiting) + len(complete) >= 128:
+            return False
+        visiting.add(identity)
+        pending.append((current, True))
+        for attribute in ("__context__", "__cause__"):
+            linked = vars(BaseException)[attribute].__get__(current, type(current))
+            if isinstance(linked, BaseException):
+                pending.append((linked, False))
+    return True
+
+
+def _bounded_exception_recovery_graph(error: BaseException) -> tuple[object, ...]:
+    """Walk only raw exception links and small exact built-in carrier args."""
+
+    pending: list[object] = [error]
+    seen: set[int] = set()
+    recovered: list[object] = []
+    while pending:
+        current = pending.pop()
+        identity = id(current)
+        if identity in seen:
+            continue
+        assert len(seen) < 256
+        seen.add(identity)
+        recovered.append(current)
+        if isinstance(current, BaseException):
+            for attribute in ("__cause__", "__context__"):
+                linked = vars(BaseException)[attribute].__get__(current, type(current))
+                if isinstance(linked, BaseException):
+                    pending.append(linked)
+            if type(current) is RuntimeError:
+                args = BaseException.__getattribute__(current, "args")
+                assert type(args) is tuple and len(args) <= 64
+                pending.append(args)
+        elif type(current) is tuple:
+            assert len(current) <= 64
+            pending.extend(current)
+    return tuple(recovered)
+
+
+class _HostileCleanupOwnerMetadata:
+    """Refuse even BaseException-level access to cleanup owner metadata."""
+
+    def __get__(self, _instance: object, _owner: object) -> object:
+        raise RuntimeError("hostile cleanup owner metadata read")
+
+    def __set__(self, _instance: object, _value: object) -> None:
+        raise RuntimeError("hostile cleanup owner metadata write")
+
+
+class _HostileCleanupPrimary(ValueError):
+    publication_cleanup_owners = _HostileCleanupOwnerMetadata()
+
+
+class _HostileCleanupSecondary(OSError):
+    publication_cleanup_owners = _HostileCleanupOwnerMetadata()
+
+
+class _HostileTracebackPrimary(ValueError):
+    @property
+    def __traceback__(self) -> object:
+        raise AssertionError("subclass traceback getter was dispatched")
+
+    @__traceback__.setter
+    def __traceback__(self, _value: object) -> None:
+        raise AssertionError("subclass traceback setter was dispatched")
 
 
 def _adopt_fake_native_replacement(
@@ -1377,6 +1573,6228 @@ def test_publish_and_discard_never_recursively_unlink(
     assert discarded is not None
     assert (previous.path / "old.txt").read_text(encoding="utf-8") == "old"
     assert (discarded.path / "new.txt").read_text(encoding="utf-8") == "new"
+
+
+def test_quiescent_reclaimer_reclaims_exact_child_and_reports_absence(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    nested = attempt / "nested"
+    nested.mkdir(parents=True)
+    (attempt / "root.txt").write_text("root", encoding="utf-8")
+    (nested / "payload.txt").write_text("payload", encoding="utf-8")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    assert reclaimer.reclaim_child(attempt.name) is True
+    assert reclaimer.reclaim_child(attempt.name) is False
+    assert reclaimer.retry() is False
+    assert not attempt.exists()
+
+    reclaimer.close()
+    assert reclaimer.closed
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_reclaims_authenticated_orphan_idempotently(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        assert reclaimer.reclaim_orphan(orphan) is True
+        assert reclaimer.reclaim_orphan(orphan) is True
+
+    assert not orphan.path.exists()
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_rejects_tampered_absent_receipt_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    tampered = replace(
+        orphan,
+        locator=replace(
+            orphan.locator,
+            child_name="definitely-absent",
+        ),
+    )
+    child_lookups = 0
+    sync_calls = 0
+    real_child_metadata = atomic_module.QuiescentDirectoryReclaimer._child_metadata
+    real_sync = atomic_module._PublicationAuthority.sync_parent
+
+    def count_child_metadata(authority: object, path: Path) -> object | None:
+        nonlocal child_lookups
+        child_lookups += 1
+        return real_child_metadata(authority, path)
+
+    def count_sync(authority: object) -> None:
+        nonlocal sync_calls
+        sync_calls += 1
+        real_sync(authority)
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(count_child_metadata),
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "sync_parent",
+        count_sync,
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="receipt binding changed"):
+            reclaimer.reclaim_orphan(tampered)
+
+        assert child_lookups == 0
+        assert sync_calls == 0
+        assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+        assert reclaimer.reclaim_orphan(orphan) is True
+
+    assert child_lookups > 0
+    assert sync_calls > 0
+    assert not orphan.path.exists()
+
+
+def test_quiescent_reclaimer_receipt_binds_complete_ownership_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    first = parent / "first"
+    second = parent / "second"
+    _write_tree(first, "payload.txt", "identical")
+    _write_tree(second, "payload.txt", "identical")
+    first_orphan = atomic_module.discard_owned_directory(
+        first,
+        capture_directory_ownership(first),
+    )
+    second_orphan = atomic_module.discard_owned_directory(
+        second,
+        capture_directory_ownership(second),
+    )
+    assert first_orphan is not None
+    assert second_orphan is not None
+    first_token = first_orphan.locator.ownership
+    second_token = second_orphan.locator.ownership
+    assert first_token.digest == second_token.digest
+    assert first_token.entries == second_token.entries
+    assert first_token.byte_count == second_token.byte_count
+    assert first_token.root_version_identity != second_token.root_version_identity
+    tampered = replace(
+        first_orphan,
+        locator=replace(
+            first_orphan.locator,
+            ownership=second_token,
+        ),
+    )
+    child_lookups = 0
+    real_child_metadata = atomic_module.QuiescentDirectoryReclaimer._child_metadata
+
+    def count_child_metadata(authority: object, path: Path) -> object | None:
+        nonlocal child_lookups
+        child_lookups += 1
+        return real_child_metadata(authority, path)
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(count_child_metadata),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="receipt binding changed"):
+            reclaimer.reclaim_orphan(tampered)
+
+        assert child_lookups == 0
+        assert (first_orphan.path / "payload.txt").read_text(
+            encoding="utf-8"
+        ) == "identical"
+        assert (second_orphan.path / "payload.txt").read_text(
+            encoding="utf-8"
+        ) == "identical"
+        assert reclaimer.reclaim_orphan(first_orphan) is True
+        assert reclaimer.reclaim_orphan(second_orphan) is True
+
+    assert child_lookups > 0
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_rejects_unbounded_receipt_identity_before_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    ownership = orphan.locator.ownership
+    root_version = list(ownership.root_version_identity)
+    root_version[5] = 1 << 100_000
+    tampered = replace(
+        orphan,
+        locator=replace(
+            orphan.locator,
+            ownership=replace(
+                ownership,
+                root_version_identity=tuple(root_version),
+            ),
+        ),
+    )
+
+    def forbidden_digest(**_kwargs: object) -> str:
+        raise AssertionError("unbounded identity must not reach receipt hashing")
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("unbounded identity must not reach child lookup")
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_orphan_receipt_digest",
+        forbidden_digest,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="invalid identity"):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.parametrize(
+    "identity_field",
+    ("root_identity", "root_version_identity", "entry_identity"),
+)
+def test_quiescent_reclaimer_bounds_identity_arity_before_element_types(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    identity_field: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    ownership = orphan.locator.ownership
+    marker = int("123456789012345678901234567890123456789")
+    oversized = (marker,) * 10_000
+    if identity_field == "entry_identity":
+        entry = ownership.entry_identities[0]
+        tampered_ownership = replace(
+            ownership,
+            entry_identities=((entry[0], entry[1], oversized),),
+        )
+    else:
+        tampered_ownership = replace(
+            ownership,
+            **{identity_field: oversized},
+        )
+    tampered = replace(
+        orphan,
+        locator=replace(orphan.locator, ownership=tampered_ownership),
+    )
+    marker_type_calls = 0
+    real_type = type
+
+    def bounded_type(value: object) -> type[object]:
+        nonlocal marker_type_calls
+        if value is marker:
+            marker_type_calls += 1
+            if marker_type_calls > 256:
+                raise AssertionError("identity arity must precede element traversal")
+        return real_type(value)
+
+    def forbidden_digest(**_kwargs: object) -> str:
+        raise AssertionError("invalid identity must not reach receipt hashing")
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid identity must not reach child lookup")
+
+    monkeypatch.setattr(atomic_module, "type", bounded_type, raising=False)
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_orphan_receipt_digest",
+        forbidden_digest,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(TypeError, match="not exact"):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert marker_type_calls == 0
+    assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.parametrize(
+    "path_field",
+    ("inventory", "entry_identity", "file_record", "child_name"),
+)
+def test_quiescent_reclaimer_bounds_receipt_paths_before_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_field: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    ownership = orphan.locator.ownership
+    oversized = "x" * (atomic_module._MAX_OWNERSHIP_PATH_BYTES + 1)
+    tampered_ownership = ownership
+    tampered_locator = orphan.locator
+    if path_field == "inventory":
+        inventory = ownership.inventory[0]
+        tampered_ownership = replace(
+            ownership,
+            inventory=((oversized, inventory[1]),),
+        )
+    elif path_field == "entry_identity":
+        entry = ownership.entry_identities[0]
+        tampered_ownership = replace(
+            ownership,
+            entry_identities=((oversized, entry[1], entry[2]),),
+        )
+    elif path_field == "file_record":
+        record = ownership.file_records[0]
+        tampered_ownership = replace(
+            ownership,
+            file_records=(replace(record, path=oversized),),
+        )
+    else:
+        oversized = "x" * (atomic_module._MAX_OWNERSHIP_COMPONENT_BYTES + 1)
+        tampered_locator = replace(tampered_locator, child_name=oversized)
+    if tampered_ownership is not ownership:
+        tampered_locator = replace(
+            tampered_locator,
+            ownership=tampered_ownership,
+        )
+    tampered = replace(orphan, locator=tampered_locator)
+    real_pure_path = atomic_module.PurePosixPath
+    real_fsencode = atomic_module.os.fsencode
+
+    def bounded_pure_path(value: object) -> PurePosixPath:
+        if value is oversized:
+            raise AssertionError("oversized receipt path must not be parsed")
+        return real_pure_path(value)
+
+    def bounded_fsencode(value: object) -> bytes:
+        if value is oversized:
+            raise AssertionError("oversized receipt path must not be encoded")
+        return real_fsencode(value)
+
+    def forbidden_digest(**_kwargs: object) -> str:
+        raise AssertionError("invalid receipt path must not reach hashing")
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid receipt path must not reach child lookup")
+
+    monkeypatch.setattr(atomic_module, "PurePosixPath", bounded_pure_path)
+    monkeypatch.setattr(atomic_module.os, "fsencode", bounded_fsencode)
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_orphan_receipt_digest",
+        forbidden_digest,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    expected_error = ValueError if path_field == "child_name" else RuntimeError
+    expected_message = (
+        "bounded file name" if path_field == "child_name" else "invalid path"
+    )
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(expected_error, match=expected_message):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+def test_quiescent_reclaimer_bounds_inventory_kind_before_hashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    ownership = orphan.locator.ownership
+    inventory = ownership.inventory[0]
+    oversized_kind = "directory" * 10_000
+    tampered = replace(
+        orphan,
+        locator=replace(
+            orphan.locator,
+            ownership=replace(
+                ownership,
+                inventory=((inventory[0], oversized_kind),),
+            ),
+        ),
+    )
+
+    def forbidden_digest(**_kwargs: object) -> str:
+        raise AssertionError("invalid entry kind must not reach hashing")
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid entry kind must not reach child lookup")
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_orphan_receipt_digest",
+        forbidden_digest,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="invalid entry kind"):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.parametrize("accounting_field", ("metadata_bytes", "byte_count"))
+def test_quiescent_reclaimer_rejects_incremental_accounting_overflow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    accounting_field: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "a.txt", "a")
+    (owned / "b.txt").write_text("bb", encoding="utf-8")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    ownership = orphan.locator.ownership
+    assert tuple(path for path, _kind in ownership.inventory) == (
+        "a.txt",
+        "b.txt",
+    )
+    assert tuple(record.path for record in ownership.file_records) == (
+        "a.txt",
+        "b.txt",
+    )
+    tampered = replace(
+        orphan,
+        locator=replace(
+            orphan.locator,
+            ownership=replace(
+                ownership,
+                **{accounting_field: 0},
+            ),
+        ),
+    )
+
+    if accounting_field == "metadata_bytes":
+        real_path_bytes = atomic_module._ownership_token_path_bytes
+
+        def reject_second_path(value: object) -> bytes:
+            if value == "b.txt":
+                raise AssertionError(
+                    "metadata overflow must stop before the next inventory item"
+                )
+            return real_path_bytes(value)
+
+        monkeypatch.setattr(
+            atomic_module,
+            "_ownership_token_path_bytes",
+            reject_second_path,
+        )
+    else:
+        second_record = ownership.file_records[1]
+        sha256_slot = vars(atomic_module.TreeFileRecord)["sha256"]
+
+        class RejectSecondRecord:
+            def __get__(self, instance: object, owner: type[object]) -> object:
+                if instance is None:
+                    return sha256_slot
+                if instance is second_record:
+                    raise AssertionError(
+                        "byte overflow must stop before the next file record"
+                    )
+                return sha256_slot.__get__(instance, owner)
+
+            def __set__(self, instance: object, value: object) -> None:
+                sha256_slot.__set__(instance, value)
+
+        monkeypatch.setattr(
+            atomic_module.TreeFileRecord,
+            "sha256",
+            RejectSecondRecord(),
+        )
+
+    def forbidden_digest(**_kwargs: object) -> str:
+        raise AssertionError("invalid accounting must not reach receipt hashing")
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid accounting must not reach child lookup")
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_orphan_receipt_digest",
+        forbidden_digest,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="accounting is inconsistent"):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert (orphan.path / "a.txt").read_text(encoding="utf-8") == "a"
+    assert (orphan.path / "b.txt").read_text(encoding="utf-8") == "bb"
+
+
+def test_quiescent_reclaimer_uses_bounded_parent_bytes_from_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    oversized = b"x" * (atomic_module._MAX_ORPHAN_PARENT_PATH_BYTES + 1)
+    tampered = replace(
+        orphan,
+        locator=replace(orphan.locator, parent_path_bytes=oversized),
+    )
+    real_fsdecode = atomic_module.os.fsdecode
+
+    def bounded_fsdecode(value: object) -> str:
+        if value is oversized:
+            raise AssertionError("oversized parent bytes must not be decoded")
+        return real_fsdecode(value)
+
+    def forbidden_digest(**_kwargs: object) -> str:
+        raise AssertionError("invalid parent bytes must not reach hashing")
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid parent bytes must not reach child lookup")
+
+    monkeypatch.setattr(atomic_module.os, "fsdecode", bounded_fsdecode)
+    monkeypatch.setattr(
+        atomic_module,
+        "_directory_orphan_receipt_digest",
+        forbidden_digest,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    with pytest.raises(RuntimeError, match="parent path is invalid"):
+        _ = tampered.path
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="parent path is invalid"):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+@pytest.mark.parametrize("operation", ("publish", "discard", "retained-owner"))
+def test_orphan_parent_bound_precedes_every_isolation_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    stage = parent / "stage"
+    destination = parent / "destination"
+    owned = parent / "owned"
+    _write_tree(stage, "payload.txt", "new")
+    _write_tree(destination, "payload.txt", "old")
+    _write_tree(owned, "payload.txt", "owned")
+    ownership = capture_directory_ownership(owned)
+    authority_owner: atomic_module._PublicationAuthorityOwner | None = None
+    authority: atomic_module._PublicationAuthority | None = None
+    if operation == "retained-owner":
+        authority_owner = atomic_module._PublicationAuthorityOwner()
+        authority = atomic_module._open_publication_authority(
+            parent,
+            parent_resource=None,
+            expected_parent_identity=None,
+            authority_owner=authority_owner,
+        )
+
+    class ParentPathTooLong(RuntimeError):
+        pass
+
+    def reject_parent_path(_value: object) -> bytes:
+        raise ParentPathTooLong("parent receipt path is too long")
+
+    def forbidden_rename(
+        _authority: object,
+        _source: str,
+        _destination: str,
+    ) -> object:
+        raise AssertionError("receipt parent validation must precede every rename")
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_bounded_directory_orphan_parent_path_bytes",
+        reject_parent_path,
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "rename_noreplace",
+        forbidden_rename,
+    )
+
+    try:
+        if operation == "publish":
+            with pytest.raises(ParentPathTooLong):
+                publish_staged_directory(stage, destination)
+        elif operation == "discard":
+            assert atomic_module.discard_owned_directory(owned, ownership) is None
+        else:
+            assert authority is not None
+            with pytest.raises(ParentPathTooLong):
+                atomic_module._OwnedDirectoryIsolationOwner(
+                    authority,
+                    owned,
+                    ownership,
+                )
+    finally:
+        if authority_owner is not None:
+            authority_owner.close()
+
+    assert (stage / "payload.txt").read_text(encoding="utf-8") == "new"
+    assert (destination / "payload.txt").read_text(encoding="utf-8") == "old"
+    assert (owned / "payload.txt").read_text(encoding="utf-8") == "owned"
+    assert {path.name for path in parent.iterdir()} == {
+        "stage",
+        "destination",
+        "owned",
+    }
+
+
+def test_quiescent_reclaimer_rejects_public_unverified_restored_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    ownership = capture_directory_ownership(owned)
+    real_require = atomic_module._require_tree_ownership_at
+    real_rename = atomic_module._PublicationAuthority.rename_noreplace
+    restored = False
+
+    def reject_moved_validation(
+        authority: object,
+        name: str,
+        *,
+        path: Path,
+        expected: object,
+        label: str,
+        allow_root_rename: bool = False,
+    ) -> None:
+        if label == "moved destination":
+            raise RuntimeError("injected moved validation failure")
+        real_require(
+            authority,
+            name,
+            path=path,
+            expected=expected,
+            label=label,
+            allow_root_rename=allow_root_rename,
+        )
+
+    def restore_then_lose_response(
+        authority: object,
+        source: str,
+        destination: str,
+    ) -> object | None:
+        nonlocal restored
+        result = real_rename(authority, source, destination)
+        if destination == owned.name and source != owned.name and not restored:
+            restored = True
+            raise OSError(errno.EIO, "restore response lost")
+        return result
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_require_tree_ownership_at",
+        reject_moved_validation,
+    )
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "rename_noreplace",
+        restore_then_lose_response,
+    )
+
+    orphan = atomic_module.discard_owned_directory(owned, ownership)
+
+    assert orphan is not None
+    assert orphan.verified_at_isolation is False
+    assert restored
+    assert not orphan.path.exists()
+    assert (owned / "payload.txt").read_text(encoding="utf-8") == "payload"
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        upgraded = replace(orphan, verified_at_isolation=True)
+        with pytest.raises(RuntimeError, match="receipt binding changed"):
+            reclaimer.reclaim_orphan(upgraded)
+        with pytest.raises(RuntimeError, match="not verified at isolation"):
+            reclaimer.reclaim_orphan(orphan)
+
+    assert (owned / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+def test_quiescent_reclaimer_exact_gate_rejects_hostile_ownership_before_lookup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    hostile_dispatch: list[str] = []
+
+    class HostileOwnership:
+        @property
+        def __class__(self) -> object:
+            hostile_dispatch.append("__class__")
+            raise AssertionError("exact ownership gate executed hostile __class__")
+
+    tampered = replace(
+        orphan,
+        locator=replace(
+            orphan.locator,
+            ownership=HostileOwnership(),
+        ),
+    )
+
+    def forbidden_lookup(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("invalid receipt must not reach child lookup")
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(forbidden_lookup),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(TypeError, match="ownership token fields are not exact"):
+            reclaimer.reclaim_orphan(tampered)
+
+    assert hostile_dispatch == []
+    assert (orphan.path / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+def test_quiescent_reclaimer_quarantines_before_descriptor_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_unlink = atomic_module.os.unlink
+    observed_quarantine: Path | None = None
+
+    def checked_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        nonlocal observed_quarantine
+        assert path == "payload.txt"
+        assert dir_fd is not None
+        assert not attempt.exists()
+        quarantines = list(parent.glob(".attempt-a.discarded-*"))
+        assert len(quarantines) == 1
+        observed_quarantine = quarantines[0]
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(atomic_module.os, "unlink", checked_unlink)
+
+    with reclaimer:
+        assert reclaimer.reclaim_child(attempt.name) is True
+
+    assert observed_quarantine is not None
+    assert not observed_quarantine.exists()
+
+
+def test_quiescent_reclaimer_rejects_parent_guards_before_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    parent.chmod(0o755)
+
+    with pytest.raises(PermissionError, match="private owner-only"):
+        atomic_module.QuiescentDirectoryReclaimer(
+            parent,
+            expected_parent_identity=parent_identity,
+        )
+
+    parent.chmod(0o700)
+    wrong_identity = (
+        parent_identity[0],
+        parent_identity[1] + 1,
+        *parent_identity[2:],
+    )
+    with pytest.raises(RuntimeError, match="identity"):
+        atomic_module.QuiescentDirectoryReclaimer(
+            parent,
+            expected_parent_identity=wrong_identity,
+        )
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(atomic_module.os, "geteuid", lambda: os.getuid() + 1)
+        with pytest.raises(PermissionError, match="private owner-only"):
+            atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+
+    def forbidden_open(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("unsupported reclamation must not open authority")
+
+    monkeypatch.setattr(atomic_module, "_open_publication_authority", forbidden_open)
+    monkeypatch.setattr(atomic_module.sys, "platform", "freebsd14")
+    with pytest.raises(RuntimeError, match="reclamation is unsupported"):
+        atomic_module.QuiescentDirectoryReclaimer(
+            parent,
+            expected_parent_identity=parent_identity,
+        )
+
+    assert (attempt / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+
+def test_quiescent_reclaimer_requires_directory_fd_listing_before_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    opened = False
+
+    def forbidden_open(*_args: object, **_kwargs: object) -> object:
+        nonlocal opened
+        opened = True
+        raise AssertionError("unsupported reclaimer must not open parent authority")
+
+    monkeypatch.setattr(
+        atomic_module.os,
+        "supports_fd",
+        atomic_module.os.supports_fd - {atomic_module.os.listdir},
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_open_publication_authority",
+        forbidden_open,
+    )
+
+    with pytest.raises(RuntimeError, match="directory-fd listing support"):
+        atomic_module.QuiescentDirectoryReclaimer(
+            parent,
+            expected_parent_identity=parent_identity,
+        )
+
+    assert not opened
+
+
+def test_quiescent_reclaimer_is_sealed_and_pid_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+
+    class DerivedReclaimer(atomic_module.QuiescentDirectoryReclaimer):
+        pass
+
+    with pytest.raises(TypeError, match="cannot be subclassed"):
+        DerivedReclaimer(parent, expected_parent_identity=parent_identity)
+
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    acquire_calls = 0
+    real_acquire = atomic_module._QuiescentDirectoryLifecycleAttempt._acquire
+
+    def counted_acquire(attempt: object) -> None:
+        nonlocal acquire_calls
+        acquire_calls += 1
+        real_acquire(attempt)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleAttempt,
+        "_acquire",
+        counted_acquire,
+    )
+    owner_pid = os.getpid()
+    original_getpid = atomic_module.os.getpid
+    atomic_module.os.getpid = lambda: owner_pid + 1
+    try:
+        with pytest.raises(RuntimeError, match="PID boundary"):
+            reclaimer.reclaim_child("missing-attempt")
+        with pytest.raises(RuntimeError, match="PID boundary"):
+            reclaimer.retry()
+        with pytest.raises(RuntimeError, match="PID boundary"):
+            reclaimer.close()
+    finally:
+        atomic_module.os.getpid = original_getpid
+    assert acquire_calls == 0
+    assert reclaimer.reclaim_child("missing-attempt") is False
+    assert acquire_calls == 1
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_rejects_hard_links_before_quarantine(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "one.txt", "payload")
+    os.link(attempt / "one.txt", attempt / "two.txt")
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="hard-linked file"):
+            reclaimer.reclaim_child(attempt.name)
+
+    assert attempt.is_dir()
+    assert {path.name for path in attempt.iterdir()} == {"one.txt", "two.txt"}
+    assert not list(parent.glob(".attempt-a.discarded-*"))
+
+
+def test_quiescent_reclaimer_rejects_mount_boundary_before_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    real_is_mount = atomic_module._path_is_mount_point
+    monkeypatch.setattr(
+        atomic_module,
+        "_path_is_mount_point",
+        lambda path, **kwargs: path == attempt or real_is_mount(path, **kwargs),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(PermissionError, match="owned local directory"):
+            reclaimer.reclaim_child(attempt.name)
+
+    assert (attempt / "payload.txt").read_text(encoding="utf-8") == "payload"
+    assert not list(parent.glob(".attempt-a.discarded-*"))
+
+
+def test_quiescent_reclaimer_rejects_cross_device_child_before_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    metadata = attempt.lstat()
+    foreign_device = SimpleNamespace(
+        st_dev=metadata.st_dev + 1,
+        st_file_attributes=getattr(metadata, "st_file_attributes", 0),
+        st_ino=metadata.st_ino,
+        st_mode=metadata.st_mode,
+        st_uid=metadata.st_uid,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(lambda _authority, _path: foreign_device),
+    )
+
+    with pytest.raises(PermissionError, match="owned local directory"):
+        reclaimer.reclaim_child(attempt.name)
+
+    reclaimer.close()
+    assert (attempt / "payload.txt").read_text(encoding="utf-8") == "payload"
+    assert not list(parent.glob(".attempt-a.discarded-*"))
+
+
+def test_quiescent_reclaimer_enforces_capture_budget_before_quarantine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    attempt.mkdir()
+    (attempt / "one.txt").write_text("one", encoding="utf-8")
+    (attempt / "two.txt").write_text("two", encoding="utf-8")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    monkeypatch.setattr(atomic_module, "_MAX_OWNERSHIP_ENTRIES", 1)
+
+    with pytest.raises(RuntimeError, match="entry limit"):
+        reclaimer.reclaim_child(attempt.name)
+
+    reclaimer.close()
+    assert attempt.is_dir()
+    assert {path.name for path in attempt.iterdir()} == {"one.txt", "two.txt"}
+    assert not list(parent.glob(".attempt-a.discarded-*"))
+
+
+def test_quiescent_reclaimer_authenticates_orphan_backend_before_absence(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    parked = parent / ".parked-owned"
+    orphan.path.rename(parked)
+    wrong_backend = replace(
+        orphan,
+        locator=replace(orphan.locator, backend_tag="foreign-backend"),
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(ValueError, match="another parent authority"):
+            reclaimer.reclaim_orphan(wrong_backend)
+        assert reclaimer.reclaim_orphan(orphan) is True
+        parked.rename(orphan.path)
+        assert reclaimer.reclaim_orphan(orphan) is True
+
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_rejects_tampered_or_stale_orphan(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    tampered = replace(orphan, byte_count=orphan.byte_count + 1)
+    with pytest.raises(RuntimeError, match="metadata changed"):
+        reclaimer.reclaim_orphan(tampered)
+
+    parked = parent / ".parked-owned"
+    orphan.path.rename(parked)
+    _write_tree(orphan.path, "foreign.txt", "preserve")
+    with pytest.raises(RuntimeError, match="quarantine changed") as caught:
+        reclaimer.reclaim_orphan(orphan)
+    assert reclaimer in caught.value.publication_cleanup_owners
+    assert (orphan.path / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert (parked / "payload.txt").read_text(encoding="utf-8") == "payload"
+
+    (orphan.path / "foreign.txt").unlink()
+    orphan.path.rmdir()
+    parked.rename(orphan.path)
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_retries_committed_quarantine_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    real_rename = atomic_module._rename_noreplace_at
+    interrupted = False
+
+    def interrupt_after_quarantine(
+        source: str,
+        destination: str,
+        source_parent: int,
+        destination_parent: int,
+    ) -> None:
+        nonlocal interrupted
+        real_rename(source, destination, source_parent, destination_parent)
+        if source == attempt.name and not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt("post-quarantine interruption")
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_rename_noreplace_at",
+        interrupt_after_quarantine,
+    )
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="post-quarantine") as caught:
+        reclaimer.reclaim_child(attempt.name)
+    assert reclaimer in caught.value.publication_cleanup_owners
+    assert not attempt.exists()
+    assert len(list(parent.glob(".attempt-a.discarded-*"))) == 1
+
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_reconciles_post_unlink_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_unlink = atomic_module.os.unlink
+    interrupted = False
+
+    def interrupt_after_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        nonlocal interrupted
+        real_unlink(path, dir_fd=dir_fd)
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt("post-unlink interruption")
+
+    monkeypatch.setattr(atomic_module.os, "unlink", interrupt_after_unlink)
+
+    with pytest.raises(KeyboardInterrupt, match="post-unlink") as caught:
+        reclaimer.reclaim_child(attempt.name)
+    assert reclaimer in caught.value.publication_cleanup_owners
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_reconciles_post_root_removal_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    attempt.mkdir()
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_rmdir = atomic_module.os.rmdir
+    interrupted = False
+
+    def interrupt_after_rmdir(path: object, *, dir_fd: int | None = None) -> None:
+        nonlocal interrupted
+        real_rmdir(path, dir_fd=dir_fd)
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt("post-rmdir interruption")
+
+    monkeypatch.setattr(atomic_module.os, "rmdir", interrupt_after_rmdir)
+
+    with pytest.raises(KeyboardInterrupt, match="post-rmdir") as caught:
+        reclaimer.reclaim_child(attempt.name)
+    assert reclaimer in caught.value.publication_cleanup_owners
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_fresh_receipt_syncs_absent_removed_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    attempt.mkdir()
+    original = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_rmdir = atomic_module.os.rmdir
+    interrupted_removal = False
+
+    def interrupt_after_rmdir(path: object, *, dir_fd: int | None = None) -> None:
+        nonlocal interrupted_removal
+        real_rmdir(path, dir_fd=dir_fd)
+        if not interrupted_removal:
+            interrupted_removal = True
+            raise KeyboardInterrupt("post-root-rmdir interruption")
+
+    monkeypatch.setattr(atomic_module.os, "rmdir", interrupt_after_rmdir)
+    with pytest.raises(KeyboardInterrupt, match="post-root-rmdir"):
+        original.reclaim_child(attempt.name)
+    active = original._active
+    assert active is not None
+    assert active.root_state == "removed"
+    orphan = active.orphan
+    assert orphan is not None and orphan.verified_at_isolation
+    assert not orphan.path.exists()
+
+    monkeypatch.setattr(atomic_module.os, "rmdir", real_rmdir)
+    fresh = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    fresh_authority = fresh._authority_owner.authority
+    real_sync = atomic_module._PublicationAuthority.sync_parent
+    sync_calls = 0
+    interrupted_sync = False
+
+    def interrupt_after_fresh_sync(authority: object) -> None:
+        nonlocal sync_calls, interrupted_sync
+        real_sync(authority)
+        if authority is fresh_authority:
+            sync_calls += 1
+            if not interrupted_sync:
+                interrupted_sync = True
+                raise KeyboardInterrupt("post-absent-sync interruption")
+
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "sync_parent",
+        interrupt_after_fresh_sync,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="post-absent-sync"):
+        fresh.reclaim_orphan(orphan)
+    assert sync_calls == 1
+    assert fresh.reclaim_orphan(orphan) is True
+    assert sync_calls == 2
+    assert fresh.reclaim_child(orphan.path.name) is False
+    assert sync_calls == 2
+
+    fresh.close()
+    assert original.retry() is True
+    original.close()
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_retries_completed_parent_sync(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    attempt.mkdir()
+    real_sync = atomic_module._PublicationAuthority.sync_parent
+    interrupted = False
+
+    def interrupt_after_sync(authority: object) -> None:
+        nonlocal interrupted
+        real_sync(authority)
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt("post-sync interruption")
+
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "sync_parent",
+        interrupt_after_sync,
+    )
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    with pytest.raises(KeyboardInterrupt, match="post-sync") as caught:
+        reclaimer.reclaim_child(attempt.name)
+    assert reclaimer in caught.value.publication_cleanup_owners
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert list(parent.iterdir()) == []
+
+
+@pytest.mark.parametrize("surface", ["unlink", "rmdir", "sync"])
+def test_quiescent_reclaimer_rejects_recursive_retry_during_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    if surface == "unlink":
+        _write_tree(attempt, "payload.txt", "payload")
+    elif surface == "rmdir":
+        (attempt / "nested").mkdir(parents=True)
+    else:
+        attempt.mkdir()
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    recursive_calls: list[str] = []
+
+    def reject_recursive_retry() -> None:
+        if recursive_calls:
+            return
+        recursive_calls.append(surface)
+        with pytest.raises(RuntimeError, match="lifecycle transition is already"):
+            reclaimer.retry()
+
+    if surface == "unlink":
+        real_unlink = atomic_module.os.unlink
+
+        def checked_unlink(path: object, *, dir_fd: int | None = None) -> None:
+            reject_recursive_retry()
+            real_unlink(path, dir_fd=dir_fd)
+
+        monkeypatch.setattr(atomic_module.os, "unlink", checked_unlink)
+    elif surface == "rmdir":
+        real_rmdir = atomic_module.os.rmdir
+
+        def checked_rmdir(path: object, *, dir_fd: int | None = None) -> None:
+            reject_recursive_retry()
+            real_rmdir(path, dir_fd=dir_fd)
+
+        monkeypatch.setattr(atomic_module.os, "rmdir", checked_rmdir)
+    else:
+        real_sync = atomic_module._PublicationAuthority.sync_parent
+
+        def checked_sync(authority: object) -> None:
+            reject_recursive_retry()
+            real_sync(authority)
+
+        monkeypatch.setattr(
+            atomic_module._PublicationAuthority,
+            "sync_parent",
+            checked_sync,
+        )
+
+    assert reclaimer.reclaim_child(attempt.name) is True
+    assert recursive_calls == [surface]
+    assert reclaimer._active is None
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_rejects_recursive_close_without_dropping_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_unlink = atomic_module.os.unlink
+    active_during_rejection: list[object] = []
+
+    def checked_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        if not active_during_rejection:
+            active = reclaimer._active
+            assert active is not None
+            with pytest.raises(RuntimeError, match="lifecycle transition is already"):
+                reclaimer.close()
+            assert reclaimer._active is active
+            active_during_rejection.append(active)
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(atomic_module.os, "unlink", checked_unlink)
+
+    assert reclaimer.reclaim_child(attempt.name) is True
+    assert len(active_during_rejection) == 1
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_defers_public_recovery_until_error_delivery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    first = parent / "attempt-a"
+    second = parent / "attempt-b"
+    _write_tree(first, "payload.txt", "first")
+    _write_tree(second, "payload.txt", "second")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    real_unlink = atomic_module.os.unlink
+    fail_release = True
+    fail_remove = True
+    observed_permissions: list[bool] = []
+    nested_rejections: list[str] = []
+    nested_results: list[tuple[str, bool]] = []
+    nested_exit_attempted = False
+
+    class CleanupOwners:
+        def __get__(self, _instance: object, _owner: object) -> tuple[()]:
+            return ()
+
+        def __set__(self, _instance: object, _value: object) -> None:
+            nonlocal fail_release, fail_remove, nested_exit_attempted
+            if not nested_exit_attempted:
+                nested_exit_attempted = True
+                try:
+                    reclaimer.__exit__(None, None, None)
+                except RuntimeError as error:
+                    assert "lifecycle transition is already active" in str(error)
+                    nested_rejections.append("exit")
+                else:
+                    nested_results.append(("exit", True))
+                fail_release = False
+                fail_remove = False
+                try:
+                    nested_results.append(("retry-a", reclaimer.retry()))
+                except RuntimeError as error:
+                    assert "lifecycle transition is already active" in str(error)
+                    nested_rejections.append("retry")
+                    fail_release = True
+                    fail_remove = True
+                else:
+                    nested_results.append(
+                        ("reclaim-b", reclaimer.reclaim_child(second.name))
+                    )
+            current = reclaimer._lifecycle_lease.current_transition()
+            allowed = (
+                type(current) is atomic_module._QuiescentDirectoryLifecycleAttempt
+                and not current._outer_call._guard.gi_running
+            )
+            observed_permissions.append(allowed)
+            raise RuntimeError("refuse cleanup-owner metadata")
+
+    class RemovalFailure(OSError):
+        publication_cleanup_owners = CleanupOwners()
+
+    primary = RemovalFailure(errno.EIO, "outer removal failed")
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise OSError(errno.EIO, "lifecycle release failed")
+        real_release(lease)
+
+    def fail_payload_removal(path: object, *, dir_fd: int | None = None) -> None:
+        if path == "payload.txt" and fail_remove:
+            raise primary
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_payload_removal)
+
+    with pytest.raises(RemovalFailure) as caught:
+        reclaimer.reclaim_child(first.name)
+
+    assert caught.value is primary
+    assert observed_permissions
+    assert not any(observed_permissions)
+    assert nested_rejections == ["exit", "retry"]
+    assert nested_results == []
+    assert (second / "payload.txt").read_text(encoding="utf-8") == "second"
+
+    fail_release = False
+    fail_remove = False
+    assert reclaimer.retry() is True
+    assert reclaimer.reclaim_child(second.name) is True
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ["owner-close", "lease-clear", "forged-guard"],
+)
+def test_quiescent_reclaimer_published_attempt_cannot_reenter_owning_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    first = parent / "attempt-a"
+    second = parent / "attempt-b"
+    _write_tree(first, "payload.txt", "first")
+    _write_tree(second, "payload.txt", "second")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    real_unlink = atomic_module.os.unlink
+    fail_release = True
+    fail_remove = True
+    published_attempt: object | None = None
+    tamper_results: list[str] = []
+    internal_guard_results: list[str] = []
+    nested_results: list[tuple[str, object]] = []
+
+    class CleanupOwners:
+        def __get__(self, _instance: object, _owner: object) -> tuple[()]:
+            return ()
+
+        def __set__(self, _instance: object, value: object) -> None:
+            nonlocal fail_release, fail_remove, published_attempt
+            attempts = (
+                tuple(
+                    owner
+                    for owner in value
+                    if type(owner) is atomic_module._QuiescentDirectoryLifecycleAttempt
+                )
+                if type(value) is tuple
+                else ()
+            )
+            if attempts and published_attempt is None:
+                attempt = attempts[0]
+                published_attempt = attempt
+                fail_release = False
+                fail_remove = False
+                if tamper == "lease-clear":
+                    attempt._lease.release()
+                    attempt._lease.clear_transition(attempt)
+                    tamper_results.append("cleared")
+                else:
+                    if tamper == "forged-guard":
+                        forged_guard = (
+                            atomic_module._quiescent_directory_execution_guard(
+                                lambda: None
+                            )
+                        )
+                        forged_guard.close()
+                        try:
+                            attempt.execution_guard = forged_guard
+                        except AttributeError:
+                            tamper_results.append("immutable")
+                        else:
+                            tamper_results.append("forged")
+                    try:
+                        attempt.close()
+                    except RuntimeError as error:
+                        tamper_results.append(str(error))
+                    else:
+                        tamper_results.append("closed")
+
+                try:
+                    attempt._close_borrowed(object())
+                except RuntimeError as error:
+                    internal_guard_results.append(str(error))
+                else:
+                    internal_guard_results.append("closed")
+
+                for label, callback in (
+                    ("retry", reclaimer.retry),
+                    (
+                        "reclaim-b",
+                        lambda: reclaimer.reclaim_child(second.name),
+                    ),
+                ):
+                    try:
+                        nested_results.append((label, callback()))
+                    except RuntimeError as error:
+                        nested_results.append((label, str(error)))
+            raise RuntimeError("refuse cleanup-owner metadata")
+
+    class RemovalFailure(OSError):
+        publication_cleanup_owners = CleanupOwners()
+
+    primary = RemovalFailure(errno.EIO, "outer removal failed")
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise OSError(errno.EIO, "lifecycle release failed")
+        real_release(lease)
+
+    def fail_payload_removal(path: object, *, dir_fd: int | None = None) -> None:
+        if path == "payload.txt" and fail_remove:
+            raise primary
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_payload_removal)
+
+    with pytest.raises(RemovalFailure) as caught:
+        reclaimer.reclaim_child(first.name)
+
+    assert caught.value is primary
+    assert type(published_attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert tamper_results == (
+        ["cleared"]
+        if tamper == "lease-clear"
+        else (
+            [
+                "immutable",
+                (
+                    "quiescent directory reclaimer lifecycle transition "
+                    "is already active"
+                ),
+            ]
+            if tamper == "forged-guard"
+            else [
+                (
+                    "quiescent directory reclaimer lifecycle transition "
+                    "is already active"
+                )
+            ]
+        )
+    )
+    assert internal_guard_results == [
+        "quiescent directory lifecycle settlement token is not active"
+    ]
+    assert nested_results == [
+        (
+            "retry",
+            "quiescent directory reclaimer lifecycle transition is already active",
+        ),
+        (
+            "reclaim-b",
+            "quiescent directory reclaimer lifecycle transition is already active",
+        ),
+    ]
+    assert reclaimer._active is not None
+    assert (second / "payload.txt").read_text(encoding="utf-8") == "second"
+
+    with pytest.raises(
+        RuntimeError,
+        match="lifecycle settlement token is not active",
+    ):
+        published_attempt._close_borrowed(published_attempt._outer_call._token)
+
+    assert reclaimer.retry() is True
+    assert reclaimer.reclaim_child(second.name) is True
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_exit_defers_public_recovery_until_error_delivery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+    observed_permissions: list[bool] = []
+    nested_closes: list[bool] = []
+
+    class CleanupOwners:
+        def __get__(self, _instance: object, _owner: object) -> tuple[()]:
+            return ()
+
+        def __set__(self, _instance: object, _value: object) -> None:
+            nonlocal fail_release
+            current = reclaimer._lifecycle_lease.current_transition()
+            allowed = (
+                type(current) is atomic_module._QuiescentDirectoryLifecycleAttempt
+                and not current._outer_call._guard.gi_running
+            )
+            observed_permissions.append(allowed)
+            if allowed and not nested_closes:
+                fail_release = False
+                reclaimer.close()
+                nested_closes.append(True)
+            raise RuntimeError("refuse cleanup-owner metadata")
+
+    class ReleaseFailure(OSError):
+        publication_cleanup_owners = CleanupOwners()
+
+    primary = ReleaseFailure(errno.EIO, "exit lifecycle release failed")
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise primary
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(ReleaseFailure) as caught:
+        reclaimer.__exit__(None, None, None)
+
+    assert caught.value is primary
+    assert observed_permissions
+    assert not any(observed_permissions)
+    assert nested_closes == []
+
+    fail_release = False
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_serializes_two_threads_before_operation_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    other = parent / "attempt-b"
+    _write_tree(attempt, "payload.txt", "payload")
+    _write_tree(other, "foreign.txt", "preserve")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    real_child_metadata = atomic_module.QuiescentDirectoryReclaimer._child_metadata
+    results: list[bool] = []
+    failures: list[BaseException] = []
+
+    def blocked_child_metadata(authority: object, path: Path) -> object | None:
+        if path == attempt and not entered.is_set():
+            entered.set()
+            if not release.wait(timeout=5):
+                raise AssertionError("pre-install test did not release worker")
+        return real_child_metadata(authority, path)
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_child_metadata",
+        staticmethod(blocked_child_metadata),
+    )
+
+    def reclaim_in_worker() -> None:
+        try:
+            results.append(reclaimer.reclaim_child(attempt.name))
+        except BaseException as error:  # noqa: B036 - report thread failure
+            failures.append(error)
+
+    worker = threading.Thread(target=reclaim_in_worker)
+    worker.start()
+    try:
+        assert entered.wait(timeout=5)
+        assert reclaimer._active is None
+        with pytest.raises(RuntimeError, match="lifecycle transition is already"):
+            reclaimer.reclaim_child(other.name)
+        assert reclaimer._active is None
+        assert (other / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    finally:
+        release.set()
+        worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert failures == []
+    assert results == [True]
+    assert reclaimer.reclaim_child(other.name) is True
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_atomically_replaces_inactive_execution_guard(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    assert reclaimer.retry() is False
+    stale_guard = reclaimer._lifecycle_lease._outer_call._guard
+    assert stale_guard is not None
+    assert not stale_guard.gi_running
+
+    admission = threading.Barrier(2)
+    callback_entered = threading.Event()
+    callback_release = threading.Event()
+    rejected = threading.Event()
+    admission_counter_lock = threading.Lock()
+    admission_calls = 0
+    real_acquire = atomic_module._QuiescentDirectoryLifecycleLease.acquire_nonblocking
+    real_resume = atomic_module.QuiescentDirectoryReclaimer._resume
+    results: list[bool] = []
+    failures: list[BaseException] = []
+
+    def synchronized_acquire(lease: object) -> bool:
+        nonlocal admission_calls
+        if lease is reclaimer._lifecycle_lease:
+            with admission_counter_lock:
+                admission_calls += 1
+                synchronize = admission_calls <= 2
+            if synchronize:
+                admission.wait(timeout=5)
+        return real_acquire(lease)
+
+    def blocked_resume(
+        candidate: atomic_module.QuiescentDirectoryReclaimer,
+    ) -> bool:
+        if candidate is reclaimer and not callback_entered.is_set():
+            callback_entered.set()
+            if not callback_release.wait(timeout=5):
+                raise AssertionError("execution-guard test did not release callback")
+        return real_resume(candidate)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "acquire_nonblocking",
+        synchronized_acquire,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_resume",
+        blocked_resume,
+    )
+
+    def retry_in_worker() -> None:
+        try:
+            results.append(reclaimer.retry())
+        except BaseException as error:  # noqa: B036 - report thread failure
+            failures.append(error)
+            rejected.set()
+
+    workers = [threading.Thread(target=retry_in_worker) for _ in range(2)]
+    for worker in workers:
+        worker.start()
+    try:
+        assert callback_entered.wait(timeout=5)
+        assert rejected.wait(timeout=5)
+        current = reclaimer._lifecycle_lease.current_transition()
+        guard = reclaimer._lifecycle_lease._outer_call._guard
+        assert type(current) is atomic_module._QuiescentDirectoryLifecycleAttempt
+        assert guard is not stale_guard
+        assert guard is current._outer_call._guard
+        assert guard.gi_running
+    finally:
+        callback_release.set()
+        for worker in workers:
+            worker.join(timeout=5)
+
+    assert not any(worker.is_alive() for worker in workers)
+    assert results == [False]
+    assert len(failures) == 1
+    assert isinstance(failures[0], RuntimeError)
+    assert "lifecycle transition is already active" in str(failures[0])
+    assert not reclaimer._lifecycle_lease.transition_active()
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "acquire_nonblocking",
+        real_acquire,
+    )
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_resume",
+        real_resume,
+    )
+    assert reclaimer.retry() is False
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_reserves_created_outer_call_before_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    lease = reclaimer._lifecycle_lease
+    real_reserve = atomic_module._QuiescentDirectoryLifecycleLease.reserve_outer_call
+    installed_calls: list[object] = []
+    nested_failures: list[BaseException] = []
+    worker_failures: list[BaseException] = []
+
+    def reserve_then_reenter(owned_lease: object, outer_call: object) -> None:
+        real_reserve(owned_lease, outer_call)
+        if owned_lease is not lease or installed_calls:
+            return
+        installed_calls.append(outer_call)
+        assert lease._outer_call is outer_call
+        assert outer_call._guard.gi_frame is not None
+        assert not outer_call._guard.gi_running
+
+        try:
+            reclaimer.retry()
+        except BaseException as error:  # noqa: B036 - exact fail-fast result
+            nested_failures.append(error)
+
+        def retry_in_worker() -> None:
+            try:
+                reclaimer.retry()
+            except BaseException as error:  # noqa: B036 - exact fail-fast result
+                worker_failures.append(error)
+
+        worker = threading.Thread(target=retry_in_worker)
+        worker.start()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+        assert lease._outer_call is outer_call
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "reserve_outer_call",
+        reserve_then_reenter,
+    )
+
+    assert reclaimer.retry() is False
+    assert len(installed_calls) == 1
+    assert len(nested_failures) == 1
+    assert len(worker_failures) == 1
+    for failure in (*nested_failures, *worker_failures):
+        assert isinstance(failure, RuntimeError)
+        assert "lifecycle transition is already active" in str(failure)
+    assert lease._outer_call is installed_calls[0]
+    assert lease._outer_call.closed
+    assert not lease.transition_active()
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    "borrowed_depth",
+    [False, True],
+    ids=["fresh-created", "borrowed-active-operation"],
+)
+def test_quiescent_reclaimer_handed_reservation_cannot_expose_outer_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_depth: bool,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    first = parent / "attempt-a"
+    second = parent / "attempt-b"
+    _write_tree(first, "payload.txt", "first")
+    _write_tree(second, "payload.txt", "second")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    lease = reclaimer._lifecycle_lease
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    real_unlink = atomic_module.os.unlink
+    fail_release = borrowed_depth
+    fail_remove = borrowed_depth
+    setup_removal = OSError(errno.EIO, "active operation removal failed")
+
+    def fail_active_release(owned_lease: object) -> None:
+        if owned_lease is lease and fail_release:
+            raise OSError(errno.EIO, "active operation release failed")
+        real_release(owned_lease)
+
+    def fail_active_removal(
+        path: object,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        if path == "payload.txt" and fail_remove:
+            raise setup_removal
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_active_release,
+    )
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_active_removal)
+    if borrowed_depth:
+        with pytest.raises(OSError) as setup_caught:
+            reclaimer.reclaim_child(first.name)
+        assert setup_caught.value is setup_removal
+        assert reclaimer._active is not None
+        assert lease.transition_active()
+        assert lease.owned_by_current_thread()
+        assert lease._outer_call is not None
+        assert lease._outer_call.closed
+        fail_release = False
+        fail_remove = False
+
+    public_surfaces: list[tuple[str, ...]] = []
+    owner_closed_results: list[bool] = []
+    nested_results: list[tuple[str, str]] = []
+    attacked = False
+
+    class CleanupOwners:
+        def __get__(self, _instance: object, _owner: object) -> tuple[()]:
+            return ()
+
+        def __set__(self, _instance: object, value: object) -> None:
+            nonlocal attacked
+            reservations = (
+                tuple(
+                    owner
+                    for owner in value
+                    if type(owner)
+                    is atomic_module._QuiescentDirectoryOuterCallReservation
+                )
+                if type(value) is tuple
+                else ()
+            )
+            if reservations and not attacked:
+                attacked = True
+                reservation = reservations[0]
+                public_surfaces.append(
+                    tuple(name for name in dir(reservation) if not name.startswith("_"))
+                )
+                # Callback-controlled metadata may use only the documented
+                # cleanup-owner protocol. It must not receive a public path to
+                # the still-CREATED outer call behind this reservation.
+                reservation.close()
+                owner_closed_results.append(reservation.closed)
+                for label, callback in (
+                    ("retry", reclaimer.retry),
+                    ("reclaim", lambda: reclaimer.reclaim_child(second.name)),
+                    ("exit", lambda: reclaimer.__exit__(None, None, None)),
+                ):
+                    try:
+                        result = callback()
+                    except RuntimeError as error:
+                        nested_results.append((label, str(error)))
+                    else:
+                        nested_results.append((label, f"returned {result!r}"))
+            raise RuntimeError("refuse reservation owner metadata")
+
+    class ReservationFailure(RuntimeError):
+        publication_cleanup_owners = CleanupOwners()
+
+    primary = ReservationFailure("outer-call reservation failed")
+    real_reserve = atomic_module._QuiescentDirectoryLifecycleLease.reserve_outer_call
+    injected = False
+
+    def fail_after_reservation(
+        owned_lease: object,
+        outer_call: object,
+    ) -> None:
+        nonlocal injected
+        real_reserve(owned_lease, outer_call)
+        if owned_lease is lease and not injected:
+            injected = True
+            raise primary
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "reserve_outer_call",
+        fail_after_reservation,
+    )
+
+    with pytest.raises(ReservationFailure) as caught:
+        reclaimer.retry()
+
+    assert caught.value is primary
+    assert injected
+    assert attacked
+    assert public_surfaces == [("close", "closed")]
+    assert owner_closed_results == [True]
+    assert nested_results == [
+        (
+            "retry",
+            "quiescent directory reclaimer lifecycle transition is already active",
+        ),
+        (
+            "reclaim",
+            "quiescent directory reclaimer lifecycle transition is already active",
+        ),
+        (
+            "exit",
+            "quiescent directory reclaimer lifecycle transition is already active",
+        ),
+    ]
+    assert (second / "payload.txt").read_text(encoding="utf-8") == "second"
+    assert lease._outer_call is not None
+    assert lease._outer_call.closed
+
+    if borrowed_depth:
+        assert lease.transition_active()
+        assert lease.owned_by_current_thread()
+        assert reclaimer.retry() is True
+        assert not first.exists()
+    else:
+        assert not lease.transition_active()
+        assert not lease.owned_by_current_thread()
+        assert reclaimer.retry() is False
+    assert reclaimer.reclaim_child(second.name) is True
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+@pytest.mark.parametrize(
+    "pending_attempt",
+    [False, True],
+    ids=["no-prior-depth", "borrowed-attempt-depth"],
+)
+def test_quiescent_reclaimer_outer_admission_opcode_seams_recover(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pending_attempt: bool,
+) -> None:
+    seam_specs = (
+        (
+            atomic_module._QuiescentDirectoryLifecycleLease.reserve_outer_call,
+            "self._outer_call = outer_call",
+        ),
+        (
+            atomic_module._QuiescentDirectoryOuterCallReservation.close,
+            (
+                "if self._complete or self._borrowed_existing_depth:"
+                if pending_attempt
+                else "self._lease.release_admission()"
+            ),
+        ),
+        (
+            atomic_module._run_quiescent_directory_outer_call,
+            "return next(guard)",
+        ),
+        (
+            atomic_module._QuiescentDirectoryLifecycleLease.require_outer_call,
+            "self._require_process()",
+        ),
+    )
+
+    for seam_index, (function, source_fragment) in enumerate(seam_specs):
+        source_offsets = _source_statement_opcode_offsets(function, source_fragment)
+        with monkeypatch.context() as observation_patch:
+            observed_parent, observed_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=(
+                    f"outer-admission-observe-{int(pending_attempt)}-" f"{seam_index}"
+                ),
+            )
+            observed_reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                observed_parent,
+                expected_parent_identity=observed_identity,
+            )
+            observed_lease = observed_reclaimer._lifecycle_lease
+            observed_real_release = (
+                atomic_module._QuiescentDirectoryLifecycleLease.release
+            )
+            observed_fail_release = [pending_attempt]
+
+            def fail_observed_release(
+                owned_lease: object,
+                *,
+                target_lease: object = observed_lease,
+                failure_switch: list[bool] = observed_fail_release,
+                release: object = observed_real_release,
+            ) -> None:
+                if owned_lease is target_lease and failure_switch[0]:
+                    raise OSError(errno.EIO, "observed pending lifecycle release")
+                release(owned_lease)
+
+            observation_patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_observed_release,
+            )
+            if pending_attempt:
+                with pytest.raises(
+                    OSError,
+                    match="observed pending lifecycle release",
+                ):
+                    observed_reclaimer.retry()
+                observed_fail_release[0] = False
+
+            def selected_observed_frame(
+                values: dict[str, object],
+                *,
+                selected_function: object = function,
+                target_lease: object = observed_lease,
+            ) -> bool:
+                if selected_function is (
+                    atomic_module._run_quiescent_directory_outer_call
+                ):
+                    return values.get("lease") is target_lease
+                candidate = values.get("self")
+                if selected_function is (
+                    atomic_module._QuiescentDirectoryOuterCallReservation.close
+                ):
+                    return getattr(candidate, "_lease", None) is target_lease
+                return candidate is target_lease
+
+            observed_offsets = _observed_opcode_offsets(
+                function,
+                observed_reclaimer.retry,
+                predicate=selected_observed_frame,
+            )
+            observed_reclaimer.close()
+        offsets = tuple(
+            offset for offset in source_offsets if offset in observed_offsets
+        )
+        assert offsets
+        for opcode_index, opcode_offset in enumerate(offsets):
+            with monkeypatch.context() as patch:
+                parent, parent_identity = _private_reclaimer_parent(
+                    tmp_path,
+                    name=(
+                        f"outer-admission-{int(pending_attempt)}-"
+                        f"{seam_index}-{opcode_index}"
+                    ),
+                )
+                reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                    parent,
+                    expected_parent_identity=parent_identity,
+                )
+                lease = reclaimer._lifecycle_lease
+                real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+                fail_release = [pending_attempt]
+
+                def fail_pending_release(
+                    owned_lease: object,
+                    *,
+                    target_lease: object = lease,
+                    failure_switch: list[bool] = fail_release,
+                    release: object = real_release,
+                ) -> None:
+                    if owned_lease is target_lease and failure_switch[0]:
+                        raise OSError(errno.EIO, "pending lifecycle release")
+                    release(owned_lease)
+
+                patch.setattr(
+                    atomic_module._QuiescentDirectoryLifecycleLease,
+                    "release",
+                    fail_pending_release,
+                )
+                if pending_attempt:
+                    with pytest.raises(OSError, match="pending lifecycle release"):
+                        reclaimer.retry()
+                    prior_attempt = lease.current_transition()
+                    assert type(prior_attempt) is (
+                        atomic_module._QuiescentDirectoryLifecycleAttempt
+                    )
+                    assert lease.owned_by_current_thread()
+                    assert lease._outer_call is prior_attempt._outer_call
+                    assert lease._outer_call.closed
+                    fail_release[0] = False
+
+                interruption = KeyboardInterrupt(
+                    f"outer admission {source_fragment} {opcode_offset}"
+                )
+
+                def selected_frame(
+                    values: dict[str, object],
+                    *,
+                    selected_function: object = function,
+                    target_lease: object = lease,
+                ) -> bool:
+                    if selected_function is (
+                        atomic_module._run_quiescent_directory_outer_call
+                    ):
+                        return values.get("lease") is target_lease
+                    candidate = values.get("self")
+                    if selected_function is (
+                        atomic_module._QuiescentDirectoryOuterCallReservation.close
+                    ):
+                        return getattr(candidate, "_lease", None) is target_lease
+                    return candidate is target_lease
+
+                with pytest.raises(KeyboardInterrupt) as caught:
+                    _call_with_interrupt_at_opcode(
+                        function,
+                        opcode_offset,
+                        reclaimer.retry,
+                        predicate=selected_frame,
+                        error=interruption,
+                    )
+
+                assert caught.value is interruption
+                try:
+                    owners = BaseException.__getattribute__(
+                        caught.value,
+                        "publication_cleanup_owners",
+                    )
+                except AttributeError:
+                    owners = ()
+                assert type(owners) is tuple
+                for owner in owners:
+                    owner.close()
+
+                # The interrupted call may leave the exact prior attempt for
+                # same-origin public recovery, but never requires link walking.
+                assert reclaimer.retry() is False
+                assert not lease.owned_by_current_thread()
+                assert not lease.transition_active()
+                assert lease._outer_call is not None
+                assert lease._outer_call.closed
+                _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+                reclaimer.close()
+
+
+def test_quiescent_reclaimer_raw_only_attempt_owner_reenters_admission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    other = parent / "attempt-b"
+    _write_tree(other, "payload.txt", "preserve")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    lease = reclaimer._lifecycle_lease
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_raw_release(owned_lease: object) -> None:
+        if owned_lease is lease and fail_release:
+            raise OSError(errno.EIO, "raw-only lifecycle release")
+        real_release(owned_lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_raw_release,
+    )
+    interruption = KeyboardInterrupt("raw-only lifecycle acquisition")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_return(
+            atomic_module._QuiescentDirectoryLifecycleLease.acquire_nonblocking,
+            reclaimer.retry,
+            call_occurrence=2,
+            predicate=lambda frame, result: (
+                frame.f_locals.get("self") is lease and result is True
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert tuple(name for name in dir(attempt) if not name.startswith("_")) == (
+        "close",
+        "closed",
+    )
+    assert lease.current_transition() is None
+    assert lease.owned_by_current_thread()
+    assert lease._outer_call is attempt._outer_call
+    assert lease._outer_call.closed
+
+    with pytest.raises(RuntimeError, match="settlement token is not active"):
+        attempt._close_borrowed(object())
+    with pytest.raises(RuntimeError, match="settlement token is not active"):
+        attempt._close_borrowed(attempt._outer_call._token)
+
+    cross_thread_failures: list[BaseException] = []
+
+    def close_in_worker() -> None:
+        try:
+            attempt.close()
+        except BaseException as error:  # noqa: B036 - exact origin rejection
+            cross_thread_failures.append(error)
+
+    worker = threading.Thread(target=close_in_worker)
+    worker.start()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert len(cross_thread_failures) == 1
+    assert isinstance(cross_thread_failures[0], RuntimeError)
+    assert "lifecycle transition is already active" in str(cross_thread_failures[0])
+    assert (other / "payload.txt").read_text(encoding="utf-8") == "preserve"
+
+    fail_release = False
+    attempt.close()
+    assert attempt.closed
+    assert not lease.owned_by_current_thread()
+    assert lease.current_transition() is None
+    assert reclaimer.retry() is False
+    assert reclaimer.reclaim_child(other.name) is True
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_suspended_outer_call_is_directly_recoverable(
+    tmp_path: Path,
+) -> None:
+    function = atomic_module._QuiescentDirectoryOuterCall.close
+    source_offsets = _source_statement_opcode_offsets(function, "self._guard.close()")
+    observed_parent, observed_identity = _private_reclaimer_parent(
+        tmp_path,
+        name="outer-close-observe",
+    )
+    observed_reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        observed_parent,
+        expected_parent_identity=observed_identity,
+    )
+    observed_lease = observed_reclaimer._lifecycle_lease
+    observed_offsets = _observed_opcode_offsets(
+        function,
+        observed_reclaimer.retry,
+        predicate=lambda values: values.get("self") is observed_lease._outer_call,
+    )
+    observed_reclaimer.close()
+    offsets = tuple(offset for offset in source_offsets if offset in observed_offsets)
+    assert offsets
+
+    for index, opcode_offset in enumerate(offsets):
+        parent, parent_identity = _private_reclaimer_parent(
+            tmp_path,
+            name=f"outer-close-{index}",
+        )
+        reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+            parent,
+            expected_parent_identity=parent_identity,
+        )
+        lease = reclaimer._lifecycle_lease
+        interruption = KeyboardInterrupt(f"outer close {opcode_offset}")
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            _call_with_interrupt_at_opcode(
+                function,
+                opcode_offset,
+                reclaimer.retry,
+                predicate=lambda values, target_lease=lease: (
+                    values.get("self") is target_lease._outer_call
+                ),
+                error=interruption,
+            )
+
+        assert caught.value is interruption
+        outer_call = lease._outer_call
+        assert type(outer_call) is atomic_module._QuiescentDirectoryOuterCall
+        assert tuple(name for name in dir(outer_call) if not name.startswith("_")) == (
+            "close",
+            "closed",
+        )
+        if outer_call._guard.gi_frame is not None:
+            assert not outer_call._guard.gi_running
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert owners == (outer_call,)
+            for owner in owners:
+                owner.close()
+        assert outer_call.closed
+        assert reclaimer.retry() is False
+        _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+        reclaimer.close()
+
+
+def test_quiescent_reclaimer_next_result_close_handoff_has_direct_owner(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    post_handoff = parent / "post-handoff"
+    _write_tree(post_handoff, "payload.txt", "post-handoff")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    lease = reclaimer._lifecycle_lease
+    interruption = KeyboardInterrupt("outer next result handoff")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_quiescent_directory_outer_call,
+            "outer_call.close()",
+            reclaimer.retry,
+            predicate=lambda values: (
+                values.get("lease") is lease
+                and values["outer_call"]._guard.gi_frame is not None
+                and not values["outer_call"]._guard.gi_running
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    outer_call = lease._outer_call
+    assert type(outer_call) is atomic_module._QuiescentDirectoryOuterCall
+    assert outer_call._guard.gi_frame is not None
+    assert tuple(name for name in dir(outer_call) if not name.startswith("_")) == (
+        "close",
+        "closed",
+    )
+    # A suspended owner is handed out only after its lifecycle callback and
+    # operation state have fully settled. Closing it can therefore admit the
+    # next public call without exposing an in-flight transition.
+    assert lease.current_transition() is None
+    assert not lease.owned_by_current_thread()
+    assert reclaimer._active is None
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert owners == (outer_call,)
+    for owner in owners:
+        owner.close()
+    assert outer_call.closed
+    assert reclaimer.retry() is False
+    assert reclaimer.reclaim_child(post_handoff.name) is True
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize("prior_kind", ["explicit", "implicit"])
+@pytest.mark.parametrize("metadata_shape", ["empty-read", "refuse-read"])
+def test_quiescent_reclaimer_hostile_final_close_uses_builtin_owner_carrier(
+    tmp_path: Path,
+    prior_kind: str,
+    metadata_shape: str,
+) -> None:
+    before_fds = (
+        len(os.listdir("/proc/self/fd")) if sys.platform.startswith("linux") else 0
+    )
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    post_handoff = parent / "post-handoff"
+    _write_tree(post_handoff, "payload.txt", "post-handoff")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    lease = reclaimer._lifecycle_lease
+    transfer_attempts: list[object] = []
+    metadata_errors: list[RuntimeError] = []
+    link_dispatches: list[str] = []
+
+    class CleanupOwners:
+        def __get__(self, _instance: object, _owner: object) -> tuple[()]:
+            if metadata_shape == "refuse-read":
+                metadata_error = RuntimeError("refuse final-close owner read")
+                metadata_errors.append(metadata_error)
+                raise metadata_error
+            return ()
+
+        def __set__(self, _instance: object, value: object) -> None:
+            transfer_attempts.append(value)
+            metadata_error = RuntimeError("refuse final-close owner metadata")
+            metadata_errors.append(metadata_error)
+            raise metadata_error
+
+    class FinalCloseFailure(KeyboardInterrupt):
+        publication_cleanup_owners = CleanupOwners()
+
+        @property
+        def __cause__(self) -> BaseException | None:
+            link_dispatches.append("cause-get")
+            raise RuntimeError("hostile cause getter")
+
+        @__cause__.setter
+        def __cause__(self, _value: BaseException | None) -> None:
+            link_dispatches.append("cause-set")
+            raise RuntimeError("hostile cause setter")
+
+        @property
+        def __context__(self) -> BaseException | None:
+            link_dispatches.append("context-get")
+            raise RuntimeError("hostile context getter")
+
+        @__context__.setter
+        def __context__(self, _value: BaseException | None) -> None:
+            link_dispatches.append("context-set")
+            raise RuntimeError("hostile context setter")
+
+    prior = LookupError("final-close prior cause")
+    primary = FinalCloseFailure("hostile final-close interruption")
+    if prior_kind == "explicit":
+        vars(BaseException)["__cause__"].__set__(primary, prior)
+    else:
+        vars(BaseException)["__context__"].__set__(primary, prior)
+
+    with pytest.raises(FinalCloseFailure) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_quiescent_directory_outer_call,
+            "outer_call.close()",
+            reclaimer.retry,
+            predicate=lambda values: (
+                values.get("lease") is lease
+                and values["outer_call"]._guard.gi_frame is not None
+                and not values["outer_call"]._guard.gi_running
+            ),
+            error=primary,
+        )
+
+    assert caught.value is primary
+    if metadata_shape == "empty-read":
+        assert transfer_attempts
+    else:
+        assert transfer_attempts == []
+    assert metadata_errors
+    outer_call = lease._outer_call
+    assert type(outer_call) is atomic_module._QuiescentDirectoryOuterCall
+    assert outer_call._guard.gi_frame is not None
+    assert not outer_call._guard.gi_running
+    assert lease.current_transition() is None
+    assert not lease.owned_by_current_thread()
+    assert reclaimer._active is None
+    assert _exception_chain_contains(primary, prior)
+
+    carrier = vars(BaseException)["__cause__"].__get__(primary, type(primary))
+    assert type(carrier) is RuntimeError
+    owners = BaseException.__getattribute__(
+        carrier,
+        "publication_cleanup_owners",
+    )
+    assert owners == (outer_call,)
+    assert carrier.args[1] is owners
+    assert tuple(name for name in dir(outer_call) if not name.startswith("_")) == (
+        "close",
+        "closed",
+    )
+    assert _exception_link_graph_is_acyclic(primary)
+    recovery_graph = _bounded_exception_recovery_graph(primary)
+    assert any(candidate is prior for candidate in recovery_graph)
+    assert any(candidate is outer_call for candidate in recovery_graph)
+    inner_carriers = tuple(
+        candidate
+        for candidate in recovery_graph
+        if type(candidate) is RuntimeError
+        and candidate is not carrier
+        and any(
+            owner is outer_call
+            for owner in getattr(candidate, "publication_cleanup_owners", ())
+        )
+    )
+    assert inner_carriers
+    retained_metadata = tuple(
+        metadata_error
+        for metadata_error in metadata_errors
+        if any(candidate is metadata_error for candidate in recovery_graph)
+    )
+    assert retained_metadata
+    inert_wrappers = tuple(
+        candidate
+        for candidate in recovery_graph
+        if type(candidate) is RuntimeError
+        and any(
+            argument is metadata_error
+            for argument in candidate.args
+            for metadata_error in retained_metadata
+        )
+    )
+    assert inert_wrappers
+    assert all(wrapper.__cause__ is None for wrapper in inert_wrappers)
+    assert all(wrapper.__context__ is None for wrapper in inert_wrappers)
+    assert link_dispatches == []
+
+    for callback in (
+        reclaimer.retry,
+        lambda: reclaimer.reclaim_child(post_handoff.name),
+        reclaimer.close,
+    ):
+        with pytest.raises(RuntimeError, match="lifecycle transition is already"):
+            callback()
+    assert (post_handoff / "payload.txt").read_text(encoding="utf-8") == (
+        "post-handoff"
+    )
+
+    for owner in owners:
+        owner.close()
+    assert outer_call.closed
+    assert reclaimer.retry() is False
+    assert reclaimer.reclaim_child(post_handoff.name) is True
+    reclaimer.close()
+    assert reclaimer.closed
+    if sys.platform.startswith("linux"):
+        assert len(os.listdir("/proc/self/fd")) <= before_fds
+
+
+def test_quiescent_reclaimer_metadata_diagnostic_interruption_stays_acyclic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module._QuiescentCleanupHandoffBoundary.__exit__
+    offsets = _source_statement_opcode_offsets(
+        function,
+        "post_transfer_cause = _publication_exception_cause(active_error)",
+    )
+    real_outer_close = atomic_module._QuiescentDirectoryOuterCall.close
+
+    for index, opcode_offset in enumerate(offsets):
+        with monkeypatch.context() as patch:
+            before_fds = (
+                len(os.listdir("/proc/self/fd"))
+                if sys.platform.startswith("linux")
+                else 0
+            )
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"metadata-diagnostic-{index}",
+            )
+            pending = parent / "pending"
+            _write_tree(pending, "payload.txt", "pending")
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            lease = reclaimer._lifecycle_lease
+
+            class CleanupOwners:
+                def __get__(self, _instance: object, _owner: object) -> object:
+                    raise RuntimeError("refuse diagnostic owner read")
+
+                def __set__(self, _instance: object, _value: object) -> None:
+                    raise RuntimeError("refuse diagnostic owner write")
+
+            class FinalCloseFailure(KeyboardInterrupt):
+                publication_cleanup_owners = CleanupOwners()
+
+            prior = LookupError("metadata diagnostic prior")
+            primary = FinalCloseFailure("metadata diagnostic primary")
+            primary.__context__ = prior
+            interruption = KeyboardInterrupt(
+                f"metadata diagnostic interruption {opcode_offset}"
+            )
+            fail_outer_close = True
+
+            def fail_suspended_outer_close(
+                outer_call: atomic_module._QuiescentDirectoryOuterCall,
+            ) -> None:
+                if (
+                    fail_outer_close  # noqa: B023
+                    and outer_call is lease._outer_call  # noqa: B023
+                    and outer_call._guard.gi_frame is not None
+                    and not outer_call._guard.gi_running
+                ):
+                    raise primary  # noqa: B023
+                real_outer_close(outer_call)
+
+            patch.setattr(
+                atomic_module._QuiescentDirectoryOuterCall,
+                "close",
+                fail_suspended_outer_close,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    reclaimer.retry,
+                    predicate=lambda values: values.get("active_error")
+                    is primary,  # noqa: B023
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            assert _exception_link_graph_is_acyclic(interruption)
+            assert _exception_link_graph_is_acyclic(primary)
+            recovery_graph = _bounded_exception_recovery_graph(interruption)
+            assert any(candidate is primary for candidate in recovery_graph)
+            assert any(candidate is prior for candidate in recovery_graph)
+            outer_call = lease._outer_call
+            assert type(outer_call) is atomic_module._QuiescentDirectoryOuterCall
+            owners = BaseException.__getattribute__(
+                interruption,
+                "publication_cleanup_owners",
+            )
+            assert owners == (outer_call,)
+            for callback in (
+                reclaimer.retry,
+                lambda current=reclaimer, child_name=pending.name: (
+                    current.reclaim_child(child_name)
+                ),
+                reclaimer.close,
+            ):
+                with pytest.raises(
+                    RuntimeError,
+                    match="lifecycle transition is already",
+                ):
+                    callback()
+            assert (pending / "payload.txt").read_text(encoding="utf-8") == "pending"
+
+            fail_outer_close = False
+            outer_call.close()
+            assert reclaimer.retry() is False
+            assert reclaimer.reclaim_child(pending.name) is True
+            reclaimer.close()
+            assert reclaimer.closed
+            if sys.platform.startswith("linux"):
+                assert len(os.listdir("/proc/self/fd")) <= before_fds
+
+
+def test_quiescent_reclaimer_serializes_two_threads_during_active_removal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    other = parent / "attempt-b"
+    _write_tree(attempt, "payload.txt", "payload")
+    _write_tree(other, "foreign.txt", "preserve")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    real_unlink = atomic_module.os.unlink
+    results: list[bool] = []
+    failures: list[BaseException] = []
+
+    def blocked_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        if path == "payload.txt" and not entered.is_set():
+            entered.set()
+            if not release.wait(timeout=5):
+                raise AssertionError("active-removal test did not release worker")
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(atomic_module.os, "unlink", blocked_unlink)
+
+    def reclaim_in_worker() -> None:
+        try:
+            results.append(reclaimer.reclaim_child(attempt.name))
+        except BaseException as error:  # noqa: B036 - report thread failure
+            failures.append(error)
+
+    worker = threading.Thread(target=reclaim_in_worker)
+    worker.start()
+    try:
+        assert entered.wait(timeout=5)
+        active = reclaimer._active
+        assert active is not None
+        with pytest.raises(RuntimeError, match="lifecycle transition is already"):
+            reclaimer.reclaim_child(other.name)
+        with pytest.raises(RuntimeError, match="lifecycle transition is already"):
+            reclaimer.close()
+        assert reclaimer._active is active
+        assert (other / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    finally:
+        release.set()
+        worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert failures == []
+    assert results == [True]
+    assert reclaimer.reclaim_child(other.name) is True
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_releases_lease_after_acquire_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    interruption = KeyboardInterrupt("lifecycle acquire result interruption")
+    real_acquire = atomic_module._QuiescentDirectoryLifecycleLease.acquire_nonblocking
+    interrupted = False
+
+    def interrupt_after_acquire(lease: object) -> bool:
+        nonlocal interrupted
+        acquired = real_acquire(lease)
+        if lease is reclaimer._lifecycle_lease and acquired and not interrupted:
+            interrupted = True
+            raise interruption
+        return acquired
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "acquire_nonblocking",
+        interrupt_after_acquire,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        reclaimer.reclaim_child(attempt.name)
+
+    assert caught.value is interruption
+    assert reclaimer._active is None
+    assert (attempt / "payload.txt").read_text(encoding="utf-8") == "payload"
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    assert reclaimer.reclaim_child(attempt.name) is True
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_reconciles_lease_release_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    interruption = KeyboardInterrupt("post-lifecycle-release interruption")
+    interrupted = False
+
+    def interrupt_after_release(lease: object) -> None:
+        nonlocal interrupted
+        real_release(lease)
+        if lease is reclaimer._lifecycle_lease and not interrupted:
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        interrupt_after_release,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        reclaimer.reclaim_child(attempt.name)
+
+    assert caught.value is interruption
+    assert not attempt.exists()
+    assert reclaimer._active is None
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize("caller", ["recursive", "thread"], ids=["recursive", "thread"])
+def test_quiescent_reclaimer_retains_logical_lease_through_raw_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caller: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    other = parent / "attempt-b"
+    _write_tree(attempt, "payload.txt", "payload")
+    _write_tree(other, "foreign.txt", "preserve")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    nested_results: list[bool] = []
+    nested_failures: list[BaseException] = []
+    injected = False
+
+    def try_nested_reclaim() -> None:
+        try:
+            nested_results.append(reclaimer.reclaim_child(other.name))
+        except BaseException as error:  # noqa: B036 - inspect exact rejection
+            nested_failures.append(error)
+
+    def release_then_reenter(lease: object) -> None:
+        nonlocal injected
+        real_release(lease)
+        if lease is reclaimer._lifecycle_lease and not injected:
+            injected = True
+            if caller == "recursive":
+                try_nested_reclaim()
+            else:
+                worker = threading.Thread(target=try_nested_reclaim)
+                worker.start()
+                worker.join(timeout=5)
+                assert not worker.is_alive()
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        release_then_reenter,
+    )
+
+    assert reclaimer.reclaim_child(attempt.name) is True
+    assert injected
+    assert nested_results == []
+    assert len(nested_failures) == 1
+    assert isinstance(nested_failures[0], RuntimeError)
+    assert "lifecycle transition is already active" in str(nested_failures[0])
+    assert (other / "foreign.txt").read_text(encoding="utf-8") == "preserve"
+    assert not reclaimer._lifecycle_lease.transition_active()
+
+    assert reclaimer.reclaim_child(other.name) is True
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_closed_waits_for_logical_lease_settlement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    observations: list[bool] = []
+
+    def observe_raw_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and not observations:
+            observations.append(reclaimer.closed)
+            real_release(lease)
+            observations.append(reclaimer.closed)
+            return
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        observe_raw_release,
+    )
+
+    reclaimer.close()
+
+    assert observations == [False, False]
+    assert reclaimer.closed
+    # Idempotent close runs under a fresh logical transition; its internal
+    # closed probe is deliberately false until that new transition settles.
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+@pytest.mark.parametrize(
+    ("function_name", "source_fragment", "on_return"),
+    [
+        ("attempt", "self._lease.clear_transition(self)", False),
+        ("lease", "self._current_transition = None", False),
+        ("lease", "self._current_transition = None", True),
+    ],
+    ids=["attempt-before-clear", "clear-before-store", "clear-return"],
+)
+def test_quiescent_reclaimer_recovers_interrupted_logical_lease_clear(
+    tmp_path: Path,
+    function_name: str,
+    source_fragment: str,
+    on_return: bool,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    interruption = KeyboardInterrupt(f"logical lease clear {source_fragment}")
+    function = (
+        atomic_module._QuiescentDirectoryLifecycleAttempt._close_unprotected
+        if function_name == "attempt"
+        else atomic_module._QuiescentDirectoryLifecycleLease.clear_transition
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        if on_return:
+            _call_with_interrupt_on_return(
+                function,
+                lambda: reclaimer.reclaim_child("missing-attempt"),
+                predicate=lambda frame, _result: (
+                    frame.f_locals.get("attempt") is not None
+                    and frame.f_locals.get("self") is reclaimer._lifecycle_lease
+                ),
+                error=interruption,
+            )
+        else:
+            _call_with_interrupt_on_source_line(
+                function,
+                source_fragment,
+                lambda: reclaimer.reclaim_child("missing-attempt"),
+                predicate=lambda values: (
+                    values.get("attempt") is not None
+                    if function_name == "lease"
+                    else values.get("self") is not None
+                    and values["self"]._lease is reclaimer._lifecycle_lease
+                ),
+                error=interruption,
+            )
+
+    assert caught.value is interruption
+    assert not reclaimer._lifecycle_lease.transition_active()
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    ("source_fragment", "occurrence"),
+    [
+        ("locally_unwinding = context_error is not None", 1),
+        ("locally_unwinding = context_error is not None", 2),
+        ("_run_ordered_actions(failures)", 1),
+        ("_run_ordered_actions(failures)", 2),
+        ("_prune_publication_cleanup_owners(failures.primary_error)", 1),
+        ("_prune_publication_cleanup_owners(failures.primary_error)", 2),
+    ],
+    ids=[
+        "inner-entry",
+        "outer-entry",
+        "inner-call",
+        "outer-call",
+        "inner-return",
+        "outer-return",
+    ],
+)
+@pytest.mark.parametrize(
+    ("cleanup_label", "tree_kind"),
+    [
+        ("quiescent directory traversal cleanup also failed", "traversal"),
+        ("quiescent directory child cleanup also failed", "child"),
+    ],
+    ids=["traversal-owner", "child-owner"],
+)
+def test_quiescent_reclaimer_auto_closes_local_descriptor_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+    occurrence: int,
+    cleanup_label: str,
+    tree_kind: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    nested = attempt / "nested"
+    nested.mkdir(parents=True)
+    if tree_kind == "traversal":
+        (nested / "payload.txt").write_text("payload", encoding="utf-8")
+    before_fds = (
+        len(os.listdir("/proc/self/fd")) if sys.platform.startswith("linux") else 0
+    )
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    real_close = atomic_module._PosixResourceOwner.close
+    local_owners: list[atomic_module._PosixResourceOwner] = []
+    opened_descriptors: list[int] = []
+
+    def capture_scope(
+        resources: atomic_module._PosixResourceOwner,
+        callback: object,
+        *,
+        label: str,
+    ) -> object:
+        if label == cleanup_label and not local_owners:
+            local_owners.append(resources)
+        return real_scope(resources, callback, label=label)
+
+    def capture_close(resources: atomic_module._PosixResourceOwner) -> None:
+        if local_owners and resources is local_owners[0] and not opened_descriptors:
+            opened_descriptors.extend(
+                record.descriptor
+                for record in resources._records
+                if record.descriptor >= 0
+            )
+        real_close(resources)
+
+    def selected_cleanup(values: dict[str, object]) -> bool:
+        actions = values.get("cleanup_actions")
+        return bool(
+            type(actions) is tuple
+            and len(actions) == 1
+            and isinstance(actions[0], atomic_module._OrderedAction)
+            and actions[0].label == cleanup_label
+        )
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_quiescent_directory_resource_scope",
+        capture_scope,
+    )
+    monkeypatch.setattr(atomic_module._PosixResourceOwner, "close", capture_close)
+    interruption = KeyboardInterrupt(
+        f"{tree_kind} resource cleanup {source_fragment} {occurrence}"
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_context_with_cleanup_actions.__wrapped__,
+            source_fragment,
+            lambda: reclaimer.reclaim_child(attempt.name),
+            predicate=selected_cleanup,
+            occurrence=occurrence,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert len(local_owners) == 1
+    assert opened_descriptors
+    assert local_owners[0].closed
+    for descriptor in opened_descriptors:
+        _assert_descriptor_closed(descriptor)
+    assert reclaimer in caught.value.publication_cleanup_owners
+
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer, first_result=True)
+    reclaimer.close()
+    if sys.platform.startswith("linux"):
+        assert len(os.listdir("/proc/self/fd")) <= before_fds
+
+
+@pytest.mark.parametrize(
+    "source_fragment",
+    [
+        "locally_unwinding = context_error is not None",
+        "_run_ordered_actions(failures)",
+        "_prune_publication_cleanup_owners(failures.primary_error)",
+    ],
+    ids=["finalizer-entry", "finalizer-call", "finalizer-return"],
+)
+@pytest.mark.parametrize(
+    ("cleanup_label", "tree_kind"),
+    [
+        ("quiescent directory traversal cleanup also failed", "traversal"),
+        ("quiescent directory child cleanup also failed", "child"),
+    ],
+    ids=["traversal-owner", "child-owner"],
+)
+def test_quiescent_reclaimer_preserves_entry_error_while_closing_local_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+    cleanup_label: str,
+    tree_kind: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    nested = attempt / "nested"
+    nested.mkdir(parents=True)
+    if tree_kind == "traversal":
+        (nested / "payload.txt").write_text("payload", encoding="utf-8")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    real_unlink = atomic_module.os.unlink
+    real_empty = atomic_module._require_quiescent_directory_empty
+    natural_failure = OSError(errno.EIO, f"natural {tree_kind} entry failure")
+    interruption = KeyboardInterrupt(f"{tree_kind} cleanup finalizer interruption")
+    local_owners: list[atomic_module._PosixResourceOwner] = []
+    fail_operation = True
+
+    def capture_scope(
+        resources: atomic_module._PosixResourceOwner,
+        callback: object,
+        *,
+        label: str,
+    ) -> object:
+        if label == cleanup_label and not local_owners:
+            local_owners.append(resources)
+        return real_scope(resources, callback, label=label)
+
+    def fail_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        if fail_operation and path == "payload.txt":
+            raise natural_failure
+        real_unlink(path, dir_fd=dir_fd)
+
+    def fail_child_empty(descriptor: int, *, label: str) -> None:
+        if fail_operation and "untracked entry" in label:
+            raise natural_failure
+        real_empty(descriptor, label=label)
+
+    def selected_cleanup(values: dict[str, object]) -> bool:
+        actions = values.get("cleanup_actions")
+        return bool(
+            type(actions) is tuple
+            and len(actions) == 1
+            and isinstance(actions[0], atomic_module._OrderedAction)
+            and actions[0].label == cleanup_label
+        )
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_quiescent_directory_resource_scope",
+        capture_scope,
+    )
+    if tree_kind == "traversal":
+        monkeypatch.setattr(atomic_module.os, "unlink", fail_unlink)
+    else:
+        monkeypatch.setattr(
+            atomic_module,
+            "_require_quiescent_directory_empty",
+            fail_child_empty,
+        )
+
+    with pytest.raises(OSError) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_context_with_cleanup_actions.__wrapped__,
+            source_fragment,
+            lambda: reclaimer.reclaim_child(attempt.name),
+            predicate=selected_cleanup,
+            error=interruption,
+        )
+
+    assert caught.value is natural_failure
+    diagnostic_notes = (
+        *getattr(caught.value, "__notes__", ()),
+        *getattr(caught.value, "_codenib_cleanup_notes", ()),
+    )
+    assert caught.value.__cause__ is interruption or any(
+        str(interruption) in note for note in diagnostic_notes
+    )
+    assert _exception_link_graph_is_acyclic(caught.value)
+    assert len(local_owners) == 1
+    assert local_owners[0].closed
+    assert reclaimer in caught.value.publication_cleanup_owners
+
+    fail_operation = False
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer, first_result=True)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    ("cleanup_label", "tree_kind"),
+    [
+        ("quiescent directory traversal cleanup also failed", "traversal"),
+        ("quiescent directory child cleanup also failed", "child"),
+    ],
+    ids=["traversal-owner", "child-owner"],
+)
+def test_quiescent_reclaimer_transfers_persistently_unclosed_local_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup_label: str,
+    tree_kind: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    nested = attempt / "nested"
+    nested.mkdir(parents=True)
+    if tree_kind == "traversal":
+        (nested / "payload.txt").write_text("payload", encoding="utf-8")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    real_close = atomic_module._PosixResourceOwner.close
+    close_error = OSError(errno.EIO, f"persistent {tree_kind} descriptor close")
+    local_owners: list[atomic_module._PosixResourceOwner] = []
+    opened_descriptors: list[int] = []
+    fail_close = True
+
+    def capture_scope(
+        resources: atomic_module._PosixResourceOwner,
+        callback: object,
+        *,
+        label: str,
+    ) -> object:
+        if label == cleanup_label and not local_owners:
+            local_owners.append(resources)
+        return real_scope(resources, callback, label=label)
+
+    def fail_local_close(resources: atomic_module._PosixResourceOwner) -> None:
+        if local_owners and resources is local_owners[0] and fail_close:
+            if not opened_descriptors:
+                opened_descriptors.extend(
+                    record.descriptor
+                    for record in resources._records
+                    if record.descriptor >= 0
+                )
+            raise close_error
+        real_close(resources)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_quiescent_directory_resource_scope",
+        capture_scope,
+    )
+    monkeypatch.setattr(atomic_module._PosixResourceOwner, "close", fail_local_close)
+
+    with pytest.raises(OSError) as caught:
+        reclaimer.reclaim_child(attempt.name)
+
+    assert caught.value is close_error
+    assert len(local_owners) == 1
+    owner = local_owners[0]
+    assert opened_descriptors
+    assert not owner.closed
+    owners = caught.value.publication_cleanup_owners
+    assert sum(candidate is owner for candidate in owners) == 1
+    assert sum(candidate is reclaimer for candidate in owners) == 1
+
+    fail_close = False
+    owner.close()
+    assert owner.closed
+    for descriptor in opened_descriptors:
+        _assert_descriptor_closed(descriptor)
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer, first_result=True)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    "source_fragment",
+    ["merged = inherited if not existing else existing", "BaseException.__setattr__("],
+    ids=["merge-build", "tuple-store"],
+)
+def test_quiescent_reclaimer_durably_transfers_local_owner_to_entry_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    nested = attempt / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_text("payload", encoding="utf-8")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    real_close = atomic_module._PosixResourceOwner.close
+    real_unlink = atomic_module.os.unlink
+    natural_failure = ValueError("natural traversal entry failure")
+    cleanup_failure = OSError(errno.EIO, "persistent traversal owner close")
+    interruption = KeyboardInterrupt(f"local owner {source_fragment}")
+    local_owners: list[atomic_module._PosixResourceOwner] = []
+    opened_descriptors: list[int] = []
+    fail_close = True
+    fail_operation = True
+
+    def capture_scope(
+        resources: atomic_module._PosixResourceOwner,
+        callback: object,
+        *,
+        label: str,
+    ) -> object:
+        if (
+            label == "quiescent directory traversal cleanup also failed"
+            and not local_owners
+        ):
+            local_owners.append(resources)
+        return real_scope(resources, callback, label=label)
+
+    def fail_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        if fail_operation:
+            raise natural_failure
+        real_unlink(path, dir_fd=dir_fd)
+
+    def fail_local_close(resources: atomic_module._PosixResourceOwner) -> None:
+        if local_owners and resources is local_owners[0] and fail_close:
+            if not opened_descriptors:
+                opened_descriptors.extend(
+                    record.descriptor
+                    for record in resources._records
+                    if record.descriptor >= 0
+                )
+            raise cleanup_failure
+        real_close(resources)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_quiescent_directory_resource_scope",
+        capture_scope,
+    )
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_unlink)
+    monkeypatch.setattr(atomic_module._PosixResourceOwner, "close", fail_local_close)
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._merge_publication_cleanup_owner_tuple,
+            source_fragment,
+            lambda: reclaimer.reclaim_child(attempt.name),
+            predicate=lambda values: values.get("failure") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is natural_failure
+    assert len(local_owners) == 1
+    owner = local_owners[0]
+    assert not owner.closed
+    owners = caught.value.publication_cleanup_owners
+    assert sum(candidate is owner for candidate in owners) == 1
+    assert sum(candidate is reclaimer for candidate in owners) == 1
+
+    fail_close = False
+    fail_operation = False
+    for cleanup_owner in owners:
+        cleanup_owner.close()
+    assert owner.closed
+    for descriptor in opened_descriptors:
+        _assert_descriptor_closed(descriptor)
+    assert reclaimer.closed
+
+
+@pytest.mark.parametrize(
+    "source_fragment",
+    ["merged = inherited if not existing else existing", "BaseException.__setattr__("],
+    ids=["merge-build", "tuple-store"],
+)
+def test_quiescent_reclaimer_durably_transfers_lifecycle_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    natural_failure = ValueError("natural lifecycle callback failure")
+    cleanup_failure = OSError(errno.EIO, "persistent lifecycle release failure")
+    interruption = KeyboardInterrupt(f"lifecycle owner {source_fragment}")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_reclaim(_reclaimer: object, _child_name: str) -> bool:
+        raise natural_failure
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_reclaim_child",
+        fail_reclaim,
+    )
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._merge_publication_cleanup_owner_tuple,
+            source_fragment,
+            lambda: reclaimer.reclaim_child("attempt-a"),
+            predicate=lambda values: values.get("failure") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is natural_failure
+    owners = caught.value.publication_cleanup_owners
+    attempts = tuple(
+        owner
+        for owner in owners
+        if isinstance(owner, atomic_module._QuiescentDirectoryLifecycleAttempt)
+    )
+    assert len(attempts) == 1
+    assert not attempts[0].closed
+    assert reclaimer._lifecycle_lease.transition_active()
+
+    fail_release = False
+    for cleanup_owner in owners:
+        cleanup_owner.close()
+    assert attempts[0].closed
+    assert not reclaimer._lifecycle_lease.transition_active()
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    "source_fragment",
+    ["merged = inherited if not existing else existing", "BaseException.__setattr__("],
+    ids=["merge-build", "tuple-store"],
+)
+def test_quiescent_reclaimer_exit_durably_transfers_lifecycle_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    body_failure = ValueError("reclaimer context body failure")
+    cleanup_failure = OSError(errno.EIO, "persistent context release failure")
+    interruption = KeyboardInterrupt(f"context owner {source_fragment}")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._merge_publication_cleanup_owner_tuple,
+            source_fragment,
+            lambda: _raise_from_quiescent_reclaimer_context(
+                reclaimer,
+                body_failure,
+            ),
+            predicate=lambda values: values.get("failure") is body_failure,
+            error=interruption,
+        )
+
+    assert caught.value is body_failure
+    owners = caught.value.publication_cleanup_owners
+    attempts = tuple(
+        owner
+        for owner in owners
+        if isinstance(owner, atomic_module._QuiescentDirectoryLifecycleAttempt)
+    )
+    assert len(attempts) == 1
+    assert sum(owner is reclaimer for owner in owners) == 1
+    assert not reclaimer.closed
+
+    fail_release = False
+    for cleanup_owner in owners:
+        cleanup_owner.close()
+    assert attempts[0].closed
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_lifecycle_uses_carrier_for_hostile_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    prior_cause = LookupError("callback prior cause")
+    natural_failure = _HostileCleanupPrimary("hostile lifecycle callback failure")
+    natural_failure.__cause__ = prior_cause
+    cleanup_failure = OSError(errno.EIO, "persistent lifecycle release failure")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_reclaim(_reclaimer: object, _child_name: str) -> bool:
+        raise natural_failure
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_reclaim_child",
+        fail_reclaim,
+    )
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(_HostileCleanupPrimary) as caught:
+        reclaimer.reclaim_child("attempt-a")
+
+    assert caught.value is natural_failure
+    carrier = caught.value.__cause__
+    assert type(carrier) is RuntimeError
+    owners = carrier.publication_cleanup_owners
+    assert carrier.args[1] is owners
+    assert carrier.args[2] is cleanup_failure
+    assert carrier.args[3] is not natural_failure
+    diagnostic_wrapper = carrier.__cause__
+    assert type(diagnostic_wrapper) is RuntimeError
+    assert diagnostic_wrapper.__cause__ is None
+    assert diagnostic_wrapper.__context__ is None
+    assert _exception_link_graph_is_acyclic(natural_failure)
+    recovery_graph = _bounded_exception_recovery_graph(natural_failure)
+    assert any(candidate is cleanup_failure for candidate in recovery_graph)
+    assert any(candidate is prior_cause for candidate in recovery_graph)
+    assert _exception_chain_contains(carrier, prior_cause)
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert not attempt.closed
+
+    fail_release = False
+    attempt.close()
+    assert attempt.closed
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    "hostile_error",
+    [False, True],
+    ids=["hostile-primary", "hostile-secondary"],
+)
+def test_quiescent_reclaimer_exit_uses_carrier_for_hostile_owner_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hostile_error: bool,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    prior_cause = LookupError("body prior cause")
+    body_failure: BaseException = ValueError("context body failure")
+    cleanup_failure: BaseException = _HostileCleanupSecondary(
+        errno.EIO,
+        "persistent context release failure",
+    )
+    if not hostile_error:
+        body_failure = _HostileCleanupPrimary("hostile context body failure")
+        cleanup_failure = OSError(errno.EIO, "persistent context release failure")
+    body_failure.__cause__ = prior_cause
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(type(body_failure)) as caught:
+        _raise_from_quiescent_reclaimer_context(reclaimer, body_failure)
+
+    assert caught.value is body_failure
+    carrier = caught.value.__cause__
+    assert type(carrier) is RuntimeError
+    owners = carrier.publication_cleanup_owners
+    assert carrier.args[1] is owners
+    assert carrier.args[2] is cleanup_failure
+    assert carrier.args[3] is prior_cause
+    diagnostic_wrapper = carrier.__cause__
+    assert type(diagnostic_wrapper) is RuntimeError
+    assert diagnostic_wrapper.__cause__ is None
+    assert diagnostic_wrapper.__context__ is None
+    assert any(argument is cleanup_failure for argument in diagnostic_wrapper.args)
+    assert carrier.__context__ is prior_cause
+    assert _exception_link_graph_is_acyclic(body_failure)
+    recovery_graph = _bounded_exception_recovery_graph(body_failure)
+    assert any(candidate is cleanup_failure for candidate in recovery_graph)
+    assert any(candidate is prior_cause for candidate in recovery_graph)
+    assert len(owners) == 2
+    attempt, retained_reclaimer = owners
+    assert any(candidate is attempt for candidate in recovery_graph)
+    assert any(candidate is reclaimer for candidate in recovery_graph)
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert retained_reclaimer is reclaimer
+    assert not attempt.closed
+    assert not reclaimer.closed
+
+    fail_release = False
+    attempt.close()
+    assert attempt.closed
+    close_failures: list[BaseException] = []
+
+    def close_in_worker() -> None:
+        try:
+            reclaimer.close()
+        except BaseException as error:  # noqa: B036 - report thread failure
+            close_failures.append(error)
+
+    worker = threading.Thread(target=close_in_worker)
+    worker.start()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert close_failures == []
+    assert reclaimer.closed
+
+
+@pytest.mark.parametrize(
+    "hostile_primary",
+    [False, True],
+    ids=["transferred-primary", "carrier-primary"],
+)
+def test_quiescent_reclaimer_resource_tail_interrupt_owns_public_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hostile_primary: bool,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt_path = parent / "attempt-a"
+    nested = attempt_path / "nested"
+    nested.mkdir(parents=True)
+    (nested / "payload.txt").write_text("payload", encoding="utf-8")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    real_close = atomic_module._PosixResourceOwner.close
+    real_unlink = atomic_module.os.unlink
+    natural_failure: ValueError = ValueError("natural resource tail failure")
+    source_fragment = "raise operation_error"
+    if hostile_primary:
+        natural_failure = _HostileCleanupPrimary("hostile resource tail failure")
+        source_fragment = "raise operation_error from delivery_carrier"
+    cleanup_failure = OSError(errno.EIO, "persistent resource tail cleanup")
+    interruption = KeyboardInterrupt("resource post-inherit tail")
+    local_owners: list[atomic_module._PosixResourceOwner] = []
+    opened_descriptors: list[int] = []
+    fail_close = True
+    fail_operation = True
+
+    def capture_scope(
+        resources: atomic_module._PosixResourceOwner,
+        callback: object,
+        *,
+        label: str,
+    ) -> object:
+        if (
+            label == "quiescent directory traversal cleanup also failed"
+            and not local_owners
+        ):
+            local_owners.append(resources)
+        return real_scope(resources, callback, label=label)
+
+    def fail_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        if fail_operation:
+            raise natural_failure
+        real_unlink(path, dir_fd=dir_fd)
+
+    def fail_local_close(resources: atomic_module._PosixResourceOwner) -> None:
+        if local_owners and resources is local_owners[0] and fail_close:
+            if not opened_descriptors:
+                opened_descriptors.extend(
+                    record.descriptor
+                    for record in resources._records
+                    if record.descriptor >= 0
+                )
+            raise cleanup_failure
+        real_close(resources)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_quiescent_directory_resource_scope",
+        capture_scope,
+    )
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_unlink)
+    monkeypatch.setattr(atomic_module._PosixResourceOwner, "close", fail_local_close)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_quiescent_directory_resource_scope_unprotected,
+            source_fragment,
+            lambda: reclaimer.reclaim_child(attempt_path.name),
+            predicate=lambda values: values.get("operation_error") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert _exception_chain_contains(caught.value, natural_failure)
+    assert len(local_owners) == 1
+    local_owner = local_owners[0]
+    assert sum(owner is local_owner for owner in owners) == 1
+    assert sum(owner is reclaimer for owner in owners) == 1
+
+    fail_close = False
+    fail_operation = False
+    for owner in owners:
+        owner.close()
+    assert local_owner.closed
+    for descriptor in opened_descriptors:
+        _assert_descriptor_closed(descriptor)
+    assert reclaimer.closed
+    assert list(parent.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    "hostile_primary",
+    [False, True],
+    ids=["transferred-primary", "carrier-primary"],
+)
+def test_quiescent_reclaimer_lifecycle_tail_interrupt_owns_public_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hostile_primary: bool,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    natural_failure: ValueError = ValueError("natural lifecycle tail failure")
+    source_fragment = "raise operation_error"
+    if hostile_primary:
+        natural_failure = _HostileCleanupPrimary("hostile lifecycle tail failure")
+        source_fragment = "raise operation_error from delivery_carrier"
+    cleanup_failure = OSError(errno.EIO, "persistent lifecycle tail cleanup")
+    interruption = KeyboardInterrupt("lifecycle post-inherit tail")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_reclaim(_reclaimer: object, _child_name: str) -> bool:
+        raise natural_failure
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_reclaim_child",
+        fail_reclaim,
+    )
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected,
+            source_fragment,
+            lambda: reclaimer.reclaim_child("attempt-a"),
+            predicate=lambda values: values.get("operation_error") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert _exception_chain_contains(caught.value, natural_failure)
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert not attempt.closed
+
+    fail_release = False
+    for owner in owners:
+        owner.close()
+    assert attempt.closed
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_exit_tail_interrupt_owns_public_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    body_failure = ValueError("context body tail failure")
+    cleanup_failure = OSError(errno.EIO, "persistent context tail cleanup")
+    interruption = KeyboardInterrupt("context post-inherit tail")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._adjudicate_quiescent_reclaimer_exit_error,
+            "if not mandatory_transferred or not inherited_transferred:",
+            lambda: _raise_from_quiescent_reclaimer_context(
+                reclaimer,
+                body_failure,
+            ),
+            predicate=lambda values: values.get("exc") is body_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = caught.value.publication_cleanup_owners
+    assert len(owners) == 2
+    attempt, retained_reclaimer = owners
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert retained_reclaimer is reclaimer
+    assert not attempt.closed
+    assert not reclaimer.closed
+
+    fail_release = False
+    attempt.close()
+    assert attempt.closed
+    close_failures: list[BaseException] = []
+
+    def close_in_worker() -> None:
+        try:
+            retained_reclaimer.close()
+        except BaseException as error:  # noqa: B036 - report thread failure
+            close_failures.append(error)
+
+    worker = threading.Thread(target=close_in_worker)
+    worker.start()
+    worker.join(timeout=5)
+    assert not worker.is_alive()
+    assert close_failures == []
+    assert reclaimer.closed
+
+
+def test_quiescent_resource_cleanup_tail_interrupt_has_top_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resources = atomic_module._PosixResourceOwner()
+    descriptor = resources.open(os.devnull, os.O_RDONLY)
+    cleanup_failure = OSError(errno.EIO, "persistent resource-only cleanup")
+    interruption = KeyboardInterrupt("resource cleanup-only final delivery")
+    real_close = atomic_module._PosixResourceOwner.close
+    fail_close = True
+
+    def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+        if owner is resources and fail_close:
+            raise cleanup_failure
+        real_close(owner)
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close",
+        fail_resources,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_quiescent_directory_resource_scope_unprotected,
+            "raise settlement_error",
+            lambda: atomic_module._run_quiescent_directory_resource_scope(
+                resources,
+                lambda: None,
+                label="resource cleanup-only final delivery",
+            ),
+            predicate=lambda values: values.get("settlement_error") is cleanup_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert owners == (resources,)
+
+    fail_close = False
+    for owner in owners:
+        owner.close()
+    _assert_descriptor_closed(descriptor)
+
+
+def test_quiescent_lifecycle_cleanup_tail_interrupt_has_top_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    cleanup_failure = OSError(errno.EIO, "persistent lifecycle-only cleanup")
+    interruption = KeyboardInterrupt("lifecycle cleanup-only final delivery")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected,
+            "raise settlement_error",
+            lambda: reclaimer._run_lifecycle_transition(lambda: False),
+            predicate=lambda values: values.get("settlement_error") is cleanup_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+
+    fail_release = False
+    for owner in owners:
+        owner.close()
+    assert attempt.closed
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_exit_delivery_interrupt_has_top_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    body_failure = _HostileCleanupPrimary("hostile context body final delivery")
+    cleanup_failure = OSError(errno.EIO, "persistent context final delivery")
+    interruption = KeyboardInterrupt("context final delivery")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module.QuiescentDirectoryReclaimer._exit_unprotected,
+            "raise exc from delivery_carrier",
+            lambda: _raise_from_quiescent_reclaimer_context(
+                reclaimer,
+                body_failure,
+            ),
+            predicate=lambda values: values.get("exc") is body_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 2
+    attempt, retained_reclaimer = owners
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert retained_reclaimer is reclaimer
+
+    fail_release = False
+    for owner in owners:
+        owner.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_exit_implicit_delivery_interrupt_has_top_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    body_failure = ValueError("context body implicit final delivery")
+    cleanup_failure = OSError(errno.EIO, "persistent implicit final delivery")
+    interruption = KeyboardInterrupt("context implicit final delivery")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module.QuiescentDirectoryReclaimer._exit_unprotected,
+            "if delivery_carrier is not None:",
+            lambda: _raise_from_quiescent_reclaimer_context(
+                reclaimer,
+                body_failure,
+            ),
+            predicate=lambda values: values.get("exc") is body_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 2
+    attempt, retained_reclaimer = owners
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert retained_reclaimer is reclaimer
+
+    fail_release = False
+    for owner in owners:
+        owner.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_exit_detects_same_ambient_error_rethrow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    ambient = _HostileTracebackPrimary("same ambient exit failure")
+
+    def raise_same(_reclaimer: object) -> None:
+        raise ambient
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_close",
+        raise_same,
+    )
+
+    with pytest.raises(_HostileTracebackPrimary) as caught:
+        try:
+            raise ambient
+        except _HostileTracebackPrimary:
+            reclaimer.__exit__(None, None, None)
+
+    assert caught.value is ambient
+    assert BaseException.__getattribute__(
+        ambient,
+        "publication_cleanup_owners",
+    ) == (reclaimer,)
+
+    monkeypatch.undo()
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_resource_boundary_detects_same_ambient_error_rethrow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resources = atomic_module._PosixResourceOwner()
+    descriptor = resources.open(os.devnull, os.O_RDONLY)
+    ambient = _HostileTracebackPrimary("same ambient resource failure")
+    cleanup_failure = OSError(errno.EIO, "same ambient resource cleanup")
+    real_close = atomic_module._PosixResourceOwner.close
+    fail_close = True
+
+    def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+        if owner is resources and fail_close:
+            raise cleanup_failure
+        real_close(owner)
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close",
+        fail_resources,
+    )
+
+    with pytest.raises(_HostileTracebackPrimary) as caught:
+        try:
+            raise ambient
+        except _HostileTracebackPrimary:
+            _call_with_interrupt_on_source_line(
+                atomic_module._run_quiescent_directory_resource_scope_unprotected,
+                "raise settlement_error",
+                lambda: atomic_module._run_quiescent_directory_resource_scope(
+                    resources,
+                    lambda: None,
+                    label="same ambient resource cleanup",
+                ),
+                predicate=lambda values: values.get("settlement_error")
+                is cleanup_failure,
+                error=ambient,
+            )
+
+    assert caught.value is ambient
+    owners = BaseException.__getattribute__(
+        ambient,
+        "publication_cleanup_owners",
+    )
+    assert owners == (resources,)
+    fail_close = False
+    for owner in owners:
+        owner.close()
+    _assert_descriptor_closed(descriptor)
+
+
+def test_quiescent_lifecycle_boundary_detects_same_ambient_error_rethrow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    ambient = _HostileTracebackPrimary("same ambient lifecycle failure")
+    primary = ValueError("same ambient lifecycle primary")
+    cleanup_failure = OSError(errno.EIO, "same ambient lifecycle cleanup")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(_HostileTracebackPrimary) as caught:
+        try:
+            raise ambient
+        except _HostileTracebackPrimary:
+            _call_with_interrupt_on_source_line(
+                atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected,
+                "raise operation_error",
+                lambda: reclaimer._run_lifecycle_transition(
+                    lambda: (_ for _ in ()).throw(primary)
+                ),
+                predicate=lambda values: values.get("operation_error") is primary,
+                error=ambient,
+            )
+
+    assert caught.value is ambient
+    owners = BaseException.__getattribute__(
+        ambient,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert _exception_chain_contains(ambient, primary)
+    fail_release = False
+    for owner in owners:
+        owner.close()
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_quiescent_resource_handler_detects_same_ambient_error_rethrow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module._run_quiescent_directory_resource_scope_unprotected
+    offsets = _source_statement_opcode_offsets(function, "try:", occurrence=4)
+
+    for opcode_offset in offsets:
+        with monkeypatch.context() as patch:
+            resources = atomic_module._PosixResourceOwner()
+            descriptor = resources.open(os.devnull, os.O_RDONLY)
+            ambient = _HostileTracebackPrimary("same ambient resource handler")
+            primary = ValueError("same ambient resource handler primary")
+            cleanup_failure = OSError(errno.EIO, "same ambient resource handler")
+            real_close = atomic_module._PosixResourceOwner.close
+            fail_close = True
+
+            def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+                if owner is resources and fail_close:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_close(owner)  # noqa: B023
+
+            patch.setattr(
+                atomic_module._PosixResourceOwner,
+                "close",
+                fail_resources,
+            )
+
+            with pytest.raises(_HostileTracebackPrimary) as caught:
+                try:
+                    raise ambient
+                except _HostileTracebackPrimary:
+                    _call_with_interrupt_at_opcode(
+                        function,
+                        opcode_offset,
+                        lambda: atomic_module._run_quiescent_directory_resource_scope(  # noqa: B023
+                            resources,  # noqa: B023
+                            lambda: (_ for _ in ()).throw(primary),  # noqa: B023
+                            label="same ambient resource handler",
+                        ),
+                        predicate=lambda values: values.get("settlement_error")
+                        is cleanup_failure,  # noqa: B023
+                        error=ambient,
+                    )
+
+            assert caught.value is ambient
+            owners = BaseException.__getattribute__(
+                ambient,
+                "publication_cleanup_owners",
+            )
+            assert owners == (resources,)
+            assert _exception_chain_contains(ambient, primary)
+            fail_close = False
+            for owner in owners:
+                owner.close()
+            _assert_descriptor_closed(descriptor)
+
+
+def test_quiescent_lifecycle_handler_detects_same_ambient_error_rethrow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = (
+        atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected
+    )
+    offsets = _source_statement_opcode_offsets(function, "try:", occurrence=4)
+
+    for index, opcode_offset in enumerate(offsets):
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"same-ambient-lifecycle-handler-{index}",
+            )
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            ambient = _HostileTracebackPrimary("same ambient lifecycle handler")
+            primary = ValueError("same ambient lifecycle handler primary")
+            cleanup_failure = OSError(errno.EIO, "same ambient lifecycle handler")
+            real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+            fail_release = True
+
+            def fail_lease_release(lease: object) -> None:
+                if lease is reclaimer._lifecycle_lease and fail_release:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_release(lease)  # noqa: B023
+
+            patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_lease_release,
+            )
+
+            with pytest.raises(_HostileTracebackPrimary) as caught:
+                try:
+                    raise ambient
+                except _HostileTracebackPrimary:
+                    _call_with_interrupt_at_opcode(
+                        function,
+                        opcode_offset,
+                        lambda: reclaimer._run_lifecycle_transition(  # noqa: B023
+                            lambda: (_ for _ in ()).throw(primary)  # noqa: B023
+                        ),
+                        predicate=lambda values: values.get("settlement_error")
+                        is cleanup_failure,  # noqa: B023
+                        error=ambient,
+                    )
+
+            assert caught.value is ambient
+            owners = BaseException.__getattribute__(
+                ambient,
+                "publication_cleanup_owners",
+            )
+            assert len(owners) == 1
+            attempt = owners[0]
+            assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+            assert _exception_chain_contains(ambient, primary)
+            fail_release = False
+            for owner in owners:
+                owner.close()
+            _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+            reclaimer.close()
+
+
+def test_cleanup_guard_filters_unchanged_hostile_ambient_error() -> None:
+    ambient = _HostileTracebackPrimary("unchanged ambient cleanup guard")
+    cleanup_calls: list[str] = []
+
+    try:
+        raise ambient
+    except _HostileTracebackPrimary:
+        with atomic_module._run_context_with_cleanup_actions(
+            (("unexpected cleanup", lambda: cleanup_calls.append("cleanup")),),
+            cleanup_on_success=False,
+        ):
+            pass
+
+    assert cleanup_calls == []
+    with pytest.raises(AttributeError):
+        BaseException.__getattribute__(ambient, "publication_cleanup_owners")
+
+
+def test_quiescent_reclaimer_inner_exit_guard_final_opcodes_have_top_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module._QuiescentReclaimerExitHandoffBoundary.__exit__
+    offsets = _source_statement_opcode_offsets(
+        function,
+        "return False",
+        occurrence=2,
+    )
+    return_offsets = {
+        instruction.offset
+        for instruction in dis.get_instructions(function)
+        if instruction.opname == "RETURN_VALUE"
+    }
+    delivery_events: tuple[int | None, ...] = tuple(
+        offset for offset in offsets if offset not in return_offsets
+    ) + (None,)
+
+    for index, opcode_offset in enumerate(delivery_events):
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"exit-guard-final-{index}",
+            )
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            cleanup_failure = OSError(errno.EIO, "persistent exit guard cleanup")
+            interruption = KeyboardInterrupt(f"exit guard final {opcode_offset}")
+            real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+            fail_release = True
+
+            def fail_lease_release(lease: object) -> None:
+                if lease is reclaimer._lifecycle_lease and fail_release:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_release(lease)  # noqa: B023
+
+            patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_lease_release,
+            )
+
+            def callback() -> None:
+                reclaimer.__exit__(None, None, None)  # noqa: B023
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                if opcode_offset is None:
+                    _call_with_interrupt_on_return(
+                        function,
+                        callback,
+                        call_occurrence=1,
+                        warmup=lambda: function(  # noqa: B023
+                            atomic_module._QuiescentReclaimerExitHandoffBoundary(
+                                reclaimer,  # noqa: B023
+                                None,
+                            ),
+                            None,
+                            None,
+                            None,
+                        ),
+                        predicate=lambda frame, result: (
+                            result is False
+                            and frame.f_locals.get("active_error")
+                            is cleanup_failure  # noqa: B023
+                            and frame.f_locals.get("self")._reclaimer
+                            is reclaimer  # noqa: B023
+                        ),
+                        error=interruption,
+                    )
+                else:
+                    _call_with_interrupt_at_opcode(
+                        function,
+                        opcode_offset,
+                        callback,
+                        call_occurrence=1,
+                        warmup=lambda: function(  # noqa: B023
+                            atomic_module._QuiescentReclaimerExitHandoffBoundary(
+                                reclaimer,  # noqa: B023
+                                None,
+                            ),
+                            None,
+                            None,
+                            None,
+                        ),
+                        predicate=lambda values: (
+                            values.get("active_error") is cleanup_failure  # noqa: B023
+                            and values.get("self")._reclaimer is reclaimer  # noqa: B023
+                        ),
+                        error=interruption,
+                    )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert _exception_chain_contains(caught.value, cleanup_failure)
+            assert len(owners) == 2
+            attempt, retained_reclaimer = owners
+            assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+            assert retained_reclaimer is reclaimer
+            fail_release = False
+            for owner in owners:
+                owner.close()
+            assert reclaimer.closed
+
+
+def test_quiescent_resource_owning_boundary_opcodes_have_top_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module._QuiescentCleanupHandoffBoundary.__exit__
+    baseline_resources = atomic_module._PosixResourceOwner()
+    baseline_descriptor = baseline_resources.open(os.devnull, os.O_RDONLY)
+    baseline_primary = ValueError("resource boundary baseline primary")
+    baseline_cleanup = OSError(errno.EIO, "resource boundary baseline cleanup")
+    real_close = atomic_module._PosixResourceOwner.close
+    baseline_fails = True
+
+    def fail_baseline(owner: atomic_module._PosixResourceOwner) -> None:
+        if owner is baseline_resources and baseline_fails:
+            raise baseline_cleanup
+        real_close(owner)
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close",
+        fail_baseline,
+    )
+
+    def observe_boundary() -> None:
+        with pytest.raises(ValueError) as caught:
+            atomic_module._run_quiescent_directory_resource_scope(
+                baseline_resources,
+                lambda: (_ for _ in ()).throw(baseline_primary),
+                label="resource boundary baseline cleanup",
+            )
+        assert caught.value is baseline_primary
+
+    offsets = _observed_opcode_offsets(
+        function,
+        observe_boundary,
+        call_occurrence=1,
+        warmup=lambda: function(
+            atomic_module._QuiescentCleanupHandoffBoundary(
+                atomic_module._QuiescentDirectoryLifecycleOutcome(),
+                (),
+                label="resource boundary trace warmup",
+            ),
+            None,
+            None,
+            None,
+        ),
+    )
+    baseline_fails = False
+    baseline_resources.close()
+    _assert_descriptor_closed(baseline_descriptor)
+
+    for opcode_offset in offsets:
+        with monkeypatch.context() as patch:
+            resources = atomic_module._PosixResourceOwner()
+            descriptor = resources.open(os.devnull, os.O_RDONLY)
+            primary = ValueError("resource boundary opcode primary")
+            cleanup_failure = OSError(errno.EIO, "resource boundary opcode cleanup")
+            interruption = KeyboardInterrupt(f"resource boundary {opcode_offset}")
+            fail_close = True
+
+            def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+                if owner is resources and fail_close:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_close(owner)
+
+            patch.setattr(
+                atomic_module._PosixResourceOwner,
+                "close",
+                fail_resources,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: atomic_module._run_quiescent_directory_resource_scope(  # noqa: B023
+                        resources,  # noqa: B023
+                        lambda: (_ for _ in ()).throw(primary),  # noqa: B023
+                        label="resource boundary opcode cleanup",
+                    ),
+                    call_occurrence=1,
+                    warmup=lambda: function(
+                        atomic_module._QuiescentCleanupHandoffBoundary(
+                            atomic_module._QuiescentDirectoryLifecycleOutcome(),
+                            (),
+                            label="resource boundary trace warmup",
+                        ),
+                        None,
+                        None,
+                        None,
+                    ),
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert owners == (resources,)
+            assert _exception_chain_contains(caught.value, primary)
+            fail_close = False
+            for owner in owners:
+                owner.close()
+            _assert_descriptor_closed(descriptor)
+
+
+def test_quiescent_reclaimer_exit_guard_opcodes_have_top_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module._QuiescentReclaimerExitHandoffBoundary.__exit__
+    baseline_parent, baseline_identity = _private_reclaimer_parent(
+        tmp_path,
+        name="exit-boundary-baseline",
+    )
+    baseline_reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        baseline_parent,
+        expected_parent_identity=baseline_identity,
+    )
+    baseline_cleanup = OSError(errno.EIO, "exit boundary baseline cleanup")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    baseline_fails = True
+
+    def fail_baseline(lease: object) -> None:
+        if lease is baseline_reclaimer._lifecycle_lease and baseline_fails:
+            raise baseline_cleanup
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_baseline,
+    )
+
+    def observe_boundary() -> None:
+        with pytest.raises(OSError) as caught:
+            baseline_reclaimer.__exit__(None, None, None)
+        assert caught.value is baseline_cleanup
+
+    offsets = _observed_opcode_offsets(
+        function,
+        observe_boundary,
+        call_occurrence=1,
+        warmup=lambda: function(
+            atomic_module._QuiescentReclaimerExitHandoffBoundary(
+                baseline_reclaimer,
+                None,
+            ),
+            None,
+            None,
+            None,
+        ),
+        predicate=lambda values: values.get("self")._reclaimer is baseline_reclaimer,
+    )
+    baseline_fails = False
+    for owner in BaseException.__getattribute__(
+        baseline_cleanup,
+        "publication_cleanup_owners",
+    ):
+        owner.close()
+    assert baseline_reclaimer.closed
+
+    for index, opcode_offset in enumerate(offsets):
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"exit-boundary-{index}",
+            )
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            cleanup_failure = OSError(errno.EIO, "exit boundary opcode cleanup")
+            interruption = KeyboardInterrupt(f"exit boundary {opcode_offset}")
+            fail_release = True
+
+            def fail_lease_release(lease: object) -> None:
+                if lease is reclaimer._lifecycle_lease and fail_release:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_release(lease)
+
+            patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_lease_release,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: reclaimer.__exit__(None, None, None),  # noqa: B023
+                    call_occurrence=1,
+                    warmup=lambda: function(  # noqa: B023
+                        atomic_module._QuiescentReclaimerExitHandoffBoundary(
+                            reclaimer,  # noqa: B023
+                            None,
+                        ),
+                        None,
+                        None,
+                        None,
+                    ),
+                    predicate=lambda values: values.get("self")._reclaimer
+                    is reclaimer,  # noqa: B023
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert len(owners) == 2
+            attempt, retained_reclaimer = owners
+            assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+            assert retained_reclaimer is reclaimer
+            fail_release = False
+            for owner in owners:
+                owner.close()
+            assert reclaimer.closed
+
+
+def test_quiescent_lifecycle_outer_delivery_boundary_is_publicly_recoverable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(
+        tmp_path,
+        name="lifecycle-outer-delivery",
+    )
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    primary = ValueError("lifecycle outer delivery primary")
+    cleanup_failure = OSError(errno.EIO, "lifecycle outer delivery cleanup")
+    interruption = KeyboardInterrupt("lifecycle outer delivery")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+    function = atomic_module._QuiescentCleanupHandoffBoundary.__exit__
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_return(
+            function,
+            lambda: reclaimer._run_lifecycle_transition(
+                lambda: (_ for _ in ()).throw(primary)
+            ),
+            call_occurrence=2,
+            warmup=lambda: function(
+                atomic_module._QuiescentCleanupHandoffBoundary(
+                    atomic_module._QuiescentDirectoryLifecycleOutcome(),
+                    (),
+                    label="lifecycle outer delivery trace warmup",
+                ),
+                None,
+                None,
+                None,
+            ),
+            predicate=lambda frame, result: (
+                result is False and frame.f_locals.get("active_error") is primary
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert atomic_module._publication_exception_context(interruption) is primary
+    owners = BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert not attempt._outer_call._guard.gi_running
+
+    # Recovery uses only the public object.  The caller never walks or closes
+    # owners from the irreducible outer delivery exception chain.
+    fail_release = False
+    assert reclaimer.retry() is False
+    assert attempt.closed
+    reclaimer.close()
+
+
+def test_quiescent_exit_outer_delivery_boundary_is_publicly_recoverable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(
+        tmp_path,
+        name="exit-outer-delivery",
+    )
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    cleanup_failure = OSError(errno.EIO, "exit outer delivery cleanup")
+    interruption = KeyboardInterrupt("exit outer delivery")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_failure
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+    function = atomic_module._QuiescentReclaimerExitHandoffBoundary.__exit__
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_return(
+            function,
+            lambda: reclaimer.__exit__(None, None, None),
+            call_occurrence=2,
+            warmup=lambda: function(
+                atomic_module._QuiescentReclaimerExitHandoffBoundary(
+                    reclaimer,
+                    None,
+                ),
+                None,
+                None,
+                None,
+            ),
+            predicate=lambda frame, result: (
+                result is False
+                and frame.f_locals.get("active_error") is cleanup_failure
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert atomic_module._publication_exception_context(interruption) is cleanup_failure
+    owners = BaseException.__getattribute__(
+        cleanup_failure,
+        "publication_cleanup_owners",
+    )
+    assert len(owners) == 2
+    attempt, retained_reclaimer = owners
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    assert retained_reclaimer is reclaimer
+    assert not attempt._outer_call._guard.gi_running
+
+    fail_release = False
+    reclaimer.close()
+    assert attempt.closed
+    assert reclaimer.closed
+
+
+def test_quiescent_resource_handler_entry_opcodes_have_top_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module._run_quiescent_directory_resource_scope_unprotected
+    offsets = _source_statement_opcode_offsets(function, "try:", occurrence=4)
+
+    for opcode_offset in offsets:
+        with monkeypatch.context() as patch:
+            resources = atomic_module._PosixResourceOwner()
+            descriptor = resources.open(os.devnull, os.O_RDONLY)
+            primary = ValueError("resource handler-entry primary")
+            cleanup_failure = OSError(errno.EIO, "resource handler-entry cleanup")
+            interruption = KeyboardInterrupt(f"resource handler {opcode_offset}")
+            real_close = atomic_module._PosixResourceOwner.close
+            fail_close = True
+
+            def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+                if owner is resources and fail_close:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_close(owner)  # noqa: B023
+
+            patch.setattr(
+                atomic_module._PosixResourceOwner,
+                "close",
+                fail_resources,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: atomic_module._run_quiescent_directory_resource_scope(  # noqa: B023
+                        resources,  # noqa: B023
+                        lambda: (_ for _ in ()).throw(primary),  # noqa: B023
+                        label="resource handler-entry cleanup",
+                    ),
+                    predicate=lambda values: values.get("settlement_error")
+                    is cleanup_failure,  # noqa: B023
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert _exception_chain_contains(caught.value, primary)
+            assert owners == (resources,)
+            fail_close = False
+            for owner in owners:
+                owner.close()
+            _assert_descriptor_closed(descriptor)
+
+
+def test_quiescent_lifecycle_handler_entry_opcodes_have_top_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = (
+        atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected
+    )
+    offsets = _source_statement_opcode_offsets(function, "try:", occurrence=4)
+
+    for index, opcode_offset in enumerate(offsets):
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"lifecycle-handler-{index}",
+            )
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            primary = ValueError("lifecycle handler-entry primary")
+            cleanup_failure = OSError(errno.EIO, "lifecycle handler-entry cleanup")
+            interruption = KeyboardInterrupt(f"lifecycle handler {opcode_offset}")
+            real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+            fail_release = True
+
+            def fail_lease_release(lease: object) -> None:
+                if lease is reclaimer._lifecycle_lease and fail_release:  # noqa: B023
+                    raise cleanup_failure  # noqa: B023
+                real_release(lease)  # noqa: B023
+
+            patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_lease_release,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: reclaimer._run_lifecycle_transition(  # noqa: B023
+                        lambda: (_ for _ in ()).throw(primary)  # noqa: B023
+                    ),
+                    predicate=lambda values: values.get("settlement_error")
+                    is cleanup_failure,  # noqa: B023
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert _exception_chain_contains(caught.value, primary)
+            assert len(owners) == 1
+            attempt = owners[0]
+            assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+            fail_release = False
+            for owner in owners:
+                owner.close()
+            _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+            reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    ("source_fragment", "operation_fails"),
+    [
+        ("operation_error = outcome.error", True),
+        (
+            "operation_error = _quiescent_directory_lifecycle_operation_context(",
+            False,
+        ),
+        (
+            "prior_link, prior_was_explicit = _publication_exception_prior_link(",
+            True,
+        ),
+    ],
+    ids=["outcome", "context", "prior-cause"],
+)
+def test_quiescent_reclaimer_resource_pretransfer_opcodes_own_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+    operation_fails: bool,
+) -> None:
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    function = atomic_module._run_quiescent_directory_resource_scope_unprotected
+    offsets = _source_statement_opcode_offsets(function, source_fragment)
+
+    def exercise(index: int, opcode_offset: int) -> None:
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"resource-{source_fragment[:7]}-{index}",
+            )
+            attempt_path = parent / "attempt-a"
+            nested = attempt_path / "nested"
+            nested.mkdir(parents=True)
+            (nested / "payload.txt").write_text("payload", encoding="utf-8")
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            real_close = atomic_module._PosixResourceOwner.close
+            real_unlink = atomic_module.os.unlink
+            natural_failure = ValueError("natural resource opcode failure")
+            cleanup_failure = OSError(errno.EIO, "resource opcode cleanup")
+            interruption = KeyboardInterrupt(f"resource opcode {opcode_offset}")
+            local_owners: list[atomic_module._PosixResourceOwner] = []
+            fail_close = True
+            fail_operation = operation_fails
+
+            def capture_scope(
+                resources: atomic_module._PosixResourceOwner,
+                callback: object,
+                *,
+                label: str,
+            ) -> object:
+                if (
+                    label == "quiescent directory traversal cleanup also failed"
+                    and not local_owners
+                ):
+                    local_owners.append(resources)
+                return real_scope(resources, callback, label=label)
+
+            def fail_unlink(path: object, *, dir_fd: int | None = None) -> None:
+                if fail_operation:
+                    raise natural_failure
+                real_unlink(path, dir_fd=dir_fd)
+
+            def fail_local_close(
+                resources: atomic_module._PosixResourceOwner,
+            ) -> None:
+                if local_owners and resources is local_owners[0] and fail_close:
+                    raise cleanup_failure
+                real_close(resources)
+
+            patch.setattr(
+                atomic_module,
+                "_run_quiescent_directory_resource_scope",
+                capture_scope,
+            )
+            patch.setattr(atomic_module.os, "unlink", fail_unlink)
+            patch.setattr(
+                atomic_module._PosixResourceOwner,
+                "close",
+                fail_local_close,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: reclaimer.reclaim_child(attempt_path.name),
+                    predicate=lambda values: (
+                        values.get("label")
+                        == "quiescent directory traversal cleanup also failed"
+                        and (
+                            source_fragment != "prior_link, prior_was_explicit = "
+                            "_publication_exception_prior_link("
+                            or values.get("operation_error") is natural_failure
+                        )
+                    ),
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert len(local_owners) == 1
+            local_owner = local_owners[0]
+            assert sum(owner is local_owner for owner in owners) == 1
+            assert sum(owner is reclaimer for owner in owners) == 1
+
+            fail_close = False
+            fail_operation = False
+            for owner in owners:
+                owner.close()
+            assert local_owner.closed
+            assert reclaimer.closed
+            assert list(parent.iterdir()) == []
+
+    for index, opcode_offset in enumerate(offsets):
+        exercise(index, opcode_offset)
+
+
+@pytest.mark.parametrize(
+    ("source_fragment", "operation_fails"),
+    [
+        ("operation_error = outcome.error", True),
+        (
+            "operation_error = _quiescent_directory_lifecycle_operation_context(",
+            False,
+        ),
+        (
+            "prior_link, prior_was_explicit = _publication_exception_prior_link(",
+            True,
+        ),
+    ],
+    ids=["outcome", "context", "prior-cause"],
+)
+def test_quiescent_reclaimer_lifecycle_pretransfer_opcodes_own_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+    operation_fails: bool,
+) -> None:
+    function = (
+        atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected
+    )
+    offsets = _source_statement_opcode_offsets(function, source_fragment)
+
+    def exercise(index: int, opcode_offset: int) -> None:
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"lifecycle-{source_fragment[:7]}-{index}",
+            )
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            natural_failure = ValueError("natural lifecycle opcode failure")
+            cleanup_failure = OSError(errno.EIO, "lifecycle opcode cleanup")
+            interruption = KeyboardInterrupt(f"lifecycle opcode {opcode_offset}")
+            real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+            fail_release = True
+
+            def reclaim(_reclaimer: object, _child_name: str) -> bool:
+                if operation_fails:
+                    raise natural_failure
+                return False
+
+            def fail_lease_release(lease: object) -> None:
+                if lease is reclaimer._lifecycle_lease and fail_release:
+                    raise cleanup_failure
+                real_release(lease)
+
+            patch.setattr(
+                atomic_module.QuiescentDirectoryReclaimer,
+                "_reclaim_child",
+                reclaim,
+            )
+            patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_lease_release,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: reclaimer.reclaim_child("attempt-a"),
+                    predicate=lambda values: (
+                        values.get("attempt") is not None
+                        and values["attempt"]._lease is reclaimer._lifecycle_lease
+                        and (
+                            source_fragment != "prior_link, prior_was_explicit = "
+                            "_publication_exception_prior_link("
+                            or values.get("operation_error") is natural_failure
+                        )
+                    ),
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert len(owners) == 1
+            attempt = owners[0]
+            assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+            assert not attempt.closed
+
+            fail_release = False
+            attempt.close()
+            assert attempt.closed
+            _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+            reclaimer.close()
+
+    for index, opcode_offset in enumerate(offsets):
+        exercise(index, opcode_offset)
+
+
+def test_quiescent_reclaimer_exit_pretransfer_opcodes_own_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    function = atomic_module.QuiescentDirectoryReclaimer._exit_unprotected
+    source_fragment = "current = self._lifecycle_lease.current_transition()"
+    offsets = _source_statement_opcode_offsets(function, source_fragment)
+
+    def exercise(index: int, opcode_offset: int) -> None:
+        with monkeypatch.context() as patch:
+            parent, parent_identity = _private_reclaimer_parent(
+                tmp_path,
+                name=f"exit-current-{index}",
+            )
+            reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+                parent,
+                expected_parent_identity=parent_identity,
+            )
+            body_failure = ValueError("context body opcode failure")
+            cleanup_failure = OSError(errno.EIO, "context opcode cleanup")
+            interruption = KeyboardInterrupt(f"exit opcode {opcode_offset}")
+            real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+            fail_release = True
+
+            def fail_lease_release(lease: object) -> None:
+                if lease is reclaimer._lifecycle_lease and fail_release:
+                    raise cleanup_failure
+                real_release(lease)
+
+            patch.setattr(
+                atomic_module._QuiescentDirectoryLifecycleLease,
+                "release",
+                fail_lease_release,
+            )
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                _call_with_interrupt_at_opcode(
+                    function,
+                    opcode_offset,
+                    lambda: _raise_from_quiescent_reclaimer_context(
+                        reclaimer,
+                        body_failure,
+                    ),
+                    predicate=lambda values: values.get("exc") is body_failure,
+                    error=interruption,
+                )
+
+            assert caught.value is interruption
+            owners = BaseException.__getattribute__(
+                caught.value,
+                "publication_cleanup_owners",
+            )
+            assert len(owners) == 2
+            attempt, retained_reclaimer = owners
+            assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+            assert retained_reclaimer is reclaimer
+            assert not attempt.closed
+            assert not reclaimer.closed
+
+            fail_release = False
+            attempt.close()
+            retained_reclaimer.close()
+            assert reclaimer.closed
+
+    for index, opcode_offset in enumerate(offsets):
+        exercise(index, opcode_offset)
+
+
+@pytest.mark.parametrize("link_kind", ["cause", "context"])
+def test_quiescent_resource_settlement_preserves_prior_error_link(
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    resources = atomic_module._PosixResourceOwner()
+    descriptor = resources.open(os.devnull, os.O_RDONLY)
+    primary = ValueError(f"resource primary with prior {link_kind}")
+    prior = LookupError(f"resource prior {link_kind}")
+    cleanup_error = OSError(errno.EIO, "resource persistent close")
+    real_close = atomic_module._PosixResourceOwner.close
+    fail_close = True
+
+    def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+        if owner is resources and fail_close:
+            raise cleanup_error
+        real_close(owner)
+
+    def fail_callback() -> None:
+        if link_kind == "cause":
+            primary.__cause__ = prior
+            raise primary
+        try:
+            raise prior
+        except LookupError:
+            raise primary
+
+    def forbidden_handoff(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("natural settlement entered interruption recovery")
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close",
+        fail_resources,
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_raise_quiescent_cleanup_handoff_boundary",
+        forbidden_handoff,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        atomic_module._run_quiescent_directory_resource_scope(
+            resources,
+            fail_callback,
+            label="resource prior-link cleanup also failed",
+        )
+
+    assert caught.value is primary
+    if link_kind == "cause":
+        assert primary.__cause__ is prior
+    else:
+        carrier = primary.__cause__
+        assert type(carrier) is RuntimeError
+        assert carrier.args[2] is cleanup_error
+        assert carrier.args[3] is prior
+        assert carrier.__context__ is prior
+    owners = BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    )
+    assert sum(owner is resources for owner in owners) == 1
+
+    fail_close = False
+    resources.close()
+    _assert_descriptor_closed(descriptor)
+
+
+@pytest.mark.parametrize("link_kind", ["cause", "context"])
+def test_quiescent_lifecycle_settlement_preserves_prior_error_link(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    primary = ValueError(f"lifecycle primary with prior {link_kind}")
+    prior = LookupError(f"lifecycle prior {link_kind}")
+    cleanup_error = OSError(errno.EIO, "lifecycle persistent release")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_callback() -> None:
+        if link_kind == "cause":
+            primary.__cause__ = prior
+            raise primary
+        try:
+            raise prior
+        except LookupError:
+            raise primary
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_error
+        real_release(lease)
+
+    def forbidden_handoff(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("natural settlement entered interruption recovery")
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_raise_quiescent_cleanup_handoff_boundary",
+        forbidden_handoff,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        reclaimer._run_lifecycle_transition(fail_callback)
+
+    assert caught.value is primary
+    if link_kind == "cause":
+        assert primary.__cause__ is prior
+    else:
+        carrier = primary.__cause__
+        assert type(carrier) is RuntimeError
+        assert carrier.args[2] is cleanup_error
+        assert carrier.args[3] is prior
+        assert carrier.__context__ is prior
+    owners = BaseException.__getattribute__(
+        primary,
+        "publication_cleanup_owners",
+    )
+    attempts = tuple(
+        owner
+        for owner in owners
+        if type(owner) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    )
+    assert len(attempts) == 1
+
+    fail_release = False
+    attempts[0].close()
+    assert attempts[0].closed
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_quiescent_resource_cleanup_only_skips_handoff_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    resources = atomic_module._PosixResourceOwner()
+    descriptor = resources.open(os.devnull, os.O_RDONLY)
+    cleanup_error = OSError(errno.EIO, "resource cleanup-only failure")
+    real_close = atomic_module._PosixResourceOwner.close
+    fail_close = True
+
+    def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+        if owner is resources and fail_close:
+            raise cleanup_error
+        real_close(owner)
+
+    def forbidden_handoff(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("cleanup-only settlement entered handoff recovery")
+
+    monkeypatch.setattr(
+        atomic_module._PosixResourceOwner,
+        "close",
+        fail_resources,
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_raise_quiescent_cleanup_handoff_boundary",
+        forbidden_handoff,
+    )
+
+    with pytest.raises(OSError) as caught:
+        atomic_module._run_quiescent_directory_resource_scope(
+            resources,
+            lambda: None,
+            label="resource cleanup-only failure",
+        )
+
+    assert caught.value is cleanup_error
+    owners = BaseException.__getattribute__(
+        cleanup_error,
+        "publication_cleanup_owners",
+    )
+    assert owners == (resources,)
+    fail_close = False
+    resources.close()
+    _assert_descriptor_closed(descriptor)
+
+
+def test_quiescent_lifecycle_cleanup_only_skips_handoff_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    cleanup_error = OSError(errno.EIO, "lifecycle cleanup-only failure")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_error
+        real_release(lease)
+
+    def forbidden_handoff(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("cleanup-only settlement entered handoff recovery")
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+    monkeypatch.setattr(
+        atomic_module,
+        "_raise_quiescent_cleanup_handoff_boundary",
+        forbidden_handoff,
+    )
+
+    with pytest.raises(OSError) as caught:
+        reclaimer._run_lifecycle_transition(lambda: False)
+
+    assert caught.value is cleanup_error
+    owners = BaseException.__getattribute__(
+        cleanup_error,
+        "publication_cleanup_owners",
+    )
+    attempts = tuple(
+        owner
+        for owner in owners
+        if type(owner) is atomic_module._QuiescentDirectoryLifecycleAttempt
+    )
+    assert len(attempts) == 1
+    fail_release = False
+    attempts[0].close()
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_publication_cleanup_owner_readers_reject_oversized_metadata() -> None:
+    probes: list[int] = []
+
+    class ForeignOwner:
+        @property
+        def closed(self) -> bool:
+            probes.append(1)
+            raise AssertionError("oversized owner metadata was probed")
+
+        def close(self) -> None:
+            raise AssertionError("oversized owner metadata was closed")
+
+    class LocalOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    foreign = tuple(
+        ForeignOwner()
+        for _index in range(atomic_module._MAX_PUBLICATION_CLEANUP_OWNERS + 1)
+    )
+    source = OSError(errno.EIO, "oversized cleanup metadata")
+    destination = ValueError("bounded cleanup destination")
+    BaseException.__setattr__(
+        source,
+        "publication_cleanup_owners",
+        foreign,
+    )
+
+    assert not atomic_module._inherit_publication_cleanup_owners(
+        destination,
+        source,
+    )
+    assert not atomic_module._publication_cleanup_owners_transferred(
+        destination,
+        foreign,
+    )
+    atomic_module._prune_publication_cleanup_owners(source)
+    assert probes == []
+    assert (
+        BaseException.__getattribute__(
+            source,
+            "publication_cleanup_owners",
+        )
+        is foreign
+    )
+
+    local = LocalOwner()
+    atomic_module._attach_publication_cleanup_owner(source, local)
+    assert probes == []
+    assert BaseException.__getattribute__(
+        source,
+        "publication_cleanup_owners",
+    ) == (local,)
+
+
+def test_quiescent_handoff_carrier_durably_retains_exact_operation_error() -> None:
+    class LocalOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = LocalOwner()
+    prior = LookupError("operation prior cause")
+    primary = ValueError("exact interrupted operation primary")
+    primary.__cause__ = prior
+    settlement = OSError(errno.EIO, "interrupted operation settlement")
+    interruption = KeyboardInterrupt("operation handoff replacement")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        atomic_module._raise_quiescent_cleanup_handoff_boundary(
+            interruption,
+            settlement,
+            (owner,),
+            primary,
+            label="operation handoff carrier",
+        )
+
+    assert caught.value is interruption
+    assert BaseException.__getattribute__(
+        interruption,
+        "publication_cleanup_owners",
+    ) == (owner,)
+    carrier = interruption.__cause__
+    assert type(carrier) is RuntimeError
+    assert carrier.args[2] is settlement
+    assert carrier.args[3] is primary
+    assert carrier.__cause__ is settlement
+    assert carrier.__context__ is primary
+    assert primary.__cause__ is prior
+
+
+def test_quiescent_handoff_carrier_breaks_self_secondary_cycle() -> None:
+    class LocalOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    owner = LocalOwner()
+    prior = LookupError("self-secondary prior")
+    primary = _HostileCleanupPrimary("self-secondary handoff")
+    primary.__context__ = prior
+
+    with pytest.raises(_HostileCleanupPrimary) as caught:
+        atomic_module._raise_quiescent_cleanup_handoff_boundary(
+            primary,
+            primary,
+            (owner,),
+            None,
+            label="self-secondary handoff carrier",
+        )
+
+    assert caught.value is primary
+    assert _exception_link_graph_is_acyclic(primary)
+    carrier = BaseException.__getattribute__(primary, "__cause__")
+    assert type(carrier) is RuntimeError
+    owners = BaseException.__getattribute__(
+        carrier,
+        "publication_cleanup_owners",
+    )
+    assert owners == (owner,)
+    diagnostic_wrapper = BaseException.__getattribute__(carrier, "__cause__")
+    assert type(diagnostic_wrapper) is RuntimeError
+    assert BaseException.__getattribute__(diagnostic_wrapper, "__cause__") is None
+    assert BaseException.__getattribute__(diagnostic_wrapper, "__context__") is None
+    recovery_graph = _bounded_exception_recovery_graph(primary)
+    assert any(candidate is primary for candidate in recovery_graph)
+    assert any(candidate is prior for candidate in recovery_graph)
+    assert any(candidate is owner for candidate in recovery_graph)
+    owner.close()
+    assert owner.closed
+
+
+def test_quiescent_lifecycle_oversized_primary_uses_bounded_carrier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    probes: list[int] = []
+
+    class ForeignOwner:
+        @property
+        def closed(self) -> bool:
+            probes.append(1)
+            raise AssertionError("oversized callback owner was probed")
+
+        def close(self) -> None:
+            raise AssertionError("oversized callback owner was closed")
+
+    primary = ValueError("callback with oversized cleanup metadata")
+    BaseException.__setattr__(
+        primary,
+        "publication_cleanup_owners",
+        tuple(
+            ForeignOwner()
+            for _index in range(atomic_module._MAX_PUBLICATION_CLEANUP_OWNERS + 1)
+        ),
+    )
+    cleanup_error = OSError(errno.EIO, "persistent lifecycle release")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+
+    def fail_lease_release(lease: object) -> None:
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            raise cleanup_error
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        fail_lease_release,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        reclaimer._run_lifecycle_transition(lambda: (_ for _ in ()).throw(primary))
+
+    assert caught.value is primary
+    assert probes == []
+    carrier = primary.__cause__
+    assert type(carrier) is RuntimeError
+    owners = BaseException.__getattribute__(
+        carrier,
+        "publication_cleanup_owners",
+    )
+    assert carrier.args[1] is owners
+    assert carrier.args[2] is cleanup_error
+    assert len(owners) == 1
+    attempt = owners[0]
+    assert type(attempt) is atomic_module._QuiescentDirectoryLifecycleAttempt
+
+    fail_release = False
+    attempt.close()
+    assert attempt.closed
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_final_delivery_retains_settled_operation_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt = parent / "attempt-a"
+    _write_tree(attempt, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_unlink = atomic_module.os.unlink
+    natural_failure = OSError(errno.EIO, "natural removal failure at final delivery")
+    interruption = KeyboardInterrupt("settled lifecycle final delivery")
+
+    def fail_unlink(_path: object, *, dir_fd: int | None = None) -> None:
+        raise natural_failure
+
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_unlink)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected,
+            "if outcome.error is not None:",
+            lambda: reclaimer.reclaim_child(attempt.name),
+            predicate=lambda values: values.get("outcome") is not None
+            and values["outcome"].error is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    transition_frames = []
+    traceback = caught.value.__traceback__
+    transition_code = (
+        atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected.__code__
+    )
+    while traceback is not None:
+        if traceback.tb_frame.f_code is transition_code:
+            transition_frames.append(traceback.tb_frame)
+        traceback = traceback.tb_next
+    assert transition_frames
+    assert any(
+        frame.f_locals["outcome"].error is natural_failure
+        for frame in transition_frames
+    )
+    assert reclaimer in natural_failure.publication_cleanup_owners
+    assert not reclaimer._lifecycle_lease.transition_active()
+
+    monkeypatch.setattr(atomic_module.os, "unlink", real_unlink)
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer, first_result=True)
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_exact_receipt_recovers_lost_return(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    owned = parent / "owned"
+    _write_tree(owned, "payload.txt", "payload")
+    orphan = atomic_module.discard_owned_directory(
+        owned,
+        capture_directory_ownership(owned),
+    )
+    assert orphan is not None
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    interruption = KeyboardInterrupt("reclaim public return interruption")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_return(
+            atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition,
+            lambda: reclaimer.reclaim_orphan(orphan),
+            predicate=lambda _frame, result: result is True,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert not orphan.path.exists()
+    assert reclaimer._active is None
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    assert reclaimer.reclaim_orphan(orphan) is True
+    assert reclaimer.reclaim_child(orphan.path.name) is False
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    ("source_fragment", "occurrence"),
+    [
+        ("locally_unwinding = context_error is not None", 2),
+        ("locally_unwinding = context_error is not None", 3),
+        ("_run_ordered_actions(failures)", 2),
+        ("_run_ordered_actions(failures)", 3),
+        ("_prune_publication_cleanup_owners(failures.primary_error)", 2),
+        ("_prune_publication_cleanup_owners(failures.primary_error)", 3),
+    ],
+    ids=[
+        "inner-entry",
+        "outer-entry",
+        "inner-call",
+        "outer-call",
+        "inner-return",
+        "outer-return",
+    ],
+)
+def test_quiescent_reclaimer_auto_releases_interrupted_finalizer(
+    tmp_path: Path,
+    source_fragment: str,
+    occurrence: int,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    interruption = KeyboardInterrupt(
+        f"lifecycle finalizer interruption {source_fragment} {occurrence}"
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module._run_context_with_cleanup_actions.__wrapped__,
+            source_fragment,
+            lambda: reclaimer.reclaim_child("missing-attempt"),
+            occurrence=occurrence,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    assert reclaimer.reclaim_child("missing-attempt") is False
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    ("seam", "occurrence"),
+    [("handler", 1), ("finalizer", 2), ("finalizer", 3)],
+    ids=["handler-store", "inner-finalizer", "outer-finalizer"],
+)
+def test_quiescent_reclaimer_preserves_callback_error_across_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    seam: str,
+    occurrence: int,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    natural_failure = ValueError("natural reclaimer callback failure")
+    interruption = KeyboardInterrupt(f"callback {seam} interruption")
+
+    def fail_reclaim(_reclaimer: object, _child_name: str) -> bool:
+        raise natural_failure
+
+    monkeypatch.setattr(
+        atomic_module.QuiescentDirectoryReclaimer,
+        "_reclaim_child",
+        fail_reclaim,
+    )
+    function = (
+        atomic_module._capture_quiescent_directory_lifecycle_outcome
+        if seam == "handler"
+        else atomic_module._run_context_with_cleanup_actions.__wrapped__
+    )
+    source_fragment = (
+        "outcome.error = error"
+        if seam == "handler"
+        else "_run_ordered_actions(failures)"
+    )
+    predicate = (
+        (lambda values: values.get("error") is natural_failure)
+        if seam == "handler"
+        else None
+    )
+
+    with pytest.raises(ValueError) as caught:
+        _call_with_interrupt_on_source_line(
+            function,
+            source_fragment,
+            lambda: reclaimer.reclaim_child("attempt-a"),
+            predicate=predicate,
+            occurrence=occurrence,
+            error=interruption,
+        )
+
+    assert caught.value is natural_failure
+    diagnostic_notes = (
+        *getattr(caught.value, "__notes__", ()),
+        *getattr(caught.value, "_codenib_cleanup_notes", ()),
+    )
+    assert caught.value.__cause__ is interruption or any(
+        str(interruption) in note for note in diagnostic_notes
+    )
+    assert _exception_link_graph_is_acyclic(caught.value)
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+@pytest.mark.parametrize(
+    "source_fragment",
+    ["settle_attempt()", "raise  # preserve lifecycle settlement failure"],
+)
+def test_quiescent_reclaimer_outer_plan_covers_fallback_interruption(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    attempt_type = atomic_module._QuiescentDirectoryLifecycleAttempt
+    real_close = attempt_type._close_borrowed
+    natural_failure = OSError(errno.EIO, "initial lifecycle release failed")
+    interruption = KeyboardInterrupt(f"fallback seam {source_fragment}")
+    close_calls = 0
+
+    def fail_first_close(attempt: object, execution_guard: object) -> None:
+        nonlocal close_calls
+        close_calls += 1
+        if close_calls == 1:
+            raise natural_failure
+        real_close(attempt, execution_guard)
+
+    monkeypatch.setattr(attempt_type, "_close_borrowed", fail_first_close)
+    expected_error = (
+        natural_failure if source_fragment == "settle_attempt()" else interruption
+    )
+
+    with pytest.raises(type(expected_error)) as caught:
+        _call_with_interrupt_on_source_line(
+            atomic_module.QuiescentDirectoryReclaimer._run_lifecycle_transition_unprotected,
+            source_fragment,
+            lambda: reclaimer.reclaim_child("missing-attempt"),
+            predicate=lambda values: values.get("primary_error") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is expected_error
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_exit_transfers_exhausted_lease_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    attempt_path = parent / "attempt-a"
+    _write_tree(attempt_path, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    removal_failure = OSError(errno.EIO, "active removal failed")
+    real_unlink = atomic_module.os.unlink
+
+    def fail_unlink(_path: object, *, dir_fd: int | None = None) -> None:
+        raise removal_failure
+
+    monkeypatch.setattr(atomic_module.os, "unlink", fail_unlink)
+    with pytest.raises(OSError) as initial:
+        reclaimer.reclaim_child(attempt_path.name)
+    assert initial.value is removal_failure
+    assert reclaimer._active is not None
+
+    body_primary = ValueError("context body primary")
+    interruption = KeyboardInterrupt("persistent pre-release interruption")
+    real_release = atomic_module._QuiescentDirectoryLifecycleLease.release
+    fail_release = True
+    release_calls = 0
+
+    def interrupt_before_release(lease: object) -> None:
+        nonlocal release_calls
+        if lease is reclaimer._lifecycle_lease and fail_release:
+            release_calls += 1
+            raise interruption
+        real_release(lease)
+
+    monkeypatch.setattr(
+        atomic_module._QuiescentDirectoryLifecycleLease,
+        "release",
+        interrupt_before_release,
+    )
+
+    with pytest.raises(ValueError) as caught:
+        with reclaimer:
+            raise body_primary
+
+    assert caught.value is body_primary
+    assert release_calls > atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES
+    owners = BaseException.__getattribute__(
+        body_primary,
+        "publication_cleanup_owners",
+    )
+    lease_owners = tuple(
+        owner
+        for owner in owners
+        if isinstance(owner, atomic_module._QuiescentDirectoryLifecycleAttempt)
+    )
+    assert len(lease_owners) == 1
+    assert sum(owner is reclaimer for owner in owners) == 1
+    assert not lease_owners[0].closed
+
+    fail_release = False
+    lease_owners[0].close()
+    assert lease_owners[0].closed
+    monkeypatch.setattr(atomic_module.os, "unlink", real_unlink)
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert reclaimer.closed
+
+
+def test_quiescent_reclaimer_retries_interrupted_close_transition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_close = atomic_module._PublicationAuthorityOwner.close
+    interruption = KeyboardInterrupt("post-authority-close interruption")
+    interrupted = False
+
+    def interrupt_after_close(owner: object, **kwargs: object) -> None:
+        nonlocal interrupted
+        real_close(owner, **kwargs)
+        if owner is reclaimer._authority_owner and not interrupted:
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthorityOwner,
+        "close",
+        interrupt_after_close,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        reclaimer.close()
+
+    assert caught.value is interruption
+    assert not reclaimer.closed
+    reclaimer.close()
+    assert reclaimer.closed
 
 
 def test_publish_restores_old_tree_when_rename_completes_then_interrupts(
@@ -5122,6 +11540,7 @@ def _call_with_interrupt_on_source_line(
     callback: object,
     *,
     predicate: object | None = None,
+    occurrence: int = 1,
     error: BaseException,
 ) -> None:
     """Inject before one exact source line across supported trace versions."""
@@ -5129,6 +11548,7 @@ def _call_with_interrupt_on_source_line(
     assert callable(function)
     assert callable(callback)
     assert predicate is None or callable(predicate)
+    assert type(occurrence) is int and occurrence > 0
     code = function.__code__
     source, first_line = inspect.getsourcelines(function)
     target_lines = {
@@ -5139,9 +11559,10 @@ def _call_with_interrupt_on_source_line(
     assert len(target_lines) == 1
     previous_trace = sys.gettrace()
     injected = False
+    observed = 0
 
     def trace(frame: object, event: str, _arg: object) -> object:
-        nonlocal injected
+        nonlocal injected, observed
         if event == "call" and frame.f_code is code:
             frame.f_trace_lines = True
             return trace
@@ -5152,6 +11573,9 @@ def _call_with_interrupt_on_source_line(
             and frame.f_lineno in target_lines
             and (predicate is None or predicate(frame.f_locals))
         ):
+            observed += 1
+            if observed != occurrence:
+                return trace
             injected = True
             sys.settrace(None)
             raise error
@@ -5163,6 +11587,247 @@ def _call_with_interrupt_on_source_line(
     finally:
         sys.settrace(previous_trace)
         assert injected, f"failed to inject on source line: {source_fragment}"
+
+
+def _source_statement_opcode_offsets(
+    function: object,
+    source_fragment: str,
+    *,
+    occurrence: int = 1,
+) -> tuple[int, ...]:
+    """Return every opcode mapped to one possibly multiline statement."""
+
+    assert callable(function)
+    assert type(occurrence) is int and occurrence > 0
+    source, first_line = inspect.getsourcelines(function)
+    starts = [
+        offset for offset, line in enumerate(source) if line.strip() == source_fragment
+    ]
+    if occurrence == 1:
+        assert len(starts) == 1
+    assert len(starts) >= occurrence
+    start = starts[occurrence - 1]
+    balance = 0
+    end = start
+    for offset in range(start, len(source)):
+        balance += source[offset].count("(") - source[offset].count(")")
+        end = offset
+        if balance <= 0:
+            break
+    start_line = first_line + start
+    end_line = first_line + end
+    fallback_line = function.__code__.co_firstlineno
+    selected: list[int] = []
+    for instruction in dis.get_instructions(function):
+        if type(instruction.starts_line) is int:
+            fallback_line = instruction.starts_line
+        positions = getattr(instruction, "positions", None)
+        current_line = getattr(positions, "lineno", None)
+        if current_line is None:
+            current_line = fallback_line
+        if current_line is not None and start_line <= current_line <= end_line:
+            selected.append(instruction.offset)
+    assert selected
+    return tuple(selected)
+
+
+def _call_with_interrupt_at_opcode(
+    function: object,
+    opcode_offset: int,
+    callback: object,
+    *,
+    call_occurrence: int | None = None,
+    warmup: object | None = None,
+    predicate: object | None = None,
+    error: BaseException,
+) -> None:
+    """Interrupt before one exact opcode selected from the running version."""
+
+    assert callable(function)
+    assert callable(callback)
+    assert call_occurrence is None or (
+        type(call_occurrence) is int and call_occurrence > 0
+    )
+    assert warmup is None or callable(warmup)
+    assert predicate is None or callable(predicate)
+    code = function.__code__
+    selected = tuple(
+        instruction
+        for instruction in dis.get_instructions(function)
+        if instruction.offset == opcode_offset
+    )
+    assert len(selected) == 1
+    positions = getattr(selected[0], "positions", None)
+    target_line: int | None = None
+    if selected[0].starts_line is True or type(selected[0].starts_line) is int:
+        target_line = getattr(positions, "lineno", None)
+        if target_line is None and type(selected[0].starts_line) is int:
+            target_line = selected[0].starts_line
+    previous_trace = sys.gettrace()
+    injected = False
+    matching_calls = 0
+    selected_frame: object | None = None
+    priming = warmup is not None
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected, matching_calls, selected_frame
+        if event == "call" and frame.f_code is code:
+            matching_calls += 1
+            if call_occurrence is not None and matching_calls == call_occurrence:
+                selected_frame = frame
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and not priming
+            and frame.f_code is code
+            and (call_occurrence is None or frame is selected_frame)
+            and (
+                (event == "opcode" and frame.f_lasti == opcode_offset)
+                or (
+                    event == "line"
+                    and target_line is not None
+                    and frame.f_lineno == target_line
+                )
+            )
+            and (predicate is None or predicate(frame.f_locals))
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        if warmup is not None:
+            warmup()
+            matching_calls = 0
+            selected_frame = None
+            priming = False
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to inject at opcode {opcode_offset}"
+
+
+def _observed_opcode_offsets(
+    function: object,
+    callback: object,
+    *,
+    call_occurrence: int | None = None,
+    warmup: object | None = None,
+    predicate: object | None = None,
+) -> tuple[int, ...]:
+    """Record every opcode reached in selected calls to one function."""
+
+    assert callable(function)
+    assert callable(callback)
+    assert call_occurrence is None or (
+        type(call_occurrence) is int and call_occurrence > 0
+    )
+    assert warmup is None or callable(warmup)
+    assert predicate is None or callable(predicate)
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    opcode_offsets: list[int] = []
+    line_offsets: list[int] = []
+    matching_calls = 0
+    selected_frame: object | None = None
+    priming = warmup is not None
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal matching_calls, selected_frame
+        if event == "call" and frame.f_code is code:
+            matching_calls += 1
+            if call_occurrence is not None and matching_calls == call_occurrence:
+                selected_frame = frame
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            frame.f_code is code
+            and not priming
+            and (call_occurrence is None or frame is selected_frame)
+            and event in {"opcode", "line"}
+            and (predicate is None or predicate(frame.f_locals))
+        ):
+            if event == "opcode":
+                opcode_offsets.append(frame.f_lasti)
+            else:
+                line_offsets.append(frame.f_lasti)
+        return trace
+
+    sys.settrace(trace)
+    try:
+        if warmup is not None:
+            warmup()
+            matching_calls = 0
+            selected_frame = None
+            priming = False
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+    observed = tuple(dict.fromkeys(opcode_offsets or line_offsets))
+    assert observed
+    return observed
+
+
+def _call_with_interrupt_on_return(
+    function: object,
+    callback: object,
+    *,
+    call_occurrence: int | None = None,
+    warmup: object | None = None,
+    predicate: object,
+    error: BaseException,
+) -> None:
+    """Inject when one selected function is handing its result to the caller."""
+
+    assert callable(function)
+    assert callable(callback)
+    assert call_occurrence is None or (
+        type(call_occurrence) is int and call_occurrence > 0
+    )
+    assert warmup is None or callable(warmup)
+    assert callable(predicate)
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    injected = False
+    matching_calls = 0
+    selected_frame: object | None = None
+    priming = warmup is not None
+
+    def trace(frame: object, event: str, arg: object) -> object:
+        nonlocal injected, matching_calls, selected_frame
+        if event == "call" and frame.f_code is code:
+            matching_calls += 1
+            if call_occurrence is not None and matching_calls == call_occurrence:
+                selected_frame = frame
+            return trace
+        if (
+            not injected
+            and not priming
+            and event == "return"
+            and frame.f_code is code
+            and (call_occurrence is None or frame is selected_frame)
+            and predicate(frame, arg)
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        if warmup is not None:
+            warmup()
+            matching_calls = 0
+            selected_frame = None
+            priming = False
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to inject at the selected return handoff"
 
 
 def _call_with_interrupt_after_call_result_store(
@@ -11415,6 +18080,86 @@ def test_native_replacement_validator_cannot_intercept_late_native_globals(
         )
         assert interceptions == []
         assert (prepared.destination / "payload.bin").read_bytes() == b"new"
+    finally:
+        _close_fake_native_replacement(prepared)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"),
+    reason="native workspace replacement is Linux-only",
+)
+def test_native_replacement_freezes_receipt_digest_default_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = _adopt_fake_native_replacement(tmp_path, monkeypatch)
+    expected_candidate = capture_directory_ownership(prepared.stage)
+    expected_incumbent = capture_directory_ownership(prepared.destination)
+    digest_function = atomic_module._directory_orphan_receipt_digest
+    defaults = digest_function.__kwdefaults__
+    assert type(defaults) is dict
+    original_fsencode = defaults["_fsencode"]
+    original_sha256 = defaults["_sha256"]
+    original_parent_path_validator = defaults["_require_parent_path_bytes"]
+    interceptions: list[str] = []
+
+    def intercept_fsencode(_value: object) -> bytes:
+        interceptions.append("fsencode")
+        return b"intercepted"
+
+    def intercept_sha256() -> object:
+        interceptions.append("sha256")
+        return original_sha256()
+
+    def intercept_parent_path(_value: object) -> bytes:
+        interceptions.append("parent-path")
+        return b"intercepted"
+
+    def validate_staged(_reader: atomic_module.PublicationDirectoryReader) -> None:
+        defaults["_fsencode"] = intercept_fsencode
+        defaults["_sha256"] = intercept_sha256
+        defaults["_require_parent_path_bytes"] = intercept_parent_path
+
+    def commit(
+        _staged: object,
+        _published: object,
+        _displaced: DirectoryOrphan,
+        _receipt_token: object,
+    ) -> None:
+        prepared.native_state["value"] = "replacement-receipted"
+        prepared.replacement.mark_receipted()
+
+    try:
+        orphan = atomic_module._publish_native_replacement_with_authority(
+            prepared.authority,
+            prepared.replacement,
+            prepared.stage,
+            prepared.destination,
+            expected_stage_root_ownership=expected_candidate,
+            expected_destination_ownership=expected_incumbent,
+            deadline_ns=1,
+            validate_staged_directory=validate_staged,
+            commit_callback=commit,
+        )
+    finally:
+        defaults["_fsencode"] = original_fsencode
+        defaults["_sha256"] = original_sha256
+        defaults["_require_parent_path_bytes"] = original_parent_path_validator
+
+    try:
+        assert interceptions == []
+        assert prepared.native_state["value"] == "replacement-receipted"
+        locator = orphan.locator
+        assert locator.receipt_digest == digest_function(
+            parent_path_bytes=locator.parent_path_bytes,
+            child_name=locator.child_name,
+            backend_tag=locator.backend_tag,
+            parent_identity=locator.parent_identity,
+            ownership=locator.ownership,
+            verified_at_isolation=orphan.verified_at_isolation,
+            _fsencode=original_fsencode,
+            _sha256=original_sha256,
+        )
     finally:
         _close_fake_native_replacement(prepared)
 
