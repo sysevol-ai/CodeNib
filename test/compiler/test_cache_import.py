@@ -3842,9 +3842,21 @@ def test_compile_and_import_rejects_drift_or_failed_view_before_data_io(
 
     def fake_update(*args, **kwargs):
         if failure == "source":
-            (fixture.repository / "sample.py").write_text(
+            source_path = fixture.repository / "sample.py"
+            authenticated = source_path.stat()
+            source_path.write_text(
                 "VALUE = 2\n",
                 encoding="utf-8",
+            )
+            # Some test filesystems coalesce same-size rewrites within one
+            # timestamp tick. Keep that equal-size case while making the
+            # intended inventory-version drift deterministic.
+            os.utime(
+                source_path,
+                ns=(
+                    authenticated.st_atime_ns,
+                    authenticated.st_mtime_ns + 1_000_000_000,
+                ),
             )
         return returned_manifest
 
