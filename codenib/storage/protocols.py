@@ -574,6 +574,25 @@ class JobResultCatalog(Protocol):
 
 
 @runtime_checkable
+class JobResultActivationCatalog(JobResultCatalog, Protocol):
+    """Current-result reads plus one writer-fenced runtime transfer boundary.
+
+    ``run_current_successful_job_guarded`` revalidates the exact detached
+    result under a backend-specific fence that excludes ref publication, calls
+    the synchronous transfer exactly once while retaining that fence, and
+    releases it only after the transfer returns. The callback must not reenter
+    this catalog and must return ``None``. This surface grants no catalog
+    mutation, job enumeration, lease, event, manifest, or publication access.
+    """
+
+    def run_current_successful_job_guarded(
+        self,
+        expected: IndexJobCurrentResult,
+        transfer: Callable[[], None],
+    ) -> None: ...
+
+
+@runtime_checkable
 class JobCatalog(Protocol):
     """Durable index-job coordination, separate from snapshot publication."""
 
@@ -872,6 +891,7 @@ __all__ = [
     "JobCycleWorkerCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",
+    "JobResultActivationCatalog",
     "JobResultCatalog",
     "JobWorkerCatalog",
     "ObjectStore",

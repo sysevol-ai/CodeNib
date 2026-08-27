@@ -485,6 +485,69 @@ def test_current_successful_job_requires_the_exact_current_ref(tmp_path) -> None
         assert second_result.ref_generation == 3
 
 
+def test_guarded_current_result_excludes_ref_writers_through_transfer(
+    tmp_path,
+) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    with SQLiteCatalog(path) as catalog:
+        fixture = _create_running_job(catalog)
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(_output("bm25", fixture.profiles["bm25"], 100),),
+        )
+        expected = catalog.find_current_successful_job(completed.repository_id)
+        assert type(expected) is IndexJobCurrentResult
+        transfers = []
+
+        def transfer() -> None:
+            assert catalog._connection.in_transaction
+            contender = sqlite3.connect(path, timeout=0)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    contender.execute("BEGIN IMMEDIATE")
+            finally:
+                contender.close()
+            transfers.append(expected)
+
+        catalog.run_current_successful_job_guarded(expected, transfer)
+
+        assert transfers == [expected]
+        contender = sqlite3.connect(path, timeout=0)
+        try:
+            contender.execute("BEGIN IMMEDIATE")
+            contender.rollback()
+        finally:
+            contender.close()
+
+
+def test_guarded_current_result_rejects_an_advanced_ref(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        fixture = _create_running_job(catalog)
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(_output("bm25", fixture.profiles["bm25"], 100),),
+        )
+        expected = catalog.find_current_successful_job(completed.repository_id)
+        assert type(expected) is IndexJobCurrentResult
+        direct = _direct_publish_output(
+            catalog,
+            completed,
+            _output("bm25", fixture.profiles["bm25"], 101),
+            expected_generation=1,
+        )
+        assert direct["generation"] == 2
+
+        with pytest.raises(CatalogConflictError, match="changed before guarded"):
+            catalog.run_current_successful_job_guarded(
+                expected,
+                lambda: pytest.fail("a stale result reached runtime transfer"),
+            )
+
+
 def test_current_successful_job_deduplicates_unchanged_publications_by_ref(
     tmp_path,
 ) -> None:

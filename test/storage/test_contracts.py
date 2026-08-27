@@ -44,6 +44,7 @@ from codenib.storage.protocols import (
     JobExecutionCatalog,
     JobPublicationCatalog,
     JobQueryCatalog,
+    JobResultActivationCatalog,
     JobResultCatalog,
     JobWorkerCatalog,
     ObjectStore,
@@ -72,6 +73,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(catalog, JobCreationReplayCatalog)
         assert isinstance(catalog, JobQueryCatalog)
         assert isinstance(catalog, JobResultCatalog)
+        assert isinstance(catalog, JobResultActivationCatalog)
         assert isinstance(catalog, JobExecutionCatalog)
         assert isinstance(catalog, JobWorkerCatalog)
         assert isinstance(catalog, JobCycleWorkerCatalog)
@@ -118,6 +120,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "JobCreationCatalog",
         "JobCreationReplayCatalog",
         "JobQueryCatalog",
+        "JobResultActivationCatalog",
         "JobResultCatalog",
         "JobWorkerCatalog",
     }
@@ -193,6 +196,25 @@ def test_job_result_catalog_grants_only_exact_and_current_success_reads() -> Non
     adapter = ResultOnlyCatalog()
 
     assert isinstance(adapter, JobResultCatalog)
+    assert not isinstance(adapter, JobResultActivationCatalog)
+    assert not isinstance(adapter, JobQueryCatalog)
+    assert not isinstance(adapter, JobCatalog)
+
+
+def test_job_result_activation_catalog_adds_only_guarded_transfer() -> None:
+    class ActivationOnlyCatalog:
+        def get_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def find_current_successful_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def run_current_successful_job_guarded(self, *args, **kwargs):
+            raise NotImplementedError
+
+    adapter = ActivationOnlyCatalog()
+
+    assert isinstance(adapter, JobResultActivationCatalog)
     assert not isinstance(adapter, JobQueryCatalog)
     assert not isinstance(adapter, JobCatalog)
 

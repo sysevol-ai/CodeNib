@@ -1543,6 +1543,19 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   returning that detached result. A superseded job or a current ref published
   outside the job path therefore cannot trigger stale runtime activation, and
   consumers need no lease, event, manifest, or publication authority.
+- An injected Web reconciler now consumes that current-result surface on both
+  successful worker callbacks and restart-safe full scans. It accepts only one
+  exact required FULL BM25 result, treats a superseded callback as a no-op, and
+  deduplicates by `(snapshot_id, ref_generation)` rather than job identity so
+  unchanged successful replays cannot republish the runtime. After
+  materialization, the publisher supplies its atomic runtime transfer to an
+  additive least-authority activation catalog. SQLite begins an immediate write
+  transaction, revalidates the complete exact current result, and retains its
+  ref-writer exclusion until that transfer returns. Only that guarded transfer
+  can advance reconciliation state; missing, repeated, out-of-scope, skipped,
+  or failed guard/transfer calls fail closed. Publication failures remain
+  retryable and secret-free. A concrete generation publisher, server wiring,
+  and the final runtime refresh callback remain separate gates.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a

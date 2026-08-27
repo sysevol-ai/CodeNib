@@ -30,7 +30,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from functools import partial, wraps
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 from .._owned_file_publication import _CancellationSafeRLock
 from .models import (
@@ -7026,6 +7026,116 @@ class SQLiteCatalog:
             self._job_views(job)
             return job
 
+    def _current_successful_publication(
+        self,
+        repository: str,
+        ref: str,
+    ) -> tuple[sqlite3.Row, str, int, str] | None:
+        """Read one current publication inside the caller's transaction."""
+
+        self._require_record("repositories", "repository_id", repository)
+        current_ref = self._connection.execute(
+            """
+            SELECT snapshot_id, generation, updated_at FROM refs
+            WHERE repository_id = ? AND ref_name = ?
+            """,
+            (repository, ref),
+        ).fetchone()
+        if current_ref is None:
+            return None
+        generation = _persisted_positive_int64(
+            current_ref["generation"],
+            "current successful job ref generation",
+        )
+        updated_at = _persisted_utc_timestamp(
+            current_ref["updated_at"],
+            "current successful job ref updated_at",
+        )
+        snapshot_id = current_ref["snapshot_id"]
+        if type(snapshot_id) is not str:
+            raise CatalogConflictError(
+                "current successful job ref snapshot is not canonical text"
+            )
+
+        publication = self._connection.execute(
+            """
+            SELECT publication.*
+            FROM index_job_publications AS publication
+            JOIN index_job_insertion_sequences AS insertion
+                ON insertion.job_id = publication.job_id
+            WHERE publication.repository_id = ?
+                AND publication.ref_name = ?
+                AND publication.snapshot_id = ?
+                AND publication.ref_generation = ?
+                AND publication.ref_updated_at = ?
+            ORDER BY publication.completed_at_ms DESC,
+                insertion.job_sequence DESC
+            LIMIT 1
+            """,
+            (repository, ref, snapshot_id, generation, updated_at),
+        ).fetchone()
+        if publication is None:
+            return None
+        return publication, snapshot_id, generation, updated_at
+
+    def _current_successful_result(
+        self,
+        publication: sqlite3.Row,
+        snapshot_id: str,
+        generation: int,
+        updated_at: str,
+    ) -> IndexJobCurrentResult:
+        """Revalidate one selected publication inside the caller's transaction."""
+
+        job = self._job_from_row(
+            self._require_record(
+                "index_jobs",
+                "job_id",
+                publication["job_id"],
+            )
+        )
+        requested = self._job_views(job)
+        outputs, output_identities = self._outputs_from_publication_row(
+            job,
+            publication,
+        )
+        if (
+            self._job_publication_output_identities(
+                job,
+                requested,
+                outputs,
+            )
+            != output_identities
+        ):
+            raise CatalogConflictError(
+                "current successful job request closure conflicts"
+            )
+        published_snapshot_id = _job_publication_snapshot_id(
+            job,
+            output_identities,
+        )
+        completed = self._validate_job_publication_replay(
+            job,
+            owner_id=publication["owner_id"],
+            fencing_token=publication["fencing_token"],
+            outputs=outputs,
+            output_identities=output_identities,
+            snapshot_id=published_snapshot_id,
+        )
+        if (
+            completed.result_snapshot_id != snapshot_id
+            or publication["ref_generation"] != generation
+            or publication["ref_updated_at"] != updated_at
+        ):
+            raise CatalogConflictError(
+                "current successful job differs from its ref state"
+            )
+        return IndexJobCurrentResult(
+            job=completed,
+            ref_generation=generation,
+            ref_updated_at=updated_at,
+        )
+
     @_coordinated_catalog_method
     def find_current_successful_job(
         self,
@@ -7041,98 +7151,47 @@ class SQLiteCatalog:
         )
         ref = _bounded_text(ref_name, "ref name", max_length=512)
         with self._transaction(immediate=False):
-            self._require_record("repositories", "repository_id", repository)
-            current_ref = self._connection.execute(
-                """
-                SELECT snapshot_id, generation, updated_at FROM refs
-                WHERE repository_id = ? AND ref_name = ?
-                """,
-                (repository, ref),
-            ).fetchone()
-            if current_ref is None:
-                return None
-            generation = _persisted_positive_int64(
-                current_ref["generation"],
-                "current successful job ref generation",
-            )
-            updated_at = _persisted_utc_timestamp(
-                current_ref["updated_at"],
-                "current successful job ref updated_at",
-            )
-            snapshot_id = current_ref["snapshot_id"]
-            if type(snapshot_id) is not str:
-                raise CatalogConflictError(
-                    "current successful job ref snapshot is not canonical text"
-                )
-
-            publication = self._connection.execute(
-                """
-                SELECT publication.*
-                FROM index_job_publications AS publication
-                JOIN index_job_insertion_sequences AS insertion
-                    ON insertion.job_id = publication.job_id
-                WHERE publication.repository_id = ?
-                    AND publication.ref_name = ?
-                    AND publication.snapshot_id = ?
-                    AND publication.ref_generation = ?
-                    AND publication.ref_updated_at = ?
-                ORDER BY publication.completed_at_ms DESC,
-                    insertion.job_sequence DESC
-                LIMIT 1
-                """,
-                (repository, ref, snapshot_id, generation, updated_at),
-            ).fetchone()
+            publication = self._current_successful_publication(repository, ref)
             if publication is None:
                 return None
+            return self._current_successful_result(*publication)
 
-            job = self._job_from_row(
-                self._require_record(
-                    "index_jobs",
-                    "job_id",
-                    publication["job_id"],
-                )
+    @_coordinated_catalog_method
+    def run_current_successful_job_guarded(
+        self,
+        expected: IndexJobCurrentResult,
+        transfer: Callable[[], None],
+    ) -> None:
+        """Transfer runtime state while excluding concurrent ref writers."""
+
+        if type(expected) is not IndexJobCurrentResult:
+            raise CatalogValidationError(
+                "guarded current job result must use the exact model"
             )
-            requested = self._job_views(job)
-            outputs, output_identities = self._outputs_from_publication_row(
-                job,
-                publication,
+        if not callable(transfer):
+            raise TypeError("guarded current-result transfer must be callable")
+        repository = _bounded_text(
+            expected.job.repository_id,
+            "repository ID",
+            max_length=96,
+        )
+        ref = _bounded_text(expected.job.ref_name, "ref name", max_length=512)
+        with self._transaction():
+            publication = self._current_successful_publication(repository, ref)
+            actual = (
+                None
+                if publication is None
+                else self._current_successful_result(*publication)
             )
-            if (
-                self._job_publication_output_identities(
-                    job,
-                    requested,
-                    outputs,
-                )
-                != output_identities
-            ):
+            if actual != expected:
                 raise CatalogConflictError(
-                    "current successful job request closure conflicts"
+                    "current successful job changed before guarded runtime transfer"
                 )
-            published_snapshot_id = _job_publication_snapshot_id(
-                job,
-                output_identities,
-            )
-            completed = self._validate_job_publication_replay(
-                job,
-                owner_id=publication["owner_id"],
-                fencing_token=publication["fencing_token"],
-                outputs=outputs,
-                output_identities=output_identities,
-                snapshot_id=published_snapshot_id,
-            )
-            if (
-                completed.result_snapshot_id != snapshot_id
-                or publication["ref_generation"] != generation
-                or publication["ref_updated_at"] != updated_at
-            ):
-                raise CatalogConflictError(
-                    "current successful job differs from its ref state"
+            result = transfer()
+            if result is not None:
+                raise CatalogValidationError(
+                    "guarded current-result transfer returned a value"
                 )
-            return IndexJobCurrentResult(
-                job=completed,
-                ref_generation=generation,
-                ref_updated_at=updated_at,
-            )
 
     @_coordinated_catalog_method
     def get_job_views(self, job_id: str) -> tuple[IndexJobViewRecord, ...]:
