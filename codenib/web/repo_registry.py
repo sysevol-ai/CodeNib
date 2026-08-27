@@ -42,7 +42,10 @@ if TYPE_CHECKING:
     from ..index.embedding.vector_store import CodeVectorStore
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
     from ..llm.litellm_chat import LiteLLMChat
-    from ..mcp.retained_context import RetainedServerContextOwner
+    from ..mcp.retained_context import (
+        RetainedServerContextOwner,
+        RetainedServerContextResult,
+    )
     from ..native_index_authorization import NativeIndexAuthorization
     from ..source_fingerprint import RepositorySourceBinding, RepositorySourceReader
     from .index_job_activation import IndexJobRuntimeActivation
@@ -1381,6 +1384,108 @@ class RepoRegistry:
 
         self._run_serialized_reload(operation)
 
+    def attest_retained_bm25_snapshot_if_equivalent(
+        self,
+        binding: "IndexJobRepoBinding",
+        activation: "IndexJobRuntimeActivation",
+        *,
+        transfer_if_current: Callable[[Callable[[], None]], None],
+    ) -> bool:
+        """Guard-attest an equivalent incumbent under the reload fence.
+
+        The reload lock is acquired before the durable current-result guard,
+        matching the lock order used by full snapshot publication. A normal
+        registry reload therefore cannot retire the incumbent between the
+        runtime proof and the durable guarded transfer.
+        """
+
+        from .index_job_activation import (
+            IndexJobActivationError,
+            IndexJobRuntimeActivation,
+        )
+        from .index_jobs import IndexJobRepoBinding
+
+        if type(binding) is not IndexJobRepoBinding:
+            raise TypeError("binding must be an exact IndexJobRepoBinding")
+        if type(activation) is not IndexJobRuntimeActivation:
+            raise TypeError("activation must be an exact IndexJobRuntimeActivation")
+        if (
+            activation.repo_id != binding.repo_id
+            or activation.repository_id != binding.repository_id
+            or activation.ref_name != binding.ref_name
+        ):
+            raise ValueError("retained BM25 activation binding differs")
+        if not callable(transfer_if_current):
+            raise TypeError("retained BM25 guarded transfer must be callable")
+
+        instance_id = binding.repo_id
+
+        def operation() -> bool:
+            with self._generation_lock:
+                bundle = self._bundles.get(instance_id)
+                if bundle is None:
+                    raise IndexJobActivationError(
+                        "Web repository has no active runtime generation"
+                    )
+                incumbent = bundle.index_job_activation
+                if incumbent is None:
+                    return False
+                if type(incumbent) is not IndexJobRuntimeActivation:
+                    raise IndexJobActivationError(
+                        "active Web runtime activation identity is invalid"
+                    )
+                if (
+                    incumbent.repo_id != binding.repo_id
+                    or incumbent.repository_id != binding.repository_id
+                    or incumbent.ref_name != binding.ref_name
+                ):
+                    raise IndexJobActivationError(
+                        "active Web runtime activation binding changed"
+                    )
+                if incumbent.ref_generation > activation.ref_generation:
+                    raise IndexJobActivationError(
+                        "active Web runtime generation is newer than publication"
+                    )
+                if incumbent.ref_generation < activation.ref_generation:
+                    return False
+                if (
+                    incumbent.snapshot_id != activation.snapshot_id
+                    or incumbent.ref_updated_at != activation.ref_updated_at
+                ):
+                    raise IndexJobActivationError(
+                        "active Web runtime generation conflicts with publication"
+                    )
+
+            def require_incumbent() -> None:
+                with self._generation_lock:
+                    current = self._bundles.get(instance_id)
+                    if current is not bundle:
+                        raise IndexJobActivationError(
+                            "active Web runtime changed during guarded attestation"
+                        )
+                    current_activation = current.index_job_activation
+                    if (
+                        type(current_activation) is not IndexJobRuntimeActivation
+                        or current_activation.repo_id != binding.repo_id
+                        or current_activation.repository_id != binding.repository_id
+                        or current_activation.ref_name != binding.ref_name
+                        or current_activation.ref_generation
+                        != activation.ref_generation
+                        or current_activation.snapshot_id != activation.snapshot_id
+                        or current_activation.ref_updated_at
+                        != activation.ref_updated_at
+                    ):
+                        raise IndexJobActivationError(
+                            "active Web runtime changed during guarded attestation"
+                        )
+
+            result = transfer_if_current(require_incumbent)
+            if result is not None:
+                raise RuntimeError("retained BM25 guarded transfer returned a value")
+            return True
+
+        return self._run_serialized_reload(operation)
+
     def replace_retained_bm25_snapshot(
         self,
         binding: "IndexJobRepoBinding",
@@ -1453,6 +1558,71 @@ class RepoRegistry:
         except BaseException as primary:  # noqa: B036 - retain accepted owner
             try:
                 cleanup_failure = self._retain_cleanup_owner(
+                    instance_id,
+                    runtime_owner,
+                )
+            except BaseException as settlement_failure:  # noqa: B036
+                _raise_with_cleanup_failure(primary, settlement_failure)
+            if cleanup_failure is not None:
+                _raise_with_cleanup_failure(primary, cleanup_failure)
+            raise
+
+    def load_and_replace_retained_bm25_snapshot(
+        self,
+        binding: "IndexJobRepoBinding",
+        activation: "IndexJobRuntimeActivation",
+        *,
+        loader: Callable[
+            ["RetainedServerContextOwner"],
+            "RetainedServerContextResult",
+        ],
+        transfer_if_current: Callable[[Callable[[], None]], None],
+    ) -> None:
+        """Own one retained loader through its guarded runtime publication."""
+
+        from ..mcp.retained_context import (
+            RetainedServerContextOwner,
+            RetainedServerContextResult,
+        )
+        from .index_job_activation import IndexJobRuntimeActivation
+        from .index_jobs import IndexJobRepoBinding
+
+        if type(binding) is not IndexJobRepoBinding:
+            raise TypeError("binding must be an exact IndexJobRepoBinding")
+        if type(activation) is not IndexJobRuntimeActivation:
+            raise TypeError("activation must be an exact IndexJobRuntimeActivation")
+        if (
+            activation.repo_id != binding.repo_id
+            or activation.repository_id != binding.repository_id
+            or activation.ref_name != binding.ref_name
+        ):
+            raise ValueError("retained BM25 activation binding differs")
+        if not callable(loader):
+            raise TypeError("retained BM25 runtime loader must be callable")
+        if not callable(transfer_if_current):
+            raise TypeError("retained BM25 guarded transfer must be callable")
+
+        runtime_owner = RetainedServerContextOwner()
+        instance_id = binding.repo_id
+        try:
+            result = loader(runtime_owner)
+            if (
+                type(result) is not RetainedServerContextResult
+                or runtime_owner.state != "active"
+                or runtime_owner.result is not result
+            ):
+                raise RuntimeError(
+                    "retained BM25 runtime loader returned an invalid result"
+                )
+            self.replace_retained_bm25_snapshot(
+                binding,
+                activation,
+                runtime_owner,
+                transfer_if_current=transfer_if_current,
+            )
+        except BaseException as primary:  # noqa: B036 - retain acquired owner
+            try:
+                cleanup_failure = self._settle_unpublished_cleanup_owner(
                     instance_id,
                     runtime_owner,
                 )
@@ -1923,6 +2093,57 @@ class RepoRegistry:
             else:
                 self._orphan_cleanup_owners.append(owner)
         return self._drain_orphan_cleanup() if closed else None
+
+    def _settle_unpublished_cleanup_owner(
+        self,
+        instance_id: str,
+        owner: Any,
+    ) -> Optional[BaseException]:
+        """Immediately settle a rejected owner, retaining only pending cleanup."""
+
+        from ..artifacts.runtime import _source_cleanup_owner_is_pending
+
+        instance_id = _plain_repo_instance_id(instance_id)
+        cleanup_failure = self._retain_cleanup_owner(instance_id, owner)
+        if not _source_cleanup_owner_is_pending(owner):
+            return cleanup_failure
+
+        with self._generation_lock:
+            if self._closed:
+                return cleanup_failure
+            generation_owned = any(
+                (
+                    self._source_cleanup_owners.get(candidate_id) is owner
+                    or self._source_bindings.get(candidate_id) is owner
+                )
+                and candidate_id in self._bundles
+                for candidate_id in (
+                    set(self._source_cleanup_owners) | set(self._source_bindings)
+                )
+            ) or any(
+                retired.source_cleanup_owner is owner or retired.source_binding is owner
+                for retired in self._retired_bundles.values()
+            )
+            if generation_owned:
+                return cleanup_failure
+
+            if not any(candidate is owner for candidate in self._orphan_cleanup_owners):
+                # Publish retry ownership before removing any owner-only map
+                # alias so interruption cannot make the authority unreachable.
+                self._orphan_cleanup_owners.append(owner)
+            for candidate_id, candidate in tuple(self._source_cleanup_owners.items()):
+                if candidate is owner and candidate_id not in self._bundles:
+                    self._source_cleanup_owners.pop(candidate_id, None)
+            for candidate_id, candidate in tuple(self._source_bindings.items()):
+                if candidate is owner and candidate_id not in self._bundles:
+                    self._source_bindings.pop(candidate_id, None)
+
+        orphan_failure = self._drain_orphan_cleanup()
+        if orphan_failure is None:
+            return cleanup_failure
+        if cleanup_failure is None:
+            return orphan_failure
+        return _retain_cleanup_failure(cleanup_failure, orphan_failure)
 
     def _retain_exception_cleanup(
         self,

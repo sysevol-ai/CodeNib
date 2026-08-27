@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,11 +19,15 @@ from codenib.storage import (
     IndexJobWorkerDisposition,
     IndexJobWorkerRunResult,
 )
+from codenib.web.config import QAConfig
 from codenib.web.index_job_activation import (
     CatalogIndexJobRuntimeReconciler,
     IndexJobActivationError,
+    IndexJobRuntimeActivation,
 )
 from codenib.web.index_jobs import IndexJobRepoBinding
+from codenib.web.repo_registry import RepoBundle, RepoRegistry
+from codenib.web.retained_bm25_activation import RepoRegistryIndexJobRuntimePublisher
 
 _FIRST_REF_TIME = "2026-08-27T00:00:01+00:00"
 _SECOND_REF_TIME = "2026-08-27T00:00:02+00:00"
@@ -125,7 +131,27 @@ def _reconciler(binding, catalog, publisher):
     return CatalogIndexJobRuntimeReconciler(factory, (binding,), publisher)
 
 
-def test_reconcile_all_replays_current_result_once_per_process() -> None:
+def _activation(
+    binding: IndexJobRepoBinding,
+    current: IndexJobCurrentResult,
+) -> IndexJobRuntimeActivation:
+    job = current.job
+    assert job.finished_at_ms is not None
+    assert job.result_snapshot_id is not None
+    return IndexJobRuntimeActivation(
+        repo_id=binding.repo_id,
+        repository_id=binding.repository_id,
+        ref_name=binding.ref_name,
+        job_id=job.job_id,
+        attempt_count=job.attempt_count,
+        snapshot_id=job.result_snapshot_id,
+        ref_generation=current.ref_generation,
+        ref_updated_at=current.ref_updated_at,
+        finished_at_ms=job.finished_at_ms,
+    )
+
+
+def test_reconcile_all_reports_current_result_once_but_reattests_runtime() -> None:
     binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
     job = _successful_job(
         binding,
@@ -149,11 +175,50 @@ def test_reconcile_all_replays_current_result_once_per_process() -> None:
     assert first[0].ref_generation == 1
     assert first[0].ref_updated_at == _FIRST_REF_TIME
     assert reconciler.reconcile_all() == ()
-    assert len(publisher.calls) == 1
+    assert len(publisher.calls) == 2
 
     restarted = _reconciler(binding, catalog, publisher)
     assert restarted.reconcile("demo") is not None
-    assert len(publisher.calls) == 2
+    assert len(publisher.calls) == 3
+
+
+def test_reconcile_repairs_runtime_presence_for_an_already_reported_fence() -> None:
+    binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
+    job = _successful_job(
+        binding,
+        idempotency_key="request-1",
+        snapshot_value="d",
+        finished_at_ms=3,
+    )
+    current = _current(job, generation=1, updated_at=_FIRST_REF_TIME)
+    catalog = _ResultCatalog(
+        {job.job_id: job},
+        {(binding.repository_id, binding.ref_name): current},
+    )
+
+    class PresencePublisher:
+        present = True
+        calls = 0
+
+        def publish(self, binding, activation, *, transfer_if_current):
+            self.calls += 1
+
+            def require_runtime() -> None:
+                if not self.present:
+                    raise RuntimeError("runtime generation is absent")
+
+            transfer_if_current(require_runtime)
+
+    publisher = PresencePublisher()
+    reconciler = _reconciler(binding, catalog, publisher)
+
+    assert reconciler.reconcile("demo") is not None
+    publisher.present = False
+    with pytest.raises(IndexJobActivationError, match="publication failed"):
+        reconciler.reconcile("demo")
+    publisher.present = True
+    assert reconciler.reconcile("demo") is None
+    assert publisher.calls == 3
 
 
 def test_reconcile_deduplicates_job_replays_by_snapshot_and_generation() -> None:
@@ -198,7 +263,7 @@ def test_reconcile_deduplicates_job_replays_by_snapshot_and_generation() -> None
         updated_at=_FIRST_REF_TIME,
     )
     assert reconciler.reconcile("demo") is None
-    assert len(publisher.calls) == 1
+    assert len(publisher.calls) == 2
 
     catalog.current[(binding.repository_id, binding.ref_name)] = _current(
         advanced,
@@ -209,7 +274,7 @@ def test_reconcile_deduplicates_job_replays_by_snapshot_and_generation() -> None
     assert activated is not None
     assert activated.job_id == advanced.job_id
     assert activated.publication_fence == (advanced.result_snapshot_id, 2)
-    assert len(publisher.calls) == 2
+    assert len(publisher.calls) == 3
 
     catalog.current[(binding.repository_id, binding.ref_name)] = _current(
         first,
@@ -218,7 +283,7 @@ def test_reconcile_deduplicates_job_replays_by_snapshot_and_generation() -> None
     )
     with pytest.raises(IndexJobActivationError, match="regressed"):
         reconciler.reconcile("demo")
-    assert len(publisher.calls) == 2
+    assert len(publisher.calls) == 3
 
 
 def test_worker_callback_attests_attempt_then_reconciles_current_result() -> None:
@@ -440,6 +505,7 @@ def test_reconcile_all_does_not_starve_later_repositories_after_failure() -> Non
         "alpha",
         "beta",
         "alpha",
+        "beta",
     ]
 
 
@@ -557,3 +623,298 @@ def test_reconciler_rejects_invalid_catalog_and_publisher_results() -> None:
     with pytest.raises(IndexJobActivationError, match="skipped guarded"):
         reconciler.reconcile("demo")
     assert len(repeated.calls) == 1
+
+
+def test_registry_publisher_routes_transfer_through_guarded_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
+    job = _successful_job(
+        binding,
+        idempotency_key="request-1",
+        snapshot_value="d",
+        finished_at_ms=3,
+    )
+    current = _current(job, generation=1, updated_at=_FIRST_REF_TIME)
+
+    class CountingCatalog(_ResultCatalog):
+        reads = 0
+
+        def find_current_successful_job(self, repository_id, ref_name="main"):
+            self.reads += 1
+            return super().find_current_successful_job(repository_id, ref_name)
+
+    catalog = CountingCatalog(
+        {job.job_id: job},
+        {(binding.repository_id, binding.ref_name): current},
+    )
+
+    @contextmanager
+    def factory():
+        yield catalog
+
+    calls = []
+    guarded_transfers = []
+
+    class Loader:
+        def load(self, observed_binding, observed_activation, runtime_owner):
+            calls.append((observed_binding, observed_activation, runtime_owner))
+            return object()
+
+    registry = RepoRegistry(QAConfig())
+    registry._bundles[binding.repo_id] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+
+    def handoff(
+        observed_binding,
+        observed_activation,
+        *,
+        loader,
+        transfer_if_current,
+    ):
+        assert observed_binding is binding
+        loader_owner = object()
+        assert loader(loader_owner) is not None
+        transfer_if_current(lambda: None)
+
+    monkeypatch.setattr(
+        registry,
+        "load_and_replace_retained_bm25_snapshot",
+        handoff,
+    )
+    try:
+        activation = _activation(binding, current)
+        publisher = RepoRegistryIndexJobRuntimePublisher(
+            registry,
+            factory,
+            Loader(),
+        )
+
+        def guard(transfer) -> None:
+            guarded_transfers.append(activation)
+            result = transfer()
+            assert result is None
+
+        assert (
+            publisher.publish(
+                binding,
+                activation,
+                transfer_if_current=guard,
+            )
+            is None
+        )
+    finally:
+        registry.close()
+
+    assert len(calls) == 1
+    assert calls[0][:2] == (binding, activation)
+    assert guarded_transfers == [activation]
+    assert catalog.reads == 3
+
+
+def test_registry_publisher_rejects_result_advance_after_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
+    first_job = _successful_job(
+        binding,
+        idempotency_key="request-1",
+        snapshot_value="d",
+        finished_at_ms=3,
+    )
+    second_job = _successful_job(
+        binding,
+        idempotency_key="request-2",
+        snapshot_value="e",
+        finished_at_ms=4,
+        expected_ref_generation=1,
+    )
+    first = _current(first_job, generation=1, updated_at=_FIRST_REF_TIME)
+    second = _current(second_job, generation=2, updated_at=_SECOND_REF_TIME)
+    key = (binding.repository_id, binding.ref_name)
+    catalog = _ResultCatalog(
+        {first_job.job_id: first_job, second_job.job_id: second_job},
+        {key: first},
+    )
+
+    @contextmanager
+    def factory():
+        yield catalog
+
+    class AdvancingLoader:
+        calls = 0
+
+        def load(self, observed_binding, observed_activation, runtime_owner):
+            self.calls += 1
+            catalog.current[key] = second
+            return object()
+
+    registry = RepoRegistry(QAConfig())
+    registry._bundles[binding.repo_id] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+
+    def handoff(
+        observed_binding,
+        observed_activation,
+        *,
+        loader,
+        transfer_if_current,
+    ):
+        loader(object())
+        pytest.fail("advanced result reached the guarded registry transfer")
+
+    monkeypatch.setattr(
+        registry,
+        "load_and_replace_retained_bm25_snapshot",
+        handoff,
+    )
+    loader = AdvancingLoader()
+    try:
+        publisher = RepoRegistryIndexJobRuntimePublisher(
+            registry,
+            factory,
+            loader,
+        )
+        with pytest.raises(IndexJobActivationError, match="current result changed"):
+            publisher.publish(
+                binding,
+                _activation(binding, first),
+                transfer_if_current=lambda transfer: pytest.fail(
+                    "advanced result reached the durable transfer guard"
+                ),
+            )
+    finally:
+        registry.close()
+    assert loader.calls == 1
+
+
+def test_registry_publisher_treats_active_publication_fence_idempotently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
+    job = _successful_job(
+        binding,
+        idempotency_key="request-1",
+        snapshot_value="d",
+        finished_at_ms=3,
+    )
+    current = _current(job, generation=1, updated_at=_FIRST_REF_TIME)
+    activation = _activation(binding, current)
+    catalog = _ResultCatalog(
+        {job.job_id: job},
+        {(binding.repository_id, binding.ref_name): current},
+    )
+
+    @contextmanager
+    def factory():
+        yield catalog
+
+    class ForbiddenLoader:
+        def load(self, binding, activation, runtime_owner):
+            pytest.fail("an active publication fence was materialized again")
+
+    registry = RepoRegistry(QAConfig())
+    registry._bundles[binding.repo_id] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        index_job_activation=replace(
+            activation,
+            job_id="job_" + "f" * 64,
+            finished_at_ms=2,
+        ),
+    )
+    monkeypatch.setattr(
+        registry,
+        "load_and_replace_retained_bm25_snapshot",
+        lambda *args, **kwargs: pytest.fail("idempotent fence reached handoff"),
+    )
+    guarded_transfers = []
+    try:
+        publisher = RepoRegistryIndexJobRuntimePublisher(
+            registry,
+            factory,
+            ForbiddenLoader(),
+        )
+
+        def guard(transfer) -> None:
+            guarded_transfers.append(activation)
+            result = transfer()
+            assert result is None
+
+        assert (
+            publisher.publish(
+                binding,
+                activation,
+                transfer_if_current=guard,
+            )
+            is None
+        )
+    finally:
+        registry.close()
+    assert guarded_transfers == [activation]
+
+
+def test_registry_publisher_rechecks_equivalent_runtime_inside_guard() -> None:
+    binding = IndexJobRepoBinding("demo", "repo_" + "a" * 64)
+    job = _successful_job(
+        binding,
+        idempotency_key="request-1",
+        snapshot_value="d",
+        finished_at_ms=3,
+    )
+    current = _current(job, generation=1, updated_at=_FIRST_REF_TIME)
+    activation = _activation(binding, current)
+    catalog = _ResultCatalog(
+        {job.job_id: job},
+        {(binding.repository_id, binding.ref_name): current},
+    )
+
+    @contextmanager
+    def factory():
+        yield catalog
+
+    class ForbiddenLoader:
+        def load(self, binding, activation, runtime_owner):
+            pytest.fail("an equivalent runtime was materialized again")
+
+    registry = RepoRegistry(QAConfig())
+    incumbent = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        index_job_activation=activation,
+    )
+    registry._bundles[binding.repo_id] = incumbent
+    publisher = RepoRegistryIndexJobRuntimePublisher(
+        registry,
+        factory,
+        ForbiddenLoader(),
+    )
+
+    def remove_before_transfer(transfer) -> None:
+        with registry._generation_lock:
+            assert registry._bundles.pop(binding.repo_id) is incumbent
+        transfer()
+
+    try:
+        with pytest.raises(
+            IndexJobActivationError,
+            match="changed during guarded attestation",
+        ):
+            publisher.publish(
+                binding,
+                activation,
+                transfer_if_current=remove_before_transfer,
+            )
+
+        registry._bundles[binding.repo_id] = incumbent
+        publisher.publish(
+            binding,
+            activation,
+            transfer_if_current=lambda transfer: transfer(),
+        )
+    finally:
+        registry.close()

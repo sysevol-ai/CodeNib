@@ -304,8 +304,7 @@ class CatalogIndexJobRuntimeReconciler:
         activation = _attest_current_result(binding, value)
         storage_key = (binding.repository_id, binding.ref_name)
         published = self._published.get(storage_key)
-        if published == activation.publication_fence:
-            return None
+        already_published = published == activation.publication_fence
         if published is not None and (
             activation.ref_generation < published[1]
             or (
@@ -412,7 +411,7 @@ class CatalogIndexJobRuntimeReconciler:
                 "runtime snapshot publisher skipped guarded runtime transfer"
             )
         self._published[storage_key] = activation.publication_fence
-        return activation
+        return None if already_published else activation
 
     def reconcile(self, repo_id: str) -> IndexJobRuntimeActivation | None:
         """Publish the current durable result for one configured repository."""

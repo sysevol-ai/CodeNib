@@ -348,6 +348,39 @@ def test_registry_later_publish_preserves_failed_owner_for_retry():
     assert registry._orphan_cleanup_owners == []
 
 
+def test_registry_immediately_retries_only_unsettled_rejected_owner():
+    cleanup = RuntimeError("retry rejected owner")
+
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls >= 2
+
+        def close(self):
+            self.close_calls += 1
+            if self.close_calls == 1:
+                raise cleanup
+
+    owner = Owner()
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+    )
+    try:
+        assert registry._settle_unpublished_cleanup_owner("repo", owner) is cleanup
+        assert owner.close_calls == 1
+        assert registry._orphan_cleanup_owners == [owner]
+    finally:
+        registry.close()
+
+    assert owner.close_calls == 2
+    assert registry._orphan_cleanup_owners == []
+
+
 def test_registry_complete_snapshot_retires_owner_without_bundle(monkeypatch):
     class Owner:
         def __init__(self):
