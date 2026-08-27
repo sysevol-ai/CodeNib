@@ -1318,26 +1318,31 @@ longer matches the job.
 
 The retained-source BM25 bridge now has the matching resource-scoped resolver
 and trusted local target factory. Each source target freezes the exact builder
-profile, display commit, environment, repository identity/root, and private
-workspace provider. Its pre-claim filter accepts only that target's single
-required `full` BM25 profile. Scope declaration is side-effect free; entry
-authenticates lexical and physical repository/workspace separation before
-source capture, binds the worker's exact retained object store, recaptures the
-current dirty fingerprint, and creates fresh nonce-scoped attempt, BM25, and
-context destinations. Ordered exit closes source and receipt authorities and
-isolates only their receipt-owned trees for quiescent GC. A changed source
-fails before build or CAS mutation, and worker integration coverage proves the
-previous published ref remains unchanged. This is still a library binding: no
-production CLI, Web planner, runtime refresh trigger, or default route selects
-it yet.
+profile, display commit, environment, repository identity/root, optional
+pre-pinned root authority, and private workspace provider. Its pre-claim filter
+accepts only that target's single required `full` BM25 profile. Scope
+declaration is side-effect free; entry authenticates lexical and physical
+repository/workspace separation before source capture, binds the worker's exact
+retained object store, recaptures the current dirty fingerprint, and creates
+fresh nonce-scoped attempt, BM25, and context destinations. Ordered exit closes
+source and receipt authorities and isolates only their receipt-owned trees for
+quiescent GC. A changed source fails before build or CAS mutation, and worker
+integration coverage proves the previous published ref remains unchanged. The
+production CLI now selects this binding explicitly; no Web planner, runtime
+refresh trigger, or default route selects it yet.
 
-The production CLI binding exposes that target as `codenib jobs run-once` and
-`codenib jobs run`. Both freeze the same existing-only repository/cache/catalog/
-CAS/workspace topology used by retained cache import, open independent exact
-SQLite sessions for each main pass and heartbeat, and retain the strict local
-CAS for the whole invocation. A trusted candidate filter runs on a detached
-canonical job before owner allocation or lease acquisition, so foreign
-repositories and unsupported view requests remain untouched. `run-once`
+The production CLI binding exposes both trusted local adapters through
+`codenib jobs run-once` and `codenib jobs run`, with an explicit mutually
+exclusive choice between `--cache-dir` and `--source-bm25`. Both freeze an
+existing-only repository/catalog/CAS/workspace topology, open independent exact SQLite
+sessions for each main pass and heartbeat, and retain the strict local CAS for
+the whole invocation. Cache mode additionally binds its compiler cache. Source
+mode pins the repository hierarchy before provider probing or repository reads,
+passes that authority into every fresh capture, and accepts only the exact FULL
+BM25 builder profile selected by its language and exclusion arguments. A
+trusted candidate filter runs on a detached canonical job before owner
+allocation or lease acquisition, so foreign repositories and unsupported view
+requests remain untouched. `run-once`
 examines one bounded advisory page and executes at most one eligible job. The
 continuous scheduler freezes an attested catalog insertion watermark for each
 cycle, carries an attested keyset cursor across its bounded pages, wraps only
@@ -1348,9 +1353,9 @@ wrapped retry or make a configured cycle limit unbounded. SQLite schema 7
 allocates that watermark from an explicit immutable `AUTOINCREMENT` job
 sequence, validates a gap-free job-to-sequence closure, and backfills existing
 jobs in canonical creation order; it therefore remains stable across `VACUUM`
-instead of depending on mutable implicit rowids. Cache-building adapters,
-job-triggered runtime registration, and default routing remain absent. The Web
-runtime now has the generation-safe refresh boundary described under M3.
+instead of depending on mutable implicit rowids. Job-triggered runtime
+registration and default routing remain absent. The Web runtime now has the
+generation-safe refresh boundary described under M3.
 
 ### M2: Immutable generation publication
 
@@ -1360,9 +1365,9 @@ their prepare-only worker bridge, are implemented. The first caller-scoped
 retained-source BM25 builder and its prepare-only source-job adapter now publish
 and ingest a unique private generation under an exact retained parent and
 generation receipt, without final publication authority or a cache-path reopen;
-its local attempt resource factory and resolver are implemented. Vector and
-graph source builders, generic builder routing, production source-job entry
-points, and remaining runtime wiring remain.
+its local attempt resource factory, resolver, and explicit production CLI entry
+are implemented. Vector and graph source builders, generic builder routing, and
+remaining runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
@@ -1392,15 +1397,15 @@ authenticated source bytes. Both executor paths now have resource-scoped
 resolvers and trusted local target factories that guarantee attempt-local
 cleanup, same-store binding, and exact configured repository/source identity.
 The explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
-over the current compiler cache; it does not yet select the source builder. The
-Web registry now prepares a complete replacement
+over either an exact current compiler cache or the explicit retained-source BM25
+builder. The Web registry now prepares a complete replacement
 bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
 generation identity.
 The first #266 status, durable-read, and explicitly injected one-view write
-slices are present; a production source-job CLI and Web planner/default binding,
-success-triggered refresh, MCP, UI controls, and default routing remain absent.
+slices are present; a Web planner/default binding, success-triggered refresh,
+MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded

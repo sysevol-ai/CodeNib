@@ -311,23 +311,36 @@ repository, namespace, and ref with the original `--expected-generation`.
 The retry gets fresh missing evidence destinations but resolves the same
 snapshot and generation without advancing the ref again.
 
-## Run durable cache jobs
+## Run durable index jobs
 
 `codenib jobs run-once` examines one bounded advisory catalog page and executes
-at most one job for one explicitly configured local repository target. The job
-must already exist in the catalog and request exactly one required `full` BM25
-or vector view whose profile and dirty source-revision identity match the
-current compiler cache. This command does not create jobs, build or update a
-stale cache, loop continuously, or hot-switch a query runtime.
+at most one job for one explicitly configured local repository target. Select
+exactly one worker input:
 
-The repository, cache, SQLite catalog, strict LocalCAS, and private workspace
-root obey the same physical-separation and existing-only requirements as
-`artifact import-cache`. The worker opens an independent exact SQLite session
-for its main transaction and every heartbeat, while retaining one strict CAS
-authority for the complete pass. A claim-time eligibility filter runs before
-owner allocation or catalog mutation: jobs for other repository IDs, multi-view
-requests, optional views, incremental requests, graph, and other unsupported
-builders remain untouched in the queue.
+- `--cache-dir PATH` retains the existing compiler-cache adapter. A job must
+  request exactly one required `full` BM25 or vector view whose profile and
+  dirty source-revision identity match that current cache.
+- `--source-bm25` enables the retained-source builder. A job must request one
+  required `full` BM25 view whose profile exactly matches the selected
+  languages and source exclusions, and whose dirty source fingerprint matches
+  a fresh authenticated capture. Vector, graph, optional, incremental, and
+  multi-view jobs remain in the queue.
+
+Neither mode creates jobs or hot-switches a query runtime. Source mode builds a
+private attempt generation directly from source; cache mode does not build or
+update a stale cache.
+
+The repository, optional cache, SQLite catalog, strict LocalCAS, and private
+workspace root obey the same physical-separation and existing-only requirements
+as `artifact import-cache`. Source mode pins the repository hierarchy before
+provider probing, language detection, or Git inspection and hands that exact
+authority to every attempt capture. It requires a Git checkout with a full
+resolved `HEAD`; that commit is display metadata, while the authenticated dirty
+source fingerprint remains the durable source identity. The worker opens an
+independent exact SQLite session for its main transaction and every heartbeat,
+while retaining one strict CAS authority for the complete invocation. A
+claim-time eligibility filter runs before owner allocation or catalog mutation,
+so jobs outside the selected adapter and explicit target remain untouched.
 
 For example, process at most one current-cache job from the first 64 advisory
 candidates:
@@ -341,6 +354,24 @@ codenib jobs run-once /srv/src/repository \
   --repository owner/repository
 ```
 
+Build a matching Python BM25 job directly from retained source instead:
+
+```bash
+codenib jobs run-once /srv/src/repository \
+  --source-bm25 \
+  --language python \
+  --catalog /var/lib/codenib/catalog.sqlite3 \
+  --cas-root /var/lib/codenib/cas \
+  --workspace-root /var/lib/codenib/workspaces \
+  --repository owner/repository
+```
+
+Repeat `--language` or pass comma-separated values for a multi-language BM25
+profile. If it is omitted, CodeNib detects supported languages from the selected
+source. `--exclude-dir PATH` is repeatable and defines the exact custom subtree
+exclusions for this worker profile; `--clear-exclude-dirs` explicitly selects
+none. These source-only options are rejected with `--cache-dir`.
+
 `--scan-limit` may select 1 through 256 candidates. Lease and heartbeat timing
 are configurable, but the heartbeat must remain less than one third of the
 lease. The default text output reports disposition, job ID, and attempt; use
@@ -349,11 +380,12 @@ cancellation, or authority loss is a durable worker disposition rather than a
 CLI infrastructure failure. Storage-integrity, topology, and cleanup failures
 still make the command fail.
 
-Each attempt captures a fresh retained source and uses new nonce-scoped view
-and context destinations. After CAS ingestion and worker-owned publication, the
-receipt authorities close and the exact owned directories are atomically moved
-to authenticated orphan names for later quiescent GC; the command never
-recursively deletes a mutable path.
+Each attempt captures a fresh retained source and uses new nonce-scoped output
+destinations. Source builds own an attempt generation plus BM25 and context
+outputs; cache imports own BM25/vector and context outputs as applicable. After
+CAS ingestion and worker-owned publication, receipt authorities close and the
+exact owned directories are atomically moved to authenticated orphan names for
+later quiescent GC; the command never recursively deletes a mutable path.
 
 `codenib jobs run` retains the same authorities while traversing the complete
 runnable keyspace frozen at the start of each cycle. The catalog first records
@@ -392,9 +424,10 @@ records. SIGTERM requests a graceful stop after the active page or job; SIGINT
 keeps the standard exit-130 interruption path. Catalog, topology, worker, and
 cleanup failures are never retried or downgraded by the idle scheduler.
 
-This route still recaptures an already-current compiler cache. It does not
-create jobs, rebuild stale views, coordinate SQLite session startup across
-independent processes, register a query runtime, or hot-switch a live bundle.
+Cache mode still recaptures an already-current compiler cache; source mode can
+build only its exact FULL BM25 profile. Neither mode creates jobs, coordinates
+SQLite session startup across independent processes, registers a query runtime,
+or hot-switches a live bundle.
 
 ## Materialize a retained artifact
 
