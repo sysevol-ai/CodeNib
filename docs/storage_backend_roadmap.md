@@ -1605,8 +1605,8 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   ref-writer exclusion until that transfer returns. Only that guarded transfer
   can advance reconciliation state; missing, repeated, out-of-scope, skipped,
   or failed guard/transfer calls fail closed. Publication failures remain
-  retryable and secret-free. A concrete generation publisher, server wiring,
-  and the final runtime refresh callback remain separate gates.
+  retryable and secret-free. Server wiring and the final runtime refresh
+  callback remain separate gates.
 - The retained BM25 registry boundary now accepts one exact snapshot-loaded
   runtime owner together with its full job activation and prepares the complete
   sparse runtime. It exposes the source-revalidated, lock-protected RCU pointer
@@ -1616,6 +1616,20 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   storage-binding drift, and legacy registry-file replacement of an active
   durable generation. A guarded local loader/publisher and production server
   loop remain separate gates.
+- The concrete local retained-BM25 publisher binds each configured storage ref
+  to one canonical repository root, private workspace authority, namespace,
+  object store, and retained catalog. It performs fail-fast current-result
+  checks before and after materialization, then submits the actual source-checked
+  RCU transfer to the reconciler's writer-fenced activation guard. An
+  intervening ref or job-result change preserves the incumbent and settles the
+  candidate owner, while ref publication cannot cross the generation swap.
+  Rejected loader owners are closed immediately and only unfinished cleanup is
+  retained for retry. Exact active publication fences are idempotent only after
+  the incumbent is proved under the registry reload fence and again inside the
+  writer-fenced transfer. Reconciliation re-attests even an already reported
+  fence, so removal or reload cannot leave a permanent false success. Newer
+  incumbents and conflicting equal generations are rejected before
+  materialization. The production server loop remains a separate gate.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a
