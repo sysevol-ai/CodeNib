@@ -263,6 +263,30 @@ def _index_job_writer() -> IndexJobWriter:
     return writer
 
 
+def _index_update_capabilities(repo_id: str):
+    """Resolve writer capabilities for one Web repository binding."""
+
+    resolver = getattr(app.state, "index_update_capabilities_resolver", None)
+    if resolver is None:
+        return getattr(app.state, "index_update_capabilities", None)
+    if not callable(resolver):
+        raise HTTPException(
+            status_code=503,
+            detail="Index update capabilities are unavailable",
+        )
+    try:
+        return resolver(repo_id)
+    except Exception as exc:
+        logger.warning(
+            "Index update capability resolution unavailable: %s",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Index update capabilities are unavailable",
+        ) from exc
+
+
 def _bundle(repo_id: str):
     bundle = _registry().get(repo_id)
     if bundle is None:
@@ -652,11 +676,7 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
 
     with _pinned_bundle(repo_id) as bundle:
         kwargs = {
-            "update_capabilities": getattr(
-                app.state,
-                "index_update_capabilities",
-                None,
-            )
+            "update_capabilities": _index_update_capabilities(repo_id),
         }
         head_resolver = getattr(app.state, "index_head_resolver", None)
         if callable(head_resolver):

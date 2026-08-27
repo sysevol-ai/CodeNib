@@ -1616,7 +1616,10 @@ MCP, UI controls, and default routing remain absent.
   commit drift and retained incremental metrics without exposing mutable bundle
   state. Update capability is explicit and defaults to `unavailable` until an
   owning Web job service is configured, so the read API never implies that the
-  current server can write or incrementally patch an index.
+  current server can write or incrementally patch an index. The route now also
+  accepts a per-repository capability resolver; an explicitly configured
+  storage subset therefore cannot advertise its BM25 writer on an unbound Web
+  repository through a process-global capability map.
 - The durable job catalog now has an additive, read-only active-job query for
   Web status consumers. It prefers the fenced running attempt and otherwise
   returns the oldest queued job for the exact repository/ref, while terminal

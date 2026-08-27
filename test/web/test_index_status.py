@@ -229,6 +229,56 @@ def test_index_status_endpoint_pins_generation_through_projection(monkeypatch) -
     assert events == ["pin-enter", "thread", "head", "pin-exit"]
 
 
+def test_index_status_endpoint_resolves_update_capabilities_per_repository(
+    monkeypatch,
+) -> None:
+    bundle = _bundle({"bm25": _entry("bm25")})
+    observed: list[str] = []
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id: str):
+            assert repo_id == "repo"
+            yield bundle
+
+    def resolve(repo_id: str):
+        observed.append(repo_id)
+        return None
+
+    async def inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    globally_enabled = {
+        "bm25": IndexUpdateCapability(mode="rebuild", enabled=True, reason="")
+    }
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(
+        web_app.app.state,
+        "index_update_capabilities",
+        globally_enabled,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        web_app.app.state,
+        "index_update_capabilities_resolver",
+        resolve,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        web_app.app.state,
+        "index_head_resolver",
+        lambda _path: _INDEXED,
+        raising=False,
+    )
+    monkeypatch.setattr(web_app, "_run_pinned_thread", inline)
+
+    status = asyncio.run(web_app.index_status("repo"))
+
+    assert observed == ["repo"]
+    assert status.indexes[0].updates_enabled is False
+    assert status.indexes[0].update_mode == "unavailable"
+
+
 def test_index_status_endpoint_retains_pin_until_cancelled_projection_settles(
     monkeypatch,
 ) -> None:
