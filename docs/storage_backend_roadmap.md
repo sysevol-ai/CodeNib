@@ -1318,8 +1318,9 @@ longer matches the job.
 
 The retained-source BM25 bridge now has the matching resource-scoped resolver
 and trusted local target factory. Each source target freezes the exact builder
-profile, display commit, environment, repository identity/root, optional
-pre-pinned root authority, and private workspace provider. Its pre-claim filter
+profile, environment, repository identity/root, optional pre-pinned root
+authority, private workspace provider, and optional per-attempt provenance and
+topology guards. Its pre-claim filter
 accepts only that target's single required `full` BM25 profile. Scope
 declaration is side-effect free; entry authenticates lexical and physical
 repository/workspace separation before source capture, binds the worker's exact
@@ -1328,8 +1329,11 @@ fresh nonce-scoped attempt, BM25, and context destinations. Ordered exit closes
 source and receipt authorities and isolates only their receipt-owned trees for
 quiescent GC. A changed source fails before build or CAS mutation, and worker
 integration coverage proves the previous published ref remains unchanged. The
-production CLI now selects this binding explicitly; no Web planner, runtime
-refresh trigger, or default route selects it yet.
+production CLI now selects this binding explicitly. It resolves one stable Git
+HEAD around each fresh source capture and again before returning the prepared
+result, and binds every attempt/view/context provision to the retained startup
+workspace identity while rechecking the complete storage topology. No Web
+planner, runtime refresh trigger, or default route selects it yet.
 
 The production CLI binding exposes both trusted local adapters through
 `codenib jobs run-once` and `codenib jobs run`, with an explicit mutually
@@ -1339,7 +1343,9 @@ sessions for each main pass and heartbeat, and retain the strict local CAS for
 the whole invocation. Cache mode additionally binds its compiler cache. Source
 mode pins the repository hierarchy before provider probing or repository reads,
 passes that authority into every fresh capture, and accepts only the exact FULL
-BM25 builder profile selected by its language and exclusion arguments. A
+BM25 builder profile selected by its language and exclusion arguments. It also
+re-resolves display provenance per attempt and rejects HEAD drift before fenced
+publication rather than stamping later source bytes with the startup commit. A
 trusted candidate filter runs on a detached canonical job before owner
 allocation or lease acquisition, so foreign repositories and unsupported view
 requests remain untouched. `run-once`

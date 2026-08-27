@@ -336,8 +336,13 @@ workspace root obey the same physical-separation and existing-only requirements
 as `artifact import-cache`. Source mode pins the repository hierarchy before
 provider probing, language detection, or Git inspection and hands that exact
 authority to every attempt capture. It requires a Git checkout with a full
-resolved `HEAD`; that commit is display metadata, while the authenticated dirty
-source fingerprint remains the durable source identity. The worker opens an
+resolved `HEAD`; each attempt resolves that commit around source capture and
+again before returning its prepared result, so a long-running worker never
+stamps later bytes with its startup commit. The commit is display metadata,
+while the authenticated dirty source fingerprint remains the durable source
+identity. Every source attempt, BM25 view, and context provision is also bound
+to the retained startup workspace identity and rechecks the complete storage
+topology before and after provider work. The worker opens an
 independent exact SQLite session for its main transaction and every heartbeat,
 while retaining one strict CAS authority for the complete invocation. A
 claim-time eligibility filter runs before owner allocation or catalog mutation,
