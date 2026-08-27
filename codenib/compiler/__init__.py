@@ -93,6 +93,10 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         load_contexts_from_manifest,
         required_index_types,
     )
+    from codenib.compiler.source_job import (
+        BM25SourceJobExecutor,
+        bm25_source_job_profile,
+    )
 
 _EXPORTS = {
     "CompilerCacheBm25RecaptureResult": (
@@ -274,6 +278,14 @@ _EXPORTS = {
         "codenib.compiler.skill_context",
         "required_index_types",
     ),
+    "BM25SourceJobExecutor": (
+        "codenib.compiler.source_job",
+        "BM25SourceJobExecutor",
+    ),
+    "bm25_source_job_profile": (
+        "codenib.compiler.source_job",
+        "bm25_source_job_profile",
+    ),
 }
 
 __all__ = [
@@ -302,6 +314,8 @@ __all__ = [
     "IndexCompiler",
     "IndexCompilerConfig",
     "IndexBuilderRegistry",
+    "BM25SourceJobExecutor",
+    "bm25_source_job_profile",
     # Manifest
     "RepoManifest",
     "ManifestIndexStateStore",

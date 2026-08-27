@@ -1271,9 +1271,19 @@ supplies the authenticated inventory and bytes to the existing tree-sitter
 chunkers, which preserve normal filtering, relative-path, line, and
 compatibility contracts while parsing already-captured text. The builder writes
 only to a missing caller-owned private generation and attests the resulting
-BM25 artifact fingerprints. Durable source-job adapters, attempt resource and
-cleanup ownership, CLI/Web binding, vector source building, and graph source
-building remain absent.
+BM25 artifact fingerprints. The first durable source-job adapter now snapshots
+that builder's complete portable profile, authenticates exactly one active
+required `full` BM25 request and its dirty fingerprint source revision before
+creating output, and builds a caller-owned missing attempt root. It wraps the
+new BM25 generation in an exact single-view manifest, using a separately
+supplied full Git SHA only as display provenance, then delegates strict
+recapture, context evidence, and bundle/member CAS ingestion to the existing
+public prepare-only compiler-cache bridge. The returned
+`IndexJobExecutionResult` carries no catalog, lease, fencing, ref, or generation
+publication authority; the worker remains the sole publisher and the caller
+retains cleanup ownership for every attempt. Source-job resource factories and
+resolver/CLI/Web binding, vector source building, and graph source building
+remain absent.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1325,8 +1335,9 @@ runtime now has the generation-safe refresh boundary described under M3.
 Status: in progress. The receipt-retained, fenced SQLite publication primitive
 and the explicit BM25 and schema-8 vector compiler-cache adapters, including
 their prepare-only worker bridge, are implemented. The first caller-scoped
-retained-source BM25 builder now produces a unique private generation; durable
-source-job adapters, vector and graph source builders, generic builder routing,
+retained-source BM25 builder and its prepare-only source-job adapter now produce
+and ingest a unique private generation without publication authority; vector
+and graph source builders, generic builder routing, source-job resource wiring,
 and remaining runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
@@ -1351,18 +1362,22 @@ Status: in progress. Schema-v6 durable execution control is implemented for the
 local SQLite catalog. The backend-neutral prepare-only whole-job worker is
 implemented and verified with file-backed SQLite integration coverage. An
 explicit one-view compiler-cache executor now supplies parser-inert BM25 or
-schema-8 vector artifacts without catalog authority. Its resource-scoped
+schema-8 vector artifacts without catalog authority, and the first
+retained-source BM25 executor now prepares the same artifact closure from
+authenticated source bytes. The compiler-cache executor's resource-scoped
 resolver and trusted local target factory guarantee attempt-local cleanup,
-same-store binding, and exact configured repository/source identity, while
-the explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
-over the current cache. The Web registry now prepares a complete replacement
+same-store binding, and exact configured repository/source identity, while the
+explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
+over the current cache. The source executor intentionally has no resolver or
+resource factory yet. The Web registry now prepares a complete replacement
 bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
-generation identity. The first #266 status, durable-read, and explicitly
-injected one-view write slices are present; source-job adapters, a production
-Web planner/default binding, success-triggered refresh, MCP, UI controls, and
-default routing remain absent.
+generation identity.
+The first #266 status, durable-read, and explicitly injected one-view write
+slices are present; remaining source-job adapters and resource wiring, a
+production Web planner/default binding, success-triggered refresh, MCP, UI
+controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1410,11 +1425,13 @@ default routing remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- Add prepare-only source-builder adapters, then wire the worker into runtime,
-  Web, MCP, and default routes. The trusted local factory and continuous CLI can
-  recapture an already-current single BM25 or vector cache view under the
-  worker, while the older self-publishing ingress APIs remain compatibility
-  paths and are never nested inside the worker.
+- Extend the implemented prepare-only retained-source BM25 adapter with an
+  attempt resource factory/resolver, then add vector and graph source adapters
+  and wire successful worker results into runtime, Web, MCP, and default routes.
+  The trusted local factory and continuous CLI can currently recapture only an
+  already-current single BM25 or vector cache view under the worker, while the
+  older self-publishing ingress APIs remain compatibility paths and are never
+  nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
