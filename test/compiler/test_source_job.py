@@ -26,7 +26,7 @@ import codenib.compiler.job_resolver as job_resolver_module
 import codenib.compiler.job_resources as job_resources_module
 import codenib.compiler.source_job as source_job_module
 from codenib import LocalWorkspaceProvider
-from codenib._atomic_directory import publication_parent_identity
+from codenib._atomic_directory import DirectoryOrphan, publication_parent_identity
 from codenib._captured_directory import (
     PublishedWorkspaceReceiptOwner,
     UnsupportedWorkspaceCreation,
@@ -1455,6 +1455,7 @@ def test_local_bm25_source_target_binds_exact_repository_root_authority(
         )
         assert positional_target.environ == positional_environment
         assert positional_target.repository_root_authority is None
+        assert positional_target.attempt_pool_root == fixture.workspace
 
         with pin_repository_source_root(fixture.repository) as authority:
             target = LocalBM25SourceJobTarget(
@@ -1493,6 +1494,16 @@ def test_local_bm25_source_target_binds_exact_repository_root_authority(
                 repository_root_authority=object(),  # type: ignore[arg-type]
                 environ={},
             )
+        with pytest.raises(TypeError, match="orphan sink is invalid"):
+            LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=BM25IndexBuilder(),
+                attempt_orphan_sink=object(),  # type: ignore[arg-type]
+                environ={},
+            )
         assert not tuple(fixture.workspace.iterdir())
     finally:
         fixture.close()
@@ -1500,12 +1511,14 @@ def test_local_bm25_source_target_binds_exact_repository_root_authority(
 
 def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     builder = BM25IndexBuilder(languages=["python"], max_k=17)
     profile = bm25_source_job_profile(builder)
     fixture = _source_fixture(tmp_path)
     catalog_path = tmp_path / "catalog.sqlite"
     environment = {"CODENIB_SOURCE_RESOURCE_TEST": "before"}
+    accepted_orphans: list[DirectoryOrphan] = []
     target = LocalBM25SourceJobTarget(
         repository_root=fixture.repository,
         workspace_provider=fixture.provider,
@@ -1513,6 +1526,7 @@ def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
         display_commit=_COMMIT,
         builder=builder,
         environ=environment,
+        attempt_orphan_sink=accepted_orphans.append,
     )
     assert target.profile_id == profile.profile_id
     assert target.environ == environment
@@ -1555,6 +1569,13 @@ def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
             )
 
         with LocalCAS(tmp_path / "cas") as cas:
+            monkeypatch.setattr(
+                job_resources_module,
+                "discard_owned_directory",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "BM25 cleanup used the legacy per-directory discard path"
+                ),
+            )
             resources = LocalBM25SourceJobResourceFactory((target,))
             assert resources.accepts_candidate(queued)
             worker = IndexJobWorker(
@@ -1576,8 +1597,15 @@ def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
             assert outcome.job_id == queued.job_id
             assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
             orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
-            assert len(orphans) == 3
-            assert all(orphan.is_dir() for orphan in orphans)
+            assert len(orphans) == 1
+            assert len(accepted_orphans) == 1
+            assert accepted_orphans[0].path == orphans[0]
+            inventory = accepted_orphans[0].reopen(lambda reader: reader.inventory())
+            assert {entry for entry in inventory if "/" not in entry[0]} == {
+                ("attempt", "directory"),
+                ("bm25", "directory"),
+                ("context", "directory"),
+            }
             with SQLiteCatalog(catalog_path, create=False) as catalog:
                 completed = catalog.get_job(queued.job_id)
                 assert completed.status is IndexJobStatus.SUCCEEDED
@@ -1587,6 +1615,222 @@ def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
                     json.loads(event.payload_json).get("adapter") == "bm25_source"
                     for event in events
                 )
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_nests_outputs_and_orders_outer_ack(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    accepted_orphans: list[DirectoryOrphan] = []
+    order: list[str] = []
+
+    def accept(orphan: DirectoryOrphan) -> None:
+        order.append("accept outer orphan")
+        accepted_orphans.append(orphan)
+
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        attempt_orphan_sink=accept,
+        environ={},
+    )
+    real_receipt_close = job_resources_module._AttemptWorkspaceCleanupOwner.close
+    real_isolate = job_resources_module.OwnedPathBuildDirectory.isolate
+    real_root_close = job_resources_module.OwnedPathBuildDirectory.close
+
+    def close_receipt(cleanup) -> None:
+        order.append(f"close {cleanup.label}")
+        real_receipt_close(cleanup)
+
+    def isolate_root(owner):
+        order.append("isolate outer root")
+        return real_isolate(owner)
+
+    def close_root(owner) -> None:
+        order.append("ack outer orphan")
+        real_root_close(owner)
+
+    monkeypatch.setattr(
+        job_resources_module._AttemptWorkspaceCleanupOwner,
+        "close",
+        close_receipt,
+    )
+    monkeypatch.setattr(
+        job_resources_module.OwnedPathBuildDirectory,
+        "isolate",
+        isolate_root,
+    )
+    monkeypatch.setattr(
+        job_resources_module.OwnedPathBuildDirectory,
+        "close",
+        close_root,
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with resources.create_scope(
+                context,
+                object_store=cas,
+            ).resources as executor:
+                attempt_root = executor.attempt_workspace_provider.allowed_root
+                assert attempt_root.parent == fixture.workspace
+                assert executor.attempt_generation == attempt_root / "attempt"
+                assert executor.view_destination == attempt_root / "bm25"
+                assert executor.context_destination == attempt_root / "context"
+                descriptor = os.open(attempt_root, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    assert executor.attempt_parent_identity == (
+                        publication_parent_identity(descriptor)
+                    )
+                finally:
+                    os.close(descriptor)
+
+        assert order == [
+            "close source context",
+            "close source BM25",
+            "close source attempt",
+            "isolate outer root",
+            "accept outer orphan",
+            "ack outer orphan",
+        ]
+        assert len(accepted_orphans) == 1
+        assert accepted_orphans[0].reopen(lambda reader: reader.inventory()) == ()
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_redelivers_outer_orphan_until_sink_ack(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    accepted_orphans: list[DirectoryOrphan] = []
+    rejection = RuntimeError("attempt orphan sink rejected receipt")
+
+    def reject_once(orphan: DirectoryOrphan) -> None:
+        accepted_orphans.append(orphan)
+        if len(accepted_orphans) == 1:
+            raise rejection
+
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        attempt_orphan_sink=reject_once,
+        environ={},
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(
+                StorageIntegrityError,
+                match="attempt resource cleanup did not settle",
+            ) as caught:
+                with resources.create_scope(
+                    context,
+                    object_store=cas,
+                ).resources:
+                    pass
+
+        assert len(accepted_orphans) == 1
+        orphan = accepted_orphans[0]
+        cleanup_owners = getattr(
+            caught.value,
+            "publication_cleanup_owners",
+            (),
+        )
+        attempt_root_cleanup = next(
+            owner
+            for owner in cleanup_owners
+            if isinstance(
+                owner,
+                job_resources_module._BM25AttemptRootCleanupOwner,
+            )
+        )
+        assert not attempt_root_cleanup.closed
+        assert attempt_root_cleanup.orphan is orphan
+
+        attempt_root_cleanup.close()
+
+        assert attempt_root_cleanup.closed
+        assert accepted_orphans == [orphan, orphan]
+        assert orphan.reopen(lambda reader: reader.inventory()) == ()
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_retries_cancelled_orphan_sink_before_ack(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    accepted_orphans: list[DirectoryOrphan] = []
+    interruption = KeyboardInterrupt("attempt orphan sink was interrupted")
+
+    def interrupt_once(orphan: DirectoryOrphan) -> None:
+        accepted_orphans.append(orphan)
+        if len(accepted_orphans) == 1:
+            raise interruption
+
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        attempt_orphan_sink=interrupt_once,
+        environ={},
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                with resources.create_scope(
+                    context,
+                    object_store=cas,
+                ).resources:
+                    pass
+
+        assert caught.value is interruption
+        assert len(accepted_orphans) == 2
+        assert accepted_orphans[0] is accepted_orphans[1]
+        assert accepted_orphans[0].reopen(lambda reader: reader.inventory()) == ()
     finally:
         fixture.close()
 
@@ -1673,8 +1917,8 @@ def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
         assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
         assert not tuple(fixture.workspace.glob(".codenib-source-worker-topology-*"))
         orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
-        assert len(orphans) == 3
-        assert all(orphan.is_dir() for orphan in orphans)
+        assert len(orphans) == 1
+        assert orphans[0].is_dir()
         with SQLiteCatalog(catalog_path, create=False) as catalog:
             completed = catalog.get_job(queued.job_id)
             assert completed.status is IndexJobStatus.SUCCEEDED
@@ -1930,6 +2174,7 @@ def test_local_bm25_source_scope_threads_repository_root_authority(
     builder = BM25IndexBuilder()
     fixture = _source_fixture(tmp_path)
     observed: list[object] = []
+    accepted_orphans: list[DirectoryOrphan] = []
     real_capture = job_resources_module.capture_repository_source
     try:
         with (
@@ -1944,6 +2189,7 @@ def test_local_bm25_source_scope_threads_repository_root_authority(
                 display_commit=_COMMIT,
                 builder=builder,
                 repository_root_authority=authority,
+                attempt_orphan_sink=accepted_orphans.append,
                 environ={},
             )
             context = _execution_context(
@@ -1969,7 +2215,8 @@ def test_local_bm25_source_scope_threads_repository_root_authority(
                 assert type(executor) is BM25SourceJobExecutor
 
             assert observed == [authority]
-            assert not tuple(fixture.workspace.iterdir())
+            assert len(accepted_orphans) == 1
+            assert accepted_orphans[0].reopen(lambda reader: reader.inventory()) == ()
     finally:
         fixture.close()
 
@@ -1980,6 +2227,7 @@ def test_local_bm25_source_scope_resolves_display_commit_per_attempt(
     builder = BM25IndexBuilder(languages=["python"])
     fixture = _source_fixture(tmp_path, git_checkout=True)
     initial_commit = _git_head(fixture.repository)
+    accepted_orphans: list[DirectoryOrphan] = []
     target = LocalBM25SourceJobTarget(
         repository_root=fixture.repository,
         workspace_provider=fixture.provider,
@@ -1987,6 +2235,7 @@ def test_local_bm25_source_scope_resolves_display_commit_per_attempt(
         display_commit=initial_commit,
         builder=builder,
         display_commit_resolver=lambda: _git_head(fixture.repository),
+        attempt_orphan_sink=accepted_orphans.append,
         environ={},
     )
     try:
@@ -2016,7 +2265,8 @@ def test_local_bm25_source_scope_resolves_display_commit_per_attempt(
             ).resources as executor:
                 assert executor.display_commit == current_commit
 
-        assert not tuple(fixture.workspace.iterdir())
+        assert len(accepted_orphans) == 1
+        assert accepted_orphans[0].reopen(lambda reader: reader.inventory()) == ()
     finally:
         fixture.close()
 
@@ -2061,12 +2311,132 @@ def test_local_bm25_source_scope_rejects_replaced_retained_workspace(
 
             with pytest.raises(
                 RuntimeError,
-                match="attempt parent differs from retained topology",
+                match="publication parent identity does not match authority",
             ):
                 resolved.execute(context)
 
             assert not tuple(fixture.workspace.iterdir())
             assert not tuple(displaced.iterdir())
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_rechecks_topology_before_attempt_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    fixture = _source_fixture(tmp_path)
+    revoked = False
+    display_commit_calls = 0
+    displaced_workspace = tmp_path / "displaced-workspace"
+    accepted_orphans: list[DirectoryOrphan] = []
+
+    def verify_topology() -> None:
+        if revoked:
+            raise StorageValidationError("BM25 source worker topology was revoked")
+
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        topology_verifier=verify_topology,
+        attempt_orphan_sink=accepted_orphans.append,
+        environ={},
+    )
+    real_current_display_commit = LocalBM25SourceJobTarget.current_display_commit
+
+    def current_display_commit(candidate: LocalBM25SourceJobTarget) -> str:
+        nonlocal display_commit_calls, revoked
+        display_commit = real_current_display_commit(candidate)
+        display_commit_calls += 1
+        if display_commit_calls == 2:
+            fixture.workspace.rename(displaced_workspace)
+            fixture.workspace.mkdir(mode=0o700)
+            revoked = True
+        return display_commit
+
+    monkeypatch.setattr(
+        LocalBM25SourceJobTarget,
+        "current_display_commit",
+        current_display_commit,
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(
+                StorageValidationError,
+                match="worker topology was revoked",
+            ):
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+        assert display_commit_calls == 2
+        assert not tuple(fixture.workspace.iterdir())
+        assert not tuple(displaced_workspace.iterdir())
+        assert accepted_orphans == []
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_preserves_workspace_timeout(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    provision_timeout_ns = 123_456_789
+    provider = LocalWorkspaceProvider(
+        fixture.workspace,
+        provision_timeout_ns=provision_timeout_ns,
+    )
+    accepted_orphans: list[DirectoryOrphan] = []
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        attempt_orphan_sink=accepted_orphans.append,
+        environ={},
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with resources.create_scope(
+                context,
+                object_store=cas,
+            ).resources as executor:
+                assert (
+                    executor.attempt_workspace_provider.provision_timeout_ns
+                    == provision_timeout_ns
+                )
+                assert (
+                    executor.workspace_provider.delegate
+                    is executor.attempt_workspace_provider
+                )
+
+        assert len(accepted_orphans) == 1
+        assert accepted_orphans[0].reopen(lambda reader: reader.inventory()) == ()
     finally:
         fixture.close()
 

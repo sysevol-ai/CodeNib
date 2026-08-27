@@ -1377,6 +1377,41 @@ def test_owned_path_build_requires_a_missing_destination(tmp_path: Path) -> None
     assert not tuple(parent.glob(".attempt.normalize-*"))
 
 
+def test_owned_path_build_binds_expected_parent_identity_before_root_creation(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        expected = atomic_directory.publication_parent_identity(descriptor)
+    finally:
+        os.close(descriptor)
+    displaced = tmp_path / "displaced"
+    parent.rename(displaced)
+    parent.mkdir(mode=0o700)
+
+    with pytest.raises(
+        RuntimeError,
+        match="publication parent identity does not match authority",
+    ):
+        OwnedPathBuildDirectory.prepare(
+            parent / "attempt",
+            expected_parent_identity=expected,
+        )
+
+    assert not tuple(parent.iterdir())
+    missing_parent = tmp_path / "missing"
+    with pytest.raises(TypeError, match="parent identity is invalid"):
+        OwnedPathBuildDirectory.prepare(
+            missing_parent / "attempt",
+            create_parent=True,
+            expected_parent_identity=(1,),
+        )
+    assert not missing_parent.exists()
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
 def test_owned_path_build_isolate_return_handoff_redelivers_retained_orphan(
     tmp_path: Path,
 ) -> None:

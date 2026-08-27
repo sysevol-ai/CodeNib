@@ -6023,14 +6023,26 @@ class OwnedPathBuildDirectory:
         destination: Path,
         *,
         require_private_parent: bool,
+        expected_parent_identity: tuple[int, ...] | None = None,
     ) -> None:
         if type(self) is not OwnedPathBuildDirectory:
             raise TypeError(
                 "owned path build directory does not support subclass construction"
             )
+        if expected_parent_identity is not None and (
+            type(expected_parent_identity) is not tuple
+            or len(expected_parent_identity) < 2
+            or any(type(value) is not int for value in expected_parent_identity)
+        ):
+            raise TypeError("owned path build parent identity is invalid")
         self._destination = destination
         self._path = destination
         self._require_private_parent = require_private_parent
+        self._expected_parent_identity = (
+            None
+            if expected_parent_identity is None
+            else tuple(expected_parent_identity)
+        )
         self._authority_owner = _PublicationAuthorityOwner()
         self._stage: OwnedDirectoryStage | None = None
         self._isolation_owner: _OwnedDirectoryIsolationOwner | None = None
@@ -6047,8 +6059,13 @@ class OwnedPathBuildDirectory:
         *,
         create_parent: bool = False,
         require_private_parent: bool = True,
+        expected_parent_identity: tuple[int, ...] | None = None,
     ) -> OwnedPathBuildDirectory:
-        """Create a fresh private build root under one retained authority."""
+        """Create a fresh private build root under one retained authority.
+
+        An optional parent identity binds the retained path to a caller-pinned
+        attempt pool before the first root mutation.
+        """
 
         if cls is not OwnedPathBuildDirectory:
             raise TypeError(
@@ -6060,6 +6077,12 @@ class OwnedPathBuildDirectory:
             raise TypeError("owned path build create_parent must be a boolean")
         if type(require_private_parent) is not bool:
             raise TypeError("owned path build require_private_parent must be a boolean")
+        if expected_parent_identity is not None and (
+            type(expected_parent_identity) is not tuple
+            or len(expected_parent_identity) < 2
+            or any(type(value) is not int for value in expected_parent_identity)
+        ):
+            raise TypeError("owned path build parent identity is invalid")
         _require_owned_path_build_support()
         lexical = lexical_directory_path(destination)
         # Validate the exact derived component length before constructing the
@@ -6069,6 +6092,7 @@ class OwnedPathBuildDirectory:
         resource = cls(
             lexical,
             require_private_parent=require_private_parent,
+            expected_parent_identity=expected_parent_identity,
         )
         cleanup = _OrderedAction(
             label="owned path build preparation cleanup also failed",
@@ -6088,7 +6112,7 @@ class OwnedPathBuildDirectory:
         authority = _open_publication_authority(
             self._destination.parent,
             parent_resource=None,
-            expected_parent_identity=None,
+            expected_parent_identity=self._expected_parent_identity,
             create_missing=create_parent,
             missing_parent_mode=0o700,
             authority_owner=self._authority_owner,

@@ -1293,8 +1293,8 @@ factory, resolver, and production CLI wiring are described below; Web binding,
 vector source building, and graph source building remain absent.
 
 A general caller-owned path-build directory now supplies a retained attempt
-boundary for arbitrary path writers and the next cleanup hardening of the
-implemented source-job resource factory. It creates under a retained no-follow
+boundary for arbitrary path writers and the implemented source-job resource
+factory. It creates under a retained no-follow
 owner-controlled parent, captures the completed tree, atomically isolates that
 exact tree, retains
 interrupted cleanup for an explicit quiescent retry that delivers authenticated
@@ -1306,14 +1306,17 @@ interrupted public return can be redelivered by the process-local retry. That
 retry is serialized through callback acknowledgement; its sink must not
 recursively invoke the boundary. The native `mkdir`-to-first-identity handoff
 is intentionally fail-closed: if the hidden name cannot be authenticated, it
-is left untouched and never becomes cleanup authority. A follow-up must place
-the implemented source-job factory's attempt, BM25, and context destinations
-under one such outer owner, preserve its exact job/source/profile and
-worker-only binding, release all inner receipt authorities before isolation,
-and add an attempt-pool reaper that reconciles stale names only at a quiescent
-boundary. The legacy one-shot directory-discard and plain stage-construction
-return contracts remain unchanged; cancellation-safe integrations must use the
-retained owner and explicit receipt acknowledgement.
+is left untouched and never becomes cleanup authority. The retained-source
+BM25 factory now places its attempt, BM25, and context destinations under one
+such outer owner. It preserves the exact pool and nested-root identities,
+releases all three inner receipt authorities before isolation, delivers one
+authenticated outer receipt at least once to an idempotent target sink, and
+only then acknowledges the retained owner. Source validation still finishes
+before the attempt root is created. The remaining follow-up is an attempt-pool
+reaper that reconciles stale names only at a quiescent boundary. The legacy
+one-shot directory-discard and plain stage-construction return contracts remain
+unchanged; cancellation-safe integrations must use the retained owner and
+explicit receipt acknowledgement.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1348,11 +1351,14 @@ accepts only that target's single required `full` BM25 profile. Scope
 declaration is side-effect free; entry authenticates lexical and physical
 repository/workspace separation before source capture, binds the worker's exact
 retained object store, recaptures the current dirty fingerprint, and creates
-fresh nonce-scoped attempt, BM25, and context destinations. Ordered exit closes
-source and receipt authorities and isolates only their receipt-owned trees for
-quiescent GC. A changed source fails before build or CAS mutation, and worker
-integration coverage proves the previous published ref remains unchanged. The
-production CLI now selects this binding explicitly. It resolves one stable Git
+one fresh nonce-scoped outer attempt root containing missing `attempt`, `bm25`,
+and `context` children. Ordered exit closes all child receipt authorities,
+atomically isolates the complete outer tree, delivers its authenticated receipt
+to the target sink, acknowledges that delivery, and then closes the source.
+Sink failure keeps the same receipt retained for at-least-once redelivery. A
+changed source fails before build or CAS mutation, and worker integration
+coverage proves the previous published ref remains unchanged. The production
+CLI now selects this binding explicitly. It resolves one stable Git
 HEAD around each fresh source capture and again before returning the prepared
 result, and binds every attempt/view/context provision to the retained startup
 workspace identity while rechecking the complete storage topology. No Web
@@ -1398,9 +1404,10 @@ retained-source BM25 builder and its prepare-only source-job adapter now publish
 and ingest a unique private generation under an exact retained parent and
 generation receipt, without final publication authority or a cache-path reopen;
 its local attempt resource factory, resolver, and explicit production CLI entry
-are implemented. The general caller-owned path-build cleanup primitive intended
-to enclose that factory's three transient destinations is also implemented but
-not yet adopted there.
+are implemented. Its three transient destinations now share one retained
+caller-owned path-build root whose authenticated cleanup receipt is accepted
+before ownership is released; the quiescent attempt-pool reaper remains
+pending.
 Vector and graph source builders, generic builder routing, and remaining
 runtime wiring remain.
 
@@ -1488,13 +1495,12 @@ MCP, UI controls, and default routing remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- The retained-source BM25 attempt resource factory/resolver is implemented;
-  add its production worker entry, then add vector and graph source adapters and
-  wire successful worker results into runtime, Web, MCP, and default routes.
-  The existing continuous CLI still selects only the trusted local
-  compiler-cache factory and can recapture an already-current single BM25 or
-  vector cache view. Older self-publishing ingress APIs remain compatibility
-  paths and are never nested inside the worker.
+- The retained-source BM25 attempt resource factory/resolver and explicit
+  production worker entry are implemented. Add the quiescent attempt-pool
+  reaper, then add vector and graph source adapters and wire successful worker
+  results into runtime, Web, MCP, and default routes. Older self-publishing
+  ingress APIs remain compatibility paths and are never nested inside the
+  worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,

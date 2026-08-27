@@ -19,10 +19,14 @@ from .._atomic_directory import (
     _attach_publication_cleanup_owner,
     _OrderedAction,
     _run_context_with_cleanup_actions,
+    directory_ownership_root_identity,
     discard_owned_directory,
     lexical_directory_path,
 )
-from .._captured_directory import PublishedWorkspaceReceiptOwner
+from .._captured_directory import (
+    OwnedPathBuildDirectory,
+    PublishedWorkspaceReceiptOwner,
+)
 from .._local_workspace_provider import LocalWorkspaceProvider
 from .._workspace_provider import StrictWorkspaceRequest, StrictWorkspaceSession
 from ..artifacts.runtime import SourceBindingCleanupOwner
@@ -240,7 +244,13 @@ class LocalCompilerCacheJobTarget:
 
 @dataclass(frozen=True, slots=True)
 class LocalBM25SourceJobTarget:
-    """One explicitly trusted source-builder and local workspace binding."""
+    """One explicitly trusted source-builder and local attempt-pool binding.
+
+    ``attempt_orphan_sink`` accepts authenticated cleanup receipts at least
+    once.  A configured sink must therefore be idempotent and non-reentrant.
+    Without one, receipts are logged for the owning pool's later quiescent
+    reaper.
+    """
 
     repository_root: Path
     workspace_provider: LocalWorkspaceProvider
@@ -269,6 +279,11 @@ class LocalBM25SourceJobTarget:
         compare=False,
     )
     topology_verifier: Callable[[], None] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    attempt_orphan_sink: Callable[[DirectoryOrphan], None] | None = field(
         default=None,
         repr=False,
         compare=False,
@@ -327,6 +342,9 @@ class LocalBM25SourceJobTarget:
         topology_verifier = self.topology_verifier
         if topology_verifier is not None and not callable(topology_verifier):
             raise TypeError("BM25 source target topology verifier is invalid")
+        attempt_orphan_sink = self.attempt_orphan_sink
+        if attempt_orphan_sink is not None and not callable(attempt_orphan_sink):
+            raise TypeError("BM25 source target orphan sink is invalid")
         namespace = NamespaceIdentity(self.namespace_name)
         repository = RepositoryIdentity(
             namespace_id=namespace.namespace_id,
@@ -377,6 +395,12 @@ class LocalBM25SourceJobTarget:
 
     @property
     def workspace_root(self) -> Path:
+        return self.workspace_provider.allowed_root
+
+    @property
+    def attempt_pool_root(self) -> Path:
+        """Return the private parent that owns source-job attempt roots."""
+
         return self.workspace_provider.allowed_root
 
     @property
@@ -434,15 +458,35 @@ class LocalBM25SourceJobTarget:
         self.verify_topology()
         return source
 
+    def accept_attempt_orphan(self, orphan: DirectoryOrphan) -> None:
+        """Persist or log one authenticated attempt-root cleanup receipt."""
+
+        if type(orphan) is not DirectoryOrphan:
+            raise TypeError("BM25 source target orphan receipt is invalid")
+        sink = self.attempt_orphan_sink
+        if sink is not None:
+            sink(orphan)
+            return
+        logger.warning(
+            "BM25 source job retained an attempt-root orphan for quiescent GC: "
+            "path=%s digest=%s entries=%d bytes=%d verified=%s",
+            orphan.path,
+            orphan.ownership_digest,
+            orphan.entries,
+            orphan.byte_count,
+            orphan.verified_at_isolation,
+        )
+
 
 @dataclass(slots=True)
 class _AttemptWorkspaceCleanupOwner:
-    """Close one receipt authority, then isolate its exact published tree."""
+    """Close a receipt and optionally isolate its exact published tree."""
 
     owner: PublishedWorkspaceReceiptOwner
-    destination: Path
+    destination: Path | None
     label: str
     job_label: str = "Compiler-cache job"
+    isolate_destination: bool = True
     _ownership: object | None = field(default=None, init=False, repr=False)
     _closed: bool = field(default=False, init=False, repr=False)
 
@@ -476,8 +520,13 @@ class _AttemptWorkspaceCleanupOwner:
         if self._ownership is None:
             state = self.owner.state
             if state == "active":
+                destination = self.destination
+                if destination is None:
+                    raise StorageIntegrityError(
+                        f"{self.job_label} workspace destination is not installed"
+                    )
                 binding = self.owner.destination_binding
-                if binding.destination != self.destination:
+                if binding.destination != destination:
                     raise StorageIntegrityError(
                         f"{self.job_label} workspace receipt changed destination"
                     )
@@ -493,9 +542,58 @@ class _AttemptWorkspaceCleanupOwner:
         self.owner.close()
         if not self.owner.closed:
             raise RuntimeError(f"{self.job_label} workspace receipt did not close")
-        if self._ownership is not None:
-            orphan = discard_owned_directory(self.destination, self._ownership)
+        if self._ownership is not None and self.isolate_destination:
+            destination = self.destination
+            if destination is None:  # pragma: no cover - active state checked above
+                raise AssertionError("workspace cleanup destination is absent")
+            orphan = discard_owned_directory(destination, self._ownership)
             self._record_orphan(orphan, label=self.label)
+        self._closed = True
+
+
+@dataclass(slots=True)
+class _BM25AttemptRootCleanupOwner:
+    """Deliver one outer attempt receipt after every child receipt closes."""
+
+    child_owners: tuple[_AttemptWorkspaceCleanupOwner, ...]
+    accept_orphan: Callable[[DirectoryOrphan], None]
+    owner: OwnedPathBuildDirectory | None = field(default=None, init=False)
+    orphan: DirectoryOrphan | None = field(default=None, init=False)
+    accepted: bool = field(default=False, init=False)
+    _closed: bool = field(default=False, init=False, repr=False)
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def install(self, owner: OwnedPathBuildDirectory) -> None:
+        if type(owner) is not OwnedPathBuildDirectory:
+            raise TypeError("BM25 attempt root requires an exact owned path")
+        if self.owner is not None:
+            raise RuntimeError("BM25 attempt root owner is already installed")
+        self.owner = owner
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        owner = self.owner
+        if owner is None:
+            self._closed = True
+            return
+        if any(not child.closed for child in self.child_owners):
+            raise StorageIntegrityError(
+                "BM25 source job child receipts remain active before root isolation"
+            )
+        orphan = self.orphan
+        if orphan is None:
+            orphan = owner.isolate()
+            self.orphan = orphan
+        if not self.accepted:
+            self.accept_orphan(orphan)
+            self.accepted = True
+        owner.close()
+        if not owner.closed:
+            raise RuntimeError("BM25 source job attempt root did not close")
         self._closed = True
 
 
@@ -916,36 +1014,40 @@ class LocalBM25SourceJobResourceFactory:
         if check_cancelled is None:  # pragma: no cover - context invariant
             raise AssertionError("BM25 source job context has no stop check")
         nonce = _attempt_nonce()
-        prefix = f".codenib-source-job-{nonce}"
-        attempt_destination = target.workspace_root / f"{prefix}-attempt"
-        view_destination = target.workspace_root / f"{prefix}-bm25"
-        context_destination = target.workspace_root / f"{prefix}-context"
+        prefix = f"codenib-source-job-{nonce}"
         attempt_owner = PublishedWorkspaceReceiptOwner()
         view_owner = PublishedWorkspaceReceiptOwner()
         context_owner = PublishedWorkspaceReceiptOwner()
         attempt_cleanup = _AttemptWorkspaceCleanupOwner(
             attempt_owner,
-            attempt_destination,
+            None,
             "source attempt",
             job_label="BM25 source job",
+            isolate_destination=False,
         )
         view_cleanup = _AttemptWorkspaceCleanupOwner(
             view_owner,
-            view_destination,
+            None,
             "source BM25",
             job_label="BM25 source job",
+            isolate_destination=False,
         )
         context_cleanup = _AttemptWorkspaceCleanupOwner(
             context_owner,
-            context_destination,
+            None,
             "source context",
             job_label="BM25 source job",
+            isolate_destination=False,
+        )
+        child_cleanups = (context_cleanup, view_cleanup, attempt_cleanup)
+        attempt_root_cleanup = _BM25AttemptRootCleanupOwner(
+            child_cleanups,
+            target.accept_attempt_orphan,
         )
         source_owner = SourceBindingCleanupOwner()
         cleanup_owners = (
-            context_cleanup,
-            view_cleanup,
-            attempt_cleanup,
+            *child_cleanups,
+            attempt_root_cleanup,
             source_owner,
         )
         cleanup_actions = tuple(
@@ -956,8 +1058,15 @@ class LocalBM25SourceJobResourceFactory:
                 retry_incomplete="cancellation",
                 incomplete_owner=cleanup,
             )
-            for cleanup in (context_cleanup, view_cleanup, attempt_cleanup)
+            for cleanup in child_cleanups
         ) + (
+            _OrderedAction(
+                label="BM25 source job attempt root cleanup also failed",
+                action=attempt_root_cleanup.close,
+                complete=lambda: attempt_root_cleanup.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=attempt_root_cleanup,
+            ),
             _OrderedAction(
                 label="BM25 source job source cleanup also failed",
                 action=source_owner.close,
@@ -990,42 +1099,59 @@ class LocalBM25SourceJobResourceFactory:
                     raise StorageValidationError(
                         "BM25 source job Git HEAD changed during source capture"
                     )
-                workspace_provider = (
-                    target.workspace_provider
-                    if target.workspace_parent_identity is None
-                    and target.topology_verifier is None
-                    else _RetainedBM25WorkspaceProvider(
-                        delegate=target.workspace_provider,
-                        parent_identity=target.workspace_parent_identity,
-                        topology_verifier=target.topology_verifier,
-                    )
-                )
                 check_cancelled()
-                yield BM25SourceJobExecutor(
-                    attempt_generation=attempt_destination,
-                    display_commit=display_commit,
-                    builder=target._builder.builder(),
-                    attempt_output_owner=attempt_owner,
-                    attempt_workspace_provider=target.workspace_provider,
-                    repository_source=repository_source,
-                    view_output_owner=view_owner,
-                    context_output_owner=context_owner,
-                    view_destination=view_destination,
-                    context_destination=context_destination,
-                    workspace_provider=workspace_provider,
-                    repository_key=target.repository_key,
-                    object_store=object_store,
-                    namespace_name=target.namespace_name,
-                    environ=target.environ,
-                    attempt_parent_identity=target.workspace_parent_identity,
-                    attempt_topology_verifier=target.topology_verifier,
+                target.verify_topology()
+                attempt_root = OwnedPathBuildDirectory.prepare(
+                    target.attempt_pool_root / prefix,
+                    expected_parent_identity=target.workspace_parent_identity,
                 )
-                check_cancelled()
-                repository_source.verify_snapshot(check_cancelled=check_cancelled)
-                if target.current_display_commit() != display_commit:
-                    raise StorageValidationError(
-                        "BM25 source job Git HEAD changed before publication"
+                attempt_root_cleanup.install(attempt_root)
+                target.verify_topology()
+                attempt_root_identity = directory_ownership_root_identity(
+                    attempt_root.capture_ownership()
+                )
+                nested_provider = LocalWorkspaceProvider(
+                    attempt_root.path,
+                    provision_timeout_ns=target.workspace_provider.provision_timeout_ns,
+                )
+                attempt_destination = attempt_root.path / "attempt"
+                view_destination = attempt_root.path / "bm25"
+                context_destination = attempt_root.path / "context"
+                attempt_cleanup.destination = attempt_destination
+                view_cleanup.destination = view_destination
+                context_cleanup.destination = context_destination
+                workspace_provider = _RetainedBM25WorkspaceProvider(
+                    delegate=nested_provider,
+                    parent_identity=attempt_root_identity,
+                    topology_verifier=target.topology_verifier,
+                )
+                with attempt_root.path_operation("BM25 source job execution"):
+                    check_cancelled()
+                    yield BM25SourceJobExecutor(
+                        attempt_generation=attempt_destination,
+                        display_commit=display_commit,
+                        builder=target._builder.builder(),
+                        attempt_output_owner=attempt_owner,
+                        attempt_workspace_provider=nested_provider,
+                        repository_source=repository_source,
+                        view_output_owner=view_owner,
+                        context_output_owner=context_owner,
+                        view_destination=view_destination,
+                        context_destination=context_destination,
+                        workspace_provider=workspace_provider,
+                        repository_key=target.repository_key,
+                        object_store=object_store,
+                        namespace_name=target.namespace_name,
+                        environ=target.environ,
+                        attempt_parent_identity=attempt_root_identity,
+                        attempt_topology_verifier=target.topology_verifier,
                     )
+                    check_cancelled()
+                    repository_source.verify_snapshot(check_cancelled=check_cancelled)
+                    if target.current_display_commit() != display_commit:
+                        raise StorageValidationError(
+                            "BM25 source job Git HEAD changed before publication"
+                        )
         except BaseException as error:  # noqa: B036 - retain cleanup authority
             pending = tuple(
                 owner for owner in cleanup_owners if _cleanup_owner_pending(owner)
