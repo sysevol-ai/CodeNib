@@ -1358,11 +1358,14 @@ to the target sink, acknowledges that delivery, and then closes the source.
 Sink failure keeps the same receipt retained for at-least-once redelivery. A
 changed source fails before build or CAS mutation, and worker integration
 coverage proves the previous published ref remains unchanged. The production
-CLI now selects this binding explicitly. It resolves one stable Git
-HEAD around each fresh source capture and again before returning the prepared
-result, and binds every attempt/view/context provision to the retained startup
-workspace identity while rechecking the complete storage topology. No Web
-planner, runtime refresh trigger, or default route selects it yet.
+production CLI and explicit Web planner now select this binding. The CLI
+resolves one stable Git HEAD around each fresh source capture and again before
+returning the prepared result, and binds every attempt/view/context provision
+to the retained startup workspace identity while rechecking the complete
+storage topology. The planner captures that same topology-guarded retained
+source and registers only its content-addressed planning identities through a
+least-authority catalog surface. No default Web installation, runtime refresh
+trigger, or default route selects either production binding yet.
 
 The production CLI binding exposes both trusted local adapters through
 `codenib jobs run-once` and `codenib jobs run`, with an explicit mutually
@@ -1445,9 +1448,9 @@ bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
 generation identity.
-The first #266 status, durable-read, and explicitly injected one-view write
-slices are present; a Web planner/default binding, success-triggered refresh,
-MCP, UI controls, and default routing remain absent.
+The first #266 status, durable-read, explicitly injected one-view write, and
+retained-source BM25 planning slices are present; a default Web binding,
+success-triggered refresh, MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1495,12 +1498,15 @@ MCP, UI controls, and default routing remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- The retained-source BM25 attempt resource factory/resolver and explicit
-  production worker entry are implemented. Add the quiescent attempt-pool
-  reaper, then add vector and graph source adapters and wire successful worker
-  results into runtime, Web, MCP, and default routes. Older self-publishing
-  ingress APIs remain compatibility paths and are never nested inside the
-  worker.
+- The retained-source BM25 attempt resource factory/resolver, production CLI
+  entry, and explicit Web planner are implemented. The planner captures the
+  same frozen local target as the worker, revalidates source after planning,
+  and uses a separate least-authority catalog surface that can register only
+  content-addressed source/profile identities and read one ref generation.
+  Add the quiescent attempt-pool reaper, then add vector and graph source
+  adapters and wire successful worker results into runtime, Web, MCP, and
+  default routes. Older self-publishing ingress APIs remain compatibility paths
+  and are never nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
@@ -1543,19 +1549,23 @@ MCP, UI controls, and default routing remain absent.
   job. Exact replay returns the existing job, while two concurrent new requests
   serialize to one creation and one conflict. This prevents a Web control plane
   from racing multiple updates into one publication slot without granting it
-  lease, cancellation, execution, or publication authority; the trusted source
-  and profile planner remains an explicit injected capability.
+  lease, cancellation, execution, or publication authority. Planning and
+  creation are serialized by a fixed per-repository Web lock; cross-process
+  losers conflict on either an active slot or a changed ref-generation fence,
+  while committed retries replay before source capture. The trusted
+  source/profile planner remains an explicit injected capability.
 - The first Web write slice exposes `POST /api/repos/{repo_id}/index-jobs` with
   a required bounded idempotency header and returns the detached durable job
-  status. Its catalog adapter accepts exactly one `full` BM25 or vector view,
-  matching the current production worker; multi-view, incremental, symbol-graph,
-  and forced requests fail before planning or catalog access. Planner identities
-  and storage failures stay private, conflicts map to one public response, and
-  an exact repository/key replay lookup returns the persisted request before
-  consulting the mutable planner. This recovers a committed job after HTTP
-  response loss without granting active-job, event, lease, execution, or
-  publication discovery. The default server continues to return unavailable
-  because no writer or source/profile planner is wired by default.
+  status. Its generic catalog adapter accepts exactly one `full` BM25 or vector
+  view; the production retained-source planner currently accepts BM25 only.
+  Multi-view, incremental, symbol-graph, and forced requests fail before
+  planning or catalog access. Planner identities and storage failures stay
+  private, conflicts map to one public response, and an exact repository/key
+  replay lookup returns the persisted request before consulting the mutable
+  planner. This recovers a committed job after HTTP response loss without
+  granting active-job, event, lease, execution, or publication discovery. The
+  default server continues to return unavailable because no storage/target
+  binding installs the reader, writer, or planner by default.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
