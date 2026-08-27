@@ -1670,9 +1670,14 @@ MCP, UI controls, and default routing remain absent.
   worker thread, uses one cooperative stop signal, stops the peer after either
   loop faults, and joins both non-daemon threads before shared storage or registry
   resources may be released. Partial thread start and interrupted shutdown still
-  settle every thread before reporting a sanitized lifecycle failure.
-  Explicit local storage composition, configuration, and server lifespan
-  installation remain separate gates.
+  settle every thread before reporting a sanitized lifecycle failure. Web
+  configuration now has an optional typed local-storage
+  selection for one existing catalog, preprovisioned CAS, disjoint worker and
+  runtime workspace roots, namespace/ref bindings, and bounded worker/runtime
+  timing. Presence is the explicit opt-in; parsing touches no path and rejects
+  relative, overlapping, duplicate, unknown, and incoherent values. Physical
+  topology acquisition, service composition, and lifespan installation remain
+  separate gates.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a
