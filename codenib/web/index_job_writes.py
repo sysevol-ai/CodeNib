@@ -249,12 +249,12 @@ def _replayed_job_response(
 
 
 class CatalogIndexJobWriter:
-    """Create one honest FULL cache job through an atomic catalog slot.
+    """Create one honest FULL worker job through an atomic catalog slot.
 
-    The current production worker can recapture exactly one already-current
-    BM25 or vector compiler-cache view. This writer therefore rejects
-    incremental, symbol-graph, multi-view, and force requests instead of
-    claiming a capability the worker does not implement.
+    The current production adapters can prepare one exact retained-source BM25
+    view or recapture one already-current BM25/vector compiler-cache view. This
+    writer therefore rejects incremental, symbol-graph, multi-view, and force
+    requests instead of claiming a capability no worker implements.
     """
 
     def __init__(

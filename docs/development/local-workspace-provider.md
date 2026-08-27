@@ -20,8 +20,9 @@ The provider is not enabled by CodeNib's default compiler or runtime path. Six
 explicit routes use it: `codenib index --publish-retained` builds and publishes
 current BM25/vector views in one compiler-cache lease, `codenib artifact
 import-cache` recaptures an already existing selected cache, `codenib jobs
-run-once` prepares and publishes at most one eligible durable cache job,
-`codenib jobs run` continuously schedules the same explicitly scoped jobs,
+run-once` prepares and publishes at most one eligible durable cache-import or
+retained-source BM25 job, `codenib jobs run` continuously schedules the same
+explicitly scoped jobs,
 `codenib artifact materialize` publishes a retained catalog ref or immutable
 snapshot to a missing portable-artifact directory, and retained `codenib mcp`
 cold-start materializes and holds one such generation for a single stdio server
