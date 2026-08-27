@@ -26,6 +26,7 @@ from ..storage.models import (
 )
 from ..storage.protocols import RetainedImportObjectStore
 from .cache_import import CompilerCacheJobExecutor
+from .source_job import BM25SourceJobExecutor
 
 _SUPPORTED_CACHE_VIEWS = frozenset({"bm25", "vector"})
 _MISSING_EXECUTION_RESULT = object()
@@ -62,6 +63,24 @@ class CompilerCacheJobResourceScope:
             raise TypeError("compiler cache resource scope requires a context manager")
 
 
+@dataclass(frozen=True, slots=True)
+class BM25SourceJobResourceScope:
+    """Side-effect-free declaration for one retained-source BM25 attempt."""
+
+    object_store: RetainedImportObjectStore
+    resources: AbstractContextManager[BM25SourceJobExecutor]
+
+    def __post_init__(self) -> None:
+        if type(self) is not BM25SourceJobResourceScope:
+            raise TypeError("BM25 source resource scope must use the exact type")
+        if not isinstance(self.object_store, RetainedImportObjectStore):
+            raise TypeError(
+                "BM25 source resource scope requires a retained import store"
+            )
+        if not isinstance(self.resources, AbstractContextManager):
+            raise TypeError("BM25 source resource scope requires a context manager")
+
+
 @runtime_checkable
 class CompilerCacheJobResourceFactory(Protocol):
     """Declare fresh attempt-scoped authorities for one cache executor.
@@ -82,19 +101,36 @@ class CompilerCacheJobResourceFactory(Protocol):
     ) -> CompilerCacheJobResourceScope: ...
 
 
+@runtime_checkable
+class BM25SourceJobResourceFactory(Protocol):
+    """Declare fresh attempt-scoped authorities for one BM25 source executor.
+
+    ``create_scope`` must only assemble a side-effect-free descriptor. The
+    returned context manager owns source capture, receipt owners, workspace
+    destinations, and their ordered cleanup. The supplied object store must be
+    declared unchanged on the scope and attached unchanged to its executor.
+    """
+
+    def create_scope(
+        self,
+        context: IndexJobExecutionContext,
+        *,
+        object_store: RetainedImportObjectStore,
+    ) -> BM25SourceJobResourceScope: ...
+
+
 def _add_cleanup_exception_note(
     primary: BaseException,
     secondary: BaseException,
+    *,
+    label: str,
 ) -> None:
     """Best-effort note cleanup failure without replacing the primary error."""
 
     try:
         add_note = getattr(primary, "add_note", None)
         if callable(add_note):
-            add_note(
-                "compiler cache resource cleanup also failed: "
-                f"{type(secondary).__name__}"
-            )
+            add_note(f"{label} cleanup also failed: {type(secondary).__name__}")
     except BaseException:  # noqa: B036 - notes must not replace execution failure
         pass
 
@@ -173,13 +209,61 @@ def _execute_in_resource_scope(
             raise
         if cleanup_exc is not primary:
             _inherit_cleanup_owners(primary, cleanup_exc)
-            _add_cleanup_exception_note(primary, cleanup_exc)
+            _add_cleanup_exception_note(
+                primary,
+                cleanup_exc,
+                label="compiler cache resource",
+            )
     if primary is not None:
         raise primary
     if type(result) is not IndexJobExecutionResult:
         raise StorageIntegrityError(
             "compiler cache resource scope returned no execution result"
         )
+    return result
+
+
+def _execute_in_bm25_source_resource_scope(
+    scope: BM25SourceJobResourceScope,
+    context: IndexJobExecutionContext,
+) -> IndexJobExecutionResult:
+    """Execute a source build without letting cleanup suppress its failure."""
+
+    result: object = _MISSING_EXECUTION_RESULT
+    primary: BaseException | None = None
+    try:
+        with scope.resources as executor:
+            try:
+                if type(executor) is not BM25SourceJobExecutor:
+                    raise TypeError(
+                        "BM25 source resource factory returned an invalid executor"
+                    )
+                if executor.object_store is not scope.object_store:
+                    raise StorageIntegrityError(
+                        "BM25 source executor differs from its declared object store"
+                    )
+                result = executor.execute(context)
+                if type(result) is not IndexJobExecutionResult:
+                    raise StorageIntegrityError(
+                        "BM25 source executor returned an invalid result"
+                    )
+            except BaseException as exc:  # noqa: B036 - rethrown after cleanup
+                primary = exc
+                raise
+    except BaseException as cleanup_exc:  # noqa: B036 - preserve primary failure
+        if primary is None:
+            raise
+        if cleanup_exc is not primary:
+            _inherit_cleanup_owners(primary, cleanup_exc)
+            _add_cleanup_exception_note(
+                primary,
+                cleanup_exc,
+                label="BM25 source resource",
+            )
+    if primary is not None:
+        raise primary
+    if type(result) is not IndexJobExecutionResult:
+        raise StorageIntegrityError("BM25 source resource scope returned no result")
     return result
 
 
@@ -288,6 +372,36 @@ class _ScopedCompilerCacheJobExecutor:
 
 
 @dataclass(frozen=True, slots=True)
+class _ScopedBM25SourceJobExecutor:
+    job: IndexJobRecord
+    views: tuple[IndexJobViewRecord, ...]
+    resource_factory: BM25SourceJobResourceFactory
+    object_store: RetainedImportObjectStore
+
+    def execute(
+        self,
+        context: IndexJobExecutionContext,
+    ) -> IndexJobExecutionResult:
+        if type(context) is not IndexJobExecutionContext:
+            raise TypeError("scoped BM25 source executor requires an exact context")
+        if context.job != self.job or context.views != self.views:
+            raise StorageIntegrityError(
+                "scoped BM25 source executor received a different job attempt"
+            )
+        scope = self.resource_factory.create_scope(
+            context,
+            object_store=self.object_store,
+        )
+        if type(scope) is not BM25SourceJobResourceScope:
+            raise TypeError("BM25 source resource factory must return an exact scope")
+        if scope.object_store is not self.object_store:
+            raise StorageIntegrityError(
+                "BM25 source resource scope must use the resolver object store"
+            )
+        return _execute_in_bm25_source_resource_scope(scope, context)
+
+
+@dataclass(frozen=True, slots=True)
 class CompilerCacheJobResolver:
     """Resolve one supported cache job through fresh scoped authorities.
 
@@ -341,7 +455,56 @@ class CompilerCacheJobResolver:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class BM25SourceJobResolver:
+    """Resolve one retained-source BM25 job through fresh scoped authorities."""
+
+    resource_factory: BM25SourceJobResourceFactory
+    object_store: RetainedImportObjectStore
+
+    def __post_init__(self) -> None:
+        if type(self) is not BM25SourceJobResolver:
+            raise TypeError("BM25 source job resolver must use the exact type")
+        if not isinstance(self.resource_factory, BM25SourceJobResourceFactory):
+            raise TypeError("BM25 source job resolver requires a resource factory")
+        if not isinstance(self.object_store, RetainedImportObjectStore):
+            raise TypeError("BM25 source job resolver requires a retained import store")
+
+    def resolve(
+        self,
+        job: IndexJobRecord,
+        views: tuple[IndexJobViewRecord, ...],
+    ) -> IndexJobExecutor:
+        detached_job = _detach_resolved_job(job)
+        detached_views = _detach_resolved_views(views)
+        if detached_views != _canonical_resolved_views(detached_job):
+            raise StorageIntegrityError(
+                "BM25 source resolver views differ from the job request"
+            )
+        if (
+            detached_job.status is not IndexJobStatus.RUNNING
+            or detached_job.cancel_requested
+            or len(detached_views) != 1
+            or detached_views[0].job_id != detached_job.job_id
+            or detached_views[0].view_type != "bm25"
+            or detached_views[0].requested_mode is not IndexJobRequestedMode.FULL
+            or detached_views[0].required is not True
+        ):
+            raise StorageValidationError(
+                "BM25 source resolver requires one active required FULL BM25 view"
+            )
+        return _ScopedBM25SourceJobExecutor(
+            job=detached_job,
+            views=detached_views,
+            resource_factory=self.resource_factory,
+            object_store=self.object_store,
+        )
+
+
 __all__ = [
+    "BM25SourceJobResolver",
+    "BM25SourceJobResourceFactory",
+    "BM25SourceJobResourceScope",
     "CompilerCacheJobResolver",
     "CompilerCacheJobResourceFactory",
     "CompilerCacheJobResourceScope",

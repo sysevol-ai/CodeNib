@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import builtins
 import inspect
+import json
 import os
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,12 +17,22 @@ import pytest
 
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
+import codenib.compiler.job_resources as job_resources_module
 import codenib.compiler.source_job as source_job_module
 from codenib import LocalWorkspaceProvider
 from codenib._captured_directory import PublishedWorkspaceReceiptOwner
 from codenib.code_chunker import CodeChunker
 from codenib.code_chunking.base import BaseCodeChunker
 from codenib.compiler.index_builders import BM25IndexBuilder
+from codenib.compiler.job_resolver import (
+    BM25SourceJobResolver,
+    BM25SourceJobResourceFactory,
+    BM25SourceJobResourceScope,
+)
+from codenib.compiler.job_resources import (
+    LocalBM25SourceJobResourceFactory,
+    LocalBM25SourceJobTarget,
+)
 from codenib.compiler.manifest import RepoManifest
 from codenib.compiler.manifest_storage import BM25_PROFILE_AXES
 from codenib.compiler.source_job import BM25SourceJobExecutor, bm25_source_job_profile
@@ -36,9 +48,12 @@ from codenib.storage import (
     IndexJobExecutionResult,
     IndexJobStatus,
     IndexJobStopReason,
+    IndexJobWorker,
+    IndexJobWorkerDisposition,
     LocalCAS,
     SourceRevision,
     SQLiteCatalog,
+    StorageIntegrityError,
     StorageValidationError,
     ViewProfile,
 )
@@ -1371,3 +1386,508 @@ def test_bm25_source_executor_rejects_noncanonical_display_commit(
     with pytest.raises(StorageValidationError, match="full lowercase Git SHA"):
         BM25SourceJobExecutor(**parameters)  # type: ignore[arg-type]
     assert not attempt.exists()
+
+
+def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"], max_k=17)
+    profile = bm25_source_job_profile(builder)
+    fixture = _source_fixture(tmp_path)
+    catalog_path = tmp_path / "catalog.sqlite"
+    environment = {"CODENIB_SOURCE_RESOURCE_TEST": "before"}
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        environ=environment,
+    )
+    assert target.profile_id == profile.profile_id
+    assert target.environ == environment
+
+    builder.languages[:] = ["javascript"]
+    builder.max_k = 99
+    builder.source_selection = RepositorySourceSelection(("sample.py",))
+    environment["CODENIB_SOURCE_RESOURCE_TEST"] = "after"
+
+    try:
+        with SQLiteCatalog(catalog_path) as catalog:
+            repository_id = catalog.create_repository(_REPOSITORY_KEY)
+            assert repository_id == target.repository_id
+            source_revision_id = catalog.create_source_revision(
+                repository_id,
+                commit_sha=None,
+                dirty=True,
+                source_fingerprint=fixture.source.fingerprint,
+            )
+            profile_id = catalog.create_view_profile(
+                "bm25",
+                profile.config,
+                name=profile.name,
+            )
+            assert profile_id == target.profile_id
+            queued = catalog.create_job(
+                repository_id,
+                source_revision_id,
+                "local-bm25-source-worker",
+                {
+                    "contract": INDEX_JOB_REQUEST_CONTRACT,
+                    "views": {
+                        "bm25": {
+                            "profile_id": profile_id,
+                            "requested_mode": "full",
+                            "required": True,
+                        }
+                    },
+                },
+            )
+
+        with LocalCAS(tmp_path / "cas") as cas:
+            resources = LocalBM25SourceJobResourceFactory((target,))
+            assert resources.accepts_candidate(queued)
+            worker = IndexJobWorker(
+                catalog_factory=lambda: SQLiteCatalog(catalog_path, create=False),
+                object_store=cas,
+                resolver=BM25SourceJobResolver(
+                    resource_factory=resources,
+                    object_store=cas,
+                ),
+                candidate_filter=resources.accepts_candidate,
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "local-bm25-source-worker",
+            )
+
+            outcome = worker.run_once()
+
+            assert outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
+            assert outcome.job_id == queued.job_id
+            assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
+            orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
+            assert len(orphans) == 3
+            assert all(orphan.is_dir() for orphan in orphans)
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                completed = catalog.get_job(queued.job_id)
+                assert completed.status is IndexJobStatus.SUCCEEDED
+                assert completed.result_snapshot_id is not None
+                events = catalog.list_job_events(queued.job_id)
+                assert any(
+                    json.loads(event.payload_json).get("adapter") == "bm25_source"
+                    for event in events
+                )
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_worker_preserves_current_ref_after_source_changes(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    profile = bm25_source_job_profile(builder)
+    fixture = _source_fixture(tmp_path)
+    catalog_path = tmp_path / "catalog.sqlite"
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        environ={},
+    )
+    request = {
+        "contract": INDEX_JOB_REQUEST_CONTRACT,
+        "views": {
+            "bm25": {
+                "profile_id": profile.profile_id,
+                "requested_mode": "full",
+                "required": True,
+            }
+        },
+    }
+    try:
+        with SQLiteCatalog(catalog_path) as catalog:
+            repository_id = catalog.create_repository(_REPOSITORY_KEY)
+            source_revision_id = catalog.create_source_revision(
+                repository_id,
+                commit_sha=None,
+                dirty=True,
+                source_fingerprint=fixture.source.fingerprint,
+            )
+            assert (
+                catalog.create_view_profile(
+                    "bm25",
+                    profile.config,
+                    name=profile.name,
+                )
+                == profile.profile_id
+            )
+            first = catalog.create_job(
+                repository_id,
+                source_revision_id,
+                "source-before-mutation",
+                request,
+                max_attempts=1,
+            )
+
+        with LocalCAS(tmp_path / "cas") as cas:
+            resources = LocalBM25SourceJobResourceFactory((target,))
+            worker = IndexJobWorker(
+                catalog_factory=lambda: SQLiteCatalog(catalog_path, create=False),
+                object_store=cas,
+                resolver=BM25SourceJobResolver(
+                    resource_factory=resources,
+                    object_store=cas,
+                ),
+                candidate_filter=resources.accepts_candidate,
+                lease_duration_ms=60_000,
+                heartbeat_interval_ms=5,
+                owner_id_factory=lambda: "local-bm25-source-worker",
+            )
+
+            first_outcome = worker.run_once()
+
+            assert first_outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
+            assert first_outcome.job_id == first.job_id
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                preserved_ref = catalog.resolve_ref(repository_id)
+                stale = catalog.create_job(
+                    repository_id,
+                    source_revision_id,
+                    "source-after-mutation",
+                    request,
+                    expected_ref_generation=preserved_ref["generation"],
+                    max_attempts=1,
+                )
+            orphans_before = frozenset(fixture.workspace.glob(".*.discarded-*"))
+            (fixture.repository / "sample.py").write_text(
+                "def answer():\n    return 43\n",
+                encoding="utf-8",
+            )
+
+            stale_outcome = worker.run_once()
+
+            assert stale_outcome.disposition is IndexJobWorkerDisposition.FAILED
+            assert stale_outcome.job_id == stale.job_id
+            assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
+            assert frozenset(fixture.workspace.glob(".*.discarded-*")) == orphans_before
+            with SQLiteCatalog(catalog_path, create=False) as catalog:
+                failed = catalog.get_job(stale.job_id)
+                assert failed.status is IndexJobStatus.FAILED
+                assert failed.error_code == "worker_executor_failed"
+                assert failed.result_snapshot_id is None
+                assert catalog.resolve_ref(repository_id) == preserved_ref
+    finally:
+        fixture.close()
+
+
+def test_bm25_source_resource_types_are_lazy_public_exports() -> None:
+    assert compiler_module.BM25SourceJobResolver is BM25SourceJobResolver
+    assert compiler_module.BM25SourceJobResourceFactory is BM25SourceJobResourceFactory
+    assert compiler_module.BM25SourceJobResourceScope is BM25SourceJobResourceScope
+    assert (
+        compiler_module.LocalBM25SourceJobResourceFactory
+        is LocalBM25SourceJobResourceFactory
+    )
+    assert compiler_module.LocalBM25SourceJobTarget is LocalBM25SourceJobTarget
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("matching", True),
+        ("profile", False),
+        ("incremental", False),
+        ("optional", False),
+        ("vector", False),
+        ("multi-view", False),
+        ("foreign", False),
+    ],
+)
+def test_local_bm25_source_candidate_filter_requires_exact_target(
+    tmp_path: Path,
+    case: str,
+    expected: bool,
+) -> None:
+    builder = BM25IndexBuilder(max_k=17)
+    profile = bm25_source_job_profile(builder)
+    fixture = _source_fixture(tmp_path)
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        environ={},
+    )
+    try:
+        with SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog:
+            repository_id = catalog.create_repository(
+                "owner/foreign" if case == "foreign" else _REPOSITORY_KEY
+            )
+            source_revision_id = catalog.create_source_revision(
+                repository_id,
+                commit_sha=None,
+                dirty=True,
+                source_fingerprint=fixture.source.fingerprint,
+            )
+            requested_profile = (
+                bm25_source_job_profile(BM25IndexBuilder(max_k=18))
+                if case == "profile"
+                else profile
+            )
+            profile_id = catalog.create_view_profile(
+                "bm25",
+                requested_profile.config,
+                name=requested_profile.name,
+            )
+            view_type = "vector" if case == "vector" else "bm25"
+            if view_type == "vector":
+                profile_id = catalog.create_view_profile(
+                    "vector",
+                    {"fixture": True},
+                )
+            views: dict[str, dict[str, object]] = {
+                view_type: {
+                    "profile_id": profile_id,
+                    "requested_mode": (
+                        "incremental" if case == "incremental" else "full"
+                    ),
+                    "required": case != "optional",
+                }
+            }
+            if case == "multi-view":
+                views["vector"] = {
+                    "profile_id": catalog.create_view_profile(
+                        "vector",
+                        {"fixture": "multi"},
+                    ),
+                    "requested_mode": "full",
+                    "required": True,
+                }
+            queued = catalog.create_job(
+                repository_id,
+                source_revision_id,
+                f"source-candidate-{case}",
+                {"contract": INDEX_JOB_REQUEST_CONTRACT, "views": views},
+            )
+
+        resources = LocalBM25SourceJobResourceFactory((target,))
+        assert resources.accepts_candidate(queued) is expected
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_is_side_effect_free_until_enter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=fixture.provider,
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        environ={},
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+            monkeypatch.setattr(
+                job_resources_module,
+                "capture_repository_source",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "source authority was acquired while declaring the scope"
+                ),
+            )
+
+            scope = resources.create_scope(context, object_store=cas)
+
+            assert type(scope) is BM25SourceJobResourceScope
+            assert scope.object_store is cas
+            assert not tuple(fixture.workspace.iterdir())
+    finally:
+        fixture.close()
+
+
+def test_bm25_source_scope_cleanup_cannot_replace_executor_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    primary = StorageIntegrityError("primary BM25 source failure")
+    cleanup = OSError("injected BM25 source cleanup failure")
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            executor = _executor(
+                fixture,
+                cas,
+                builder,
+                attempt_generation=tmp_path / "attempt",
+                view_owner=view_owner,
+                context_owner=context_owner,
+            )
+
+            @contextmanager
+            def failing_cleanup():
+                try:
+                    yield executor
+                finally:
+                    raise cleanup
+
+            class FailingCleanupFactory:
+                def create_scope(self, attempt_context, *, object_store):
+                    assert attempt_context is context
+                    assert object_store is cas
+                    return BM25SourceJobResourceScope(
+                        object_store=cas,
+                        resources=failing_cleanup(),
+                    )
+
+            def fail_execute(*_args, **_kwargs):
+                raise primary
+
+            monkeypatch.setattr(
+                BM25SourceJobExecutor,
+                "execute",
+                fail_execute,
+            )
+            resolved = BM25SourceJobResolver(
+                resource_factory=FailingCleanupFactory(),
+                object_store=cas,
+            ).resolve(context.job, context.views)
+
+            with pytest.raises(StorageIntegrityError) as caught:
+                resolved.execute(context)
+
+            assert caught.value is primary
+            assert any(
+                "BM25 source resource cleanup also failed: OSError" in note
+                for note in getattr(primary, "__notes__", ())
+            )
+    finally:
+        context_owner.close()
+        view_owner.close()
+        fixture.close()
+
+
+def test_local_bm25_source_scope_rejects_physical_workspace_overlap_before_capture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    physical_workspace = fixture.repository / "physical-workspace"
+    physical_workspace.mkdir(mode=0o700)
+    workspace_alias = tmp_path / "workspace-alias"
+    workspace_alias.symlink_to(fixture.repository, target_is_directory=True)
+    target = LocalBM25SourceJobTarget(
+        repository_root=fixture.repository,
+        workspace_provider=LocalWorkspaceProvider(
+            workspace_alias / physical_workspace.name
+        ),
+        repository_key=_REPOSITORY_KEY,
+        display_commit=_COMMIT,
+        builder=builder,
+        environ={},
+    )
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+            monkeypatch.setattr(
+                job_resources_module,
+                "capture_repository_source",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "source capture ran before physical topology validation"
+                ),
+            )
+
+            scope = resources.create_scope(context, object_store=cas)
+
+            with pytest.raises(
+                ValueError,
+                match="physical workspace and repository must not overlap",
+            ):
+                with scope.resources:
+                    pass
+            assert not tuple(physical_workspace.iterdir())
+    finally:
+        fixture.close()
+
+
+def test_bm25_source_resolver_rejects_foreign_scope_store_before_enter(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    entered = False
+    try:
+        with (
+            LocalCAS(tmp_path / "worker-cas") as worker_store,
+            LocalCAS(tmp_path / "foreign-cas") as foreign_store,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+
+            @contextmanager
+            def unexpected_resources():
+                nonlocal entered
+                entered = True
+                raise AssertionError("foreign resource scope was entered")
+                yield  # pragma: no cover
+
+            class ForeignStoreFactory:
+                def create_scope(self, attempt_context, *, object_store):
+                    assert attempt_context is context
+                    assert object_store is worker_store
+                    return BM25SourceJobResourceScope(
+                        object_store=foreign_store,
+                        resources=unexpected_resources(),
+                    )
+
+            resolved = BM25SourceJobResolver(
+                resource_factory=ForeignStoreFactory(),
+                object_store=worker_store,
+            ).resolve(context.job, context.views)
+
+            with pytest.raises(StorageIntegrityError, match="resolver object store"):
+                resolved.execute(context)
+
+            assert entered is False
+            assert not tuple(fixture.workspace.iterdir())
+    finally:
+        fixture.close()

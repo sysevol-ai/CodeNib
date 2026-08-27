@@ -48,11 +48,16 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
     from codenib.compiler.job_resolver import (
+        BM25SourceJobResolver,
+        BM25SourceJobResourceFactory,
+        BM25SourceJobResourceScope,
         CompilerCacheJobResolver,
         CompilerCacheJobResourceFactory,
         CompilerCacheJobResourceScope,
     )
     from codenib.compiler.job_resources import (
+        LocalBM25SourceJobResourceFactory,
+        LocalBM25SourceJobTarget,
         LocalCompilerCacheJobResourceFactory,
         LocalCompilerCacheJobTarget,
     )
@@ -100,6 +105,18 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     )
 
 _EXPORTS = {
+    "BM25SourceJobResolver": (
+        "codenib.compiler.job_resolver",
+        "BM25SourceJobResolver",
+    ),
+    "BM25SourceJobResourceFactory": (
+        "codenib.compiler.job_resolver",
+        "BM25SourceJobResourceFactory",
+    ),
+    "BM25SourceJobResourceScope": (
+        "codenib.compiler.job_resolver",
+        "BM25SourceJobResourceScope",
+    ),
     "CompilerCacheBm25RecaptureResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheBm25RecaptureResult",
@@ -187,6 +204,14 @@ _EXPORTS = {
     "LocalCompilerCacheJobTarget": (
         "codenib.compiler.job_resources",
         "LocalCompilerCacheJobTarget",
+    ),
+    "LocalBM25SourceJobResourceFactory": (
+        "codenib.compiler.job_resources",
+        "LocalBM25SourceJobResourceFactory",
+    ),
+    "LocalBM25SourceJobTarget": (
+        "codenib.compiler.job_resources",
+        "LocalBM25SourceJobTarget",
     ),
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
     "IndexCompilerConfig": (
@@ -294,6 +319,9 @@ _EXPORTS = {
 }
 
 __all__ = [
+    "BM25SourceJobResolver",
+    "BM25SourceJobResourceFactory",
+    "BM25SourceJobResourceScope",
     # Index compilation
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
@@ -305,6 +333,8 @@ __all__ = [
     "CompilerCacheJobResourceScope",
     "LocalCompilerCacheJobResourceFactory",
     "LocalCompilerCacheJobTarget",
+    "LocalBM25SourceJobResourceFactory",
+    "LocalBM25SourceJobTarget",
     "CompilerCacheMultiViewImportResult",
     "CompilerCacheTopologyGuard",
     "CompilerCacheVectorJobPublicationResult",

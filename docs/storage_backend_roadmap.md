@@ -1289,8 +1289,8 @@ separately supplied full Git SHA remains display provenance only. The returned
 `IndexJobExecutionResult` carries no catalog, lease, fencing, ref, or final
 generation publication authority; the worker remains the sole publisher and
 the caller retains cleanup ownership for every attempt. Source-job resource
-factories and resolver/CLI/Web binding, vector source building, and graph source
-building remain absent.
+factory and resolver wiring is described below; production CLI/Web binding,
+vector source building, and graph source building remain absent.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1315,6 +1315,21 @@ cleanup is promoted to a storage-integrity failure with a retryable owner. The
 factory rechecks cooperative stop state around cache selection and source
 capture and fails before workspace/CAS work when the current source revision no
 longer matches the job.
+
+The retained-source BM25 bridge now has the matching resource-scoped resolver
+and trusted local target factory. Each source target freezes the exact builder
+profile, display commit, environment, repository identity/root, and private
+workspace provider. Its pre-claim filter accepts only that target's single
+required `full` BM25 profile. Scope declaration is side-effect free; entry
+authenticates lexical and physical repository/workspace separation before
+source capture, binds the worker's exact retained object store, recaptures the
+current dirty fingerprint, and creates fresh nonce-scoped attempt, BM25, and
+context destinations. Ordered exit closes source and receipt authorities and
+isolates only their receipt-owned trees for quiescent GC. A changed source
+fails before build or CAS mutation, and worker integration coverage proves the
+previous published ref remains unchanged. This is still a library binding: no
+production CLI, Web planner, runtime refresh trigger, or default route selects
+it yet.
 
 The production CLI binding exposes that target as `codenib jobs run-once` and
 `codenib jobs run`. Both freeze the same existing-only repository/cache/catalog/
@@ -1345,8 +1360,9 @@ their prepare-only worker bridge, are implemented. The first caller-scoped
 retained-source BM25 builder and its prepare-only source-job adapter now publish
 and ingest a unique private generation under an exact retained parent and
 generation receipt, without final publication authority or a cache-path reopen;
-vector and graph source builders, generic builder routing, source-job resource
-wiring, and remaining runtime wiring remain.
+its local attempt resource factory and resolver are implemented. Vector and
+graph source builders, generic builder routing, production source-job entry
+points, and remaining runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
@@ -1372,20 +1388,19 @@ implemented and verified with file-backed SQLite integration coverage. An
 explicit one-view compiler-cache executor now supplies parser-inert BM25 or
 schema-8 vector artifacts without catalog authority, and the first
 retained-source BM25 executor now prepares the same artifact closure from
-authenticated source bytes. The compiler-cache executor's resource-scoped
-resolver and trusted local target factory guarantee attempt-local cleanup,
-same-store binding, and exact configured repository/source identity, while the
-explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
-over the current cache. The source executor intentionally has no resolver or
-resource factory yet. The Web registry now prepares a complete replacement
+authenticated source bytes. Both executor paths now have resource-scoped
+resolvers and trusted local target factories that guarantee attempt-local
+cleanup, same-store binding, and exact configured repository/source identity.
+The explicit CLI can run one bounded pass or a cursor-fair continuous scheduler
+over the current compiler cache; it does not yet select the source builder. The
+Web registry now prepares a complete replacement
 bundle before atomically publishing it, pins the exact generation for each
 in-flight request, defers old vector/source cleanup until the final pin exits,
 and invalidates bundle-bound Wiki, edge-label, and commit-window caches by
 generation identity.
 The first #266 status, durable-read, and explicitly injected one-view write
-slices are present; remaining source-job adapters and resource wiring, a
-production Web planner/default binding, success-triggered refresh, MCP, UI
-controls, and default routing remain absent.
+slices are present; a production source-job CLI and Web planner/default binding,
+success-triggered refresh, MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1433,13 +1448,13 @@ controls, and default routing remain absent.
   final fenced heartbeat, and then publishes before releasing receipt
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
-- Extend the implemented prepare-only retained-source BM25 adapter with an
-  attempt resource factory/resolver, then add vector and graph source adapters
-  and wire successful worker results into runtime, Web, MCP, and default routes.
-  The trusted local factory and continuous CLI can currently recapture only an
-  already-current single BM25 or vector cache view under the worker, while the
-  older self-publishing ingress APIs remain compatibility paths and are never
-  nested inside the worker.
+- The retained-source BM25 attempt resource factory/resolver is implemented;
+  add its production worker entry, then add vector and graph source adapters and
+  wire successful worker results into runtime, Web, MCP, and default routes.
+  The existing continuous CLI still selects only the trusted local
+  compiler-cache factory and can recapture an already-current single BM25 or
+  vector cache view. Older self-publishing ingress APIs remain compatibility
+  paths and are never nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
