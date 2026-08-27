@@ -87,6 +87,23 @@ def test_background_loop_fault_stops_peer_and_is_reported_after_join() -> None:
     assert service.state == "closed"
 
 
+def test_background_loop_cannot_exit_cleanly_before_shutdown() -> None:
+    class Worker:
+        def run(self, _stop_signal):
+            return _worker_summary()
+
+    runtime = _Loop(_runtime_summary())
+    service = IndexJobBackgroundService(Worker(), runtime)
+    service.start()
+
+    assert runtime.exited.wait(1)
+    with pytest.raises(IndexJobBackgroundServiceError) as error:
+        service.close()
+
+    assert type(error.value.__cause__) is IndexJobBackgroundServiceError
+    assert "exited before shutdown" in str(error.value.__cause__)
+
+
 def test_partial_thread_start_failure_stops_and_joins_started_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
