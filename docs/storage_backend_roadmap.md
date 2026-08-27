@@ -1666,9 +1666,13 @@ MCP, UI controls, and default routing remain absent.
   materialization. The production runtime's cooperative polling loop reconciles
   once immediately, retries sanitized transient activation failures, and
   periodically replays current durable results with exact return and stop-signal
-  validation.
-  Server lifespan ownership and explicit local storage configuration remain
-  separate gates.
+  validation. A shared background owner starts that runtime thread before the
+  worker thread, uses one cooperative stop signal, stops the peer after either
+  loop faults, and joins both non-daemon threads before shared storage or registry
+  resources may be released. Partial thread start and interrupted shutdown still
+  settle every thread before reporting a sanitized lifecycle failure.
+  Explicit local storage composition, configuration, and server lifespan
+  installation remain separate gates.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a
