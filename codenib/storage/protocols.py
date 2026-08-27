@@ -31,6 +31,7 @@ from .models import (
     IndexJobAttemptHeartbeat,
     IndexJobAttemptRecord,
     IndexJobCompletion,
+    IndexJobCurrentResult,
     IndexJobEffectiveMode,
     IndexJobEventRecord,
     IndexJobRecord,
@@ -553,6 +554,26 @@ class JobCreationReplayCatalog(JobCreationCatalog, Protocol):
 
 
 @runtime_checkable
+class JobResultCatalog(Protocol):
+    """Least-authority reads for durable runtime reconciliation.
+
+    ``get_job`` authenticates an exact worker callback. The current-result
+    lookup returns a success only when its immutable publication snapshot,
+    generation, and update timestamp still equal the named ref. Consumers
+    cannot enumerate queued work, leases, attempts, events, manifests, or
+    publication authority through this surface.
+    """
+
+    def get_job(self, job_id: str) -> IndexJobRecord: ...
+
+    def find_current_successful_job(
+        self,
+        repository_id: str,
+        ref_name: str = "main",
+    ) -> IndexJobCurrentResult | None: ...
+
+
+@runtime_checkable
 class JobCatalog(Protocol):
     """Durable index-job coordination, separate from snapshot publication."""
 
@@ -851,6 +872,7 @@ __all__ = [
     "JobCycleWorkerCatalog",
     "JobExecutionCatalog",
     "JobPublicationCatalog",
+    "JobResultCatalog",
     "JobWorkerCatalog",
     "ObjectStore",
     "ReceiptRetainingObjectStore",

@@ -26,6 +26,7 @@ from codenib.storage.models import (
     INDEX_JOB_PUBLICATION_CONTRACT,
     INDEX_JOB_REQUEST_CONTRACT,
     MAX_VIEW_GENERATION_MEMBERS,
+    IndexJobCurrentResult,
     IndexJobRecord,
     IndexJobStatus,
     IndexJobViewOutput,
@@ -419,6 +420,139 @@ def test_required_output_publishes_one_atomic_identity_closed_snapshot(
         ).fetchone()
         assert lease["job_id"] is None
         assert lease["fencing_token"] == fixture.fencing_token
+
+
+def test_current_successful_job_requires_the_exact_current_ref(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        fixture = _create_running_job(catalog)
+        assert catalog.find_current_successful_job(fixture.job.repository_id) is None
+
+        first = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(_output("bm25", fixture.profiles["bm25"], 100),),
+        )
+        first_result = catalog.find_current_successful_job(first.repository_id)
+        assert type(first_result) is IndexJobCurrentResult
+        assert first_result.job == first
+        assert first_result.snapshot_id == first.result_snapshot_id
+        assert first_result.ref_generation == 1
+        assert (
+            first_result.ref_updated_at
+            == catalog.resolve_ref(first.repository_id)["updated_at"]
+        )
+        with pytest.raises(StorageValidationError, match="publication fence"):
+            IndexJobCurrentResult(
+                job=first,
+                ref_generation=2,
+                ref_updated_at=first_result.ref_updated_at,
+            )
+        with pytest.raises(StorageValidationError, match="UTC timestamp"):
+            IndexJobCurrentResult(
+                job=first,
+                ref_generation=1,
+                ref_updated_at="not-a-timestamp",
+            )
+
+        direct = _direct_publish_output(
+            catalog,
+            first,
+            _output("bm25", fixture.profiles["bm25"], 101),
+            expected_generation=1,
+        )
+        assert direct["generation"] == 2
+        assert catalog.find_current_successful_job(first.repository_id) is None
+
+        second_fixture = _create_running_job(
+            catalog,
+            repository_id=first.repository_id,
+            source_revision_id=first.source_revision_id,
+            profiles=fixture.profiles,
+            expected_ref_generation=2,
+            idempotency_key="request-2",
+            owner_id="worker-2",
+        )
+        second = catalog.publish_job_outputs(
+            second_fixture.job.job_id,
+            owner_id=second_fixture.owner_id,
+            fencing_token=second_fixture.fencing_token,
+            outputs=(_output("bm25", fixture.profiles["bm25"], 102),),
+        )
+        second_result = catalog.find_current_successful_job(first.repository_id)
+        assert type(second_result) is IndexJobCurrentResult
+        assert second_result.job == second
+        assert second_result.ref_generation == 3
+
+
+def test_current_successful_job_deduplicates_unchanged_publications_by_ref(
+    tmp_path,
+) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        clock = {"ms": 1_000}
+        _install_clock(catalog, clock)
+        fixture = _create_running_job(catalog)
+        output = _output("bm25", fixture.profiles["bm25"], 100)
+        first = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(output,),
+        )
+        first_result = catalog.find_current_successful_job(first.repository_id)
+        assert type(first_result) is IndexJobCurrentResult
+
+        second_fixture = _create_running_job(
+            catalog,
+            repository_id=first.repository_id,
+            source_revision_id=first.source_revision_id,
+            profiles=fixture.profiles,
+            expected_ref_generation=1,
+            idempotency_key="request-2",
+            owner_id="worker-2",
+        )
+        second = catalog.publish_job_outputs(
+            second_fixture.job.job_id,
+            owner_id=second_fixture.owner_id,
+            fencing_token=second_fixture.fencing_token,
+            outputs=(output,),
+        )
+        current = catalog.find_current_successful_job(first.repository_id)
+
+        assert second.finished_at_ms == first.finished_at_ms
+        assert second.result_snapshot_id == first.result_snapshot_id
+        assert type(current) is IndexJobCurrentResult
+        assert current.job == second
+        assert current.ref_generation == first_result.ref_generation == 1
+        assert current.ref_updated_at == first_result.ref_updated_at
+
+
+def test_current_successful_job_revalidates_publication_closure(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        fixture = _create_running_job(catalog)
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=(_output("bm25", fixture.profiles["bm25"], 100),),
+        )
+        invalid_closure = "{}"
+        with _raw_table_corruption(catalog, "index_job_publications") as connection:
+            connection.execute(
+                """
+                UPDATE index_job_publications
+                SET closure_json = ?, closure_digest = ?
+                WHERE job_id = ?
+                """,
+                (
+                    invalid_closure,
+                    hashlib.sha256(invalid_closure.encode()).hexdigest(),
+                    completed.job_id,
+                ),
+            )
+
+        with pytest.raises(CatalogConflictError, match="closure"):
+            catalog.find_current_successful_job(completed.repository_id)
 
 
 def test_publication_clock_rollback_preserves_the_open_attempt_and_outputs(

@@ -1536,6 +1536,13 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   returns the oldest queued job for the exact repository/ref, while terminal
   jobs and bounded events remain addressable by job ID. This avoids an
   in-memory repo-to-job map that would lose state across Web process restarts.
+- A separate least-authority result surface authenticates one exact worker
+  callback and resolves a successful job only while its immutable publication
+  snapshot, ref generation, and ref update timestamp still equal the current
+  ref. SQLite revalidates the complete stored publication closure before
+  returning that detached result. A superseded job or a current ref published
+  outside the job path therefore cannot trigger stale runtime activation, and
+  consumers need no lease, event, manifest, or publication authority.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a

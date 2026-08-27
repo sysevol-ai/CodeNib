@@ -44,6 +44,7 @@ from codenib.storage.protocols import (
     JobExecutionCatalog,
     JobPublicationCatalog,
     JobQueryCatalog,
+    JobResultCatalog,
     JobWorkerCatalog,
     ObjectStore,
     ReceiptVerifyingObjectStore,
@@ -70,6 +71,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(catalog, JobCreationCatalog)
         assert isinstance(catalog, JobCreationReplayCatalog)
         assert isinstance(catalog, JobQueryCatalog)
+        assert isinstance(catalog, JobResultCatalog)
         assert isinstance(catalog, JobExecutionCatalog)
         assert isinstance(catalog, JobWorkerCatalog)
         assert isinstance(catalog, JobCycleWorkerCatalog)
@@ -88,6 +90,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobAttemptHeartbeat",
         "IndexJobAttemptRecord",
         "IndexJobCatalogSessionFactory",
+        "IndexJobCurrentResult",
         "IndexJobEffectiveMode",
         "IndexJobExecutionContext",
         "IndexJobExecutionControl",
@@ -115,6 +118,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "JobCreationCatalog",
         "JobCreationReplayCatalog",
         "JobQueryCatalog",
+        "JobResultCatalog",
         "JobWorkerCatalog",
     }
 
@@ -175,6 +179,21 @@ def test_job_query_catalog_does_not_require_mutation_authority() -> None:
     adapter = QueryOnlyCatalog()
 
     assert isinstance(adapter, JobQueryCatalog)
+    assert not isinstance(adapter, JobCatalog)
+
+
+def test_job_result_catalog_grants_only_exact_and_current_success_reads() -> None:
+    class ResultOnlyCatalog:
+        def get_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def find_current_successful_job(self, *args, **kwargs):
+            raise NotImplementedError
+
+    adapter = ResultOnlyCatalog()
+
+    assert isinstance(adapter, JobResultCatalog)
+    assert not isinstance(adapter, JobQueryCatalog)
     assert not isinstance(adapter, JobCatalog)
 
 

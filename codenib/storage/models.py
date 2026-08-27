@@ -1459,6 +1459,68 @@ class IndexJobRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class IndexJobCurrentResult:
+    """One successful job whose publication is the exact current ref state."""
+
+    job: IndexJobRecord
+    ref_generation: int
+    ref_updated_at: str
+
+    def __post_init__(self) -> None:
+        if type(self) is not IndexJobCurrentResult:
+            raise StorageValidationError("current job result must use the exact model")
+        if type(self.job) is not IndexJobRecord:
+            raise StorageValidationError(
+                "current job result requires an exact job record"
+            )
+        job = self.job
+        if (
+            job.status is not IndexJobStatus.SUCCEEDED
+            or job.cancel_requested
+            or job.result_snapshot_id is None
+            or job.started_at_ms is None
+            or job.finished_at_ms is None
+            or job.updated_at_ms != job.finished_at_ms
+        ):
+            raise StorageValidationError(
+                "current job result requires an exact successful publication"
+            )
+        generation = _exact_nonnegative_integer(
+            self.ref_generation,
+            "current job result ref generation",
+        )
+        if generation < 1 or generation > _CATALOG_INT64_MAX:
+            raise StorageValidationError(
+                "current job result ref generation is outside catalog range"
+            )
+        expected_generations = {job.expected_ref_generation + 1}
+        if job.expected_ref_generation > 0:
+            expected_generations.add(job.expected_ref_generation)
+        if generation not in expected_generations:
+            raise StorageValidationError(
+                "current job result generation differs from its publication fence"
+            )
+        object.__setattr__(self, "ref_generation", generation)
+        object.__setattr__(
+            self,
+            "ref_updated_at",
+            canonical_utc_timestamp(
+                self.ref_updated_at,
+                "current job result ref updated_at",
+            ),
+        )
+
+    @property
+    def snapshot_id(self) -> str:
+        """Return the successful snapshot authenticated by ``job``."""
+
+        snapshot_id = self.job.result_snapshot_id
+        if snapshot_id is None:  # pragma: no cover - constructor proves success
+            raise AssertionError("current job result has no snapshot")
+        return snapshot_id
+
+
+@dataclass(frozen=True, slots=True)
 class RefJobLease:
     """Active, fenced ownership of the single publisher slot for a ref."""
 
@@ -1872,6 +1934,7 @@ __all__ = [
     "IndexJobAttemptHeartbeat",
     "IndexJobAttemptRecord",
     "IndexJobCompletion",
+    "IndexJobCurrentResult",
     "IndexJobEffectiveMode",
     "IndexJobEventKind",
     "IndexJobEventRecord",
