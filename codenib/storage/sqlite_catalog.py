@@ -6827,6 +6827,25 @@ class SQLiteCatalog:
                 raise CatalogConflictError(
                     "repository ref already has an active index job"
                 )
+            current_ref = self._connection.execute(
+                """
+                SELECT generation FROM refs
+                WHERE repository_id = ? AND ref_name = ?
+                """,
+                (job_request.repository_id, job_request.ref_name),
+            ).fetchone()
+            current_generation = (
+                0
+                if current_ref is None
+                else _persisted_positive_int64(
+                    current_ref["generation"],
+                    "ref generation",
+                )
+            )
+            if current_generation != job_request.expected_ref_generation:
+                raise CatalogConflictError(
+                    "repository ref generation changed before index job creation"
+                )
 
         source = self._require_record(
             "source_revisions",
@@ -9237,6 +9256,37 @@ class SQLiteCatalog:
             if row is None or row["profile_id"] != profile_id:
                 raise CatalogConflictError("view profile identity conflict")
         return profile_id
+
+    @_coordinated_catalog_method
+    def read_ref_generation(
+        self,
+        repository_id: str,
+        ref_name: str = "main",
+    ) -> int:
+        """Return only the current publication fence for one repository/ref."""
+
+        repository = _required_text(repository_id, "repository ID")
+        normalized_ref = _required_text(ref_name, "ref name")
+        with self._transaction(immediate=False):
+            self._require_record("repositories", "repository_id", repository)
+            row = self._connection.execute(
+                """
+                SELECT generation FROM refs
+                WHERE repository_id = ? AND ref_name = ?
+                """,
+                (repository, normalized_ref),
+            ).fetchone()
+            if row is None:
+                return 0
+            try:
+                return _persisted_positive_int64(
+                    row["generation"],
+                    "ref generation",
+                )
+            except CatalogConflictError as exc:
+                raise CatalogConflictError(
+                    f"ref {normalized_ref!r} has invalid publication generation"
+                ) from exc
 
     @_coordinated_catalog_method
     def register_object(

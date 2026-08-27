@@ -477,12 +477,48 @@ class RetainedImportCatalog(IndexCatalog, RetainedSnapshotCatalog, Protocol):
 
 
 @runtime_checkable
+class IndexJobPlanningCatalog(Protocol):
+    """Least-authority source/profile registration and ref-fence lookup.
+
+    Planning may create only content-addressed source and profile identities.
+    The ref lookup returns ``0`` when the named ref has not been published and
+    otherwise returns its positive generation without exposing snapshots,
+    manifests, jobs, leases, or publication authority.
+    """
+
+    def create_source_revision(
+        self,
+        repository_id: str,
+        *,
+        commit_sha: str | None = None,
+        tree_sha: str | None = None,
+        dirty: bool = False,
+        source_fingerprint: str | None = None,
+    ) -> str: ...
+
+    def create_view_profile(
+        self,
+        view_type: str,
+        config: Mapping[str, Any] | None = None,
+        *,
+        name: str = "default",
+    ) -> str: ...
+
+    def read_ref_generation(
+        self,
+        repository_id: str,
+        ref_name: str = "main",
+    ) -> int: ...
+
+
+@runtime_checkable
 class JobCreationCatalog(Protocol):
     """Least-authority atomic creation for one repository/ref job slot.
 
     Exact idempotent replay returns the original job. A different request is
-    created only when the repository/ref has no queued or running job, so Web
-    and other control planes cannot race two active updates into the same
+    created only when the repository/ref has no queued or running job and its
+    current generation matches the request's publication fence, so Web and
+    other control planes cannot race stale or concurrent updates into the same
     publication slot.
     """
 
@@ -808,6 +844,7 @@ __all__ = [
     "IndexCatalog",
     "InterruptibleReceiptVerifyingObjectStore",
     "InterruptibleStreamingObjectStore",
+    "IndexJobPlanningCatalog",
     "JobCatalog",
     "JobCreationCatalog",
     "JobCreationReplayCatalog",

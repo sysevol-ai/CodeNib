@@ -36,6 +36,7 @@ from codenib.storage.models import (
 )
 from codenib.storage.protocols import (
     IndexCatalog,
+    IndexJobPlanningCatalog,
     JobCatalog,
     JobCreationCatalog,
     JobCreationReplayCatalog,
@@ -62,6 +63,7 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
         assert isinstance(object_store, StreamingObjectStore)
         assert isinstance(object_store, RetainedImportObjectStore)
         assert isinstance(catalog, IndexCatalog)
+        assert isinstance(catalog, IndexJobPlanningCatalog)
         assert isinstance(catalog, RetainedImportCatalog)
         assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
@@ -93,6 +95,7 @@ def test_execution_contract_models_are_public_storage_exports() -> None:
         "IndexJobExecutor",
         "IndexJobExecutorResolver",
         "IndexJobObjectStoreBoundResolver",
+        "IndexJobPlanningCatalog",
         "IndexJobEventKind",
         "IndexJobEventRecord",
         "IndexJobRunnableCycle",
@@ -183,6 +186,25 @@ def test_job_creation_catalog_requires_only_atomic_enqueue_authority() -> None:
     adapter = CreationOnlyCatalog()
 
     assert isinstance(adapter, JobCreationCatalog)
+    assert not isinstance(adapter, JobCatalog)
+    assert not isinstance(adapter, JobQueryCatalog)
+
+
+def test_job_planning_catalog_has_no_job_or_snapshot_read_authority() -> None:
+    class PlanningOnlyCatalog:
+        def create_source_revision(self, repository_id, **kwargs):
+            raise NotImplementedError
+
+        def create_view_profile(self, view_type, config=None, *, name="default"):
+            raise NotImplementedError
+
+        def read_ref_generation(self, repository_id, ref_name="main"):
+            raise NotImplementedError
+
+    adapter = PlanningOnlyCatalog()
+
+    assert isinstance(adapter, IndexJobPlanningCatalog)
+    assert not isinstance(adapter, IndexCatalog)
     assert not isinstance(adapter, JobCatalog)
     assert not isinstance(adapter, JobQueryCatalog)
 

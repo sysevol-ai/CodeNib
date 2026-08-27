@@ -556,6 +556,71 @@ def test_create_job_if_idle_is_idempotent_and_scoped_per_ref(tmp_path) -> None:
         assert replacement.job_id != first.job_id
 
 
+def test_create_job_if_idle_rejects_a_stale_publication_fence(tmp_path) -> None:
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id = _repository(catalog)
+        profile_id = catalog.create_view_profile("bm25", {})
+        digest = catalog.register_object(
+            "d" * 64,
+            storage_key=f"sha256/{'d' * 2}/{'d' * 62}",
+            byte_size=1,
+        )
+        view_id = catalog.stage_view_generation(
+            repository_id,
+            source_revision_id,
+            profile_id,
+            "bm25",
+            digest,
+            schema_version="1",
+        )
+        original = catalog.create_job_if_idle(
+            repository_id,
+            source_revision_id,
+            "original-request",
+            _request(profile_id, mode="full"),
+            expected_ref_generation=0,
+        )
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+        )
+
+        assert published["generation"] == 1
+        assert (
+            catalog.create_job_if_idle(
+                repository_id,
+                source_revision_id,
+                "original-request",
+                _request(profile_id, mode="full"),
+                expected_ref_generation=0,
+            )
+            == original
+        )
+        assert (
+            catalog.request_job_cancel(original.job_id).status
+            is IndexJobStatus.CANCELLED
+        )
+        with pytest.raises(CatalogConflictError, match="generation changed"):
+            catalog.create_job_if_idle(
+                repository_id,
+                source_revision_id,
+                "stale-request",
+                _request(profile_id, mode="full"),
+                expected_ref_generation=0,
+            )
+        current = catalog.create_job_if_idle(
+            repository_id,
+            source_revision_id,
+            "current-request",
+            _request(profile_id, mode="full"),
+            expected_ref_generation=1,
+        )
+
+        assert current.expected_ref_generation == 1
+
+
 def test_find_job_by_idempotency_returns_only_exact_repository_job(tmp_path) -> None:
     with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
         repository_id, source_revision_id = _repository(catalog)

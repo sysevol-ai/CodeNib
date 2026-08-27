@@ -2897,6 +2897,26 @@ def test_publish_retry_for_current_snapshot_is_desired_state_idempotent(tmp_path
         assert catalog.resolve_ref(repository_id)["generation"] == 1
 
 
+def test_read_ref_generation_exposes_only_initial_or_published_fence(tmp_path):
+    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
+        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
+
+        assert catalog.read_ref_generation(repository_id) == 0
+        published = catalog.publish_snapshot(
+            repository_id,
+            source_revision_id,
+            [view_id],
+            expected_generation=0,
+            ref_name="serving",
+        )
+
+        assert published["generation"] == 1
+        assert catalog.read_ref_generation(repository_id) == 0
+        assert catalog.read_ref_generation(repository_id, "serving") == 1
+        with pytest.raises(CatalogNotFoundError):
+            catalog.read_ref_generation("repo_" + "f" * 64)
+
+
 @pytest.mark.parametrize(
     ("table", "key_column", "dependency"),
     (
