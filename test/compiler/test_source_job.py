@@ -1222,7 +1222,7 @@ def test_bm25_source_executor_repr_does_not_expose_environment(
     context_owner = PublishedWorkspaceReceiptOwner()
     try:
         executor = BM25SourceJobExecutor(
-            attempt_generation=tmp_path / "attempt",
+            attempt_generation=attempt_workspace / "attempt",
             display_commit=_COMMIT,
             builder=BM25IndexBuilder(),
             attempt_output_owner=attempt_owner,
@@ -1279,6 +1279,56 @@ def test_bm25_source_executor_rejects_protocol_only_attempt_provider(
         context_owner.close()
         view_owner.close()
         attempt_owner.close()
+
+
+@pytest.mark.parametrize("case", ["equal", "outside", "physical-escape"])
+def test_bm25_source_executor_rejects_attempt_outside_provider_root(
+    tmp_path: Path,
+    case: str,
+) -> None:
+    fixture = _source_fixture(tmp_path)
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    attempt_root = tmp_path / "attempt-root"
+    attempt_root.mkdir(mode=0o700)
+    attempt_provider = LocalWorkspaceProvider(attempt_root)
+    if case == "equal":
+        attempt = attempt_root
+    elif case == "outside":
+        attempt = tmp_path / "outside-attempt"
+    elif case == "physical-escape":
+        outside_parent = tmp_path / "outside-parent"
+        outside_parent.mkdir(mode=0o700)
+        alias = attempt_root / "alias"
+        alias.symlink_to(outside_parent, target_is_directory=True)
+        attempt = alias / "attempt"
+    else:  # pragma: no cover - parameter invariant
+        raise AssertionError(f"unknown provider-root case: {case}")
+
+    try:
+        with LocalCAS(tmp_path / "cas") as cas:
+            with pytest.raises(ValueError, match="strictly below"):
+                _executor(
+                    fixture,
+                    cas,
+                    BM25IndexBuilder(),
+                    attempt_generation=attempt,
+                    view_owner=view_owner,
+                    context_owner=context_owner,
+                    attempt_provider=attempt_provider,
+                )
+
+            if case == "equal":
+                assert attempt.is_dir()
+                assert not tuple(attempt.iterdir())
+            else:
+                assert not attempt.exists()
+            assert view_owner.state == "empty"
+            assert context_owner.state == "empty"
+    finally:
+        context_owner.close()
+        view_owner.close()
+        fixture.close()
 
 
 def test_bm25_source_job_profile_covers_builder_schema_axes() -> None:

@@ -453,6 +453,30 @@ def _preflight_source_job_topology(
         raise ValueError("BM25 source job output destinations overlap")
 
 
+def _require_attempt_provider_destination(
+    generation: Path,
+    provider: LocalWorkspaceProvider,
+) -> None:
+    root = lexical_directory_path(provider.allowed_root)
+    physical_root = _resolved_path(
+        root,
+        strict=True,
+        label="BM25 source job attempt provider root",
+    )
+    physical_generation = _resolved_path(
+        generation,
+        strict=False,
+        label="BM25 source job attempt generation",
+    )
+    if (
+        root not in generation.parents
+        or physical_root not in physical_generation.parents
+    ):
+        raise ValueError(
+            "BM25 source job attempt must be strictly below its local provider root"
+        )
+
+
 def _built_at(status: IndexStatus) -> tuple[str, float]:
     value = status.last_built
     if type(value) not in {int, float} or not math.isfinite(value) or value < 0:
@@ -874,6 +898,10 @@ class BM25SourceJobExecutor:
                 "BM25 source job attempt requires an exact local workspace provider"
             )
         _preflight_workspace_provider(self.attempt_workspace_provider)
+        _require_attempt_provider_destination(
+            self.attempt_generation,
+            self.attempt_workspace_provider,
+        )
         object.__setattr__(self, "_builder", configuration)
         object.__setattr__(self, "_profile", configuration.profile())
 
@@ -891,6 +919,10 @@ class BM25SourceJobExecutor:
         check_cancelled()
         if self.attempt_output_owner.state != "empty":
             raise RuntimeError("BM25 source job attempt owner must be empty")
+        _require_attempt_provider_destination(
+            self.attempt_generation,
+            self.attempt_workspace_provider,
+        )
         _require_missing(
             self.attempt_generation,
             label="BM25 source job attempt generation",
