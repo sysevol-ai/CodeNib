@@ -577,6 +577,7 @@ def test_jobs_run_once_parser_exposes_bounded_worker_inputs() -> None:
     assert defaults.json is False
     assert defaults.cache_dir == "/src/repo/.codenib_index"
     assert defaults.source_bm25 is False
+    assert defaults.reclaim_quiescent_attempts is False
     assert defaults.language == []
     assert defaults.exclude_dir is None
     assert defaults.clear_exclude_dirs is False
@@ -610,6 +611,7 @@ def test_jobs_worker_parser_requires_one_explicit_input_mode() -> None:
             "run-once",
             "/src/repo",
             "--source-bm25",
+            "--reclaim-quiescent-attempts",
             "--language",
             "python,go",
             "--exclude-dir",
@@ -620,6 +622,7 @@ def test_jobs_worker_parser_requires_one_explicit_input_mode() -> None:
 
     assert source.cache_dir is None
     assert source.source_bm25 is True
+    assert source.reclaim_quiescent_attempts is True
     assert source.language == ["python,go"]
     assert source.exclude_dir == ["generated"]
     assert source.clear_exclude_dirs is False
@@ -648,6 +651,7 @@ def test_jobs_worker_parser_requires_one_explicit_input_mode() -> None:
         ("language", ["python"]),
         ("exclude_dir", ["generated"]),
         ("clear_exclude_dirs", True),
+        ("reclaim_quiescent_attempts", True),
     ),
 )
 def test_cache_job_worker_rejects_source_only_options(source_option) -> None:
@@ -660,7 +664,7 @@ def test_cache_job_worker_rejects_source_only_options(source_option) -> None:
     )
     setattr(args, name, value)
 
-    with pytest.raises(cli.CLIError, match="require --source-bm25"):
+    with pytest.raises(cli.CLIError, match="requires? --source-bm25"):
         cli._run_with_local_index_job_worker(
             args,
             lambda _worker: pytest.fail("worker must not be created"),
@@ -678,6 +682,125 @@ def test_source_job_worker_rejects_programmatic_cache_input() -> None:
             args,
             lambda _worker: pytest.fail("worker must not be created"),
         )
+
+
+def test_jobs_worker_rejects_nonboolean_reclamation_state() -> None:
+    args = SimpleNamespace(
+        source_bm25=True,
+        reclaim_quiescent_attempts=1,
+        cache_dir=None,
+    )
+
+    with pytest.raises(cli.CLIError, match="state must be an exact boolean"):
+        cli._run_with_local_index_job_worker(
+            args,
+            lambda _worker: pytest.fail("worker must not be created"),
+        )
+
+
+@pytest.mark.parametrize("reclaim", (False, True))
+def test_bm25_source_operation_reclaims_once_only_after_successful_return(
+    monkeypatch: pytest.MonkeyPatch,
+    reclaim: bool,
+) -> None:
+    events: list[str] = []
+    result = object()
+
+    def operation(worker: object) -> object:
+        assert worker == "worker"
+        events.extend(("page-one", "page-two", "operation-return"))
+        return result
+
+    monkeypatch.setattr(
+        cli,
+        "_reclaim_local_bm25_source_attempt_pool",
+        lambda target: events.append(f"reclaim:{target}"),
+    )
+
+    observed = cli._run_local_bm25_source_worker_operation(
+        SimpleNamespace(reclaim_quiescent_attempts=reclaim),
+        operation,
+        "worker",
+        "target",
+        lambda: events.append("verify"),
+    )
+
+    assert observed is result
+    assert events == [
+        "page-one",
+        "page-two",
+        "operation-return",
+        "verify",
+        *(("reclaim:target", "verify") if reclaim else ()),
+    ]
+
+
+def test_bm25_source_operation_does_not_reclaim_exceptional_unwind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    failure = RuntimeError("worker failed")
+    events: list[str] = []
+
+    def fail(_worker: object) -> None:
+        events.append("operation")
+        raise failure
+
+    monkeypatch.setattr(
+        cli,
+        "_reclaim_local_bm25_source_attempt_pool",
+        lambda _target: pytest.fail("exceptional worker must not reclaim"),
+    )
+
+    with pytest.raises(RuntimeError) as caught:
+        cli._run_local_bm25_source_worker_operation(
+            SimpleNamespace(reclaim_quiescent_attempts=True),
+            fail,
+            object(),
+            object(),
+            lambda: events.append("verify"),
+        )
+
+    assert caught.value is failure
+    assert events == ["operation"]
+
+
+def test_bm25_attempt_pool_summary_is_bounded_stderr_only(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import codenib.compiler.job_resources as job_resources_module
+
+    target = object()
+
+    class Coordinator:
+        def __init__(self, candidate: object) -> None:
+            assert candidate is target
+
+        def reclaim(self, *, caller_asserts_quiescence: bool):
+            assert caller_asserts_quiescence is True
+            return job_resources_module.BM25AttemptPoolReclamation(
+                scanned_children=7,
+                reclaimed_children=5,
+                current_children=3,
+                legacy_children=2,
+                discarded_children=4,
+                retained_unrelated_children=2,
+            )
+
+    monkeypatch.setattr(
+        job_resources_module,
+        "LocalBM25AttemptPoolCoordinator",
+        Coordinator,
+    )
+
+    cli._reclaim_local_bm25_source_attempt_pool(target)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "BM25 attempt-pool reclamation: scanned=7 reclaimed=5 "
+        "current=3 legacy=2 discarded=4 retained=2\n"
+    )
 
 
 def test_source_job_topology_loss_stops_continuous_scheduler_before_claim() -> None:
@@ -849,6 +972,7 @@ def test_jobs_run_parser_exposes_continuous_scheduler_inputs() -> None:
     assert defaults.max_cycles is None
     assert defaults.scan_limit == 64
     assert defaults.json is False
+    assert defaults.reclaim_quiescent_attempts is False
     assert configured.initial_idle_delay_ms == 100
     assert configured.max_idle_delay_ms == 2_000
     assert configured.max_cycles == 3

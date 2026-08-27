@@ -1835,9 +1835,11 @@ def test_local_bm25_source_scope_retries_cancelled_orphan_sink_before_ack(
         fixture.close()
 
 
+@pytest.mark.parametrize("reclaim_quiescent_attempts", (False, True))
 def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    reclaim_quiescent_attempts: bool,
 ) -> None:
     builder = BM25IndexBuilder(languages=["python"])
     profile = bm25_source_job_profile(builder)
@@ -1882,33 +1884,35 @@ def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
                 },
             )
 
-        args = cli_module.build_parser().parse_args(
-            [
-                "jobs",
-                "run-once",
-                os.fspath(fixture.repository),
-                "--source-bm25",
-                "--language",
-                "python",
-                "--catalog",
-                os.fspath(catalog_path),
-                "--cas-root",
-                os.fspath(cas_root),
-                "--workspace-root",
-                os.fspath(fixture.workspace),
-                "--repository",
-                _REPOSITORY_KEY,
-                "--lease-duration-ms",
-                "60000",
-                "--heartbeat-interval-ms",
-                "5",
-                "--json",
-            ]
-        )
+        command = [
+            "jobs",
+            "run-once",
+            os.fspath(fixture.repository),
+            "--source-bm25",
+            "--language",
+            "python",
+            "--catalog",
+            os.fspath(catalog_path),
+            "--cas-root",
+            os.fspath(cas_root),
+            "--workspace-root",
+            os.fspath(fixture.workspace),
+            "--repository",
+            _REPOSITORY_KEY,
+            "--lease-duration-ms",
+            "60000",
+            "--heartbeat-interval-ms",
+            "5",
+            "--json",
+        ]
+        if reclaim_quiescent_attempts:
+            command.append("--reclaim-quiescent-attempts")
+        args = cli_module.build_parser().parse_args(command)
 
         assert args.handler(args) == 0
 
-        payload = json.loads(capsys.readouterr().out)
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
         assert payload == {
             "attempt_count": 1,
             "disposition": "succeeded",
@@ -1917,8 +1921,16 @@ def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
         assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
         assert not tuple(fixture.workspace.glob(".codenib-source-worker-topology-*"))
         orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
-        assert len(orphans) == 1
-        assert orphans[0].is_dir()
+        if reclaim_quiescent_attempts:
+            assert orphans == ()
+            assert captured.err.endswith(
+                "BM25 attempt-pool reclamation: scanned=1 reclaimed=1 "
+                "current=1 legacy=0 discarded=1 retained=0\n"
+            )
+        else:
+            assert len(orphans) == 1
+            assert orphans[0].is_dir()
+            assert "BM25 attempt-pool reclamation:" not in captured.err
         with SQLiteCatalog(catalog_path, create=False) as catalog:
             completed = catalog.get_job(queued.job_id)
             assert completed.status is IndexJobStatus.SUCCEEDED
