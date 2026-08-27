@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,6 +24,201 @@ def test_minimal_config_uses_concrete_dataclass_defaults(tmp_path: Path) -> None
     assert config.embedding_dimension == 384
     assert config.max_turns == 8
     assert config.wiki_agent is False
+    assert config.index_storage is None
+
+
+def test_default_config_does_not_import_durable_storage() -> None:
+    root = Path(__file__).resolve().parents[2]
+    script = """
+import sys
+
+from codenib.web.config import QAConfig
+
+config = QAConfig()
+if config.index_storage is not None:
+    raise SystemExit("durable storage unexpectedly enabled")
+if "codenib.storage" in sys.modules:
+    raise SystemExit("durable storage imported without explicit configuration")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_local_index_storage_config_is_explicit_bounded_and_deterministic(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+index_storage:
+  catalog_path: /srv/codenib/catalog.sqlite3
+  cas_root: /srv/codenib/cas
+  worker_workspace_root: /srv/codenib/worker
+  runtime_workspace_root: /srv/codenib/runtime
+  namespace: demo-team
+  catalog_busy_timeout_ms: 750
+  repositories:
+    zeta:
+      repository_key: org/zeta
+    alpha:
+      repository_key: org/alpha
+      ref_name: release
+  worker:
+    lease_duration_ms: 60000
+    heartbeat_interval_ms: 10000
+    scan_limit: 32
+    initial_idle_delay_ms: 100
+    max_idle_delay_ms: 2000
+    max_attempts: 5
+  runtime:
+    poll_interval_ms: 250
+""".lstrip()
+    )
+
+    storage = load_config(str(config_path)).index_storage
+
+    assert storage is not None
+    assert storage.catalog_path == Path("/srv/codenib/catalog.sqlite3")
+    assert storage.cas_root == Path("/srv/codenib/cas")
+    assert storage.worker_workspace_root == Path("/srv/codenib/worker")
+    assert storage.runtime_workspace_root == Path("/srv/codenib/runtime")
+    assert storage.namespace_name == "demo-team"
+    assert storage.catalog_busy_timeout_ms == 750
+    assert [binding.repo_id for binding in storage.repositories] == [
+        "alpha",
+        "zeta",
+    ]
+    assert storage.repositories[0].repository_key == "org/alpha"
+    assert storage.repositories[0].ref_name == "release"
+    assert storage.repositories[0].repository_id.startswith("repo_")
+    assert storage.worker.lease_duration_ms == 60_000
+    assert storage.worker.heartbeat_interval_ms == 10_000
+    assert storage.worker.scan_limit == 32
+    assert storage.worker.initial_idle_delay_ms == 100
+    assert storage.worker.max_idle_delay_ms == 2_000
+    assert storage.worker.max_attempts == 5
+    assert storage.runtime.poll_interval_ms == 250
+
+
+def test_local_index_storage_config_layers_nested_repo_and_runtime_values(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "base.yaml"
+    base.write_text(
+        """
+index_storage:
+  catalog_path: /srv/codenib/catalog.sqlite3
+  cas_root: /srv/codenib/cas
+  worker_workspace_root: /srv/codenib/worker
+  runtime_workspace_root: /srv/codenib/runtime
+  repositories:
+    demo:
+      repository_key: org/demo
+      ref_name: main
+  runtime:
+    poll_interval_ms: 1000
+""".lstrip()
+    )
+    profile = tmp_path / "profile.yaml"
+    profile.write_text(
+        """
+extends: base.yaml
+index_storage:
+  repositories:
+    demo:
+      ref_name: release
+  runtime:
+    poll_interval_ms: 2000
+""".lstrip()
+    )
+
+    storage = load_config(str(profile)).index_storage
+
+    assert storage is not None
+    assert storage.repositories[0].ref_name == "release"
+    assert storage.runtime.poll_interval_ms == 2_000
+
+
+def _local_index_storage_yaml(overrides: str = "") -> str:
+    return (
+        """
+index_storage:
+  catalog_path: /srv/codenib/catalog.sqlite3
+  cas_root: /srv/codenib/cas
+  worker_workspace_root: /srv/codenib/worker
+  runtime_workspace_root: /srv/codenib/runtime
+  repositories:
+    demo:
+      repository_key: org/demo
+""".lstrip()
+        + overrides
+    )
+
+
+@pytest.mark.parametrize(
+    ("contents", "message"),
+    (
+        (
+            _local_index_storage_yaml().replace(
+                "/srv/codenib/catalog.sqlite3",
+                "relative/catalog.sqlite3",
+            ),
+            "canonical absolute",
+        ),
+        (
+            _local_index_storage_yaml().replace(
+                "/srv/codenib/runtime",
+                "/srv/codenib/worker/runtime",
+            ),
+            "must not overlap",
+        ),
+        (
+            _local_index_storage_yaml("  unsupported: true\n"),
+            "unsupported key",
+        ),
+        (
+            _local_index_storage_yaml(
+                "  worker:\n"
+                "    lease_duration_ms: 30000\n"
+                "    heartbeat_interval_ms: 10000\n"
+            ),
+            "less than one third",
+        ),
+        (
+            _local_index_storage_yaml("  worker:\n    scan_limit: true\n"),
+            "exact integer",
+        ),
+    ),
+)
+def test_local_index_storage_config_rejects_unsafe_or_incoherent_values(
+    tmp_path: Path,
+    contents: str,
+    message: str,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(contents)
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        load_config(str(config_path))
+
+
+def test_local_index_storage_config_rejects_duplicate_storage_bindings(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        _local_index_storage_yaml("    alias:\n" "      repository_key: org/demo\n")
+    )
+
+    with pytest.raises(ValueError, match="bindings must be unique"):
+        load_config(str(config_path))
 
 
 def test_wiki_media_config_enables_local_renderer_without_endpoint(

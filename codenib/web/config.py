@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -36,6 +37,419 @@ REGISTRY_FILENAME = "qa_registry.json"
 CONFIG_EXTENDS_KEY = "extends"
 _TRUE_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 _FALSE_ENV_VALUES = frozenset({"", "0", "false", "no", "off"})
+_LOCAL_INDEX_REPOSITORY_RE = re.compile(
+    r"[a-z0-9_.-]+(?:/[a-z0-9_.-]+)*\Z",
+    re.ASCII,
+)
+_LOCAL_INDEX_MAX_REPOSITORIES = 4_096
+_LOCAL_INDEX_MAX_DELAY_MS = 86_400_000
+_LOCAL_INDEX_MAX_LEASE_MS = 2_147_483_647
+_LOCAL_INDEX_MAX_SCAN_LIMIT = 256
+# Keep the read-only default config lightweight; storage models are imported
+# only after this explicit opt-in is present.
+_DEFAULT_LOCAL_INDEX_NAMESPACE = "default"
+
+
+def _exact_config_text(value: Any, *, source: str, max_length: int) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{source} must be exact text")
+    normalized = value.strip()
+    if (
+        not normalized
+        or normalized != value
+        or len(normalized) > max_length
+        or "\x00" in normalized
+    ):
+        raise ValueError(f"{source} is invalid")
+    return normalized
+
+
+def _exact_config_integer(
+    value: Any,
+    *,
+    source: str,
+    minimum: int = 1,
+    maximum: int,
+) -> int:
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise ValueError(
+            f"{source} must be an exact integer between {minimum} and {maximum}"
+        )
+    return value
+
+
+def _absolute_config_path(value: Any, *, source: str) -> Path:
+    text = _exact_config_text(value, source=source, max_length=32_768)
+    path = Path(text)
+    if not path.is_absolute() or path == path.parent or str(path) != text:
+        raise ValueError(f"{source} must be a canonical absolute non-root path")
+    return path
+
+
+def _config_paths_overlap(first: Path, second: Path) -> bool:
+    return first == second or first in second.parents or second in first.parents
+
+
+def _config_mapping(value: Any, *, source: str) -> Dict[str, Any]:
+    if type(value) is not dict or any(type(key) is not str for key in value):
+        raise TypeError(f"{source} must be a mapping with exact text keys")
+    return value
+
+
+def _reject_unknown_config_keys(
+    value: Dict[str, Any],
+    *,
+    source: str,
+    allowed: frozenset[str],
+) -> None:
+    unknown = set(value) - allowed
+    if unknown:
+        raise ValueError(f"{source} contains unsupported key {sorted(unknown)[0]!r}")
+
+
+@dataclass(frozen=True, slots=True)
+class LocalIndexStorageRepository:
+    """One explicit Web repository to durable storage ref binding."""
+
+    repo_id: str
+    repository_key: str
+    namespace_name: str = _DEFAULT_LOCAL_INDEX_NAMESPACE
+    ref_name: str = "main"
+    _repository_id: str = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        from ..storage.models import NamespaceIdentity, RepositoryIdentity
+
+        if type(self) is not LocalIndexStorageRepository:
+            raise TypeError("local index repository binding must use the exact type")
+        repo_id = _exact_config_text(
+            self.repo_id,
+            source="index_storage repository ID",
+            max_length=512,
+        )
+        repository_key = _exact_config_text(
+            self.repository_key,
+            source="index_storage repository key",
+            max_length=32_768,
+        )
+        if _LOCAL_INDEX_REPOSITORY_RE.fullmatch(repository_key) is None:
+            raise ValueError("index_storage repository key is not canonical")
+        namespace_name = _exact_config_text(
+            self.namespace_name,
+            source="index_storage namespace",
+            max_length=32_768,
+        )
+        namespace = NamespaceIdentity(namespace_name)
+        if namespace.name != namespace_name:
+            raise ValueError("index_storage namespace is not canonical")
+        ref_name = _exact_config_text(
+            self.ref_name,
+            source="index_storage ref name",
+            max_length=512,
+        )
+        repository = RepositoryIdentity(
+            namespace_id=namespace.namespace_id,
+            repository_key=repository_key,
+        )
+        if repository.repository_key != repository_key:
+            raise ValueError("index_storage repository key is not canonical")
+        object.__setattr__(self, "repo_id", repo_id)
+        object.__setattr__(self, "repository_key", repository_key)
+        object.__setattr__(self, "namespace_name", namespace.name)
+        object.__setattr__(self, "ref_name", ref_name)
+        object.__setattr__(self, "_repository_id", repository.repository_id)
+
+    @property
+    def repository_id(self) -> str:
+        return self._repository_id
+
+
+@dataclass(frozen=True, slots=True)
+class LocalIndexWorkerConfig:
+    """Bounded worker and scheduler settings for the local Web service."""
+
+    lease_duration_ms: int = 30_000
+    heartbeat_interval_ms: int = 5_000
+    scan_limit: int = 64
+    initial_idle_delay_ms: int = 250
+    max_idle_delay_ms: int = 5_000
+    max_attempts: int = 3
+
+    def __post_init__(self) -> None:
+        if type(self) is not LocalIndexWorkerConfig:
+            raise TypeError("local index worker config must use the exact type")
+        lease = _exact_config_integer(
+            self.lease_duration_ms,
+            source="index_storage worker lease_duration_ms",
+            maximum=_LOCAL_INDEX_MAX_LEASE_MS,
+        )
+        heartbeat = _exact_config_integer(
+            self.heartbeat_interval_ms,
+            source="index_storage worker heartbeat_interval_ms",
+            maximum=_LOCAL_INDEX_MAX_LEASE_MS,
+        )
+        if heartbeat * 3 >= lease:
+            raise ValueError(
+                "index_storage worker heartbeat interval must be less than one third "
+                "of its lease"
+            )
+        _exact_config_integer(
+            self.scan_limit,
+            source="index_storage worker scan_limit",
+            maximum=_LOCAL_INDEX_MAX_SCAN_LIMIT,
+        )
+        initial = _exact_config_integer(
+            self.initial_idle_delay_ms,
+            source="index_storage worker initial_idle_delay_ms",
+            maximum=_LOCAL_INDEX_MAX_DELAY_MS,
+        )
+        maximum = _exact_config_integer(
+            self.max_idle_delay_ms,
+            source="index_storage worker max_idle_delay_ms",
+            maximum=_LOCAL_INDEX_MAX_DELAY_MS,
+        )
+        if maximum < initial:
+            raise ValueError(
+                "index_storage worker maximum idle delay cannot be below its initial "
+                "delay"
+            )
+        _exact_config_integer(
+            self.max_attempts,
+            source="index_storage worker max_attempts",
+            maximum=1_000,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LocalIndexRuntimeConfig:
+    """Bounded current-result polling settings for the local Web service."""
+
+    poll_interval_ms: int = 1_000
+
+    def __post_init__(self) -> None:
+        if type(self) is not LocalIndexRuntimeConfig:
+            raise TypeError("local index runtime config must use the exact type")
+        _exact_config_integer(
+            self.poll_interval_ms,
+            source="index_storage runtime poll_interval_ms",
+            maximum=_LOCAL_INDEX_MAX_DELAY_MS,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class LocalIndexStorageConfig:
+    """Explicit existing local durable storage selection for the Web service."""
+
+    catalog_path: Path
+    cas_root: Path
+    worker_workspace_root: Path
+    runtime_workspace_root: Path
+    repositories: tuple[LocalIndexStorageRepository, ...]
+    namespace_name: str = _DEFAULT_LOCAL_INDEX_NAMESPACE
+    catalog_busy_timeout_ms: int = 5_000
+    worker: LocalIndexWorkerConfig = field(default_factory=LocalIndexWorkerConfig)
+    runtime: LocalIndexRuntimeConfig = field(default_factory=LocalIndexRuntimeConfig)
+
+    def __post_init__(self) -> None:
+        from ..storage.models import NamespaceIdentity
+
+        if type(self) is not LocalIndexStorageConfig:
+            raise TypeError("local index storage config must use the exact type")
+        path_values = (
+            (self.catalog_path, "catalog_path"),
+            (self.cas_root, "cas_root"),
+            (self.worker_workspace_root, "worker_workspace_root"),
+            (self.runtime_workspace_root, "runtime_workspace_root"),
+        )
+        for path, name in path_values:
+            if type(path) is not type(Path()):
+                raise TypeError(f"index_storage {name} must be an exact Path")
+            if (
+                not path.is_absolute()
+                or path == path.parent
+                or Path(os.path.abspath(os.fspath(path))) != path
+            ):
+                raise ValueError(
+                    f"index_storage {name} must be a canonical absolute non-root path"
+                )
+        for index, (first, first_name) in enumerate(path_values):
+            for second, second_name in path_values[index + 1 :]:
+                if _config_paths_overlap(first, second):
+                    raise ValueError(
+                        f"index_storage {first_name} must not overlap {second_name}"
+                    )
+        namespace = NamespaceIdentity(self.namespace_name)
+        if namespace.name != self.namespace_name:
+            raise ValueError("index_storage namespace is not canonical")
+        if (
+            type(self.repositories) is not tuple
+            or not 1 <= len(self.repositories) <= _LOCAL_INDEX_MAX_REPOSITORIES
+        ):
+            raise ValueError("index_storage requires 1 to 4096 repository bindings")
+        if any(
+            type(repository) is not LocalIndexStorageRepository
+            for repository in self.repositories
+        ):
+            raise TypeError("index_storage repository bindings must use exact values")
+        by_repo: set[str] = set()
+        by_storage: set[tuple[str, str]] = set()
+        for repository in self.repositories:
+            if repository.namespace_name != namespace.name:
+                raise ValueError("index_storage repository namespace differs")
+            storage_key = (repository.repository_id, repository.ref_name)
+            if repository.repo_id in by_repo or storage_key in by_storage:
+                raise ValueError("index_storage repository bindings must be unique")
+            by_repo.add(repository.repo_id)
+            by_storage.add(storage_key)
+        _exact_config_integer(
+            self.catalog_busy_timeout_ms,
+            source="index_storage catalog_busy_timeout_ms",
+            minimum=0,
+            maximum=_LOCAL_INDEX_MAX_DELAY_MS,
+        )
+        if type(self.worker) is not LocalIndexWorkerConfig:
+            raise TypeError("index_storage worker config must use the exact type")
+        if type(self.runtime) is not LocalIndexRuntimeConfig:
+            raise TypeError("index_storage runtime config must use the exact type")
+
+
+def _parse_local_index_worker(value: Any) -> LocalIndexWorkerConfig:
+    data = _config_mapping(value, source="index_storage.worker")
+    _reject_unknown_config_keys(
+        data,
+        source="index_storage.worker",
+        allowed=frozenset(
+            {
+                "lease_duration_ms",
+                "heartbeat_interval_ms",
+                "scan_limit",
+                "initial_idle_delay_ms",
+                "max_idle_delay_ms",
+                "max_attempts",
+            }
+        ),
+    )
+    defaults = LocalIndexWorkerConfig()
+    return LocalIndexWorkerConfig(
+        lease_duration_ms=data.get("lease_duration_ms", defaults.lease_duration_ms),
+        heartbeat_interval_ms=data.get(
+            "heartbeat_interval_ms",
+            defaults.heartbeat_interval_ms,
+        ),
+        scan_limit=data.get("scan_limit", defaults.scan_limit),
+        initial_idle_delay_ms=data.get(
+            "initial_idle_delay_ms",
+            defaults.initial_idle_delay_ms,
+        ),
+        max_idle_delay_ms=data.get(
+            "max_idle_delay_ms",
+            defaults.max_idle_delay_ms,
+        ),
+        max_attempts=data.get("max_attempts", defaults.max_attempts),
+    )
+
+
+def _parse_local_index_runtime(value: Any) -> LocalIndexRuntimeConfig:
+    data = _config_mapping(value, source="index_storage.runtime")
+    _reject_unknown_config_keys(
+        data,
+        source="index_storage.runtime",
+        allowed=frozenset({"poll_interval_ms"}),
+    )
+    defaults = LocalIndexRuntimeConfig()
+    return LocalIndexRuntimeConfig(
+        poll_interval_ms=data.get("poll_interval_ms", defaults.poll_interval_ms),
+    )
+
+
+def _parse_local_index_storage(value: Any) -> LocalIndexStorageConfig | None:
+    if value is None:
+        return None
+    data = _config_mapping(value, source="index_storage")
+    _reject_unknown_config_keys(
+        data,
+        source="index_storage",
+        allowed=frozenset(
+            {
+                "catalog_path",
+                "cas_root",
+                "worker_workspace_root",
+                "runtime_workspace_root",
+                "namespace",
+                "catalog_busy_timeout_ms",
+                "repositories",
+                "worker",
+                "runtime",
+            }
+        ),
+    )
+    required = (
+        "catalog_path",
+        "cas_root",
+        "worker_workspace_root",
+        "runtime_workspace_root",
+        "repositories",
+    )
+    missing = [name for name in required if name not in data]
+    if missing:
+        raise ValueError(f"index_storage requires {missing[0]}")
+    namespace = _exact_config_text(
+        data.get("namespace", _DEFAULT_LOCAL_INDEX_NAMESPACE),
+        source="index_storage namespace",
+        max_length=32_768,
+    )
+    raw_repositories = _config_mapping(
+        data["repositories"],
+        source="index_storage.repositories",
+    )
+    if not 1 <= len(raw_repositories) <= _LOCAL_INDEX_MAX_REPOSITORIES:
+        raise ValueError("index_storage requires 1 to 4096 repository bindings")
+    repositories = []
+    for repo_id in sorted(raw_repositories):
+        repository_data = _config_mapping(
+            raw_repositories[repo_id],
+            source=f"index_storage.repositories[{repo_id!r}]",
+        )
+        _reject_unknown_config_keys(
+            repository_data,
+            source=f"index_storage.repositories[{repo_id!r}]",
+            allowed=frozenset({"repository_key", "ref_name"}),
+        )
+        if "repository_key" not in repository_data:
+            raise ValueError(
+                f"index_storage repository {repo_id!r} requires repository_key"
+            )
+        repositories.append(
+            LocalIndexStorageRepository(
+                repo_id=repo_id,
+                repository_key=repository_data["repository_key"],
+                namespace_name=namespace,
+                ref_name=repository_data.get("ref_name", "main"),
+            )
+        )
+    return LocalIndexStorageConfig(
+        catalog_path=_absolute_config_path(
+            data["catalog_path"],
+            source="index_storage catalog_path",
+        ),
+        cas_root=_absolute_config_path(
+            data["cas_root"],
+            source="index_storage cas_root",
+        ),
+        worker_workspace_root=_absolute_config_path(
+            data["worker_workspace_root"],
+            source="index_storage worker_workspace_root",
+        ),
+        runtime_workspace_root=_absolute_config_path(
+            data["runtime_workspace_root"],
+            source="index_storage runtime_workspace_root",
+        ),
+        repositories=tuple(repositories),
+        namespace_name=namespace,
+        catalog_busy_timeout_ms=data.get("catalog_busy_timeout_ms", 5_000),
+        worker=_parse_local_index_worker(data.get("worker", {})),
+        runtime=_parse_local_index_runtime(data.get("runtime", {})),
+    )
 
 
 def _validated_bool(value: Any, *, source: str) -> bool:
@@ -236,8 +650,16 @@ class QAConfig:
         default_factory=lambda: ["python", "javascript", "typescript", "go", "rust"]
     )
     per_language: int = 1
+    # Optional existing-only local durable storage. Presence is the opt-in;
+    # default demo servers retain their read-only registry behavior. Keep this
+    # additive field last so existing positional QAConfig callers remain stable.
+    index_storage: Optional[LocalIndexStorageConfig] = None
 
     def __post_init__(self) -> None:
+        if self.index_storage is not None and (
+            type(self.index_storage) is not LocalIndexStorageConfig
+        ):
+            raise TypeError("index_storage must use the exact local config type")
         self.wiki_visual_facts_enabled = _validated_bool(
             self.wiki_visual_facts_enabled,
             source="wiki_visual_facts_enabled",
@@ -393,6 +815,7 @@ def load_config(path: Optional[str] = None) -> QAConfig:
         embedding_base_url=data.get("embedding_base_url"),
         embedding_api_key=data.get("embedding_api_key"),
         data_dir=data.get("data_dir", defaults.data_dir),
+        index_storage=_parse_local_index_storage(data.get("index_storage")),
         prebuilt_dir=data.get("prebuilt_dir", defaults.prebuilt_dir),
         max_turns=data.get("max_turns", defaults.max_turns),
         max_tokens=data.get("max_tokens", defaults.max_tokens),
