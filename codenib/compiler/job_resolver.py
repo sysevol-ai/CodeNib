@@ -128,9 +128,25 @@ def _add_cleanup_exception_note(
     """Best-effort note cleanup failure without replacing the primary error."""
 
     try:
-        add_note = getattr(primary, "add_note", None)
-        if callable(add_note):
-            add_note(f"{label} cleanup also failed: {type(secondary).__name__}")
+        message = f"{label} cleanup also failed: {type(secondary).__name__}"
+        add_note = getattr(BaseException, "add_note", None)
+        if add_note is not None:
+            add_note(primary, message)
+            return
+        try:
+            notes = BaseException.__getattribute__(
+                primary,
+                "_codenib_cleanup_notes",
+            )
+        except AttributeError:
+            notes = ()
+        if not isinstance(notes, tuple):
+            notes = ()
+        BaseException.__setattr__(
+            primary,
+            "_codenib_cleanup_notes",
+            (*notes, message),
+        )
     except BaseException:  # noqa: B036 - notes must not replace execution failure
         pass
 

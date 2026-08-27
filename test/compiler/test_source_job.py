@@ -1783,9 +1783,13 @@ def test_bm25_source_scope_cleanup_cannot_replace_executor_failure(
                 resolved.execute(context)
 
             assert caught.value is primary
+            notes = (
+                *getattr(primary, "__notes__", ()),
+                *getattr(primary, "_codenib_cleanup_notes", ()),
+            )
             assert any(
                 "BM25 source resource cleanup also failed: OSError" in note
-                for note in getattr(primary, "__notes__", ())
+                for note in notes
             )
     finally:
         context_owner.close()
