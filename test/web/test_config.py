@@ -180,6 +180,14 @@ index_storage:
             "must not overlap",
         ),
         (
+            _local_index_storage_yaml().replace("org/demo", "org/demo.git"),
+            "repository key is not canonical",
+        ),
+        (
+            _local_index_storage_yaml().replace("org/demo", "org/../demo"),
+            "repository key is not canonical",
+        ),
+        (
             _local_index_storage_yaml("  unsupported: true\n"),
             "unsupported key",
         ),

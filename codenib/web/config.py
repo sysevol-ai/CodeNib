@@ -118,6 +118,7 @@ class LocalIndexStorageRepository:
     _repository_id: str = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        from ..compiler.snapshot_store import normalize_repo
         from ..storage.models import NamespaceIdentity, RepositoryIdentity
 
         if type(self) is not LocalIndexStorageRepository:
@@ -133,6 +134,12 @@ class LocalIndexStorageRepository:
             max_length=32_768,
         )
         if _LOCAL_INDEX_REPOSITORY_RE.fullmatch(repository_key) is None:
+            raise ValueError("index_storage repository key is not canonical")
+        try:
+            normalized_repository_key = normalize_repo(repository_key)
+        except ValueError as exc:
+            raise ValueError("index_storage repository key is not canonical") from exc
+        if normalized_repository_key != repository_key:
             raise ValueError("index_storage repository key is not canonical")
         namespace_name = _exact_config_text(
             self.namespace_name,
