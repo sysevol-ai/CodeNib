@@ -1345,8 +1345,11 @@ mode pins the repository hierarchy before provider probing or repository reads,
 passes that authority into every fresh capture, and accepts only the exact FULL
 BM25 builder profile selected by its language and exclusion arguments. It also
 re-resolves display provenance per attempt and rejects HEAD drift before fenced
-publication rather than stamping later source bytes with the startup commit. A
-trusted candidate filter runs on a detached canonical job before owner
+publication rather than stamping later source bytes with the startup commit.
+The source candidate filter rechecks retained topology before lease acquisition,
+and every later attempt verifier promotes topology loss to a storage-integrity
+alarm, so a continuous scheduler terminates instead of consuming job retries.
+A trusted candidate filter runs on a detached canonical job before owner
 allocation or lease acquisition, so foreign repositories and unsupported view
 requests remain untouched. `run-once`
 examines one bounded advisory page and executes at most one eligible job. The

@@ -680,6 +680,64 @@ def test_source_job_worker_rejects_programmatic_cache_input() -> None:
         )
 
 
+def test_source_job_topology_loss_stops_continuous_scheduler_before_claim() -> None:
+    considered: list[object] = []
+    page_calls: list[tuple[object | None, object]] = []
+    waits: list[float | None] = []
+
+    def topology_lost() -> None:
+        raise cli.CLIError("workspace identity changed")
+
+    guard = cli._bm25_source_job_infrastructure_guard(topology_lost)
+    candidate_filter = cli._index_job_candidate_filter_with_guard(
+        guard,
+        lambda candidate: considered.append(candidate) or True,
+    )
+
+    class GuardedWorker:
+        def begin_cycle(self):
+            return storage_module.IndexJobRunnableCycle(1)
+
+        def run_page(self, *, cursor=None, cycle):
+            page_calls.append((cursor, cycle))
+            candidate_filter(object())
+            pytest.fail("topology loss must terminate the scheduler page")
+
+    class NeverStop:
+        def is_set(self) -> bool:
+            return False
+
+        def wait(self, timeout: float | None = None) -> bool:
+            waits.append(timeout)
+            return False
+
+    scheduler = storage_module.IndexJobWorkerScheduler(worker=GuardedWorker())
+
+    with pytest.raises(
+        storage_module.StorageIntegrityError,
+        match="retained topology changed",
+    ) as caught:
+        scheduler.run(NeverStop())
+
+    assert isinstance(caught.value.__cause__, cli.CLIError)
+    assert page_calls == [(None, storage_module.IndexJobRunnableCycle(1))]
+    assert considered == []
+    assert waits == []
+
+
+def test_source_job_worker_guard_preserves_healthy_candidate_filter() -> None:
+    verified: list[bool] = []
+    candidate = object()
+    guard = cli._bm25_source_job_infrastructure_guard(lambda: verified.append(True))
+    candidate_filter = cli._index_job_candidate_filter_with_guard(
+        guard,
+        lambda value: value is candidate,
+    )
+
+    assert candidate_filter(candidate) is True
+    assert verified == [True]
+
+
 def test_source_job_worker_pins_repository_before_provider_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

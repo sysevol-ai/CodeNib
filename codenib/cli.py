@@ -22,7 +22,7 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, Sequence, TypeVar
 
 from ._version import package_version
 from .provider_routes import (
@@ -57,6 +57,7 @@ _MAX_RETAINED_MOUNTINFO_ENTRIES = 65_536
 _MAX_RETAINED_MOUNTINFO_LINE_BYTES = 64 * 1024
 _MAX_RETAINED_ALIAS_COMPONENTS = 256
 _MAX_RETAINED_ALIAS_PATH_BYTES = 4_096
+_JobCandidate = TypeVar("_JobCandidate")
 
 
 class CLIError(RuntimeError):
@@ -3838,6 +3839,43 @@ def _bm25_source_job_display_commit(repo_path: Path) -> str:
     return commit
 
 
+def _bm25_source_job_infrastructure_guard(
+    verifier: Callable[[], None],
+) -> Callable[[], None]:
+    """Promote retained-topology loss beyond ordinary job retry handling."""
+
+    if not callable(verifier):
+        raise TypeError("BM25 source worker topology verifier must be callable")
+
+    def verify() -> None:
+        from .storage import StorageIntegrityError
+
+        try:
+            verifier()
+        except CLIError as exc:
+            raise StorageIntegrityError(
+                "BM25 source worker retained topology changed"
+            ) from exc
+
+    return verify
+
+
+def _index_job_candidate_filter_with_guard(
+    verifier: Callable[[], None],
+    candidate_filter: Callable[[_JobCandidate], bool],
+) -> Callable[[_JobCandidate], bool]:
+    """Recheck infrastructure before a candidate can acquire a job lease."""
+
+    if not callable(verifier) or not callable(candidate_filter):
+        raise TypeError("guarded job candidate filter requires callables")
+
+    def accepts(candidate: _JobCandidate) -> bool:
+        verifier()
+        return candidate_filter(candidate)
+
+    return accepts
+
+
 def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
     """Run one callback with the selected exact local worker adapter."""
 
@@ -4035,6 +4073,9 @@ def _run_with_local_bm25_source_job_worker(
                     require_preprovisioned=True,
                 )
             )
+            attempt_topology_verifier = _bm25_source_job_infrastructure_guard(
+                topology.verify
+            )
             target = LocalBM25SourceJobTarget(
                 repository_root=paths.repo_path,
                 workspace_provider=provider,
@@ -4051,7 +4092,7 @@ def _run_with_local_bm25_source_job_worker(
                     paths.repo_path
                 ),
                 workspace_parent_identity=topology.workspace_binding.identity,
-                topology_verifier=topology.verify,
+                topology_verifier=attempt_topology_verifier,
             )
             resources = LocalBM25SourceJobResourceFactory((target,))
             worker = IndexJobWorker(
@@ -4067,7 +4108,10 @@ def _run_with_local_bm25_source_job_worker(
                 lease_duration_ms=args.lease_duration_ms,
                 heartbeat_interval_ms=args.heartbeat_interval_ms,
                 scan_limit=args.scan_limit,
-                candidate_filter=resources.accepts_candidate,
+                candidate_filter=_index_job_candidate_filter_with_guard(
+                    attempt_topology_verifier,
+                    resources.accepts_candidate,
+                ),
             )
             topology.verify()
             result = operation(worker)
