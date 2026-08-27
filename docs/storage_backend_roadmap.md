@@ -1312,11 +1312,58 @@ such outer owner. It preserves the exact pool and nested-root identities,
 releases all three inner receipt authorities before isolation, delivers one
 authenticated outer receipt at least once to an idempotent target sink, and
 only then acknowledges the retained owner. Source validation still finishes
-before the attempt root is created. The remaining follow-up is an attempt-pool
-reaper that reconciles stale names only at a quiescent boundary. The legacy
-one-shot directory-discard and plain stage-construction return contracts remain
-unchanged; cancellation-safe integrations must use the retained owner and
-explicit receipt acknowledgement.
+before the attempt root is created. A sealed POSIX-only quiescent directory
+reclaimer now supplies the primitive cleanup boundary: it pins one exact
+same-euid `0700` parent, authenticates either an existing orphan receipt or one
+caller-authorized exact child, quarantines a generic child no-replace, and
+removes only the freshly matched bounded inventory through no-follow directory
+descriptors. An absent verified receipt is idempotent completion only after a
+fresh parent synchronization and binding recheck, including after response
+loss, while an absent generic name grants no cleanup authority and returns
+false without synchronization. A private receipt seal length-frames bounded
+canonical parent bytes, the hidden name, verification state, and complete exact
+ownership token. Fixed tuple arities, string and path lengths, and every root
+and entry identity's 128-bit scalar magnitude are checked before their
+corresponding scans or lookups; cumulative metadata and payload totals fail at
+the first crossing item before further traversal, digest, or namespace work.
+Thus neither an absent name, unbounded receipt field, nor identical content can
+turn a modified receipt into completion authority. Every
+reclaim, retry, and close transition is
+serialized by a fail-fast nonblocking process-local lifecycle lease; recursive
+or concurrent calls reject before changing the installed operation. Instances
+must be closed before `fork` or constructed afterward: inherited children
+reject before inspecting the parent's lock or retained descriptors. Supported
+public reclaimer entry points reject while a live owning guard still retains
+lifecycle state; handed cleanup owners expose no normal-name path to their
+lease, transition, token, or execution guard beyond the `closed`/`close()`
+protocol. An interpreter-managed owning execution guard remains running while
+its lifecycle callback owns state. A final created or suspended owner may
+linearize its own close after every prior owner layer and filesystem/lifecycle
+state have settled, even before the caller receives the exception; the next
+public call may then proceed safely. This avoids a separate interruptible
+permission store. The fail-fast API boundary is not a same-process sandbox or
+authority for callback code to inspect or mutate underscore-prefixed
+implementation state directly. An exact
+logical transition slot remains installed across
+the native unlock and is cleared only after release settlement, closing the
+raw-release/result handoff; interrupted release and clear remain explicitly
+retryable. Traversal and child
+descriptors are covered by nested preinstalled cleanup plans, so one
+interruption at either cleanup runner boundary cannot strand a local owner,
+while bounded cleanup exhaustion identity-merges each exact owner through a
+verified whole-tuple handoff. A hostile primary that refuses owner metadata is
+re-raised unchanged from an inert built-in recovery carrier retaining the local
+owner, cleanup failure, and prior cause. Expected-empty checks use the retained
+directory descriptor directly
+and fail closed on any name under the declared quiescence contract, without
+claiming a hostile-writer allocation budget. Interrupted rename, removal, and
+synchronization likewise retain an explicit retry owner. It acquires no
+cross-process lease and contains no BM25 name discovery or policy; the remaining
+follow-up is the attempt-pool coordinator that invokes it only after worker
+quiescence. The
+legacy one-shot directory-discard and plain stage-construction return contracts
+remain unchanged; cancellation-safe integrations must use the retained owner
+and explicit receipt acknowledgement.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1358,7 +1405,7 @@ to the target sink, acknowledges that delivery, and then closes the source.
 Sink failure keeps the same receipt retained for at-least-once redelivery. A
 changed source fails before build or CAS mutation, and worker integration
 coverage proves the previous published ref remains unchanged. The production
-production CLI and explicit Web planner now select this binding. The CLI
+CLI and explicit Web planner now select this binding. The CLI
 resolves one stable Git HEAD around each fresh source capture and again before
 returning the prepared result, and binds every attempt/view/context provision
 to the retained startup workspace identity while rechecking the complete
@@ -1409,7 +1456,9 @@ generation receipt, without final publication authority or a cache-path reopen;
 its local attempt resource factory, resolver, and explicit production CLI entry
 are implemented. Its three transient destinations now share one retained
 caller-owned path-build root whose authenticated cleanup receipt is accepted
-before ownership is released; the quiescent attempt-pool reaper remains
+before ownership is released. The descriptor-owned quiescent directory
+reclamation primitive is implemented; BM25 attempt-name reconciliation,
+multi-target retry routing, worker-lifecycle quiescence, and CLI wiring remain
 pending.
 Vector and graph source builders, generic builder routing, and remaining
 runtime wiring remain.
@@ -1499,14 +1548,16 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   retention. Slow object hashing therefore cannot expire an otherwise healthy
   worker and force a duplicate attempt.
 - The retained-source BM25 attempt resource factory/resolver, production CLI
-  entry, and explicit Web planner are implemented. The planner captures the
-  same frozen local target as the worker, revalidates source after planning,
-  and uses a separate least-authority catalog surface that can register only
-  content-addressed source/profile identities and read one ref generation.
-  Add the quiescent attempt-pool reaper, then add vector and graph source
-  adapters and wire successful worker results into runtime, Web, MCP, and
-  default routes. Older self-publishing ingress APIs remain compatibility paths
-  and are never nested inside the worker.
+  entry, and explicit Web planner are implemented. The generic descriptor-bound
+  quiescent directory reclamation primitive is also implemented without BM25
+  discovery or publication authority. The planner captures the same frozen
+  local target as the worker, revalidates source after planning, and uses a
+  separate least-authority catalog surface that can register only
+  content-addressed source/profile identities and read one ref generation. Add
+  the worker-lifecycle attempt-pool coordinator, then add vector and graph
+  source adapters and wire successful worker results into runtime, Web, MCP,
+  and default routes. Older self-publishing ingress APIs remain compatibility
+  paths and are never nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
