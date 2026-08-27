@@ -1416,6 +1416,19 @@ def test_local_bm25_source_target_binds_exact_repository_root_authority(
     foreign = tmp_path / "foreign-repository"
     foreign.mkdir(mode=0o700)
     try:
+        positional_environment = {"CODENIB_SOURCE_POSITIONAL_TEST": "preserved"}
+        positional_target = LocalBM25SourceJobTarget(
+            fixture.repository,
+            fixture.provider,
+            _REPOSITORY_KEY,
+            _COMMIT,
+            BM25IndexBuilder(),
+            "default",
+            positional_environment,
+        )
+        assert positional_target.environ == positional_environment
+        assert positional_target.repository_root_authority is None
+
         with pin_repository_source_root(fixture.repository) as authority:
             target = LocalBM25SourceJobTarget(
                 repository_root=fixture.repository,

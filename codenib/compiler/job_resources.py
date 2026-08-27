@@ -199,12 +199,12 @@ class LocalBM25SourceJobTarget:
     display_commit: str
     builder: InitVar[BM25IndexBuilder]
     namespace_name: str = DEFAULT_NAMESPACE_NAME
-    repository_root_authority: RepositorySourceRootAuthority | None = field(
+    environ: Mapping[str, str] | None = field(
         default=None,
         repr=False,
         compare=False,
     )
-    environ: Mapping[str, str] | None = field(
+    repository_root_authority: RepositorySourceRootAuthority | None = field(
         default=None,
         repr=False,
         compare=False,
