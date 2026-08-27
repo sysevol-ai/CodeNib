@@ -72,6 +72,7 @@ _MAX_ORPHAN_NAME_ATTEMPTS = 128
 _MAX_ORDERED_ACTION_CANCELLATION_RETRIES = 8
 _MAX_PUBLICATION_CLEANUP_OWNERS = 64
 _MAX_PUBLICATION_EXCEPTION_LINKS = 64
+_MAX_QUIESCENT_DIRECTORY_CHILDREN = 4_096
 _OWNERSHIP_SORT_RUN_ENTRIES = 256
 _DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset(
     {"linux-native-workspace-owner", "linux-renameat2"}
@@ -2343,6 +2344,65 @@ class _ExactResourceCleanupOwner:
 
     def close(self) -> None:
         self.action()
+
+
+class _QuiescentDirectoryResourceOwner(Protocol):
+    """Small resource contract protected by the quiescent handoff boundary."""
+
+    @property
+    def closed(self) -> bool: ...
+
+    def close(self) -> None: ...
+
+
+class _ScandirIterator(Protocol):
+    """The bounded iterator surface needed from :func:`os.scandir`."""
+
+    def __iter__(self) -> Iterator[object]: ...
+
+    def __next__(self) -> object: ...
+
+    def close(self) -> None: ...
+
+
+class _ScandirIteratorCleanupOwner:
+    """Acquire and retry closure of one descriptor-backed directory iterator."""
+
+    __slots__ = ("_close_callback", "_closed", "_iterator")
+
+    def __init__(self) -> None:
+        self._iterator: _ScandirIterator | None = None
+        self._close_callback: Callable[[], None] | None = None
+        self._closed = False
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def open(self, descriptor: int) -> _ScandirIterator:
+        if self._iterator is not None or self._close_callback is not None:
+            raise RuntimeError("directory snapshot iterator is already open")
+        if self._closed:
+            raise RuntimeError("directory snapshot iterator owner is closed")
+        # Publish the native result directly into the pre-owned object.  If an
+        # interruption lands before the bound close store, ``close`` derives it
+        # again from this retained iterator.
+        self._iterator = os.scandir(descriptor)
+        self._close_callback = self._iterator.close
+        return self._iterator
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        close_callback = self._close_callback
+        if close_callback is None:
+            iterator = self._iterator
+            if iterator is None:
+                self._closed = True
+                return
+            close_callback = iterator.close
+        close_callback()
+        self._closed = True
 
 
 class _PosixResourceOwner:
@@ -9096,7 +9156,7 @@ def _quiescent_reclaim_parent_descriptor(
 
 
 def _run_quiescent_directory_resource_scope(
-    resources: _PosixResourceOwner,
+    resources: _QuiescentDirectoryResourceOwner,
     callback: Callable[[], _T],
     *,
     label: str,
@@ -9127,7 +9187,7 @@ def _run_quiescent_directory_resource_scope(
 
 
 def _run_quiescent_directory_resource_scope_unprotected(
-    resources: _PosixResourceOwner,
+    resources: _QuiescentDirectoryResourceOwner,
     callback: Callable[[], _T],
     outcome: _QuiescentDirectoryLifecycleOutcome,
     *,
@@ -9163,7 +9223,7 @@ def _run_quiescent_directory_resource_scope_unprotected(
                         callback,
                         outcome,
                     )
-            except BaseException as primary_error:  # noqa: B036 - close exact fds
+            except BaseException as primary_error:  # noqa: B036 - close resource
                 try:
                     resources.close()
                 except BaseException as cleanup_error:  # noqa: B036 - keep primary
@@ -9465,6 +9525,9 @@ class QuiescentDirectoryReclaimer:
     limited to the originating thread after its owning public call has stopped
     executing.
 
+    ``snapshot_child_names`` returns one deterministic, bounded point-in-time
+    snapshot from the retained parent descriptor.  It supplies no name policy:
+    callers must decide which exact names belong to their own cleanup namespace.
     ``reclaim_orphan`` authenticates an existing verified isolation receipt
     and treats absence of that exact receipted child as idempotent completion
     only after synchronizing and rechecking its parent authority.
@@ -9473,14 +9536,18 @@ class QuiescentDirectoryReclaimer:
     returns ``False`` and carries no proof of earlier cleanup.  A present
     generic child is freshly captured and moved no-replace into an authenticated
     orphan before descriptor-bound removal begins.
+    ``reclaim_quarantined_child`` is the stronger caller-authorized form for a
+    child that policy has already quarantined: it freshly captures that exact
+    name and deletes it in place, without adding another quarantine-name layer.
 
-    Both reclaim methods return ``True`` after a present tree is fully removed
+    Every reclaim method returns ``True`` after a present tree is fully removed
     and its parent is synchronized.  An already-absent exact receipt also
-    returns ``True`` as idempotent completion; only an absent generic name
-    returns ``False``.  An interrupted operation remains installed on this
-    object; :meth:`retry` resumes it, and :meth:`close` must settle it before
-    releasing authority.  Recursive and concurrent lifecycle transitions fail
-    before they may inspect or change that installed operation.
+    returns ``True`` as idempotent completion; an absent name-authorized child
+    returns ``False`` without synchronization or proof of earlier cleanup.  An
+    interrupted operation remains installed on this object; :meth:`retry`
+    resumes it, and :meth:`close` must settle it before releasing authority.
+    Recursive and concurrent lifecycle transitions fail before they may inspect
+    or change that installed operation.
 
     This fail-fast boundary covers the supported public reclaimer methods and
     the ``closed``/``close()`` protocol on a published cleanup owner. Handed
@@ -10024,6 +10091,52 @@ class QuiescentDirectoryReclaimer:
             lambda: self._run_reclaim_call(lambda: self._reclaim_orphan(orphan))
         )
 
+    def _snapshot_child_names(self) -> tuple[str, ...]:
+        authority = self._require_open()
+        if self._active is not None:
+            raise RuntimeError("quiescent directory reclaimer owns another tree")
+        authority.verify_path_binding()
+        ordered: list[tuple[bytes, str]] = []
+        iterator_owner = _ScandirIteratorCleanupOwner()
+
+        def scan() -> None:
+            entries = iterator_owner.open(authority.resource)
+            for index, entry in enumerate(entries):
+                # Fetch exactly one entry past the budget to detect overflow,
+                # but do not inspect or retain that excess entry.
+                if index >= _MAX_QUIESCENT_DIRECTORY_CHILDREN:
+                    raise RuntimeError(
+                        "quiescent directory child snapshot exceeds its limit"
+                    )
+                name = entry.name
+                if type(name) is not str:
+                    raise RuntimeError("quiescent directory child snapshot is invalid")
+                validated = _simple_child_name(
+                    name,
+                    label="quiescent directory snapshot child",
+                )
+                ordered.append((os.fsencode(validated), validated))
+
+        _run_quiescent_directory_resource_scope(
+            iterator_owner,
+            scan,
+            label="quiescent directory snapshot iterator cleanup also failed",
+        )
+        authority.verify_path_binding()
+        ordered.sort(key=lambda item: item[0])
+        if any(
+            previous[0] == current[0]
+            for previous, current in zip(ordered, ordered[1:], strict=False)
+        ):
+            raise RuntimeError("quiescent directory child snapshot is invalid")
+        authority.verify_path_binding()
+        return tuple(name for _raw, name in ordered)
+
+    def snapshot_child_names(self) -> tuple[str, ...]:
+        """Return a bounded point-in-time snapshot from the retained parent fd."""
+
+        return self._run_lifecycle_transition(self._snapshot_child_names)
+
     def _reclaim_child(self, child_name: str) -> bool:
         authority = self._require_open()
         if type(child_name) is not str:
@@ -10063,6 +10176,61 @@ class QuiescentDirectoryReclaimer:
 
         return self._run_lifecycle_transition(
             lambda: self._run_reclaim_call(lambda: self._reclaim_child(child_name))
+        )
+
+    def _reclaim_quarantined_child(self, child_name: str) -> bool:
+        authority = self._require_open()
+        if type(child_name) is not str:
+            raise TypeError(
+                "quiescent directory quarantined child name must be an exact string"
+            )
+        name = _simple_child_name(
+            child_name,
+            label="quiescent directory quarantined child",
+        )
+        path = authority.display_parent / name
+        active = self._active
+        if active is not None:
+            if not active.matches_child(path):
+                raise RuntimeError("quiescent directory reclaimer owns another tree")
+            return self._resume()
+        parent_path_bytes = _bounded_directory_orphan_parent_path_bytes(
+            os.fsencode(authority.display_parent)
+        )
+        metadata = self._child_metadata(authority, path)
+        if metadata is None:
+            return False
+        self._require_owned_child(authority, path, metadata)
+        ownership = authority.capture_child(
+            name,
+            path=path,
+            label="quiescent directory quarantined child",
+            allow_empty_root=True,
+        )
+        _quiescent_reclaim_entries(ownership)
+        orphan = _orphan_metadata(
+            authority,
+            path,
+            ownership,
+            parent_path_bytes=parent_path_bytes,
+        )
+        operation = _QuiescentDirectoryReclaimOperation(
+            authority=authority,
+            requested_path=path,
+            ownership=orphan.locator.ownership,
+            isolation_owner=None,
+            orphan=orphan,
+        )
+        self._install_operation(operation)
+        return self._resume()
+
+    def reclaim_quarantined_child(self, child_name: str) -> bool:
+        """Reclaim one already-quarantined exact child without renaming it."""
+
+        return self._run_lifecycle_transition(
+            lambda: self._run_reclaim_call(
+                lambda: self._reclaim_quarantined_child(child_name)
+            )
         )
 
     def retry(self) -> bool:
