@@ -151,14 +151,38 @@ class IndexJobBackgroundService:
         """Settle every started thread before rethrowing an interruption."""
 
         first_failure: BaseException | None = None
-        while not self._stop.is_set():
+        while True:
+            try:
+                stopped = self._stop.is_set()
+            except BaseException as failure:  # noqa: B036 - retry state read
+                if first_failure is None:
+                    first_failure = failure
+                continue
+            if stopped:
+                break
             try:
                 self._stop.set()
             except BaseException as failure:  # noqa: B036 - settle before rethrow
                 if first_failure is None:
                     first_failure = failure
         for thread in reversed(threads):
-            while thread.is_alive():
+            while True:
+                try:
+                    started = thread.ident is not None
+                except BaseException as failure:  # noqa: B036 - retry state read
+                    if first_failure is None:
+                        first_failure = failure
+                    continue
+                if not started:
+                    break
+                try:
+                    alive = thread.is_alive()
+                except BaseException as failure:  # noqa: B036 - retry state read
+                    if first_failure is None:
+                        first_failure = failure
+                    continue
+                if not alive:
+                    break
                 try:
                     thread.join()
                 except BaseException as failure:  # noqa: B036 - settle all loops
@@ -213,20 +237,15 @@ class IndexJobBackgroundService:
             name="codenib-index-worker",
             daemon=False,
         )
-        started: list[Thread] = []
+        # Retain both candidate threads before the first launch. If an
+        # asynchronous exception lands after ``Thread.start`` launches a
+        # thread, cleanup must not depend on interruptible post-start
+        # bookkeeping to remember that ownership.
+        self._threads = (runtime_thread, worker_thread)
         try:
-            try:
-                runtime_thread.start()
-            finally:
-                if runtime_thread.ident is not None:
-                    started.append(runtime_thread)
-            try:
-                worker_thread.start()
-            finally:
-                if worker_thread.ident is not None:
-                    started.append(worker_thread)
+            runtime_thread.start()
+            worker_thread.start()
         except BaseException as failure:  # noqa: B036 - join partial start
-            self._threads = tuple(started)
             self._terminal_failure = failure
             try:
                 self._stop_and_join(self._threads)
@@ -242,7 +261,6 @@ class IndexJobBackgroundService:
             raise IndexJobBackgroundServiceError(
                 "background index service could not start"
             ) from failure
-        self._threads = tuple(started)
         self._state = "running"
 
     def start(self) -> None:

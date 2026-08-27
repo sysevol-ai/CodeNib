@@ -128,6 +128,80 @@ def test_partial_thread_start_failure_stops_and_joins_started_runtime(
         service.close()
 
 
+def test_interrupted_post_start_bookkeeping_still_joins_launched_thread(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _Loop(_runtime_summary())
+
+    class InterruptingThread(Thread):
+        _interrupt_ident = False
+
+        @property
+        def ident(self):
+            if self._interrupt_ident:
+                self._interrupt_ident = False
+                raise KeyboardInterrupt
+            return super().ident
+
+        def start(self) -> None:
+            super().start()
+            if self.name == "codenib-index-runtime":
+                self._interrupt_ident = True
+                raise KeyboardInterrupt
+
+    monkeypatch.setattr(service_module, "Thread", InterruptingThread)
+    service = IndexJobBackgroundService(_Loop(_worker_summary()), runtime)
+
+    with pytest.raises(IndexJobBackgroundServiceError, match="could not start"):
+        service.start()
+
+    assert service.state == "closed"
+    assert runtime.exited.is_set()
+    with pytest.raises(IndexJobBackgroundServiceError, match="service failed"):
+        service.close()
+
+
+def test_close_retries_interrupted_stop_and_thread_state_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker = _Loop(_worker_summary())
+    runtime = _Loop(_runtime_summary())
+    service = IndexJobBackgroundService(worker, runtime)
+    service.start()
+    assert runtime.entered.wait(1)
+    assert worker.entered.wait(1)
+    real_is_set = service._stop.is_set
+    real_is_alive = Thread.is_alive
+    interruptions = {"stop": False, "thread": False}
+
+    def is_set() -> bool:
+        if not interruptions["stop"]:
+            interruptions["stop"] = True
+            raise KeyboardInterrupt
+        return real_is_set()
+
+    def is_alive(thread: Thread) -> bool:
+        if thread.name == "codenib-index-worker" and not interruptions["thread"]:
+            interruptions["thread"] = True
+            raise KeyboardInterrupt
+        return real_is_alive(thread)
+
+    monkeypatch.setattr(service._stop, "is_set", is_set)
+    monkeypatch.setattr(service_module.Thread, "is_alive", is_alive)
+
+    with pytest.raises(KeyboardInterrupt):
+        service.close()
+
+    assert interruptions == {"stop": True, "thread": True}
+    assert worker.exited.is_set()
+    assert runtime.exited.is_set()
+    assert service.state == "closed"
+    assert service.close() == IndexJobBackgroundServiceSummary(
+        worker=_worker_summary(),
+        runtime=_runtime_summary(),
+    )
+
+
 def test_close_settles_both_threads_before_rethrowing_interruption(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
