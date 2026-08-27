@@ -19,7 +19,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path, PurePosixPath
-from threading import RLock
+from threading import RLock, get_ident
+from types import GeneratorType
 from typing import (
     Callable,
     ContextManager,
@@ -29,6 +30,7 @@ from typing import (
     Protocol,
     Sequence,
     TypeVar,
+    final,
 )
 
 from . import _windows_fs_authority as _windows_fs
@@ -59,6 +61,8 @@ _MAX_OWNERSHIP_BYTES = 64 << 30
 _MAX_OWNERSHIP_METADATA_BYTES = 16 << 20
 _MAX_OWNERSHIP_PATH_BYTES = 4_096
 _MAX_OWNERSHIP_COMPONENT_BYTES = 255
+_MAX_OWNERSHIP_IDENTITY_SCALAR = (1 << 128) - 1
+_MAX_ORPHAN_PARENT_PATH_BYTES = 128 << 10
 _OWNERSHIP_COPY_BYTES = 1 << 20
 _MAX_PUBLICATION_SNAPSHOT_BYTES = 64 << 20
 _MAX_PUBLICATION_STREAM_READ_BYTES = 8 << 20
@@ -66,6 +70,8 @@ _RENAME_NOREPLACE = 1
 _RENAME_EXCL = 0x4
 _MAX_ORPHAN_NAME_ATTEMPTS = 128
 _MAX_ORDERED_ACTION_CANCELLATION_RETRIES = 8
+_MAX_PUBLICATION_CLEANUP_OWNERS = 64
+_MAX_PUBLICATION_EXCEPTION_LINKS = 64
 _OWNERSHIP_SORT_RUN_ENTRIES = 256
 _DURABLE_PUBLICATION_FSYNC_BACKENDS = frozenset(
     {"linux-native-workspace-owner", "linux-renameat2"}
@@ -1205,12 +1211,14 @@ def _annotate_secondary_error(
             "_codenib_cleanup_notes",
             (*notes, message),
         )
-        if BaseException.__getattribute__(primary_error, "__cause__") is None:
-            BaseException.__setattr__(
-                primary_error,
-                "__cause__",
-                secondary_error,
-            )
+        cause_descriptor = vars(BaseException)["__cause__"]
+        if cause_descriptor.__get__(
+            primary_error, type(primary_error)
+        ) is None and _publication_exception_link_is_acyclic(
+            secondary_error,
+            primary_error,
+        ):
+            cause_descriptor.__set__(primary_error, secondary_error)
     except BaseException:  # noqa: B036 - diagnostics are strictly non-primary
         return
 
@@ -1222,6 +1230,29 @@ def _publication_cleanup_owner_is_closed(owner: object) -> bool:
         return bool(owner.closed)  # type: ignore[attr-defined]
     except BaseException:  # noqa: B036 - uncertain ownership stays reachable
         return False
+
+
+def _bounded_publication_cleanup_owner_tuple(
+    failure: BaseException,
+    *,
+    metadata_failures: list[BaseException] | None = None,
+) -> tuple[object, ...] | None:
+    """Read only a small inert owner tuple from callback-controlled metadata."""
+
+    try:
+        owners = BaseException.__getattribute__(
+            failure,
+            "publication_cleanup_owners",
+        )
+    except AttributeError:
+        return ()
+    except BaseException as metadata_error:  # noqa: B036 - hostile metadata
+        if metadata_failures is not None and not metadata_failures:
+            metadata_failures.append(metadata_error)
+        return None
+    if type(owners) is not tuple or len(owners) > _MAX_PUBLICATION_CLEANUP_OWNERS:
+        return None
+    return owners
 
 
 def _attach_publication_cleanup_owner(
@@ -1236,17 +1267,11 @@ def _attach_publication_cleanup_owner(
         close = owner.close  # type: ignore[attr-defined]
         if not callable(close):
             return
-        try:
-            existing = BaseException.__getattribute__(
-                failure,
-                "publication_cleanup_owners",
-            )
-        except AttributeError:
-            existing = ()
+        existing = _bounded_publication_cleanup_owner_tuple(failure)
         # A callback-controlled exception may expose a tuple subclass whose
-        # iteration executes hostile code.  Retain only the inert built-in
-        # representation; any other value is not a trustworthy owner list.
-        if type(existing) is not tuple:
+        # iteration executes hostile code or an exact but unbounded tuple.
+        # Treat either representation as foreign rather than probing it.
+        if existing is None:
             existing = ()
         retained = tuple(
             candidate
@@ -1255,6 +1280,11 @@ def _attach_publication_cleanup_owner(
         )
         if any(candidate is owner for candidate in retained):
             return
+        # Internal cleanup plans remain well below this cap.  If callback
+        # metadata already consumes it, retain the newest local authority and
+        # only a bounded suffix rather than publishing an oversized tuple.
+        if len(retained) >= _MAX_PUBLICATION_CLEANUP_OWNERS:
+            retained = retained[-(_MAX_PUBLICATION_CLEANUP_OWNERS - 1) :]
         BaseException.__setattr__(
             failure,
             "publication_cleanup_owners",
@@ -1264,20 +1294,501 @@ def _attach_publication_cleanup_owner(
         return
 
 
+def _inherit_publication_cleanup_owners(
+    failure: BaseException,
+    secondary: BaseException,
+) -> bool:
+    """Transfer an exact owner tuple through a verified bounded action.
+
+    Owner transfer is mandatory when a cleanup failure is about to become
+    secondary to an earlier operation failure.  The secondary's inert built-in
+    tuple is copied as a single monotonic identity merge: no owner completion
+    property or cleanup method is consulted while authority is in transit.
+
+    A hostile primary that prevents diagnostic attachment remains best-effort:
+    callers must retain mandatory local owners through a safe carrier instead.
+    """
+
+    inherited = _bounded_publication_cleanup_owner_tuple(secondary)
+    if inherited is None:
+        return False
+    return _ensure_publication_cleanup_owners(failure, inherited)
+
+
+def _ensure_publication_cleanup_owners(
+    failure: BaseException,
+    inherited: tuple[object, ...],
+    *,
+    transfer_failures: list[BaseException] | None = None,
+) -> bool:
+    """Identity-merge exact owners and report verified completion."""
+
+    if type(inherited) is not tuple or len(inherited) > _MAX_PUBLICATION_CLEANUP_OWNERS:
+        return False
+    transfer_action: Callable[[], None] = partial(
+        _merge_publication_cleanup_owner_tuple,
+        failure,
+        inherited,
+    )
+    if transfer_failures is not None:
+        transfer_action = partial(
+            _capture_publication_cleanup_owner_transfer_failure,
+            failure,
+            inherited,
+            transfer_failures,
+        )
+    transfer = _OrderedAction(
+        label="publication cleanup owner transfer also failed",
+        action=transfer_action,
+        complete=partial(
+            _publication_cleanup_owners_transferred,
+            failure,
+            inherited,
+        ),
+        # A returned action without the exact tuple is incomplete too.  This
+        # covers cancellation after the write but before its result handoff.
+        retry_incomplete=lambda _error: True,
+    )
+    state = _OrderedActionState(
+        actions=(transfer,),
+        iteration_failure_label=(
+            "publication cleanup owner transfer iteration also failed"
+        ),
+        primary_error=failure,
+    )
+    try:
+        _run_ordered_actions(state)
+    except BaseException as boundary_error:  # noqa: B036 - never replace primary
+        _annotate_secondary_error(
+            failure,
+            "publication cleanup owner transfer boundary also failed",
+            boundary_error,
+        )
+        # Cover interruption at the runner call boundary.  Its internal state
+        # is monotonic, so a second entry resumes rather than duplicating work.
+        try:
+            _run_ordered_actions(state)
+        except BaseException as retry_error:  # noqa: B036 - diagnostics only
+            _annotate_secondary_error(
+                failure,
+                "publication cleanup owner transfer retry also failed",
+                retry_error,
+            )
+    return _publication_cleanup_owners_transferred(failure, inherited)
+
+
+def _capture_publication_cleanup_owner_transfer_failure(
+    failure: BaseException,
+    inherited: tuple[object, ...],
+    transfer_failures: list[BaseException],
+) -> None:
+    """Retain only the exact first bounded owner-metadata failure."""
+
+    try:
+        _merge_publication_cleanup_owner_tuple(
+            failure,
+            inherited,
+            metadata_failures=transfer_failures,
+        )
+    except BaseException as transfer_error:  # noqa: B036 - inert carrier payload
+        if not transfer_failures:
+            transfer_failures.append(transfer_error)
+        raise
+
+
+def _merge_publication_cleanup_owner_tuple(
+    failure: BaseException,
+    inherited: tuple[object, ...],
+    *,
+    metadata_failures: list[BaseException] | None = None,
+) -> None:
+    """Write one whole exact owner tuple without dispatching through owners."""
+
+    if type(inherited) is not tuple or len(inherited) > _MAX_PUBLICATION_CLEANUP_OWNERS:
+        raise RuntimeError("publication cleanup owner transfer is unbounded")
+    existing = _bounded_publication_cleanup_owner_tuple(
+        failure,
+        metadata_failures=metadata_failures,
+    )
+    if existing is None:
+        raise RuntimeError("publication cleanup owner metadata is not exact")
+    merged = inherited if not existing else existing
+    if existing:
+        for owner in inherited:
+            if not any(candidate is owner for candidate in merged):
+                if len(merged) >= _MAX_PUBLICATION_CLEANUP_OWNERS:
+                    raise RuntimeError(
+                        "publication cleanup owner transfer exceeds its bound"
+                    )
+                merged = (*merged, owner)
+    BaseException.__setattr__(
+        failure,
+        "publication_cleanup_owners",
+        merged,
+    )
+
+
+def _publication_cleanup_owners_transferred(
+    failure: BaseException,
+    inherited: tuple[object, ...],
+) -> bool:
+    """Verify every inherited owner is present by identity only."""
+
+    try:
+        if (
+            type(inherited) is not tuple
+            or len(inherited) > _MAX_PUBLICATION_CLEANUP_OWNERS
+        ):
+            return False
+        existing = _bounded_publication_cleanup_owner_tuple(failure)
+        if existing is None:
+            return False
+        for owner in inherited:
+            if not any(candidate is owner for candidate in existing):
+                return False
+        return True
+    except BaseException:  # noqa: B036 - uncertain transfer remains incomplete
+        return False
+
+
+def _publication_cleanup_owner_carrier_with_links(
+    owners: tuple[object, ...],
+    secondary: BaseException,
+    prior_cause: BaseException | None,
+    cause_link: BaseException | None,
+    context_link: BaseException | None,
+    *,
+    label: str,
+) -> RuntimeError:
+    """Build an inert cause retaining owners and both prior error links."""
+
+    # Keep every recovery object in built-in ``args`` at construction time.
+    # This is the preinstalled authority if cancellation interrupts the
+    # verified public-protocol tuple or exception-link stores below.
+    carrier = RuntimeError(label, owners, secondary, prior_cause)
+    if not _ensure_publication_cleanup_owners(carrier, owners):
+        raise RuntimeError("could not install cleanup owners on recovery carrier")
+    try:
+        BaseException.__setattr__(carrier, "__cause__", cause_link)
+        if context_link is not None and context_link is not cause_link:
+            BaseException.__setattr__(carrier, "__context__", context_link)
+    except BaseException:  # noqa: B036 - built-in carrier remains authoritative
+        pass
+    return carrier
+
+
+def _publication_cleanup_owner_carrier(
+    owners: tuple[object, ...],
+    secondary: BaseException,
+    prior_cause: BaseException | None,
+    *,
+    forbidden: BaseException,
+    label: str,
+) -> RuntimeError:
+    """Build an ordinary carrier without linking back to its future primary."""
+
+    secondary_is_safe = _publication_exception_link_is_acyclic(
+        secondary,
+        forbidden,
+    )
+    prior_is_safe = _publication_exception_link_is_acyclic(
+        prior_cause,
+        forbidden,
+    )
+    cause_link = secondary
+    if not secondary_is_safe:
+        # The exact secondary remains in both carrier and wrapper args.  The
+        # fresh built-in wrapper has no raw links, so it is safe to install as
+        # the carrier cause even when the secondary already points back to the
+        # exception that will be raised from this carrier.
+        cause_link = RuntimeError(
+            f"{label} inert diagnostic recovery",
+            secondary,
+            prior_cause,
+        )
+
+    return _publication_cleanup_owner_carrier_with_links(
+        owners,
+        secondary,
+        prior_cause,
+        cause_link,
+        prior_cause if prior_is_safe else None,
+        label=label,
+    )
+
+
+def _publication_exception_cause(
+    failure: BaseException,
+) -> BaseException | None:
+    """Read an existing explicit cause without trusting subclass overrides."""
+
+    try:
+        cause = vars(BaseException)["__cause__"].__get__(failure, type(failure))
+    except BaseException:  # noqa: B036 - hostile cause metadata is optional
+        return None
+    if not issubclass(type(cause), BaseException):
+        return None
+    return cause
+
+
+def _publication_exception_context(
+    failure: BaseException,
+) -> BaseException | None:
+    """Read an implicit context without trusting subclass overrides."""
+
+    try:
+        context = vars(BaseException)["__context__"].__get__(failure, type(failure))
+    except BaseException:  # noqa: B036 - hostile context metadata is optional
+        return None
+    if not issubclass(type(context), BaseException):
+        return None
+    return context
+
+
+def _publication_exception_traceback(failure: BaseException) -> object:
+    """Read the raw traceback without dispatching through a subclass."""
+
+    return vars(BaseException)["__traceback__"].__get__(failure, type(failure))
+
+
+def _publication_exception_prior_link(
+    failure: BaseException,
+) -> tuple[BaseException | None, bool]:
+    """Return the pre-set cause or context and whether it was explicit."""
+
+    cause = _publication_exception_cause(failure)
+    if cause is not None:
+        return cause, True
+    return _publication_exception_context(failure), False
+
+
+def _publication_exception_link_is_acyclic(
+    candidate: BaseException | None,
+    forbidden: BaseException,
+) -> bool:
+    """Accept only a bounded acyclic raw link graph excluding ``forbidden``."""
+
+    if candidate is None:
+        return True
+    pending: list[tuple[BaseException, bool]] = [(candidate, False)]
+    visiting: set[int] = set()
+    complete: set[int] = set()
+    while pending:
+        current, leaving = pending.pop()
+        identity = id(current)
+        if leaving:
+            visiting.discard(identity)
+            complete.add(identity)
+            continue
+        if current is forbidden or identity in visiting:
+            return False
+        if identity in complete:
+            continue
+        if len(visiting) + len(complete) >= _MAX_PUBLICATION_EXCEPTION_LINKS:
+            return False
+        visiting.add(identity)
+        pending.append((current, True))
+        context = _publication_exception_context(current)
+        cause = _publication_exception_cause(current)
+        if context is not None:
+            pending.append((context, False))
+        if cause is not None:
+            pending.append((cause, False))
+    return True
+
+
+def _raise_quiescent_cleanup_handoff_boundary(
+    error: BaseException,
+    secondary: BaseException,
+    mandatory_owners: tuple[object, ...],
+    operation_error: BaseException | None,
+    *,
+    label: str,
+) -> None:
+    """Deliver one interrupted handoff with bounded public retry authority."""
+
+    mandatory_transferred = _ensure_publication_cleanup_owners(
+        error,
+        mandatory_owners,
+    )
+    secondary_transferred = _inherit_publication_cleanup_owners(
+        error,
+        secondary,
+    )
+    operation_transferred = operation_error is None or operation_error is error
+    if not operation_transferred:
+        operation_transferred = _inherit_publication_cleanup_owners(
+            error,
+            operation_error,
+        )
+    if (
+        mandatory_transferred
+        and secondary_transferred
+        and operation_transferred
+        and (operation_error is None or operation_error is error)
+    ):
+        raise error
+    # A replacement raised while the settlement error is active otherwise
+    # retains only that settlement through its implicit context.  Keep the
+    # exact operation primary in a durable built-in carrier even when all of
+    # its cleanup owners transferred successfully.
+    prior_cause = operation_error
+    if operation_error is None or operation_error is error:
+        prior_cause, _ = _publication_exception_prior_link(error)
+    carrier = _publication_cleanup_owner_carrier(
+        mandatory_owners,
+        secondary,
+        prior_cause,
+        forbidden=error,
+        label=label,
+    )
+    raise error from carrier
+
+
+def _adjudicate_quiescent_reclaimer_exit_error(
+    exc: BaseException,
+    close_error: BaseException,
+    mandatory_owners: tuple[object, ...],
+) -> RuntimeError | None:
+    """Preserve a context-body primary while making close recovery public."""
+
+    prior_cause, _ = _publication_exception_prior_link(exc)
+    mandatory_transferred = False
+    inherited_transferred = False
+    try:
+        mandatory_transferred = _ensure_publication_cleanup_owners(
+            exc,
+            mandatory_owners,
+        )
+    except BaseException as transfer_error:  # noqa: B036 - retry transfer
+        _annotate_secondary_error(
+            exc,
+            "quiescent directory reclaimer local owner transfer also failed",
+            transfer_error,
+        )
+        mandatory_transferred = _ensure_publication_cleanup_owners(
+            exc,
+            mandatory_owners,
+        )
+    _annotate_secondary_error(
+        exc,
+        "quiescent directory reclaimer cleanup also failed",
+        close_error,
+    )
+    try:
+        inherited_transferred = _inherit_publication_cleanup_owners(
+            exc,
+            close_error,
+        )
+    except BaseException as inheritance_error:  # noqa: B036 - retry transfer
+        _annotate_secondary_error(
+            exc,
+            "quiescent directory reclaimer owner transfer also failed",
+            inheritance_error,
+        )
+        inherited_transferred = _inherit_publication_cleanup_owners(
+            exc,
+            close_error,
+        )
+    if not mandatory_transferred or not inherited_transferred:
+        return _publication_cleanup_owner_carrier(
+            mandatory_owners,
+            close_error,
+            prior_cause,
+            forbidden=exc,
+            label="quiescent directory reclaimer cleanup recovery",
+        )
+    return None
+
+
+@final
+class _QuiescentReclaimerExitHandoffBoundary:
+    """Publish exact exit recovery without exception-subclass dispatch."""
+
+    __slots__ = ("_ambient_error", "_ambient_traceback", "_body_error", "_reclaimer")
+
+    def __init__(
+        self,
+        reclaimer: QuiescentDirectoryReclaimer,
+        body_error: BaseException | None,
+    ) -> None:
+        self._reclaimer = reclaimer
+        self._body_error = body_error
+        self._ambient_error = sys.exc_info()[1]
+        self._ambient_traceback = (
+            None
+            if self._ambient_error is None
+            else _publication_exception_traceback(self._ambient_error)
+        )
+
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        active_error: BaseException | None,
+        active_traceback: object,
+    ) -> bool:
+        if (
+            active_error is None
+            or (self._body_error is not None and active_error is self._body_error)
+            or (
+                active_error is self._ambient_error
+                and active_traceback is self._ambient_traceback
+            )
+        ):
+            return False
+        current = self._reclaimer._lifecycle_lease.current_transition()
+        mandatory_owners: tuple[object, ...] = (self._reclaimer,)
+        if type(current) is _QuiescentDirectoryLifecycleAttempt:
+            mandatory_owners = (current, self._reclaimer)
+        mandatory_transferred = _ensure_publication_cleanup_owners(
+            active_error,
+            mandatory_owners,
+        )
+        body_error = self._body_error
+        body_transferred = body_error is None or body_error is active_error
+        if body_error is not None and body_error is not active_error:
+            body_transferred = _inherit_publication_cleanup_owners(
+                active_error,
+                body_error,
+            )
+        if not mandatory_transferred or not body_transferred:
+            prior_link, _ = _publication_exception_prior_link(active_error)
+            secondary = body_error
+            if secondary is None or secondary is active_error:
+                secondary = RuntimeError(
+                    "quiescent directory reclaimer exit handoff was interrupted"
+                )
+            carrier = _publication_cleanup_owner_carrier(
+                mandatory_owners,
+                secondary,
+                prior_link,
+                forbidden=active_error,
+                label="quiescent directory reclaimer exit handoff recovery",
+            )
+            raise active_error from carrier
+        return False
+
+
+def _run_quiescent_reclaimer_exit_handoff_boundary(
+    reclaimer: QuiescentDirectoryReclaimer,
+    body_error: BaseException | None,
+) -> ContextManager[None]:
+    """Construct a non-dispatching exit handoff boundary."""
+
+    return _QuiescentReclaimerExitHandoffBoundary(reclaimer, body_error)
+
+
 def _prune_publication_cleanup_owners(failure: BaseException | None) -> None:
     """Drop completed owners after an eagerly protected cleanup finishes."""
 
     if failure is None:
         return
     try:
-        try:
-            existing = BaseException.__getattribute__(
-                failure,
-                "publication_cleanup_owners",
-            )
-        except AttributeError:
-            return
-        if type(existing) is not tuple:
+        existing = _bounded_publication_cleanup_owner_tuple(failure)
+        if existing is None or not existing:
             return
         retained = tuple(
             candidate
@@ -1641,6 +2152,11 @@ def _run_context_with_cleanup_actions(
     # it separately so cleanup-only failure still propagates from a successful
     # context body entered while that unrelated exception is being handled.
     ambient_error = sys.exc_info()[1]
+    ambient_traceback = (
+        None
+        if ambient_error is None
+        else _publication_exception_traceback(ambient_error)
+    )
     context_error: BaseException | None = None
     # These values are read after the protected finalizer boundary.  Publish
     # them before entering the caller's body so an exception injected at the
@@ -1660,8 +2176,17 @@ def _run_context_with_cleanup_actions(
             primary_error = context_error
             failures.primary_error = primary_error
             active_error = sys.exc_info()[1]
+            active_traceback = (
+                None
+                if active_error is None
+                else _publication_exception_traceback(active_error)
+            )
             locally_unwinding = context_error is not None or (
-                active_error is not None and active_error is not ambient_error
+                active_error is not None
+                and (
+                    active_error is not ambient_error
+                    or active_traceback is not ambient_traceback
+                )
             )
             if primary_error is None and locally_unwinding:
                 primary_error = active_error
@@ -2954,15 +3479,94 @@ class _PublicationAuthority:
         self.close()
 
 
+def _bounded_directory_orphan_parent_path_bytes(value: object) -> bytes:
+    """Validate the inert canonical parent bytes stored in an orphan receipt."""
+
+    if (
+        type(value) is not bytes
+        or not value
+        or len(value) > _MAX_ORPHAN_PARENT_PATH_BYTES
+        or b"\x00" in value
+    ):
+        raise RuntimeError("directory orphan parent path is invalid")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class _DirectoryOrphanLocator:
     """A display path bound to a parent authority and complete tree token."""
 
-    parent_path: Path
+    parent_path_bytes: bytes = field(repr=False)
     child_name: str
     backend_tag: str
     parent_identity: tuple[int, ...]
     ownership: _TreeOwnership
+    receipt_digest: str = field(repr=False)
+
+    @property
+    def parent_path(self) -> Path:
+        raw = _bounded_directory_orphan_parent_path_bytes(self.parent_path_bytes)
+        return Path(os.fsdecode(raw))
+
+
+def _directory_orphan_receipt_digest(
+    *,
+    parent_path_bytes: bytes,
+    child_name: str,
+    backend_tag: str,
+    parent_identity: tuple[int, ...],
+    ownership: _TreeOwnership,
+    verified_at_isolation: bool,
+    _fsencode: Callable[[object], bytes] = os.fsencode,
+    _sha256: Callable[[], object] = hashlib.sha256,
+    _require_parent_path_bytes: Callable[
+        [object], bytes
+    ] = _bounded_directory_orphan_parent_path_bytes,
+) -> str:
+    """Bind one orphan receipt's authority, complete token, and state."""
+
+    hasher = _sha256()
+    hasher.update(b"codenib.directory-orphan-receipt.v1\x00")
+
+    def add(value: bytes) -> None:
+        hasher.update(len(value).to_bytes(8, "big"))
+        hasher.update(value)
+
+    add(_require_parent_path_bytes(parent_path_bytes))
+    add(_fsencode(child_name))
+    add(backend_tag.encode("utf-8", "surrogatepass"))
+    add(str(len(parent_identity)).encode("ascii"))
+    for value in parent_identity:
+        add(str(value).encode("ascii"))
+    add(str(len(ownership.root_identity)).encode("ascii"))
+    for value in ownership.root_identity:
+        add(str(value).encode("ascii"))
+    add(str(len(ownership.root_version_identity)).encode("ascii"))
+    for value in ownership.root_version_identity:
+        add(str(value).encode("ascii"))
+    add(ownership.digest.encode("ascii"))
+    add(str(ownership.entries).encode("ascii"))
+    add(str(ownership.byte_count).encode("ascii"))
+    add(str(ownership.metadata_bytes).encode("ascii"))
+    add(str(len(ownership.inventory)).encode("ascii"))
+    for path, kind in ownership.inventory:
+        add(_fsencode(path))
+        add(kind.encode("ascii"))
+    add(str(len(ownership.file_records)).encode("ascii"))
+    for record in ownership.file_records:
+        add(_fsencode(record.path))
+        add(str(record.mode).encode("ascii"))
+        add(str(record.size).encode("ascii"))
+        add(record.sha256.encode("ascii"))
+    add(str(len(ownership.entry_identities)).encode("ascii"))
+    for path, kind, identity in ownership.entry_identities:
+        add(_fsencode(path))
+        add(kind.encode("ascii"))
+        add(str(len(identity)).encode("ascii"))
+        for value in identity:
+            add(str(value).encode("ascii"))
+    add(b"verified" if verified_at_isolation else b"unverified")
+    return hasher.hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -4080,10 +4684,11 @@ def _publish_native_replacement_with_authority(
     if check_cancelled is not None and not callable(check_cancelled):
         raise TypeError("workspace replacement cancellation check must be callable")
 
-    # Freeze every authority method, capability receiver, ownership check, and
-    # receipt constructor before either validator runs.  A validator may
-    # mutate public/private module or class attributes for fault injection, but
-    # it cannot intercept the native exchange/receipt token in this frame.
+    # Capture the explicitly used authority methods, capability receiver,
+    # ownership checks, receipt constructors, and receipt-digest dependencies
+    # before either validator runs.  Validators are trusted cooperative
+    # callbacks, not an in-process Python sandbox; these bindings prevent
+    # accidental late rebinding of the captured publication operations.
     verify_replacement_exact = replacement.verify_current
     capture_incumbent_exact = replacement.capture_incumbent
     exchange_replacement_exact = replacement.exchange
@@ -4092,6 +4697,15 @@ def _publish_native_replacement_with_authority(
     capture_ownership_exact = _PublicationTreeReader.capture_ownership
     require_publishable_exact = require_publishable_directory_ownership
     require_matching_exact = _require_matching_ownership
+    receipt_digest_exact = _directory_orphan_receipt_digest
+    receipt_fsencode_exact = os.fsencode
+    receipt_sha256_exact = hashlib.sha256
+    require_receipt_parent_path_bytes_exact = (
+        _bounded_directory_orphan_parent_path_bytes
+    )
+    receipt_parent_path_bytes_exact = require_receipt_parent_path_bytes_exact(
+        receipt_fsencode_exact(publication_authority.display_parent)
+    )
     locator_type = _DirectoryOrphanLocator
     locator_new = object.__new__
     locator_init = locator_type.__init__
@@ -4224,13 +4838,24 @@ def _publish_native_replacement_with_authority(
     locator = locator_new(locator_type)
     locator_init(
         locator,
-        parent_path=publication_authority.display_parent,
+        parent_path_bytes=receipt_parent_path_bytes_exact,
         child_name=stage_display.name,
         # Reopening uses the ordinary Linux parent authority.  The native
         # replacement backend exists only for this live transaction.
         backend_tag="linux-renameat2",
         parent_identity=publication_authority.identity,
         ownership=displaced,
+        receipt_digest=receipt_digest_exact(
+            parent_path_bytes=receipt_parent_path_bytes_exact,
+            child_name=stage_display.name,
+            backend_tag="linux-renameat2",
+            parent_identity=publication_authority.identity,
+            ownership=displaced,
+            verified_at_isolation=True,
+            _fsencode=receipt_fsencode_exact,
+            _sha256=receipt_sha256_exact,
+            _require_parent_path_bytes=require_receipt_parent_path_bytes_exact,
+        ),
     )
     previous_orphan = orphan_new(orphan_type)
     orphan_init(
@@ -4351,8 +4976,10 @@ def _orphan_metadata(
     path: Path,
     ownership: _TreeOwnership,
     *,
+    parent_path_bytes: bytes,
     verified_at_isolation: bool = True,
 ) -> DirectoryOrphan:
+    parent_path_bytes = _bounded_directory_orphan_parent_path_bytes(parent_path_bytes)
     rebound = ownership
     if verified_at_isolation:
         rebound = authority.capture_child(
@@ -4368,11 +4995,19 @@ def _orphan_metadata(
         )
     return DirectoryOrphan(
         locator=_DirectoryOrphanLocator(
-            parent_path=authority.display_parent,
+            parent_path_bytes=parent_path_bytes,
             child_name=path.name,
             backend_tag=authority.backend_tag,
             parent_identity=authority.identity,
             ownership=rebound,
+            receipt_digest=_directory_orphan_receipt_digest(
+                parent_path_bytes=parent_path_bytes,
+                child_name=path.name,
+                backend_tag=authority.backend_tag,
+                parent_identity=authority.identity,
+                ownership=rebound,
+                verified_at_isolation=verified_at_isolation,
+            ),
         ),
         ownership_digest=rebound.digest,
         entries=rebound.entries,
@@ -4497,12 +5132,19 @@ def _simple_child_name(value: str, *, label: str) -> str:
     if (
         not isinstance(value, str)
         or not value
-        or value in {".", ".."}
+        or len(value) > _MAX_OWNERSHIP_COMPONENT_BYTES
+        or value == "."
+        or value == ".."
         or "/" in value
         or "\\" in value
         or "\x00" in value
-        or len(os.fsencode(value)) > _MAX_OWNERSHIP_COMPONENT_BYTES
     ):
+        raise ValueError(f"{label} must be one bounded file name")
+    try:
+        raw_value = os.fsencode(value)
+    except UnicodeEncodeError as exc:
+        raise ValueError(f"{label} must be one bounded file name") from exc
+    if len(raw_value) > _MAX_OWNERSHIP_COMPONENT_BYTES:
         raise ValueError(f"{label} must be one bounded file name")
     if sys.platform == "win32" and (
         value[-1] in {" ", "."}
@@ -6364,7 +7006,13 @@ def capture_directory_ownership_if_exists(
 def _ownership_token_path_bytes(value: object) -> bytes:
     """Return the exact path bytes represented by one captured token entry."""
 
-    if not isinstance(value, str) or not value or value in {".", ".."}:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_OWNERSHIP_PATH_BYTES
+        or value == "."
+        or value == ".."
+    ):
         raise RuntimeError("directory ownership token contains an invalid path")
     if "\x00" in value:
         raise RuntimeError("directory ownership token contains an invalid path")
@@ -6417,7 +7065,12 @@ def _validated_ownership_version_identity(
     device, inode, mode, size, attributes, _mtime, _ctime, link_count = identity
     expected_type = stat.S_IFDIR if kind == "directory" else stat.S_IFREG
     if (
-        device <= 0
+        any(
+            part < -_MAX_OWNERSHIP_IDENTITY_SCALAR
+            or part > _MAX_OWNERSHIP_IDENTITY_SCALAR
+            for part in identity
+        )
+        or device <= 0
         or inode <= 0
         or not 0 <= mode < 1 << 32
         or stat.S_IFMT(mode) != expected_type
@@ -6435,6 +7088,8 @@ def _validated_ownership_version_identity(
 def _validated_ownership_kind(
     value: object,
 ) -> Literal["directory", "file"]:
+    if not isinstance(value, str) or len(value) > len("directory"):
+        raise RuntimeError("directory ownership token contains an invalid entry kind")
     if value == "directory":
         return "directory"
     if value == "file":
@@ -6555,17 +7210,24 @@ def _validate_directory_ownership_token(
 ) -> dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]]:
     """Validate canonical structure and every redundant ownership-token field."""
 
+    if type(require_exact_types) is not bool:
+        raise TypeError("exact ownership type policy must be a boolean")
+    # Exact receipt validation must reject a hostile proxy by inert ``type``
+    # identity before ``isinstance`` can consult its user-controlled
+    # ``__class__`` attribute.  Legacy non-exact callers retain their existing
+    # subclass-compatible behavior.
+    if require_exact_types and type(ownership) is not _TreeOwnership:
+        raise TypeError("directory ownership token fields are not exact")
     if not isinstance(ownership, _TreeOwnership):
         raise TypeError("ownership must be a captured directory ownership token")
     if check_cancelled is not None and not callable(check_cancelled):
         raise TypeError("directory ownership cancellation check must be callable")
-    if type(require_exact_types) is not bool:
-        raise TypeError("exact ownership type policy must be a boolean")
     if require_exact_types and (
-        type(ownership) is not _TreeOwnership
-        or type(ownership.root_identity) is not tuple
+        type(ownership.root_identity) is not tuple
+        or len(ownership.root_identity) != 4
         or any(type(item) is not int for item in ownership.root_identity)
         or type(ownership.root_version_identity) is not tuple
+        or len(ownership.root_version_identity) != 8
         or any(type(item) is not int for item in ownership.root_version_identity)
         or type(ownership.digest) is not str
         or type(ownership.entries) is not int
@@ -6645,11 +7307,7 @@ def _validate_directory_ownership_token(
             or type(inventory_item[1]) is not str
         ):
             raise TypeError("directory ownership token inventory is not exact")
-        if (
-            not isinstance(inventory_item, tuple)
-            or len(inventory_item) != 2
-            or inventory_item[1] not in {"directory", "file"}
-        ):
+        if not isinstance(inventory_item, tuple) or len(inventory_item) != 2:
             raise RuntimeError("directory ownership token inventory is invalid")
         path, raw_kind = inventory_item
         kind = _validated_ownership_kind(raw_kind)
@@ -6662,6 +7320,8 @@ def _validate_directory_ownership_token(
         inventory_kinds[path] = kind
         previous_inventory = current_inventory
         metadata_bytes += 8 + len(path_bytes) + 1 + 4 + 8 + 32
+        if metadata_bytes > ownership.metadata_bytes:
+            raise RuntimeError("directory ownership token accounting is inconsistent")
         if kind == "file":
             expected_file_count += 1
         if check_cancelled is not None and index + 1 < inventory_count:
@@ -6675,6 +7335,7 @@ def _validate_directory_ownership_token(
             or type(identity_item[0]) is not str
             or type(identity_item[1]) is not str
             or type(identity_item[2]) is not tuple
+            or len(identity_item[2]) != 8
             or any(type(item) is not int for item in identity_item[2])
         ):
             raise TypeError("directory ownership token identities are not exact")
@@ -6682,6 +7343,7 @@ def _validate_directory_ownership_token(
             raise RuntimeError("directory ownership token identities are invalid")
         path, raw_kind, raw_identity = identity_item
         kind = _validated_ownership_kind(raw_kind)
+        _ownership_token_path_bytes(path)
         if path in seen_identities or inventory_kinds.get(path) != kind:
             raise RuntimeError("directory ownership token identities are inconsistent")
         identity = _validated_ownership_version_identity(
@@ -6714,6 +7376,7 @@ def _validate_directory_ownership_token(
             raise TypeError("directory ownership token file records are not exact")
         if not isinstance(record, TreeFileRecord):
             raise RuntimeError("directory ownership token file records are invalid")
+        _ownership_token_path_bytes(record.path)
         entry = entries.get(record.path)
         if entry is None or entry[0] != "file" or record.path in records:
             raise RuntimeError(
@@ -6750,6 +7413,8 @@ def _validate_directory_ownership_token(
         records[record.path] = record
         previous_record = record
         byte_count += record.size
+        if byte_count > ownership.byte_count:
+            raise RuntimeError("directory ownership token accounting is inconsistent")
         if check_cancelled is not None and index + 1 < record_count:
             check_cancelled()
     if len(records) != expected_file_count:
@@ -7196,6 +7861,7 @@ class _OwnedDirectoryIsolationOwner:
         "authority",
         "path",
         "ownership",
+        "_parent_path_bytes",
         "_candidate",
         "_orphan",
         "_pid",
@@ -7217,6 +7883,9 @@ class _OwnedDirectoryIsolationOwner:
         self.authority = authority
         self.path = lexical
         self.ownership = ownership
+        self._parent_path_bytes = _bounded_directory_orphan_parent_path_bytes(
+            os.fsencode(authority.display_parent)
+        )
         self._candidate: Path | None = None
         self._orphan: DirectoryOrphan | None = None
         self._pid = os.getpid()
@@ -7274,6 +7943,7 @@ class _OwnedDirectoryIsolationOwner:
             self.authority,
             candidate,
             self.ownership,
+            parent_path_bytes=self._parent_path_bytes,
             verified_at_isolation=verified_at_isolation,
         )
         self._orphan = orphan
@@ -7463,6 +8133,2050 @@ class _OwnedDirectoryIsolationOwner:
             raise RuntimeError("owned directory could not be isolated")
 
 
+def _require_quiescent_reclaimer_support() -> None:
+    """Require the POSIX primitives used by descriptor-bound reclamation."""
+
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
+        raise RuntimeError("quiescent directory reclamation is unsupported")
+    if not _SAFE_OWNERSHIP_DIRECTORY_FDS or not all(
+        operation in os.supports_dir_fd for operation in (os.unlink, os.rmdir)
+    ):
+        raise RuntimeError(
+            "quiescent directory reclamation requires directory-fd removal support"
+        )
+    if os.listdir not in os.supports_fd:
+        raise RuntimeError(
+            "quiescent directory reclamation requires directory-fd listing support"
+        )
+    if not callable(getattr(os, "geteuid", None)):
+        raise RuntimeError("quiescent directory ownership cannot be authenticated")
+    _require_rename_noreplace_platform()
+
+
+def _require_quiescent_reclaimer_parent(
+    authority: _PublicationAuthority,
+) -> None:
+    """Require one exact same-euid private parent without changing it."""
+
+    authority.verify_path_binding()
+    metadata = os.fstat(authority.resource)
+    if (
+        _is_link_or_reparse(metadata)
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise PermissionError(
+            "quiescent directory reclaimer parent must be a private owner-only "
+            "directory"
+        )
+    if not metadata.st_dev or not metadata.st_ino:
+        raise RuntimeError("quiescent directory reclaimer parent has no identity")
+    authority.verify_path_binding()
+
+
+def _quiescent_reclaim_binding_identity(
+    identity: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Project one captured version identity onto its namespace binding."""
+
+    if type(identity) is not tuple or len(identity) != 8:
+        raise RuntimeError("quiescent directory ownership identity is invalid")
+    return identity[:5]
+
+
+def _quiescent_reclaim_entries(
+    ownership: _TreeOwnership,
+) -> tuple[tuple[PurePosixPath, Literal["directory", "file"], tuple[int, ...]], ...]:
+    """Return the authenticated inventory in bottom-up removal order."""
+
+    validated = _validate_directory_ownership_token(
+        ownership,
+        require_exact_types=True,
+    )
+    for path, (kind, identity) in validated.items():
+        if kind == "file" and identity[-1] != 1:
+            raise RuntimeError(
+                f"quiescent directory reclaim refuses a hard-linked file: {path}"
+            )
+    entries = tuple(
+        (
+            _publication_relative_path(path),
+            kind,
+            identity,
+        )
+        for path, kind, identity in ownership.entry_identities
+    )
+    return tuple(
+        sorted(
+            entries,
+            key=lambda item: (len(item[0].parts), item[0].as_posix()),
+            reverse=True,
+        )
+    )
+
+
+@dataclass(slots=True)
+class _QuiescentDirectoryReclaimOperation:
+    """Retain one quarantine and its monotonic descriptor deletion cursor."""
+
+    authority: _PublicationAuthority
+    requested_path: Path
+    ownership: _TreeOwnership
+    isolation_owner: _OwnedDirectoryIsolationOwner | None
+    orphan: DirectoryOrphan | None = None
+    root_resources: _PosixResourceOwner = field(default_factory=_PosixResourceOwner)
+    adopted_resources: list[_PosixResourceOwner] = field(default_factory=list)
+    root_descriptor: int = -1
+    entries: tuple[
+        tuple[PurePosixPath, Literal["directory", "file"], tuple[int, ...]], ...
+    ] = ()
+    identities: dict[str, tuple[Literal["directory", "file"], tuple[int, ...]]] = field(
+        default_factory=dict
+    )
+    entry_state: tuple[int, Literal["pending", "attempted", "removed"]] = (
+        0,
+        "pending",
+    )
+    root_state: Literal["pending", "attempted", "removed", "synced"] = "pending"
+    resources_closed: bool = False
+
+    @property
+    def complete(self) -> bool:
+        return (
+            self.root_state == "synced"
+            and self.resources_closed
+            and not self.adopted_resources
+        )
+
+    def adopt_resources(self, resources: _PosixResourceOwner) -> None:
+        """Retain a local descriptor owner before it may acquire resources."""
+
+        if not any(owner is resources for owner in self.adopted_resources):
+            self.adopted_resources.append(resources)
+
+    def close_adopted_resources(self) -> None:
+        """Drain every local owner while retaining incomplete exact objects."""
+
+        primary_error: BaseException | None = None
+        for resources in tuple(self.adopted_resources):
+            try:
+                resources.close()
+            except BaseException as close_error:  # noqa: B036 - retain first
+                primary_error = _retain_first_error(
+                    primary_error,
+                    "additional quiescent local resource cleanup failed",
+                    close_error,
+                )
+        retained: list[_PosixResourceOwner] = []
+        for resources in self.adopted_resources:
+            try:
+                if not resources.closed:
+                    retained.append(resources)
+            except BaseException as probe_error:  # noqa: B036 - retain owner
+                retained.append(resources)
+                primary_error = _retain_first_error(
+                    primary_error,
+                    "quiescent local resource reconciliation also failed",
+                    probe_error,
+                )
+        self.adopted_resources = retained
+        if primary_error is not None:
+            raise primary_error
+
+    def forget_closed_resources(self, resources: _PosixResourceOwner) -> None:
+        """Drop one settled local owner without touching enclosing scopes."""
+
+        if not resources.closed:
+            raise RuntimeError("quiescent local resource owner is still active")
+        self.adopted_resources = [
+            owner for owner in self.adopted_resources if owner is not resources
+        ]
+
+    def matches_orphan(self, orphan: DirectoryOrphan) -> bool:
+        return self.orphan is orphan or (
+            self.orphan is not None
+            and orphan == self.orphan
+            and orphan.locator == self.orphan.locator
+        )
+
+    def matches_child(self, path: Path) -> bool:
+        return path == self.requested_path
+
+
+def _quiescent_directory_execution_guard(
+    callback: Callable[[], _T],
+) -> Iterator[_T]:
+    """Run one owning call while exposing interpreter-managed execution state."""
+
+    yield callback()
+
+
+@dataclass(frozen=True, slots=True)
+class _QuiescentDirectoryOuterCall:
+    """Bind one interpreter-owned public call to an inert exact token."""
+
+    _token: object = field(repr=False)
+    _guard: GeneratorType = field(repr=False)
+    _pid: int = field(default_factory=os.getpid, repr=False)
+    _thread_id: int = field(default_factory=get_ident, repr=False)
+
+    @property
+    def closed(self) -> bool:
+        return self._guard.gi_frame is None
+
+    def close(self) -> None:
+        if os.getpid() != self._pid or get_ident() != self._thread_id:
+            raise RuntimeError("quiescent directory outer call changed owner")
+        self._guard.close()
+
+
+class _QuiescentDirectoryLifecycleLease:
+    """Provide one fail-fast process-local transition boundary.
+
+    The reclaimer itself is PID-bound, so an inherited post-fork lock is never
+    reset or acquired in the child.  ``RLock._is_owned`` is used only to
+    reconcile cancellation in the native-acquire/native-release return seam;
+    ordinary recursive acquisition is rejected before acquiring the lock.
+    """
+
+    __slots__ = (
+        "_current_transition",
+        "_lock",
+        "_outer_call",
+        "_owned_probe",
+        "_pid",
+    )
+
+    def __init__(self) -> None:
+        self._lock = RLock()
+        owned_probe = getattr(self._lock, "_is_owned", None)
+        if not callable(owned_probe):
+            raise RuntimeError(
+                "quiescent directory reclaimer requires RLock ownership probing"
+            )
+        self._owned_probe = owned_probe
+        self._pid = os.getpid()
+        # The native lock protects installation.  This logical slot outlives
+        # raw release so a callback in the release/result handoff cannot start
+        # another transition before the releasing attempt has settled.
+        self._current_transition: object | None = None
+        # This outer-call capability is independent of the mutable transition
+        # slot.  It remains installed after raw release/clear and is replaced
+        # only after the interpreter closes the exact prior generator.
+        self._outer_call: _QuiescentDirectoryOuterCall | None = None
+
+    def _require_process(self) -> None:
+        if os.getpid() != self._pid:
+            raise RuntimeError(
+                "quiescent directory reclaimer lease crossed a PID boundary"
+            )
+
+    def owned_by_current_thread(self) -> bool:
+        self._require_process()
+        return bool(self._owned_probe())
+
+    def acquire_nonblocking(self) -> bool:
+        self._require_process()
+        return self._lock.acquire(blocking=False)
+
+    def transition_active(self) -> bool:
+        self._require_process()
+        return self._current_transition is not None
+
+    def current_transition(self) -> object | None:
+        self._require_process()
+        return self._current_transition
+
+    def reserve_outer_call(
+        self,
+        outer_call: _QuiescentDirectoryOuterCall,
+    ) -> None:
+        """Install one created call while this thread owns the raw RLock."""
+
+        self._require_process()
+        if not self.owned_by_current_thread():
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle lease is not held"
+            )
+        if (
+            type(outer_call) is not _QuiescentDirectoryOuterCall
+            or outer_call._pid != self._pid
+            or outer_call._thread_id != get_ident()
+            or type(outer_call._guard) is not GeneratorType
+            or outer_call._guard.gi_frame is None
+        ):
+            raise RuntimeError(
+                "quiescent directory lifecycle outer call is not reservable"
+            )
+        active_call = self._outer_call
+        if (
+            type(active_call) is _QuiescentDirectoryOuterCall
+            and active_call._guard.gi_frame is not None
+        ):
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        current = self._current_transition
+        if current is not None and (
+            type(current) is not _QuiescentDirectoryLifecycleAttempt
+            or type(current._outer_call) is not _QuiescentDirectoryOuterCall
+            or current._outer_call._guard.gi_frame is not None
+            or current._pid != outer_call._pid
+            or current._thread_id != outer_call._thread_id
+        ):
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        self._outer_call = outer_call
+
+    def require_outer_call(
+        self,
+        outer_call: _QuiescentDirectoryOuterCall,
+    ) -> None:
+        """Require the exact reserved call while its generator is executing."""
+
+        self._require_process()
+        if (
+            type(outer_call) is not _QuiescentDirectoryOuterCall
+            or self._outer_call is not outer_call
+            or outer_call._pid != self._pid
+            or outer_call._thread_id != get_ident()
+            or type(outer_call._guard) is not GeneratorType
+            or not outer_call._guard.gi_running
+        ):
+            raise RuntimeError("quiescent directory lifecycle outer call is not active")
+
+    def owns_transition(self, attempt: object) -> bool:
+        self._require_process()
+        return self._current_transition is attempt
+
+    def install_transition(
+        self,
+        attempt: object,
+        token: object,
+    ) -> None:
+        self._require_process()
+        if not self.owned_by_current_thread():
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle lease is not held"
+            )
+        outer_call = self._outer_call
+        if (
+            type(outer_call) is not _QuiescentDirectoryOuterCall
+            or outer_call._token is not token
+            or outer_call._pid != self._pid
+            or outer_call._thread_id != get_ident()
+            or not outer_call._guard.gi_running
+        ):
+            raise RuntimeError("quiescent directory lifecycle outer call is not active")
+        if self._current_transition is not None:
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        self._current_transition = attempt
+
+    def clear_transition(self, attempt: object) -> None:
+        self._require_process()
+        current = self._current_transition
+        if current is None:
+            return
+        if current is not attempt:
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition ownership changed"
+            )
+        self._current_transition = None
+
+    def release(self) -> None:
+        self._require_process()
+        if not self.owned_by_current_thread():
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle lease ownership changed"
+            )
+        self._lock.release()
+
+    def release_admission(self) -> None:
+        """Release exactly one outer-call reservation acquisition depth."""
+
+        self._require_process()
+        if not self.owned_by_current_thread():
+            raise RuntimeError(
+                "quiescent directory outer-call reservation ownership changed"
+            )
+        self._lock.release()
+
+
+@dataclass(slots=True)
+class _QuiescentDirectoryOuterCallReservation:
+    """Own exactly one outer-call compare/install RLock transaction."""
+
+    _lease: _QuiescentDirectoryLifecycleLease = field(repr=False)
+    _outer_call: _QuiescentDirectoryOuterCall = field(repr=False)
+    _recovery_attempt: _QuiescentDirectoryLifecycleAttempt | None = field(
+        default=None,
+        repr=False,
+    )
+    _pid: int = field(default_factory=os.getpid, repr=False)
+    _thread_id: int = field(default_factory=get_ident, repr=False)
+    _may_have_acquired: bool = field(default=False, repr=False)
+    _borrowed_existing_depth: bool = field(default=False, repr=False)
+    _complete: bool = field(default=False, repr=False)
+
+    @property
+    def closed(self) -> bool:
+        if os.getpid() != self._pid:
+            return False
+        if self._complete:
+            return True
+        if self._borrowed_existing_depth:
+            return False
+        if self._may_have_acquired and get_ident() == self._thread_id:
+            return not self._lease.owned_by_current_thread()
+        return False
+
+    def _reserve(self) -> None:
+        if os.getpid() != self._pid or get_ident() != self._thread_id:
+            raise RuntimeError(
+                "quiescent directory outer-call reservation changed owner"
+            )
+        if self._complete or self._may_have_acquired or self._borrowed_existing_depth:
+            raise RuntimeError("quiescent directory outer-call reservation was reused")
+        if self._lease.owned_by_current_thread():
+            current = self._lease.current_transition()
+            candidate = (
+                self._recovery_attempt
+                if self._recovery_attempt is not None
+                else current
+            )
+            if type(candidate) is not _QuiescentDirectoryLifecycleAttempt or (
+                current is not None and candidate is not current
+            ):
+                raise RuntimeError(
+                    "quiescent directory reclaimer lifecycle transition is already active"
+                )
+            if (
+                candidate._lease is not self._lease
+                or candidate._pid != self._pid
+                or candidate._thread_id != self._thread_id
+                or candidate._outer_call._guard.gi_frame is not None
+                or not candidate._may_have_acquired
+            ):
+                raise RuntimeError(
+                    "quiescent directory reclaimer lifecycle transition is already active"
+                )
+            # This is the pending attempt's existing depth, not a new admission
+            # acquisition.  Leave it for first-opcode recovery inside the guard.
+            self._borrowed_existing_depth = True
+            self._lease.reserve_outer_call(self._outer_call)
+            return
+        self._may_have_acquired = True
+        if not self._lease.acquire_nonblocking():
+            self._complete = True
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        self._lease.reserve_outer_call(self._outer_call)
+
+    def close(self) -> None:
+        if os.getpid() != self._pid or get_ident() != self._thread_id:
+            raise RuntimeError(
+                "quiescent directory outer-call reservation changed owner"
+            )
+        if self._complete or self._borrowed_existing_depth:
+            self._complete = True
+            return
+        if self._may_have_acquired and self._lease.owned_by_current_thread():
+            self._lease.release_admission()
+        self._complete = True
+
+
+def _run_quiescent_directory_outer_call(
+    lease: _QuiescentDirectoryLifecycleLease,
+    callback: Callable[[_QuiescentDirectoryOuterCall], _T],
+    *,
+    recovery_attempt: _QuiescentDirectoryLifecycleAttempt | None = None,
+) -> _T:
+    """Reserve and run one exact public call through interpreter-owned state."""
+
+    if type(lease) is not _QuiescentDirectoryLifecycleLease or not callable(callback):
+        raise TypeError("quiescent directory outer call is invalid")
+    lease._require_process()
+    outer_calls: list[_QuiescentDirectoryOuterCall] = []
+
+    def execute() -> _T:
+        outer_call = outer_calls[0]
+        lease.require_outer_call(outer_call)
+        return callback(outer_call)
+
+    guard = _quiescent_directory_execution_guard(execute)
+    outer_call = _QuiescentDirectoryOuterCall(object(), guard)
+    outer_calls.append(outer_call)
+    reservation = _QuiescentDirectoryOuterCallReservation(
+        lease,
+        outer_call,
+        recovery_attempt,
+    )
+    release_reservation = _OrderedAction(
+        label="quiescent directory outer-call reservation release also failed",
+        action=reservation.close,
+        complete=lambda: reservation.closed,
+        retry_incomplete="cancellation",
+        incomplete_owner=reservation,
+    )
+    outcome = _QuiescentDirectoryLifecycleOutcome()
+    with _QuiescentCleanupHandoffBoundary(
+        outcome,
+        (outer_call,),
+        label="quiescent directory outer-call handoff recovery",
+    ):
+        with _QuiescentCleanupHandoffBoundary(
+            outcome,
+            (outer_call,),
+            label="quiescent directory outer-call handoff recovery",
+        ):
+            try:
+                with _run_context_with_cleanup_actions((release_reservation,)):
+                    reservation._reserve()
+                return next(guard)
+            finally:
+                outer_call.close()
+
+
+@dataclass(slots=True)
+class _QuiescentDirectoryLifecycleAttempt:
+    """Own one cancellation-safe acquisition and release attempt."""
+
+    _lease: _QuiescentDirectoryLifecycleLease = field(repr=False)
+    _outer_call: _QuiescentDirectoryOuterCall = field(repr=False)
+    _pid: int = field(default_factory=os.getpid, repr=False)
+    _thread_id: int = field(default_factory=get_ident, repr=False)
+    _may_have_acquired: bool = field(default=False, repr=False)
+    _acquired: bool = field(default=False, repr=False)
+    _complete: bool = field(default=False, repr=False)
+
+    @property
+    def closed(self) -> bool:
+        if os.getpid() != self._pid:
+            return False
+        owns_transition = self._lease.owns_transition(self)
+        if self._complete and not owns_transition:
+            return True
+        if (self._acquired or self._may_have_acquired or owns_transition) and (
+            get_ident() != self._thread_id
+        ):
+            return False
+        if self._may_have_acquired and get_ident() == self._thread_id:
+            # Reconcile both native return seams: acquisition may have
+            # completed before ``acquired`` was stored, or release may have
+            # completed before ``complete`` was stored.
+            return not self._lease.owned_by_current_thread() and not owns_transition
+        return False
+
+    def _acquire(self) -> None:
+        if os.getpid() != self._pid or get_ident() != self._thread_id:
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle attempt changed owner"
+            )
+        if self._complete or self._acquired or self._may_have_acquired:
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle attempt was reused"
+            )
+        if self._lease.transition_active():
+            self._complete = True
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        if self._lease.owned_by_current_thread():
+            self._complete = True
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        # Publish permission to reconcile the raw RLock return before calling
+        # into the native primitive.  A failed concurrent acquire owns nothing;
+        # cleanup observes that this thread does not own the lease.
+        self._may_have_acquired = True
+        acquired = self._lease.acquire_nonblocking()
+        if not acquired:
+            self._complete = True
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        self._acquired = True
+        # Install while the native lock is still held.  Another thread either
+        # loses that lock or observes this slot; a recursive caller observes
+        # one of the two as well.  Cleanup can reconcile interruption after
+        # this store by comparing the exact attempt identity.
+        self._lease.install_transition(self, self._outer_call._token)
+
+    def _close_unprotected(self) -> None:
+        """Settle the exact lease after the caller authenticates its boundary."""
+
+        if os.getpid() != self._pid:
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle attempt crossed a PID boundary"
+            )
+        owns_transition = self._lease.owns_transition(self)
+        if self._complete and not owns_transition:
+            return
+        current_thread = get_ident()
+        if (self._acquired or self._may_have_acquired or owns_transition) and (
+            current_thread != self._thread_id
+        ):
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle attempt changed thread"
+            )
+        if (
+            self._may_have_acquired
+            and current_thread == self._thread_id
+            and self._lease.owned_by_current_thread()
+        ):
+            self._lease.release()
+        # Publish raw release settlement before clearing the logical slot.  If
+        # cancellation lands between these stores, ``closed`` remains false
+        # while the exact attempt is current and an installed cleanup plan can
+        # finish the clear.  Once the slot is absent, both operation and lease
+        # ownership have settled; only nonblocking result delivery remains.
+        self._complete = True
+        if owns_transition:
+            self._lease.clear_transition(self)
+
+    def _close_borrowed(self, token: object) -> None:
+        """Settle only through the exact currently executing outer-call token."""
+
+        active_call = self._lease._outer_call
+        if (
+            type(active_call) is not _QuiescentDirectoryOuterCall
+            or active_call._token is not token
+            or active_call._pid != self._pid
+            or active_call._thread_id != get_ident()
+            or not active_call._guard.gi_running
+        ):
+            raise RuntimeError(
+                "quiescent directory lifecycle settlement token is not active"
+            )
+        self._close_unprotected()
+
+    def close(self) -> None:
+        """Settle a delivered owner through a fresh exact public admission."""
+
+        if os.getpid() != self._pid:
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle attempt crossed a PID boundary"
+            )
+        _run_quiescent_directory_outer_call(
+            self._lease,
+            lambda outer_call: self._close_borrowed(outer_call._token),
+            recovery_attempt=self,
+        )
+
+
+_QUIESCENT_DIRECTORY_LIFECYCLE_RESULT_MISSING = object()
+
+
+@dataclass(slots=True)
+class _QuiescentDirectoryLifecycleOutcome:
+    """Carry a callback result or exact failure beyond lease settlement."""
+
+    value: object = _QUIESCENT_DIRECTORY_LIFECYCLE_RESULT_MISSING
+    error: BaseException | None = None
+    settlement_error: BaseException | None = None
+
+
+def _run_quiescent_settlement_action(
+    action: Callable[[], None],
+    outcome: _QuiescentDirectoryLifecycleOutcome,
+) -> None:
+    """Run cleanup while publishing its exact settlement for handoff."""
+
+    try:
+        action()
+    except BaseException as settlement_error:  # noqa: B036 - retain exact error
+        outcome.settlement_error = settlement_error
+        raise
+
+
+@final
+class _QuiescentCleanupHandoffBoundary:
+    """Publish top-level owners and exact errors at an owning call boundary."""
+
+    __slots__ = (
+        "_ambient_error",
+        "_ambient_traceback",
+        "_label",
+        "_mandatory_owners",
+        "_outcome",
+    )
+
+    def __init__(
+        self,
+        outcome: _QuiescentDirectoryLifecycleOutcome,
+        mandatory_owners: tuple[object, ...],
+        *,
+        label: str,
+    ) -> None:
+        self._outcome = outcome
+        self._mandatory_owners = mandatory_owners
+        self._label = label
+        self._ambient_error = sys.exc_info()[1]
+        self._ambient_traceback = (
+            None
+            if self._ambient_error is None
+            else _publication_exception_traceback(self._ambient_error)
+        )
+
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        active_error: BaseException | None,
+        active_traceback: object,
+    ) -> bool:
+        if active_error is None or (
+            active_error is self._ambient_error
+            and active_traceback is self._ambient_traceback
+        ):
+            return False
+        # Snapshot both raw links before callback-controlled exception metadata
+        # is touched.  On Python 3.10 the diagnostic fallback for a refused
+        # owner store may otherwise replace an implicit prior with that exact
+        # metadata failure, whose own context points back to ``active_error``.
+        original_cause = _publication_exception_cause(active_error)
+        original_context = _publication_exception_context(active_error)
+        original_prior = (
+            original_cause if original_cause is not None else original_context
+        )
+        mandatory_owners = tuple(
+            owner
+            for owner in self._mandatory_owners
+            if not _publication_cleanup_owner_is_closed(owner)
+        )
+        transfer_failures: list[BaseException] = []
+        mandatory_transferred = not mandatory_owners
+        if mandatory_owners:
+            mandatory_transferred = _ensure_publication_cleanup_owners(
+                active_error,
+                mandatory_owners,
+                transfer_failures=transfer_failures,
+            )
+        post_transfer_cause = _publication_exception_cause(active_error)
+        post_transfer_context = _publication_exception_context(active_error)
+        operation_error = self._outcome.error
+        distinct_operation = (
+            operation_error is not None and active_error is not operation_error
+        )
+        if not mandatory_transferred or distinct_operation:
+            carrier_prior = original_prior
+            secondary = operation_error
+            if not distinct_operation:
+                # The active primary cannot also be the carrier's secondary:
+                # raising it from that carrier would create a cause cycle.
+                secondary = RuntimeError(
+                    "quiescent cleanup owner handoff metadata was rejected"
+                )
+            else:
+                assert operation_error is not None
+                secondary = operation_error
+            settlement_error = self._outcome.settlement_error
+            if settlement_error is not None and settlement_error is not active_error:
+                secondary = settlement_error
+                if distinct_operation:
+                    if (
+                        original_prior is not None
+                        and original_prior is not operation_error
+                    ):
+                        carrier_prior = RuntimeError(
+                            f"{self._label} prior operation recovery",
+                            operation_error,
+                            original_prior,
+                        )
+                        BaseException.__setattr__(
+                            carrier_prior,
+                            "__cause__",
+                            operation_error,
+                        )
+                        BaseException.__setattr__(
+                            carrier_prior,
+                            "__context__",
+                            original_prior,
+                        )
+                    else:
+                        carrier_prior = operation_error
+
+            metadata_links: list[BaseException] = []
+            for candidate in (
+                *transfer_failures,
+                post_transfer_cause,
+                post_transfer_context,
+            ):
+                if (
+                    candidate is not None
+                    and candidate is not active_error
+                    and candidate is not original_cause
+                    and candidate is not original_context
+                    and not any(existing is candidate for existing in metadata_links)
+                ):
+                    metadata_links.append(candidate)
+            retained_links: list[BaseException] = []
+            for candidate in (
+                carrier_prior,
+                original_cause,
+                original_context,
+                *metadata_links,
+            ):
+                if candidate is not None and not any(
+                    existing is candidate for existing in retained_links
+                ):
+                    retained_links.append(candidate)
+            retained_prior: BaseException | None = carrier_prior
+            if len(retained_links) > 1 or (
+                retained_links and retained_links[0] is not carrier_prior
+            ):
+                retained_prior = RuntimeError(
+                    f"{self._label} retained exception recovery",
+                    *retained_links,
+                )
+
+            secondary_is_safe = _publication_exception_link_is_acyclic(
+                secondary,
+                active_error,
+            )
+            prior_is_safe = _publication_exception_link_is_acyclic(
+                carrier_prior,
+                active_error,
+            )
+            metadata_is_safe = all(
+                _publication_exception_link_is_acyclic(candidate, active_error)
+                for candidate in metadata_links
+            )
+            cause_link = secondary
+            if metadata_links or not secondary_is_safe or not metadata_is_safe:
+                # Keep every unsafe error exact but args-only.  The wrapper has
+                # no raw links of its own, so making it the carrier cause cannot
+                # close a cause/context path back to the active primary.
+                cause_link = RuntimeError(
+                    f"{self._label} inert diagnostic recovery",
+                    secondary,
+                    retained_prior,
+                    *metadata_links,
+                )
+            if not prior_is_safe and cause_link is secondary:
+                cause_link = RuntimeError(
+                    f"{self._label} inert diagnostic recovery",
+                    secondary,
+                    retained_prior,
+                )
+            # An implicit context already remains on ``active_error``.  Do not
+            # mirror that same edge onto the carrier: a later enclosing
+            # adjudicator may legitimately make the contextual error primary,
+            # which would reverse the edge and close a cycle.  Explicit causes
+            # are overwritten by ``raise ... from carrier`` and therefore need
+            # this carrier link; synthesized/distinct recovery bundles do too.
+            context_link = (
+                carrier_prior
+                if prior_is_safe
+                and (
+                    original_cause is not None or carrier_prior is not original_context
+                )
+                else None
+            )
+            carrier = _publication_cleanup_owner_carrier_with_links(
+                mandatory_owners,
+                secondary,
+                retained_prior,
+                cause_link,
+                context_link,
+                label=self._label,
+            )
+            raise active_error from carrier
+        return False
+
+
+def _capture_quiescent_directory_lifecycle_outcome(
+    callback: Callable[[], _T],
+    outcome: _QuiescentDirectoryLifecycleOutcome,
+) -> None:
+    """Capture callback state without unwinding through the lifecycle lease."""
+
+    try:
+        outcome.value = callback()
+    except BaseException as error:  # noqa: B036 - adjudicate after release
+        outcome.error = error
+
+
+def _quiescent_directory_lifecycle_operation_context(
+    error: BaseException,
+) -> BaseException | None:
+    """Recover an operation error interrupted at its outcome-store handler."""
+
+    try:
+        context = vars(BaseException)["__context__"].__get__(error, type(error))
+    except BaseException:  # noqa: B036 - inspection cannot replace failure
+        return None
+    if not issubclass(type(context), BaseException):
+        return None
+    try:
+        error_traceback = vars(BaseException)["__traceback__"].__get__(
+            error,
+            type(error),
+        )
+        capture_frames = []
+        while error_traceback is not None:
+            frame = error_traceback.tb_frame
+            if frame.f_code is _capture_quiescent_directory_lifecycle_outcome.__code__:
+                capture_frames.append(frame)
+            error_traceback = error_traceback.tb_next
+        context_traceback = vars(BaseException)["__traceback__"].__get__(
+            context,
+            type(context),
+        )
+        while context_traceback is not None:
+            frame = context_traceback.tb_frame
+            if any(frame is capture_frame for capture_frame in capture_frames):
+                return context
+            context_traceback = context_traceback.tb_next
+    except BaseException:  # noqa: B036 - inspection cannot replace failure
+        return None
+    return None
+
+
+def _quiescent_reclaim_parent_descriptor(
+    operation: _QuiescentDirectoryReclaimOperation,
+    relative: PurePosixPath,
+    callback: Callable[[int], _T],
+) -> _T:
+    """Open and authenticate one entry's parent through the retained root."""
+
+    if operation.root_descriptor < 0:
+        raise RuntimeError("quiescent directory reclaim root is not open")
+    resources = _PosixResourceOwner()
+    operation.adopt_resources(resources)
+
+    def run() -> _T:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+        descriptor = resources.duplicate(operation.root_descriptor)
+        if _directory_inode_identity(os.fstat(descriptor)) != (
+            operation.ownership.root_identity
+        ):
+            raise RuntimeError("quiescent directory reclaim root changed")
+        prefix: list[str] = []
+        for part in relative.parts[:-1]:
+            prefix.append(part)
+            expected = operation.identities.get("/".join(prefix))
+            if expected is None or expected[0] != "directory":
+                raise RuntimeError(
+                    "quiescent directory token lacks a traversal directory"
+                )
+            metadata = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            if (
+                _is_link_or_reparse(metadata)
+                or not stat.S_ISDIR(metadata.st_mode)
+                or _ownership_binding_identity(metadata)
+                != _quiescent_reclaim_binding_identity(expected[1])
+            ):
+                raise RuntimeError("quiescent directory traversal binding changed")
+            child = resources.open(part, flags, dir_fd=descriptor)
+            opened = os.fstat(child)
+            if _ownership_binding_identity(opened) != (
+                _quiescent_reclaim_binding_identity(expected[1])
+            ):
+                raise RuntimeError("quiescent directory traversal authority changed")
+            descriptor = child
+        return callback(descriptor)
+
+    result = _run_quiescent_directory_resource_scope(
+        resources,
+        run,
+        label="quiescent directory traversal cleanup also failed",
+    )
+    operation.forget_closed_resources(resources)
+    return result
+
+
+def _run_quiescent_directory_resource_scope(
+    resources: _PosixResourceOwner,
+    callback: Callable[[], _T],
+    *,
+    label: str,
+) -> _T:
+    """Run one local resource scope behind an owning delivery boundary."""
+
+    outcome = _QuiescentDirectoryLifecycleOutcome()
+    # The inner guard owns every opcode in the implementation, including its
+    # settlement-handler entry and final delivery.  The outer guard covers an
+    # interruption in the inner guard itself.  Neither guard explicitly
+    # re-raises the primary, so its identity and existing cause remain intact.
+    with _QuiescentCleanupHandoffBoundary(
+        outcome,
+        (resources,),
+        label="quiescent directory resource handoff recovery",
+    ):
+        with _QuiescentCleanupHandoffBoundary(
+            outcome,
+            (resources,),
+            label="quiescent directory resource handoff recovery",
+        ):
+            return _run_quiescent_directory_resource_scope_unprotected(
+                resources,
+                callback,
+                outcome,
+                label=label,
+            )
+
+
+def _run_quiescent_directory_resource_scope_unprotected(
+    resources: _PosixResourceOwner,
+    callback: Callable[[], _T],
+    outcome: _QuiescentDirectoryLifecycleOutcome,
+    *,
+    label: str,
+) -> _T:
+    """Run descriptor work behind two preinstalled cleanup boundaries.
+
+    The outer plan covers interruption at the inner cleanup runner's own
+    handler, call, or return boundary.  Callback failures are captured before
+    either plan unwinds so a cleanup interruption cannot replace their exact
+    identity.  Persistent cleanup failure remains caller-retryable through the
+    exception's publication cleanup owners.
+    """
+
+    operation_error: BaseException | None = None
+    delivery_carrier: RuntimeError | None = None
+    cleanup = _OrderedAction(
+        label=label,
+        action=partial(
+            _run_quiescent_settlement_action,
+            resources.close,
+            outcome,
+        ),
+        complete=lambda: resources.closed,
+        retry_incomplete="cancellation",
+        incomplete_owner=resources,
+    )
+    try:
+        with _run_context_with_cleanup_actions((cleanup,)):
+            try:
+                with _run_context_with_cleanup_actions((cleanup,)):
+                    _capture_quiescent_directory_lifecycle_outcome(
+                        callback,
+                        outcome,
+                    )
+            except BaseException as primary_error:  # noqa: B036 - close exact fds
+                try:
+                    resources.close()
+                except BaseException as cleanup_error:  # noqa: B036 - keep primary
+                    _annotate_secondary_error(
+                        primary_error,
+                        label,
+                        cleanup_error,
+                    )
+                    _attach_publication_cleanup_owner(primary_error, resources)
+                raise
+    except BaseException as settlement_error:  # noqa: B036 - recover exact callback
+        try:
+            operation_error = outcome.error
+            if operation_error is None:
+                operation_error = _quiescent_directory_lifecycle_operation_context(
+                    settlement_error
+                )
+            if operation_error is not None and operation_error is not settlement_error:
+                prior_link, prior_was_explicit = _publication_exception_prior_link(
+                    operation_error
+                )
+                mandatory_transferred = False
+                inherited_transferred = False
+                try:
+                    mandatory_transferred = _ensure_publication_cleanup_owners(
+                        operation_error,
+                        (resources,),
+                    )
+                except BaseException as transfer_error:  # noqa: B036 - retry transfer
+                    _annotate_secondary_error(
+                        operation_error,
+                        "quiescent directory local owner transfer also failed",
+                        transfer_error,
+                    )
+                    mandatory_transferred = _ensure_publication_cleanup_owners(
+                        operation_error,
+                        (resources,),
+                    )
+                try:
+                    inherited_transferred = _inherit_publication_cleanup_owners(
+                        operation_error,
+                        settlement_error,
+                    )
+                except BaseException as inheritance_error:  # noqa: B036
+                    _annotate_secondary_error(
+                        operation_error,
+                        "quiescent directory resource owner transfer also failed",
+                        inheritance_error,
+                    )
+                    inherited_transferred = _inherit_publication_cleanup_owners(
+                        operation_error,
+                        settlement_error,
+                    )
+                _annotate_secondary_error(
+                    operation_error,
+                    label,
+                    settlement_error,
+                )
+                if (
+                    not mandatory_transferred
+                    or not inherited_transferred
+                    or (prior_link is not None and not prior_was_explicit)
+                ):
+                    delivery_carrier = _publication_cleanup_owner_carrier(
+                        (resources,),
+                        settlement_error,
+                        prior_link,
+                        forbidden=operation_error,
+                        label="quiescent directory resource cleanup recovery",
+                    )
+        except BaseException as handoff_error:  # noqa: B036 - protect entry/tail
+            recovered_operation_error = outcome.error
+            if recovered_operation_error is None:
+                recovered_operation_error = (
+                    _quiescent_directory_lifecycle_operation_context(settlement_error)
+                )
+            _raise_quiescent_cleanup_handoff_boundary(
+                handoff_error,
+                settlement_error,
+                (resources,),
+                recovered_operation_error,
+                label="quiescent directory resource handoff recovery",
+            )
+        if operation_error is not None and operation_error is not settlement_error:
+            if delivery_carrier is not None:
+                raise operation_error from delivery_carrier
+            # Keep an explicit operation cause intact.  The settlement error
+            # is already retained diagnostically and as implicit context.
+            raise operation_error
+        raise settlement_error
+    if outcome.error is not None:
+        raise outcome.error
+    if outcome.value is _QUIESCENT_DIRECTORY_LIFECYCLE_RESULT_MISSING:
+        raise RuntimeError("quiescent directory resource callback did not return")
+    return outcome.value  # type: ignore[return-value]
+
+
+def _require_quiescent_directory_empty(descriptor: int, *, label: str) -> None:
+    """Fail closed if an expected-empty descriptor has any child names.
+
+    The authenticated inventory bounds every tracked child, and reclamation
+    visits this check only after those children were removed.  ``os.listdir``
+    uses the retained descriptor without creating a Python iterator that could
+    leak its own duplicate at a context-finalizer boundary.  The API's declared
+    quiescence excludes an adversarial writer manufacturing an unbounded set of
+    new names during this final check; any observed name still fails closed.
+    """
+
+    if os.listdir(descriptor):
+        raise RuntimeError(label)
+
+
+def _quiescent_reclaim_entry(
+    operation: _QuiescentDirectoryReclaimOperation,
+) -> None:
+    """Remove or reconcile one authenticated inventory entry and sync its parent."""
+
+    entry_index, phase = operation.entry_state
+    relative, kind, expected_identity = operation.entries[entry_index]
+
+    def reclaim(parent: int) -> None:
+        if phase == "removed":
+            os.fsync(parent)
+            operation.entry_state = (entry_index + 1, "pending")
+            return
+        try:
+            metadata = os.stat(
+                relative.name,
+                dir_fd=parent,
+                follow_symlinks=False,
+            )
+        except FileNotFoundError as exc:
+            if phase != "attempted":
+                raise RuntimeError(
+                    "quiescent directory entry disappeared before reclamation"
+                ) from exc
+            operation.entry_state = (entry_index, "removed")
+            return
+        if _is_link_or_reparse(metadata):
+            raise RuntimeError("quiescent directory entry became a link")
+        expected_type = stat.S_IFDIR if kind == "directory" else stat.S_IFREG
+        if stat.S_IFMT(metadata.st_mode) != expected_type:
+            raise RuntimeError("quiescent directory entry changed type")
+        observed_identity = (
+            _ownership_binding_identity(metadata)
+            if kind == "directory"
+            else _ownership_version_identity(metadata)
+        )
+        expected = (
+            _quiescent_reclaim_binding_identity(expected_identity)
+            if kind == "directory"
+            else expected_identity
+        )
+        if observed_identity != expected:
+            raise RuntimeError("quiescent directory entry identity changed")
+        if kind == "directory":
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+            resources = _PosixResourceOwner()
+            operation.adopt_resources(resources)
+
+            def authenticate_child() -> None:
+                child = resources.open(relative.name, flags, dir_fd=parent)
+                if _ownership_binding_identity(os.fstat(child)) != expected:
+                    raise RuntimeError("quiescent directory child authority changed")
+                _require_quiescent_directory_empty(
+                    child,
+                    label="quiescent directory contains an untracked entry",
+                )
+
+            _run_quiescent_directory_resource_scope(
+                resources,
+                authenticate_child,
+                label="quiescent directory child cleanup also failed",
+            )
+            operation.forget_closed_resources(resources)
+        operation.entry_state = (entry_index, "attempted")
+        try:
+            if kind == "directory":
+                os.rmdir(relative.name, dir_fd=parent)
+            else:
+                os.unlink(relative.name, dir_fd=parent)
+        except BaseException as removal_error:  # noqa: B036 - reconcile syscall
+            try:
+                rebound = os.stat(
+                    relative.name,
+                    dir_fd=parent,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                operation.entry_state = (entry_index, "removed")
+            except BaseException as reconciliation_error:  # noqa: B036
+                _annotate_secondary_error(
+                    removal_error,
+                    "quiescent directory entry removal reconciliation also failed",
+                    reconciliation_error,
+                )
+            else:
+                rebound_identity = (
+                    _ownership_binding_identity(rebound)
+                    if kind == "directory"
+                    else _ownership_version_identity(rebound)
+                )
+                if rebound_identity != expected:
+                    _annotate_secondary_error(
+                        removal_error,
+                        "quiescent directory entry changed after failed removal",
+                        RuntimeError("quiescent directory entry identity changed"),
+                    )
+            raise
+        operation.entry_state = (entry_index, "removed")
+
+    _quiescent_reclaim_parent_descriptor(operation, relative, reclaim)
+
+
+def _quiescent_reclaim_root(
+    operation: _QuiescentDirectoryReclaimOperation,
+) -> None:
+    """Remove or reconcile the quarantined root and durably sync its parent."""
+
+    orphan = operation.orphan
+    if orphan is None or operation.root_descriptor < 0:
+        raise RuntimeError("quiescent directory reclaim quarantine is incomplete")
+    authority = operation.authority
+    phase = operation.root_state
+    if phase == "synced":
+        return
+    if phase == "removed":
+        authority.sync_parent()
+        authority.verify_path_binding()
+        operation.root_state = "synced"
+        return
+    opened = os.fstat(operation.root_descriptor)
+    if _directory_inode_identity(opened) != operation.ownership.root_identity:
+        raise RuntimeError("quiescent directory reclaim root authority changed")
+    _require_quiescent_directory_empty(
+        operation.root_descriptor,
+        label="quiescent directory reclaim root is not empty",
+    )
+    try:
+        metadata = authority.child_metadata(
+            orphan.path.name,
+            path=orphan.path,
+            label="quiescent directory reclaim root",
+        )
+    except ValueError as exc:
+        raise RuntimeError("quiescent directory reclaim root changed") from exc
+    if metadata is None:
+        if phase != "attempted":
+            raise RuntimeError(
+                "quiescent directory reclaim root disappeared before removal"
+            )
+        operation.root_state = "removed"
+        return
+    if _directory_inode_identity(metadata) != operation.ownership.root_identity:
+        raise RuntimeError("quiescent directory reclaim root binding changed")
+    operation.root_state = "attempted"
+    try:
+        os.rmdir(orphan.path.name, dir_fd=authority.resource)
+    except BaseException as removal_error:  # noqa: B036 - reconcile syscall
+        try:
+            rebound = authority.child_metadata(
+                orphan.path.name,
+                path=orphan.path,
+                label="quiescent directory reclaim root",
+            )
+        except BaseException as reconciliation_error:  # noqa: B036
+            _annotate_secondary_error(
+                removal_error,
+                "quiescent directory root removal reconciliation also failed",
+                reconciliation_error,
+            )
+        else:
+            if rebound is None:
+                operation.root_state = "removed"
+            elif (
+                _directory_inode_identity(rebound) != operation.ownership.root_identity
+            ):
+                _annotate_secondary_error(
+                    removal_error,
+                    "quiescent directory root changed after failed removal",
+                    RuntimeError("quiescent directory reclaim root binding changed"),
+                )
+        raise
+    operation.root_state = "removed"
+
+
+@final
+class QuiescentDirectoryReclaimer:
+    """Reclaim exact trees inside one caller-guaranteed quiescent namespace.
+
+    The parent must be a private ``0700`` directory owned by the current
+    effective UID.  The class pins that parent's exact identity, but it does
+    not acquire a cross-process lease: callers are responsible for excluding
+    every cooperative writer for the complete lifetime of this object.
+    Instances are PID-bound and must be closed before ``fork`` or constructed
+    afterward; an inherited child cannot use or close the parent's retained
+    descriptors.  Recovery of an unsettled native-lock handoff is likewise
+    limited to the originating thread after its owning public call has stopped
+    executing.
+
+    ``reclaim_orphan`` authenticates an existing verified isolation receipt
+    and treats absence of that exact receipted child as idempotent completion
+    only after synchronizing and rechecking its parent authority.
+    ``reclaim_child`` instead grants cleanup authority from the caller's exact
+    name under this trusted-quiescent boundary; an absent generic child simply
+    returns ``False`` and carries no proof of earlier cleanup.  A present
+    generic child is freshly captured and moved no-replace into an authenticated
+    orphan before descriptor-bound removal begins.
+
+    Both reclaim methods return ``True`` after a present tree is fully removed
+    and its parent is synchronized.  An already-absent exact receipt also
+    returns ``True`` as idempotent completion; only an absent generic name
+    returns ``False``.  An interrupted operation remains installed on this
+    object; :meth:`retry` resumes it, and :meth:`close` must settle it before
+    releasing authority.  Recursive and concurrent lifecycle transitions fail
+    before they may inspect or change that installed operation.
+
+    This fail-fast boundary covers the supported public reclaimer methods and
+    the ``closed``/``close()`` protocol on a published cleanup owner. Handed
+    owners expose no normal-name path to their lease, transition, token, or
+    execution guard. A suspended outer-call owner is published only after its
+    lifecycle and operation state have settled, so closing it may admit the
+    next call. This is not a same-process Python sandbox or authority for
+    callers to inspect or mutate underscore-prefixed implementation state.
+    """
+
+    def __init__(
+        self,
+        parent: Path,
+        *,
+        expected_parent_identity: tuple[int, ...],
+    ) -> None:
+        if type(self) is not QuiescentDirectoryReclaimer:
+            raise TypeError("quiescent directory reclaimer cannot be subclassed")
+        if type(parent) is not type(Path()):
+            raise TypeError(
+                "quiescent directory reclaimer parent must be an exact Path"
+            )
+        if (
+            type(expected_parent_identity) is not tuple
+            or len(expected_parent_identity) != 4
+            or any(type(value) is not int for value in expected_parent_identity)
+        ):
+            raise TypeError("quiescent directory reclaimer parent identity is invalid")
+        _require_quiescent_reclaimer_support()
+        lexical = lexical_directory_path(parent)
+        self._parent = lexical
+        self._expected_parent_identity = tuple(expected_parent_identity)
+        self._owner_pid = os.getpid()
+        self._lifecycle_lease = _QuiescentDirectoryLifecycleLease()
+        self._authority_owner = _PublicationAuthorityOwner()
+        self._active: _QuiescentDirectoryReclaimOperation | None = None
+        self._closed = False
+        try:
+            authority = _open_publication_authority(
+                lexical,
+                parent_resource=None,
+                expected_parent_identity=self._expected_parent_identity,
+                authority_owner=self._authority_owner,
+            )
+            if authority.backend_tag not in {
+                "linux-renameat2",
+                "darwin-renameatx-np",
+            }:
+                raise RuntimeError(
+                    "quiescent directory reclaimer requires a POSIX authority"
+                )
+            _require_quiescent_reclaimer_parent(authority)
+        except BaseException as error:  # noqa: B036 - retain exact authority
+            self._authority_owner.close_after_error(error)
+            raise
+
+    @property
+    def closed(self) -> bool:
+        """Return whether active reclamation and parent authority are settled."""
+
+        return (
+            self._closed
+            and self._active is None
+            and _publication_authority_owner_released(self._authority_owner)
+            and not self._lifecycle_lease.transition_active()
+        )
+
+    def _require_process(self) -> None:
+        if os.getpid() != self._owner_pid:
+            raise RuntimeError("quiescent directory reclaimer crossed a PID boundary")
+
+    def _require_open(self) -> _PublicationAuthority:
+        self._require_process()
+        if self._closed:
+            raise RuntimeError("quiescent directory reclaimer is closed")
+        authority = self._authority_owner.authority
+        if authority is None:
+            raise RuntimeError("quiescent directory reclaimer authority is closed")
+        _require_quiescent_reclaimer_parent(authority)
+        return authority
+
+    @staticmethod
+    def _require_orphan(
+        authority: _PublicationAuthority,
+        orphan: DirectoryOrphan,
+    ) -> _TreeOwnership:
+        if type(orphan) is not DirectoryOrphan:
+            raise TypeError("quiescent directory orphan must use the exact receipt")
+        locator = orphan.locator
+        if type(locator) is not _DirectoryOrphanLocator:
+            raise TypeError("quiescent directory orphan locator is invalid")
+        ownership = locator.ownership
+        if (
+            type(locator.parent_path_bytes) is not bytes
+            or type(locator.child_name) is not str
+            or type(locator.backend_tag) is not str
+            or type(locator.parent_identity) is not tuple
+            or len(locator.parent_identity) != 4
+            or any(type(value) is not int for value in locator.parent_identity)
+            or type(locator.receipt_digest) is not str
+            or type(orphan.ownership_digest) is not str
+            or type(orphan.entries) is not int
+            or type(orphan.byte_count) is not int
+            or type(orphan.verified_at_isolation) is not bool
+        ):
+            raise TypeError("quiescent directory orphan fields are invalid")
+        parent_path_bytes = _bounded_directory_orphan_parent_path_bytes(
+            locator.parent_path_bytes
+        )
+        _simple_child_name(locator.child_name, label="quiescent directory orphan")
+        _validate_directory_ownership_token(
+            ownership,
+            require_exact_types=True,
+        )
+        if (
+            parent_path_bytes
+            != _bounded_directory_orphan_parent_path_bytes(
+                os.fsencode(authority.display_parent)
+            )
+            or locator.parent_identity != authority.identity
+            or locator.backend_tag != authority.backend_tag
+        ):
+            raise ValueError("quiescent directory orphan uses another parent authority")
+        if (
+            orphan.ownership_digest != ownership.digest
+            or orphan.entries != ownership.entries
+            or orphan.byte_count != ownership.byte_count
+        ):
+            raise RuntimeError("quiescent directory orphan metadata changed")
+        expected_receipt_digest = _directory_orphan_receipt_digest(
+            parent_path_bytes=parent_path_bytes,
+            child_name=locator.child_name,
+            backend_tag=locator.backend_tag,
+            parent_identity=locator.parent_identity,
+            ownership=ownership,
+            verified_at_isolation=orphan.verified_at_isolation,
+        )
+        if locator.receipt_digest != expected_receipt_digest:
+            raise RuntimeError("quiescent directory orphan receipt binding changed")
+        if orphan.verified_at_isolation is not True:
+            raise RuntimeError(
+                "quiescent directory orphan was not verified at isolation"
+            )
+        _quiescent_reclaim_entries(ownership)
+        return ownership
+
+    @staticmethod
+    def _require_owned_child(
+        authority: _PublicationAuthority,
+        path: Path,
+        metadata: object,
+    ) -> None:
+        parent = os.fstat(authority.resource)
+        if (
+            _is_link_or_reparse(metadata)
+            or not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_dev != parent.st_dev
+            or _path_is_mount_point(path)
+        ):
+            raise PermissionError(
+                "quiescent directory reclaim child is not an owned local directory"
+            )
+
+    @staticmethod
+    def _child_metadata(
+        authority: _PublicationAuthority,
+        path: Path,
+    ) -> object | None:
+        authority.verify_path_binding()
+        metadata = authority.child_metadata(
+            path.name,
+            path=path,
+            label="quiescent directory reclaim child",
+        )
+        authority.verify_path_binding()
+        return metadata
+
+    def _install_operation(
+        self,
+        operation: _QuiescentDirectoryReclaimOperation,
+    ) -> None:
+        if self._active is not None:
+            raise RuntimeError("quiescent directory reclaimer is already active")
+        self._active = operation
+
+    def _prepare_root(
+        self,
+        operation: _QuiescentDirectoryReclaimOperation,
+    ) -> None:
+        if operation.orphan is None:
+            isolation_owner = operation.isolation_owner
+            if isolation_owner is None:
+                raise RuntimeError("quiescent directory quarantine is unavailable")
+            orphan = isolation_owner.isolate()
+            if orphan is None:
+                raise RuntimeError("quiescent directory could not be quarantined")
+            operation.orphan = orphan
+            operation.ownership = orphan.locator.ownership
+        orphan = operation.orphan
+        assert orphan is not None
+        self._require_orphan(operation.authority, orphan)
+        orphan_path = operation.authority.display_parent / orphan.locator.child_name
+        if operation.root_descriptor >= 0:
+            return
+        if not operation.root_resources.closed:
+            operation.root_resources.close_all()
+        operation.root_resources = _PosixResourceOwner()
+        metadata = self._child_metadata(operation.authority, orphan_path)
+        if metadata is None:
+            raise RuntimeError("quiescent directory quarantine disappeared")
+        self._require_owned_child(operation.authority, orphan_path, metadata)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
+        root = operation.root_resources.open(
+            orphan_path.name,
+            flags,
+            dir_fd=operation.authority.resource,
+        )
+        opened = os.fstat(root)
+        if (
+            _ownership_binding_identity(opened) != _ownership_binding_identity(metadata)
+            or _directory_inode_identity(opened) != operation.ownership.root_identity
+        ):
+            raise RuntimeError("quiescent directory quarantine changed while opened")
+        observed = _capture_posix_directory_descriptor(
+            root,
+            orphan_path,
+            resources=operation.root_resources,
+            required_root_file=None,
+            allow_empty_root=True,
+            entry_policy=None,
+        )
+        _require_matching_ownership(
+            observed,
+            operation.ownership,
+            label="quiescent directory orphan",
+            allow_root_rename=True,
+        )
+        operation.ownership = observed
+        operation.entries = _quiescent_reclaim_entries(observed)
+        operation.identities = {
+            path.as_posix(): (kind, identity)
+            for path, kind, identity in operation.entries
+        }
+        # Publish the descriptor last.  An interruption before this store
+        # merely reopens through the still-owned aggregate; after it, the
+        # inventory and traversal identities are already complete.
+        operation.root_descriptor = root
+
+    def _resume(self) -> bool:
+        operation = self._active
+        if operation is None:
+            return False
+        try:
+            operation.close_adopted_resources()
+            self._prepare_root(operation)
+            while operation.entry_state[0] < len(operation.entries):
+                _quiescent_reclaim_entry(operation)
+            _quiescent_reclaim_root(operation)
+            if operation.root_state != "synced":
+                _quiescent_reclaim_root(operation)
+            operation.close_adopted_resources()
+            if not operation.resources_closed:
+                operation.root_resources.close_all()
+                operation.resources_closed = operation.root_resources.closed
+            if not operation.complete:
+                raise RuntimeError("quiescent directory reclamation did not settle")
+            self._active = None
+            return True
+        except BaseException as error:  # noqa: B036 - retain exact retry owner
+            _attach_publication_cleanup_owner(error, self)
+            raise
+
+    def _run_reclaim_call(self, callback: Callable[[], bool]) -> bool:
+        """Keep an installed operation reachable across a public return seam."""
+
+        try:
+            return callback()
+        except BaseException as error:  # noqa: B036 - publish retry authority
+            if self._active is not None:
+                _attach_publication_cleanup_owner(error, self)
+            raise
+
+    def _run_lifecycle_transition(
+        self,
+        callback: Callable[[], _T],
+        *,
+        outer_call: _QuiescentDirectoryOuterCall | None = None,
+    ) -> _T:
+        """Run one state transition under an exact owning outer call."""
+
+        if outer_call is not None:
+            self._require_process()
+            self._lifecycle_lease.require_outer_call(outer_call)
+            return self._run_lifecycle_transition_owned(callback, outer_call)
+
+        return _run_quiescent_directory_outer_call(
+            self._lifecycle_lease,
+            lambda admitted_call: self._run_lifecycle_transition_owned(
+                callback,
+                admitted_call,
+            ),
+        )
+
+    def _run_lifecycle_transition_owned(
+        self,
+        callback: Callable[[], _T],
+        outer_call: _QuiescentDirectoryOuterCall,
+    ) -> _T:
+        """Run one transition while its exact outer token remains executing."""
+
+        # Reject a forked instance before inspecting or acquiring the inherited
+        # process-local lock.  This object deliberately has no child reset: its
+        # retained descriptors and operation state belong to the parent PID.
+        self._require_process()
+        lease = self._lifecycle_lease
+        lease.require_outer_call(outer_call)
+        current = lease.current_transition()
+        if (
+            type(current) is _QuiescentDirectoryLifecycleAttempt
+            and current._thread_id == get_ident()
+        ):
+            try:
+                current._close_borrowed(outer_call._token)
+            except BaseException as recovery_error:  # noqa: B036 - public owner
+                _raise_quiescent_cleanup_handoff_boundary(
+                    recovery_error,
+                    recovery_error,
+                    (current, self),
+                    None,
+                    label="quiescent directory lifecycle public recovery",
+                )
+        if lease.transition_active():
+            raise RuntimeError(
+                "quiescent directory reclaimer lifecycle transition is already active"
+            )
+        outcome = _QuiescentDirectoryLifecycleOutcome()
+        attempt = _QuiescentDirectoryLifecycleAttempt(lease, outer_call)
+        settle_attempt = partial(attempt._close_borrowed, outer_call._token)
+        release_lease = _OrderedAction(
+            label="quiescent directory lifecycle lease release also failed",
+            action=partial(
+                _run_quiescent_settlement_action,
+                settle_attempt,
+                outcome,
+            ),
+            complete=lambda: attempt.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=attempt,
+        )
+        # Own the attempt outside every implementation opcode.  This includes
+        # the settlement-handler entry and the final primary/cleanup delivery
+        # seams; the second boundary covers interruption in the first.  The
+        # interpreter keeps the exact outer generator live through both
+        # boundaries, so recursive public calls from metadata dispatch reject
+        # without a separately interruptible permission store.  The lease can
+        # replace that token only after the generator has closed.
+        with _QuiescentCleanupHandoffBoundary(
+            outcome,
+            (attempt,),
+            label="quiescent directory lifecycle handoff recovery",
+        ):
+            with _QuiescentCleanupHandoffBoundary(
+                outcome,
+                (attempt,),
+                label="quiescent directory lifecycle handoff recovery",
+            ):
+                return self._run_lifecycle_transition_unprotected(
+                    callback,
+                    attempt,
+                    outcome,
+                    release_lease,
+                    settle_attempt,
+                )
+
+    def _run_lifecycle_transition_unprotected(
+        self,
+        callback: Callable[[], _T],
+        attempt: _QuiescentDirectoryLifecycleAttempt,
+        outcome: _QuiescentDirectoryLifecycleOutcome,
+        release_lease: _OrderedAction,
+        settle_attempt: Callable[[], None],
+    ) -> _T:
+        """Execute a lifecycle attempt inside its preinstalled owner guards."""
+
+        operation_error: BaseException | None = None
+        delivery_carrier: RuntimeError | None = None
+        # The outer plan covers interruption at the inner cleanup runner's own
+        # entry/call/return boundary and at the explicit fallback below.  One
+        # asynchronous interruption therefore cannot poison the public object.
+        try:
+            with _run_context_with_cleanup_actions((release_lease,)):
+                try:
+                    with _run_context_with_cleanup_actions((release_lease,)):
+                        attempt._acquire()
+                        _capture_quiescent_directory_lifecycle_outcome(
+                            callback,
+                            outcome,
+                        )
+                except BaseException as primary_error:  # noqa: B036
+                    try:
+                        settle_attempt()
+                    except BaseException as release_error:  # noqa: B036
+                        _annotate_secondary_error(
+                            primary_error,
+                            release_lease.label,
+                            release_error,
+                        )
+                        _attach_publication_cleanup_owner(primary_error, attempt)
+                    raise  # preserve lifecycle settlement failure
+        except BaseException as settlement_error:  # noqa: B036
+            try:
+                operation_error = outcome.error
+                if operation_error is None:
+                    operation_error = _quiescent_directory_lifecycle_operation_context(
+                        settlement_error
+                    )
+                if (
+                    operation_error is not None
+                    and operation_error is not settlement_error
+                ):
+                    prior_link, prior_was_explicit = _publication_exception_prior_link(
+                        operation_error
+                    )
+                    mandatory_transferred = False
+                    inherited_transferred = False
+                    try:
+                        mandatory_transferred = _ensure_publication_cleanup_owners(
+                            operation_error,
+                            (attempt,),
+                        )
+                    except BaseException as transfer_error:  # noqa: B036
+                        _annotate_secondary_error(
+                            operation_error,
+                            (
+                                "quiescent directory local lifecycle owner transfer "
+                                "also failed"
+                            ),
+                            transfer_error,
+                        )
+                        mandatory_transferred = _ensure_publication_cleanup_owners(
+                            operation_error,
+                            (attempt,),
+                        )
+                    try:
+                        inherited_transferred = _inherit_publication_cleanup_owners(
+                            operation_error,
+                            settlement_error,
+                        )
+                    except BaseException as inheritance_error:  # noqa: B036
+                        _annotate_secondary_error(
+                            operation_error,
+                            (
+                                "quiescent directory lifecycle owner transfer also "
+                                "failed"
+                            ),
+                            inheritance_error,
+                        )
+                        inherited_transferred = _inherit_publication_cleanup_owners(
+                            operation_error,
+                            settlement_error,
+                        )
+                    _annotate_secondary_error(
+                        operation_error,
+                        release_lease.label,
+                        settlement_error,
+                    )
+                    if (
+                        not mandatory_transferred
+                        or not inherited_transferred
+                        or (prior_link is not None and not prior_was_explicit)
+                    ):
+                        delivery_carrier = _publication_cleanup_owner_carrier(
+                            (attempt,),
+                            settlement_error,
+                            prior_link,
+                            forbidden=operation_error,
+                            label="quiescent directory lifecycle cleanup recovery",
+                        )
+            except BaseException as handoff_error:  # noqa: B036 - entry/tail
+                recovered_operation_error = outcome.error
+                if recovered_operation_error is None:
+                    recovered_operation_error = (
+                        _quiescent_directory_lifecycle_operation_context(
+                            settlement_error
+                        )
+                    )
+                _raise_quiescent_cleanup_handoff_boundary(
+                    handoff_error,
+                    settlement_error,
+                    (attempt,),
+                    recovered_operation_error,
+                    label="quiescent directory lifecycle handoff recovery",
+                )
+            if operation_error is not None and operation_error is not settlement_error:
+                if delivery_carrier is not None:
+                    raise operation_error from delivery_carrier
+                # Preserve any explicit callback cause; cleanup is retained
+                # diagnostically and as implicit context.
+                raise operation_error
+            raise settlement_error
+        if outcome.error is not None:
+            raise outcome.error
+        if outcome.value is _QUIESCENT_DIRECTORY_LIFECYCLE_RESULT_MISSING:
+            raise RuntimeError("quiescent directory lifecycle callback did not return")
+        return outcome.value  # type: ignore[return-value]
+
+    def _reclaim_orphan(self, orphan: DirectoryOrphan) -> bool:
+        authority = self._require_open()
+        ownership = self._require_orphan(authority, orphan)
+        orphan_path = authority.display_parent / orphan.locator.child_name
+        active = self._active
+        if active is not None:
+            if not active.matches_orphan(orphan):
+                raise RuntimeError("quiescent directory reclaimer owns another tree")
+            return self._resume()
+        metadata = self._child_metadata(authority, orphan_path)
+        if metadata is None:
+            # A verified receipt proves that this exact hidden binding once
+            # existed, but absence alone does not prove its removal reached
+            # stable storage.  Re-sync before acknowledging response loss.
+            authority.sync_parent()
+            authority.verify_path_binding()
+            return True
+        self._require_owned_child(authority, orphan_path, metadata)
+        operation = _QuiescentDirectoryReclaimOperation(
+            authority=authority,
+            requested_path=orphan_path,
+            ownership=ownership,
+            isolation_owner=None,
+            orphan=orphan,
+        )
+        self._install_operation(operation)
+        return self._resume()
+
+    def reclaim_orphan(self, orphan: DirectoryOrphan) -> bool:
+        """Reclaim a verified exact receipt, including durable absence."""
+
+        return self._run_lifecycle_transition(
+            lambda: self._run_reclaim_call(lambda: self._reclaim_orphan(orphan))
+        )
+
+    def _reclaim_child(self, child_name: str) -> bool:
+        authority = self._require_open()
+        if type(child_name) is not str:
+            raise TypeError("quiescent directory child name must be an exact string")
+        name = _simple_child_name(child_name, label="quiescent directory child")
+        path = authority.display_parent / name
+        active = self._active
+        if active is not None:
+            if not active.matches_child(path):
+                raise RuntimeError("quiescent directory reclaimer owns another tree")
+            return self._resume()
+        metadata = self._child_metadata(authority, path)
+        if metadata is None:
+            return False
+        self._require_owned_child(authority, path, metadata)
+        ownership = authority.capture_child(
+            name,
+            path=path,
+            label="quiescent directory reclaim child",
+            allow_empty_root=True,
+        )
+        # Reject unsupported link topology while the caller's name is still
+        # untouched.  Quarantine is the first namespace mutation.
+        _quiescent_reclaim_entries(ownership)
+        isolation_owner = _OwnedDirectoryIsolationOwner(authority, path, ownership)
+        operation = _QuiescentDirectoryReclaimOperation(
+            authority=authority,
+            requested_path=path,
+            ownership=ownership,
+            isolation_owner=isolation_owner,
+        )
+        self._install_operation(operation)
+        return self._resume()
+
+    def reclaim_child(self, child_name: str) -> bool:
+        """Quarantine and reclaim one exact trusted-quiescent child name."""
+
+        return self._run_lifecycle_transition(
+            lambda: self._run_reclaim_call(lambda: self._reclaim_child(child_name))
+        )
+
+    def retry(self) -> bool:
+        """Resume the installed reclamation, or return ``False`` when idle."""
+
+        def resume() -> bool:
+            self._require_open()
+            return self._resume()
+
+        return self._run_lifecycle_transition(lambda: self._run_reclaim_call(resume))
+
+    def _close(self) -> None:
+        """Settle any active reclaim before releasing the retained parent."""
+
+        if self.closed:
+            return
+        try:
+            if self._active is not None:
+                self._resume()
+            self._authority_owner.close()
+            self._closed = True
+        except BaseException as error:  # noqa: B036 - retain exact retry owner
+            _attach_publication_cleanup_owner(error, self)
+            raise
+
+    def close(self) -> None:
+        """Settle active work and release authority under the lifecycle lease."""
+
+        self._run_lifecycle_transition(self._close)
+
+    def __enter__(self) -> QuiescentDirectoryReclaimer:
+        self._require_open()
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        _traceback: object,
+    ) -> None:
+        # The inner guard publishes an exact live lifecycle attempt on any
+        # replacement from adjudication or final delivery.  The outer guard
+        # covers interruption inside that publication itself.  The internal
+        # lifecycle transition borrows this exact outer-call token, so a
+        # recursive exit cannot grant recovery for another owning call.
+
+        def execute(outer_call: _QuiescentDirectoryOuterCall) -> None:
+            with _run_quiescent_reclaimer_exit_handoff_boundary(self, exc):
+                with _run_quiescent_reclaimer_exit_handoff_boundary(self, exc):
+                    self._exit_unprotected(exc, outer_call)
+
+        _run_quiescent_directory_outer_call(self._lifecycle_lease, execute)
+
+    def _exit_unprotected(
+        self,
+        exc: BaseException | None,
+        outer_call: _QuiescentDirectoryOuterCall,
+    ) -> None:
+        """Close and adjudicate a body error inside the exit owner guards."""
+
+        if exc is None:
+            self._run_lifecycle_transition(
+                self._close,
+                outer_call=outer_call,
+            )
+            return
+        delivery_carrier: RuntimeError | None = None
+        try:
+            self._run_lifecycle_transition(
+                self._close,
+                outer_call=outer_call,
+            )
+        except BaseException as close_error:  # noqa: B036 - preserve body error
+            try:
+                current = self._lifecycle_lease.current_transition()
+                mandatory_owners = (self,)
+                if type(current) is _QuiescentDirectoryLifecycleAttempt:
+                    mandatory_owners = (current, self)
+                delivery_carrier = _adjudicate_quiescent_reclaimer_exit_error(
+                    exc,
+                    close_error,
+                    mandatory_owners,
+                )
+            except BaseException as handoff_error:  # noqa: B036 - tail recovery
+                recovery_current = self._lifecycle_lease.current_transition()
+                recovery_owners = (self,)
+                if type(recovery_current) is _QuiescentDirectoryLifecycleAttempt:
+                    recovery_owners = (recovery_current, self)
+                mandatory_transferred = _ensure_publication_cleanup_owners(
+                    handoff_error,
+                    recovery_owners,
+                )
+                body_transferred = _inherit_publication_cleanup_owners(
+                    handoff_error,
+                    exc,
+                )
+                close_transferred = _inherit_publication_cleanup_owners(
+                    handoff_error,
+                    close_error,
+                )
+                if mandatory_transferred and body_transferred and close_transferred:
+                    raise
+                carrier = _publication_cleanup_owner_carrier(
+                    recovery_owners,
+                    close_error,
+                    exc,
+                    forbidden=handoff_error,
+                    label="quiescent directory reclaimer handoff recovery",
+                )
+                raise handoff_error from carrier
+            if delivery_carrier is not None:
+                raise exc from delivery_carrier
+
+
 def _discard_owned_directory_with_authority(
     authority: _PublicationAuthority,
     path: Path,
@@ -7536,6 +10250,9 @@ def discard_owned_directory(
             )
         except (OSError, RuntimeError, ValueError):
             return None
+        receipt_parent_path_bytes = _bounded_directory_orphan_parent_path_bytes(
+            os.fsencode(authority.display_parent)
+        )
         orphan = _claim_child_as_orphan(
             authority,
             lexical.name,
@@ -7571,11 +10288,17 @@ def discard_owned_directory(
                     authority,
                     orphan,
                     ownership,
+                    parent_path_bytes=receipt_parent_path_bytes,
                     verified_at_isolation=False,
                 )
             return None
         try:
-            return _orphan_metadata(authority, orphan, ownership)
+            return _orphan_metadata(
+                authority,
+                orphan,
+                ownership,
+                parent_path_bytes=receipt_parent_path_bytes,
+            )
         except (OSError, RuntimeError, ValueError):
             # Isolation completed but a raced mutation prevented a verified
             # receipt.  Restore without replacement; if that is no longer
@@ -7587,6 +10310,7 @@ def discard_owned_directory(
                     authority,
                     orphan,
                     ownership,
+                    parent_path_bytes=receipt_parent_path_bytes,
                     verified_at_isolation=False,
                 )
             return None
@@ -7900,8 +10624,12 @@ def _publish_staged_directory_with_authority(
         backup: Path | None = None
         moved_destination_ownership: _TreeOwnership | None = None
         required_destination_inode_identity: tuple[int, ...] | None = None
+        receipt_parent_path_bytes: bytes | None = None
         if not destination_was_missing:
             assert observed_destination_ownership is not None
+            receipt_parent_path_bytes = _bounded_directory_orphan_parent_path_bytes(
+                os.fsencode(publication_authority.display_parent)
+            )
             moved_destination_ownership = observed_destination_ownership
             required_destination_inode_identity = _directory_inode_identity(
                 destination_metadata
@@ -8158,10 +10886,12 @@ def _publish_staged_directory_with_authority(
         previous_orphan: DirectoryOrphan | None = None
         if backup is not None:
             assert moved_destination_ownership is not None
+            assert receipt_parent_path_bytes is not None
             previous_orphan = _orphan_metadata(
                 publication_authority,
                 backup,
                 moved_destination_ownership,
+                parent_path_bytes=receipt_parent_path_bytes,
             )
 
         try:
@@ -8275,6 +11005,7 @@ __all__ = [
     "PublicationAuthenticatedFile",
     "PublicationDirectoryReader",
     "PublicationFileSnapshot",
+    "QuiescentDirectoryReclaimer",
     "TreeFileRecord",
     "capture_directory_ownership",
     "capture_directory_ownership_if_exists",
