@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Resource-scoped resolver for prepare-only compiler-cache jobs."""
+"""Resource-scoped resolvers for prepare-only cache and source jobs."""
 
 from __future__ import annotations
 
