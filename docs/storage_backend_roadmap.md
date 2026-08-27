@@ -1289,8 +1289,31 @@ separately supplied full Git SHA remains display provenance only. The returned
 `IndexJobExecutionResult` carries no catalog, lease, fencing, ref, or final
 generation publication authority; the worker remains the sole publisher and
 the caller retains cleanup ownership for every attempt. Source-job resource
-factory and resolver wiring is described below; production CLI/Web binding,
+factory, resolver, and production CLI wiring are described below; Web binding,
 vector source building, and graph source building remain absent.
+
+A general caller-owned path-build directory now supplies a retained attempt
+boundary for arbitrary path writers and the next cleanup hardening of the
+implemented source-job resource factory. It creates under a retained no-follow
+owner-controlled parent, captures the completed tree, atomically isolates that
+exact tree, retains
+interrupted cleanup for an explicit quiescent retry that delivers authenticated
+orphan receipts to an idempotent caller sink before acknowledging cleanup
+ownership, and never grants catalog publication authority. Delivery is at
+least once across interruption. Direct isolation likewise retains its owner
+until the caller acknowledges durable receipt storage with `close`, so an
+interrupted public return can be redelivered by the process-local retry. That
+retry is serialized through callback acknowledgement; its sink must not
+recursively invoke the boundary. The native `mkdir`-to-first-identity handoff
+is intentionally fail-closed: if the hidden name cannot be authenticated, it
+is left untouched and never becomes cleanup authority. A follow-up must place
+the implemented source-job factory's attempt, BM25, and context destinations
+under one such outer owner, preserve its exact job/source/profile and
+worker-only binding, release all inner receipt authorities before isolation,
+and add an attempt-pool reaper that reconciles stale names only at a quiescent
+boundary. The legacy one-shot directory-discard and plain stage-construction
+return contracts remain unchanged; cancellation-safe integrations must use the
+retained owner and explicit receipt acknowledgement.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1375,8 +1398,11 @@ retained-source BM25 builder and its prepare-only source-job adapter now publish
 and ingest a unique private generation under an exact retained parent and
 generation receipt, without final publication authority or a cache-path reopen;
 its local attempt resource factory, resolver, and explicit production CLI entry
-are implemented. Vector and graph source builders, generic builder routing, and
-remaining runtime wiring remain.
+are implemented. The general caller-owned path-build cleanup primitive intended
+to enclose that factory's three transient destinations is also implemented but
+not yet adopted there.
+Vector and graph source builders, generic builder routing, and remaining
+runtime wiring remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility

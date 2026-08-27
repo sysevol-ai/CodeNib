@@ -4,7 +4,12 @@
 
 from __future__ import annotations
 
+import contextlib
+import dis
 import errno
+import gc
+import hashlib
+import inspect
 import os
 import signal
 import stat
@@ -33,6 +38,7 @@ from codenib._captured_directory import (
     AuthenticatedSnapshotReader,
     CapturedDirectoryReader,
     OwnedDirectoryStage,
+    OwnedPathBuildDirectory,
     OwnedWorkspaceAuthority,
     PublishedWorkspaceDestinationBinding,
     PublishedWorkspaceReceipt,
@@ -42,6 +48,7 @@ from codenib._captured_directory import (
     WorkspaceFile,
     WorkspacePlan,
     require_owned_workspace_publication_support,
+    retry_retained_owned_path_build_cleanup,
 )
 
 
@@ -1242,6 +1249,2679 @@ def test_owned_stage_rejects_root_swap_between_capture_and_open(
     assert swapped
     assert (tmp_path / swapped["active"]).is_dir()
     assert (tmp_path / swapped["stolen"]).is_dir()
+
+
+def test_owned_stage_close_retains_descriptor_after_preclose_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stage = OwnedDirectoryStage(tmp_path / "destination")
+    descriptor = stage._descriptor
+    real_close = captured_directory.os.close
+    interrupted = False
+    close_error = OSError(errno.EIO, "injected descriptor close failure")
+
+    def fail_before_close(candidate: int) -> None:
+        nonlocal interrupted
+        if candidate == descriptor and not interrupted:
+            interrupted = True
+            raise close_error
+        real_close(candidate)
+
+    monkeypatch.setattr(captured_directory.os, "close", fail_before_close)
+
+    with pytest.raises(OSError, match="descriptor close failure") as caught:
+        stage.close()
+
+    assert caught.value is close_error
+    assert caught.value.captured_directory_cleanup_owner is stage
+    os.fstat(descriptor)
+    assert stage._descriptor == descriptor
+
+    stage.close()
+    assert stage._descriptor == -1
+    with pytest.raises(OSError) as closed:
+        os.fstat(descriptor)
+    assert closed.value.errno == errno.EBADF
+
+
+def _retry_owned_path_build_cleanup() -> tuple[atomic_directory.DirectoryOrphan, ...]:
+    orphans: list[atomic_directory.DirectoryOrphan] = []
+    retry_retained_owned_path_build_cleanup(orphans.append)
+    return tuple(orphans)
+
+
+def test_owned_path_build_rejects_subclass_construction_before_mutation(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+
+    class ChildOwnedPathBuildDirectory(OwnedPathBuildDirectory):
+        pass
+
+    destination = tmp_path / "missing" / "attempt"
+
+    with pytest.raises(TypeError, match="does not support subclass construction"):
+        ChildOwnedPathBuildDirectory.prepare(destination, create_parent=True)
+    with pytest.raises(TypeError, match="does not support subclass construction"):
+        ChildOwnedPathBuildDirectory(
+            destination,
+            require_private_parent=True,
+        )
+
+    assert not destination.parent.exists()
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+def test_owned_path_build_captures_and_isolates_arbitrary_partial_files(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    destination = parent / "attempt"
+    owner = OwnedPathBuildDirectory.prepare(destination)
+
+    assert owner.path.parent == parent
+    assert owner.path != destination
+    assert not destination.exists()
+    assert "OwnedPathBuildDirectory" in captured_directory.__all__
+    assert stat.S_IMODE(owner.path.stat().st_mode) == 0o700
+    with owner.path_operation("partial path writer") as writer_path:
+        nested = writer_path / "nested"
+        nested.mkdir()
+        (nested / "payload.bin").write_bytes(b"partial bytes")
+        (writer_path / ".writer.lock").write_bytes(b"lock")
+
+    ownership = owner.capture_ownership()
+    assert directory_ownership_file_records(ownership) == (
+        atomic_directory.TreeFileRecord(
+            path=".writer.lock",
+            mode=0o644,
+            size=4,
+            sha256=hashlib.sha256(b"lock").hexdigest(),
+        ),
+        atomic_directory.TreeFileRecord(
+            path="nested/payload.bin",
+            mode=0o644,
+            size=13,
+            sha256=hashlib.sha256(b"partial bytes").hexdigest(),
+        ),
+    )
+
+    orphan = owner.isolate()
+
+    assert not owner.closed
+    assert not owner.path.exists()
+    assert not destination.exists()
+    assert (
+        orphan.reopen(
+            lambda reader: reader.read_bytes("nested/payload.bin", max_bytes=32)
+        )
+        == b"partial bytes"
+    )
+    assert owner.isolate() is orphan
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_requires_a_missing_destination(tmp_path: Path) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    destination = parent / "attempt"
+    destination.write_bytes(b"foreign")
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        OwnedPathBuildDirectory.prepare(destination)
+
+    assert destination.read_bytes() == b"foreign"
+    assert not tuple(parent.glob(".attempt.normalize-*"))
+
+
+def test_owned_path_build_isolate_return_handoff_redelivers_retained_orphan(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    interruption = KeyboardInterrupt("isolate return handoff")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            OwnedPathBuildDirectory.isolate,
+            lambda: OwnedPathBuildDirectory.prepare(parent / "attempt").isolate(),
+            predicate=lambda _frame, result: isinstance(
+                result,
+                atomic_directory.DirectoryOrphan,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    gc.collect()
+    retained = tuple(captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    assert len(retained) == 1
+    owner = retained[0]
+    assert owner._state == "closed"
+    assert not owner.closed
+    assert not owner.path.exists()
+
+    orphans = _retry_owned_path_build_cleanup()
+
+    assert len(orphans) == 1
+    assert owner.closed
+    assert orphans[0].reopen(lambda reader: reader.inventory()) == ()
+
+
+def test_owned_path_build_requires_private_parent_before_root_creation(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "shared"
+    parent.mkdir(mode=0o755)
+    destination = parent / "attempt"
+
+    with pytest.raises(PermissionError, match="private directory"):
+        OwnedPathBuildDirectory.prepare(destination)
+
+    assert not destination.exists()
+    assert not tuple(parent.glob(".attempt.normalize-*"))
+
+    owner = OwnedPathBuildDirectory.prepare(
+        destination,
+        require_private_parent=False,
+    )
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_relaxed_parent_still_rejects_shared_writes(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "shared-writable"
+    parent.mkdir(mode=0o777)
+    parent.chmod(0o777)
+    destination = parent / "attempt"
+
+    with pytest.raises(PermissionError, match="owner-controlled"):
+        OwnedPathBuildDirectory.prepare(
+            destination,
+            require_private_parent=False,
+        )
+
+    assert not tuple(parent.glob(".attempt.normalize-*"))
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs",
+)
+def test_owned_path_build_privacy_rejection_releases_read_only_authority(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "non-private"
+    parent.mkdir(mode=0o755)
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+
+    with pytest.raises(PermissionError, match="private directory"):
+        OwnedPathBuildDirectory.prepare(parent / "attempt")
+
+    assert not tuple(parent.glob(".attempt.normalize-*"))
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
+
+
+def test_owned_path_build_support_gate_precedes_parent_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "missing" / "nested" / "attempt"
+    monkeypatch.setattr(captured_directory.sys, "platform", "win32")
+
+    with pytest.raises(RuntimeError, match="unsupported"):
+        OwnedPathBuildDirectory.prepare(destination, create_parent=True)
+
+    assert not (tmp_path / "missing").exists()
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs",
+)
+def test_owned_path_build_stage_name_gate_precedes_parent_mutation(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "missing"
+    destination_name = "a" * 220
+    destination = parent / destination_name
+    stage_name = f".{destination_name}.normalize-{'0' * 24}"
+    assert (
+        len(os.fsencode(destination_name))
+        <= atomic_directory._MAX_OWNERSHIP_COMPONENT_BYTES
+    )
+    assert (
+        len(os.fsencode(stage_name)) > atomic_directory._MAX_OWNERSHIP_COMPONENT_BYTES
+    )
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+
+    with pytest.raises(ValueError, match="owned stage must be one bounded file name"):
+        OwnedPathBuildDirectory.prepare(destination, create_parent=True)
+
+    assert not parent.exists()
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert _retry_owned_path_build_cleanup() == ()
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs",
+)
+def test_owned_path_build_invalid_generated_stage_name_releases_opening_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "missing"
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+    monkeypatch.setattr(
+        captured_directory.secrets,
+        "token_hex",
+        lambda _: "x" * 256,
+    )
+
+    with pytest.raises(ValueError, match="owned stage must be one bounded file name"):
+        OwnedPathBuildDirectory.prepare(parent / "attempt", create_parent=True)
+
+    assert parent.is_dir()
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o700
+    assert not tuple(parent.iterdir())
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert _retry_owned_path_build_cleanup() == ()
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs",
+)
+def test_owned_path_build_mkdir_race_leaves_unknown_child_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+    real_mkdir = captured_directory.os.mkdir
+    raced: list[Path] = []
+
+    def race_mkdir(path, mode=0o777, *, dir_fd=None):
+        if (
+            not raced
+            and isinstance(path, str)
+            and path.startswith(".attempt.normalize-")
+            and dir_fd is not None
+        ):
+            real_mkdir(path, mode=0o700, dir_fd=dir_fd)
+            candidate = parent / path
+            candidate.joinpath("valuable.bin").write_bytes(b"foreign")
+            raced.append(candidate)
+            raise FileExistsError(errno.EEXIST, "injected mkdir race", path)
+        return real_mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(captured_directory.os, "mkdir", race_mkdir)
+
+    with pytest.raises(FileExistsError, match="mkdir race"):
+        OwnedPathBuildDirectory.prepare(parent / "attempt")
+
+    assert len(raced) == 1
+    assert raced[0].joinpath("valuable.bin").read_bytes() == b"foreign"
+    assert not tuple(parent.glob("*discarded-*"))
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
+
+
+def test_owned_path_build_post_mkdir_interrupt_leaves_unauthenticated_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    real_stat = captured_directory.os.stat
+    interruption = KeyboardInterrupt("before created identity handoff")
+    interrupted = False
+
+    def interrupt_created_stat(path, *args, **kwargs):
+        nonlocal interrupted
+        if (
+            not interrupted
+            and isinstance(path, str)
+            and path.startswith(".attempt.normalize-")
+            and kwargs.get("dir_fd") is not None
+        ):
+            try:
+                real_stat(path, *args, **kwargs)
+            except FileNotFoundError:
+                pass
+            else:
+                interrupted = True
+                raise interruption
+        return real_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(captured_directory.os, "stat", interrupt_created_stat)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        OwnedPathBuildDirectory.prepare(parent / "attempt")
+
+    assert caught.value is interruption
+    roots = tuple(parent.glob(".attempt.normalize-*"))
+    assert len(roots) == 1
+    assert roots[0].is_dir()
+    assert not tuple(parent.glob("*discarded-*"))
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+def test_owned_path_build_ambiguous_cleanup_reconciles_after_close_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    real_mkdir = captured_directory.os.mkdir
+    real_close_resources = OwnedPathBuildDirectory._close_resources
+    raced: list[Path] = []
+    interruption = KeyboardInterrupt("after exact resource close")
+    interrupted = False
+
+    def race_mkdir(path, mode=0o777, *, dir_fd=None):
+        if (
+            not raced
+            and isinstance(path, str)
+            and path.startswith(".attempt.normalize-")
+            and dir_fd is not None
+        ):
+            real_mkdir(path, mode=0o700, dir_fd=dir_fd)
+            candidate = parent / path
+            candidate.joinpath("valuable.bin").write_bytes(b"foreign")
+            raced.append(candidate)
+            raise FileExistsError(errno.EEXIST, "injected mkdir race", path)
+        return real_mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    def close_then_interrupt(
+        owner: OwnedPathBuildDirectory,
+        *,
+        validate_binding: bool,
+    ) -> None:
+        nonlocal interrupted
+        real_close_resources(owner, validate_binding=validate_binding)
+        if not interrupted:
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(captured_directory.os, "mkdir", race_mkdir)
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_close_resources",
+        close_then_interrupt,
+    )
+
+    with pytest.raises(FileExistsError, match="mkdir race"):
+        OwnedPathBuildDirectory.prepare(parent / "attempt")
+
+    assert interrupted
+    assert raced[0].joinpath("valuable.bin").read_bytes() == b"foreign"
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+@pytest.mark.skipif(
+    not Path("/proc/self/fd").is_dir(),
+    reason="requires procfs",
+)
+def test_owned_path_build_stage_constructor_return_interrupt_has_full_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    before = len(tuple(Path("/proc/self/fd").iterdir()))
+    real_init = OwnedDirectoryStage.__init__
+    interruption = KeyboardInterrupt("after stage construction")
+    resources: list[OwnedPathBuildDirectory] = []
+
+    def construct_then_interrupt(stage: OwnedDirectoryStage, *args, **kwargs) -> None:
+        resource = kwargs.get("_construction_owner")
+        assert isinstance(resource, OwnedPathBuildDirectory)
+        resources.append(resource)
+        real_init(stage, *args, **kwargs)
+        raise interruption
+
+    monkeypatch.setattr(OwnedDirectoryStage, "__init__", construct_then_interrupt)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        OwnedPathBuildDirectory.prepare(parent / "attempt")
+
+    assert caught.value is interruption
+    assert len(resources) == 1
+    owner = resources[0]
+    assert owner.closed
+    assert not tuple(parent.glob(".attempt.normalize-*"))
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == before
+    orphan = owner.isolate()
+    assert orphan.reopen(lambda reader: reader.inventory()) == ()
+
+
+def _interrupt_owned_path_on_line(
+    function: object,
+    source_fragment: str,
+    callback: object,
+    *,
+    predicate: object | None = None,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    assert predicate is None or callable(predicate)
+    source, first_line = inspect.getsourcelines(function)
+    target_lines = {
+        first_line + offset
+        for offset, line in enumerate(source)
+        if line.strip() == source_fragment
+    }
+    assert len(target_lines) == 1
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and event == "line"
+            and frame.f_code is code
+            and frame.f_lineno in target_lines
+            and (predicate is None or predicate(frame.f_locals))
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to interrupt before {source_fragment}"
+
+
+def _interrupt_owned_path_after_attribute_store(
+    function: object,
+    attribute_name: str,
+    callback: object,
+    *,
+    next_line_fragment: str,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    instructions = tuple(dis.get_instructions(function))
+    indexes = tuple(
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_ATTR" and instruction.argval == attribute_name
+    )
+    assert len(indexes) == 1
+    opcode_offsets = {instructions[indexes[0] + 1].offset}
+    source, first_line = inspect.getsourcelines(function)
+    line_numbers = {
+        first_line + offset
+        for offset, line in enumerate(source)
+        if line.strip() == next_line_fragment
+    }
+    assert len(line_numbers) == 1
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            frame.f_trace_lines = True
+            return trace
+        if (
+            not injected
+            and frame.f_code is code
+            and (
+                event == "opcode"
+                and frame.f_lasti in opcode_offsets
+                or event == "line"
+                and frame.f_lineno in line_numbers
+            )
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to interrupt after {attribute_name} store"
+
+
+def _interrupt_owned_path_after_global_store(
+    function: object,
+    global_name: str,
+    callback: object,
+    *,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    instructions = tuple(dis.get_instructions(function))
+    indexes = tuple(
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_GLOBAL" and instruction.argval == global_name
+    )
+    assert len(indexes) == 1
+    opcode_offset = instructions[indexes[0] + 1].offset
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            not injected
+            and event == "opcode"
+            and frame.f_code is code
+            and frame.f_lasti == opcode_offset
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to interrupt after {global_name} store"
+
+
+def _call_owned_path_after_global_store(
+    function: object,
+    global_name: str,
+    callback: object,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    instructions = tuple(dis.get_instructions(function))
+    indexes = tuple(
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.opname == "STORE_GLOBAL" and instruction.argval == global_name
+    )
+    assert len(indexes) == 1
+    opcode_offset = instructions[indexes[0] + 1].offset
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    called = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal called
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            not called
+            and event == "opcode"
+            and frame.f_code is code
+            and frame.f_lasti == opcode_offset
+        ):
+            called = True
+            sys.settrace(None)
+            callback()
+        return trace
+
+    sys.settrace(trace)
+    try:
+        function()
+    finally:
+        sys.settrace(previous_trace)
+        assert called, f"failed to call after {global_name} store"
+
+
+def _call_owned_path_before_global_load(
+    function: object,
+    global_name: str,
+    callback: object,
+    *,
+    occurrence: int = 0,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    offsets = tuple(
+        instruction.offset
+        for instruction in dis.get_instructions(function)
+        if instruction.opname == "LOAD_GLOBAL" and instruction.argval == global_name
+    )
+    assert 0 <= occurrence < len(offsets)
+    opcode_offset = offsets[occurrence]
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    called = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal called
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            not called
+            and event == "opcode"
+            and frame.f_code is code
+            and frame.f_lasti == opcode_offset
+        ):
+            called = True
+            sys.settrace(None)
+            callback()
+        return trace
+
+    sys.settrace(trace)
+    try:
+        function()
+    finally:
+        sys.settrace(previous_trace)
+        assert called, f"failed to call before loading {global_name}"
+
+
+def _call_owned_path_after_named_load(
+    function: object,
+    name: str,
+    callback: object,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    instructions = tuple(dis.get_instructions(function))
+    indexes = tuple(
+        index
+        for index, instruction in enumerate(instructions[:-1])
+        if instruction.argval == name
+        and instruction.opname in {"LOAD_ATTR", "LOAD_METHOD"}
+    )
+    assert len(indexes) == 1
+    opcode_offset = instructions[indexes[0] + 1].offset
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    called = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal called
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            not called
+            and event == "opcode"
+            and frame.f_code is code
+            and frame.f_lasti == opcode_offset
+        ):
+            called = True
+            sys.settrace(None)
+            callback()
+        return trace
+
+    sys.settrace(trace)
+    try:
+        function()
+    finally:
+        sys.settrace(previous_trace)
+        assert called, f"failed to call after loading {name}"
+
+
+def _call_owned_path_on_return(function: object, callback: object) -> None:
+    assert callable(function)
+    assert callable(callback)
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    called = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal called
+        if event == "call" and frame.f_code is code:
+            return trace
+        if not called and event == "return" and frame.f_code is code:
+            called = True
+            sys.settrace(None)
+            callback()
+        return trace
+
+    sys.settrace(trace)
+    try:
+        function()
+    finally:
+        sys.settrace(previous_trace)
+        assert called, "failed to call at the return handoff"
+
+
+def _prime_owned_path_opcode_tracing(function: object, callback: object) -> None:
+    assert callable(function)
+    assert callable(callback)
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    observed = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal observed
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if event == "opcode" and frame.f_code is code:
+            observed = True
+        return trace
+
+    try:
+        for _attempt in range(2):
+            sys.settrace(trace)
+            callback()
+            sys.settrace(previous_trace)
+            if observed:
+                break
+    finally:
+        sys.settrace(previous_trace)
+        assert observed, "failed to prime opcode tracing"
+
+
+def _interrupt_owned_path_on_opcode(
+    function: object,
+    opname: str,
+    callback: object,
+    *,
+    occurrence: int = 0,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    offsets = tuple(
+        instruction.offset
+        for instruction in dis.get_instructions(function)
+        if instruction.opname == opname
+    )
+    assert 0 <= occurrence < len(offsets)
+    target_offset = offsets[occurrence]
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, _arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            frame.f_trace_opcodes = True
+            return trace
+        if (
+            not injected
+            and event == "opcode"
+            and frame.f_code is code
+            and frame.f_lasti == target_offset
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, f"failed to interrupt at {opname}"
+
+
+def _interrupt_owned_path_return(
+    function: object,
+    callback: object,
+    *,
+    predicate: object,
+    error: BaseException,
+) -> None:
+    assert callable(function)
+    assert callable(callback)
+    assert callable(predicate)
+    code = function.__code__
+    previous_trace = sys.gettrace()
+    injected = False
+
+    def trace(frame: object, event: str, arg: object) -> object:
+        nonlocal injected
+        if event == "call" and frame.f_code is code:
+            return trace
+        if (
+            not injected
+            and event == "return"
+            and frame.f_code is code
+            and predicate(frame, arg)
+        ):
+            injected = True
+            sys.settrace(None)
+            raise error
+        return trace
+
+    sys.settrace(trace)
+    try:
+        callback()
+    finally:
+        sys.settrace(previous_trace)
+        assert injected, "failed to interrupt the return handoff"
+
+
+def test_owned_path_build_prepare_acquire_interrupt_runs_preinstalled_cleanup(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    interruption = KeyboardInterrupt("after acquire")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_on_line(
+            OwnedPathBuildDirectory.prepare.__func__,
+            "return resource",
+            lambda: OwnedPathBuildDirectory.prepare(parent / "attempt"),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert not tuple(parent.glob(".attempt.normalize-*"))
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+def test_owned_path_build_prepare_cleanup_boundary_preserves_exact_primary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    real_acquire = OwnedPathBuildDirectory._acquire
+    primary = RuntimeError("exact acquire primary")
+    interruption = KeyboardInterrupt("cleanup runner entry")
+
+    def acquire_then_fail(
+        owner: OwnedPathBuildDirectory,
+        *,
+        create_parent: bool,
+    ) -> None:
+        real_acquire(owner, create_parent=create_parent)
+        raise primary
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_acquire",
+        acquire_then_fail,
+    )
+
+    with pytest.raises(RuntimeError, match="exact acquire primary") as caught:
+        _interrupt_owned_path_on_line(
+            atomic_directory._run_context_with_cleanup_actions.__wrapped__,
+            "_run_ordered_actions(failures)",
+            lambda: OwnedPathBuildDirectory.prepare(parent / "attempt"),
+            predicate=lambda local: local.get("context_error") is primary,
+            error=interruption,
+        )
+
+    assert caught.value is primary
+    retained = tuple(captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    assert len(retained) == 1
+    owner = retained[0]
+    assert owner.path.is_dir()
+
+    orphans = _retry_owned_path_build_cleanup()
+
+    assert owner.closed
+    assert len(orphans) == 1
+    assert orphans[0].reopen(lambda reader: reader.inventory()) == ()
+
+
+def test_owned_path_build_prepare_return_handoff_is_quiescently_retryable(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    interruption = KeyboardInterrupt("prepare return handoff")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            OwnedPathBuildDirectory.prepare.__func__,
+            lambda: OwnedPathBuildDirectory.prepare(parent / "attempt"),
+            predicate=lambda _frame, result: isinstance(
+                result,
+                OwnedPathBuildDirectory,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    retained = tuple(captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    assert len(retained) == 1
+    owner = retained[0]
+    assert owner.path.is_dir()
+
+    orphans = _retry_owned_path_build_cleanup()
+
+    assert owner.closed
+    assert not owner.path.exists()
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert len(orphans) == 1
+    assert orphans[0].reopen(lambda reader: reader.inventory()) == ()
+
+
+def test_owned_path_build_quiescent_acceptor_failure_retains_exact_receipt(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    accepted: list[atomic_directory.DirectoryOrphan] = []
+    failure = RuntimeError("orphan sink failed")
+
+    def reject(orphan: atomic_directory.DirectoryOrphan) -> None:
+        accepted.append(orphan)
+        raise failure
+
+    with pytest.raises(RuntimeError, match="orphan sink failed") as caught:
+        retry_retained_owned_path_build_cleanup(reject)
+
+    assert caught.value is failure
+    assert len(accepted) == 1
+    assert owner._state == "closed"
+    assert not owner.closed
+    assert owner in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+    redelivered = _retry_owned_path_build_cleanup()
+
+    assert redelivered == (accepted[0],)
+    assert owner.closed
+    assert (
+        accepted[0].reopen(
+            lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+        )
+        == b"bytes"
+    )
+
+
+def test_owned_path_build_quiescent_acceptor_return_interrupt_redelivers(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    accepted: list[atomic_directory.DirectoryOrphan] = []
+    interruption = KeyboardInterrupt("orphan accept return")
+
+    def accept(orphan: atomic_directory.DirectoryOrphan) -> None:
+        accepted.append(orphan)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            accept,
+            lambda: retry_retained_owned_path_build_cleanup(accept),
+            predicate=lambda _frame, result: result is None,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert len(accepted) == 1
+    assert not owner.closed
+    assert owner in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+    redelivered = _retry_owned_path_build_cleanup()
+
+    assert redelivered == (accepted[0],)
+    assert owner.closed
+
+
+def test_owned_path_build_quiescent_acceptor_rejects_recursive_cleanup(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    accepted: list[atomic_directory.DirectoryOrphan] = []
+
+    def accept(orphan: atomic_directory.DirectoryOrphan) -> None:
+        accepted.append(orphan)
+        assert not owner.closed
+        with pytest.raises(RuntimeError, match="cleanup retry is reentrant"):
+            retry_retained_owned_path_build_cleanup(accept)
+        with pytest.raises(RuntimeError, match="lifecycle operation is reentrant"):
+            owner.close()
+
+    retry_retained_owned_path_build_cleanup(accept)
+
+    assert len(accepted) == 1
+    assert owner.closed
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+def test_owned_path_build_quiescent_cleanup_rejects_concurrent_retry(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    accepting = threading.Event()
+    release_acceptor = threading.Event()
+    accepted: list[atomic_directory.DirectoryOrphan] = []
+    worker_errors: list[BaseException] = []
+
+    def accept(orphan: atomic_directory.DirectoryOrphan) -> None:
+        accepted.append(orphan)
+        accepting.set()
+        if not release_acceptor.wait(timeout=10):
+            raise RuntimeError("test acceptor was not released")
+
+    def cleanup() -> None:
+        try:
+            retry_retained_owned_path_build_cleanup(accept)
+        except BaseException as exc:  # noqa: B036 - report thread failure
+            worker_errors.append(exc)
+
+    worker = threading.Thread(target=cleanup)
+    worker.start()
+    assert accepting.wait(timeout=5)
+    try:
+        with pytest.raises(RuntimeError, match="cleanup retry is already active"):
+            retry_retained_owned_path_build_cleanup(accepted.append)
+    finally:
+        release_acceptor.set()
+        worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert not worker_errors
+    assert len(accepted) == 1
+    assert owner.closed
+    assert (
+        accepted[0].reopen(
+            lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+        )
+        == b"bytes"
+    )
+
+
+@pytest.mark.parametrize("seam", ["acquire", "release"])
+def test_owned_path_build_quiescent_retry_lease_interrupt_is_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    seam: str,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    interruption = KeyboardInterrupt(f"retry lease {seam}")
+    interrupted = False
+    lease_type = captured_directory._OwnedPathBuildRetryLease
+    method_name = "acquire_nonblocking" if seam == "acquire" else "close"
+    real_method = getattr(lease_type, method_name)
+
+    def interrupt_after_transition(lease) -> None:
+        nonlocal interrupted
+        real_method(lease)
+        if (
+            lease._lock is captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK
+            and not interrupted
+        ):
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(lease_type, method_name, interrupt_after_transition)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        retry_retained_owned_path_build_cleanup(lambda _orphan: None)
+
+    assert caught.value is interruption
+    if seam == "acquire":
+        assert not owner.closed
+        assert owner in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    else:
+        assert owner.closed
+
+    monkeypatch.setattr(lease_type, method_name, real_method)
+    recovered = _retry_owned_path_build_cleanup()
+
+    if seam == "acquire":
+        assert len(recovered) == 1
+        assert owner.closed
+    else:
+        assert recovered == ()
+
+
+def test_owned_path_build_lifecycle_failure_handler_interrupt_releases_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    natural_failure = ValueError("natural isolation failure")
+    interruption = KeyboardInterrupt("lifecycle failure handler")
+    real_isolate = OwnedPathBuildDirectory._isolate_and_close
+
+    def fail_isolation(
+        _owner: OwnedPathBuildDirectory,
+        *,
+        require_orphan: bool,
+        _release_retention: bool = True,
+    ) -> None:
+        raise natural_failure
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_isolate_and_close",
+        fail_isolation,
+    )
+
+    with pytest.raises(ValueError, match="natural isolation failure") as caught:
+        _interrupt_owned_path_on_line(
+            captured_directory._capture_owned_path_build_lease_outcome,
+            "outcome.error = error",
+            owner.close,
+            predicate=lambda values: values.get("error") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is natural_failure
+    assert caught.value.__cause__ is interruption or any(
+        str(interruption) in note for note in getattr(caught.value, "__notes__", ())
+    )
+    acquired: list[bool] = []
+
+    def probe_lifecycle_lock() -> None:
+        locked = owner._lifecycle_lock.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            owner._lifecycle_lock.release()
+
+    probe = threading.Thread(target=probe_lifecycle_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_isolate_and_close",
+        real_isolate,
+    )
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_lifecycle_return_interrupt_releases_lock(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    interruption = KeyboardInterrupt("lifecycle return")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            OwnedPathBuildDirectory._run_lifecycle,
+            lambda: owner._run_lifecycle(lambda: None),
+            predicate=lambda _frame, result: result is None,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    acquired: list[bool] = []
+
+    def probe_lifecycle_lock() -> None:
+        locked = owner._lifecycle_lock.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            owner._lifecycle_lock.release()
+
+    probe = threading.Thread(target=probe_lifecycle_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_lifecycle_normal_settle_interrupt_releases_lock(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    interruption = KeyboardInterrupt("lifecycle normal settlement")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_on_line(
+            captured_directory._run_context_with_cleanup_actions.__wrapped__,
+            "_run_ordered_actions(failures)",
+            lambda: owner._run_lifecycle(lambda: None),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    acquired: list[bool] = []
+
+    def probe_lifecycle_lock() -> None:
+        locked = owner._lifecycle_lock.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            owner._lifecycle_lock.release()
+
+    probe = threading.Thread(target=probe_lifecycle_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_lifecycle_settlement_does_not_promote_ambient_error(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    ambient = RuntimeError("ambient caller error")
+    interruption = KeyboardInterrupt("lifecycle settlement")
+
+    try:
+        raise ambient
+    except RuntimeError:
+        with pytest.raises(KeyboardInterrupt) as caught:
+            _interrupt_owned_path_on_line(
+                captured_directory._run_context_with_cleanup_actions.__wrapped__,
+                "_run_ordered_actions(failures)",
+                lambda: owner._run_lifecycle(lambda: None),
+                predicate=lambda values: any(
+                    getattr(action, "label", None)
+                    == "owned path build lifecycle lease release also failed"
+                    for action in values["failures"].actions
+                ),
+                error=interruption,
+            )
+
+    assert caught.value is interruption
+    assert caught.value is not ambient
+    assert not owner.closed
+    assert owner in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    acquired: list[bool] = []
+
+    def probe_lifecycle_lock() -> None:
+        locked = owner._lifecycle_lock.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            owner._lifecycle_lock.release()
+
+    probe = threading.Thread(target=probe_lifecycle_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_global_retry_normal_settle_interrupt_releases_lock() -> None:
+    _retry_owned_path_build_cleanup()
+    interruption = KeyboardInterrupt("global retry normal settlement")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_on_line(
+            captured_directory._run_context_with_cleanup_actions.__wrapped__,
+            "_run_ordered_actions(failures)",
+            lambda: retry_retained_owned_path_build_cleanup(lambda _orphan: None),
+            predicate=lambda values: any(
+                getattr(action, "label", None)
+                == "owned path build retry lease release also failed"
+                for action in values["failures"].actions
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    acquired: list[bool] = []
+
+    def probe_retry_lock() -> None:
+        locked = captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK.acquire(
+            timeout=1
+        )
+        acquired.append(locked)
+        if locked:
+            captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK.release()
+
+    probe = threading.Thread(target=probe_retry_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+    assert _retry_owned_path_build_cleanup() == ()
+
+
+def test_owned_path_build_registry_normal_settle_interrupt_releases_lock() -> None:
+    _retry_owned_path_build_cleanup()
+    interruption = KeyboardInterrupt("registry normal settlement")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_on_line(
+            captured_directory._run_context_with_cleanup_actions.__wrapped__,
+            "_run_ordered_actions(failures)",
+            lambda: captured_directory._owned_path_build_directory_retained(object()),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    acquired: list[bool] = []
+
+    def probe_registry_lock() -> None:
+        locked = captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.release()
+
+    probe = threading.Thread(target=probe_registry_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+
+
+def test_owned_path_build_registry_error_handler_interrupt_preserves_primary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    natural_failure = RuntimeError("registry append failed")
+    interruption = KeyboardInterrupt("registry outcome handler")
+
+    class FailingRegistry(list):
+        def append(self, _owner) -> None:
+            raise natural_failure
+
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_DIRECTORIES",
+        FailingRegistry(),
+    )
+
+    with pytest.raises(RuntimeError, match="registry append failed") as caught:
+        _interrupt_owned_path_on_line(
+            captured_directory._capture_owned_path_build_lease_outcome,
+            "outcome.error = error",
+            lambda: captured_directory._register_owned_path_build_directory(object()),
+            predicate=lambda values: values.get("error") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is natural_failure
+    assert caught.value.__cause__ is interruption or any(
+        str(interruption) in note for note in getattr(caught.value, "__notes__", ())
+    )
+    acquired: list[bool] = []
+
+    def probe_registry_lock() -> None:
+        locked = captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.release()
+
+    probe = threading.Thread(target=probe_registry_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+
+
+@pytest.mark.parametrize("failure_kind", ["append", "iteration"])
+def test_owned_path_build_registry_native_with_interrupt_releases_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_kind: str,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    lease_type = captured_directory._OwnedPathBuildRetryLease
+    helper = captured_directory._run_with_owned_path_build_lease
+    prime_lease = lease_type(
+        threading.RLock(),
+        acquire_blocking=False,
+        reentrant_error="prime reentrant",
+        concurrent_error="prime concurrent",
+    )
+    _prime_owned_path_opcode_tracing(
+        helper,
+        lambda: helper(
+            prime_lease,
+            lambda: None,
+            release_label="prime lease release",
+        ),
+    )
+    natural_failure = RuntimeError(f"registry {failure_kind} failed")
+    interruption = KeyboardInterrupt(f"registry {failure_kind} with handler")
+
+    class FailingRegistry(list):
+        def append(self, owner) -> None:
+            if failure_kind == "append":
+                raise natural_failure
+            super().append(owner)
+
+        def __iter__(self):
+            if failure_kind == "iteration":
+                raise natural_failure
+            return super().__iter__()
+
+    def bypass_outcome(callback, _outcome) -> None:
+        callback()
+
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_DIRECTORIES",
+        FailingRegistry(),
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_capture_owned_path_build_lease_outcome",
+        bypass_outcome,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_on_opcode(
+            helper,
+            "WITH_EXCEPT_START",
+            lambda: captured_directory._register_owned_path_build_directory(object()),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert caught.value.__context__ is natural_failure
+    acquired: list[bool] = []
+
+    def probe_registry_lock() -> None:
+        locked = captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.release()
+
+    probe = threading.Thread(target=probe_registry_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+
+
+@pytest.mark.parametrize(
+    "source_fragment",
+    ["lease.close()", "raise  # preserve lease settlement failure"],
+)
+def test_owned_path_build_lifecycle_fallback_interrupt_releases_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_fragment: str,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    lease_type = captured_directory._OwnedPathBuildRetryLease
+    real_close = lease_type.close
+    natural_failure = OSError(errno.EIO, "initial lease release failed")
+    interruption = KeyboardInterrupt(f"fallback seam {source_fragment}")
+    close_calls = 0
+
+    def fail_first_close(lease) -> None:
+        nonlocal close_calls
+        close_calls += 1
+        if close_calls == 1:
+            raise natural_failure
+        real_close(lease)
+
+    monkeypatch.setattr(lease_type, "close", fail_first_close)
+
+    expected_error = (
+        natural_failure if source_fragment == "lease.close()" else interruption
+    )
+    with pytest.raises(type(expected_error)) as caught:
+        _interrupt_owned_path_on_line(
+            captured_directory._run_with_owned_path_build_lease,
+            source_fragment,
+            lambda: owner._run_lifecycle(lambda: None),
+            predicate=lambda values: values.get("primary_error") is natural_failure,
+            error=interruption,
+        )
+
+    assert caught.value is expected_error
+    acquired: list[bool] = []
+
+    def probe_lifecycle_lock() -> None:
+        locked = owner._lifecycle_lock.acquire(timeout=1)
+        acquired.append(locked)
+        if locked:
+            owner._lifecycle_lock.release()
+
+    probe = threading.Thread(target=probe_lifecycle_lock)
+    probe.start()
+    probe.join(timeout=5)
+    assert not probe.is_alive()
+    assert acquired == [True]
+
+    monkeypatch.setattr(lease_type, "close", real_close)
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_quiescent_partial_failure_preserves_prior_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    first = OwnedPathBuildDirectory.prepare(parent / "first")
+    second = OwnedPathBuildDirectory.prepare(parent / "second")
+    first.path.joinpath("payload.bin").write_bytes(b"first")
+    second.path.joinpath("payload.bin").write_bytes(b"second")
+    real_isolate = OwnedPathBuildDirectory._isolate_and_close
+    failure = RuntimeError("second cleanup failed")
+    failed = False
+
+    def fail_second_once(
+        owner: OwnedPathBuildDirectory,
+        *,
+        require_orphan: bool,
+        _release_retention: bool = True,
+    ):
+        nonlocal failed
+        if owner is second and not failed:
+            failed = True
+            raise failure
+        return real_isolate(
+            owner,
+            require_orphan=require_orphan,
+            _release_retention=_release_retention,
+        )
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_isolate_and_close",
+        fail_second_once,
+    )
+    accepted: list[atomic_directory.DirectoryOrphan] = []
+
+    with pytest.raises(RuntimeError, match="second cleanup failed") as caught:
+        retry_retained_owned_path_build_cleanup(accepted.append)
+
+    assert caught.value is failure
+    assert len(accepted) == 1
+    assert first.closed
+    assert not second.closed
+    assert second in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert (
+        accepted[0].reopen(
+            lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+        )
+        == b"first"
+    )
+
+    remaining = _retry_owned_path_build_cleanup()
+
+    assert len(remaining) == 1
+    assert second.closed
+    assert (
+        remaining[0].reopen(
+            lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+        )
+        == b"second"
+    )
+
+
+def test_owned_path_build_quiescent_first_failure_retains_later_owners(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    first = OwnedPathBuildDirectory.prepare(parent / "first")
+    second = OwnedPathBuildDirectory.prepare(parent / "second")
+    failure = RuntimeError("first cleanup failed")
+    real_retry = OwnedPathBuildDirectory._retry_quiescent_cleanup
+
+    def fail_first_once(
+        owner: OwnedPathBuildDirectory,
+        accept_orphan,
+    ) -> None:
+        if owner is first:
+            raise failure
+        real_retry(owner, accept_orphan)
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_retry_quiescent_cleanup",
+        fail_first_once,
+    )
+
+    with pytest.raises(RuntimeError, match="first cleanup failed") as caught:
+        retry_retained_owned_path_build_cleanup(lambda _orphan: None)
+
+    assert caught.value is failure
+    assert not first.closed
+    assert not second.closed
+    assert first in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert second in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_retry_quiescent_cleanup",
+        real_retry,
+    )
+    remaining = _retry_owned_path_build_cleanup()
+
+    assert len(remaining) == 2
+    assert first.closed
+    assert second.closed
+
+
+def test_owned_path_build_quiescent_return_interrupt_follows_acceptance(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    accepted: list[atomic_directory.DirectoryOrphan] = []
+    interruption = KeyboardInterrupt("quiescent retry return")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            retry_retained_owned_path_build_cleanup,
+            lambda: retry_retained_owned_path_build_cleanup(accepted.append),
+            predicate=lambda _frame, result: result is None,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert len(accepted) == 1
+    assert owner.closed
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert accepted[0].reopen(lambda reader: reader.inventory()) == ()
+
+
+def test_owned_path_build_operation_activation_interrupt_clears_lease(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    interruption = KeyboardInterrupt("operation activation")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_after_attribute_store(
+            OwnedPathBuildDirectory.path_operation.__wrapped__,
+            "_operation_lease",
+            lambda: owner.path_operation("writer").__enter__(),
+            next_line_fragment='self._verify_active(f"before {label}")',
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert owner._operation_lease is None
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_operation_generator_return_interrupt_clears_lease(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    interruption = KeyboardInterrupt("operation generator return")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            OwnedPathBuildDirectory.path_operation.__wrapped__,
+            lambda: owner.path_operation("writer").__enter__(),
+            predicate=lambda frame, result: (
+                frame.f_locals.get("self") is owner and result == owner.path
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    # CPython 3.10 can retain the suspended generator at this return event;
+    # newer interpreters unwind it immediately.  The explicit quiescent
+    # boundary must settle either state without requiring a live caller.
+    _retry_owned_path_build_cleanup()
+    assert owner._operation_lease is None
+    assert owner.closed
+
+
+def test_owned_path_build_operation_context_return_uses_quiescent_retry(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    operation = owner.path_operation("writer")
+    interruption = KeyboardInterrupt("operation context return")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            contextlib._GeneratorContextManager.__enter__,
+            operation.__enter__,
+            predicate=lambda frame, result: (
+                frame.f_locals.get("self") is operation and result == owner.path
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert owner._operation_lease is not None
+    with pytest.raises(RuntimeError, match="reentrant"):
+        owner.close()
+
+    _retry_owned_path_build_cleanup()
+
+    assert owner._operation_lease is None
+    assert owner.closed
+    operation.gen.close()
+
+
+@pytest.mark.parametrize(
+    "handoff",
+    ("closed-authority-pointer", "released-pointer-registry"),
+)
+def test_owned_path_build_reconciles_authority_close_handoffs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    handoff: str,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    authority_owner = owner._authority_owner
+    interruption = KeyboardInterrupt(handoff)
+    interrupted = False
+
+    if handoff == "closed-authority-pointer":
+        real_close = atomic_directory._PublicationAuthorityOwner.close
+
+        def close_authority_then_interrupt(candidate, **kwargs) -> None:
+            nonlocal interrupted
+            if candidate is authority_owner and not interrupted:
+                authority = candidate.authority
+                assert authority is not None
+                authority.close()
+                assert authority._closed
+                interrupted = True
+                raise interruption
+            real_close(candidate, **kwargs)
+
+        monkeypatch.setattr(
+            atomic_directory._PublicationAuthorityOwner,
+            "close",
+            close_authority_then_interrupt,
+        )
+    else:
+        real_forget = atomic_directory._forget_publication_authority_owner
+
+        def forget_then_interrupt(candidate) -> None:
+            nonlocal interrupted
+            if candidate is authority_owner and not interrupted:
+                interrupted = True
+                raise interruption
+            real_forget(candidate)
+
+        monkeypatch.setattr(
+            atomic_directory,
+            "_forget_publication_authority_owner",
+            forget_then_interrupt,
+        )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.isolate()
+
+    assert caught.value is interruption
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert not atomic_directory._publication_authority_owner_released(authority_owner)
+
+    orphan = owner.isolate()
+
+    assert not owner.closed
+    assert atomic_directory._publication_authority_owner_released(authority_owner)
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"bytes"
+    )
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.parametrize(
+    "global_name",
+    [
+        "_RETAINED_OWNED_PATH_BUILD_LOCK",
+        "_RETAINED_OWNED_PATH_BUILD_RETRY_LOCK",
+        "_RETAINED_OWNED_PATH_BUILD_PID",
+    ],
+)
+def test_owned_path_build_process_sync_store_interrupt_is_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+    global_name: str,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    original_pid = captured_directory._RETAINED_OWNED_PATH_BUILD_PID
+    original_registry_lock = captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK
+    original_retry_lock = captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK
+    original_registry = captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert not original_registry
+    inherited_owner = object()
+    child_pid = original_pid + 10_000_000
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_LOCK",
+        original_registry_lock,
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_RETRY_LOCK",
+        original_retry_lock,
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_DIRECTORIES",
+        [inherited_owner],
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_PID",
+        original_pid,
+    )
+    _prime_owned_path_opcode_tracing(
+        captured_directory._synchronize_owned_path_build_process,
+        captured_directory._synchronize_owned_path_build_process,
+    )
+    monkeypatch.setattr(captured_directory.os, "getpid", lambda: child_pid)
+    interruption = KeyboardInterrupt(f"after {global_name}")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_after_global_store(
+            captured_directory._synchronize_owned_path_build_process,
+            global_name,
+            captured_directory._synchronize_owned_path_build_process,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    if global_name == "_RETAINED_OWNED_PATH_BUILD_PID":
+        assert captured_directory._RETAINED_OWNED_PATH_BUILD_PID == child_pid
+        assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    else:
+        assert captured_directory._RETAINED_OWNED_PATH_BUILD_PID == original_pid
+
+    captured_directory._synchronize_owned_path_build_process()
+
+    assert captured_directory._RETAINED_OWNED_PATH_BUILD_PID == child_pid
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.acquire(timeout=1)
+    captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK.release()
+    assert captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK.acquire(timeout=1)
+    captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK.release()
+
+
+def test_owned_path_build_process_sync_return_interrupt_is_committed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    original_pid = captured_directory._RETAINED_OWNED_PATH_BUILD_PID
+    original_registry_lock = captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK
+    original_retry_lock = captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK
+    original_registry = captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    assert not original_registry
+    child_pid = original_pid + 10_000_000
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_LOCK",
+        original_registry_lock,
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_RETRY_LOCK",
+        original_retry_lock,
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_DIRECTORIES",
+        [object()],
+    )
+    monkeypatch.setattr(
+        captured_directory,
+        "_RETAINED_OWNED_PATH_BUILD_PID",
+        original_pid,
+    )
+    monkeypatch.setattr(captured_directory.os, "getpid", lambda: child_pid)
+    interruption = KeyboardInterrupt("process sync return")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            captured_directory._synchronize_owned_path_build_process,
+            captured_directory._synchronize_owned_path_build_process,
+            predicate=lambda _frame, result: result is None,
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    assert captured_directory._RETAINED_OWNED_PATH_BUILD_PID == child_pid
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+    captured_directory._synchronize_owned_path_build_process()
+    assert captured_directory._RETAINED_OWNED_PATH_BUILD_PID == child_pid
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_owned_path_build_process_sync_reentrant_subclass_rejection_preserves_base(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    child_parent = tmp_path / "child-private"
+    child_parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    owner.path.joinpath("payload.bin").write_bytes(b"parent")
+    _prime_owned_path_opcode_tracing(
+        captured_directory._synchronize_owned_path_build_process,
+        captured_directory._synchronize_owned_path_build_process,
+    )
+    child = os.fork()
+    if child == 0:  # pragma: no branch - child reports exact status
+        signal.signal(signal.SIGALRM, lambda *_args: os._exit(70))
+        signal.alarm(5)
+        try:
+
+            class ChildOwnedPathBuildDirectory(OwnedPathBuildDirectory):
+                pass
+
+            def reject_subclass_then_prepare_base() -> None:
+                try:
+                    ChildOwnedPathBuildDirectory.prepare(
+                        child_parent / "subclass-attempt"
+                    )
+                except TypeError as error:
+                    if "does not support subclass construction" not in str(error):
+                        os._exit(71)
+                else:
+                    os._exit(72)
+                child_owner = OwnedPathBuildDirectory.prepare(
+                    child_parent / "base-attempt"
+                )
+                child_owner.path.joinpath("payload.bin").write_bytes(b"child")
+
+            _call_owned_path_before_global_load(
+                captured_directory._synchronize_owned_path_build_process,
+                "_RETAINED_OWNED_PATH_BUILD_DIRECTORIES",
+                reject_subclass_then_prepare_base,
+            )
+            gc.collect()
+            retained = captured_directory._snapshot_owned_path_build_directories()
+            if len(retained) != 1 or type(retained[0]) is not OwnedPathBuildDirectory:
+                os._exit(73)
+            if tuple(child_parent.glob(".subclass-attempt.normalize-*")):
+                os._exit(74)
+            child_orphans = _retry_owned_path_build_cleanup()
+            if len(child_orphans) != 1 or not retained[0].closed:
+                os._exit(75)
+            if (
+                child_orphans[0].reopen(
+                    lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+                )
+                != b"child"
+            ):
+                os._exit(76)
+        except BaseException:  # noqa: B036 - child reports exact failure
+            os._exit(77)
+        os._exit(0)
+
+    _pid, status = os.waitpid(child, 0)
+
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 0
+    assert owner.path.joinpath("payload.bin").read_bytes() == b"parent"
+    assert not owner.closed
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.parametrize(
+    "sync_seam",
+    [
+        "_RETAINED_OWNED_PATH_BUILD_LOCK",
+        "_RETAINED_OWNED_PATH_BUILD_RETRY_LOCK",
+        "_RETAINED_OWNED_PATH_BUILD_PID",
+        "remove",
+        "return",
+    ],
+)
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_owned_path_build_process_sync_reentrant_prepare_retains_child_owner(
+    tmp_path: Path,
+    sync_seam: str,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    child_parent = tmp_path / "child-private"
+    child_parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    owner.path.joinpath("payload.bin").write_bytes(b"parent")
+    _prime_owned_path_opcode_tracing(
+        captured_directory._synchronize_owned_path_build_process,
+        captured_directory._synchronize_owned_path_build_process,
+    )
+    child = os.fork()
+    if child == 0:  # pragma: no branch - child reports exact status
+        signal.signal(signal.SIGALRM, lambda *_args: os._exit(80))
+        signal.alarm(5)
+        try:
+
+            def prepare_child_owner() -> None:
+                child_owner = OwnedPathBuildDirectory.prepare(child_parent / "attempt")
+                child_owner.path.joinpath("payload.bin").write_bytes(b"child")
+
+            if sync_seam == "return":
+                _call_owned_path_on_return(
+                    captured_directory._synchronize_owned_path_build_process,
+                    prepare_child_owner,
+                )
+            elif sync_seam == "remove":
+                _call_owned_path_after_named_load(
+                    captured_directory._synchronize_owned_path_build_process,
+                    "remove",
+                    prepare_child_owner,
+                )
+            else:
+                _call_owned_path_after_global_store(
+                    captured_directory._synchronize_owned_path_build_process,
+                    sync_seam,
+                    prepare_child_owner,
+                )
+            gc.collect()
+            retained = captured_directory._snapshot_owned_path_build_directories()
+            if len(retained) != 1 or retained[0]._owner_pid != os.getpid():
+                os._exit(81)
+            child_orphans = _retry_owned_path_build_cleanup()
+            if len(child_orphans) != 1 or not retained[0].closed:
+                os._exit(82)
+            if (
+                child_orphans[0].reopen(
+                    lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+                )
+                != b"child"
+            ):
+                os._exit(83)
+            if captured_directory._snapshot_owned_path_build_directories():
+                os._exit(84)
+        except BaseException:  # noqa: B036 - child reports exact failure
+            os._exit(85)
+        os._exit(0)
+
+    _pid, status = os.waitpid(child, 0)
+
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 0
+    assert owner.path.joinpath("payload.bin").read_bytes() == b"parent"
+    assert not owner.closed
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_owned_path_build_retained_registry_resets_forked_lock_without_cleanup(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    child_parent = tmp_path / "child-private"
+    child_parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"parent")
+    locked = threading.Event()
+    release = threading.Event()
+
+    def hold_registry_lock() -> None:
+        with captured_directory._RETAINED_OWNED_PATH_BUILD_RETRY_LOCK:
+            with owner._lifecycle_lock:
+                with captured_directory._RETAINED_OWNED_PATH_BUILD_LOCK:
+                    locked.set()
+                    release.wait(timeout=10)
+
+    holder = threading.Thread(target=hold_registry_lock)
+    holder.start()
+    assert locked.wait(timeout=5)
+    child = os.fork()
+    if child == 0:  # pragma: no branch - child reports exact status
+        signal.signal(signal.SIGALRM, lambda *_args: os._exit(90))
+        signal.alarm(3)
+        try:
+            _retry_owned_path_build_cleanup()
+            if not owner.path.joinpath("payload.bin").is_file():
+                os._exit(91)
+            try:
+                owner.close()
+            except RuntimeError as error:
+                if "PID boundary" not in str(error):
+                    os._exit(92)
+            else:
+                os._exit(93)
+            if not owner.path.joinpath("payload.bin").is_file():
+                os._exit(94)
+            child_owner = OwnedPathBuildDirectory.prepare(child_parent / "attempt")
+            child_owner.path.joinpath("payload.bin").write_bytes(b"child")
+            child_orphans = _retry_owned_path_build_cleanup()
+            if len(child_orphans) != 1 or not child_owner.closed:
+                os._exit(96)
+            if (
+                child_orphans[0].reopen(
+                    lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+                )
+                != b"child"
+            ):
+                os._exit(97)
+        except BaseException:  # noqa: B036 - child reports exact failure
+            os._exit(95)
+        os._exit(0)
+
+    try:
+        _pid, status = os.waitpid(child, 0)
+    finally:
+        release.set()
+        holder.join(timeout=5)
+
+    assert not holder.is_alive()
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 0
+    assert owner.path.joinpath("payload.bin").read_bytes() == b"parent"
+    assert not owner.closed
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_rejects_preexisting_ancestor_symlink(
+    tmp_path: Path,
+) -> None:
+    foreign = tmp_path / "foreign"
+    foreign.mkdir(mode=0o700)
+    trusted = tmp_path / "trusted"
+    trusted.mkdir(mode=0o700)
+    (trusted / "alias").symlink_to(foreign, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="real directory"):
+        OwnedPathBuildDirectory.prepare(trusted / "alias" / "attempt")
+
+    assert not tuple(foreign.glob(".attempt.normalize-*"))
+
+
+def test_owned_path_build_create_parent_uses_private_missing_parent(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "new" / "nested" / "attempt"
+
+    owner = OwnedPathBuildDirectory.prepare(destination, create_parent=True)
+    try:
+        assert stat.S_IMODE(destination.parent.stat().st_mode) == 0o700
+        assert not destination.exists()
+    finally:
+        owner.close()
+
+
+def test_owned_path_build_rejects_ancestor_replacement_and_retries_cleanup(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("initial writer"):
+        (owner.path / "owned.bin").write_bytes(b"owned")
+    saved_parent = tmp_path / "saved-parent"
+    parent.rename(saved_parent)
+    parent.mkdir(mode=0o700)
+    owner.path.mkdir(mode=0o700)
+    valuable = owner.path / "valuable.bin"
+    valuable.write_bytes(b"foreign")
+
+    with pytest.raises(RuntimeError, match="changed during before raced writer"):
+        with owner.path_operation("raced writer"):
+            (owner.path / "should-not-exist").write_bytes(b"bad")
+    with pytest.raises(RuntimeError) as caught:
+        owner.close()
+
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert valuable.read_bytes() == b"foreign"
+    assert not (owner.path / "should-not-exist").exists()
+
+    foreign_parent = tmp_path / "foreign-parent"
+    parent.rename(foreign_parent)
+    saved_parent.rename(parent)
+    owner.close()
+
+    assert owner.closed
+    assert (
+        foreign_parent / owner.path.name / "valuable.bin"
+    ).read_bytes() == b"foreign"
+
+
+def test_owned_path_build_rejects_child_replacement_and_retries_cleanup(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("initial writer"):
+        (owner.path / "owned.bin").write_bytes(b"owned")
+    stolen = parent / "stolen-owned-root"
+    owner.path.rename(stolen)
+    owner.path.mkdir(mode=0o700)
+    valuable = owner.path / "valuable.bin"
+    valuable.write_bytes(b"foreign")
+
+    with pytest.raises(RuntimeError, match="changed during before raced writer"):
+        with owner.path_operation("raced writer"):
+            (owner.path / "should-not-exist").write_bytes(b"bad")
+    with pytest.raises(RuntimeError) as caught:
+        owner.close()
+
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert valuable.read_bytes() == b"foreign"
+    foreign = parent / "foreign-root"
+    owner.path.rename(foreign)
+    stolen.rename(owner.path)
+    owner.close()
+
+    assert owner.closed
+    assert (foreign / "valuable.bin").read_bytes() == b"foreign"
+    assert not (foreign / "should-not-exist").exists()
+
+
+def test_owned_path_build_rejects_active_root_disappearance_until_restored(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"owned")
+    stolen = parent / "stolen-owned-root"
+    owner.path.rename(stolen)
+
+    with pytest.raises(RuntimeError, match="disappeared") as caught:
+        owner.close()
+
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert stolen.joinpath("payload.bin").read_bytes() == b"owned"
+    stolen.rename(owner.path)
+
+    orphan = owner.isolate()
+    assert not owner.closed
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"owned"
+    )
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_preserves_capture_cancellation_and_remains_owned(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        for index in range(3):
+            (owner.path / f"payload-{index}.bin").write_bytes(b"bytes")
+    interruption = KeyboardInterrupt("capture cancelled")
+
+    def cancel() -> None:
+        raise interruption
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.capture_ownership(check_cancelled=cancel)
+
+    assert caught.value is interruption
+    assert not owner.closed
+    assert owner.path.is_dir()
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_retains_retry_after_isolation_cleanup_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        (owner.path / "payload.bin").write_bytes(b"bytes")
+    interruption = KeyboardInterrupt("cleanup interrupted")
+    real_close = captured_directory.OwnedDirectoryStage._close_descriptors
+    interrupted = False
+
+    def interrupt_once(stage: OwnedDirectoryStage) -> None:
+        nonlocal interrupted
+        if stage is owner._stage and not interrupted:
+            interrupted = True
+            raise interruption
+        real_close(stage)
+
+    monkeypatch.setattr(
+        captured_directory.OwnedDirectoryStage,
+        "_close_descriptors",
+        interrupt_once,
+    )
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.isolate()
+
+    assert caught.value is interruption
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert not owner.path.exists()
+
+    orphan = owner.isolate()
+    assert not owner.closed
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"bytes"
+    )
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_reconciles_move_before_helper_result_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    real_discard = captured_directory._discard_owned_directory_with_authority
+    interruption = KeyboardInterrupt("after isolation helper result")
+    interrupted = False
+
+    def discard_then_interrupt(*args, **kwargs):
+        nonlocal interrupted
+        orphan = real_discard(*args, **kwargs)
+        if not interrupted:
+            interrupted = True
+            raise interruption
+        return orphan
+
+    monkeypatch.setattr(
+        captured_directory,
+        "_discard_owned_directory_with_authority",
+        discard_then_interrupt,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        owner.isolate()
+
+    assert caught.value is interruption
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.path.exists()
+    retained = owner._isolation_owner
+    assert retained is not None and retained.orphan is not None
+
+    orphan = owner.isolate()
+    assert orphan is retained.orphan
+    assert not owner.closed
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"bytes"
+    )
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.parametrize("post_commit_error", (False, True))
+def test_owned_path_build_rebinds_restored_source_before_isolation_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    post_commit_error: bool,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    real_require = atomic_directory._OwnedDirectoryIsolationOwner._require_exact_tree
+    failed_verification = False
+
+    def fail_first_moved_verification(
+        isolation_owner,
+        path: Path,
+        *,
+        label: str,
+        allow_root_rename: bool = False,
+    ) -> None:
+        nonlocal failed_verification
+        if label == "moved destination" and not failed_verification:
+            failed_verification = True
+            raise RuntimeError("injected moved-tree verification failure")
+        real_require(
+            isolation_owner,
+            path,
+            label=label,
+            allow_root_rename=allow_root_rename,
+        )
+
+    monkeypatch.setattr(
+        atomic_directory._OwnedDirectoryIsolationOwner,
+        "_require_exact_tree",
+        fail_first_moved_verification,
+    )
+    restore_interrupted = False
+    if post_commit_error:
+        authority = owner._authority_owner.authority
+        assert authority is not None
+        real_rename = atomic_directory._PublicationAuthority.rename_noreplace
+
+        def restore_then_error(candidate, source: str, destination: str):
+            nonlocal restore_interrupted
+            result = real_rename(candidate, source, destination)
+            if (
+                candidate is authority
+                and destination == owner.path.name
+                and source != owner.path.name
+                and not restore_interrupted
+            ):
+                restore_interrupted = True
+                raise OSError(errno.EIO, "injected post-restore failure")
+            return result
+
+        monkeypatch.setattr(
+            atomic_directory._PublicationAuthority,
+            "rename_noreplace",
+            restore_then_error,
+        )
+
+    with pytest.raises(RuntimeError, match="could not be isolated") as caught:
+        owner.isolate()
+
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert failed_verification
+    assert restore_interrupted is post_commit_error
+    assert owner.path.joinpath("payload.bin").read_bytes() == b"bytes"
+    retained = owner._isolation_owner
+    assert retained is not None
+    assert retained.orphan is None
+    assert retained._candidate is None
+
+    orphan = owner.isolate()
+
+    assert not owner.closed
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"bytes"
+    )
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_rechecks_parent_after_descriptor_close_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    real_close = OwnedDirectoryStage._close_descriptors
+    interruption = KeyboardInterrupt("after descriptor close")
+    interrupted = False
+
+    def close_then_interrupt(stage: OwnedDirectoryStage) -> None:
+        nonlocal interrupted
+        real_close(stage)
+        if stage is owner._stage and not interrupted:
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(
+        OwnedDirectoryStage,
+        "_close_descriptors",
+        close_then_interrupt,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        owner.isolate()
+
+    retained = owner._isolation_owner
+    assert retained is not None and retained.orphan is not None
+    orphan = retained.orphan
+    saved_parent = tmp_path / "saved-private"
+    parent.rename(saved_parent)
+    parent.mkdir(mode=0o700)
+
+    with pytest.raises(RuntimeError) as caught:
+        owner.isolate()
+
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert (
+        saved_parent.joinpath(orphan.path.name, "payload.bin").read_bytes() == b"bytes"
+    )
+    replacement_parent = tmp_path / "replacement-private"
+    parent.rename(replacement_parent)
+    saved_parent.rename(parent)
+
+    assert owner.isolate() is orphan
+    assert not owner.closed
+    owner.close()
+    assert owner.closed
+
+
+def test_owned_path_build_rechecks_orphan_child_before_authority_release(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    owner = OwnedPathBuildDirectory.prepare(parent / "attempt")
+    with owner.path_operation("path writer"):
+        owner.path.joinpath("payload.bin").write_bytes(b"bytes")
+    real_close = OwnedDirectoryStage._close_descriptors
+    interruption = KeyboardInterrupt("after descriptor close")
+    interrupted = False
+
+    def close_then_interrupt(stage: OwnedDirectoryStage) -> None:
+        nonlocal interrupted
+        real_close(stage)
+        if stage is owner._stage and not interrupted:
+            interrupted = True
+            raise interruption
+
+    monkeypatch.setattr(
+        OwnedDirectoryStage,
+        "_close_descriptors",
+        close_then_interrupt,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        owner.isolate()
+
+    retained = owner._isolation_owner
+    assert retained is not None and retained.orphan is not None
+    orphan = retained.orphan
+    saved_orphan = parent / "saved-exact-orphan"
+    orphan.path.rename(saved_orphan)
+    orphan.path.mkdir(mode=0o700)
+    orphan.path.joinpath("valuable.bin").write_bytes(b"foreign")
+
+    with pytest.raises(RuntimeError) as caught:
+        owner.isolate()
+
+    assert caught.value.captured_directory_cleanup_owner is owner
+    assert not owner.closed
+    assert orphan.path.joinpath("valuable.bin").read_bytes() == b"foreign"
+    foreign = parent / "foreign-orphan"
+    orphan.path.rename(foreign)
+    saved_orphan.rename(orphan.path)
+
+    assert owner.isolate() is orphan
+    assert not owner.closed
+    assert foreign.joinpath("valuable.bin").read_bytes() == b"foreign"
+    assert (
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        == b"bytes"
+    )
+    owner.close()
+    assert owner.closed
 
 
 def test_workspace_plan_is_canonical_and_bound_to_its_subject() -> None:

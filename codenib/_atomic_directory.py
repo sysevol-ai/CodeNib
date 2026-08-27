@@ -3082,6 +3082,7 @@ def _open_posix_publication_authority(
     parent_resource: int | None,
     expected_parent_identity: tuple[int, ...] | None,
     create_missing: bool = False,
+    missing_parent_mode: int = 0o755,
     authority_owner: _PublicationAuthorityOwner | None = None,
 ) -> _PublicationAuthority:
     if not _SAFE_OWNERSHIP_DIRECTORY_FDS:
@@ -3112,7 +3113,11 @@ def _open_posix_publication_authority(
                 if not create_missing:
                     raise
                 try:
-                    os.mkdir(part, mode=0o755, dir_fd=path_descriptor)
+                    os.mkdir(
+                        part,
+                        mode=missing_parent_mode,
+                        dir_fd=path_descriptor,
+                    )
                 except FileExistsError as exc:
                     raise RuntimeError(
                         "publication parent appeared while it was created"
@@ -3334,6 +3339,7 @@ def _open_publication_authority(
     parent_resource: int | None,
     expected_parent_identity: tuple[int, ...] | None,
     create_missing: bool = False,
+    missing_parent_mode: int = 0o755,
     authority_owner: _PublicationAuthorityOwner | None = None,
 ) -> _PublicationAuthority:
     """Open a platform authority before any namespace mutation."""
@@ -3345,6 +3351,7 @@ def _open_publication_authority(
             parent_resource=parent_resource,
             expected_parent_identity=expected_parent_identity,
             create_missing=create_missing,
+            missing_parent_mode=missing_parent_mode,
             authority_owner=authority_owner,
         )
     if sys.platform == "win32":
@@ -7180,6 +7187,305 @@ def reopen_authenticated_directory(
                 ),
             ),
         )
+
+
+class _OwnedDirectoryIsolationOwner:
+    """Persist a planned orphan name across every rename handoff seam."""
+
+    __slots__ = (
+        "authority",
+        "path",
+        "ownership",
+        "_candidate",
+        "_orphan",
+        "_pid",
+    )
+
+    def __init__(
+        self,
+        authority: _PublicationAuthority,
+        path: Path,
+        ownership: _TreeOwnership,
+    ) -> None:
+        if not isinstance(authority, _PublicationAuthority):
+            raise TypeError("authority must be a publication authority")
+        if not isinstance(ownership, _TreeOwnership):
+            raise TypeError("ownership must be a captured directory ownership token")
+        lexical = lexical_directory_path(path)
+        if lexical.parent != authority.display_parent:
+            raise ValueError("owned temporary directory uses another parent authority")
+        self.authority = authority
+        self.path = lexical
+        self.ownership = ownership
+        self._candidate: Path | None = None
+        self._orphan: DirectoryOrphan | None = None
+        self._pid = os.getpid()
+
+    @property
+    def orphan(self) -> DirectoryOrphan | None:
+        return self._orphan
+
+    @property
+    def closed(self) -> bool:
+        return self._orphan is not None
+
+    def _require_process(self) -> None:
+        if self._pid != os.getpid():
+            raise RuntimeError(
+                "owned directory isolation cannot cross a process boundary"
+            )
+
+    def _metadata(self, path: Path, *, label: str) -> object | None:
+        return _directory_or_missing_at(
+            self.authority,
+            path.name,
+            path=path,
+            label=label,
+        )
+
+    def _is_exact_root(self, metadata: object | None) -> bool:
+        return metadata is not None and (
+            _directory_inode_identity(metadata) == self.ownership.root_identity
+        )
+
+    def _require_exact_tree(
+        self,
+        path: Path,
+        *,
+        label: str,
+        allow_root_rename: bool = False,
+    ) -> None:
+        _require_tree_ownership_at(
+            self.authority,
+            path.name,
+            path=path,
+            expected=self.ownership,
+            label=label,
+            allow_root_rename=allow_root_rename,
+        )
+
+    def _install_orphan(
+        self,
+        candidate: Path,
+        *,
+        verified_at_isolation: bool = True,
+    ) -> DirectoryOrphan:
+        orphan = _orphan_metadata(
+            self.authority,
+            candidate,
+            self.ownership,
+            verified_at_isolation=verified_at_isolation,
+        )
+        self._orphan = orphan
+        return orphan
+
+    def _capture_matching_tree(
+        self,
+        path: Path,
+        *,
+        label: str,
+    ) -> _TreeOwnership:
+        observed = self.authority.capture_child(
+            path.name,
+            path=path,
+            label=label,
+        )
+        _require_matching_ownership(
+            observed,
+            self.ownership,
+            label=label,
+            allow_root_rename=True,
+        )
+        return observed
+
+    def _adopt_restored_source(self) -> bool:
+        """Rebind a restored source whose directory version changed on rename."""
+
+        try:
+            metadata = self._metadata(
+                self.path,
+                label="restored owned temporary directory",
+            )
+            if not self._is_exact_root(metadata):
+                return False
+            observed = self._capture_matching_tree(
+                self.path,
+                label="restored owned temporary directory",
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
+        self.ownership = observed
+        self._candidate = None
+        self._orphan = None
+        return True
+
+    def _retain_verified_candidate(self, candidate: Path) -> DirectoryOrphan | None:
+        """Keep a candidate only after freshly authenticating its complete tree."""
+
+        try:
+            metadata = self._metadata(
+                candidate,
+                label="retained directory orphan",
+            )
+            if not self._is_exact_root(metadata):
+                return None
+            observed = self._capture_matching_tree(
+                candidate,
+                label="retained directory orphan",
+            )
+            self.ownership = observed
+            return self._install_orphan(candidate)
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+    def _restore_or_retain_unverified(self, candidate: Path) -> DirectoryOrphan | None:
+        try:
+            self.authority.rename_noreplace(candidate.name, self.path.name)
+        except (OSError, RuntimeError):
+            # A backend error can be observed after the rename committed.  Do
+            # not mint a receipt for the old candidate name until namespace
+            # state has been reconciled through the retained authority.
+            pass
+        if self._adopt_restored_source():
+            return None
+        return self._retain_verified_candidate(candidate)
+
+    def isolate(self) -> DirectoryOrphan | None:
+        """Reconcile or perform one no-replace move into the retained name."""
+
+        self._require_process()
+        if self._orphan is not None:
+            return self._orphan
+        for _attempt in range(_MAX_ORPHAN_NAME_ATTEMPTS * 2):
+            candidate = self._candidate
+            try:
+                source_metadata = self._metadata(
+                    self.path,
+                    label="owned temporary directory",
+                )
+                source_is_exact = self._is_exact_root(source_metadata)
+                if candidate is not None:
+                    try:
+                        candidate_metadata = self._metadata(
+                            candidate,
+                            label="discarded directory orphan",
+                        )
+                    except ValueError:
+                        if not source_is_exact:
+                            return None
+                        if self._adopt_restored_source():
+                            continue
+                        return None
+                    if self._is_exact_root(candidate_metadata):
+                        try:
+                            self._require_exact_tree(
+                                candidate,
+                                label="moved destination",
+                                allow_root_rename=True,
+                            )
+                            return self._install_orphan(candidate)
+                        except (OSError, RuntimeError, ValueError):
+                            return self._restore_or_retain_unverified(candidate)
+                    if source_is_exact:
+                        if self._adopt_restored_source():
+                            continue
+                        return None
+                    return None
+                elif not source_is_exact:
+                    return None
+
+                try:
+                    self._require_exact_tree(
+                        self.path,
+                        label="owned temporary directory",
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    return None
+                if candidate is None:
+                    candidate = _random_orphan_path(
+                        display_parent=self.path.parent,
+                        destination_name=self.path.name,
+                        purpose="discarded",
+                    )
+                    # Publish the candidate before the only destructive call.
+                    self._candidate = candidate
+                try:
+                    self.authority.rename_noreplace(
+                        self.path.name,
+                        candidate.name,
+                    )
+                except FileExistsError:
+                    # Reconcile whether this was a collision or an injected
+                    # post-commit exception translated by a backend seam.
+                    continue
+                # Re-enter through observed namespace state.  An asynchronous
+                # exception before this back-edge still leaves ``_candidate``
+                # sufficient for an explicit retry.
+                continue
+            except (OSError, RuntimeError, ValueError):
+                return None
+        raise RuntimeError("could not claim directory under a bounded orphan name")
+
+    def verify_orphan(self) -> DirectoryOrphan:
+        """Revalidate the exact moved child before releasing its authority."""
+
+        self._require_process()
+        orphan = self._orphan
+        candidate = self._candidate
+        if orphan is None or candidate is None:
+            raise RuntimeError("owned directory isolation has no retained orphan")
+        locator = orphan.locator
+        if (
+            orphan.path != candidate
+            or locator.parent_path != self.authority.display_parent
+            or locator.child_name != candidate.name
+            or locator.backend_tag != self.authority.backend_tag
+            or locator.parent_identity != self.authority.identity
+        ):
+            raise RuntimeError("owned directory orphan binding changed")
+        _require_matching_ownership(
+            locator.ownership,
+            self.ownership,
+            label="retained directory orphan",
+            allow_root_rename=True,
+        )
+        self.authority.verify_path_binding()
+        self._require_exact_tree(
+            candidate,
+            label="retained directory orphan",
+            allow_root_rename=True,
+        )
+        self.authority.verify_path_binding()
+        return orphan
+
+    def close(self) -> None:
+        if self.isolate() is None:
+            raise RuntimeError("owned directory could not be isolated")
+
+
+def _discard_owned_directory_with_authority(
+    authority: _PublicationAuthority,
+    path: Path,
+    ownership: _TreeOwnership,
+    *,
+    isolation_owner: _OwnedDirectoryIsolationOwner | None = None,
+) -> DirectoryOrphan | None:
+    """Isolate one exact tree through an already-retained parent authority."""
+
+    owner = (
+        _OwnedDirectoryIsolationOwner(authority, path, ownership)
+        if isolation_owner is None
+        else isolation_owner
+    )
+    if not isinstance(owner, _OwnedDirectoryIsolationOwner):
+        raise TypeError("isolation_owner must own a directory isolation")
+    if (
+        owner.authority is not authority
+        or owner.path != lexical_directory_path(path)
+        or owner.ownership != ownership
+    ):
+        raise ValueError("directory isolation owner binding does not match")
+    return owner.isolate()
 
 
 def discard_owned_directory(

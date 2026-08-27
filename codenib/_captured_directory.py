@@ -18,7 +18,8 @@ import sys
 from contextlib import contextmanager
 from dataclasses import InitVar, dataclass
 from pathlib import Path, PurePosixPath
-from typing import Callable, Iterable, Iterator, Mapping, Sequence, TypeVar
+from threading import RLock
+from typing import Callable, Iterable, Iterator, Mapping, Sequence, TypeVar, final
 
 try:
     import fcntl as _fcntl
@@ -37,9 +38,13 @@ from ._atomic_directory import (
     _adopt_native_posix_replacement_authority,
     _annotate_secondary_error,
     _capture_posix_directory_descriptor,
+    _discard_owned_directory_with_authority,
     _NativeReplacementPublication,
     _open_publication_authority,
+    _OrderedAction,
+    _OwnedDirectoryIsolationOwner,
     _PosixResourceOwner,
+    _publication_authority_owner_released,
     _PublicationAuthority,
     _PublicationAuthorityOwner,
     _publish_native_replacement_with_authority,
@@ -47,6 +52,8 @@ from ._atomic_directory import (
     _rename_noreplace_at,
     _require_matching_ownership,
     _require_rename_noreplace_platform,
+    _run_context_with_cleanup_actions,
+    _simple_child_name,
     _TreeOwnership,
     _validate_ownership_inventory_budget,
     directory_ownership_entry_identities,
@@ -5148,13 +5155,15 @@ class OwnedDirectoryStage:
         *,
         _parent_authority: _PublicationAuthority | None = None,
         _expected_destination_ownership: object = _UNSET_DESTINATION_OWNERSHIP,
+        _construction_owner: object | None = None,
     ) -> None:
         self.destination = lexical_directory_path(destination)
-        self.path = self.destination.parent / (
-            f".{self.destination.name}.normalize-{secrets.token_hex(12)}"
+        self.path = self.destination.parent / _owned_directory_stage_name(
+            self.destination.name,
         )
-        self._stage_parent_fd = -1
-        self._descriptor = -1
+        self._resources = _PosixResourceOwner()
+        self._stage_parent_record = None
+        self._root_record = None
         self._parent_authority = _parent_authority
         self._has_expected_destination_ownership = (
             _expected_destination_ownership is not _UNSET_DESTINATION_OWNERSHIP
@@ -5166,10 +5175,17 @@ class OwnedDirectoryStage:
             str,
             tuple[tuple[int, ...], int, int, str],
         ] = {}
+        self._initial = None
+        self._stage_identity: tuple[int, ...] | None = None
+        self._creation_confirmed_identity: tuple[int, ...] | None = None
         self._cleanup_ownership = None
+        if _construction_owner is not None:
+            install = getattr(_construction_owner, "_install_stage", None)
+            if not callable(install):
+                raise TypeError("owned stage construction owner is invalid")
+            install(self)
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0)
-        created = False
         try:
             if self._parent_authority is None:
                 self._parent_authority = _open_publication_authority(
@@ -5177,19 +5193,29 @@ class OwnedDirectoryStage:
                     parent_resource=None,
                     expected_parent_identity=None,
                 )
-            self._stage_parent_fd = os.dup(self._parent_authority.resource)
+            stage_parent_fd = self._resources.duplicate(self._parent_authority.resource)
+            self._stage_parent_record = self._resources.record_for_cleanup(
+                stage_parent_fd
+            )
             self._parent_identity = self._parent_authority.identity
+            existing = self._parent_authority.child_metadata(
+                self.path.name,
+                path=self.path,
+                label="owned stage",
+            )
+            if existing is not None:
+                raise FileExistsError(f"owned stage already exists: {self.path}")
             os.mkdir(
                 self.path.name,
                 mode=0o700,
-                dir_fd=self._stage_parent_fd,
+                dir_fd=stage_parent_fd,
             )
-            created = True
             created_metadata = os.stat(
                 self.path.name,
-                dir_fd=self._stage_parent_fd,
+                dir_fd=stage_parent_fd,
                 follow_symlinks=False,
             )
+            self._creation_confirmed_identity = _root_identity(created_metadata)
             try:
                 self._initial = self._parent_authority.capture_child(
                     self.path.name,
@@ -5201,12 +5227,13 @@ class OwnedDirectoryStage:
                 raise RuntimeError(
                     "owned stage root changed during initialization"
                 ) from exc
-            self._descriptor = os.open(
+            descriptor = self._resources.open(
                 self.path.name,
                 flags,
-                dir_fd=self._stage_parent_fd,
+                dir_fd=stage_parent_fd,
             )
-            opened = os.fstat(self._descriptor)
+            self._root_record = self._resources.record_for_cleanup(descriptor)
+            opened = os.fstat(descriptor)
             if (
                 _root_identity(created_metadata) != _root_identity(opened)
                 or _root_identity(opened)
@@ -5218,13 +5245,28 @@ class OwnedDirectoryStage:
             self._stage_identity = _root_identity(opened)
             self._cleanup_ownership = self._initial
             self._verify_parent_path()
-        except BaseException:
-            self.close()
-            # A created but unverified stage is intentionally left as an
-            # orphan; deleting by name could remove a raced foreign object.
-            if not created:
-                self.path = self.destination.parent / self.path.name
+        except BaseException as primary_error:
+            if _construction_owner is None:
+                try:
+                    self.close()
+                except BaseException as close_error:  # noqa: B036 - keep first
+                    _annotate_secondary_error(
+                        primary_error,
+                        "owned stage initialization cleanup also failed",
+                        close_error,
+                    )
+                    _attach_cleanup_owner(primary_error, self)
             raise
+
+    @property
+    def _stage_parent_fd(self) -> int:
+        record = self._stage_parent_record
+        return -1 if record is None else record.descriptor
+
+    @property
+    def _descriptor(self) -> int:
+        record = self._root_record
+        return -1 if record is None else record.descriptor
 
     @classmethod
     def prepare(
@@ -5278,22 +5320,24 @@ class OwnedDirectoryStage:
             raise RuntimeError("owned stage did not capture its destination")
         return self._expected_destination_ownership
 
+    def _close_descriptors(self) -> None:
+        self._resources.close_all()
+
     def close(self) -> None:
-        if self._descriptor >= 0:
+        try:
+            self._close_descriptors()
+        except BaseException as exc:  # noqa: B036 - retain exact descriptor owner
+            _attach_cleanup_owner(exc, self)
+            raise
+        authority = self._parent_authority
+        if authority is not None:
             try:
-                os.close(self._descriptor)
-            except OSError:
-                pass
-            self._descriptor = -1
-        if self._stage_parent_fd >= 0:
-            try:
-                os.close(self._stage_parent_fd)
-            except OSError:
-                pass
-            self._stage_parent_fd = -1
-        if self._parent_authority is not None:
-            self._parent_authority.close()
-            self._parent_authority = None
+                authority.close()
+            except BaseException as exc:  # noqa: B036 - retain authority owner
+                _attach_cleanup_owner(exc, self)
+                raise
+            else:
+                self._parent_authority = None
 
     @staticmethod
     def _record_orphan(orphan: DirectoryOrphan | None, *, operation: str) -> None:
@@ -5320,10 +5364,11 @@ class OwnedDirectoryStage:
         return None
 
     def _verify_parent_path(self) -> None:
-        if self._stage_parent_fd < 0 or self._parent_authority is None:
+        stage_parent_fd = self._stage_parent_fd
+        if stage_parent_fd < 0 or self._parent_authority is None:
             raise RuntimeError("owned stage parent is closed")
         try:
-            opened = os.fstat(self._stage_parent_fd)
+            opened = os.fstat(stage_parent_fd)
             self._parent_authority.verify_path_binding()
         except OSError as exc:
             raise RuntimeError("owned stage parent changed") from exc
@@ -5331,13 +5376,15 @@ class OwnedDirectoryStage:
             raise RuntimeError("owned stage parent changed")
 
     def _verify_root_descriptor(self) -> None:
-        if self._descriptor < 0:
+        descriptor = self._descriptor
+        stage_parent_fd = self._stage_parent_fd
+        if descriptor < 0 or stage_parent_fd < 0:
             raise RuntimeError("owned stage is closed")
         try:
-            opened = os.fstat(self._descriptor)
+            opened = os.fstat(descriptor)
             path_metadata = os.stat(
                 self.path.name,
-                dir_fd=self._stage_parent_fd,
+                dir_fd=stage_parent_fd,
                 follow_symlinks=False,
             )
         except OSError as exc:
@@ -5573,11 +5620,911 @@ class OwnedDirectoryStage:
         return orphan
 
 
+def _require_owned_path_build_support() -> None:
+    """Fail before mutation when retained POSIX path building is unavailable."""
+
+    if not (sys.platform.startswith("linux") or sys.platform == "darwin"):
+        raise RuntimeError("owned path build directories are unsupported on this host")
+    if not _SAFE_OWNERSHIP_DIRECTORY_FDS:
+        raise RuntimeError(
+            "owned path build directories require no-follow directory-fd support"
+        )
+    if not callable(getattr(os, "geteuid", None)):
+        raise RuntimeError(
+            "owned path build directory ownership cannot be authenticated"
+        )
+    _require_rename_noreplace_platform()
+
+
+def _require_owned_build_directory(
+    descriptor: int,
+    *,
+    label: str,
+    private: bool,
+) -> None:
+    """Require one retained directory descriptor to be owner controlled."""
+
+    get_effective_uid = getattr(os, "geteuid", None)
+    if not callable(get_effective_uid):
+        raise RuntimeError(f"{label} ownership cannot be authenticated")
+    try:
+        metadata = os.fstat(descriptor)
+    except OSError as exc:
+        raise RuntimeError(f"{label} cannot be authenticated") from exc
+    mode = stat.S_IMODE(metadata.st_mode)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != get_effective_uid()
+        or mode & 0o022
+        or mode & 0o700 != 0o700
+        or (private and mode & 0o077)
+    ):
+        privacy = " private" if private else ""
+        raise PermissionError(f"{label} must be an owner-controlled{privacy} directory")
+
+
+_RETAINED_OWNED_PATH_BUILD_DIRECTORIES: list[OwnedPathBuildDirectory] = []
+_RETAINED_OWNED_PATH_BUILD_LOCK = RLock()
+_RETAINED_OWNED_PATH_BUILD_RETRY_LOCK = RLock()
+_RETAINED_OWNED_PATH_BUILD_PID = os.getpid()
+_OWNED_PATH_BUILD_LEASE_RESULT_MISSING = object()
+
+
+@dataclass(slots=True)
+class _OwnedPathBuildLeaseOutcome:
+    """Carry a callback result or exact failure beyond lock settlement."""
+
+    value: object = _OWNED_PATH_BUILD_LEASE_RESULT_MISSING
+    error: BaseException | None = None
+
+
+class _OwnedPathBuildRetryLease:
+    """Release one nonblocking path-build lifecycle lock after interruption."""
+
+    __slots__ = (
+        "_acquire_blocking",
+        "_acquisition_started",
+        "_concurrent_error",
+        "_lock",
+        "_reentrant_error",
+    )
+
+    def __init__(
+        self,
+        lock,
+        *,
+        acquire_blocking: bool,
+        reentrant_error: str,
+        concurrent_error: str,
+    ) -> None:
+        self._lock = lock
+        self._acquire_blocking = acquire_blocking
+        self._reentrant_error = reentrant_error
+        self._concurrent_error = concurrent_error
+        self._acquisition_started = False
+
+    def _held_by_current_thread(self) -> bool:
+        ownership_check = getattr(self._lock, "_is_owned", None)
+        if not callable(ownership_check):
+            raise RuntimeError("owned path build retry lock lacks owner tracking")
+        return bool(ownership_check())
+
+    @property
+    def closed(self) -> bool:
+        if not self._acquisition_started:
+            return True
+        return not self._held_by_current_thread()
+
+    def acquire_nonblocking(self) -> None:
+        if self._held_by_current_thread():
+            raise RuntimeError(self._reentrant_error)
+        self._acquisition_started = True
+        if not self._lock.acquire(blocking=self._acquire_blocking):
+            self._acquisition_started = False
+            raise RuntimeError(self._concurrent_error)
+
+    def close(self) -> None:
+        if not self._acquisition_started:
+            return
+        if self._held_by_current_thread():
+            self._lock.release()
+        self._acquisition_started = False
+
+
+def _capture_owned_path_build_lease_outcome(
+    callback: Callable[[], _WorkspaceResult],
+    outcome: _OwnedPathBuildLeaseOutcome,
+) -> None:
+    """Keep operation failures out of the native lock's unwind path."""
+
+    try:
+        outcome.value = callback()
+    except BaseException as error:  # noqa: B036 - unwrap after lock release
+        outcome.error = error
+
+
+def _owned_path_build_operation_context(
+    error: BaseException,
+) -> BaseException | None:
+    """Recover an operation error interrupted at its outcome-store handler."""
+
+    try:
+        context = vars(BaseException)["__context__"].__get__(error, type(error))
+    except BaseException:  # noqa: B036 - inspection cannot replace failure
+        return None
+    if not issubclass(type(context), BaseException):
+        return None
+    try:
+        error_traceback = vars(BaseException)["__traceback__"].__get__(
+            error,
+            type(error),
+        )
+        capture_frames = []
+        while error_traceback is not None:
+            frame = error_traceback.tb_frame
+            if frame.f_code is _capture_owned_path_build_lease_outcome.__code__:
+                capture_frames.append(frame)
+            error_traceback = error_traceback.tb_next
+        context_traceback = vars(BaseException)["__traceback__"].__get__(
+            context,
+            type(context),
+        )
+        while context_traceback is not None:
+            frame = context_traceback.tb_frame
+            if any(frame is capture_frame for capture_frame in capture_frames):
+                return context
+            context_traceback = context_traceback.tb_next
+    except BaseException:  # noqa: B036 - inspection cannot replace failure
+        return None
+    return None
+
+
+def _run_with_owned_path_build_lease(
+    lease: _OwnedPathBuildRetryLease,
+    callback: Callable[[], _WorkspaceResult],
+    *,
+    release_label: str,
+) -> _WorkspaceResult:
+    """Run one callback while settling a preinstalled nonblocking lease."""
+
+    outcome = _OwnedPathBuildLeaseOutcome()
+    release_lease = _OrderedAction(
+        label=release_label,
+        action=lease.close,
+        complete=lambda: lease.closed,
+        retry_incomplete="cancellation",
+        incomplete_owner=lease,
+    )
+    # The outer plan covers the inner cleanup runner's own call boundary and
+    # the explicit fallback call below.  With one asynchronous interruption,
+    # at least one already-installed plan can reconcile the idempotent lease.
+    try:
+        with _run_context_with_cleanup_actions((release_lease,)):
+            try:
+                with _run_context_with_cleanup_actions((release_lease,)):
+                    lease.acquire_nonblocking()
+                    _capture_owned_path_build_lease_outcome(callback, outcome)
+            except BaseException as primary_error:  # noqa: B036 - release exact lock
+                try:
+                    lease.close()
+                except BaseException as release_error:  # noqa: B036 - keep primary
+                    _annotate_secondary_error(
+                        primary_error,
+                        release_label,
+                        release_error,
+                    )
+                    _attach_cleanup_owner(primary_error, lease)
+                raise  # preserve lease settlement failure
+    except BaseException as settlement_error:  # noqa: B036 - recover exact callback
+        operation_error = outcome.error
+        if operation_error is None:
+            operation_error = _owned_path_build_operation_context(settlement_error)
+        if operation_error is not None and operation_error is not settlement_error:
+            _annotate_secondary_error(
+                operation_error,
+                release_label,
+                settlement_error,
+            )
+            raise operation_error from settlement_error
+        raise
+    if outcome.error is not None:
+        raise outcome.error
+    if outcome.value is _OWNED_PATH_BUILD_LEASE_RESULT_MISSING:
+        raise RuntimeError("owned path build lease callback did not return")
+    return outcome.value  # type: ignore[return-value]
+
+
+def _synchronize_owned_path_build_process() -> None:
+    """Drop inherited namespace owners without reusing a forked lock."""
+
+    global _RETAINED_OWNED_PATH_BUILD_LOCK
+    global _RETAINED_OWNED_PATH_BUILD_RETRY_LOCK
+    global _RETAINED_OWNED_PATH_BUILD_PID
+    pid = os.getpid()
+    if pid == _RETAINED_OWNED_PATH_BUILD_PID:
+        return
+    inherited = tuple(_RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    _RETAINED_OWNED_PATH_BUILD_LOCK = RLock()
+    _RETAINED_OWNED_PATH_BUILD_RETRY_LOCK = RLock()
+    # A child may close its inherited descriptors at exit, but must never
+    # isolate a filesystem tree still owned by the parent process. Remove only
+    # the identities observed before reset: a signal-reentrant prepare may add
+    # a genuine child owner while this outer reset is paused.
+    for inherited_owner in inherited:
+        if (
+            type(inherited_owner) is OwnedPathBuildDirectory
+            and inherited_owner._owner_pid == pid
+        ):
+            continue
+        try:
+            # CPython's list removal recognizes the exact object before any
+            # equality dispatch and completes the search/delete in one native
+            # operation.  A reentrant child reset may already have removed
+            # this identity; it must never turn a saved numeric index into a
+            # deletion of the child owner subsequently appended there.
+            _RETAINED_OWNED_PATH_BUILD_DIRECTORIES.remove(inherited_owner)
+        except ValueError:
+            pass
+    # Publish the new PID only after every inherited process-local object was
+    # replaced.  An interruption before this final store retries the reset.
+    _RETAINED_OWNED_PATH_BUILD_PID = pid
+
+
+def _run_with_owned_path_build_registry(
+    callback: Callable[[], _WorkspaceResult],
+) -> _WorkspaceResult:
+    """Run one short registry operation under a recoverable blocking lease."""
+
+    registry_lease = _OwnedPathBuildRetryLease(
+        _RETAINED_OWNED_PATH_BUILD_LOCK,
+        acquire_blocking=True,
+        reentrant_error="owned path build registry operation is reentrant",
+        concurrent_error="owned path build registry lock acquisition failed",
+    )
+    return _run_with_owned_path_build_lease(
+        registry_lease,
+        callback,
+        release_label="owned path build registry lease release also failed",
+    )
+
+
+def _register_owned_path_build_directory(owner: OwnedPathBuildDirectory) -> None:
+    _synchronize_owned_path_build_process()
+
+    def register() -> None:
+        if any(
+            retained is owner for retained in _RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+        ):
+            return
+        _RETAINED_OWNED_PATH_BUILD_DIRECTORIES.append(owner)
+
+    _run_with_owned_path_build_registry(register)
+
+
+def _forget_owned_path_build_directory(owner: OwnedPathBuildDirectory) -> None:
+    _synchronize_owned_path_build_process()
+
+    def forget() -> None:
+        _RETAINED_OWNED_PATH_BUILD_DIRECTORIES[:] = [
+            retained
+            for retained in _RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+            if retained is not owner
+        ]
+
+    _run_with_owned_path_build_registry(forget)
+
+
+def _owned_path_build_directory_retained(owner: OwnedPathBuildDirectory) -> bool:
+    _synchronize_owned_path_build_process()
+
+    def retained() -> bool:
+        return any(
+            retained is owner for retained in _RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+        )
+
+    return _run_with_owned_path_build_registry(retained)
+
+
+def _snapshot_owned_path_build_directories() -> tuple[OwnedPathBuildDirectory, ...]:
+    _synchronize_owned_path_build_process()
+    return _run_with_owned_path_build_registry(
+        lambda: tuple(_RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    )
+
+
+def retry_retained_owned_path_build_cleanup(
+    accept_orphan: Callable[[DirectoryOrphan], None],
+) -> None:
+    """Close retained path builds after their worker scope is quiescent.
+
+    This explicit boundary also settles a build whose successful ``prepare``
+    return was interrupted before its caller could receive the owner.  The
+    callback accepts each authenticated orphan before its full owner is
+    released. Delivery is at least once, so the callback must be idempotent and
+    must not recursively invoke this retry boundary. The first owner or sink
+    failure ends the round; every later owner remains registered for retry.
+    """
+
+    if not callable(accept_orphan):
+        raise TypeError("owned path build orphan acceptor must be callable")
+    _synchronize_owned_path_build_process()
+    retry_lease = _OwnedPathBuildRetryLease(
+        _RETAINED_OWNED_PATH_BUILD_RETRY_LOCK,
+        acquire_blocking=False,
+        reentrant_error="owned path build cleanup retry is reentrant",
+        concurrent_error="owned path build cleanup retry is already active",
+    )
+
+    def retry_round() -> None:
+        owners = _snapshot_owned_path_build_directories()
+        for owner in owners:
+            owner._retry_quiescent_cleanup(accept_orphan)
+
+    _run_with_owned_path_build_lease(
+        retry_lease,
+        retry_round,
+        release_label="owned path build retry lease release also failed",
+    )
+
+
+class _OwnedPathOperationLease:
+    """Clear one operation marker through the ordered retry protocol."""
+
+    __slots__ = ("owner",)
+
+    def __init__(self, owner: OwnedPathBuildDirectory) -> None:
+        self.owner = owner
+
+    @property
+    def closed(self) -> bool:
+        return self.owner._operation_lease is not self
+
+    def close(self) -> None:
+        if self.owner._operation_lease is self:
+            self.owner._operation_lease = None
+
+
+class _AmbiguousOwnedPathBuildRoot(RuntimeError):
+    """A stage name exists without authenticated creation identity."""
+
+
+def _owned_directory_stage_name(
+    destination_name: str,
+    *,
+    token: str | None = None,
+) -> str:
+    """Return one bounded hidden stage name for an owned destination."""
+
+    if token is None:
+        token = secrets.token_hex(12)
+    return _simple_child_name(
+        f".{destination_name}.normalize-{token}",
+        label="owned stage",
+    )
+
+
+@final
+class OwnedPathBuildDirectory:
+    """Own one private directory used by an arbitrary path-based writer.
+
+    Construction is intentionally sealed to this exact class. Fork recovery
+    authenticates retained owners by this concrete type and process identity;
+    accepting a subclass would make its cleanup authority unverifiable.
+    The object exists before parent or stage acquisition begins.  Its retained
+    slots therefore cover construction, path-operation, isolation, and close
+    handoff interruptions without transferring cleanup through a return value.
+    Initial creation assumes the owner-controlled parent is quiescent.  If a
+    directory appears without a committed post-``mkdir`` identity, cleanup
+    leaves that ambiguous entry untouched and releases only retained handles.
+    """
+
+    def __init__(
+        self,
+        destination: Path,
+        *,
+        require_private_parent: bool,
+    ) -> None:
+        if type(self) is not OwnedPathBuildDirectory:
+            raise TypeError(
+                "owned path build directory does not support subclass construction"
+            )
+        self._destination = destination
+        self._path = destination
+        self._require_private_parent = require_private_parent
+        self._authority_owner = _PublicationAuthorityOwner()
+        self._stage: OwnedDirectoryStage | None = None
+        self._isolation_owner: _OwnedDirectoryIsolationOwner | None = None
+        self._operation_lease: _OwnedPathOperationLease | None = None
+        self._lifecycle_lock = RLock()
+        self._owner_pid = os.getpid()
+        self._state = "opening"
+        _register_owned_path_build_directory(self)
+
+    @classmethod
+    def prepare(
+        cls,
+        destination: Path,
+        *,
+        create_parent: bool = False,
+        require_private_parent: bool = True,
+    ) -> OwnedPathBuildDirectory:
+        """Create a fresh private build root under one retained authority."""
+
+        if cls is not OwnedPathBuildDirectory:
+            raise TypeError(
+                "owned path build directory does not support subclass construction"
+            )
+        if type(destination) is not type(Path()):
+            raise TypeError("owned path build destination must be an exact Path")
+        if type(create_parent) is not bool:
+            raise TypeError("owned path build create_parent must be a boolean")
+        if type(require_private_parent) is not bool:
+            raise TypeError("owned path build require_private_parent must be a boolean")
+        _require_owned_path_build_support()
+        lexical = lexical_directory_path(destination)
+        # Validate the exact derived component length before constructing the
+        # retained owner or creating a missing parent.  The random token is
+        # always 24 ASCII bytes, so a fixed token proves every generated name.
+        _owned_directory_stage_name(lexical.name, token="0" * 24)
+        resource = cls(
+            lexical,
+            require_private_parent=require_private_parent,
+        )
+        cleanup = _OrderedAction(
+            label="owned path build preparation cleanup also failed",
+            action=resource.close,
+            complete=lambda: resource.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=resource,
+        )
+        with _run_context_with_cleanup_actions(
+            (cleanup,),
+            cleanup_on_success=False,
+        ):
+            resource._acquire(create_parent=create_parent)
+            return resource
+
+    def _acquire(self, *, create_parent: bool) -> None:
+        authority = _open_publication_authority(
+            self._destination.parent,
+            parent_resource=None,
+            expected_parent_identity=None,
+            create_missing=create_parent,
+            missing_parent_mode=0o700,
+            authority_owner=self._authority_owner,
+        )
+        authority.verify_path_binding()
+        _require_owned_build_directory(
+            authority.resource,
+            label="owned path build parent",
+            private=self._require_private_parent,
+        )
+        try:
+            destination_metadata = authority.child_metadata(
+                self._destination.name,
+                path=self._destination,
+                label="owned path build destination",
+            )
+        except ValueError as exc:
+            raise FileExistsError(
+                f"owned path build destination already exists: {self._destination}"
+            ) from exc
+        if destination_metadata is not None:
+            raise FileExistsError(
+                f"owned path build destination already exists: {self._destination}"
+            )
+        authority.verify_path_binding()
+        OwnedDirectoryStage(
+            self._destination,
+            _parent_authority=authority,
+            _expected_destination_ownership=None,
+            _construction_owner=self,
+        )
+        self._verify_active("initialization", allow_opening=True)
+        self._state = "active"
+
+    def _install_stage(self, stage: OwnedDirectoryStage) -> None:
+        if self._stage is not None:
+            raise RuntimeError("owned path build stage is already installed")
+        self._stage = stage
+        self._path = stage.path
+
+    @property
+    def path(self) -> Path:
+        """Return the diagnostic writer path bound by this owner."""
+
+        return self._path
+
+    @property
+    def closed(self) -> bool:
+        """Return whether isolation and retained-authority cleanup completed."""
+
+        return self._state == "closed" and not _owned_path_build_directory_retained(
+            self
+        )
+
+    def _require_owner_pid(self) -> None:
+        if os.getpid() != self._owner_pid:
+            raise RuntimeError("owned path build directory cannot cross a PID boundary")
+
+    def _settle_quiescent_operation(self) -> None:
+        """Release a path lease abandoned at its public return handoff."""
+
+        self._require_owner_pid()
+        lease = self._operation_lease
+        if lease is not None:
+            lease.close()
+
+    def _run_lifecycle(
+        self, callback: Callable[[], _WorkspaceResult]
+    ) -> _WorkspaceResult:
+        """Serialize one isolation/ack transition and reject callback recursion."""
+
+        self._require_owner_pid()
+        lifecycle_lease = _OwnedPathBuildRetryLease(
+            self._lifecycle_lock,
+            acquire_blocking=False,
+            reentrant_error="owned path build lifecycle operation is reentrant",
+            concurrent_error="owned path build lifecycle operation is already active",
+        )
+        return _run_with_owned_path_build_lease(
+            lifecycle_lease,
+            callback,
+            release_label="owned path build lifecycle lease release also failed",
+        )
+
+    def _retry_quiescent_cleanup(
+        self,
+        accept_orphan: Callable[[DirectoryOrphan], None],
+    ) -> None:
+        def cleanup_owner() -> None:
+            self._settle_quiescent_operation()
+            orphan = self._isolate_and_close(
+                require_orphan=False,
+                _release_retention=False,
+            )
+            if orphan is not None:
+                accept_orphan(orphan)
+            _forget_owned_path_build_directory(self)
+
+        self._run_lifecycle(cleanup_owner)
+
+    def _require_available(self, operation: str) -> None:
+        self._require_owner_pid()
+        if self._state == "closed":
+            raise RuntimeError("owned path build directory is closed")
+        if self._state != "active":
+            raise RuntimeError("owned path build directory is not active")
+        if self._isolation_owner is not None:
+            raise RuntimeError("owned path build directory is isolated")
+        if self._operation_lease is not None:
+            raise RuntimeError(f"owned path build {operation} is reentrant")
+
+    def _require_stage(self) -> OwnedDirectoryStage:
+        stage = self._stage
+        if stage is None:
+            raise RuntimeError("owned path build stage was not acquired")
+        return stage
+
+    def _require_authority(self) -> _PublicationAuthority:
+        authority = self._authority_owner.authority
+        if authority is None:
+            raise RuntimeError("owned path build parent authority is closed")
+        return authority
+
+    def _verify_parent(self) -> None:
+        authority = self._require_authority()
+        authority.verify_path_binding()
+        _require_owned_build_directory(
+            authority.resource,
+            label="owned path build parent",
+            private=self._require_private_parent,
+        )
+        stage = self._stage
+        if stage is None or stage._stage_parent_fd < 0:
+            return
+        opened = os.fstat(stage._stage_parent_fd)
+        expected = getattr(stage, "_parent_identity", authority.identity)
+        if _root_identity(opened) != expected:
+            raise RuntimeError("owned path build parent changed")
+
+    def _verify_active(self, operation: str, *, allow_opening: bool = False) -> None:
+        self._require_owner_pid()
+        if self._state != "active" and not (allow_opening and self._state == "opening"):
+            raise RuntimeError("owned path build directory is not active")
+        stage = self._require_stage()
+        try:
+            self._verify_parent()
+            stage._verify_root_descriptor()
+            _require_owned_build_directory(
+                stage._descriptor,
+                label="owned path build root",
+                private=True,
+            )
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError(
+                f"owned path build directory changed during {operation}"
+            ) from exc
+
+    @contextmanager
+    def path_operation(self, label: str) -> Iterator[Path]:
+        """Bracket one arbitrary path writer with retained binding checks."""
+
+        if type(label) is not str:
+            raise TypeError("owned path build operation label must be exact text")
+        if not label:
+            raise ValueError("owned path build operation label must not be empty")
+        self._require_available("path operation")
+        lease = _OwnedPathOperationLease(self)
+        cleanup = _OrderedAction(
+            label="owned path build operation marker cleanup also failed",
+            action=lease.close,
+            complete=lambda: lease.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=lease,
+        )
+        with _run_context_with_cleanup_actions((cleanup,)):
+            if self._operation_lease is not None:
+                raise RuntimeError("owned path build path operation is reentrant")
+            self._operation_lease = lease
+            self._verify_active(f"before {label}")
+            try:
+                yield self._path
+            except BaseException as primary_error:  # noqa: B036 - keep body first
+                try:
+                    self._verify_active(f"after failed {label}")
+                except BaseException as continuity_error:  # noqa: B036
+                    _annotate_secondary_error(
+                        primary_error,
+                        "owned path build verification also failed",
+                        continuity_error,
+                    )
+                raise
+            self._verify_active(f"after {label}")
+
+    def _capture_current(
+        self,
+        *,
+        required_root_file: str | None,
+        check_cancelled: Callable[[], None] | None,
+        require_active_descriptor: bool,
+    ) -> object | None:
+        authority = self._require_authority()
+        stage = self._require_stage()
+        self._verify_parent()
+        metadata = authority.child_metadata(
+            stage.path.name,
+            path=stage.path,
+            label="owned path build directory",
+        )
+        if metadata is None:
+            return None
+        initial = stage._initial
+        expected_identity = stage._stage_identity
+        if expected_identity is None and initial is not None:
+            expected_identity = directory_ownership_root_identity(initial)
+        if expected_identity is None:
+            expected_identity = stage._creation_confirmed_identity
+        if expected_identity is None:
+            raise _AmbiguousOwnedPathBuildRoot(
+                "owned path build root creation identity is ambiguous"
+            )
+        observed_identity = _root_identity(metadata)
+        if observed_identity != expected_identity:
+            raise RuntimeError("owned path build root changed before ownership capture")
+        if require_active_descriptor:
+            stage._verify_root_descriptor()
+        ownership = authority.capture_child(
+            stage.path.name,
+            path=stage.path,
+            label="owned path build directory",
+            required_root_file=required_root_file,
+            allow_empty_root=required_root_file is None,
+            check_cancelled=check_cancelled,
+        )
+        captured_identity = directory_ownership_root_identity(ownership)
+        if captured_identity != expected_identity:
+            raise RuntimeError("owned path build root changed during ownership capture")
+        if stage._stage_identity is None:
+            stage._stage_identity = captured_identity
+        if stage._initial is None:
+            stage._initial = ownership
+        stage._cleanup_ownership = ownership
+        self._verify_parent()
+        return ownership
+
+    def capture_ownership(
+        self,
+        *,
+        required_root_file: str | None = None,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> object:
+        """Capture the arbitrary current tree through the retained authority."""
+
+        self._require_available("ownership capture")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("owned path build cancellation check must be callable")
+        self._verify_active("before ownership capture")
+        primary_error: BaseException | None = None
+        try:
+            ownership = self._capture_current(
+                required_root_file=required_root_file,
+                check_cancelled=check_cancelled,
+                require_active_descriptor=True,
+            )
+            if ownership is None:
+                raise RuntimeError("owned path build directory disappeared")
+        except BaseException as exc:
+            primary_error = exc
+            try:
+                self._verify_active("after failed ownership capture")
+            except BaseException as continuity_error:  # noqa: B036 - keep first
+                _annotate_secondary_error(
+                    primary_error,
+                    "owned path build verification also failed",
+                    continuity_error,
+                )
+            raise
+        self._verify_active("after ownership capture")
+        return ownership
+
+    def _close_resources(self, *, validate_binding: bool) -> None:
+        authority = self._authority_owner.authority
+        if validate_binding and authority is not None:
+            self._verify_parent()
+        stage = self._stage
+        if stage is not None:
+            stage._close_descriptors()
+        authority = self._authority_owner.authority
+        if validate_binding and authority is not None:
+            authority.verify_path_binding()
+            _require_owned_build_directory(
+                authority.resource,
+                label="owned path build parent",
+                private=self._require_private_parent,
+            )
+            isolation_owner = self._isolation_owner
+            if isolation_owner is not None:
+                isolation_owner.verify_orphan()
+        self._authority_owner.close()
+        if stage is not None and self._authority_owner.authority is None:
+            stage._parent_authority = None
+
+    def _settle_released_resources(self) -> bool:
+        stage = self._stage
+        authority = self._authority_owner.authority
+        if not (stage is None or stage._resources.closed) or not (
+            authority is None or authority._closed
+        ):
+            return False
+        # ``_PublicationAuthorityOwner`` owns a second monotonic transition:
+        # cancellation may land after its authority was closed but before its
+        # registry entry was released.  Complete that handoff before dropping
+        # this full-resource owner.
+        self._authority_owner.close()
+        return _publication_authority_owner_released(self._authority_owner)
+
+    def _isolate_and_close(
+        self,
+        *,
+        require_orphan: bool,
+        _release_retention: bool = True,
+    ) -> DirectoryOrphan | None:
+        self._require_owner_pid()
+        ownership_check = getattr(self._lifecycle_lock, "_is_owned", None)
+        if not callable(ownership_check) or not ownership_check():
+            raise RuntimeError("owned path build lifecycle authority is required")
+        if self._state != "closed":
+            try:
+                if self._settle_released_resources():
+                    # Closing owns this monotonic transition.  If cancellation
+                    # landed after exact handles closed but before this state
+                    # assignment, a retry settles without recapturing.
+                    self._state = "closed"
+            except BaseException as exc:
+                _attach_cleanup_owner(exc, self)
+                raise
+        if self._state == "closed":
+            if _release_retention:
+                try:
+                    _forget_owned_path_build_directory(self)
+                except BaseException as exc:  # noqa: B036 - retain return owner
+                    _attach_cleanup_owner(exc, self)
+                    raise
+            orphan_owner = self._isolation_owner
+            if orphan_owner is None:
+                if require_orphan:
+                    raise RuntimeError("owned path build directory has no orphan")
+                return None
+            return orphan_owner.orphan
+        if self._operation_lease is not None:
+            raise RuntimeError("owned path build isolation is reentrant")
+        try:
+            stage = self._stage
+            validate_binding = False
+            if stage is not None:
+                if self._isolation_owner is None:
+                    try:
+                        ownership = self._capture_current(
+                            required_root_file=None,
+                            check_cancelled=None,
+                            require_active_descriptor=self._state == "active",
+                        )
+                    except _AmbiguousOwnedPathBuildRoot:
+                        if require_orphan or self._state != "opening":
+                            raise
+                        ownership = None
+                    if ownership is None and self._state == "active":
+                        raise RuntimeError(
+                            "owned path build directory disappeared before isolation"
+                        )
+                    if ownership is not None:
+                        self._isolation_owner = _OwnedDirectoryIsolationOwner(
+                            self._require_authority(),
+                            stage.path,
+                            ownership,
+                        )
+                isolation_owner = self._isolation_owner
+                if isolation_owner is not None and isolation_owner.orphan is None:
+                    orphan = _discard_owned_directory_with_authority(
+                        self._require_authority(),
+                        stage.path,
+                        isolation_owner.ownership,
+                        isolation_owner=isolation_owner,
+                    )
+                    if orphan is None:
+                        raise RuntimeError(
+                            "owned path build directory could not be isolated"
+                        )
+                validate_binding = isolation_owner is not None
+            self._close_resources(validate_binding=validate_binding)
+            self._state = "closed"
+            if _release_retention:
+                _forget_owned_path_build_directory(self)
+            isolation_owner = self._isolation_owner
+            orphan = None if isolation_owner is None else isolation_owner.orphan
+            if require_orphan and orphan is None:
+                raise RuntimeError("owned path build directory has no orphan")
+            return orphan
+        except BaseException as exc:
+            _attach_cleanup_owner(exc, self)
+            raise
+
+    def isolate(self) -> DirectoryOrphan:
+        """Isolate the exact tree while retaining receipt-delivery ownership.
+
+        The caller acknowledges durable receipt storage by calling ``close``.
+        Until then, quiescent retained cleanup can redeliver the same orphan if
+        this method's public return handoff is interrupted.
+        """
+
+        orphan = self._run_lifecycle(
+            lambda: self._isolate_and_close(
+                require_orphan=True,
+                _release_retention=False,
+            )
+        )
+        assert orphan is not None
+        return orphan
+
+    def close(self) -> None:
+        """Isolate this tree without delivering its authenticated receipt.
+
+        Callers that need the receipt must call :meth:`isolate`, store that
+        result durably, and then call ``close`` to acknowledge delivery.  A
+        direct close intentionally leaves the hidden name for the owning
+        attempt pool's later quiescent reaper.
+        """
+
+        self._run_lifecycle(lambda: self._isolate_and_close(require_orphan=False))
+
+
 __all__ = [
     "AuthenticatedFile",
     "AuthenticatedSnapshotReader",
     "CapturedDirectoryReader",
     "OwnedDirectoryStage",
+    "OwnedPathBuildDirectory",
     "OwnedWorkspaceAuthority",
     "PublishedWorkspaceDestinationBinding",
     "PublishedWorkspaceReceipt",
@@ -5587,4 +6534,5 @@ __all__ = [
     "WorkspaceFile",
     "WorkspacePlan",
     "require_owned_workspace_publication_support",
+    "retry_retained_owned_path_build_cleanup",
 ]
