@@ -9,6 +9,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from threading import Lock
 from typing import Callable, Protocol, runtime_checkable
 
 from ..storage import (
@@ -88,8 +89,10 @@ class IndexJobCreatePlan:
 class IndexJobCreatePlanner(Protocol):
     """Resolve trusted source/profile identities without granting them to Web.
 
-    A planner must keep one idempotency key bound to the same plan so response
-    loss cannot retarget a retry after repository state advances.
+    The writer serializes planning and creation per configured repository, and
+    checks durable idempotent replay before calling the planner. A committed
+    response retry therefore cannot be retargeted after repository state
+    advances; a cross-process loser receives a catalog conflict.
     """
 
     def plan(
@@ -282,6 +285,7 @@ class CatalogIndexJobWriter:
         self._catalog_factory = catalog_factory
         self._by_repo = by_repo
         self._planner = planner
+        self._repo_locks = {repo_id: Lock() for repo_id in by_repo}
 
     @staticmethod
     def _require_catalog(value: object) -> JobCreationReplayCatalog:
@@ -346,53 +350,54 @@ class CatalogIndexJobWriter:
             raise IndexJobRequestError("index job idempotency key is invalid") from exc
 
         try:
-            with self._catalog_factory() as value:
-                catalog = self._require_catalog(value)
-                existing = catalog.find_job_by_idempotency(
-                    binding.repository_id,
-                    normalized_key,
-                )
-                if existing is not None:
-                    return _replayed_job_response(
+            with self._repo_locks[normalized_repo]:
+                with self._catalog_factory() as value:
+                    catalog = self._require_catalog(value)
+                    existing = catalog.find_job_by_idempotency(
+                        binding.repository_id,
+                        normalized_key,
+                    )
+                    if existing is not None:
+                        return _replayed_job_response(
+                            binding,
+                            existing,
+                            index_type=index_type,
+                            idempotency_key=normalized_key,
+                        )
+                    plan = self._planner.plan(
                         binding,
-                        existing,
-                        index_type=index_type,
+                        index_type,
                         idempotency_key=normalized_key,
                     )
-                plan = self._planner.plan(
-                    binding,
-                    index_type,
-                    idempotency_key=normalized_key,
-                )
-                if type(plan) is not IndexJobCreatePlan:
-                    raise IndexJobWriteError(
-                        "index job planner returned an invalid creation plan"
+                    if type(plan) is not IndexJobCreatePlan:
+                        raise IndexJobWriteError(
+                            "index job planner returned an invalid creation plan"
+                        )
+                    expected = IndexJobRequest.create(
+                        binding.repository_id,
+                        plan.source_revision_id,
+                        normalized_key,
+                        _request_view(index_type, plan.profile_id),
+                        ref_name=binding.ref_name,
+                        expected_ref_generation=plan.expected_ref_generation,
+                        max_attempts=plan.max_attempts,
                     )
-                expected = IndexJobRequest.create(
-                    binding.repository_id,
-                    plan.source_revision_id,
-                    normalized_key,
-                    _request_view(index_type, plan.profile_id),
-                    ref_name=binding.ref_name,
-                    expected_ref_generation=plan.expected_ref_generation,
-                    max_attempts=plan.max_attempts,
-                )
-                job = catalog.create_job_if_idle(
-                    expected.repository_id,
-                    expected.source_revision_id,
-                    expected.idempotency_key,
-                    expected.request,
-                    ref_name=expected.ref_name,
-                    expected_ref_generation=expected.expected_ref_generation,
-                    max_attempts=expected.max_attempts,
-                )
+                    job = catalog.create_job_if_idle(
+                        expected.repository_id,
+                        expected.source_revision_id,
+                        expected.idempotency_key,
+                        expected.request,
+                        ref_name=expected.ref_name,
+                        expected_ref_generation=expected.expected_ref_generation,
+                        max_attempts=expected.max_attempts,
+                    )
             return _created_job_response(
                 binding,
                 expected,
                 job,
                 index_type=index_type,
             )
-        except (IndexJobConflictError, IndexJobWriteError):
+        except (IndexJobConflictError, IndexJobRequestError, IndexJobWriteError):
             raise
         except PublishConflict as exc:
             raise IndexJobConflictError(

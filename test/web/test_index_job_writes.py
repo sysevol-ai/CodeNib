@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from threading import Event
 
 import pytest
 from fastapi.testclient import TestClient
@@ -271,6 +273,63 @@ def test_catalog_writer_rejects_changed_public_request_without_replanning(
         )
 
     assert len(planner.calls) == 1
+
+
+def test_catalog_writer_serializes_same_repository_before_planning(tmp_path) -> None:
+    writer, _path, planner, _binding = _sqlite_writer(tmp_path, "bm25")
+    entered = Event()
+    release = Event()
+    original_plan = planner.plan
+
+    def blocking_plan(binding, index_type, *, idempotency_key):
+        result = original_plan(
+            binding,
+            index_type,
+            idempotency_key=idempotency_key,
+        )
+        entered.set()
+        assert release.wait(timeout=10)
+        return result
+
+    planner.plan = blocking_plan
+
+    def create():
+        return writer.create(
+            "demo",
+            indexes=("bm25",),
+            mode="full",
+            force=False,
+            idempotency_key="same-request",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(create)
+        assert entered.wait(timeout=10)
+        second = executor.submit(create)
+        release.set()
+        first_result = first.result(timeout=10)
+        second_result = second.result(timeout=10)
+
+    assert first_result == second_result
+    assert len(planner.calls) == 1
+
+
+def test_catalog_writer_preserves_planner_request_errors(tmp_path) -> None:
+    writer, _path, planner, _binding = _sqlite_writer(tmp_path, "vector")
+
+    def reject(*_args, **_kwargs):
+        raise IndexJobRequestError("planner does not support vector")
+
+    planner.plan = reject
+
+    with pytest.raises(IndexJobRequestError, match="does not support vector"):
+        writer.create(
+            "demo",
+            indexes=("vector",),
+            mode="full",
+            force=False,
+            idempotency_key="request",
+        )
 
 
 def test_catalog_writer_attests_exact_replay_candidate_without_replanning() -> None:

@@ -30,6 +30,7 @@ from .._captured_directory import (
 from .._local_workspace_provider import LocalWorkspaceProvider
 from .._workspace_provider import StrictWorkspaceRequest, StrictWorkspaceSession
 from ..artifacts.runtime import SourceBindingCleanupOwner
+from ..repository_source_selection import RepositorySourceSelection
 from ..source_fingerprint import (
     RepositorySourceBinding,
     RepositorySourceRootAuthority,
@@ -47,6 +48,7 @@ from ..storage.models import (
     SourceRevision,
     StorageIntegrityError,
     StorageValidationError,
+    ViewProfile,
 )
 from ..storage.protocols import (
     InterruptibleReceiptVerifyingObjectStore,
@@ -426,6 +428,20 @@ class LocalBM25SourceJobTarget:
             authority.verify()
         self.verify_topology()
         return _exact_display_commit(commit)
+
+    @property
+    def profile(self) -> ViewProfile:
+        """Return the frozen portable profile shared by planner and worker."""
+
+        return self._builder.profile()
+
+    @property
+    def source_selection(self) -> RepositorySourceSelection:
+        """Return a detached copy of the frozen source-selection policy."""
+
+        return RepositorySourceSelection(
+            self._builder.source_selection.exclude_subtrees
+        )
 
     def capture_source(
         self,
