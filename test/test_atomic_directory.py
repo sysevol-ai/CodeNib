@@ -6590,58 +6590,84 @@ def test_quiescent_exit_outer_delivery_boundary_is_publicly_recoverable(
     assert reclaimer.closed
 
 
+def _assert_quiescent_resource_handler_entry_opcode(
+    function: object,
+    opcode_offset: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with monkeypatch.context() as patch:
+        resources = atomic_module._PosixResourceOwner()
+        descriptor = resources.open(os.devnull, os.O_RDONLY)
+        primary = ValueError("resource handler-entry primary")
+        cleanup_failure = OSError(errno.EIO, "resource handler-entry cleanup")
+        interruption = KeyboardInterrupt(f"resource handler {opcode_offset}")
+        real_close = atomic_module._PosixResourceOwner.close
+        fail_close = True
+
+        def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
+            if owner is resources and fail_close:
+                raise cleanup_failure
+            real_close(owner)
+
+        patch.setattr(
+            atomic_module._PosixResourceOwner,
+            "close",
+            fail_resources,
+        )
+
+        with pytest.raises(KeyboardInterrupt) as caught:
+            _call_with_interrupt_at_opcode(
+                function,
+                opcode_offset,
+                lambda: atomic_module._run_quiescent_directory_resource_scope(
+                    resources,
+                    lambda: (_ for _ in ()).throw(primary),
+                    label="resource handler-entry cleanup",
+                ),
+                predicate=lambda values: values.get("settlement_error")
+                is cleanup_failure,
+                error=interruption,
+            )
+
+        assert caught.value is interruption
+        owners = BaseException.__getattribute__(
+            caught.value,
+            "publication_cleanup_owners",
+        )
+        assert _exception_chain_contains(caught.value, primary)
+        assert owners == (resources,)
+        fail_close = False
+        for owner in owners:
+            owner.close()
+        _assert_descriptor_closed(descriptor)
+
+
 def test_quiescent_resource_handler_entry_opcodes_have_top_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     function = atomic_module._run_quiescent_directory_resource_scope_unprotected
     offsets = _source_statement_opcode_offsets(function, "try:", occurrence=4)
+    failures: list[BaseException] = []
 
-    for opcode_offset in offsets:
-        with monkeypatch.context() as patch:
-            resources = atomic_module._PosixResourceOwner()
-            descriptor = resources.open(os.devnull, os.O_RDONLY)
-            primary = ValueError("resource handler-entry primary")
-            cleanup_failure = OSError(errno.EIO, "resource handler-entry cleanup")
-            interruption = KeyboardInterrupt(f"resource handler {opcode_offset}")
-            real_close = atomic_module._PosixResourceOwner.close
-            fail_close = True
-
-            def fail_resources(owner: atomic_module._PosixResourceOwner) -> None:
-                if owner is resources and fail_close:  # noqa: B023
-                    raise cleanup_failure  # noqa: B023
-                real_close(owner)  # noqa: B023
-
-            patch.setattr(
-                atomic_module._PosixResourceOwner,
-                "close",
-                fail_resources,
-            )
-
-            with pytest.raises(KeyboardInterrupt) as caught:
-                _call_with_interrupt_at_opcode(
+    # Opcode tracing can interrupt before CPython restores the active handler's
+    # exception state.  Keep that synthetic interpreter state on a disposable
+    # thread while preserving the exact delivered exception and owner checks.
+    def verify_handler_entries() -> None:
+        try:
+            for opcode_offset in offsets:
+                _assert_quiescent_resource_handler_entry_opcode(
                     function,
                     opcode_offset,
-                    lambda: atomic_module._run_quiescent_directory_resource_scope(  # noqa: B023
-                        resources,  # noqa: B023
-                        lambda: (_ for _ in ()).throw(primary),  # noqa: B023
-                        label="resource handler-entry cleanup",
-                    ),
-                    predicate=lambda values: values.get("settlement_error")
-                    is cleanup_failure,  # noqa: B023
-                    error=interruption,
+                    monkeypatch,
                 )
+        except BaseException as error:  # noqa: B036 - report thread failure
+            failures.append(error)
 
-            assert caught.value is interruption
-            owners = BaseException.__getattribute__(
-                caught.value,
-                "publication_cleanup_owners",
-            )
-            assert _exception_chain_contains(caught.value, primary)
-            assert owners == (resources,)
-            fail_close = False
-            for owner in owners:
-                owner.close()
-            _assert_descriptor_closed(descriptor)
+    worker = threading.Thread(target=verify_handler_entries)
+    worker.start()
+    worker.join(timeout=10)
+    assert not worker.is_alive()
+    assert failures == []
 
 
 def test_quiescent_lifecycle_handler_entry_opcodes_have_top_owner(
