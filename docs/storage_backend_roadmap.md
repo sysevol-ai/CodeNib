@@ -1317,10 +1317,18 @@ reclaimer now supplies the primitive cleanup boundary: it pins one exact
 same-euid `0700` parent, authenticates either an existing orphan receipt or one
 caller-authorized exact child, quarantines a generic child no-replace, and
 removes only the freshly matched bounded inventory through no-follow directory
-descriptors. An absent verified receipt is idempotent completion only after a
-fresh parent synchronization and binding recheck, including after response
-loss, while an absent generic name grants no cleanup authority and returns
-false without synchronization. A private receipt seal length-frames bounded
+descriptors. Under caller-enforced parent quiescence, its point-in-time snapshot
+incrementally reads through the retained descriptor only to its fixed child
+limit plus one, rejects overflow before inspecting or retaining the excess
+entry, and returns a bounded byte-sorted tuple of exact simple names without
+granting policy or deletion authority. A separate caller-authorized operation
+preflights bounded canonical parent receipt bytes, freshly captures an
+already-quarantined exact child, and enters descriptor removal without adding
+another `.discarded-*` layer. An absent verified receipt is idempotent
+completion only after a fresh parent synchronization and binding recheck,
+including after response loss, while an absent name-authorized child, whether
+generic or already quarantined, grants no cleanup authority and returns false
+without synchronization. A private receipt seal length-frames bounded
 canonical parent bytes, the hidden name, verification state, and complete exact
 ownership token. Fixed tuple arities, string and path lengths, and every root
 and entry identity's 128-bit scalar magnitude are checked before their
@@ -1457,9 +1465,10 @@ its local attempt resource factory, resolver, and explicit production CLI entry
 are implemented. Its three transient destinations now share one retained
 caller-owned path-build root whose authenticated cleanup receipt is accepted
 before ownership is released. The descriptor-owned quiescent directory
-reclamation primitive is implemented; BM25 attempt-name reconciliation,
-multi-target retry routing, worker-lifecycle quiescence, and CLI wiring remain
-pending.
+reclamation primitive, bounded descriptor child snapshot, and direct
+already-quarantined-child cleanup are implemented; BM25 attempt-name
+classification, multi-target retry routing, worker-lifecycle quiescence, and
+CLI wiring remain pending.
 Vector and graph source builders, generic builder routing, and remaining
 runtime wiring remain.
 
@@ -1549,15 +1558,16 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   worker and force a duplicate attempt.
 - The retained-source BM25 attempt resource factory/resolver, production CLI
   entry, and explicit Web planner are implemented. The generic descriptor-bound
-  quiescent directory reclamation primitive is also implemented without BM25
-  discovery or publication authority. The planner captures the same frozen
-  local target as the worker, revalidates source after planning, and uses a
-  separate least-authority catalog surface that can register only
-  content-addressed source/profile identities and read one ref generation. Add
-  the worker-lifecycle attempt-pool coordinator, then add vector and graph
-  source adapters and wire successful worker results into runtime, Web, MCP,
-  and default routes. Older self-publishing ingress APIs remain compatibility
-  paths and are never nested inside the worker.
+  quiescent directory reclamation primitive, bounded descriptor child snapshot,
+  and direct already-quarantined cleanup are also implemented without BM25 name
+  policy or publication authority. The planner captures the same frozen local
+  target as the worker, revalidates source after planning, and uses a separate
+  least-authority catalog surface that can register only content-addressed
+  source/profile identities and read one ref generation. Add the
+  worker-lifecycle attempt-pool coordinator, then add vector and graph source
+  adapters and wire successful worker results into runtime, Web, MCP, and
+  default routes. Older self-publishing ingress APIs remain compatibility paths
+  and are never nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
@@ -1614,8 +1624,7 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   so the ref-writer fence spans the actual generation swap. It rejects
   ref-generation regression, same-generation snapshot/timestamp conflict,
   storage-binding drift, and legacy registry-file replacement of an active
-  durable generation. A guarded local loader/publisher and production server
-  loop remain separate gates.
+  durable generation. The production server loop remains a separate gate.
 - The concrete local retained-BM25 publisher binds each configured storage ref
   to one canonical repository root, private workspace authority, namespace,
   object store, and retained catalog. It performs fail-fast current-result
