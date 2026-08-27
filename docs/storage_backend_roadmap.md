@@ -1679,7 +1679,12 @@ MCP, UI controls, and default routing remain absent.
   runtime workspace roots, namespace/ref bindings, and bounded worker/runtime
   timing. Presence is the explicit opt-in; parsing touches no path and rejects
   relative, overlapping, duplicate, unknown, and incoherent values. Physical
-  topology acquisition, service composition, and lifespan installation remain
+  topology acquisition now binds the existing single-linked catalog inode,
+  opens retained authorities for the CAS and both private workspace roots, and
+  pins every explicitly mapped repository hierarchy. It rejects symbolic
+  traversal plus lexical, inode-ancestry, and Linux mount-mapped physical
+  aliases, revalidates every binding, and retains interrupted cleanup for
+  retry. Actual CAS/worker/runtime composition and lifespan installation remain
   separate gates.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw

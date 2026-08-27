@@ -5,22 +5,55 @@
 from __future__ import annotations
 
 import dis
+import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
 import codenib.web.local_index_service as local_index_service
 from codenib.storage import SQLiteCatalog
+from codenib.web.config import LocalIndexStorageConfig, LocalIndexStorageRepository
 from codenib.web.local_index_service import (
     ExistingLocalIndexCatalogFactory,
     LocalIndexServiceError,
+    LocalIndexStorageTopology,
 )
 
 
 def _provision_catalog(path: Path) -> None:
     with SQLiteCatalog(path):
         pass
+
+
+def _topology_config(
+    tmp_path: Path,
+) -> tuple[LocalIndexStorageConfig, dict[str, Path]]:
+    catalog_path = tmp_path / "catalog.sqlite3"
+    cas_root = tmp_path / "cas"
+    worker_root = tmp_path / "worker"
+    runtime_root = tmp_path / "runtime"
+    repository_root = tmp_path / "repository"
+    _provision_catalog(catalog_path)
+    cas_root.mkdir()
+    worker_root.mkdir(mode=0o700)
+    runtime_root.mkdir(mode=0o700)
+    repository_root.mkdir()
+    return (
+        LocalIndexStorageConfig(
+            catalog_path=catalog_path,
+            cas_root=cas_root,
+            worker_workspace_root=worker_root,
+            runtime_workspace_root=runtime_root,
+            repositories=(
+                LocalIndexStorageRepository(
+                    repo_id="repo",
+                    repository_key="org/repo",
+                ),
+            ),
+        ),
+        {"repo": repository_root},
+    )
 
 
 def test_existing_catalog_factory_opens_fresh_exact_sessions(tmp_path: Path) -> None:
@@ -174,4 +207,122 @@ def test_existing_catalog_factory_rejects_invalid_timeout(
         ExistingLocalIndexCatalogFactory(
             catalog_path,
             busy_timeout_ms=timeout,  # type: ignore[arg-type]
+        )
+
+
+def test_local_index_topology_retains_and_revalidates_every_authority(
+    tmp_path: Path,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+
+    topology = LocalIndexStorageTopology.acquire(config, repositories)
+
+    topology.verify()
+    assert topology.closed is False
+    assert topology.worker_workspace_identity[:2] == (
+        config.worker_workspace_root.stat().st_dev,
+        config.worker_workspace_root.stat().st_ino,
+    )
+    assert topology.runtime_workspace_identity[:2] == (
+        config.runtime_workspace_root.stat().st_dev,
+        config.runtime_workspace_root.stat().st_ino,
+    )
+    assert topology.repository_authority("repo").root == repositories["repo"]
+    with topology.catalog_factory() as catalog:
+        assert catalog.schema_version > 0
+
+    topology.close()
+    topology.close()
+    assert topology.closed is True
+    with pytest.raises(LocalIndexServiceError, match="closed"):
+        topology.verify()
+
+
+def test_local_index_topology_detects_replaced_workspace_root(
+    tmp_path: Path,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    topology = LocalIndexStorageTopology.acquire(config, repositories)
+    displaced = tmp_path / "worker-displaced"
+    config.worker_workspace_root.rename(displaced)
+    config.worker_workspace_root.mkdir(mode=0o700)
+
+    try:
+        with pytest.raises(LocalIndexServiceError, match="binding changed"):
+            topology.verify()
+    finally:
+        topology.close()
+
+
+def test_local_index_topology_rejects_symlinked_storage_root(
+    tmp_path: Path,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    actual_runtime = tmp_path / "actual-runtime"
+    config.runtime_workspace_root.rename(actual_runtime)
+    config.runtime_workspace_root.symlink_to(actual_runtime, target_is_directory=True)
+
+    with pytest.raises(LocalIndexServiceError, match="real private owner-only"):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+def test_local_index_topology_rejects_repository_storage_overlap(
+    tmp_path: Path,
+) -> None:
+    config, _repositories = _topology_config(tmp_path)
+    repository = config.cas_root / "repository"
+    repository.mkdir()
+
+    with pytest.raises(LocalIndexServiceError, match="must not overlap"):
+        LocalIndexStorageTopology.acquire(config, {"repo": repository})
+
+
+def test_local_index_topology_rejects_mapped_physical_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    device = config.cas_root.stat().st_dev
+    mount_device = f"{os.major(device)}:{os.minor(device)}"
+    mappings = (
+        local_index_service._LinuxMountMapping(
+            device=mount_device,
+            root=PurePosixPath("/physical/shared/cache"),
+            mount_point=config.cas_root,
+        ),
+        local_index_service._LinuxMountMapping(
+            device=mount_device,
+            root=PurePosixPath("/physical/shared"),
+            mount_point=repositories["repo"],
+        ),
+    )
+    monkeypatch.setattr(
+        local_index_service,
+        "_linux_mount_mappings",
+        lambda: mappings,
+    )
+
+    with pytest.raises(LocalIndexServiceError, match="physical alias"):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+def test_local_index_topology_requires_private_workspace_roots(
+    tmp_path: Path,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    config.runtime_workspace_root.chmod(0o755)
+
+    with pytest.raises(LocalIndexServiceError, match="private owner-only"):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+def test_local_index_topology_requires_exact_repository_mapping(
+    tmp_path: Path,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+
+    with pytest.raises(ValueError, match="match configured bindings"):
+        LocalIndexStorageTopology.acquire(
+            config,
+            {"other": repositories["repo"]},
         )
