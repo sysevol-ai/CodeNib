@@ -27,9 +27,33 @@ from codenib.mcp.retained_context import (
 from codenib.source_fingerprint import pin_repository_source_root
 from codenib.storage import PublishConflict
 from codenib.storage.models import NamespaceIdentity, RepositoryIdentity
+from codenib.web.config import QAConfig, RepoEntry
+from codenib.web.index_job_activation import IndexJobRuntimeActivation
+from codenib.web.index_jobs import IndexJobRepoBinding
+from codenib.web.repo_registry import RepoBundle, RepoRegistry
 
 from .test_manifest_export import _retained_fixture
 from .test_manifest_import import _TestWorkspaceProvider
+
+
+def _runtime_activation(
+    binding: IndexJobRepoBinding,
+    snapshot_id: str,
+    *,
+    generation: int,
+    updated_at: str,
+) -> IndexJobRuntimeActivation:
+    return IndexJobRuntimeActivation(
+        repo_id=binding.repo_id,
+        repository_id=binding.repository_id,
+        ref_name=binding.ref_name,
+        job_id="job_" + "f" * 64,
+        attempt_count=1,
+        snapshot_id=snapshot_id,
+        ref_generation=generation,
+        ref_updated_at=updated_at,
+        finished_at_ms=1,
+    )
 
 
 def test_loads_retained_ref_with_bm25_inside_exact_reader(
@@ -163,6 +187,243 @@ def test_loads_retained_ref_with_reader_bound_source(
         assert owner.closed
         assert owner._source_owner.closed
         assert captured_sources and captured_sources[0].closed
+
+
+def test_registry_publishes_current_retained_bm25_as_rcu_generation(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        result = load_retained_server_context_snapshot(
+            "owner/repo",
+            imported.snapshot_id,
+            tmp_path / "context",
+            catalog=catalog,
+            object_store=object_store,
+            workspace_provider=_TestWorkspaceProvider(),
+            runtime_owner=owner,
+            repo_path=fixture.repository,
+        )
+        entry = RepoEntry(
+            instance_id="demo",
+            repo="owner/repo",
+            base_commit="0" * 40,
+            language="python",
+            repo_dir=str(fixture.repository),
+            manifest_path=str(fixture.context / "repo_manifest.json"),
+        )
+        previous_manifest = RepoManifest.load(entry.manifest_path)
+        previous_manifest.repo_path = str(fixture.repository)
+        previous = RepoBundle(entry=entry, manifest=previous_manifest)
+        binding = IndexJobRepoBinding("demo", imported.repository_id)
+        ref = catalog.resolve_ref(imported.repository_id)
+        activation = _runtime_activation(
+            binding,
+            imported.snapshot_id,
+            generation=imported.generation,
+            updated_at=ref["updated_at"],
+        )
+
+        class PreviousOwner:
+            closed = False
+
+            def close(self) -> None:
+                self.closed = True
+
+        previous_owner = PreviousOwner()
+        verified: list[IndexJobRuntimeActivation] = []
+
+        def transfer_current(transfer) -> None:
+            result = transfer()
+            assert result is None
+            verified.append(activation)
+
+        registry = RepoRegistry(QAConfig())
+        registry._bundles[entry.instance_id] = previous
+        registry._source_cleanup_owners[entry.instance_id] = previous_owner
+        try:
+            with registry.pin(entry.instance_id) as pinned_previous:
+                registry.replace_retained_bm25_snapshot(
+                    binding,
+                    activation,
+                    owner,
+                    transfer_if_current=transfer_current,
+                )
+
+                assert pinned_previous is previous
+                assert previous_owner.closed is False
+                assert verified == [activation]
+                assert owner.state == "active"
+                with registry.pin(entry.instance_id) as current:
+                    assert current is not None
+                    assert current is not previous
+                    assert current.index_job_activation is activation
+                    assert current.manifest is owner.context.manifest
+                    assert current.entry.base_commit == "a" * 40
+                    assert current.entry.manifest_path == str(
+                        result.materialization.artifact.manifest_path
+                    )
+                    assert current.source_reader is not None
+                    assert (
+                        current.source_reader.read_prefix(
+                            "sample.py",
+                            max_bytes=1024,
+                        )
+                        == b"VALUE = 1\n"
+                    )
+                    assert current.bm25 is owner.context.bm25
+                    hits = current.bm25.search(
+                        "VALUE",
+                        return_code_content=True,
+                    )
+                    assert hits and hits[0].node_id == "sample.VALUE"
+                    assert current.release_views() is True
+                    assert current.bm25 is None
+                    current.ensure_views()
+                    assert current.bm25 is owner.context.bm25
+
+            assert previous_owner.closed is True
+            assert owner.state == "active"
+        finally:
+            registry.close()
+        assert owner.closed
+
+
+def test_registry_enters_current_result_guard_after_runtime_preparation(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        load_retained_server_context_snapshot(
+            "owner/repo",
+            imported.snapshot_id,
+            tmp_path / "context",
+            catalog=catalog,
+            object_store=object_store,
+            workspace_provider=_TestWorkspaceProvider(),
+            runtime_owner=owner,
+            repo_path=fixture.repository,
+        )
+        entry = RepoEntry(
+            instance_id="demo",
+            repo="owner/repo",
+            base_commit="a" * 40,
+            language="python",
+            repo_dir=str(fixture.repository),
+            manifest_path=str(fixture.context / "repo_manifest.json"),
+        )
+        previous_manifest = RepoManifest.load(entry.manifest_path)
+        previous_manifest.repo_path = str(fixture.repository)
+        previous = RepoBundle(entry=entry, manifest=previous_manifest)
+        binding = IndexJobRepoBinding("demo", imported.repository_id)
+        ref = catalog.resolve_ref(imported.repository_id)
+        activation = _runtime_activation(
+            binding,
+            imported.snapshot_id,
+            generation=imported.generation,
+            updated_at=ref["updated_at"],
+        )
+        registry = RepoRegistry(QAConfig())
+        registry._bundles[entry.instance_id] = previous
+
+        def stale_after_prepare(transfer) -> None:
+            assert owner.context.bm25 is not None
+            raise RuntimeError("durable ref advanced during preparation")
+
+        try:
+            with pytest.raises(RuntimeError, match="ref advanced"):
+                registry.replace_retained_bm25_snapshot(
+                    binding,
+                    activation,
+                    owner,
+                    transfer_if_current=stale_after_prepare,
+                )
+
+            assert registry.get(entry.instance_id) is previous
+            assert owner.closed
+            assert registry._orphan_cleanup_owners == []
+        finally:
+            registry.close()
+        assert owner.closed
+
+
+def test_registry_rechecks_source_after_runtime_preparation(
+    tmp_path: Path,
+) -> None:
+    with _retained_fixture(
+        tmp_path / "retained",
+        views=("bm25",),
+    ) as (fixture, imported, object_store, catalog):
+        owner = RetainedServerContextOwner()
+        load_retained_server_context_snapshot(
+            "owner/repo",
+            imported.snapshot_id,
+            tmp_path / "context",
+            catalog=catalog,
+            object_store=object_store,
+            workspace_provider=_TestWorkspaceProvider(),
+            runtime_owner=owner,
+            repo_path=fixture.repository,
+        )
+        entry = RepoEntry(
+            instance_id="demo",
+            repo="owner/repo",
+            base_commit="a" * 40,
+            language="python",
+            repo_dir=str(fixture.repository),
+            manifest_path=str(fixture.context / "repo_manifest.json"),
+        )
+        previous_manifest = RepoManifest.load(entry.manifest_path)
+        previous_manifest.repo_path = str(fixture.repository)
+        previous = RepoBundle(entry=entry, manifest=previous_manifest)
+        binding = IndexJobRepoBinding("demo", imported.repository_id)
+        ref = catalog.resolve_ref(imported.repository_id)
+        activation = _runtime_activation(
+            binding,
+            imported.snapshot_id,
+            generation=imported.generation,
+            updated_at=ref["updated_at"],
+        )
+        registry = RepoRegistry(QAConfig())
+        registry._bundles[entry.instance_id] = previous
+        prepare_runtime = registry._prepare_runtime_bundle
+        verified: list[IndexJobRuntimeActivation] = []
+
+        def transfer_current(transfer) -> None:
+            result = transfer()
+            assert result is None
+            verified.append(activation)
+
+        def prepare_then_mutate(bundle: RepoBundle) -> None:
+            prepare_runtime(bundle)
+            (fixture.repository / "sample.py").write_text(
+                "VALUE = 2\n",
+                encoding="utf-8",
+            )
+
+        registry._prepare_runtime_bundle = prepare_then_mutate
+        try:
+            with pytest.raises(RuntimeError, match="repository source changed"):
+                registry.replace_retained_bm25_snapshot(
+                    binding,
+                    activation,
+                    owner,
+                    transfer_if_current=transfer_current,
+                )
+
+            assert verified == []
+            assert registry.get(entry.instance_id) is previous
+            assert owner.closed
+            assert registry._orphan_cleanup_owners == []
+        finally:
+            registry.close()
+        assert owner.closed
 
 
 def test_retained_loader_threads_expected_root_authority_to_capture(

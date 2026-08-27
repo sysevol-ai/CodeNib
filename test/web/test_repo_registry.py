@@ -10,6 +10,7 @@ import inspect
 import pickle
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from threading import Barrier, Event, Lock, Thread
 from types import CodeType, SimpleNamespace
 from weakref import ref as weakref_ref
@@ -37,6 +38,7 @@ from codenib.web.config import (
     load_registry,
     save_registry,
 )
+from codenib.web.index_job_activation import IndexJobRuntimeActivation
 from codenib.web.repo_registry import (
     _DEMO_SYSTEM_PROMPT,
     _REGISTRY_CLEANUP_CONTEXT,
@@ -78,6 +80,25 @@ def _repo_entry(repo, manifest_path, *, instance_id="owner__repo-1"):
         language="python",
         repo_dir=str(repo),
         manifest_path=str(manifest_path),
+    )
+
+
+def _index_job_activation(
+    *,
+    generation: int,
+    snapshot_value: str,
+    updated_at: str,
+) -> IndexJobRuntimeActivation:
+    return IndexJobRuntimeActivation(
+        repo_id="repo",
+        repository_id="repo_" + "a" * 64,
+        ref_name="main",
+        job_id="job_" + "b" * 64,
+        attempt_count=1,
+        snapshot_id="snapshot_" + snapshot_value * 64,
+        ref_generation=generation,
+        ref_updated_at=updated_at,
+        finished_at_ms=generation,
     )
 
 
@@ -3414,6 +3435,117 @@ def test_registry_publish_does_not_close_active_shared_owner():
 
     registry.close()
     assert owner.close_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("candidate_activation", "message"),
+    (
+        (None, "cannot replace a durable"),
+        (
+            _index_job_activation(
+                generation=1,
+                snapshot_value="c",
+                updated_at="2026-08-27T00:00:01+00:00",
+            ),
+            "generation regressed",
+        ),
+        (
+            _index_job_activation(
+                generation=2,
+                snapshot_value="e",
+                updated_at="2026-08-27T00:00:02+00:00",
+            ),
+            "fence conflicts",
+        ),
+    ),
+)
+def test_registry_rejects_runtime_generation_regressions(
+    candidate_activation,
+    message,
+):
+    class Owner:
+        def __init__(self):
+            self.close_calls = 0
+
+        @property
+        def closed(self):
+            return self.close_calls > 0
+
+        def close(self):
+            self.close_calls += 1
+
+    previous_owner = Owner()
+    candidate_owner = Owner()
+    previous = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        index_job_activation=_index_job_activation(
+            generation=2,
+            snapshot_value="d",
+            updated_at="2026-08-27T00:00:02+00:00",
+        ),
+    )
+    candidate = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        index_job_activation=candidate_activation,
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = previous
+    registry._source_cleanup_owners["repo"] = previous_owner
+
+    try:
+        with pytest.raises(RuntimeError, match=message):
+            registry._publish_owned(
+                "repo",
+                _OwnedRepoBundle(candidate, None, candidate_owner),
+            )
+
+        assert registry.get("repo") is previous
+        assert previous_owner.close_calls == 0
+        assert candidate_owner.close_calls == 0
+    finally:
+        candidate_owner.close()
+        registry.close()
+
+    assert previous_owner.close_calls == 1
+    assert candidate_owner.close_calls == 1
+
+
+def test_registry_rejects_misbound_active_runtime_generation():
+    previous = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        index_job_activation=replace(
+            _index_job_activation(
+                generation=2,
+                snapshot_value="d",
+                updated_at="2026-08-27T00:00:02+00:00",
+            ),
+            repo_id="other",
+        ),
+    )
+    candidate = RepoBundle(
+        entry=SimpleNamespace(),
+        manifest=SimpleNamespace(),
+        index_job_activation=_index_job_activation(
+            generation=3,
+            snapshot_value="e",
+            updated_at="2026-08-27T00:00:03+00:00",
+        ),
+    )
+    registry = RepoRegistry(QAConfig())
+    registry._bundles["repo"] = previous
+
+    try:
+        with pytest.raises(RuntimeError, match="targets another Web repo"):
+            registry._publish_owned(
+                "repo",
+                _OwnedRepoBundle(candidate, None, None),
+            )
+        assert registry.get("repo") is previous
+    finally:
+        registry.close()
 
 
 def test_registry_retired_claim_interruption_keeps_retry_state():

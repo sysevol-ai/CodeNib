@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     from ..index.sparse_idx import BM25CodeIndexer
     from ..index.trigram import ZoektSearcher
     from ..native_index_authorization import NativeIndexAuthorization
-    from ..source_fingerprint import RepositorySourceBinding
+    from ..source_fingerprint import RepositorySourceBinding, RepositorySourceReader
     from .explore_session import ExploreSessionRuntime
 
 logger = logging.getLogger(__name__)
@@ -379,6 +379,15 @@ class ServerContext:
         except Exception as exc:
             self.source_error = str(exc)
             raise
+
+    def borrow_source_reader(self) -> RepositorySourceReader:
+        """Borrow the exact source reader retained by this context owner."""
+
+        if self._source_binding is None or not self._source_binding.usable:
+            raise RuntimeError(
+                f"source reads are unavailable: {self.source_error or 'unverified'}"
+            )
+        return self._source_binding.borrow_reader()
 
     def verify_source_status(self) -> bool:
         """Refresh whole-tree source truth before publishing verified status."""

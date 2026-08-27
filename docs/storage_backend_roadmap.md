@@ -1556,6 +1556,15 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   or failed guard/transfer calls fail closed. Publication failures remain
   retryable and secret-free. A concrete generation publisher, server wiring,
   and the final runtime refresh callback remain separate gates.
+- The retained BM25 registry boundary now accepts one exact snapshot-loaded
+  runtime owner together with its full job activation and prepares the complete
+  sparse runtime. It exposes the source-revalidated, lock-protected RCU pointer
+  and cleanup-ownership transfer only through the caller-supplied durable guard,
+  so the ref-writer fence spans the actual generation swap. It rejects
+  ref-generation regression, same-generation snapshot/timestamp conflict,
+  storage-binding drift, and legacy registry-file replacement of an active
+  durable generation. A guarded local loader/publisher and production server
+  loop remain separate gates.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a
