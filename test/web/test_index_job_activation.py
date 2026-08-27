@@ -23,6 +23,7 @@ from codenib.web.config import QAConfig
 from codenib.web.index_job_activation import (
     CatalogIndexJobRuntimeReconciler,
     IndexJobActivationError,
+    IndexJobReconciliationPassError,
     IndexJobRuntimeActivation,
 )
 from codenib.web.index_jobs import IndexJobRepoBinding
@@ -490,16 +491,20 @@ def test_reconcile_all_does_not_starve_later_repositories_after_failure() -> Non
         publisher,
     )
 
-    with pytest.raises(IndexJobActivationError, match="publication failed") as error:
+    with pytest.raises(
+        IndexJobReconciliationPassError,
+        match="publication failed",
+    ) as error:
         reconciler.reconcile_all()
 
     assert "private" not in str(error.value)
+    assert error.value.completed_activation_count == 1
     assert [binding.repo_id for binding, _activation in publisher.calls] == [
         "alpha",
         "beta",
     ]
 
-    with pytest.raises(IndexJobActivationError, match="publication failed"):
+    with pytest.raises(IndexJobReconciliationPassError, match="publication failed"):
         reconciler.reconcile_all()
     assert [binding.repo_id for binding, _activation in publisher.calls] == [
         "alpha",

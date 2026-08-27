@@ -11,7 +11,11 @@ from threading import Lock
 from typing import Callable, Protocol, runtime_checkable
 
 from ..storage import IndexJobSchedulerStopSignal
-from .index_job_activation import IndexJobActivationError, IndexJobRuntimeActivation
+from .index_job_activation import (
+    IndexJobActivationError,
+    IndexJobReconciliationPassError,
+    IndexJobRuntimeActivation,
+)
 
 _MAX_LOOP_COUNT = 2**63 - 1
 _MAX_POLL_INTERVAL_MS = 86_400_000
@@ -23,10 +27,14 @@ def _positive_integer(value: object, label: str, *, maximum: int) -> int:
     return value
 
 
-def _increment(value: int, label: str) -> int:
-    if value >= _MAX_LOOP_COUNT:
+def _add_count(value: int, amount: int, label: str) -> int:
+    if type(amount) is not int or amount < 0 or amount > _MAX_LOOP_COUNT - value:
         raise IndexJobActivationError(f"{label} exhausted")
-    return value + 1
+    return value + amount
+
+
+def _increment(value: int, label: str) -> int:
+    return _add_count(value, 1, label)
 
 
 @runtime_checkable
@@ -178,6 +186,12 @@ class IndexJobRuntimeReconciliationLoop:
             try:
                 returned = self._reconciler.reconcile_all()
             except IndexJobActivationError as failure:
+                if type(failure) is IndexJobReconciliationPassError:
+                    activation_count = _add_count(
+                        activation_count,
+                        failure.completed_activation_count,
+                        "runtime activation count",
+                    )
                 failure_count = _increment(
                     failure_count,
                     "runtime reconciliation failure count",

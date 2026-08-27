@@ -10,6 +10,7 @@ import pytest
 
 from codenib.web.index_job_activation import (
     IndexJobActivationError,
+    IndexJobReconciliationPassError,
     IndexJobRuntimeActivation,
 )
 from codenib.web.index_job_runtime import (
@@ -92,6 +93,27 @@ def test_runtime_loop_retries_sanitized_activation_failures() -> None:
     assert loop.run(stop) == IndexJobRuntimeLoopSummary(2, 1, 1)
     assert failures == [failure]
     assert stop.waits == [0.1, 0.1]
+
+
+def test_runtime_loop_counts_activations_completed_during_failed_pass() -> None:
+    failure = IndexJobActivationError("durable current result unavailable")
+
+    class Reconciler:
+        def reconcile_all(self):
+            raise IndexJobReconciliationPassError(
+                failure,
+                completed_activation_count=2,
+            )
+
+    failures = []
+    loop = IndexJobRuntimeReconciliationLoop(
+        Reconciler(),
+        on_failure=failures.append,
+    )
+
+    assert loop.run(Event(), max_passes=1) == IndexJobRuntimeLoopSummary(1, 1, 2)
+    assert len(failures) == 1
+    assert type(failures[0]) is IndexJobReconciliationPassError
 
 
 def test_runtime_loop_stops_before_catalog_access() -> None:

@@ -87,6 +87,26 @@ class IndexJobRuntimeActivation:
         return self.snapshot_id, self.ref_generation
 
 
+class IndexJobReconciliationPassError(IndexJobActivationError):
+    """Report one failed pass together with its completed activation count."""
+
+    def __init__(
+        self,
+        failure: IndexJobActivationError,
+        *,
+        completed_activation_count: int,
+    ) -> None:
+        if type(failure) is not IndexJobActivationError:
+            raise TypeError("reconciliation pass failure must use the exact type")
+        if (
+            type(completed_activation_count) is not int
+            or not 0 <= completed_activation_count <= _CATALOG_INT64_MAX
+        ):
+            raise ValueError("completed activation count is invalid")
+        super().__init__(*failure.args)
+        self.completed_activation_count = completed_activation_count
+
+
 @runtime_checkable
 class IndexJobRuntimePublisher(Protocol):
     """Publish one exact snapshot with idempotent, monotonic retry semantics.
@@ -454,7 +474,10 @@ class CatalogIndexJobRuntimeReconciler:
                 if value is not None:
                     reconciled.append(value)
         if first_failure is not None:
-            raise first_failure
+            raise IndexJobReconciliationPassError(
+                first_failure,
+                completed_activation_count=len(reconciled),
+            ) from first_failure
         return tuple(reconciled)
 
     def on_worker_result(
@@ -493,6 +516,7 @@ class CatalogIndexJobRuntimeReconciler:
 __all__ = [
     "CatalogIndexJobRuntimeReconciler",
     "IndexJobActivationError",
+    "IndexJobReconciliationPassError",
     "IndexJobRuntimeActivation",
     "IndexJobRuntimePublisher",
 ]
