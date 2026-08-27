@@ -2426,14 +2426,13 @@ def _prepare_retained_bm25_cache_generation(
     source_view = _view_source(cache, entry, view="bm25")
     if source_view != operation.fixed_source_views["bm25"]:
         raise AssertionError("compiler cache fixed BM25 source changed")
-    for output in (*operation.view_outputs.values(), operation.context_output):
-        if any(
-            _path_relation(output, boundary) != "disjoint"
-            for boundary in (cache, source_view, repository)
-        ):
-            raise ValueError(
-                "compiler cache output overlaps a retained input authority"
-            )
+    _destination_topology(
+        tuple(operation.view_outputs.values()),
+        operation.context_output,
+        cache=cache,
+        repository=repository,
+        source_views=(source_view,),
+    )
     if check_cancelled is not None:
         check_cancelled()
 

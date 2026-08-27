@@ -1277,8 +1277,8 @@ exactly one active required `full` BM25 request and its dirty fingerprint source
 revision before creating output, and serializes the documents, metadata,
 fingerprints, lock file, and exact single-view manifest into one immutable
 workspace plan. A retained no-follow authority pins the attempt parent before
-the source build, the caller's strict provider publishes only against that
-parent identity, and a caller-owned receipt retains the exact resulting
+the source build, an exact local provider publishes only against that parent
+identity, and a caller-owned receipt retains the exact resulting
 generation through recapture and CAS ingestion. Preparation consumes the
 receipt's callback-scoped directory reader and BM25 subtree directly; it never
 reopens the diagnostic cache pathname, so parent retargeting or a renamed

@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import codenib.compiler as compiler_module
+import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.source_job as source_job_module
 from codenib import LocalWorkspaceProvider
 from codenib._captured_directory import PublishedWorkspaceReceiptOwner
@@ -193,7 +194,9 @@ def _executor(
     view_owner: PublishedWorkspaceReceiptOwner,
     context_owner: PublishedWorkspaceReceiptOwner,
     attempt_owner: PublishedWorkspaceReceiptOwner | None = None,
-    attempt_provider=None,
+    attempt_provider: LocalWorkspaceProvider | None = None,
+    view_destination: Path | None = None,
+    context_destination: Path | None = None,
     forbidden_paths=(),
     environ=None,
 ) -> BM25SourceJobExecutor:
@@ -201,13 +204,25 @@ def _executor(
         attempt_generation=attempt_generation,
         display_commit=_COMMIT,
         builder=builder,
-        attempt_output_owner=attempt_owner or fixture.owner(),
-        attempt_workspace_provider=attempt_provider or fixture.attempt_provider,
+        attempt_output_owner=(
+            fixture.owner() if attempt_owner is None else attempt_owner
+        ),
+        attempt_workspace_provider=(
+            fixture.attempt_provider if attempt_provider is None else attempt_provider
+        ),
         repository_source=fixture.source,
         view_output_owner=view_owner,
         context_output_owner=context_owner,
-        view_destination=fixture.workspace / "published-bm25",
-        context_destination=fixture.workspace / "published-context",
+        view_destination=(
+            fixture.workspace / "published-bm25"
+            if view_destination is None
+            else view_destination
+        ),
+        context_destination=(
+            fixture.workspace / "published-context"
+            if context_destination is None
+            else context_destination
+        ),
         workspace_provider=fixture.provider,
         repository_key=_REPOSITORY_KEY,
         object_store=cas,
@@ -570,19 +585,19 @@ def test_bm25_source_executor_threads_stop_check_into_attempt_workspace(
     def expected_check() -> None:
         return None
 
-    class TrackingAttemptProvider:
-        def require_support(self) -> None:
-            fixture.attempt_provider.require_support()
+    real_run_workspace = LocalWorkspaceProvider.run_workspace
 
-        def run_workspace(
-            self,
-            request,
-            *,
-            receipt_owner,
-            operation,
-            check_cancelled=None,
-            _expected_parent_identity=None,
-        ):
+    def tracking_run_workspace(
+        self,
+        request,
+        *,
+        receipt_owner,
+        operation,
+        check_cancelled=None,
+        _expected_parent_identity=None,
+        _replacement_source=None,
+    ):
+        if self is fixture.attempt_provider:
             observed.append(
                 (
                     request.purpose,
@@ -590,15 +605,15 @@ def test_bm25_source_executor_threads_stop_check_into_attempt_workspace(
                     _expected_parent_identity,
                 )
             )
-            return fixture.attempt_provider.run_workspace(
-                request,
-                receipt_owner=receipt_owner,
-                operation=operation,
-                check_cancelled=check_cancelled,
-                _expected_parent_identity=_expected_parent_identity,
-            )
-
-    attempt_provider = TrackingAttemptProvider()
+        return real_run_workspace(
+            self,
+            request,
+            receipt_owner=receipt_owner,
+            operation=operation,
+            check_cancelled=check_cancelled,
+            _expected_parent_identity=_expected_parent_identity,
+            _replacement_source=_replacement_source,
+        )
 
     try:
         with (
@@ -617,7 +632,11 @@ def test_bm25_source_executor_threads_stop_check_into_attempt_workspace(
                 attempt_generation=tmp_path / "attempt-generation",
                 view_owner=view_owner,
                 context_owner=context_owner,
-                attempt_provider=attempt_provider,
+            )
+            monkeypatch.setattr(
+                LocalWorkspaceProvider,
+                "run_workspace",
+                tracking_run_workspace,
             )
             monkeypatch.setattr(
                 source_job_module,
@@ -750,6 +769,196 @@ def test_bm25_source_executor_rejects_symlinked_attempt_inside_repository(
     finally:
         context_owner.close()
         view_owner.close()
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "error", "message"),
+    [
+        ("same", ValueError, "output destinations overlap"),
+        ("nested", ValueError, "output destinations overlap"),
+        ("physical-alias", ValueError, "output destinations overlap"),
+        ("existing-view", FileExistsError, "destination must be missing"),
+        ("existing-context", FileExistsError, "destination must be missing"),
+        ("repository", ValueError, "destination overlaps an input authority"),
+        ("forbidden", ValueError, "destination overlaps an input authority"),
+    ],
+)
+def test_bm25_source_executor_rejects_invalid_output_topology_before_build(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    error: type[Exception],
+    message: str,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    attempt = tmp_path / "attempt-generation"
+    output_root = fixture.workspace / "outputs"
+    output_root.mkdir(mode=0o700)
+    forbidden = tmp_path / "forbidden"
+    forbidden.mkdir(mode=0o700)
+    view_destination = output_root / "view"
+    context_destination = output_root / "context"
+    if case == "same":
+        view_destination = context_destination = output_root / "shared"
+    elif case == "nested":
+        context_destination = view_destination / "context"
+    elif case == "physical-alias":
+        real_parent = output_root / "real"
+        real_parent.mkdir(mode=0o700)
+        alias_parent = output_root / "alias"
+        alias_parent.symlink_to(real_parent, target_is_directory=True)
+        view_destination = real_parent / "artifact"
+        context_destination = alias_parent / "artifact"
+    elif case == "existing-view":
+        view_destination.mkdir(mode=0o700)
+    elif case == "existing-context":
+        context_destination.mkdir(mode=0o700)
+    elif case == "repository":
+        view_destination = fixture.repository / "view"
+    elif case == "forbidden":
+        view_destination = forbidden / "view"
+    else:  # pragma: no cover - parameter invariant
+        raise AssertionError(f"unknown topology case: {case}")
+
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            executor = _executor(
+                fixture,
+                cas,
+                builder,
+                attempt_generation=attempt,
+                view_owner=view_owner,
+                context_owner=context_owner,
+                view_destination=view_destination,
+                context_destination=context_destination,
+                forbidden_paths=(forbidden,),
+            )
+            monkeypatch.setattr(
+                BM25IndexBuilder,
+                "prepare_from_repository_source",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "builder ran before output topology was validated"
+                ),
+            )
+
+            with pytest.raises(error, match=message):
+                executor.execute(context)
+
+            assert not attempt.exists()
+            assert executor.attempt_output_owner.state == "empty"
+            assert view_owner.state == "empty"
+            assert context_owner.state == "empty"
+            assert not any(path.is_file() for path in (tmp_path / "cas").rglob("*"))
+    finally:
+        context_owner.close()
+        view_owner.close()
+        fixture.close()
+
+
+@pytest.mark.parametrize(
+    ("case", "error", "message"),
+    [
+        ("same", ValueError, "output destinations overlap"),
+        ("physical-alias", ValueError, "output destinations overlap"),
+        ("existing-context", FileExistsError, "destination must be missing"),
+    ],
+)
+def test_retained_generation_rechecks_output_topology_before_recapture_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    error: type[Exception],
+    message: str,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    initial_view_owner = PublishedWorkspaceReceiptOwner()
+    initial_context_owner = PublishedWorkspaceReceiptOwner()
+    retry_view_owner = PublishedWorkspaceReceiptOwner()
+    retry_context_owner = PublishedWorkspaceReceiptOwner()
+    attempt = tmp_path / "attempt-generation"
+    try:
+        with (
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            executor = _executor(
+                fixture,
+                cas,
+                builder,
+                attempt_generation=attempt,
+                view_owner=initial_view_owner,
+                context_owner=initial_context_owner,
+            )
+            assert executor.execute(context).publishable
+            expected_manifest = RepoManifest.load(attempt / "repo_manifest.json")
+
+            retry_root = fixture.workspace / "retry"
+            retry_root.mkdir(mode=0o700)
+            view_destination = retry_root / "view"
+            context_destination = retry_root / "context"
+            if case == "same":
+                view_destination = context_destination = retry_root / "shared"
+            elif case == "physical-alias":
+                real_parent = retry_root / "real"
+                real_parent.mkdir(mode=0o700)
+                alias_parent = retry_root / "alias"
+                alias_parent.symlink_to(real_parent, target_is_directory=True)
+                view_destination = real_parent / "artifact"
+                context_destination = alias_parent / "artifact"
+            elif case == "existing-context":
+                context_destination.mkdir(mode=0o700)
+            else:  # pragma: no cover - parameter invariant
+                raise AssertionError(f"unknown topology case: {case}")
+
+            monkeypatch.setattr(
+                cache_import_module,
+                "_plan_retained_bm25_publication_view",
+                lambda *_args, **_kwargs: pytest.fail(
+                    "retained BM25 recapture was planned before topology validation"
+                ),
+            )
+            with pytest.raises(error, match=message):
+                cache_import_module.prepare_compiler_cache_job_view_from_generation(
+                    executor.attempt_output_owner,
+                    expected_manifest=expected_manifest,
+                    job=context.job,
+                    views=context.views,
+                    repository_source=fixture.source,
+                    view_output_owner=retry_view_owner,
+                    context_output_owner=retry_context_owner,
+                    view_destination=view_destination,
+                    context_destination=context_destination,
+                    workspace_provider=fixture.provider,
+                    repository_key=_REPOSITORY_KEY,
+                    object_store=cas,
+                    environ={},
+                )
+
+            assert retry_view_owner.state == "empty"
+            assert retry_context_owner.state == "empty"
+    finally:
+        retry_context_owner.close()
+        retry_view_owner.close()
+        initial_context_owner.close()
+        initial_view_owner.close()
         fixture.close()
 
 
@@ -1006,13 +1215,8 @@ def test_bm25_source_executor_repr_does_not_expose_environment(
     secret = "source-job-secret-marker"
     monkeypatch.setenv(variable, secret)
 
-    class UnusedProvider:
-        def require_support(self) -> None:
-            return None
-
-        def run_workspace(self, *_args, **_kwargs):
-            raise AssertionError("repr test unexpectedly used a workspace")
-
+    attempt_workspace = tmp_path / "attempt-workspace"
+    attempt_workspace.mkdir(mode=0o700)
     attempt_owner = PublishedWorkspaceReceiptOwner()
     view_owner = PublishedWorkspaceReceiptOwner()
     context_owner = PublishedWorkspaceReceiptOwner()
@@ -1022,7 +1226,7 @@ def test_bm25_source_executor_repr_does_not_expose_environment(
             display_commit=_COMMIT,
             builder=BM25IndexBuilder(),
             attempt_output_owner=attempt_owner,
-            attempt_workspace_provider=UnusedProvider(),
+            attempt_workspace_provider=LocalWorkspaceProvider(attempt_workspace),
             repository_source=object(),  # type: ignore[arg-type]
             view_output_owner=view_owner,
             context_output_owner=context_owner,
@@ -1035,6 +1239,42 @@ def test_bm25_source_executor_repr_does_not_expose_environment(
 
         assert executor.environ[variable] == secret
         assert secret not in repr(executor)
+    finally:
+        context_owner.close()
+        view_owner.close()
+        attempt_owner.close()
+
+
+def test_bm25_source_executor_rejects_protocol_only_attempt_provider(
+    tmp_path: Path,
+) -> None:
+    class ProtocolOnlyAttemptProvider:
+        def require_support(self) -> None:
+            raise AssertionError("incompatible provider support check was called")
+
+        def run_workspace(self, *_args, **_kwargs):
+            raise AssertionError("incompatible provider was used")
+
+    attempt_owner = PublishedWorkspaceReceiptOwner()
+    view_owner = PublishedWorkspaceReceiptOwner()
+    context_owner = PublishedWorkspaceReceiptOwner()
+    try:
+        with pytest.raises(TypeError, match="exact local workspace provider"):
+            BM25SourceJobExecutor(
+                attempt_generation=tmp_path / "attempt",
+                display_commit=_COMMIT,
+                builder=BM25IndexBuilder(),
+                attempt_output_owner=attempt_owner,
+                attempt_workspace_provider=ProtocolOnlyAttemptProvider(),  # type: ignore[arg-type]
+                repository_source=object(),  # type: ignore[arg-type]
+                view_output_owner=view_owner,
+                context_output_owner=context_owner,
+                view_destination=tmp_path / "view",
+                context_destination=tmp_path / "context",
+                workspace_provider=object(),  # type: ignore[arg-type]
+                repository_key=_REPOSITORY_KEY,
+                object_store=object(),  # type: ignore[arg-type]
+            )
     finally:
         context_owner.close()
         view_owner.close()

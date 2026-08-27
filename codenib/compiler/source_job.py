@@ -41,6 +41,7 @@ from .._captured_directory import (
     WorkspaceFile,
     WorkspacePlan,
 )
+from .._local_workspace_provider import LocalWorkspaceProvider
 from .._workspace_provider import (
     StrictWorkspaceProvider,
     StrictWorkspaceRequest,
@@ -76,9 +77,11 @@ from ..storage.view_bundle import (
 )
 from .cache_import import (
     _compiler_cache_job_stop_check,
+    _path_relation,
     _preflight_cache_job_preparation_operation,
     _preflight_workspace_provider,
     _require_missing,
+    _resolved_path,
     prepare_compiler_cache_job_view_from_generation,
 )
 from .cache_lock import COMPILER_CACHE_LOCK_FILENAME
@@ -198,7 +201,7 @@ def _validate_private_cache_generation(
 class _RetainedCacheWorkspaceProvider:
     """Bind one provider call to the exact parent opened before cache checks."""
 
-    delegate: StrictWorkspaceProvider
+    delegate: LocalWorkspaceProvider
     parent_authority: _PublicationAuthority = field(repr=False, compare=False)
     parent_identity: tuple[int, ...]
 
@@ -361,39 +364,93 @@ def _exact_attempt_generation(value: object) -> Path:
     return generation
 
 
-def _require_disjoint_attempt_generation(
+def _preflight_source_job_topology(
     generation: Path,
     source: RepositorySourceIdentitySnapshot,
     *,
-    boundaries: tuple[Path, ...],
+    view_destination: Path,
+    context_destination: Path,
+    forbidden_paths: tuple[Path, ...],
 ) -> None:
     repository = lexical_directory_path(source.root)
-    try:
-        physical_generation = generation.resolve(strict=False)
-        physical_repository = repository.resolve(strict=True)
-    except (OSError, RuntimeError) as exc:
-        raise ValueError(
-            "BM25 source job attempt topology cannot be authenticated"
-        ) from exc
-    inputs = ((repository, physical_repository, "repository"),)
-    outputs = tuple(
-        (
-            lexical_directory_path(boundary),
-            lexical_directory_path(boundary).resolve(strict=False),
-            "output or forbidden boundary",
-        )
-        for boundary in boundaries
+    source_view = lexical_directory_path(generation / _BM25_VIEW)
+    outputs = (
+        lexical_directory_path(view_destination),
+        lexical_directory_path(context_destination),
     )
-    for lexical, physical, label in (*inputs, *outputs):
+    forbidden = tuple(lexical_directory_path(boundary) for boundary in forbidden_paths)
+    physical_repository = _resolved_path(
+        repository,
+        strict=True,
+        label="BM25 source job repository",
+    )
+    physical_generation = _resolved_path(
+        generation,
+        strict=False,
+        label="BM25 source job attempt generation",
+    )
+    physical_source_view = _resolved_path(
+        source_view,
+        strict=False,
+        label="BM25 source job cache view",
+    )
+    physical_outputs = tuple(
+        _resolved_path(
+            output,
+            strict=False,
+            label="BM25 source job destination",
+        )
+        for output in outputs
+    )
+    physical_forbidden = tuple(
+        _resolved_path(
+            boundary,
+            strict=False,
+            label="BM25 source job forbidden boundary",
+        )
+        for boundary in forbidden
+    )
+    if (
+        _path_relation(generation, repository) != "disjoint"
+        or _path_relation(physical_generation, physical_repository) != "disjoint"
+    ):
+        raise ValueError("BM25 source job attempt generation overlaps repository")
+    for lexical, physical in zip(
+        (*outputs, *forbidden),
+        (*physical_outputs, *physical_forbidden),
+        strict=True,
+    ):
         if (
-            generation == lexical
-            or generation in lexical.parents
-            or lexical in generation.parents
-            or physical_generation == physical
-            or physical_generation in physical.parents
-            or physical in physical_generation.parents
+            _path_relation(generation, lexical) != "disjoint"
+            or _path_relation(physical_generation, physical) != "disjoint"
         ):
-            raise ValueError("BM25 source job attempt generation overlaps " + label)
+            raise ValueError(
+                "BM25 source job attempt generation overlaps output or "
+                "forbidden boundary"
+            )
+
+    lexical_inputs = (repository, generation, source_view, *forbidden)
+    physical_inputs = (
+        physical_repository,
+        physical_generation,
+        physical_source_view,
+        *physical_forbidden,
+    )
+    for output, physical_output in zip(outputs, physical_outputs, strict=True):
+        if any(
+            _path_relation(output, boundary) != "disjoint"
+            for boundary in lexical_inputs
+        ) or any(
+            _path_relation(physical_output, boundary) != "disjoint"
+            for boundary in physical_inputs
+        ):
+            raise ValueError("BM25 source job destination overlaps an input authority")
+        _require_missing(output, label="BM25 source job destination")
+    if (
+        _path_relation(outputs[0], outputs[1]) != "disjoint"
+        or _path_relation(physical_outputs[0], physical_outputs[1]) != "disjoint"
+    ):
+        raise ValueError("BM25 source job output destinations overlap")
 
 
 def _built_at(status: IndexStatus) -> tuple[str, float]:
@@ -750,7 +807,7 @@ class BM25SourceJobExecutor:
     display_commit: str
     builder: InitVar[BM25IndexBuilder]
     attempt_output_owner: PublishedWorkspaceReceiptOwner
-    attempt_workspace_provider: StrictWorkspaceProvider
+    attempt_workspace_provider: LocalWorkspaceProvider
     repository_source: RepositorySourceBinding
     view_output_owner: PublishedWorkspaceReceiptOwner
     context_output_owner: PublishedWorkspaceReceiptOwner
@@ -812,6 +869,10 @@ class BM25SourceJobExecutor:
             raise ValueError("BM25 source job receipt owners must be distinct")
         if self.attempt_output_owner.state != "empty":
             raise RuntimeError("BM25 source job attempt owner must be empty")
+        if type(self.attempt_workspace_provider) is not LocalWorkspaceProvider:
+            raise TypeError(
+                "BM25 source job attempt requires an exact local workspace provider"
+            )
         _preflight_workspace_provider(self.attempt_workspace_provider)
         object.__setattr__(self, "_builder", configuration)
         object.__setattr__(self, "_profile", configuration.profile())
@@ -866,14 +927,12 @@ class BM25SourceJobExecutor:
             raise StorageValidationError(
                 "BM25 source job selection does not match the retained source"
             )
-        _require_disjoint_attempt_generation(
+        _preflight_source_job_topology(
             self.attempt_generation,
             binding.source_snapshot,
-            boundaries=(
-                *operation.view_outputs.values(),
-                operation.context_output,
-                *operation.inputs.forbidden_paths,
-            ),
+            view_destination=operation.view_outputs[_BM25_VIEW],
+            context_destination=operation.context_output,
+            forbidden_paths=operation.inputs.forbidden_paths,
         )
         check_cancelled()
         with _PublicationAuthorityOwner() as parent_owner:
@@ -890,14 +949,12 @@ class BM25SourceJobExecutor:
                 parent_identity=parent_identity,
             )
             parent_authority.verify_path_binding()
-            _require_disjoint_attempt_generation(
+            _preflight_source_job_topology(
                 self.attempt_generation,
                 binding.source_snapshot,
-                boundaries=(
-                    *operation.view_outputs.values(),
-                    operation.context_output,
-                    *operation.inputs.forbidden_paths,
-                ),
+                view_destination=operation.view_outputs[_BM25_VIEW],
+                context_destination=operation.context_output,
+                forbidden_paths=operation.inputs.forbidden_paths,
             )
             parent_authority.verify_path_binding()
             check_cancelled()
