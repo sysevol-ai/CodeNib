@@ -2026,6 +2026,17 @@ class CodeVectorStore:
                 exact captured tree and semantic view contract. Artifact fields
                 cannot provide this capability.
         """
+        ambient_error = sys.exc_info()[1]
+        # Exception subclasses can shadow ``__traceback__``. Read the base
+        # descriptor so the ambient snapshot cannot run user code.
+        ambient_traceback = (
+            None
+            if ambient_error is None
+            else BaseException.__traceback__.__get__(
+                ambient_error,
+                type(ambient_error),
+            )
+        )
         load_path = Path(path) if path else self.store_path
         if load_path is None:
             raise ValueError("No load path provided")
@@ -2037,6 +2048,7 @@ class CodeVectorStore:
         loaded_state: _LoadedVectorState | None = None
         previous_state: _LoadedVectorState | None = None
         view_closed = False
+        body_completed = False
         try:
             require_native_index_authorization(
                 native_index_authorization,
@@ -2052,8 +2064,20 @@ class CodeVectorStore:
             view_closed = True
             previous_state = self._loaded_state
             self._replace_loaded_state(loaded_state)
+            body_completed = True
         finally:
             primary_error = sys.exc_info()[1]
+            if (
+                body_completed
+                and primary_error is ambient_error
+                and ambient_error is not None
+                and BaseException.__traceback__.__get__(
+                    primary_error,
+                    type(primary_error),
+                )
+                is ambient_traceback
+            ):
+                primary_error = None
             cleanup_error: BaseException | None = None
             if not view_closed:
                 try:

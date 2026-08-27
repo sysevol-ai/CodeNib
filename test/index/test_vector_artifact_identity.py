@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import ctypes
 import inspect
 import sys
+import threading
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -355,10 +357,12 @@ def test_load_keeps_previous_state_when_final_tree_verification_fails(
     "cleanup_failure",
     [RuntimeError("index reset failed"), KeyboardInterrupt("index reset cancelled")],
 )
+@pytest.mark.parametrize("caller_ambient", [False, True])
 def test_load_preserves_primary_and_visits_all_temporary_cleanup(
     tmp_path,
     monkeypatch,
     cleanup_failure: BaseException,
+    caller_ambient: bool,
 ) -> None:
     store = _store(tmp_path, fingerprint="sha256:expected")
     ownership = capture_directory_ownership(tmp_path)
@@ -405,8 +409,19 @@ def test_load_preserves_primary_and_visits_all_temporary_cleanup(
         ),
     )
 
-    with pytest.raises(ValueError) as caught:
-        store.load(native_index_authorization=authorization)
+    def load_with_expected_failure():
+        with pytest.raises(ValueError) as caught:
+            store.load(native_index_authorization=authorization)
+        return caught
+
+    if caller_ambient:
+        try:
+            raise primary
+        except ValueError as active_error:
+            assert active_error is primary
+            caught = load_with_expected_failure()
+    else:
+        caught = load_with_expected_failure()
 
     assert caught.value is primary
     assert close_calls == [True]
@@ -532,7 +547,7 @@ def test_vector_authorization_gate_preserves_pending_view_cleanup_owner(
     assert caught.value.captured_directory_cleanup_owner is owner
 
 
-def test_load_keeps_published_state_when_old_index_cleanup_is_cancelled(
+def test_load_keeps_published_state_when_cleanup_is_cancelled_under_ambient_error(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -584,8 +599,13 @@ def test_load_keeps_published_state_when_old_index_cleanup_is_cancelled(
         ),
     )
 
-    with pytest.raises(KeyboardInterrupt) as caught:
-        store.load(native_index_authorization=authorization)
+    ambient_error = OSError("ambient caller failure")
+    try:
+        raise ambient_error
+    except OSError as active_error:
+        assert active_error is ambient_error
+        with pytest.raises(KeyboardInterrupt) as caught:
+            store.load(native_index_authorization=authorization)
 
     assert caught.value is interruption
     assert store.l0_index is replacement_l0
@@ -598,6 +618,149 @@ def test_load_keeps_published_state_when_old_index_cleanup_is_cancelled(
     assert owner.closed
     assert old_l0.reset_calls == 2
     assert old_l2.reset_calls == 1
+
+
+def test_load_preserves_same_ambient_object_raised_after_publication(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    store = _store(tmp_path, fingerprint="sha256:expected")
+    ownership = capture_directory_ownership(tmp_path)
+    authorization = _mint_trusted_local_admin_authorization(
+        ownership,
+        view_type="vector",
+        semantic_contract=store.artifact_metadata,
+        evidence=("vector-post-publication-primary-test",),
+    )
+
+    class Index:
+        def __init__(self, failure=None) -> None:
+            self.failure = failure
+            self.reset_calls = 0
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+            if self.failure is not None:
+                raise self.failure
+
+    cleanup_interruption = KeyboardInterrupt("injected old-index cleanup cancellation")
+    old_l0 = Index(cleanup_interruption)
+    old_l2 = Index()
+    store.l0_index = old_l0
+    store.l2_index = old_l2
+    replacement_l0 = Index()
+    replacement_l2 = Index()
+    view = SimpleNamespace(
+        ownership=ownership,
+        verify_final=lambda: None,
+        close=lambda: None,
+    )
+    monkeypatch.setattr(
+        "codenib.index.embedding.vector_store.capture_authenticated_vector_view",
+        lambda _path: view,
+    )
+    monkeypatch.setattr(
+        store,
+        "_load_captured",
+        lambda _view: _LoadedVectorState(
+            l0_index=replacement_l0,
+            l0_documents=[object()],
+            l2_index=replacement_l2,
+            l2_documents=[object()],
+            artifact_metadata={"embedding_fingerprint": "sha256:replacement"},
+            store_path=tmp_path / "replacement",
+        ),
+    )
+
+    source_lines, first_line = inspect.getsourcelines(CodeVectorStore.load)
+    target_lines = [
+        first_line + index
+        for index, source_line in enumerate(source_lines)
+        if source_line.strip() == "body_completed = True"
+    ]
+    assert len(target_lines) == 1
+    target_line = target_lines[0]
+    # Keep the injected exception inside a disposable thread: trace-raised
+    # exceptions can otherwise remain as ambient state for later tests.
+    locals_to_fast = ctypes.pythonapi.PyFrame_LocalsToFast
+    locals_to_fast.argtypes = [ctypes.py_object, ctypes.c_int]
+    locals_to_fast.restype = None
+
+    class HostileAmbientError(OSError):
+        @property
+        def __traceback__(self):
+            raise AssertionError("raw traceback access used the subclass property")
+
+    ambient_error = HostileAmbientError("ambient caller and post-publication failure")
+    worker_failure: list[str] = []
+
+    def run_load() -> None:
+        try:
+            try:
+                raise ambient_error
+            except OSError as active_error:
+                assert active_error is ambient_error
+                entry_traceback = BaseException.__traceback__.__get__(
+                    ambient_error,
+                    type(ambient_error),
+                )
+                injected = False
+
+                def inject_after_publication(frame, event, _arg):
+                    nonlocal injected
+                    if (
+                        frame.f_code is CodeVectorStore.load.__code__
+                        and event == "line"
+                        and frame.f_lineno == target_line
+                        and not injected
+                    ):
+                        assert frame.f_locals["body_completed"] is False
+                        frame.f_locals["body_completed"] = True
+                        locals_to_fast(frame, 1)
+                        assert frame.f_locals["body_completed"] is True
+                        injected = True
+                        sys.settrace(None)
+                        raise ambient_error
+                    return inject_after_publication
+
+                sys.settrace(inject_after_publication)
+                try:
+                    store.load(native_index_authorization=authorization)
+                except (Exception, KeyboardInterrupt) as observed:
+                    assert observed is ambient_error
+                else:
+                    raise AssertionError(
+                        "post-publication failure was suppressed"
+                    ) from None
+                finally:
+                    sys.settrace(None)
+                assert injected
+                assert (
+                    BaseException.__traceback__.__get__(
+                        ambient_error,
+                        type(ambient_error),
+                    )
+                    is not entry_traceback
+                )
+
+            assert store.l0_index is replacement_l0
+            assert store.l2_index is replacement_l2
+            assert replacement_l0.reset_calls == replacement_l2.reset_calls == 0
+            owner = ambient_error.vector_index_cleanup_owner
+            assert owner.indices == [old_l0]
+            old_l0.failure = None
+            owner.close()
+            assert owner.closed
+            assert old_l0.reset_calls == 2
+            assert old_l2.reset_calls == 1
+        except (Exception, KeyboardInterrupt) as failure:
+            worker_failure.append(type(failure).__name__)
+
+    worker = threading.Thread(target=run_load)
+    worker.start()
+    worker.join()
+    assert not worker.is_alive()
+    assert worker_failure == []
 
 
 @pytest.mark.parametrize(
