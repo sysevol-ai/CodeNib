@@ -575,6 +575,11 @@ def test_jobs_run_once_parser_exposes_bounded_worker_inputs() -> None:
     assert defaults.heartbeat_interval_ms == 5_000
     assert defaults.scan_limit == 64
     assert defaults.json is False
+    assert defaults.cache_dir == "/src/repo/.codenib_index"
+    assert defaults.source_bm25 is False
+    assert defaults.language == []
+    assert defaults.exclude_dir is None
+    assert defaults.clear_exclude_dirs is False
     assert configured.namespace == "production"
     assert configured.lease_duration_ms == 60_000
     assert configured.heartbeat_interval_ms == 10_000
@@ -584,6 +589,154 @@ def test_jobs_run_once_parser_exposes_bounded_worker_inputs() -> None:
     with pytest.raises(SystemExit) as invalid:
         cli.build_parser().parse_args([*base, "--scan-limit", "0"])
     assert invalid.value.code == 2
+
+
+def test_jobs_worker_parser_requires_one_explicit_input_mode() -> None:
+    topology = [
+        "--catalog",
+        "/state/catalog.sqlite3",
+        "--cas-root",
+        "/state/cas",
+        "--workspace-root",
+        "/state/workspaces",
+        "--repository",
+        "owner/repo",
+    ]
+    parser = cli.build_parser()
+
+    source = parser.parse_args(
+        [
+            "jobs",
+            "run-once",
+            "/src/repo",
+            "--source-bm25",
+            "--language",
+            "python,go",
+            "--exclude-dir",
+            "generated",
+            *topology,
+        ]
+    )
+
+    assert source.cache_dir is None
+    assert source.source_bm25 is True
+    assert source.language == ["python,go"]
+    assert source.exclude_dir == ["generated"]
+    assert source.clear_exclude_dirs is False
+
+    with pytest.raises(SystemExit) as missing:
+        parser.parse_args(["jobs", "run-once", "/src/repo", *topology])
+    assert missing.value.code == 2
+    with pytest.raises(SystemExit) as mixed:
+        parser.parse_args(
+            [
+                "jobs",
+                "run-once",
+                "/src/repo",
+                "--cache-dir",
+                "/src/repo/.codenib_index",
+                "--source-bm25",
+                *topology,
+            ]
+        )
+    assert mixed.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "source_option",
+    (
+        ("language", ["python"]),
+        ("exclude_dir", ["generated"]),
+        ("clear_exclude_dirs", True),
+    ),
+)
+def test_cache_job_worker_rejects_source_only_options(source_option) -> None:
+    name, value = source_option
+    args = SimpleNamespace(
+        source_bm25=False,
+        language=[],
+        exclude_dir=None,
+        clear_exclude_dirs=False,
+    )
+    setattr(args, name, value)
+
+    with pytest.raises(cli.CLIError, match="require --source-bm25"):
+        cli._run_with_local_index_job_worker(
+            args,
+            lambda _worker: pytest.fail("worker must not be created"),
+        )
+
+
+def test_source_job_worker_pins_repository_before_provider_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "sample.py").write_text("VALUE = 1\n", encoding="utf-8")
+    candidate = tmp_path / "candidate-repository"
+    candidate.mkdir()
+    (candidate / "sample.py").write_text("VALUE = 1\n", encoding="utf-8")
+    displaced = tmp_path / "displaced-repository"
+    catalog = tmp_path / "catalog.sqlite3"
+    catalog.touch()
+    cas_root = tmp_path / "cas"
+    cas_root.mkdir()
+    workspace_root = tmp_path / "workspaces"
+    workspace_root.mkdir()
+    args = SimpleNamespace(
+        repo=os.fspath(repository),
+        source_bm25=True,
+        cache_dir=None,
+        language=["python"],
+        exclude_dir=None,
+        clear_exclude_dirs=False,
+        catalog=os.fspath(catalog),
+        cas_root=os.fspath(cas_root),
+        workspace_root=os.fspath(workspace_root),
+        repository="owner/repo",
+        namespace="default",
+    )
+    authorities: list[object] = []
+    real_pin = source_fingerprint_module.pin_repository_source_root
+
+    def capture_pin(*values: object, **kwargs: object):
+        authority = real_pin(*values, **kwargs)
+        authorities.append(authority)
+        return authority
+
+    class Provider:
+        def __init__(self, root: Path) -> None:
+            assert root == workspace_root
+
+        def require_support(self) -> None:
+            repository.rename(displaced)
+            candidate.rename(repository)
+
+    def unexpected(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("replaced repository must fail before storage or worker setup")
+
+    monkeypatch.setattr(
+        source_fingerprint_module,
+        "pin_repository_source_root",
+        capture_pin,
+    )
+    monkeypatch.setattr(codenib, "LocalWorkspaceProvider", Provider)
+    monkeypatch.setattr(
+        cli,
+        "_require_retained_materialization_topology",
+        unexpected,
+    )
+    monkeypatch.setattr(storage_module, "LocalCAS", unexpected)
+
+    with pytest.raises(cli.CLIError, match="repository root"):
+        cli._run_with_local_index_job_worker(
+            args,
+            lambda _worker: pytest.fail("worker operation must not run"),
+        )
+
+    assert len(authorities) == 1
+    assert authorities[0].closed  # type: ignore[attr-defined]
 
 
 def test_jobs_run_parser_exposes_continuous_scheduler_inputs() -> None:

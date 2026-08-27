@@ -8,6 +8,7 @@ import builtins
 import inspect
 import json
 import os
+import subprocess
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -15,12 +16,16 @@ from pathlib import Path
 
 import pytest
 
+import codenib.cli as cli_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.job_resources as job_resources_module
 import codenib.compiler.source_job as source_job_module
 from codenib import LocalWorkspaceProvider
-from codenib._captured_directory import PublishedWorkspaceReceiptOwner
+from codenib._captured_directory import (
+    PublishedWorkspaceReceiptOwner,
+    UnsupportedWorkspaceCreation,
+)
 from codenib.code_chunker import CodeChunker
 from codenib.code_chunking.base import BaseCodeChunker
 from codenib.compiler.index_builders import BM25IndexBuilder
@@ -40,6 +45,7 @@ from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
     RepositorySourceBinding,
     capture_repository_source,
+    pin_repository_source_root,
 )
 from codenib.storage import (
     INDEX_JOB_REQUEST_CONTRACT,
@@ -115,6 +121,7 @@ def _source_fixture(
     tmp_path: Path,
     *,
     selection: RepositorySourceSelection | None = None,
+    git_checkout: bool = False,
 ) -> _SourceFixture:
     repository = tmp_path / "repository"
     repository.mkdir(mode=0o700)
@@ -122,6 +129,20 @@ def _source_fixture(
         "def answer():\n    return 42\n",
         encoding="utf-8",
     )
+    if git_checkout:
+        for command in (
+            ("init",),
+            ("config", "user.email", "source-job@example.invalid"),
+            ("config", "user.name", "Source Job Test"),
+            ("add", "sample.py"),
+            ("commit", "-m", "fixture"),
+        ):
+            subprocess.run(
+                ("git", "-C", os.fspath(repository), *command),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
     selected = selection or RepositorySourceSelection()
     source = capture_repository_source(repository, selection=selected)
     workspace = tmp_path / "workspace"
@@ -1388,6 +1409,55 @@ def test_bm25_source_executor_rejects_noncanonical_display_commit(
     assert not attempt.exists()
 
 
+def test_local_bm25_source_target_binds_exact_repository_root_authority(
+    tmp_path: Path,
+) -> None:
+    fixture = _source_fixture(tmp_path)
+    foreign = tmp_path / "foreign-repository"
+    foreign.mkdir(mode=0o700)
+    try:
+        with pin_repository_source_root(fixture.repository) as authority:
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=BM25IndexBuilder(),
+                repository_root_authority=authority,
+                environ={},
+            )
+            assert target.repository_root_authority is authority
+
+        with pin_repository_source_root(foreign) as foreign_authority:
+            with pytest.raises(
+                ValueError,
+                match="repository authority differs from its root",
+            ):
+                LocalBM25SourceJobTarget(
+                    repository_root=fixture.repository,
+                    workspace_provider=fixture.provider,
+                    repository_key=_REPOSITORY_KEY,
+                    display_commit=_COMMIT,
+                    builder=BM25IndexBuilder(),
+                    repository_root_authority=foreign_authority,
+                    environ={},
+                )
+
+        with pytest.raises(TypeError, match="authority has an invalid type"):
+            LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=BM25IndexBuilder(),
+                repository_root_authority=object(),  # type: ignore[arg-type]
+                environ={},
+            )
+        assert not tuple(fixture.workspace.iterdir())
+    finally:
+        fixture.close()
+
+
 def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
     tmp_path: Path,
 ) -> None:
@@ -1477,6 +1547,98 @@ def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
                     json.loads(event.payload_json).get("adapter") == "bm25_source"
                     for event in events
                 )
+    finally:
+        fixture.close()
+
+
+def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    builder = BM25IndexBuilder(languages=["python"])
+    profile = bm25_source_job_profile(builder)
+    fixture = _source_fixture(tmp_path, git_checkout=True)
+    catalog_path = tmp_path / "catalog.sqlite"
+    cas_root = tmp_path / "cas"
+    queued = None
+    try:
+        try:
+            fixture.provider.require_support()
+        except UnsupportedWorkspaceCreation as exc:
+            pytest.skip(str(exc))
+        with LocalCAS.provision(cas_root):
+            pass
+        with SQLiteCatalog(catalog_path) as catalog:
+            repository_id = catalog.create_repository(_REPOSITORY_KEY)
+            source_revision_id = catalog.create_source_revision(
+                repository_id,
+                commit_sha=None,
+                dirty=True,
+                source_fingerprint=fixture.source.fingerprint,
+            )
+            profile_id = catalog.create_view_profile(
+                "bm25",
+                profile.config,
+                name=profile.name,
+            )
+            assert profile_id == profile.profile_id
+            queued = catalog.create_job(
+                repository_id,
+                source_revision_id,
+                "source-cli-worker",
+                {
+                    "contract": INDEX_JOB_REQUEST_CONTRACT,
+                    "views": {
+                        "bm25": {
+                            "profile_id": profile_id,
+                            "requested_mode": "full",
+                            "required": True,
+                        }
+                    },
+                },
+            )
+
+        args = cli_module.build_parser().parse_args(
+            [
+                "jobs",
+                "run-once",
+                os.fspath(fixture.repository),
+                "--source-bm25",
+                "--language",
+                "python",
+                "--catalog",
+                os.fspath(catalog_path),
+                "--cas-root",
+                os.fspath(cas_root),
+                "--workspace-root",
+                os.fspath(fixture.workspace),
+                "--repository",
+                _REPOSITORY_KEY,
+                "--lease-duration-ms",
+                "60000",
+                "--heartbeat-interval-ms",
+                "5",
+                "--json",
+            ]
+        )
+
+        assert args.handler(args) == 0
+
+        payload = json.loads(capsys.readouterr().out)
+        assert payload == {
+            "attempt_count": 1,
+            "disposition": "succeeded",
+            "job_id": queued.job_id,
+        }
+        assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
+        assert not tuple(fixture.workspace.glob(".codenib-source-worker-topology-*"))
+        orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
+        assert len(orphans) == 3
+        assert all(orphan.is_dir() for orphan in orphans)
+        with SQLiteCatalog(catalog_path, create=False) as catalog:
+            completed = catalog.get_job(queued.job_id)
+            assert completed.status is IndexJobStatus.SUCCEEDED
+            assert completed.result_snapshot_id is not None
     finally:
         fixture.close()
 
@@ -1716,6 +1878,57 @@ def test_local_bm25_source_scope_is_side_effect_free_until_enter(
 
             assert type(scope) is BM25SourceJobResourceScope
             assert scope.object_store is cas
+            assert not tuple(fixture.workspace.iterdir())
+    finally:
+        fixture.close()
+
+
+def test_local_bm25_source_scope_threads_repository_root_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    observed: list[object] = []
+    real_capture = job_resources_module.capture_repository_source
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+
+            def capture(*args: object, **kwargs: object):
+                observed.append(kwargs.get("expected_root_authority"))
+                return real_capture(*args, **kwargs)
+
+            monkeypatch.setattr(
+                job_resources_module,
+                "capture_repository_source",
+                capture,
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with resources.create_scope(
+                context, object_store=cas
+            ).resources as executor:
+                assert type(executor) is BM25SourceJobExecutor
+
+            assert observed == [authority]
             assert not tuple(fixture.workspace.iterdir())
     finally:
         fixture.close()

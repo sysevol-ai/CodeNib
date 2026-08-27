@@ -2495,6 +2495,48 @@ def _new_compiler_cache_import_nonce() -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class _BM25SourceJobWorkerPaths:
+    repo_path: Path
+    catalog_path: Path
+    cas_root: Path
+    workspace_root: Path
+    topology_probe: Path
+
+
+def _bm25_source_job_worker_paths(
+    args: argparse.Namespace,
+) -> _BM25SourceJobWorkerPaths:
+    """Freeze source-worker paths without touching its attempt namespace."""
+
+    import secrets
+
+    repo_path = resolve_repo_path(args.repo)
+    catalog_path = _lexical_cli_path(args.catalog, label="catalog")
+    cas_root = _lexical_cli_path(args.cas_root, label="CAS root")
+    workspace_root = _lexical_cli_path(args.workspace_root, label="workspace root")
+    for first, first_label, second, second_label in (
+        (catalog_path, "catalog", cas_root, "CAS root"),
+        (catalog_path, "catalog", workspace_root, "workspace root"),
+        (cas_root, "CAS root", workspace_root, "workspace root"),
+        (repo_path, "repository", catalog_path, "catalog"),
+        (repo_path, "repository", cas_root, "CAS root"),
+        (repo_path, "repository", workspace_root, "workspace root"),
+    ):
+        if _paths_overlap(first, second):
+            raise CLIError(f"{first_label} must not overlap the {second_label}")
+    nonce = secrets.token_hex(16)
+    if re.fullmatch(r"[0-9a-f]{32}", nonce, flags=re.ASCII) is None:
+        raise RuntimeError("BM25 source worker topology nonce is invalid")
+    return _BM25SourceJobWorkerPaths(
+        repo_path=repo_path,
+        catalog_path=catalog_path,
+        cas_root=cas_root,
+        workspace_root=workspace_root,
+        topology_probe=(workspace_root / f".codenib-source-worker-topology-{nonce}"),
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class _CompilerCacheImportPaths:
     repo_path: Path
     cache_dir: Path
@@ -3770,8 +3812,53 @@ def _run_artifact_import_cache(args: argparse.Namespace) -> int:
         raise
 
 
+def _bm25_source_job_worker_selection(
+    args: argparse.Namespace,
+) -> RepositorySourceSelection:
+    exclude_dirs = getattr(args, "exclude_dir", None)
+    clear = bool(getattr(args, "clear_exclude_dirs", False))
+    if exclude_dirs is not None and clear:
+        raise CLIError("--exclude-dir and --clear-exclude-dirs are mutually exclusive")
+    if clear or exclude_dirs is None:
+        return RepositorySourceSelection()
+    try:
+        return RepositorySourceSelection(exclude_dirs)
+    except (TypeError, ValueError) as exc:
+        raise CLIError(f"invalid --exclude-dir: {exc}") from exc
+
+
+def _bm25_source_job_display_commit(repo_path: Path) -> str:
+    from .compiler.checkout_identity import checkout_commit
+
+    commit = (checkout_commit(repo_path) or "").strip().lower()
+    if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+        raise CLIError(
+            "BM25 source workers require a Git checkout with a full resolved HEAD"
+        )
+    return commit
+
+
 def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
-    """Run one callback while retaining an exact local worker topology."""
+    """Run one callback with the selected exact local worker adapter."""
+
+    if not callable(operation):
+        raise TypeError("local index job worker operation must be callable")
+    if bool(getattr(args, "source_bm25", False)):
+        return _run_with_local_bm25_source_job_worker(args, operation)
+    if (
+        getattr(args, "language", ())
+        or getattr(args, "exclude_dir", None) is not None
+        or bool(getattr(args, "clear_exclude_dirs", False))
+    ):
+        raise CLIError("--language and source-selection options require --source-bm25")
+    return _run_with_local_compiler_cache_job_worker(args, operation)
+
+
+def _run_with_local_compiler_cache_job_worker(
+    args: argparse.Namespace,
+    operation,
+):
+    """Run one callback while retaining an exact local cache-worker topology."""
 
     from . import LocalWorkspaceProvider
     from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
@@ -3798,8 +3885,6 @@ def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
         _inherit_publication_cleanup_owners(wrapped, exc)
         raise wrapped from exc
 
-    if not callable(operation):
-        raise TypeError("local index job worker operation must be callable")
     missing_result = object()
     result = missing_result
     try:
@@ -3861,6 +3946,141 @@ def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
         raise
 
 
+def _run_with_local_bm25_source_job_worker(
+    args: argparse.Namespace,
+    operation,
+):
+    """Run one callback with a retained-source BM25 worker topology."""
+
+    from . import LocalWorkspaceProvider
+    from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
+    from .artifacts.runtime import SourceBindingCleanupOwner
+    from .compiler.index_builders import BM25IndexBuilder
+    from .compiler.job_resolver import BM25SourceJobResolver
+    from .compiler.job_resources import (
+        LocalBM25SourceJobResourceFactory,
+        LocalBM25SourceJobTarget,
+    )
+    from .source_fingerprint import pin_repository_source_root
+    from .storage import IndexJobWorker, LocalCAS
+
+    repository, namespace = _retained_materialization_identity(
+        args.repository,
+        args.namespace,
+    )
+    paths = _bm25_source_job_worker_paths(args)
+    selection = _bm25_source_job_worker_selection(args)
+
+    missing_result = object()
+    result = missing_result
+    try:
+        object_store_owner = _RetainedMaterializationResourceOwner()
+        topology_owner = _RetainedMaterializationResourceOwner()
+        repository_authority_owner = SourceBindingCleanupOwner()
+        cleanup_actions = (
+            _OrderedAction(
+                label="source worker local CAS cleanup also failed",
+                action=object_store_owner.close,
+                complete=lambda: object_store_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=object_store_owner,
+            ),
+            _OrderedAction(
+                label="source worker path authority cleanup also failed",
+                action=topology_owner.close,
+                complete=lambda: topology_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=topology_owner,
+            ),
+            _OrderedAction(
+                label="source worker repository authority cleanup also failed",
+                action=repository_authority_owner.close,
+                complete=lambda: repository_authority_owner.closed,
+                retry_incomplete="cancellation",
+                incomplete_owner=repository_authority_owner,
+            ),
+        )
+        with _run_context_with_cleanup_actions(cleanup_actions):
+            repository_authority = pin_repository_source_root(
+                paths.repo_path,
+                _source_owner=repository_authority_owner.retain,
+            )
+            provider = LocalWorkspaceProvider(paths.workspace_root)
+            provider.require_support()
+            repository_authority.verify()
+            topology = topology_owner.acquire(
+                lambda: _require_retained_materialization_topology(
+                    paths.catalog_path,
+                    paths.cas_root,
+                    paths.workspace_root,
+                    paths.topology_probe,
+                    repo_path=paths.repo_path,
+                    repository_authority=repository_authority,
+                )
+            )
+            topology.verify()
+            languages = _selected_languages(
+                paths.repo_path,
+                args.language,
+                source_selection=selection,
+            )
+            topology.verify()
+            display_commit = _bm25_source_job_display_commit(paths.repo_path)
+            topology.verify()
+            object_store = object_store_owner.acquire(
+                lambda: LocalCAS(
+                    topology.cas_root,
+                    require_preprovisioned=True,
+                )
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=paths.repo_path,
+                workspace_provider=provider,
+                repository_key=repository,
+                display_commit=display_commit,
+                builder=BM25IndexBuilder(
+                    languages=languages,
+                    source_selection=selection,
+                ),
+                namespace_name=namespace,
+                repository_root_authority=repository_authority,
+                environ=_publication_environment(),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+            worker = IndexJobWorker(
+                catalog_factory=_ExistingIndexJobCatalogFactory(
+                    topology.catalog_path,
+                    topology.catalog_identity,
+                ),
+                object_store=object_store,
+                resolver=BM25SourceJobResolver(
+                    resource_factory=resources,
+                    object_store=object_store,
+                ),
+                lease_duration_ms=args.lease_duration_ms,
+                heartbeat_interval_ms=args.heartbeat_interval_ms,
+                scan_limit=args.scan_limit,
+                candidate_filter=resources.accepts_candidate,
+            )
+            topology.verify()
+            result = operation(worker)
+            topology.verify()
+        if result is missing_result:  # pragma: no cover - callback always returns
+            raise RuntimeError("index job worker operation returned no result")
+        return result
+    except BaseException as primary_error:  # noqa: B036 - preserve cancellation
+        if isinstance(primary_error, CLIError):
+            raise
+        if isinstance(
+            primary_error,
+            (OSError, RuntimeError, ValueError, sqlite3.Error),
+        ):
+            wrapped = CLIError(str(primary_error))
+            _inherit_publication_cleanup_owners(wrapped, primary_error)
+            raise wrapped from primary_error
+        raise
+
+
 def _index_job_run_payload(result) -> dict[str, object]:
     return {
         "attempt_count": result.attempt_count,
@@ -3880,7 +4100,7 @@ def _compact_json_line(payload: dict[str, object]) -> str:
 
 
 def _run_jobs_run_once(args: argparse.Namespace) -> int:
-    """Run one bounded prepare-only compiler-cache worker scan."""
+    """Run one bounded prepare-only index worker scan."""
 
     result = _run_with_local_index_job_worker(args, lambda worker: worker.run_once())
     payload = _index_job_run_payload(result)
@@ -3943,7 +4163,7 @@ def _jobs_scheduler_stop_signal():
 
 
 def _run_jobs_continuous(args: argparse.Namespace) -> int:
-    """Continuously traverse eligible compiler-cache jobs with cursor fairness."""
+    """Continuously traverse eligible index jobs with cursor fairness."""
 
     from .storage import IndexJobWorkerScheduler
 
@@ -5709,7 +5929,11 @@ def _add_embedding_route_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_source_selection_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_source_selection_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    persisted: bool = True,
+) -> None:
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument(
         "--exclude-dir",
@@ -5717,14 +5941,22 @@ def _add_source_selection_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="PATH",
         help=(
-            "replace persisted custom exclusions with this exact "
-            "repository-relative subtree; repeat for multiple paths"
+            (
+                "replace persisted custom exclusions with this exact "
+                if persisted
+                else "exclude this exact "
+            )
+            + "repository-relative subtree; repeat for multiple paths"
         ),
     )
     selection.add_argument(
         "--clear-exclude-dirs",
         action="store_true",
-        help="clear persisted custom subtree exclusions",
+        help=(
+            "clear persisted custom subtree exclusions"
+            if persisted
+            else "use no custom subtree exclusions"
+        ),
     )
 
 
@@ -5735,11 +5967,23 @@ def _add_jobs_worker_arguments(parser: argparse.ArgumentParser) -> None:
         "repo",
         help="trusted local repository source for eligible jobs",
     )
-    parser.add_argument(
+    worker_input = parser.add_mutually_exclusive_group(required=True)
+    worker_input.add_argument(
         "--cache-dir",
-        required=True,
         help="existing compiler cache containing current BM25/vector views",
     )
+    worker_input.add_argument(
+        "--source-bm25",
+        action="store_true",
+        help="build matching FULL BM25 jobs directly from retained source",
+    )
+    parser.add_argument(
+        "--language",
+        action="append",
+        default=[],
+        help="source language for --source-bm25; repeat or comma-separate values",
+    )
+    _add_source_selection_arguments(parser, persisted=False)
     parser.add_argument(
         "--catalog",
         required=True,

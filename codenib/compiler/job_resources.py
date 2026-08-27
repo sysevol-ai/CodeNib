@@ -25,7 +25,11 @@ from .._atomic_directory import (
 from .._captured_directory import PublishedWorkspaceReceiptOwner
 from .._local_workspace_provider import LocalWorkspaceProvider
 from ..artifacts.runtime import SourceBindingCleanupOwner
-from ..source_fingerprint import capture_repository_source, lexical_repository_path
+from ..source_fingerprint import (
+    RepositorySourceRootAuthority,
+    capture_repository_source,
+    lexical_repository_path,
+)
 from ..storage.job_worker import IndexJobExecutionContext
 from ..storage.models import (
     DEFAULT_NAMESPACE_NAME,
@@ -195,6 +199,11 @@ class LocalBM25SourceJobTarget:
     display_commit: str
     builder: InitVar[BM25IndexBuilder]
     namespace_name: str = DEFAULT_NAMESPACE_NAME
+    repository_root_authority: RepositorySourceRootAuthority | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     environ: Mapping[str, str] | None = field(
         default=None,
         repr=False,
@@ -228,6 +237,17 @@ class LocalBM25SourceJobTarget:
             raise ValueError(
                 "BM25 source target workspace must not overlap the repository"
             )
+        repository_authority = self.repository_root_authority
+        if repository_authority is not None:
+            if type(repository_authority) is not RepositorySourceRootAuthority:
+                raise TypeError(
+                    "BM25 source target repository authority has an invalid type"
+                )
+            repository_authority.verify()
+            if repository_authority.root != repository_root:
+                raise ValueError(
+                    "BM25 source target repository authority differs from its root"
+                )
         namespace = NamespaceIdentity(self.namespace_name)
         repository = RepositoryIdentity(
             namespace_id=namespace.namespace_id,
@@ -822,6 +842,7 @@ class LocalBM25SourceJobResourceFactory:
                     exclude_roots=(target.workspace_root,),
                     selection=target._builder.source_selection,
                     _source_owner=source_owner.retain,
+                    expected_root_authority=target.repository_root_authority,
                     check_cancelled=check_cancelled,
                 )
                 source_owner.retain(repository_source)
