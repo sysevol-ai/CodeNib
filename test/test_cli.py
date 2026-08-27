@@ -667,6 +667,19 @@ def test_cache_job_worker_rejects_source_only_options(source_option) -> None:
         )
 
 
+def test_source_job_worker_rejects_programmatic_cache_input() -> None:
+    args = SimpleNamespace(
+        source_bm25=True,
+        cache_dir="/state/compiler-cache",
+    )
+
+    with pytest.raises(cli.CLIError, match="cannot be combined"):
+        cli._run_with_local_index_job_worker(
+            args,
+            lambda _worker: pytest.fail("worker must not be created"),
+        )
+
+
 def test_source_job_worker_pins_repository_before_provider_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

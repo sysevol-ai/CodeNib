@@ -3844,6 +3844,8 @@ def _run_with_local_index_job_worker(args: argparse.Namespace, operation):
     if not callable(operation):
         raise TypeError("local index job worker operation must be callable")
     if bool(getattr(args, "source_bm25", False)):
+        if getattr(args, "cache_dir", None) is not None:
+            raise CLIError("--cache-dir cannot be combined with --source-bm25")
         return _run_with_local_bm25_source_job_worker(args, operation)
     if (
         getattr(args, "language", ())
