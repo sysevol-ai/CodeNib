@@ -1638,7 +1638,12 @@ success-triggered refresh, MCP, UI controls, and default routing remain absent.
   writer-fenced transfer. Reconciliation re-attests even an already reported
   fence, so removal or reload cannot leave a permanent false success. Newer
   incumbents and conflicting equal generations are rejected before
-  materialization. The production server loop remains a separate gate.
+  materialization. The production runtime's cooperative polling loop reconciles
+  once immediately, retries sanitized transient activation failures, and
+  periodically replays current durable results with exact return and stop-signal
+  validation.
+  Server lifespan ownership and explicit local storage configuration remain
+  separate gates.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a
