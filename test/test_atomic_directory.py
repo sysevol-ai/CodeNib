@@ -1599,6 +1599,497 @@ def test_quiescent_reclaimer_reclaims_exact_child_and_reports_absence(
     assert list(parent.iterdir()) == []
 
 
+def test_quiescent_reclaimer_snapshots_sorted_descriptor_child_names(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    names = ("zeta", ".alpha", "middle", "café")
+    for name in names:
+        (parent / name).mkdir()
+    real_scandir = atomic_module.os.scandir
+    scanned: list[object] = []
+
+    def capture_scandir(descriptor: object) -> object:
+        scanned.append(descriptor)
+        return real_scandir(descriptor)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(atomic_module.os, "scandir", capture_scandir)
+        with atomic_module.QuiescentDirectoryReclaimer(
+            parent,
+            expected_parent_identity=parent_identity,
+        ) as reclaimer:
+            assert reclaimer.snapshot_child_names() == tuple(
+                sorted(names, key=os.fsencode)
+            )
+            assert reclaimer.retry() is False
+
+    assert len(scanned) == 1
+    assert type(scanned[0]) is int
+    assert {path.name for path in parent.iterdir()} == set(names)
+
+
+def test_quiescent_reclaimer_child_snapshot_stops_at_incremental_bound(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+
+    class PoisonEntry:
+        @property
+        def name(self) -> str:
+            raise AssertionError("snapshot inspected the limit-plus-one entry")
+
+    entries = (
+        SimpleNamespace(name="one"),
+        SimpleNamespace(name="two"),
+        PoisonEntry(),
+    )
+
+    class BoundedScandir:
+        def __init__(self) -> None:
+            self.index = 0
+            self.closed = False
+
+        def __iter__(self) -> BoundedScandir:
+            return self
+
+        def __next__(self) -> object:
+            if self.index >= len(entries):
+                raise AssertionError("snapshot read beyond limit plus one")
+            entry = entries[self.index]
+            self.index += 1
+            return entry
+
+        def close(self) -> None:
+            self.closed = True
+
+        def __enter__(self) -> BoundedScandir:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            self.close()
+
+    iterator = BoundedScandir()
+    scanned: list[object] = []
+
+    def bounded_scandir(descriptor: object) -> BoundedScandir:
+        scanned.append(descriptor)
+        return iterator
+
+    monkeypatch.setattr(atomic_module, "_MAX_QUIESCENT_DIRECTORY_CHILDREN", 2)
+    monkeypatch.setattr(atomic_module.os, "scandir", bounded_scandir)
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(RuntimeError, match="snapshot exceeds its limit"):
+            reclaimer.snapshot_child_names()
+        assert reclaimer.retry() is False
+
+    assert len(scanned) == 1
+    assert type(scanned[0]) is int
+    assert iterator.index == 3
+    assert iterator.closed
+
+
+def test_quiescent_reclaimer_child_snapshot_closes_iterator_on_scan_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    real_scandir = atomic_module.os.scandir
+    failure = OSError(errno.EIO, "injected snapshot scan failure")
+
+    class FailingScandir:
+        def __init__(self, descriptor: int) -> None:
+            self._entries = real_scandir(descriptor)
+            self.closed = False
+
+        def __iter__(self) -> FailingScandir:
+            return self
+
+        def __next__(self) -> object:
+            raise failure
+
+        def close(self) -> None:
+            self._entries.close()
+            self.closed = True
+
+        def __enter__(self) -> FailingScandir:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            self.close()
+
+    iterators: list[FailingScandir] = []
+
+    def failing_scandir(descriptor: int) -> FailingScandir:
+        assert type(descriptor) is int
+        iterator = FailingScandir(descriptor)
+        iterators.append(iterator)
+        return iterator
+
+    before_fds = (
+        len(os.listdir("/proc/self/fd")) if sys.platform.startswith("linux") else 0
+    )
+    monkeypatch.setattr(atomic_module.os, "scandir", failing_scandir)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    with pytest.raises(OSError) as caught:
+        reclaimer.snapshot_child_names()
+
+    assert caught.value is failure
+    assert len(iterators) == 1
+    assert iterators[0].closed
+    assert reclaimer.retry() is False
+    reclaimer.close()
+    if sys.platform.startswith("linux"):
+        assert len(os.listdir("/proc/self/fd")) <= before_fds
+
+
+def test_quiescent_reclaimer_child_snapshot_retries_interrupted_iterator_close(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    (parent / "attempt").mkdir()
+    real_scandir = atomic_module.os.scandir
+    interruption = KeyboardInterrupt("injected snapshot iterator close interruption")
+
+    class InterruptingScandir:
+        def __init__(self, descriptor: int) -> None:
+            self._entries = real_scandir(descriptor)
+            self.close_calls = 0
+            self.closed = False
+
+        def __iter__(self) -> InterruptingScandir:
+            return self
+
+        def __next__(self) -> object:
+            return next(self._entries)
+
+        def close(self) -> None:
+            self.close_calls += 1
+            self._entries.close()
+            if self.close_calls == 1:
+                raise interruption
+            self.closed = True
+
+        def __enter__(self) -> InterruptingScandir:
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            self.close()
+
+    iterators: list[InterruptingScandir] = []
+
+    def interrupting_scandir(descriptor: int) -> InterruptingScandir:
+        assert type(descriptor) is int
+        iterator = InterruptingScandir(descriptor)
+        iterators.append(iterator)
+        return iterator
+
+    before_fds = (
+        len(os.listdir("/proc/self/fd")) if sys.platform.startswith("linux") else 0
+    )
+    monkeypatch.setattr(atomic_module.os, "scandir", interrupting_scandir)
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        reclaimer.snapshot_child_names()
+
+    assert caught.value is interruption
+    assert len(iterators) == 1
+    assert iterators[0].close_calls >= 2
+    assert iterators[0].closed
+    assert reclaimer.retry() is False
+    reclaimer.close()
+    if sys.platform.startswith("linux"):
+        assert len(os.listdir("/proc/self/fd")) <= before_fds
+
+
+def test_quiescent_reclaimer_retains_iterator_after_persistent_close_cancellation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    (parent / "attempt").mkdir()
+    before_fds = (
+        len(os.listdir("/proc/self/fd")) if sys.platform.startswith("linux") else 0
+    )
+    real_scope = atomic_module._run_quiescent_directory_resource_scope
+    real_close = atomic_module._ScandirIteratorCleanupOwner.close
+    iterator_owners: list[atomic_module._ScandirIteratorCleanupOwner] = []
+    close_failures: list[KeyboardInterrupt] = []
+    fail_close = True
+
+    def capture_scope(
+        resources: atomic_module._QuiescentDirectoryResourceOwner,
+        callback: object,
+        *,
+        label: str,
+    ) -> object:
+        if label == "quiescent directory snapshot iterator cleanup also failed":
+            assert isinstance(
+                resources,
+                atomic_module._ScandirIteratorCleanupOwner,
+            )
+            iterator_owners.append(resources)
+        return real_scope(resources, callback, label=label)
+
+    def interrupt_before_close(
+        owner: atomic_module._ScandirIteratorCleanupOwner,
+    ) -> None:
+        if iterator_owners and owner is iterator_owners[0] and fail_close:
+            failure = KeyboardInterrupt(
+                f"persistent snapshot iterator close {len(close_failures)}"
+            )
+            close_failures.append(failure)
+            raise failure
+        real_close(owner)
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_run_quiescent_directory_resource_scope",
+        capture_scope,
+    )
+    monkeypatch.setattr(
+        atomic_module._ScandirIteratorCleanupOwner,
+        "close",
+        interrupt_before_close,
+    )
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        reclaimer.snapshot_child_names()
+
+    assert len(iterator_owners) == 1
+    iterator_owner = iterator_owners[0]
+    assert iterator_owner._iterator is not None
+    assert not iterator_owner.closed
+    assert len(close_failures) > atomic_module._MAX_ORDERED_ACTION_CANCELLATION_RETRIES
+    top_owners = BaseException.__getattribute__(
+        caught.value,
+        "publication_cleanup_owners",
+    )
+    assert type(top_owners) is tuple
+    assert sum(owner is iterator_owner for owner in top_owners) == 1
+
+    fail_close = False
+    for owner in top_owners:
+        if not owner.closed:
+            owner.close()
+
+    assert iterator_owner.closed
+    _assert_quiescent_reclaimer_publicly_retryable(reclaimer)
+    reclaimer.close()
+    if sys.platform.startswith("linux"):
+        assert len(os.listdir("/proc/self/fd")) <= before_fds
+
+
+def test_quiescent_reclaimer_child_snapshot_rejects_recursive_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    (parent / "attempt").mkdir()
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_scandir = atomic_module.os.scandir
+    nested_errors: list[BaseException] = []
+
+    def reenter(descriptor: int) -> object:
+        try:
+            reclaimer.snapshot_child_names()
+        except BaseException as error:  # noqa: B036 - inspect nested rejection
+            nested_errors.append(error)
+        return real_scandir(descriptor)
+
+    monkeypatch.setattr(atomic_module.os, "scandir", reenter)
+
+    assert reclaimer.snapshot_child_names() == ("attempt",)
+    assert len(nested_errors) == 1
+    assert isinstance(nested_errors[0], RuntimeError)
+    assert "lifecycle transition is already active" in str(nested_errors[0])
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_child_snapshot_serializes_threads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    (parent / "attempt").mkdir()
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    entered = threading.Event()
+    release = threading.Event()
+    results: list[tuple[str, ...]] = []
+    failures: list[BaseException] = []
+    real_scandir = atomic_module.os.scandir
+
+    def blocked_scandir(descriptor: int) -> object:
+        entered.set()
+        assert release.wait(timeout=5)
+        return real_scandir(descriptor)
+
+    def snapshot_in_worker() -> None:
+        try:
+            results.append(reclaimer.snapshot_child_names())
+        except BaseException as error:  # noqa: B036 - report thread failure
+            failures.append(error)
+
+    monkeypatch.setattr(atomic_module.os, "scandir", blocked_scandir)
+    worker = threading.Thread(target=snapshot_in_worker)
+    worker.start()
+    assert entered.wait(timeout=5)
+    with pytest.raises(RuntimeError, match="lifecycle transition is already active"):
+        reclaimer.snapshot_child_names()
+    release.set()
+    worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert failures == []
+    assert results == [("attempt",)]
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_reclaims_quarantined_child_without_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    quarantined = parent / ".attempt-a.discarded-0123456789abcdef"
+    _write_tree(quarantined, "payload.txt", "payload")
+    rename_calls = 0
+
+    def forbidden_rename(*_args: object, **_kwargs: object) -> None:
+        nonlocal rename_calls
+        rename_calls += 1
+        raise AssertionError("an already quarantined child must not be renamed")
+
+    monkeypatch.setattr(
+        atomic_module._PublicationAuthority,
+        "rename_noreplace",
+        forbidden_rename,
+    )
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        assert reclaimer.reclaim_quarantined_child(quarantined.name) is True
+        assert reclaimer.reclaim_quarantined_child(quarantined.name) is False
+
+    assert rename_calls == 0
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_retries_quarantined_child_without_name_nesting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    quarantined = parent / ".attempt-a.discarded-0123456789abcdef"
+    _write_tree(quarantined, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+    real_unlink = atomic_module.os.unlink
+    interrupted = False
+
+    def interrupt_before_unlink(path: object, *, dir_fd: int | None = None) -> None:
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            raise KeyboardInterrupt("quarantined unlink interruption")
+        real_unlink(path, dir_fd=dir_fd)
+
+    monkeypatch.setattr(atomic_module.os, "unlink", interrupt_before_unlink)
+
+    with pytest.raises(KeyboardInterrupt, match="quarantined unlink") as caught:
+        reclaimer.reclaim_quarantined_child(quarantined.name)
+    assert reclaimer in caught.value.publication_cleanup_owners
+    assert [path.name for path in parent.iterdir()] == [quarantined.name]
+    assert not list(parent.glob(f".{quarantined.name}.discarded-*"))
+
+    assert reclaimer.retry() is True
+    reclaimer.close()
+    assert list(parent.iterdir()) == []
+
+
+def test_quiescent_reclaimer_bounds_parent_before_quarantined_child_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    quarantined = parent / ".attempt-a.discarded-0123456789abcdef"
+    _write_tree(quarantined, "payload.txt", "payload")
+    reclaimer = atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    )
+
+    class ParentPathTooLong(RuntimeError):
+        pass
+
+    def reject_parent_path(_value: object) -> bytes:
+        raise ParentPathTooLong("parent receipt path is too long")
+
+    def forbidden_removal(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("parent receipt validation must precede deletion")
+
+    monkeypatch.setattr(
+        atomic_module,
+        "_bounded_directory_orphan_parent_path_bytes",
+        reject_parent_path,
+    )
+    monkeypatch.setattr(atomic_module.os, "unlink", forbidden_removal)
+    monkeypatch.setattr(atomic_module.os, "rmdir", forbidden_removal)
+
+    with pytest.raises(ParentPathTooLong):
+        reclaimer.reclaim_quarantined_child(quarantined.name)
+
+    assert (quarantined / "payload.txt").read_text(encoding="utf-8") == "payload"
+    assert reclaimer.retry() is False
+    reclaimer.close()
+
+
+def test_quiescent_reclaimer_rejects_non_directory_quarantined_child(
+    tmp_path: Path,
+) -> None:
+    parent, parent_identity = _private_reclaimer_parent(tmp_path)
+    ordinary_file = parent / ".attempt.discarded-file"
+    ordinary_file.write_text("preserve", encoding="utf-8")
+
+    with atomic_module.QuiescentDirectoryReclaimer(
+        parent,
+        expected_parent_identity=parent_identity,
+    ) as reclaimer:
+        with pytest.raises(ValueError, match="not a directory or is a link"):
+            reclaimer.reclaim_quarantined_child(ordinary_file.name)
+        assert reclaimer.reclaim_quarantined_child("missing") is False
+
+    assert ordinary_file.read_text(encoding="utf-8") == "preserve"
+
+
 def test_quiescent_reclaimer_reclaims_authenticated_orphan_idempotently(
     tmp_path: Path,
 ) -> None:
