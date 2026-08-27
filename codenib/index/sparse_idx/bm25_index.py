@@ -9,7 +9,7 @@ import os
 import re
 import stat
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Iterable, List, Mapping, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, List, Mapping, Optional
 
 from rank_bm25 import BM25Okapi
 
@@ -35,6 +35,7 @@ _SOURCE_MODES = {
     SOURCE_MODE_BOUND_REPOSITORY,
     SOURCE_MODE_PERSISTED_ONLY,
 }
+_JSON_WRITE_CHARS = 1024 * 1024
 _SECURE_SOURCE_DIRECTORY_FDS = (
     os.name == "posix"
     and hasattr(os, "O_DIRECTORY")
@@ -402,6 +403,68 @@ class BM25Retriever:
         )
 
 
+def _dump_json_interruptibly(
+    value: object,
+    handle: Any,
+    check_cancelled: Callable[[], None] | None,
+) -> None:
+    """Write the established JSON encoding while polling between chunks."""
+
+    chunks = iter(json.JSONEncoder(indent=2).iterencode(value))
+    while True:
+        if check_cancelled is not None:
+            check_cancelled()
+        try:
+            chunk = next(chunks)
+        except StopIteration:
+            break
+        for offset in range(0, len(chunk), _JSON_WRITE_CHARS):
+            if check_cancelled is not None:
+                check_cancelled()
+            handle.write(chunk[offset : offset + _JSON_WRITE_CHARS])
+    if check_cancelled is not None:
+        check_cancelled()
+
+
+def _raise_with_persistence_cleanup_failure(
+    primary: BaseException,
+    cleanup_failure: BaseException,
+) -> None:
+    """Preserve chronological cancellation priority across file cleanup."""
+
+    if isinstance(primary, Exception) and not isinstance(
+        cleanup_failure,
+        Exception,
+    ):
+        raise cleanup_failure from primary
+    raise primary from cleanup_failure
+
+
+def _write_json_interruptibly(
+    path: str,
+    value: object,
+    check_cancelled: Callable[[], None] | None,
+) -> None:
+    """Write one JSON file without letting close replace the build failure."""
+
+    handle = None
+    primary: BaseException | None = None
+    try:
+        handle = open(path, "w", encoding="utf-8")
+        _dump_json_interruptibly(value, handle, check_cancelled)
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        if handle is not None:
+            try:
+                handle.close()
+            except BaseException as cleanup_failure:
+                if primary is None:
+                    raise
+                _raise_with_persistence_cleanup_failure(primary, cleanup_failure)
+
+
 class BM25CodeIndexer:
     """
     A class that builds a BM25 index from CodeGraph nodes and provides
@@ -415,6 +478,9 @@ class BM25CodeIndexer:
         max_k: int = 15,
         language: str = "english",
         project_root: Optional[str] = None,
+        *,
+        prepare_only: bool = False,
+        check_cancelled: Callable[[], None] | None = None,
     ):
         """
         Initialize the BM25CodeIndexer and optionally build the index immediately.
@@ -429,11 +495,31 @@ class BM25CodeIndexer:
                       Default is "english" which works well for processing code tokens
                       as it treats special characters as separators
             project_root: Repository root used to resolve relative source paths
+            prepare_only: Prepare canonical persisted documents without building
+                          the serving-time in-memory rank index.
+            check_cancelled: Cooperative stop check for prepare-only chunk builds.
         """
         self.max_k = max_k
         self.language = language
         self.documents = []
+        if type(prepare_only) is not bool:
+            raise TypeError("BM25 prepare-only policy must be an exact boolean")
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("BM25 build cancellation must be callable")
+        if code_graph is not None and (prepare_only or check_cancelled is not None):
+            raise ValueError(
+                "BM25 prepare-only mode and cancellation require source chunks "
+                "without a code graph"
+            )
+        if prepare_only and chunks is None:
+            raise ValueError("BM25 prepare-only mode requires source chunks")
+        if check_cancelled is not None and chunks is None:
+            raise ValueError("BM25 build cancellation requires source chunks")
+        if check_cancelled is not None and not prepare_only:
+            raise ValueError("BM25 build cancellation requires prepare-only mode")
+
         self.retriever = None
+        self._documents_prepared = False
         self.code_graph: CodeGraph = None
         self.project_root = project_root
         self.source_mode = SOURCE_MODE_LEGACY_DIRECT
@@ -444,7 +530,17 @@ class BM25CodeIndexer:
         if code_graph is not None:
             self.build_index_from_graph(code_graph)
         elif chunks is not None:
-            self.build_index_from_chunks(chunks, project_root=project_root)
+            if prepare_only:
+                self._prepare_documents_from_chunks(
+                    chunks,
+                    project_root=project_root,
+                    check_cancelled=check_cancelled,
+                )
+                self._documents_prepared = True
+            else:
+                # Preserve the established virtual-call shape for subclasses
+                # that override this public method.
+                self.build_index_from_chunks(chunks, project_root=project_root)
 
     def build_index_from_graph(self, code_graph: CodeGraph) -> BM25Retriever:
         """
@@ -460,6 +556,8 @@ class BM25CodeIndexer:
         self.project_root = code_graph.project_root
         self.source_mode = SOURCE_MODE_LEGACY_DIRECT
         self._source_binding = None
+        self._documents_prepared = False
+        self.retriever = None
 
         # Convert graph nodes to documents
         for vertex in code_graph.graph.vs:
@@ -472,6 +570,7 @@ class BM25CodeIndexer:
 
         # Create BM25Retriever with LangChain format
         self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
+        self._documents_prepared = True
 
         return self.retriever
 
@@ -491,6 +590,24 @@ class BM25CodeIndexer:
         Returns:
             BM25Retriever instance
         """
+        self._prepare_documents_from_chunks(
+            chunks,
+            project_root=project_root,
+            check_cancelled=None,
+        )
+        self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
+        self._documents_prepared = True
+        return self.retriever
+
+    def _prepare_documents_from_chunks(
+        self,
+        chunks: List[CodeChunk],
+        *,
+        project_root: Optional[str],
+        check_cancelled: Callable[[], None] | None,
+    ) -> None:
+        """Prepare canonical chunk documents without constructing BM25Okapi."""
+
         # Reset the index
         self.documents = []
         self.nodes = []
@@ -498,12 +615,16 @@ class BM25CodeIndexer:
         self.project_root = project_root
         self.source_mode = SOURCE_MODE_LEGACY_DIRECT
         self._source_binding = None
+        self._documents_prepared = False
+        self.retriever = None
 
         # Keep each bounded source span independently searchable. Overloads and
         # split large definitions can share a node_id, but merging them widens
         # the returned location and defeats the chunk-size contract.
         documents_by_span: dict[tuple[str, int, int], Document] = {}
         for chunk in chunks:
+            if check_cancelled is not None:
+                check_cancelled()
             node_id = getattr(chunk, "node_id", None)
             if not node_id:
                 continue
@@ -516,13 +637,22 @@ class BM25CodeIndexer:
                 )
                 documents_by_span.setdefault(key, doc)
 
-        self.documents = list(documents_by_span.values())
-        self.nodes = list(dict.fromkeys(key[0] for key in documents_by_span))
+        self.documents = []
+        self.nodes = []
+        seen_nodes: set[str] = set()
+        for key, document in documents_by_span.items():
+            if check_cancelled is not None:
+                check_cancelled()
+            self.documents.append(document)
+            if key[0] not in seen_nodes:
+                self.nodes.append(key[0])
+                seen_nodes.add(key[0])
 
-        # Create BM25Retriever with LangChain format
-        self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
-
-        return self.retriever
+        if check_cancelled is not None:
+            check_cancelled()
+        # The serving runtime reconstructs the unchanged BM25Okapi state from
+        # these canonical documents. Compiler preparation intentionally avoids
+        # the uninterruptible duplicate rank build.
 
     def _convert_chunk_to_document(self, chunk: CodeChunk) -> Optional[Document]:
         """Convert a source chunk while preserving its repository location."""
@@ -1061,17 +1191,26 @@ class BM25CodeIndexer:
             )
         return _read_source_text(self.project_root, file_path)
 
-    def save_index(self, directory_path: str):
+    def save_index(
+        self,
+        directory_path: str,
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ):
         """
         Save the index to a directory.
 
         Args:
             directory_path: Path to save the index to
         """
-        if self.retriever is None:
+        if check_cancelled is not None and not callable(check_cancelled):
+            raise TypeError("BM25 persistence cancellation must be callable")
+        if self.retriever is None and not self._documents_prepared:
             raise ValueError(
                 "Index has not been built. Call build_index_from_graph first."
             )
+        if check_cancelled is not None:
+            check_cancelled()
 
         # Create directory if it doesn't exist
         os.makedirs(directory_path, exist_ok=True)
@@ -1079,13 +1218,18 @@ class BM25CodeIndexer:
         # Save documents as JSON since LangChain BM25Retriever doesn't have persist method
         documents_data = []
         for doc in self.documents:
+            if check_cancelled is not None:
+                check_cancelled()
             documents_data.append(
                 {"page_content": doc.page_content, "metadata": doc.metadata}
             )
 
         documents_file = os.path.join(directory_path, "documents.json")
-        with open(documents_file, "w", encoding="utf-8") as f:
-            json.dump(documents_data, f, indent=2)
+        _write_json_interruptibly(
+            documents_file,
+            documents_data,
+            check_cancelled,
+        )
 
         # Save additional metadata including project_root
         metadata = {
@@ -1096,8 +1240,11 @@ class BM25CodeIndexer:
             "language": self.language,
         }
         metadata_file = os.path.join(directory_path, "bm25_metadata.json")
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2)
+        _write_json_interruptibly(
+            metadata_file,
+            metadata,
+            check_cancelled,
+        )
 
     def load_index(self, directory_path: str):
         """
@@ -1162,6 +1309,7 @@ class BM25CodeIndexer:
         self.project_root = project_root
         self.source_mode = source_mode
         self._source_binding = None
+        self._documents_prepared = False
         self.max_k = max_k
         self.language = language
 
@@ -1189,3 +1337,4 @@ class BM25CodeIndexer:
                 seen_nodes.add(node_name)
 
         self.retriever = BM25Retriever.from_documents(self.documents, k=self.max_k)
+        self._documents_prepared = True

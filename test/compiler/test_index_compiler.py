@@ -519,6 +519,60 @@ class TestBM25IndexBuilder:
 
         assert observed == [check_cancelled, check_cancelled]
 
+    def test_build_from_repository_source_stops_during_persistence(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        import codenib.compiler.artifact_fingerprints as fingerprints
+        from codenib.index.sparse_idx.bm25_index import BM25CodeIndexer
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "app.py").write_text(
+            "def app():\n    return 1\n",
+            encoding="utf-8",
+        )
+        private_root = tmp_path / "private"
+        private_root.mkdir()
+        output = private_root / "bm25"
+        stopped = KeyboardInterrupt("stop during BM25 persistence")
+        armed = False
+        real_save = BM25CodeIndexer.save_index
+
+        def check_cancelled() -> None:
+            if armed:
+                raise stopped
+
+        def arm_before_save(indexer, directory, **kwargs):
+            nonlocal armed
+            armed = True
+            return real_save(indexer, directory, **kwargs)
+
+        monkeypatch.setattr(BM25CodeIndexer, "save_index", arm_before_save)
+        monkeypatch.setattr(
+            fingerprints,
+            "bm25_artifact_file_fingerprints",
+            lambda *_args, **_kwargs: pytest.fail(
+                "artifact fingerprinting ran after cancellation"
+            ),
+        )
+
+        with capture_repository_source(repo) as source:
+            with pytest.raises(BaseException) as raised:
+                BM25IndexBuilder().build_from_repository_source(
+                    "current_repo",
+                    repository_source=source,
+                    output_dir=str(output),
+                    check_cancelled=check_cancelled,
+                )
+            assert raised.value is stopped
+            assert source.usable
+
+        assert output.is_dir()
+        assert not (output / "documents.json").exists()
+        assert not (output / "bm25_metadata.json").exists()
+
     def test_build_from_repository_source_rejects_changed_authority(
         self,
         tmp_path,

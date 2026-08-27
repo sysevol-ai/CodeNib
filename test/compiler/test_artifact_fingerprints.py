@@ -95,3 +95,78 @@ def test_regular_file_fingerprint_rejects_a_changed_open_generation(
 
     with pytest.raises(ValueError, match="changed while hashing"):
         regular_file_fingerprint(path)
+
+
+def test_bm25_artifact_fingerprint_stops_between_blocks(tmp_path, monkeypatch):
+    import codenib.compiler.artifact_fingerprints as fingerprints
+
+    root = _bm25_artifact(tmp_path)
+    (root / "documents.json").write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+    stopped = KeyboardInterrupt("stop during BM25 fingerprint")
+    armed = False
+    reads = 0
+    real_read = fingerprints.os.read
+
+    def read(descriptor, count):
+        nonlocal armed, reads
+        payload = real_read(descriptor, count)
+        if payload:
+            reads += 1
+            armed = True
+        return payload
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stopped
+
+    monkeypatch.setattr(fingerprints.os, "read", read)
+
+    with pytest.raises(BaseException) as raised:
+        bm25_artifact_file_fingerprints(
+            root,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is stopped
+    assert reads == 1
+
+
+def test_bm25_artifact_fingerprint_preserves_stop_over_close_failure(
+    tmp_path,
+    monkeypatch,
+):
+    import codenib.compiler.artifact_fingerprints as fingerprints
+
+    root = _bm25_artifact(tmp_path)
+    stopped = OSError("cooperative fingerprint stop")
+    close_failure = OSError("injected descriptor close failure")
+    armed = False
+    real_read = fingerprints.os.read
+    real_close = fingerprints.os.close
+
+    def read(descriptor, count):
+        nonlocal armed
+        payload = real_read(descriptor, count)
+        if payload:
+            armed = True
+        return payload
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stopped
+
+    def close(descriptor):
+        real_close(descriptor)
+        raise close_failure
+
+    monkeypatch.setattr(fingerprints.os, "read", read)
+    monkeypatch.setattr(fingerprints.os, "close", close)
+
+    with pytest.raises(BaseException) as raised:
+        bm25_artifact_file_fingerprints(
+            root,
+            check_cancelled=check_cancelled,
+        )
+
+    assert raised.value is stopped
+    assert raised.value.__cause__ is close_failure

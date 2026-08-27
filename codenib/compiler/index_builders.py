@@ -161,10 +161,13 @@ def _require_selected_paths(
     *,
     repository_root: str,
     subject: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Reject non-canonical or excluded repository-relative result paths."""
 
     for source_path in paths:
+        if check_cancelled is not None:
+            check_cancelled()
         try:
             relative_path = repository_relative_source_path(
                 repository_root,
@@ -208,11 +211,14 @@ def _require_selected_documents(
     *,
     repository_root: str,
     subject: str,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
     """Validate the repository file metadata on materialized documents."""
 
     paths = []
     for document in documents:
+        if check_cancelled is not None:
+            check_cancelled()
         metadata = getattr(document, "metadata", None)
         paths.append(metadata.get("file") if isinstance(metadata, dict) else None)
     _require_selected_paths(
@@ -220,6 +226,7 @@ def _require_selected_documents(
         paths,
         repository_root=repository_root,
         subject=subject,
+        check_cancelled=check_cancelled,
     )
 
 
@@ -345,6 +352,7 @@ class BM25IndexBuilder:
             source_selection=source_selection,
             artifact_identity=artifact_identity,
             chunks=chunks,
+            prepare_only=False,
             require_missing_output=False,
             check_cancelled=None,
         )
@@ -430,6 +438,7 @@ class BM25IndexBuilder:
             (getattr(chunk, "file", None) for chunk in chunks),
             repository_root=str(repository_root),
             subject="BM25 chunks",
+            check_cancelled=check_cancelled,
         )
         if check_cancelled is not None:
             check_cancelled()
@@ -440,6 +449,7 @@ class BM25IndexBuilder:
             source_selection=selected,
             artifact_identity=self._artifact_identity_for_selection(selected),
             chunks=chunks,
+            prepare_only=True,
             require_missing_output=True,
             check_cancelled=check_cancelled,
         )
@@ -453,6 +463,7 @@ class BM25IndexBuilder:
         source_selection: RepositorySourceSelection,
         artifact_identity: Dict[str, Any],
         chunks: List[Any],
+        prepare_only: bool,
         require_missing_output: bool,
         check_cancelled: Callable[[], None] | None,
     ) -> IndexStatus:
@@ -460,16 +471,27 @@ class BM25IndexBuilder:
 
         from ..index.sparse_idx.bm25_index import BM25CodeIndexer
 
-        indexer = BM25CodeIndexer(
-            chunks=chunks,
-            max_k=self.max_k,
-            project_root=repo_path,
+        indexer = (
+            BM25CodeIndexer(
+                chunks=chunks,
+                max_k=self.max_k,
+                project_root=repo_path,
+                prepare_only=True,
+                check_cancelled=check_cancelled,
+            )
+            if prepare_only
+            else BM25CodeIndexer(
+                chunks=chunks,
+                max_k=self.max_k,
+                project_root=repo_path,
+            )
         )
         _require_selected_documents(
             source_selection,
             getattr(indexer, "documents", ()),
             repository_root=repo_path,
             subject="BM25 documents",
+            check_cancelled=check_cancelled,
         )
         if check_cancelled is not None:
             check_cancelled()
@@ -477,12 +499,33 @@ class BM25IndexBuilder:
             os.mkdir(output_dir, mode=0o700)
         else:
             os.makedirs(output_dir, exist_ok=True)
-        indexer.save_index(output_dir)
+        if check_cancelled is None:
+            indexer.save_index(output_dir)
+        else:
+            indexer.save_index(
+                output_dir,
+                check_cancelled=check_cancelled,
+            )
         from .artifact_fingerprints import bm25_artifact_file_fingerprints
 
-        artifact_files = bm25_artifact_file_fingerprints(output_dir)
+        artifact_files = (
+            bm25_artifact_file_fingerprints(output_dir)
+            if check_cancelled is None
+            else bm25_artifact_file_fingerprints(
+                output_dir,
+                check_cancelled=check_cancelled,
+            )
+        )
         if check_cancelled is not None:
             check_cancelled()
+
+        source_files: set[str] = set()
+        for chunk in chunks:
+            if check_cancelled is not None:
+                check_cancelled()
+            source_path = getattr(chunk, "file", "")
+            if source_path:
+                source_files.add(source_path)
 
         return IndexStatus(
             index_type="bm25",
@@ -495,9 +538,7 @@ class BM25IndexBuilder:
                 **artifact_identity,
                 "artifact_file_fingerprints": artifact_files,
                 "chunk_count": len(chunks),
-                "source_file_count": len(
-                    {chunk.file for chunk in chunks if getattr(chunk, "file", "")}
-                ),
+                "source_file_count": len(source_files),
                 # Retain the legacy field for existing manifest consumers.
                 "file_count": len(chunks),
             },

@@ -11,7 +11,7 @@ import os
 import re
 import stat
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 _BM25_ARTIFACT_PATHS = (Path("documents.json"), Path("bm25_metadata.json"))
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -69,9 +69,27 @@ def _file_identity(metadata: os.stat_result) -> tuple[int, ...]:
     )
 
 
-def _file_fingerprint(path: Path) -> dict[str, Any]:
+def _file_fingerprint(
+    path: Path,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     descriptor = -1
+    cancellation_failure: BaseException | None = None
+    primary: BaseException | None = None
+
+    def poll() -> None:
+        nonlocal cancellation_failure
+        if check_cancelled is None:
+            return
+        try:
+            check_cancelled()
+        except BaseException as exc:  # preserve exact cooperative stop
+            cancellation_failure = exc
+            raise
+
     try:
+        poll()
         before = path.lstat()
         if (
             not stat.S_ISREG(before.st_mode)
@@ -92,11 +110,13 @@ def _file_fingerprint(path: Path) -> dict[str, Any]:
         digest = hashlib.sha256()
         remaining = opened.st_size
         while remaining:
+            poll()
             block = os.read(descriptor, min(remaining, _READ_BYTES))
             if not block:
                 raise ValueError(f"BM25 artifact file was truncated: {path}")
             digest.update(block)
             remaining -= len(block)
+        poll()
         if os.read(descriptor, 1):
             raise ValueError(f"BM25 artifact file grew while hashing: {path}")
         after_open = os.fstat(descriptor)
@@ -105,24 +125,51 @@ def _file_fingerprint(path: Path) -> dict[str, Any]:
             after_path
         ) != _file_identity(opened):
             raise ValueError(f"BM25 artifact file changed while hashing: {path}")
+        poll()
         return {"size": opened.st_size, "sha256": digest.hexdigest()}
     except OSError as exc:
-        raise ValueError(f"invalid BM25 artifact file: {path}") from exc
+        if exc is cancellation_failure:
+            primary = exc
+            raise
+        primary = ValueError(f"invalid BM25 artifact file: {path}")
+        raise primary from exc
+    except BaseException as exc:
+        primary = exc
+        raise
     finally:
         if descriptor >= 0:
-            os.close(descriptor)
+            try:
+                os.close(descriptor)
+            except BaseException as cleanup_failure:
+                if primary is None:
+                    raise
+                if isinstance(primary, Exception) and not isinstance(
+                    cleanup_failure,
+                    Exception,
+                ):
+                    raise cleanup_failure from primary
+                raise primary from cleanup_failure
 
 
 def bm25_artifact_file_fingerprints(
     root: str | Path,
+    *,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Fingerprint the complete persisted BM25 artifact."""
 
+    if check_cancelled is not None and not callable(check_cancelled):
+        raise TypeError("BM25 artifact cancellation must be callable")
     artifact_root = Path(root)
     fingerprints: dict[str, dict[str, Any]] = {}
     for relative in _BM25_ARTIFACT_PATHS:
+        if check_cancelled is not None:
+            check_cancelled()
         path = artifact_root / relative
-        fingerprints[relative.as_posix()] = _file_fingerprint(path)
+        fingerprints[relative.as_posix()] = _file_fingerprint(
+            path,
+            check_cancelled=check_cancelled,
+        )
     return fingerprints
 
 

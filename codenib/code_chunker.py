@@ -365,18 +365,22 @@ class CodeChunker:
         languages = self.repo_config.languages or self._detect_source_languages(
             records,
             source_selection=source_selection,
+            check_cancelled=check_cancelled,
         )
         extension_to_language = self._extension_language_map(languages)
-        selected = [
-            (record, extension_to_language[Path(record.path).suffix])
-            for record in records
+        selected: List[tuple[RepositorySourceFileRecord, str]] = []
+        for record in records:
+            if check_cancelled is not None:
+                check_cancelled()
             if self._source_record_is_selected(
                 record,
                 extension_to_language=extension_to_language,
                 repository_root=source_identity.root,
                 source_selection=source_selection,
-            )
-        ]
+            ):
+                selected.append(
+                    (record, extension_to_language[Path(record.path).suffix])
+                )
 
         logger.info("Chunking authenticated repository: %s", source_identity.root)
         logger.info("Target languages: %s", ", ".join(languages))
@@ -403,6 +407,7 @@ class CodeChunker:
                 if self.repo_config.skip_minified and self._is_minified_source(
                     source_text,
                     path=record.path,
+                    check_cancelled=check_cancelled,
                 ):
                     continue
                 try:
@@ -421,12 +426,18 @@ class CodeChunker:
                 if check_cancelled is not None:
                     check_cancelled()
 
+        if check_cancelled is not None:
+            check_cancelled()
         self._require_selected_chunks(
             chunks,
             source_selection,
             repository_root=source_identity.root,
+            check_cancelled=check_cancelled,
         )
-        self._update_nodes_from_chunks(chunks)
+        self._update_nodes_from_chunks(
+            chunks,
+            check_cancelled=check_cancelled,
+        )
         logger.info("Generated %d authenticated source chunks", len(chunks))
         return chunks
 
@@ -714,16 +725,34 @@ class CodeChunker:
             )
         return False
 
-    def _is_minified_source(self, source: str, *, path: str) -> bool:
+    def _is_minified_source(
+        self,
+        source: str,
+        *,
+        path: str,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> bool:
         """Apply the shared long-line policy to already-read source text."""
 
-        return self._has_minified_line(source.splitlines(keepends=True), path=path)
+        return self._has_minified_line(
+            source.splitlines(keepends=True),
+            path=path,
+            check_cancelled=check_cancelled,
+        )
 
-    def _has_minified_line(self, lines: Iterable[str], *, path: str) -> bool:
+    def _has_minified_line(
+        self,
+        lines: Iterable[str],
+        *,
+        path: str,
+        check_cancelled: Callable[[], None] | None = None,
+    ) -> bool:
         """Return whether a streamed or retained source has an oversized line."""
 
         threshold = self.repo_config.minified_line_threshold
         for line in lines:
+            if check_cancelled is not None:
+                check_cancelled()
             if len(line) > threshold:
                 logger.debug(
                     "Skipping minified file (line > %d chars): %s",
@@ -945,11 +974,14 @@ class CodeChunker:
         records: tuple[RepositorySourceFileRecord, ...],
         *,
         source_selection: RepositorySourceSelection,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> List[str]:
         """Infer languages from one authenticated repository inventory."""
 
         extension_counts: Dict[str, int] = {}
         for record in records:
+            if check_cancelled is not None:
+                check_cancelled()
             if type(record) is not RepositorySourceFileRecord:
                 raise TypeError("authenticated repository file record is invalid")
             relative = Path(record.path)
@@ -995,12 +1027,15 @@ class CodeChunker:
         source_selection: RepositorySourceSelection,
         *,
         repository_root: Path,
+        check_cancelled: Callable[[], None] | None = None,
     ) -> None:
         """Reject any chunk whose lexical repository path escaped selection."""
 
         if not source_selection.exclude_subtrees:
             return
         for chunk in chunks:
+            if check_cancelled is not None:
+                check_cancelled()
             source_path = getattr(chunk, "file", None)
             try:
                 relative_path = repository_relative_source_path(
@@ -1079,7 +1114,12 @@ class CodeChunker:
         except Exception as e:
             logger.error(f"Error saving SWE-bench result: {e}")
 
-    def _update_nodes_from_chunks(self, chunks: List[CodeChunk]):
+    def _update_nodes_from_chunks(
+        self,
+        chunks: List[CodeChunk],
+        *,
+        check_cancelled: Callable[[], None] | None = None,
+    ):
         """
         Update the nodes list with unique node IDs from chunks.
 
@@ -1089,6 +1129,8 @@ class CodeChunker:
         # Extract node_ids from chunks, filtering for symbolic nodes (not just file paths)
         new_node_ids = set()
         for chunk in chunks:
+            if check_cancelled is not None:
+                check_cancelled()
             if chunk.node_id and ":" in chunk.node_id:
                 # Only include nodes that have symbols (contain ':')
                 # This excludes header/epilogue chunks which just use file paths
@@ -1097,6 +1139,8 @@ class CodeChunker:
         # Add new unique node IDs to the nodes list
         existing_nodes = set(self.nodes)
         for node_id in new_node_ids:
+            if check_cancelled is not None:
+                check_cancelled()
             if node_id not in existing_nodes:
                 self.nodes.append(node_id)
 

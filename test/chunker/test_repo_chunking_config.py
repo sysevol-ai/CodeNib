@@ -283,6 +283,55 @@ def test_authenticated_repository_chunking_threads_cancellation_into_source_gate
     ]
 
 
+def test_authenticated_repository_chunking_stops_during_inventory_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "a.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+    (repo / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    chunker = CodeChunker(
+        language="python",
+        repo_config=RepoChunkingConfig(languages=["python"]),
+    )
+    stopped = KeyboardInterrupt("stop during retained inventory selection")
+    armed = False
+    selected = 0
+    real_select = chunker._source_record_is_selected
+
+    def select(*args, **kwargs):
+        nonlocal armed, selected
+        selected += 1
+        result = real_select(*args, **kwargs)
+        armed = True
+        return result
+
+    def check_cancelled() -> None:
+        if armed:
+            raise stopped
+
+    monkeypatch.setattr(chunker, "_source_record_is_selected", select)
+    monkeypatch.setattr(
+        chunker,
+        "_chunk_source_with_language",
+        lambda *_args, **_kwargs: pytest.fail(
+            "source parsing ran after inventory cancellation"
+        ),
+    )
+
+    with capture_repository_source(repo) as source:
+        with pytest.raises(BaseException) as raised:
+            chunker.chunk_repository_source(
+                source,
+                check_cancelled=check_cancelled,
+            )
+        assert raised.value is stopped
+        assert source.usable
+
+    assert selected == 1
+
+
 def test_authenticated_repository_chunking_rejects_policy_mismatch_before_reads(
     tmp_path: Path,
 ):
