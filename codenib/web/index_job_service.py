@@ -66,24 +66,75 @@ class _LoopOutcome:
     failure: BaseException | None = None
 
 
-@dataclass(slots=True)
 class _ThreadLaunch:
-    """Retain one candidate before launch and its child-entry handshake."""
+    """Gate one non-daemon start behind a cancellation-safe daemon launcher."""
 
-    thread: Thread
-    entered: Event
-    attempted: bool = False
-    start_returned: bool = False
-    start_failure: BaseException | None = None
+    def __init__(self, thread: Thread) -> None:
+        self.thread = thread
+        self._lock = _CancellationSafeRLock()
+        self._complete = Event()
+        self._state = "pending"
+        self._failure: BaseException | None = None
 
-    def start(self) -> None:
-        self.attempted = True
+    def _resolve_locked(self) -> None:
+        if self._state != "pending":
+            return
         try:
             self.thread.start()
-        except BaseException as failure:  # noqa: B036 - retain ambiguous launch
-            self.start_failure = failure
-            raise
-        self.start_returned = True
+        except BaseException as failure:  # noqa: B036 - publish launch result
+            self._failure = failure
+            self._state = "failed"
+        else:
+            self._state = "launched"
+
+    def _launch(self) -> None:
+        # SIGINT is delivered to the main thread, so the actual non-daemon
+        # Thread.start runs to a definite result here. The lock spans that call:
+        # cancellation either changes pending to cancelled first, or waits for
+        # the launched/failed result before shared resources can be released.
+        while True:
+            try:
+                self._lock.run(self._resolve_locked)
+                break
+            except BaseException:  # noqa: B036 - retry internal publication
+                continue
+        while True:
+            try:
+                self._complete.set()
+                return
+            except BaseException:  # noqa: B036 - retry internal publication
+                continue
+
+    def start(self) -> None:
+        launcher = Thread(
+            target=self._launch,
+            name=f"{self.thread.name}-launcher",
+            daemon=True,
+        )
+        launcher.start()
+        completed = self._complete.wait()
+        if type(completed) is not bool or not completed:
+            raise IndexJobBackgroundServiceError(
+                "thread launcher returned an invalid completion decision"
+            )
+        state, failure = self._lock.run(lambda: (self._state, self._failure))
+        if state == "launched":
+            return
+        if state == "failed" and failure is not None:
+            raise failure
+        raise IndexJobBackgroundServiceError(
+            "thread launcher completed without transferring ownership"
+        )
+
+    def cancel_and_was_launched(self) -> bool:
+        """Cancel a pending launch or wait for an in-progress launch result."""
+
+        def cancel() -> bool:
+            if self._state == "pending":
+                self._state = "cancelled"
+            return self._state == "launched"
+
+        return self._lock.run(cancel)
 
 
 class IndexJobBackgroundService:
@@ -213,103 +264,37 @@ class IndexJobBackgroundService:
             # is best effort.
             pass
 
-    def _stop_and_join(self, launches: tuple[_ThreadLaunch, ...]) -> None:
-        """Settle every started thread before rethrowing an interruption."""
+    def _stop_and_join(
+        self,
+        launches: tuple[_ThreadLaunch, ...],
+    ) -> BaseException | None:
+        """Replay settlement until every transferred non-daemon thread joins."""
 
         first_failure: BaseException | None = None
         while True:
             try:
-                stopped = self._stop.is_set()
-            except BaseException as failure:  # noqa: B036 - retry state read
-                if first_failure is None:
-                    first_failure = failure
-                continue
-            if stopped:
-                break
-            try:
                 self._stop.set()
-            except BaseException as failure:  # noqa: B036 - settle before rethrow
+                owned_current = current_thread()
+                for launch in reversed(launches):
+                    thread = launch.thread
+                    if thread is owned_current:
+                        raise IndexJobBackgroundServiceError(
+                            "an owned index loop cannot join itself"
+                        )
+                    if not launch.cancel_and_was_launched():
+                        continue
+                    thread.join()
+                    if thread.is_alive():
+                        raise IndexJobBackgroundServiceError(
+                            "an owned index loop remained active after join"
+                        )
+                return first_failure
+            except BaseException as failure:  # noqa: B036 - replay whole settle
                 if first_failure is None:
                     first_failure = failure
-        owned_current = current_thread()
-        for launch in reversed(launches):
-            thread = launch.thread
-            if thread is owned_current:
-                raise IndexJobBackgroundServiceError(
-                    "an owned index loop cannot join itself"
-                )
-            if not launch.attempted:
-                continue
 
-            launched = False
-            while True:
-                try:
-                    entered = launch.entered.is_set()
-                except BaseException as failure:  # noqa: B036 - retry state read
-                    if first_failure is None:
-                        first_failure = failure
-                    continue
-                if entered or launch.start_returned:
-                    launched = True
-                    break
-                try:
-                    identified = thread.ident is not None
-                except BaseException as failure:  # noqa: B036 - retry state read
-                    if first_failure is None:
-                        first_failure = failure
-                    continue
-                try:
-                    alive = thread.is_alive()
-                except BaseException as failure:  # noqa: B036 - retry state read
-                    if first_failure is None:
-                        first_failure = failure
-                    continue
-                if identified or alive:
-                    launched = True
-                    break
-                start_failure = launch.start_failure
-                if start_failure is not None and isinstance(start_failure, Exception):
-                    # CPython's ordinary start failures occur before ownership
-                    # transfers to an OS thread. Cancellation-class failures
-                    # remain ambiguous and must wait for the child handshake.
-                    break
-                try:
-                    signaled = launch.entered.wait(0.05)
-                except BaseException as failure:  # noqa: B036 - await ownership
-                    if first_failure is None:
-                        first_failure = failure
-                    continue
-                if type(signaled) is not bool:
-                    if first_failure is None:
-                        first_failure = IndexJobBackgroundServiceError(
-                            "thread launch handshake returned an invalid decision"
-                        )
-                    continue
-                if signaled:
-                    launched = True
-                    break
-            if not launched:
-                continue
-            while True:
-                try:
-                    alive = thread.is_alive()
-                except BaseException as failure:  # noqa: B036 - retry state read
-                    if first_failure is None:
-                        first_failure = failure
-                    continue
-                if not alive:
-                    break
-                try:
-                    thread.join()
-                except BaseException as failure:  # noqa: B036 - settle all loops
-                    if first_failure is None:
-                        first_failure = failure
-        if first_failure is not None:
-            raise first_failure
-
-    def _run_worker(self, entered: Event) -> None:
+    def _run_worker(self) -> None:
         try:
-            entered.set()
             summary = self._worker.run(self._stop)
             if type(summary) is not IndexJobSchedulerRunSummary:
                 raise IndexJobBackgroundServiceError(
@@ -324,9 +309,8 @@ class IndexJobBackgroundService:
         else:
             self._record_outcome("worker", summary=summary)
 
-    def _run_runtime(self, entered: Event) -> None:
+    def _run_runtime(self) -> None:
         try:
-            entered.set()
             summary = self._runtime.run(self._stop)
             if type(summary) is not IndexJobRuntimeLoopSummary:
                 raise IndexJobBackgroundServiceError(
@@ -342,21 +326,19 @@ class IndexJobBackgroundService:
             self._record_outcome("runtime", summary=summary)
 
     def _build_launches(self) -> tuple[_ThreadLaunch, ...]:
-        runtime_entered = Event()
-        worker_entered = Event()
         runtime_thread = Thread(
-            target=lambda: self._run_runtime(runtime_entered),
+            target=self._run_runtime,
             name="codenib-index-runtime",
             daemon=False,
         )
         worker_thread = Thread(
-            target=lambda: self._run_worker(worker_entered),
+            target=self._run_worker,
             name="codenib-index-worker",
             daemon=False,
         )
         return (
-            _ThreadLaunch(runtime_thread, runtime_entered),
-            _ThreadLaunch(worker_thread, worker_entered),
+            _ThreadLaunch(runtime_thread),
+            _ThreadLaunch(worker_thread),
         )
 
     def _claim_start_locked(
@@ -436,9 +418,8 @@ class IndexJobBackgroundService:
         if not owned:
             return False
         if needs_join:
-            try:
-                self._stop_and_join(launches)
-            except BaseException as cleanup_failure:  # noqa: B036 - keep primary
+            cleanup_failure = self._stop_and_join(launches)
+            if cleanup_failure is not None:
                 self._add_cleanup_note(primary, cleanup_failure)
             self._lifecycle_retry(
                 lambda: self._finish_failed_start_locked(token),
@@ -554,10 +535,9 @@ class IndexJobBackgroundService:
             except BaseException as state_failure:  # noqa: B036 - retry transition
                 remember(state_failure)
         if needs_join:
-            try:
-                self._stop_and_join(launches)
-            except BaseException as failure:  # noqa: B036 - settled before rethrow
-                remember(failure)
+            settlement_failure = self._stop_and_join(launches)
+            if settlement_failure is not None:
+                remember(settlement_failure)
             while True:
                 try:
                     self._lifecycle_lock.run(self._finish_close_locked)

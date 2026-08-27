@@ -163,37 +163,106 @@ def test_partial_thread_start_failure_stops_and_joins_started_runtime(
         service.close()
 
 
-def test_interrupted_pre_ident_start_waits_for_child_entry_before_cleanup(
+def test_interrupted_before_launcher_transfer_cancels_without_waiting_for_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime = _Loop(_runtime_summary())
-    delay = Event()
 
-    class DelayedStartThread(Thread):
-        _delayed = False
-
+    class PreLaunchInterruptThread(Thread):
         def start(self) -> None:
-            if self.name == "codenib-index-runtime" and not self._delayed:
-                self._delayed = True
-
-                def launch_after_interruption() -> None:
-                    delay.wait(0.05)
-                    Thread.start(self)
-
-                Thread(
-                    target=launch_after_interruption,
-                    name="test-delayed-index-launch",
-                    daemon=True,
-                ).start()
+            if self.name == "codenib-index-runtime-launcher":
                 raise KeyboardInterrupt
             Thread.start(self)
 
-    monkeypatch.setattr(service_module, "Thread", DelayedStartThread)
+    monkeypatch.setattr(service_module, "Thread", PreLaunchInterruptThread)
     service = IndexJobBackgroundService(_Loop(_worker_summary()), runtime)
 
     with pytest.raises(IndexJobBackgroundServiceError, match="could not start"):
         service.start()
 
+    assert service.state == "closed"
+    assert runtime.entered.is_set() is False
+    with pytest.raises(IndexJobBackgroundServiceError, match="service failed"):
+        service.close()
+
+
+def test_interrupted_unclaimed_launcher_cancels_a_late_transfer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher_exited = Event()
+    runtime = _Loop(_runtime_summary())
+
+    class DelayedLauncherThread(Thread):
+        _delayed = False
+
+        def start(self) -> None:
+            if self.name == "codenib-index-runtime-launcher" and not self._delayed:
+                self._delayed = True
+
+                def launch_later() -> None:
+                    Event().wait(0.05)
+                    Thread.start(self)
+                    self.join()
+                    launcher_exited.set()
+
+                Thread(
+                    target=launch_later,
+                    name="test-delayed-index-launcher",
+                    daemon=True,
+                ).start()
+                raise KeyboardInterrupt
+            Thread.start(self)
+
+    monkeypatch.setattr(service_module, "Thread", DelayedLauncherThread)
+    service = IndexJobBackgroundService(_Loop(_worker_summary()), runtime)
+
+    with pytest.raises(IndexJobBackgroundServiceError, match="could not start"):
+        service.start()
+
+    assert launcher_exited.wait(1)
+    assert service.state == "closed"
+    assert runtime.entered.is_set() is False
+    with pytest.raises(IndexJobBackgroundServiceError, match="service failed"):
+        service.close()
+
+
+def test_interrupted_claimed_launch_waits_for_transfer_and_joins_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    actual_start_entered = Event()
+    allow_actual_start = Event()
+    runtime = _Loop(_runtime_summary())
+
+    class ClaimedLaunchThread(Thread):
+        def start(self) -> None:
+            if self.name == "codenib-index-runtime":
+                actual_start_entered.set()
+                allow_actual_start.wait()
+                Thread.start(self)
+                return
+            if self.name == "codenib-index-runtime-launcher":
+                Thread.start(self)
+                assert actual_start_entered.wait(1)
+
+                def release_actual_start() -> None:
+                    Event().wait(0.05)
+                    allow_actual_start.set()
+
+                Thread(
+                    target=release_actual_start,
+                    name="test-release-index-launch",
+                    daemon=True,
+                ).start()
+                raise KeyboardInterrupt
+            Thread.start(self)
+
+    monkeypatch.setattr(service_module, "Thread", ClaimedLaunchThread)
+    service = IndexJobBackgroundService(_Loop(_worker_summary()), runtime)
+
+    with pytest.raises(IndexJobBackgroundServiceError, match="could not start"):
+        service.start()
+
+    assert actual_start_entered.is_set()
     assert service.state == "closed"
     assert runtime.exited.is_set()
     with pytest.raises(IndexJobBackgroundServiceError, match="service failed"):
@@ -360,7 +429,7 @@ def test_interrupted_close_transition_still_stops_and_joins_loops() -> None:
     )
 
 
-def test_close_retries_interrupted_stop_and_thread_state_checks(
+def test_close_replays_settlement_after_interrupted_state_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     worker = _Loop(_worker_summary())
@@ -369,15 +438,26 @@ def test_close_retries_interrupted_stop_and_thread_state_checks(
     service.start()
     assert runtime.entered.wait(1)
     assert worker.entered.wait(1)
-    real_is_set = service._stop.is_set
+    real_set = service._stop.set
+    real_current_thread = service_module.current_thread
     real_is_alive = Thread.is_alive
-    interruptions = {"stop": False, "thread": False}
+    interruptions = {"stop": False, "current": False, "thread": False}
+    current_reads = 0
 
-    def is_set() -> bool:
+    def set_stop() -> None:
         if not interruptions["stop"]:
             interruptions["stop"] = True
+            real_set()
             raise KeyboardInterrupt
-        return real_is_set()
+        real_set()
+
+    def read_current_thread() -> Thread:
+        nonlocal current_reads
+        current_reads += 1
+        if current_reads > 1 and not interruptions["current"]:
+            interruptions["current"] = True
+            raise KeyboardInterrupt
+        return real_current_thread()
 
     def is_alive(thread: Thread) -> bool:
         if thread.name == "codenib-index-worker" and not interruptions["thread"]:
@@ -385,13 +465,14 @@ def test_close_retries_interrupted_stop_and_thread_state_checks(
             raise KeyboardInterrupt
         return real_is_alive(thread)
 
-    monkeypatch.setattr(service._stop, "is_set", is_set)
+    monkeypatch.setattr(service._stop, "set", set_stop)
+    monkeypatch.setattr(service_module, "current_thread", read_current_thread)
     monkeypatch.setattr(service_module.Thread, "is_alive", is_alive)
 
     with pytest.raises(KeyboardInterrupt):
         service.close()
 
-    assert interruptions == {"stop": True, "thread": True}
+    assert interruptions == {"stop": True, "current": True, "thread": True}
     assert worker.exited.is_set()
     assert runtime.exited.is_set()
     assert service.state == "closed"
