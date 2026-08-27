@@ -3851,13 +3851,20 @@ def test_compile_and_import_rejects_drift_or_failed_view_before_data_io(
             # Some test filesystems coalesce same-size rewrites within one
             # timestamp tick. Keep that equal-size case while making the
             # intended inventory-version drift deterministic.
-            os.utime(
-                source_path,
-                ns=(
-                    authenticated.st_atime_ns,
-                    authenticated.st_mtime_ns + 1_000_000_000,
-                ),
-            )
+            for seconds in (1, 2, 4, 8, 16):
+                os.utime(
+                    source_path,
+                    ns=(
+                        authenticated.st_atime_ns,
+                        authenticated.st_mtime_ns + seconds * 1_000_000_000,
+                    ),
+                )
+                if source_path.stat().st_mtime_ns != authenticated.st_mtime_ns:
+                    break
+            else:
+                pytest.fail(
+                    "test filesystem could not represent source inventory drift"
+                )
         return returned_manifest
 
     monkeypatch.setattr(compiler, "_update_repo_locked", fake_update)
