@@ -90,7 +90,11 @@ from ..storage.protocols import (
     RetainedImportCatalog,
     RetainedImportObjectStore,
 )
-from ..storage.publication import IndexJobViewArtifact, publish_job_artifacts
+from ..storage.publication import (
+    IndexJobViewArtifact,
+    _index_job_artifact_snapshot_id,
+    publish_job_artifacts,
+)
 from ..storage.view_bundle import (
     DEFAULT_MAX_BUNDLE_BYTES,
     DEFAULT_MAX_BUNDLE_FILES,
@@ -1167,6 +1171,7 @@ def _preflight_cache_job_operation(
     max_bundle_files: int,
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
+    max_projection_bytes: int,
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str] | None,
 ) -> tuple[_ImportOperation, _CompilerCacheJobBinding, str, str, int]:
@@ -1204,6 +1209,10 @@ def _preflight_cache_job_operation(
     bundle_metadata_bytes = _positive_limit(
         max_bundle_metadata_bytes,
         "bundle metadata byte limit",
+    )
+    projection_bytes = _positive_limit(
+        max_projection_bytes,
+        "projection byte limit",
     )
     environment = _snapshot_environment(environ)
     forbidden = _snapshot_forbidden_paths(forbidden_paths)
@@ -1243,7 +1252,7 @@ def _preflight_cache_job_operation(
         max_bundle_files=bundle_files,
         max_bundle_bytes=bundle_bytes,
         max_bundle_metadata_bytes=bundle_metadata_bytes,
-        max_projection_bytes=DEFAULT_MAX_PROJECTION_BYTES,
+        max_projection_bytes=projection_bytes,
         forbidden_paths=forbidden,
         environment=environment,
     )
@@ -1298,6 +1307,7 @@ def _preflight_cache_job_preparation_operation(
     max_bundle_files: int,
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
+    max_projection_bytes: int,
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str] | None,
     check_cancelled: Callable[[], None] | None = None,
@@ -1355,6 +1365,10 @@ def _preflight_cache_job_preparation_operation(
         max_bundle_metadata_bytes,
         "bundle metadata byte limit",
     )
+    projection_bytes = _positive_limit(
+        max_projection_bytes,
+        "projection byte limit",
+    )
     environment = _snapshot_environment(environ)
     forbidden = _snapshot_forbidden_paths(forbidden_paths)
     if not isinstance(object_store, RetainedImportObjectStore):
@@ -1388,7 +1402,7 @@ def _preflight_cache_job_preparation_operation(
         max_bundle_files=bundle_files,
         max_bundle_bytes=bundle_bytes,
         max_bundle_metadata_bytes=bundle_metadata_bytes,
-        max_projection_bytes=DEFAULT_MAX_PROJECTION_BYTES,
+        max_projection_bytes=projection_bytes,
         forbidden_paths=forbidden,
         environment=environment,
     )
@@ -2618,6 +2632,7 @@ def prepare_compiler_cache_job_view_from_generation(
     max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
     max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
 ) -> CompilerCacheJobPreparationResult:
@@ -2656,6 +2671,7 @@ def prepare_compiler_cache_job_view_from_generation(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        max_projection_bytes=max_projection_bytes,
         forbidden_paths=forbidden_paths,
         environ=environ,
         check_cancelled=check_cancelled,
@@ -2730,6 +2746,7 @@ def prepare_compiler_cache_job_view(
     max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
     max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
 ) -> CompilerCacheJobPreparationResult:
@@ -2767,6 +2784,7 @@ def prepare_compiler_cache_job_view(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        max_projection_bytes=max_projection_bytes,
         forbidden_paths=forbidden_paths,
         environ=environ,
         check_cancelled=check_cancelled,
@@ -2845,6 +2863,7 @@ class CompilerCacheJobExecutor:
     max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES
     max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES
     forbidden_paths: Iterable[Path] = ()
     environ: Mapping[str, str] | None = None
 
@@ -2877,6 +2896,7 @@ class CompilerCacheJobExecutor:
             max_bundle_files=self.max_bundle_files,
             max_bundle_bytes=self.max_bundle_bytes,
             max_bundle_metadata_bytes=self.max_bundle_metadata_bytes,
+            max_projection_bytes=self.max_projection_bytes,
             forbidden_paths=self.forbidden_paths,
             environ=self.environ,
         )
@@ -2918,6 +2938,7 @@ def _publish_compiler_cache_job(
     max_bundle_files: int,
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
+    max_projection_bytes: int,
     forbidden_paths: Iterable[Path],
     environ: Mapping[str, str] | None,
 ) -> tuple[_PreparedCompilerCacheImport, IndexJobRecord]:
@@ -2951,6 +2972,7 @@ def _publish_compiler_cache_job(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        max_projection_bytes=max_projection_bytes,
         forbidden_paths=forbidden_paths,
         environ=environ,
     )
@@ -3019,16 +3041,33 @@ def _publish_compiler_cache_job(
         raise StorageIntegrityError(
             "compiler cache job or repository source changed before publication"
         )
+    publication_artifacts = (
+        *snapshot_artifacts.artifacts,
+        *snapshot_artifacts.supporting_artifacts,
+    )
+    if current.job.status is IndexJobStatus.SUCCEEDED:
+        historical_snapshot_id = current.job.result_snapshot_id
+        requested_snapshot_id = _index_job_artifact_snapshot_id(
+            current.job,
+            snapshot_artifacts.artifacts,
+        )
+        complete_snapshot_id = _index_job_artifact_snapshot_id(
+            current.job,
+            publication_artifacts,
+        )
+        if historical_snapshot_id == requested_snapshot_id:
+            publication_artifacts = snapshot_artifacts.artifacts
+        elif historical_snapshot_id != complete_snapshot_id:
+            raise StorageIntegrityError(
+                "successful compiler cache job has an unknown publication snapshot"
+            )
     completed = publish_job_artifacts(
         normalized_job_id,
         catalog=catalog,
         object_store=object_store,
         owner_id=normalized_owner_id,
         fencing_token=token,
-        outputs=(
-            *snapshot_artifacts.artifacts,
-            *snapshot_artifacts.supporting_artifacts,
-        ),
+        outputs=publication_artifacts,
     )
     return preparation, completed
 
@@ -3055,6 +3094,7 @@ def publish_compiler_cache_bm25_job(
     max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
     max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
 ) -> CompilerCacheJobPublicationResult:
@@ -3091,6 +3131,7 @@ def publish_compiler_cache_bm25_job(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        max_projection_bytes=max_projection_bytes,
         forbidden_paths=forbidden_paths,
         environ=environ,
     )
@@ -3133,6 +3174,7 @@ def publish_compiler_cache_vector_job(
     max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
     max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
     forbidden_paths: Iterable[Path] = (),
     environ: Mapping[str, str] | None = None,
 ) -> CompilerCacheVectorJobPublicationResult:
@@ -3167,6 +3209,7 @@ def publish_compiler_cache_vector_job(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        max_projection_bytes=max_projection_bytes,
         forbidden_paths=forbidden_paths,
         environ=environ,
     )

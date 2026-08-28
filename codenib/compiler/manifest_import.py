@@ -95,6 +95,7 @@ from .retained_manifest_contract import (
     REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
     REPO_MANIFEST_PROJECTION_PROFILE_NAME,
     REPO_MANIFEST_PROJECTION_SCHEMA,
+    REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
     REPO_MANIFEST_PROJECTION_VIEW,
 )
 from .retained_manifest_contract import (
@@ -1302,8 +1303,16 @@ def _prepare_import_inside_authority(
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
     max_projection_bytes: int,
+    projection_reachability: str | None = None,
     check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedImport:
+    if projection_reachability not in {
+        None,
+        REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
+    }:
+        raise StorageValidationError(
+            "repository manifest projection reachability is invalid"
+        )
     prepared = _prepare_manifest_views_inside_authority(
         receipt,
         publication,
@@ -1361,14 +1370,25 @@ def _prepare_import_inside_authority(
         media_type=REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
         label="repository manifest projection ingestion",
     )
-    dependencies = tuple(
-        sorted(
-            {
-                dependency.record.digest
-                for view in prepared.views
-                for dependency in (view.bundle, *(member[3] for member in view.members))
-            }
+    # A job publishes every selected generation in the same snapshot, so the
+    # sibling views already retain their complete primary/member closure. Keep
+    # standalone imports self-contained, but do not duplicate those edges in
+    # the job-only projection generation.
+    dependencies = (
+        tuple(
+            sorted(
+                {
+                    dependency.record.digest
+                    for view in prepared.views
+                    for dependency in (
+                        view.bundle,
+                        *(member[3] for member in view.members),
+                    )
+                }
+            )
         )
+        if projection_reachability is None
+        else ()
     )
     projection_metadata = {
         "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
@@ -1377,6 +1397,8 @@ def _prepare_import_inside_authority(
         "plan_digest": plan.plan_digest,
         "projected_views": [view.intent.view_type for view in prepared.views],
     }
+    if projection_reachability is not None:
+        projection_metadata["reachability"] = projection_reachability
     projection_generation = ViewGeneration.create(
         source_identity,
         projection_profile,
@@ -1435,6 +1457,7 @@ def _prepare_job_snapshot_artifacts_inside_authority(
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
         max_projection_bytes=max_projection_bytes,
+        projection_reachability=REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
         check_cancelled=check_cancelled,
     )
     _verify_exact_receipt(

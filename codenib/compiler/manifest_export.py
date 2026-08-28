@@ -78,6 +78,7 @@ from .manifest_storage import (
 from .retained_manifest_contract import (
     REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
     REPO_MANIFEST_PROJECTION_SCHEMA,
+    REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
     REPO_MANIFEST_PROJECTION_VIEW,
     repo_manifest_generation_metadata,
     repo_manifest_projection_profile,
@@ -1649,6 +1650,14 @@ def _read_and_validate_projection(
     plan_identity = projection["plan"]["manifest"]
     metadata = json.loads(projection_view.generation.metadata_json)
     metadata.pop(VIEW_GENERATION_MEMBERS_METADATA_KEY, None)
+    reachability = metadata.get("reachability")
+    if reachability not in {
+        None,
+        REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
+    }:
+        raise StorageIntegrityError(
+            "snapshot repository manifest projection reachability is invalid"
+        )
     expected_metadata = {
         "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
         "manifest_version": validated.plan.manifest.version,
@@ -1656,9 +1665,18 @@ def _read_and_validate_projection(
         "plan_digest": validated.plan.plan_digest,
         "projected_views": list(validated.plan.selection.selected_views),
     }
+    if reachability is not None:
+        expected_metadata["reachability"] = reachability
     dependency_records: dict[str, ObjectRecord] = {}
     for _view_type, view in validated.view_items:
-        for record in (view.catalog_view.primary, *view.catalog_view.members):
+        # Snapshot-scoped projections rely on the selected sibling generations,
+        # whose primary/member closures were validated above.
+        records = (
+            ()
+            if reachability == REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY
+            else (view.catalog_view.primary, *view.catalog_view.members)
+        )
+        for record in records:
             existing = dependency_records.get(record.digest)
             if existing is None:
                 dependency_records[record.digest] = record

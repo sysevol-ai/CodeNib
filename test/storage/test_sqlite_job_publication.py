@@ -21,6 +21,7 @@ from typing import Any
 
 import pytest
 
+from codenib.storage import models as storage_models_module
 from codenib.storage import sqlite_catalog as sqlite_catalog_module
 from codenib.storage.models import (
     INDEX_JOB_PUBLICATION_CONTRACT,
@@ -35,6 +36,7 @@ from codenib.storage.models import (
     StorageIntegrityError,
     StorageValidationError,
     canonical_json,
+    repo_manifest_projection_profile,
 )
 from codenib.storage.sqlite_catalog import (
     LATEST_SCHEMA_VERSION,
@@ -913,13 +915,23 @@ def test_v8_migration_accepts_reserved_support_and_still_closes_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = tmp_path / "catalog.sqlite3"
-    supporting_view = INDEX_JOB_SUPPORTING_VIEW_PREFIX + "test-support"
+    supporting_profile = repo_manifest_projection_profile()
     monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 7)
     with SQLiteCatalog(path) as catalog:
-        fixture = _create_running_job(catalog)
-        supporting_profile = catalog.create_view_profile(
-            supporting_view,
-            {"contract": "test-support.v1"},
+        repository_id, source_revision_id = _repository(catalog)
+        profiles = _profiles(catalog, ("bm25",))
+        queued = catalog.create_job(
+            repository_id,
+            source_revision_id,
+            "queued-before-support-profile",
+            _request(profiles),
+        )
+        assert (
+            catalog._connection.execute(
+                "SELECT 1 FROM view_profiles WHERE profile_id = ?",
+                (supporting_profile.profile_id,),
+            ).fetchone()
+            is None
         )
 
     monkeypatch.setattr(
@@ -928,22 +940,110 @@ def test_v8_migration_accepts_reserved_support_and_still_closes_replay(
         LATEST_SCHEMA_VERSION,
     )
     outputs = (
-        _output("bm25", fixture.profiles["bm25"], 100),
-        _output(supporting_view, supporting_profile, 102),
+        _output("bm25", profiles["bm25"], 100),
+        _output(
+            supporting_profile.view_type,
+            supporting_profile.profile_id,
+            102,
+        ),
     )
     with SQLiteCatalog(path, create=False) as catalog:
         assert catalog.schema_version == LATEST_SCHEMA_VERSION
+        assert (
+            catalog.create_view_profile(
+                supporting_profile.view_type,
+                supporting_profile.config,
+                name=supporting_profile.name,
+            )
+            == supporting_profile.profile_id
+        )
+        lease = catalog.acquire_job_lease(
+            queued.job_id,
+            owner_id="upgraded-worker",
+            lease_duration_ms=60_000,
+        )
         completed = catalog.publish_job_outputs(
-            fixture.job.job_id,
-            owner_id=fixture.owner_id,
-            fencing_token=fixture.fencing_token,
+            queued.job_id,
+            owner_id=lease.owner_id,
+            fencing_token=lease.fencing_token,
             outputs=outputs,
         )
         summary = catalog.get_manifest_summary(completed.result_snapshot_id)
-        assert tuple(summary["views"]) == ("bm25", supporting_view)
+        assert tuple(summary["views"]) == (
+            "bm25",
+            supporting_profile.view_type,
+        )
 
     with SQLiteCatalog(path, create=False) as catalog:
-        assert catalog.get_job(fixture.job.job_id) == completed
+        replay = catalog.publish_job_outputs(
+            queued.job_id,
+            owner_id=lease.owner_id,
+            fencing_token=lease.fencing_token,
+            outputs=outputs,
+        )
+        assert replay == completed
+
+
+def test_v8_migration_grandfathers_legacy_internal_view_requests(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "legacy-internal-request.sqlite3"
+    internal_view = INDEX_JOB_SUPPORTING_VIEW_PREFIX + "legacy-request"
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 7)
+    with monkeypatch.context() as legacy_models:
+        legacy_models.setattr(
+            storage_models_module,
+            "is_index_job_supporting_view",
+            lambda _view_type: False,
+        )
+        with SQLiteCatalog(path) as catalog:
+            repository_id, source_revision_id = _repository(catalog)
+            profile_id = catalog.create_view_profile(internal_view, {"legacy": True})
+            queued = catalog.create_job(
+                repository_id,
+                source_revision_id,
+                "legacy-internal-request",
+                _request(
+                    {internal_view: profile_id}, required=frozenset({internal_view})
+                ),
+            )
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "LATEST_SCHEMA_VERSION",
+        LATEST_SCHEMA_VERSION,
+    )
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.get_job(queued.job_id) == queued
+        assert tuple(
+            view.view_type for view in catalog.get_job_views(queued.job_id)
+        ) == (internal_view,)
+        with pytest.raises(StorageValidationError, match="reserved supporting views"):
+            catalog.create_job(
+                repository_id,
+                source_revision_id,
+                "new-internal-request",
+                _request(
+                    {internal_view: profile_id},
+                    required=frozenset({internal_view}),
+                ),
+            )
+        lease = catalog.acquire_job_lease(
+            queued.job_id,
+            owner_id="legacy-internal-worker",
+            lease_duration_ms=60_000,
+        )
+        completed = catalog.publish_job_outputs(
+            queued.job_id,
+            owner_id=lease.owner_id,
+            fencing_token=lease.fencing_token,
+            outputs=(_output(internal_view, profile_id, 100),),
+        )
+        assert completed.status is IndexJobStatus.SUCCEEDED
+        assert tuple(
+            catalog.get_manifest_summary(completed.result_snapshot_id)["views"]
+        ) == (internal_view,)
 
 
 @pytest.mark.parametrize(
@@ -2545,6 +2645,15 @@ def test_sqlite_publication_accepts_exactly_the_public_compound_member_cap(
     with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
         repository_id, source_revision_id = _repository(catalog)
         profiles = _profiles(catalog, ("semantic_facts",))
+        supporting_profile = repo_manifest_projection_profile()
+        assert (
+            catalog.create_view_profile(
+                supporting_profile.view_type,
+                supporting_profile.config,
+                name=supporting_profile.name,
+            )
+            == supporting_profile.profile_id
+        )
         fixture = _create_running_job(
             catalog,
             repository_id=repository_id,
@@ -2562,17 +2671,26 @@ def test_sqlite_publication_accepts_exactly_the_public_compound_member_cap(
             MAX_VIEW_GENERATION_MEMBERS + 100,
             members=members,
         )
+        supporting = _output(
+            supporting_profile.view_type,
+            supporting_profile.profile_id,
+            MAX_VIEW_GENERATION_MEMBERS + 101,
+        )
 
         completed = catalog.publish_job_outputs(
             fixture.job.job_id,
             owner_id=fixture.owner_id,
             fencing_token=fixture.fencing_token,
-            outputs=(output,),
+            outputs=(output, supporting),
         )
 
         assert completed.status is IndexJobStatus.SUCCEEDED
         manifest = catalog.get_manifest_summary(completed.result_snapshot_id)
         persisted = manifest["views"]["semantic_facts"]["member_objects"]
+        supporting_persisted = manifest["views"][supporting_profile.view_type][
+            "member_objects"
+        ]
         assert len(persisted) == MAX_VIEW_GENERATION_MEMBERS
+        assert supporting_persisted == []
         assert persisted[0]["digest"] == members[0].digest
         assert persisted[-1]["digest"] == members[-1].digest
