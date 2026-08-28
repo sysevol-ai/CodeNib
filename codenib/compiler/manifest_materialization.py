@@ -1133,20 +1133,11 @@ def _authenticate_projection(
         "plan_digest": plan.plan_digest,
         "projected_views": list(selected),
     }
-    # The data-only export carries both content IDs but not the catalog's
-    # reachability metadata.  Reconstruct the two contract-sanctioned forms and
-    # require those IDs to authenticate exactly one of them.
-    candidates: list[tuple[ViewGeneration, str]] = []
-    for candidate_metadata, candidate_dependencies in (
-        (projection_metadata, tuple(sorted(dependency_digests))),
-        (
-            {
-                **projection_metadata,
-                "reachability": REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
-            },
-            (),
-        ),
-    ):
+
+    def projection_candidate(
+        candidate_metadata: Mapping[str, Any],
+        candidate_dependencies: tuple[str, ...],
+    ) -> tuple[ViewGeneration, str]:
         candidate = _retained_generation(
             source,
             receipt=projection_receipt,
@@ -1169,18 +1160,31 @@ def _authenticate_projection(
             raise StorageIntegrityError(
                 "retained projection snapshot identity is invalid"
             ) from exc
-        candidates.append((candidate, snapshot.snapshot_id))
-    matches = tuple(
-        candidate
-        for candidate, snapshot_id in candidates
-        if candidate.view_generation_id == receipt.projection_generation_id
-        and snapshot_id == receipt.snapshot_id
+        return candidate, snapshot.snapshot_id
+
+    # The generation ID selects the contract-sanctioned reachability mode before
+    # its closure is reconstructed. A valid sibling-reachable projection may
+    # contain the full member capacity even though the corresponding legacy
+    # dependency closure would add one bundle primary beyond that capacity.
+    projection_generation, snapshot_id = projection_candidate(
+        {
+            **projection_metadata,
+            "reachability": REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
+        },
+        (),
     )
-    if len(matches) != 1:
+    if projection_generation.view_generation_id != receipt.projection_generation_id:
+        projection_generation, snapshot_id = projection_candidate(
+            projection_metadata,
+            tuple(sorted(dependency_digests)),
+        )
+    if (
+        projection_generation.view_generation_id != receipt.projection_generation_id
+        or snapshot_id != receipt.snapshot_id
+    ):
         raise StorageIntegrityError(
             "retained projection generation or snapshot identity conflicts"
         )
-    projection_generation = matches[0]
     return _AuthenticatedProjection(
         plan=plan,
         source=source,

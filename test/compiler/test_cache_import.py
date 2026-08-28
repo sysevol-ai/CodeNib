@@ -25,6 +25,7 @@ import codenib.artifacts.strict_vector as strict_vector_module
 import codenib.compiler as compiler_module
 import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.job_resources as job_resources_module
+import codenib.compiler.manifest_materialization as manifest_materialization_module
 import codenib.index.embedding.vector_store as vector_store_module
 import codenib.source_fingerprint as source_fingerprint_module
 import codenib.storage.view_bundle as view_bundle_module
@@ -88,6 +89,7 @@ from codenib.compiler.manifest_storage import (
     plan_repo_manifest_import_bytes,
 )
 from codenib.compiler.retained_manifest_contract import (
+    REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
     REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
     REPO_MANIFEST_PROJECTION_VIEW,
     repo_manifest_projection_profile,
@@ -3291,6 +3293,7 @@ def _seed_bm25_snapshot(
 
 def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = _cache_fixture(tmp_path)
     materialized_owner = PublishedWorkspaceReceiptOwner()
@@ -3371,6 +3374,24 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
                 receipt = cas.verify(persisted["digest"])
                 assert receipt.byte_size == persisted["byte_size"]
                 assert receipt.storage_key == persisted["storage_key"]
+            projection_dependency_sets = []
+            retained_generation = manifest_materialization_module._retained_generation
+
+            def reject_legacy_projection(*args, **kwargs):
+                if kwargs["media_type"] == REPO_MANIFEST_PROJECTION_MEDIA_TYPE:
+                    dependencies = kwargs["member_digests"]
+                    projection_dependency_sets.append(dependencies)
+                    if dependencies:
+                        raise AssertionError(
+                            "snapshot-scoped loading reconstructed legacy closure"
+                        )
+                return retained_generation(*args, **kwargs)
+
+            monkeypatch.setattr(
+                manifest_materialization_module,
+                "_retained_generation",
+                reject_legacy_projection,
+            )
             materialized = materialize_retained_repo_manifest_snapshot(
                 _REPOSITORY_KEY,
                 result.job.result_snapshot_id,
@@ -3386,6 +3407,7 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
             )
             assert materialized.artifact.views == ("bm25",)
             assert materialized_owner.active
+            assert projection_dependency_sets == [()]
             assert cas.retained_receipt_sets == [
                 expected_receipts,
                 expected_receipts,
