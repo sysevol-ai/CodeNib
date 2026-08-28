@@ -31,6 +31,7 @@ from codenib.storage.job_worker import (
 from codenib.storage.models import (
     INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
     INDEX_JOB_REQUEST_CONTRACT,
+    INDEX_JOB_SUPPORTING_VIEW_PREFIX,
     MAX_INDEX_JOB_EVENTS_PER_ATTEMPT,
     IndexJobAttemptCompletionRecord,
     IndexJobAttemptHeartbeat,
@@ -2930,6 +2931,31 @@ def test_result_models_reject_invalid_combinations_and_nonexact_values() -> None
     )
     assert valid.publishable
     assert valid.artifacts == (bm25_success.artifact,)
+    supporting_view = INDEX_JOB_SUPPORTING_VIEW_PREFIX + "test-support"
+    supporting = IndexJobViewArtifact.create(
+        supporting_view,
+        _profile_id(supporting_view),
+        _receipt(b"supporting worker artifact"),
+        schema_version="test.support.v1",
+    )
+    supported = IndexJobExecutionResult(
+        (bm25_success, vector_skipped),
+        supporting_artifacts=(supporting,),
+    )
+    assert supported.artifacts == (bm25_success.artifact,)
+    assert supported.publication_artifacts == (bm25_success.artifact, supporting)
+    with pytest.raises(StorageValidationError, match="reserved view namespace"):
+        IndexJobExecutionResult(
+            (bm25_success, vector_skipped),
+            supporting_artifacts=(
+                IndexJobViewArtifact.create(
+                    "public-extra",
+                    _profile_id("public-extra"),
+                    _receipt(b"public extra"),
+                    schema_version="test.public.v1",
+                ),
+            ),
+        )
 
     shared_receipt = _receipt(b"shared-result-object")
     conflicting_bm25 = IndexJobViewExecutionResult.create(

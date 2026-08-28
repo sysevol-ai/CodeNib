@@ -25,6 +25,7 @@ from codenib.storage import sqlite_catalog as sqlite_catalog_module
 from codenib.storage.models import (
     INDEX_JOB_PUBLICATION_CONTRACT,
     INDEX_JOB_REQUEST_CONTRACT,
+    INDEX_JOB_SUPPORTING_VIEW_PREFIX,
     MAX_VIEW_GENERATION_MEMBERS,
     IndexJobCurrentResult,
     IndexJobRecord,
@@ -905,6 +906,44 @@ def test_optional_requested_views_may_be_omitted_or_published_as_a_subset(
 
         manifest = catalog.get_manifest_summary(completed.result_snapshot_id)
         assert tuple(manifest["views"]) == ("bm25", "semantic_facts")
+
+
+def test_v8_migration_accepts_reserved_support_and_still_closes_replay(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "catalog.sqlite3"
+    supporting_view = INDEX_JOB_SUPPORTING_VIEW_PREFIX + "test-support"
+    monkeypatch.setattr(sqlite_catalog_module, "LATEST_SCHEMA_VERSION", 7)
+    with SQLiteCatalog(path) as catalog:
+        fixture = _create_running_job(catalog)
+        supporting_profile = catalog.create_view_profile(
+            supporting_view,
+            {"contract": "test-support.v1"},
+        )
+
+    monkeypatch.setattr(
+        sqlite_catalog_module,
+        "LATEST_SCHEMA_VERSION",
+        LATEST_SCHEMA_VERSION,
+    )
+    outputs = (
+        _output("bm25", fixture.profiles["bm25"], 100),
+        _output(supporting_view, supporting_profile, 102),
+    )
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.schema_version == LATEST_SCHEMA_VERSION
+        completed = catalog.publish_job_outputs(
+            fixture.job.job_id,
+            owner_id=fixture.owner_id,
+            fencing_token=fixture.fencing_token,
+            outputs=outputs,
+        )
+        summary = catalog.get_manifest_summary(completed.result_snapshot_id)
+        assert tuple(summary["views"]) == ("bm25", supporting_view)
+
+    with SQLiteCatalog(path, create=False) as catalog:
+        assert catalog.get_job(fixture.job.job_id) == completed
 
 
 @pytest.mark.parametrize(

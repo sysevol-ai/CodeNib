@@ -12,6 +12,7 @@ from typing import Callable, Mapping
 
 from ..artifacts.runtime import SourceBindingCleanupOwner, _attach_source_cleanup_owner
 from ..compiler.job_resources import LocalBM25SourceJobTarget
+from ..compiler.retained_manifest_contract import repo_manifest_projection_profile
 from ..storage import IndexJobPlanningCatalog, SourceRevision
 from .index_job_writes import (
     IndexJobCreatePlan,
@@ -109,6 +110,7 @@ class LocalBM25SourceJobPlanner:
                 commit_sha=None,
             )
             profile = target.profile
+            supporting_profile = repo_manifest_projection_profile()
             with self._catalog_factory() as value:
                 catalog = self._require_catalog(value)
                 source_revision_id = catalog.create_source_revision(
@@ -122,6 +124,11 @@ class LocalBM25SourceJobPlanner:
                     profile.config,
                     name=profile.name,
                 )
+                supporting_profile_id = catalog.create_view_profile(
+                    supporting_profile.view_type,
+                    supporting_profile.config,
+                    name=supporting_profile.name,
+                )
                 expected_ref_generation = catalog.read_ref_generation(
                     target.repository_id,
                     binding.ref_name,
@@ -133,6 +140,10 @@ class LocalBM25SourceJobPlanner:
             if profile_id != profile.profile_id:
                 raise IndexJobWriteError(
                     "catalog registered a different BM25 view profile"
+                )
+            if supporting_profile_id != supporting_profile.profile_id:
+                raise IndexJobWriteError(
+                    "catalog registered a different snapshot-support profile"
                 )
             result = IndexJobCreatePlan(
                 source_revision_id=source_revision_id,

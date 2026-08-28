@@ -23,6 +23,7 @@ from .models import (
     StorageValidationError,
     canonical_json,
     content_id,
+    is_index_job_supporting_view,
 )
 from .protocols import (
     RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
@@ -31,7 +32,7 @@ from .protocols import (
     snapshot_retained_import_response,
 )
 
-_MAX_JOB_OUTPUTS = 64
+_MAX_JOB_OUTPUTS = 128
 _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 
 
@@ -484,7 +485,10 @@ def _attest_completed_publication(
     if not isinstance(request_views, dict):
         raise StorageIntegrityError("catalog returned an invalid job request closure")
     offered = {output.view_type: output for output in outputs}
-    if any(view_type not in request_views for view_type in offered):
+    if any(
+        view_type not in request_views and not is_index_job_supporting_view(view_type)
+        for view_type in offered
+    ):
         raise StorageIntegrityError("catalog accepted an unrequested output view")
     if any(
         request.get("required") is True and view_type not in offered
@@ -496,7 +500,7 @@ def _attest_completed_publication(
     snapshot_members: list[list[str]] = []
     for output in outputs:
         request = request_views.get(output.view_type)
-        if (
+        if request is not None and (
             not isinstance(request, dict)
             or request.get("profile_id") != output.profile_id
         ):

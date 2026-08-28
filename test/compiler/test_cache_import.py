@@ -86,7 +86,10 @@ from codenib.compiler.manifest_storage import (
     RepoManifestImportPlan,
     plan_repo_manifest_import_bytes,
 )
-from codenib.compiler.retained_manifest_contract import REPO_MANIFEST_PROJECTION_VIEW
+from codenib.compiler.retained_manifest_contract import (
+    REPO_MANIFEST_PROJECTION_VIEW,
+    repo_manifest_projection_profile,
+)
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
 from codenib.repository_source_selection import RepositorySourceSelection
@@ -1107,6 +1110,15 @@ def _register_bm25_job_subject(
         name=intent.profile.name,
     )
     assert profile_id == intent.profile_id
+    supporting_profile = repo_manifest_projection_profile()
+    assert (
+        catalog.create_view_profile(
+            supporting_profile.view_type,
+            supporting_profile.config,
+            name=supporting_profile.name,
+        )
+        == supporting_profile.profile_id
+    )
     return repository_id, source_revision_id, profile_id
 
 
@@ -1241,9 +1253,12 @@ def test_prepare_compiler_cache_job_view_leaves_catalog_running(
             assert result.artifact.profile_id == profile_id
             assert result.artifact.schema_version == VIEW_BUNDLE_SCHEMA
             assert len(result.artifact.member_artifacts) == 2
+            assert tuple(
+                artifact.view_type for artifact in result.supporting_artifacts
+            ) == (REPO_MANIFEST_PROJECTION_VIEW,)
             assert catalog.get_job(queued.job_id) == running
             assert catalog.get_job(queued.job_id).status is IndexJobStatus.RUNNING
-            assert len(cas.put_chunk_receipts) == 3
+            assert len(cas.put_chunk_receipts) == 4
             assert cas.retained_receipt_sets == []
             assert fixture.provider.run_count == 2
     finally:
@@ -1563,7 +1578,7 @@ def test_prepare_compiler_cache_job_attests_artifact_before_final_stop(
     def forged_artifact(*args, **kwargs):
         nonlocal forged_returned
         forged_returned = True
-        return (object(),)
+        return object()
 
     def stop_before_final_source_scan(binding, *args, **kwargs):
         nonlocal final_scan_attempted
@@ -1578,7 +1593,7 @@ def test_prepare_compiler_cache_job_attests_artifact_before_final_stop(
 
     monkeypatch.setattr(
         cache_import_module,
-        "_prepare_job_view_artifacts_inside_authority",
+        "_prepare_job_snapshot_artifacts_inside_authority",
         forged_artifact,
     )
     monkeypatch.setattr(
@@ -1610,7 +1625,7 @@ def test_prepare_compiler_cache_job_attests_artifact_before_final_stop(
 
             with pytest.raises(
                 StorageIntegrityError,
-                match="ingestion returned a different requested view",
+                match="ingestion returned invalid job artifacts",
             ):
                 _prepare_bm25_job(
                     fixture,
@@ -2218,14 +2233,17 @@ def test_compiler_cache_executor_delegates_only_final_publish_to_worker(
             assert fixture.bm25_owner.closed
             assert fixture.context_owner.closed
             assert publication_calls == [queued.job_id]
-            assert len(cas.put_chunk_receipts) == 3
+            assert len(cas.put_chunk_receipts) == 4
             assert len(cas.retained_receipt_sets) == 1
             with SQLiteCatalog(catalog_path, create=False) as catalog:
                 completed = catalog.get_job(queued.job_id)
                 assert completed.status is IndexJobStatus.SUCCEEDED
                 assert completed.result_snapshot_id is not None
                 summary = catalog.get_manifest_summary(completed.result_snapshot_id)
-                assert tuple(summary["views"]) == ("bm25",)
+                assert tuple(summary["views"]) == (
+                    "bm25",
+                    REPO_MANIFEST_PROJECTION_VIEW,
+                )
                 assert summary["views"]["bm25"]["profile"]["profile_id"] == (profile_id)
     finally:
         fixture.close()
@@ -2466,7 +2484,7 @@ def test_local_compiler_cache_job_factory_runs_and_isolates_attempt_workspaces(
             assert outcome.disposition is IndexJobWorkerDisposition.SUCCEEDED
             assert outcome.job_id == queued.job_id
             assert publication_calls == [queued.job_id]
-            assert len(cas.put_chunk_receipts) == 3
+            assert len(cas.put_chunk_receipts) == 4
             assert len(cas.retained_receipt_sets) == 1
             assert not tuple(fixture.workspace.glob(".codenib-cache-job-*"))
             orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
@@ -3244,16 +3262,18 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
             assert result.recapture.canonical_manifest_bytes == (
                 cache_import_module._pretty_manifest_bytes(result.import_plan.manifest)
             )
-            assert len(cas.put_chunk_receipts) == 3
-            assert len({receipt.digest for receipt in cas.put_chunk_receipts}) == 3
+            assert len(cas.put_chunk_receipts) == 4
+            assert len({receipt.digest for receipt in cas.put_chunk_receipts}) == 4
             expected_receipts = tuple(
                 sorted(cas.put_chunk_receipts, key=lambda receipt: receipt.digest)
             )
             assert cas.retained_receipt_sets == [expected_receipts]
             assert catalog.job_publication_calls == 1
             summary = catalog.get_manifest_summary(result.job.result_snapshot_id)
-            assert tuple(summary["views"]) == ("bm25",)
-            assert REPO_MANIFEST_PROJECTION_VIEW not in summary["views"]
+            assert tuple(summary["views"]) == (
+                "bm25",
+                REPO_MANIFEST_PROJECTION_VIEW,
+            )
             bm25 = summary["views"]["bm25"]
             assert bm25["profile"]["profile_id"] == profile_id
             assert bm25["schema_version"] == VIEW_BUNDLE_SCHEMA
@@ -3297,8 +3317,8 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
             assert retry.import_plan.plan_digest == result.import_plan.plan_digest
             assert retry.job.result_snapshot_id == first_ref["snapshot_id"]
             assert catalog.resolve_ref(repository_id) == advanced_ref
-            assert tuple(cas.put_chunk_receipts[:3]) == tuple(
-                cas.put_chunk_receipts[3:]
+            assert tuple(cas.put_chunk_receipts[:4]) == tuple(
+                cas.put_chunk_receipts[4:]
             )
             assert cas.retained_receipt_sets == [
                 expected_receipts,
@@ -3602,7 +3622,7 @@ def test_compiler_cache_bm25_job_rejects_post_ingest_drift_or_substitution(
                     cas=cas,
                 )
 
-            expected_put_count = 1 if case == "receipt_substitution" else 3
+            expected_put_count = 1 if case == "receipt_substitution" else 4
             assert len(cas.put_chunk_receipts) == expected_put_count
             assert catalog.resolve_ref(repository_id) == preserved_ref
             assert cas.read_bytes(preserved_digest) == (
@@ -4960,6 +4980,15 @@ def _register_vector_job_subject(
         name=intent.profile.name,
     )
     assert profile_id == intent.profile_id
+    supporting_profile = repo_manifest_projection_profile()
+    assert (
+        catalog.create_view_profile(
+            supporting_profile.view_type,
+            supporting_profile.config,
+            name=supporting_profile.name,
+        )
+        == supporting_profile.profile_id
+    )
     return repository_id, source_revision_id, profile_id
 
 
@@ -5120,7 +5149,7 @@ def test_prepare_compiler_cache_vector_job_uses_only_portable_schema8(
             assert result.import_plan.views[0].profile.config["builder_schema"] == 8
             assert result.artifact.schema_version == VIEW_BUNDLE_SCHEMA
             assert len(result.artifact.member_artifacts) == 4
-            assert len(cas.put_chunk_receipts) == 5
+            assert len(cas.put_chunk_receipts) == 6
             assert cas.retained_receipt_sets == []
             assert catalog.get_job(queued.job_id) == running
             assert fixture.provider.run_count == 2
@@ -5515,16 +5544,18 @@ def test_compiler_cache_vector_job_publishes_schema8_closure_and_replays(
                 or "incremental_state" in record.path
                 for record in result.recapture.output_records
             )
-            assert len(cas.put_chunk_receipts) == len(expected_paths) + 1
-            assert len({receipt.digest for receipt in cas.put_chunk_receipts}) == 5
+            assert len(cas.put_chunk_receipts) == len(expected_paths) + 2
+            assert len({receipt.digest for receipt in cas.put_chunk_receipts}) == 6
             expected_receipts = tuple(
                 sorted(cas.put_chunk_receipts, key=lambda receipt: receipt.digest)
             )
             assert cas.retained_receipt_sets == [expected_receipts]
             assert catalog.job_publication_calls == 1
             summary = catalog.get_manifest_summary(result.job.result_snapshot_id)
-            assert tuple(summary["views"]) == ("vector",)
-            assert REPO_MANIFEST_PROJECTION_VIEW not in summary["views"]
+            assert tuple(summary["views"]) == (
+                REPO_MANIFEST_PROJECTION_VIEW,
+                "vector",
+            )
             vector = summary["views"]["vector"]
             assert vector["profile"]["profile_id"] == profile_id
             assert vector["schema_version"] == VIEW_BUNDLE_SCHEMA
@@ -5565,8 +5596,8 @@ def test_compiler_cache_vector_job_publishes_schema8_closure_and_replays(
             assert retry.import_plan.plan_digest == result.import_plan.plan_digest
             assert retry.job.result_snapshot_id == first_ref["snapshot_id"]
             assert catalog.resolve_ref(repository_id) == advanced_ref
-            assert tuple(cas.put_chunk_receipts[:5]) == tuple(
-                cas.put_chunk_receipts[5:]
+            assert tuple(cas.put_chunk_receipts[:6]) == tuple(
+                cas.put_chunk_receipts[6:]
             )
             assert cas.retained_receipt_sets == [
                 expected_receipts,
@@ -5997,7 +6028,7 @@ def test_compiler_cache_vector_job_rejects_post_ingest_drift_or_substitution(
                     cas=cas,
                 )
 
-            expected_put_count = 1 if case == "receipt_substitution" else 5
+            expected_put_count = 1 if case == "receipt_substitution" else 6
             assert len(cas.put_chunk_receipts) == expected_put_count
             assert catalog.resolve_ref(repository_id) == preserved_ref
             assert cas.read_bytes(preserved_digest) == (

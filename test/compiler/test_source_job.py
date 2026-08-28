@@ -54,6 +54,7 @@ from codenib.compiler.job_resources import (
 )
 from codenib.compiler.manifest import RepoManifest
 from codenib.compiler.manifest_storage import BM25_PROFILE_AXES
+from codenib.compiler.retained_manifest_contract import repo_manifest_projection_profile
 from codenib.compiler.source_job import BM25SourceJobExecutor, bm25_source_job_profile
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import (
@@ -81,6 +82,18 @@ from codenib.storage.models import NamespaceIdentity, RepositoryIdentity
 
 _COMMIT = "a" * 40
 _REPOSITORY_KEY = "owner/repo"
+
+
+def _register_projection_profile(catalog: SQLiteCatalog) -> None:
+    profile = repo_manifest_projection_profile()
+    assert (
+        catalog.create_view_profile(
+            profile.view_type,
+            profile.config,
+            name=profile.name,
+        )
+        == profile.profile_id
+    )
 
 
 class _StopToken:
@@ -289,6 +302,7 @@ def _execution_context(
         profile.config,
         name=profile.name,
     )
+    _register_projection_profile(catalog)
     views: dict[str, dict[str, object]] = {
         "bm25": {
             "profile_id": profile_id,
@@ -1634,6 +1648,7 @@ def test_local_bm25_source_job_factory_runs_worker_and_cleans_attempt(
                 profile.config,
                 name=profile.name,
             )
+            _register_projection_profile(catalog)
             assert profile_id == target.profile_id
             queued = catalog.create_job(
                 repository_id,
@@ -1950,6 +1965,7 @@ def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
                 profile.config,
                 name=profile.name,
             )
+            _register_projection_profile(catalog)
             assert profile_id == profile.profile_id
             queued = catalog.create_job(
                 repository_id,
@@ -2066,6 +2082,7 @@ def test_local_bm25_source_worker_preserves_current_ref_after_source_changes(
                 )
                 == profile.profile_id
             )
+            _register_projection_profile(catalog)
             first = catalog.create_job(
                 repository_id,
                 source_revision_id,

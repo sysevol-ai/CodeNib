@@ -239,6 +239,14 @@ class _PreparedImport:
         return _unique_stored_objects(values)
 
 
+@dataclass(frozen=True, slots=True)
+class _PreparedJobSnapshotArtifacts:
+    """Requested job outputs plus reserved snapshot-support generations."""
+
+    artifacts: tuple[IndexJobViewArtifact, ...]
+    supporting_artifacts: tuple[IndexJobViewArtifact, ...]
+
+
 def _validate_result_items(result: RepoManifestImportResult) -> None:
     if type(result.views) is not tuple or not result.views:
         raise StorageValidationError("published views must be a nonempty tuple")
@@ -1231,43 +1239,50 @@ def _prepare_job_view_artifacts_inside_authority(
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
         check_cancelled=check_cancelled,
     )
-    artifacts: list[IndexJobViewArtifact] = []
-    for view in prepared.views:
-        if check_cancelled is not None:
-            check_cancelled()
-        members = _unique_stored_objects(member[3] for member in view.members)
-        artifact = IndexJobViewArtifact.create(
-            view.intent.view_type,
-            view.intent.profile_id,
-            view.bundle.receipt,
-            schema_version=VIEW_BUNDLE_SCHEMA,
-            media_type=view.bundle.record.media_type,
-            metadata=_intent_generation_metadata(view.intent),
-            member_artifacts=tuple(
-                IndexJobObjectArtifact(member.receipt, member.record.media_type)
-                for member in members
-            ),
-        )
-        output = artifact._output()
-        if (
-            output.view_type != view.generation.view_type
-            or output.profile_id != view.generation.profile_id
-            or output.object_record != view.bundle.record
-            or output.schema_version != view.generation.schema_version
-            or canonical_json(output.generation_metadata)
-            != view.generation.metadata_json
-            or output.member_object_records
-            != tuple(member.record for member in members)
-        ):
-            raise StorageIntegrityError(
-                "retained job artifact differs from its prepared view generation"
-            )
-        artifacts.append(artifact)
+    artifacts = tuple(
+        _prepared_view_job_artifact(view, check_cancelled=check_cancelled)
+        for view in prepared.views
+    )
     if check_cancelled is None:
         repository_source.verify_snapshot()
     else:
         repository_source.verify_snapshot(check_cancelled=check_cancelled)
-    return tuple(artifacts)
+    return artifacts
+
+
+def _prepared_view_job_artifact(
+    view: _PreparedView,
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> IndexJobViewArtifact:
+    if check_cancelled is not None:
+        check_cancelled()
+    members = _unique_stored_objects(member[3] for member in view.members)
+    artifact = IndexJobViewArtifact.create(
+        view.intent.view_type,
+        view.intent.profile_id,
+        view.bundle.receipt,
+        schema_version=VIEW_BUNDLE_SCHEMA,
+        media_type=view.bundle.record.media_type,
+        metadata=_intent_generation_metadata(view.intent),
+        member_artifacts=tuple(
+            IndexJobObjectArtifact(member.receipt, member.record.media_type)
+            for member in members
+        ),
+    )
+    output = artifact._output()
+    if (
+        output.view_type != view.generation.view_type
+        or output.profile_id != view.generation.profile_id
+        or output.object_record != view.bundle.record
+        or output.schema_version != view.generation.schema_version
+        or canonical_json(output.generation_metadata) != view.generation.metadata_json
+        or output.member_object_records != tuple(member.record for member in members)
+    ):
+        raise StorageIntegrityError(
+            "retained job artifact differs from its prepared view generation"
+        )
+    return artifact
 
 
 def _prepare_import_inside_authority(
@@ -1287,6 +1302,7 @@ def _prepare_import_inside_authority(
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
     max_projection_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedImport:
     prepared = _prepare_manifest_views_inside_authority(
         receipt,
@@ -1303,7 +1319,11 @@ def _prepare_import_inside_authority(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        check_cancelled=check_cancelled,
     )
+
+    if check_cancelled is not None:
+        check_cancelled()
 
     projection_profile = _projection_profile()
     projection_value = _projection_value(
@@ -1317,13 +1337,22 @@ def _prepare_import_inside_authority(
         projection_value,
         max_bytes=max_projection_bytes,
     )
-    raw_projection = object_store.put_chunks(  # type: ignore[attr-defined]
-        _iter_canonical_json_chunks(
-            projection_value,
-            max_bytes=max_projection_bytes,
-        ),
+    projection_chunks: Iterable[bytes] = _iter_canonical_json_chunks(
+        projection_value,
+        max_bytes=max_projection_bytes,
+    )
+    if check_cancelled is not None:
+        projection_chunks = _interruptible_expected_chunks(
+            projection_chunks,
+            projection_size,
+            check_cancelled,
+        )
+    raw_projection = _put_exact_chunks(
+        object_store,
+        projection_chunks,
         projection_digest,
         projection_size,
+        check_cancelled=check_cancelled,
     )
     projection_object = _exact_blob_object(
         raw_projection,
@@ -1356,13 +1385,113 @@ def _prepare_import_inside_authority(
         metadata=projection_metadata,
         member_object_digests=dependencies,
     )
-    repository_source.verify_snapshot()
+    if check_cancelled is None:
+        repository_source.verify_snapshot()
+    else:
+        repository_source.verify_snapshot(check_cancelled=check_cancelled)
     return _PreparedImport(
         artifact_plan_digest=prepared.artifact_plan_digest,
         views=prepared.views,
         projection=projection_object,
         projection_profile=projection_profile,
         projection_generation=projection_generation,
+    )
+
+
+def _prepare_job_snapshot_artifacts_inside_authority(
+    receipt: PublishedWorkspaceReceipt,
+    publication: PublicationDirectoryReader,
+    *,
+    plan: RepoManifestImportPlan,
+    repository_source: RepositorySourceBinding,
+    repository_key: str,
+    source_identity: SourceRevision,
+    object_store: RetainedImportObjectStore,
+    environment: Mapping[str, str],
+    forbidden_paths: tuple[Path, ...],
+    max_context_files: int,
+    max_context_bytes: int,
+    max_bundle_files: int,
+    max_bundle_bytes: int,
+    max_bundle_metadata_bytes: int,
+    max_projection_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
+) -> _PreparedJobSnapshotArtifacts:
+    """Ingest a loadable job snapshot without granting catalog authority."""
+
+    prepared = _prepare_import_inside_authority(
+        receipt,
+        publication,
+        plan=plan,
+        repository_source=repository_source,
+        repository_key=repository_key,
+        source_identity=source_identity,
+        object_store=object_store,
+        environment=environment,
+        forbidden_paths=forbidden_paths,
+        max_context_files=max_context_files,
+        max_context_bytes=max_context_bytes,
+        max_bundle_files=max_bundle_files,
+        max_bundle_bytes=max_bundle_bytes,
+        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        max_projection_bytes=max_projection_bytes,
+        check_cancelled=check_cancelled,
+    )
+    _verify_exact_receipt(
+        object_store,
+        prepared.projection,
+        check_cancelled=check_cancelled,
+    )
+    artifacts = tuple(
+        _prepared_view_job_artifact(view, check_cancelled=check_cancelled)
+        for view in prepared.views
+    )
+    stored_by_digest = {
+        stored.record.digest: stored for stored in prepared.stored_objects
+    }
+    try:
+        projection_members = tuple(
+            stored_by_digest[digest]
+            for digest in prepared.projection_generation.member_object_digests
+        )
+    except KeyError as exc:  # pragma: no cover - local preparation invariant
+        raise StorageIntegrityError(
+            "manifest projection references an unavailable retained object"
+        ) from exc
+    projection_metadata = json.loads(prepared.projection_generation.metadata_json)
+    projection_metadata.pop(VIEW_GENERATION_MEMBERS_METADATA_KEY, None)
+    projection_artifact = IndexJobViewArtifact.create(
+        REPO_MANIFEST_PROJECTION_VIEW,
+        prepared.projection_profile.profile_id,
+        prepared.projection.receipt,
+        schema_version=REPO_MANIFEST_PROJECTION_SCHEMA,
+        media_type=REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
+        metadata=projection_metadata,
+        member_artifacts=tuple(
+            IndexJobObjectArtifact(member.receipt, member.record.media_type)
+            for member in projection_members
+        ),
+    )
+    projection_output = projection_artifact._output()
+    if (
+        projection_output.view_type != prepared.projection_generation.view_type
+        or projection_output.profile_id != prepared.projection_generation.profile_id
+        or projection_output.object_record != prepared.projection.record
+        or projection_output.schema_version
+        != prepared.projection_generation.schema_version
+        or canonical_json(projection_output.generation_metadata)
+        != prepared.projection_generation.metadata_json
+        or projection_output.member_object_records
+        != tuple(member.record for member in projection_members)
+    ):
+        raise StorageIntegrityError(
+            "retained job projection differs from its prepared generation"
+        )
+    if check_cancelled is not None:
+        check_cancelled()
+    return _PreparedJobSnapshotArtifacts(
+        artifacts=artifacts,
+        supporting_artifacts=(projection_artifact,),
     )
 
 

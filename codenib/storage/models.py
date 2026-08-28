@@ -26,6 +26,7 @@ DEFAULT_NAMESPACE_ID = "ns_default"
 DEFAULT_NAMESPACE_NAME = "default"
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
 INDEX_JOB_PUBLICATION_CONTRACT = "codenib.index-job-publication.v1"
+INDEX_JOB_SUPPORTING_VIEW_PREFIX = "codenib.internal."
 INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH = 16
 INDEX_JOB_EVENT_PAYLOAD_MAX_NODES = 1_024
 INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS = 16 * 1_024
@@ -36,6 +37,14 @@ VIEW_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
 # generation metadata and once as its identity-closed object envelope. Keep
 # this producer bound comfortably below the 250k-node response capability.
 MAX_VIEW_GENERATION_MEMBERS = 32_768
+
+
+def is_index_job_supporting_view(view_type: object) -> bool:
+    """Return whether a view belongs to the reserved job-support namespace."""
+
+    return type(view_type) is str and view_type.startswith(
+        INDEX_JOB_SUPPORTING_VIEW_PREFIX
+    )
 
 
 class StorageError(RuntimeError):
@@ -1218,6 +1227,11 @@ class IndexJobRequest:
                 requested_mode=view_request.get("requested_mode"),
                 required=view_request.get("required"),
             )
+            if is_index_job_supporting_view(normalized_view.view_type):
+                raise StorageValidationError(
+                    "index job requests cannot include reserved supporting views: "
+                    f"{view_type}"
+                )
             if (
                 normalized_view.view_type != view_type
                 or normalized_view.profile_id != view_request["profile_id"]
@@ -1924,6 +1938,7 @@ __all__ = [
     "DEFAULT_NAMESPACE_NAME",
     "INDEX_JOB_REQUEST_CONTRACT",
     "INDEX_JOB_PUBLICATION_CONTRACT",
+    "INDEX_JOB_SUPPORTING_VIEW_PREFIX",
     "INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH",
     "INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS",
     "INDEX_JOB_EVENT_PAYLOAD_MAX_NODES",
@@ -1968,6 +1983,7 @@ __all__ = [
     "canonical_utc_timestamp",
     "canonical_json",
     "content_id",
+    "is_index_job_supporting_view",
     "normalize_digest",
     "normalize_view_generation_metadata",
     "snapshot_index_job_event_payload",

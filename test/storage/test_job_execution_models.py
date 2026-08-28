@@ -17,6 +17,7 @@ from codenib.storage.models import (
     INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS,
     INDEX_JOB_EVENT_PAYLOAD_MAX_NODES,
     INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
+    INDEX_JOB_SUPPORTING_VIEW_PREFIX,
     MAX_INDEX_JOB_EVENTS_PER_ATTEMPT,
     IndexJobAttemptCompletionRecord,
     IndexJobAttemptHeartbeat,
@@ -87,6 +88,26 @@ def test_execution_contract_bounds_are_explicit() -> None:
     assert INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS == 16 * 1_024
     assert INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS == 128
     assert MAX_INDEX_JOB_EVENTS_PER_ATTEMPT == 256
+
+
+def test_job_request_reserves_internal_supporting_views() -> None:
+    with pytest.raises(StorageValidationError, match="reserved supporting views"):
+        IndexJobRequest.create(
+            "repo_" + "a" * 64,
+            "src_" + "b" * 64,
+            "reserved-view",
+            {
+                "contract": "codenib.index-job-request.v1",
+                "views": {
+                    INDEX_JOB_SUPPORTING_VIEW_PREFIX
+                    + "test-support": {
+                        "profile_id": "profile_" + "c" * 64,
+                        "requested_mode": "full",
+                        "required": True,
+                    }
+                },
+            },
+        )
 
 
 def test_attempt_completion_and_heartbeat_close_exact_authority() -> None:

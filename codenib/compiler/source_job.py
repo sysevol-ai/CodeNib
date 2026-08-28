@@ -1088,6 +1088,7 @@ class BM25SourceJobExecutor:
                 ),
             ),
             retryable=False,
+            supporting_artifacts=prepared.supporting_artifacts,
         )
 
 
