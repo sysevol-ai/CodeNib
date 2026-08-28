@@ -68,6 +68,13 @@ def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
 
     monkeypatch.setattr(web_app, "load_config", lambda: config)
     monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    monkeypatch.setattr(
+        web_app,
+        "open_local_index_runtime_service",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("disabled local runtime was opened")
+        ),
+    )
     monkeypatch.setattr(web_app, "authorize_local_manifest_vector", resolver)
     monkeypatch.setattr(
         web_app,
@@ -89,6 +96,236 @@ def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
         "loaded": True,
         "closed": True,
     }
+
+
+def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
+    events = []
+    storage = object()
+    previous_reader = object()
+    reader = object()
+    writer = object()
+
+    def capabilities(repo_id):
+        return {"repo_id": repo_id}
+
+    class Runtime:
+        state = "running"
+        healthy = True
+        closed = False
+
+        def __init__(self):
+            self.reader = reader
+            self.writer = writer
+            self.capabilities = capabilities
+
+    runtime = Runtime()
+    config = SimpleNamespace(
+        registry_path="/tmp/qa_registry.json",
+        data_dir="/tmp/data",
+        wiki_generation_model="model",
+        wiki_agent=False,
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+        wiki_generation_options={},
+        index_storage=storage,
+    )
+
+    class Registry:
+        def __init__(self, _config, **_kwargs):
+            pass
+
+        def load_all(self):
+            events.append("registry-load")
+
+        def list_infos(self):
+            return []
+
+        def close(self):
+            events.append("registry-close")
+
+    @contextmanager
+    def open_runtime(supplied_storage, registry):
+        assert supplied_storage is storage
+        assert isinstance(registry, Registry)
+        events.append("runtime-open")
+        try:
+            yield runtime
+        finally:
+            events.append("runtime-close")
+            runtime.closed = True
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    monkeypatch.setattr(web_app, "open_local_index_runtime_service", open_runtime)
+    monkeypatch.setattr(
+        web_app,
+        "_wiki_narrator",
+        lambda _config: SimpleNamespace(model="model", enabled=False, cache_dir=None),
+    )
+    application = SimpleNamespace(
+        state=SimpleNamespace(index_job_reader=previous_reader)
+    )
+
+    async def run_lifespan():
+        async with web_app.lifespan(application):
+            events.append("serve")
+            assert application.state.index_runtime_service is runtime
+            assert application.state.index_job_reader is reader
+            assert application.state.index_job_writer is writer
+            assert application.state.index_update_capabilities_resolver is capabilities
+
+    asyncio.run(run_lifespan())
+
+    assert events == [
+        "registry-load",
+        "runtime-open",
+        "serve",
+        "runtime-close",
+        "registry-close",
+    ]
+    assert application.state.index_job_reader is previous_reader
+    for name in (
+        "index_runtime_service",
+        "index_job_writer",
+        "index_update_capabilities_resolver",
+    ):
+        assert not hasattr(application.state, name)
+
+
+def test_lifespan_retains_registry_when_runtime_close_is_incomplete(monkeypatch):
+    events = []
+    runtime = SimpleNamespace(
+        reader=object(),
+        writer=object(),
+        capabilities=lambda _repo_id: {},
+        state="running",
+        healthy=True,
+        closed=False,
+    )
+    config = SimpleNamespace(
+        registry_path="/tmp/qa_registry.json",
+        data_dir="/tmp/data",
+        wiki_generation_model="model",
+        wiki_agent=False,
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+        wiki_generation_options={},
+        index_storage=object(),
+    )
+
+    class Registry:
+        def __init__(self, _config, **_kwargs):
+            pass
+
+        def load_all(self):
+            events.append("registry-load")
+
+        def list_infos(self):
+            return []
+
+        def close(self):
+            events.append("registry-close")
+
+    @contextmanager
+    def open_runtime(_storage, _registry):
+        events.append("runtime-open")
+        try:
+            yield runtime
+        finally:
+            events.append("runtime-close")
+            raise RuntimeError("runtime close failed")
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    monkeypatch.setattr(web_app, "open_local_index_runtime_service", open_runtime)
+    monkeypatch.setattr(
+        web_app,
+        "_wiki_narrator",
+        lambda _config: SimpleNamespace(model="model", enabled=False, cache_dir=None),
+    )
+    application = SimpleNamespace(state=SimpleNamespace())
+
+    async def run_lifespan():
+        async with web_app.lifespan(application):
+            events.append("serve")
+
+    with pytest.raises(RuntimeError, match="runtime close failed"):
+        asyncio.run(run_lifespan())
+
+    assert events == [
+        "registry-load",
+        "runtime-open",
+        "serve",
+        "runtime-close",
+    ]
+
+
+@pytest.mark.parametrize("cleanup_pending", (False, True))
+def test_lifespan_preserves_registry_for_incomplete_runtime_startup(
+    monkeypatch,
+    cleanup_pending,
+):
+    events = []
+    config = SimpleNamespace(
+        registry_path="/tmp/qa_registry.json",
+        data_dir="/tmp/data",
+        wiki_generation_model="model",
+        wiki_agent=False,
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+        wiki_generation_options={},
+        index_storage=object(),
+    )
+
+    class Registry:
+        def __init__(self, _config, **_kwargs):
+            pass
+
+        def load_all(self):
+            events.append("registry-load")
+
+        def list_infos(self):
+            return []
+
+        def close(self):
+            events.append("registry-close")
+
+    @contextmanager
+    def open_runtime(_storage, _registry):
+        events.append("runtime-open")
+        failure = RuntimeError("runtime startup failed")
+        if cleanup_pending:
+            owner = SimpleNamespace(closed=False, close=lambda: None)
+            BaseException.__setattr__(
+                failure,
+                "publication_cleanup_owners",
+                (owner,),
+            )
+        raise failure
+        yield  # pragma: no cover - contextmanager generator marker
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    monkeypatch.setattr(web_app, "open_local_index_runtime_service", open_runtime)
+    monkeypatch.setattr(
+        web_app,
+        "_wiki_narrator",
+        lambda _config: SimpleNamespace(model="model", enabled=False, cache_dir=None),
+    )
+    application = SimpleNamespace(state=SimpleNamespace())
+
+    async def run_lifespan():
+        async with web_app.lifespan(application):
+            pytest.fail("failed runtime startup reached request serving")
+
+    with pytest.raises(RuntimeError, match="runtime startup failed"):
+        asyncio.run(run_lifespan())
+
+    assert events == [
+        "registry-load",
+        "runtime-open",
+        *([] if cleanup_pending else ["registry-close"]),
+    ]
 
 
 def test_lifespan_closes_registry_when_startup_is_cancelled(monkeypatch):

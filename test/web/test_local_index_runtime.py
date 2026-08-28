@@ -4,17 +4,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import time
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import codenib.web.app as web_app
 import codenib.web.local_index_runtime as local_runtime_module
 from codenib.compiler.manifest import RepoManifest
 from codenib.repository_source_selection import RepositorySourceSelection
+from codenib.source_fingerprint import fingerprint_repository
 from codenib.storage import (
     INDEX_JOB_REQUEST_CONTRACT,
     CatalogError,
@@ -33,6 +37,7 @@ from codenib.web.config import (
     LocalIndexWorkerConfig,
     QAConfig,
     RepoEntry,
+    save_registry,
 )
 from codenib.web.local_index_runtime import (
     LocalIndexRuntimeService,
@@ -675,3 +680,121 @@ def test_local_index_runtime_executes_submitted_bm25_job(
     assert not any(
         "attempt-root orphan" in record.getMessage() for record in caplog.records
     )
+
+
+def test_web_lifespan_executes_job_and_publishes_registry_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    activation_failures = []
+    monkeypatch.setattr(
+        local_runtime_module,
+        "_safe_runtime_failure",
+        activation_failures.append,
+    )
+    storage, seed_registry = _runtime_fixture(tmp_path)
+    seed_bundle = seed_registry.get("demo")
+    assert seed_bundle is not None
+    repository = Path(seed_bundle.entry.repo_dir)
+    commit = seed_bundle.entry.base_commit
+    selection = seed_bundle.manifest.source_selection
+    seed_registry.close()
+
+    source = fingerprint_repository(repository, selection=selection)
+    manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
+    RepoManifest(
+        repo_path=str(repository),
+        commit=commit,
+        last_indexed_commit=commit,
+        source_fingerprint=source.value,
+        source_selection=selection,
+        languages=["python"],
+        file_count=source.file_count,
+    ).save(manifest_path)
+    config = QAConfig(
+        mode="sparse",
+        data_dir=str(tmp_path / "web-data"),
+        wiki_agent=False,
+        index_storage=storage,
+    )
+    save_registry(
+        config.registry_path,
+        [
+            RepoEntry(
+                instance_id="demo",
+                repo="org/repo",
+                base_commit=commit,
+                language="python",
+                repo_dir=str(repository),
+                manifest_path=str(manifest_path),
+            )
+        ],
+    )
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(
+        web_app,
+        "_wiki_narrator",
+        lambda _config: SimpleNamespace(model="model", enabled=False, cache_dir=None),
+    )
+    application = SimpleNamespace(state=SimpleNamespace())
+    captured = {}
+
+    async def run_lifespan() -> None:
+        async with web_app.lifespan(application):
+            registry = application.state.registry
+            service = application.state.index_runtime_service
+            captured["registry"] = registry
+            captured["service"] = service
+            initial = registry.get("demo")
+            assert initial is not None
+            assert initial.index_job_activation is None
+
+            created = application.state.index_job_writer.create(
+                "demo",
+                indexes=("bm25",),
+                mode="full",
+                force=False,
+                idempotency_key="lifespan-integration-job",
+            )
+            deadline = time.monotonic() + 15
+            observed = created
+            active = initial
+            while True:
+                observed = application.state.index_job_reader.get(created.job_id)
+                active = registry.get("demo")
+                activation = None if active is None else active.index_job_activation
+                if (
+                    observed.status == "succeeded"
+                    and activation is not None
+                    and activation.snapshot_id == observed.result_snapshot_id
+                ):
+                    break
+                if observed.status == "failed":
+                    pytest.fail("lifespan BM25 job failed")
+                if time.monotonic() >= deadline:
+                    if activation_failures:
+                        chain = []
+                        failure = activation_failures[-1]
+                        while failure is not None:
+                            chain.append(f"{type(failure).__name__}: {failure}")
+                            failure = failure.__cause__
+                        pytest.fail(" <- ".join(chain))
+                    pytest.fail("lifespan runtime did not publish the BM25 result")
+                await asyncio.sleep(0.02)
+
+            assert active is not initial
+            assert active is not None
+            assert active.bm25 is not None
+            assert active.index_job_activation.job_id == created.job_id
+            assert service.healthy is True
+
+    asyncio.run(run_lifespan())
+
+    assert captured["service"].closed is True
+    for name in (
+        "index_runtime_service",
+        "index_job_reader",
+        "index_job_writer",
+        "index_update_capabilities_resolver",
+    ):
+        assert not hasattr(application.state, name)

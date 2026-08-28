@@ -1473,8 +1473,9 @@ storage topology. The planner captures that same topology-guarded retained
 source and registers only its content-addressed planning identities through a
 least-authority catalog surface. An explicit local production composition now
 assembles those targets with the strict preprovisioned CAS, scheduler, retained
-publisher, polling reconciler, reader, and writer. No default Web lifespan or
-default route selects that composition yet.
+publisher, polling reconciler, reader, and writer. The production Web lifespan
+now selects that composition only when the optional local-storage block is
+present; no storage default or alternate route silently enables it.
 
 The production CLI binding exposes both trusted local adapters through
 `codenib jobs run-once` and `codenib jobs run`, with an explicit mutually
@@ -1544,10 +1545,9 @@ and its cleanup remain unleased and manual. The local Web composition explicitly
 bootstraps each configured repository shard, routes its authenticated attempt
 receipts to the matching bounded reaper, settles them after worker results under
 that route's exclusive lease, and sweeps only those configured shards before
-start and after joined shutdown. Automatic shard discovery and default server
-installation remain pending.
-Vector and graph source builders, generic builder routing, and remaining
-runtime wiring remain.
+start and after joined shutdown. Automatic shard discovery remains pending.
+Vector and graph source builders, generic builder routing, MCP/UI controls, and
+default storage routing remain.
 
 - Make every builder write to a unique staging generation.
 - Add per-view profile adapters that fail closed on incomplete compatibility
@@ -1591,8 +1591,11 @@ and polling slices are present. Typed local-storage configuration parsing and
 explicit physical topology acquisition are implemented. An explicit local
 composition now invokes the success callback from the worker, owns both
 background loops, exposes the durable reader/writer and BM25 capability, and
-settles them before CAS and topology release. Default Web lifespan ownership,
-MCP, UI controls, and default routing remain absent.
+settles them before CAS and topology release. The optional production Web
+lifespan now owns that composition
+and verifies a real first-build job through strict materialization and RCU
+replacement. MCP, UI controls, vector/graph adapters, and default storage
+routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1661,11 +1664,11 @@ MCP, UI controls, and default routing remain absent.
   configured target, directs every at-least-once receipt to its exact shard,
   cleans it after worker results, and performs shard-policy sweeps only before
   worker start or after both background loops join. Automatic shard discovery
-  and default server installation remain pending, and legacy cleanup continues
-  to require explicit operator quiescence. Then add vector and graph source
-  adapters, install the composed service in the production server lifespan, and
-  wire MCP, UI, and default routes. Older self-publishing ingress APIs remain
-  compatibility paths and are never nested inside the worker.
+  remains pending, and legacy cleanup continues to require explicit operator
+  quiescence. Add vector and graph source adapters and wire MCP, UI, and default
+  routes.
+  Older self-publishing ingress APIs remain compatibility paths and are never
+  nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
@@ -1682,8 +1685,9 @@ MCP, UI controls, and default routing remain absent.
   cancellation-class cleanup failures never demoted behind ordinary errors.
   Bundle-derived Wiki, edge-label, and commit-window helpers are generation
   keyed and stale entries are pruned after replacement, removal, and shutdown.
-  The remaining #266 work is to own the composed service in the production
-  server lifespan and expose its status/results to the UI.
+  The production server lifespan now owns the existing reconciliation loop and
+  invokes its callback only after an attested update job succeeds. The remaining
+  #266 work is to expose status/results and update controls in the UI.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle
@@ -1716,8 +1720,8 @@ MCP, UI controls, and default routing remain absent.
   ref-writer exclusion until that transfer returns. Only that guarded transfer
   can advance reconciliation state; missing, repeated, out-of-scope, skipped,
   or failed guard/transfer calls fail closed. Publication failures remain
-  retryable and secret-free. Server wiring and the final runtime refresh
-  callback remain separate gates.
+  retryable and secret-free. The optional production lifespan now supplies this
+  final runtime refresh callback.
 - The retained BM25 registry boundary now accepts one exact snapshot-loaded
   runtime owner together with its full job activation and prepares the complete
   sparse runtime. It exposes the source-revalidated, lock-protected RCU pointer
@@ -1725,7 +1729,9 @@ MCP, UI controls, and default routing remain absent.
   so the ref-writer fence spans the actual generation swap. It rejects
   ref-generation regression, same-generation snapshot/timestamp conflict,
   storage-binding drift, and legacy registry-file replacement of an active
-  durable generation. The production server loop remains a separate gate.
+  durable generation. It permits a first durable BM25 generation to replace an
+  authenticated source-only bundle while still rejecting stale or incompatible
+  indexed incumbents.
 - The concrete local retained-BM25 publisher binds each configured storage ref
   to one canonical repository root, private workspace authority, namespace,
   object store, and retained catalog. It performs fail-fast current-result
@@ -1760,8 +1766,11 @@ MCP, UI controls, and default routing remain absent.
   retry. The explicit composition now opens the strict preprovisioned CAS,
   freezes loaded repository inputs, builds matching BM25 worker/runtime targets,
   owns the fair scheduler and guarded reconciliation loop, and releases them in
-  background/reaper/CAS/topology order. Lifespan installation remains a
-  separate gate.
+  background/reaper/CAS/topology order. The production lifespan installs
+  its reader, writer, capability resolver, and service only for that live
+  interval, restores prior application state on exit, and closes the registry
+  only after runtime settlement. An incomplete startup or shutdown cleanup owner
+  retains the registry dependency instead of retiring it under a live loop.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
   executor errors or event keys. Each event is rebound to the exact job, a
