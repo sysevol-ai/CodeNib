@@ -46,6 +46,12 @@ _CATALOG_SIDECARS = (
 )
 _MISSING_CATALOG = object()
 _LOCAL_TOPOLOGY_TOKEN = object()
+_POSIX_PRIVATE_MODE_SEMANTICS = os.name == "posix"
+_WINDOWS_REPARSE_POINT_ATTRIBUTE = getattr(
+    stat,
+    "FILE_ATTRIBUTE_REPARSE_POINT",
+    0x400,
+)
 
 
 class LocalIndexServiceError(StorageError):
@@ -90,11 +96,48 @@ def _observe_catalog_identity(path: Path) -> tuple[int, int, int]:
         or identity[0] < 1
         or identity[1] < 1
         or identity[2] != 1
+        or getattr(metadata, "st_file_attributes", 0) & _WINDOWS_REPARSE_POINT_ATTRIBUTE
     ):
         raise LocalIndexServiceError(
             "local index catalog must be one real single-linked file"
         )
     return identity
+
+
+def _observe_optional_catalog_sidecar(
+    path: Path,
+    *,
+    label: str,
+) -> tuple[int, int, int] | None:
+    """Validate one existing WAL/SHM path without requiring its presence."""
+
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise LocalIndexServiceError(
+            f"local index catalog {label} cannot be inspected safely"
+        ) from exc
+    try:
+        return _observe_catalog_identity(path)
+    except LocalIndexServiceError as exc:
+        raise LocalIndexServiceError(
+            f"local index catalog {label} must be one real single-linked file"
+        ) from exc
+
+
+def _require_no_catalog_rollback_journal(path: Path) -> None:
+    journal = Path(f"{path}-journal")
+    try:
+        journal.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise LocalIndexServiceError(
+            "local index catalog rollback journal cannot be inspected safely"
+        ) from exc
+    raise LocalIndexServiceError("local index catalog rollback journal is not allowed")
 
 
 def _observe_real_directory(
@@ -110,8 +153,11 @@ def _observe_real_directory(
     except (OSError, RuntimeError, ValueError) as exc:
         raise LocalIndexServiceError(f"{label} cannot be inspected safely") from exc
     effective_uid = getattr(os, "geteuid", None)
+    enforce_posix_private_mode = private and _POSIX_PRIVATE_MODE_SEMANTICS
     wrong_owner = (
-        private and callable(effective_uid) and metadata.st_uid != effective_uid()
+        enforce_posix_private_mode
+        and callable(effective_uid)
+        and metadata.st_uid != effective_uid()
     )
     if (
         resolved_before != path
@@ -121,7 +167,7 @@ def _observe_real_directory(
         or metadata.st_dev < 1
         or metadata.st_ino < 1
         or wrong_owner
-        or (private and stat.S_IMODE(metadata.st_mode) != 0o700)
+        or (enforce_posix_private_mode and stat.S_IMODE(metadata.st_mode) != 0o700)
     ):
         qualifier = "private owner-only " if private else ""
         raise LocalIndexServiceError(f"{label} must be one real {qualifier}directory")
@@ -344,6 +390,23 @@ def _catalog_topology_paths(
         parent,
         label="local index catalog parent",
     )
+    _require_no_catalog_rollback_journal(path)
+    sidecars: list[_TopologyPath] = []
+    for suffix, label in _CATALOG_SIDECARS:
+        sidecar_path = Path(f"{path}{suffix}")
+        identity = (
+            None
+            if suffix == "-journal"
+            else _observe_optional_catalog_sidecar(sidecar_path, label=label)
+        )
+        sidecars.append(
+            _TopologyPath(
+                f"local index catalog {label}",
+                sidecar_path,
+                parent_identity[0] if identity is None else identity[0],
+                parent,
+            )
+        )
     return (
         _TopologyPath(
             "local index catalog",
@@ -351,15 +414,7 @@ def _catalog_topology_paths(
             catalog_factory.catalog_identity[0],
             parent,
         ),
-        *(
-            _TopologyPath(
-                f"local index catalog {label}",
-                Path(f"{path}{suffix}"),
-                parent_identity[0],
-                parent,
-            )
-            for suffix, label in _CATALOG_SIDECARS
-        ),
+        *sidecars,
     )
 
 
@@ -372,7 +427,7 @@ def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
             raise LocalIndexServiceError(
                 f"{subject.label} must not be a Linux mount point"
             )
-    physical: list[tuple[_TopologyPath, _LinuxPhysicalPath | None]] = []
+    physical: list[tuple[str, _LinuxPhysicalPath | None]] = []
     lexical_stack: list[_TopologyPath] = []
     ancestry_identities: dict[tuple[int, int], tuple[Path, str]] = {}
     for subject in sorted(paths, key=lambda item: item.path.parts):
@@ -405,15 +460,34 @@ def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
                 raise LocalIndexServiceError(
                     f"{subject.label} mount mapping differs from its inode"
                 )
-        physical.append((subject, mapped))
+        physical.append((subject.label, mapped))
 
-    physical_stack: list[tuple[_TopologyPath, _LinuxPhysicalPath]] = []
+    # A protected directory can contain a bind mount whose configured source
+    # lives at another protected root. Mapping only the configured lexical
+    # roots would miss that alias while recursive repository reads traverse it.
+    descendant_mappings: set[tuple[Path, str, PurePosixPath]] = set()
+    for subject in paths:
+        if subject.ancestry_root != subject.path:
+            continue
+        for mapping in mappings:
+            if subject.path not in mapping.mount_point.parents:
+                continue
+            mapped = _linux_physical_path(mapping.mount_point, mappings)
+            if mapped is None:  # pragma: no cover - the mapping is a candidate
+                raise LocalIndexServiceError("Linux descendant mount mapping changed")
+            key = (mapping.mount_point, mapped.device, mapped.path)
+            if key in descendant_mappings:
+                continue
+            descendant_mappings.add(key)
+            physical.append((f"Linux mount below {subject.label}", mapped))
+
+    physical_stack: list[tuple[str, _LinuxPhysicalPath]] = []
     concrete = sorted(
-        ((subject, mapped) for subject, mapped in physical if mapped is not None),
+        ((label, mapped) for label, mapped in physical if mapped is not None),
         key=lambda item: (item[1].device, item[1].path.parts),
     )
     active_device: str | None = None
-    for subject, mapped in concrete:
+    for label, mapped in concrete:
         if mapped.device != active_device:
             physical_stack.clear()
             active_device = mapped.device
@@ -424,10 +498,9 @@ def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
             physical_stack.pop()
         if physical_stack:
             raise LocalIndexServiceError(
-                f"{physical_stack[-1][0].label} traverses a physical alias of "
-                f"{subject.label}"
+                f"{physical_stack[-1][0]} traverses a physical alias of {label}"
             )
-        physical_stack.append((subject, mapped))
+        physical_stack.append((label, mapped))
 
 
 @dataclass(frozen=True, slots=True)
@@ -468,6 +541,38 @@ def _open_root_binding(
         identity=publication_parent_identity(authority.resource),
         owner=owner,
     )
+
+
+def _verify_repository_binding(
+    repo_id: str,
+    path: Path,
+    authority: RepositorySourceRootAuthority,
+) -> tuple[int, ...]:
+    """Normalize retained source failures at the Web storage boundary."""
+
+    try:
+        authority.verify()
+        root = authority.root
+        root_identity = authority.root_identity
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise LocalIndexServiceError(f"repository {repo_id!r} binding changed") from exc
+    if root != path:
+        raise LocalIndexServiceError(f"repository {repo_id!r} authority path changed")
+    if (
+        type(root_identity) is not tuple
+        or len(root_identity) < 2
+        or any(type(value) is not int for value in root_identity)
+    ):
+        raise LocalIndexServiceError(
+            f"repository {repo_id!r} authority identity changed"
+        )
+    observed = _observe_real_directory(
+        path,
+        label=f"repository {repo_id!r}",
+    )
+    if tuple(observed[:2]) != tuple(root_identity[:2]):
+        raise LocalIndexServiceError(f"repository {repo_id!r} identity changed")
+    return root_identity
 
 
 class _CatalogSessionOwner:
@@ -786,17 +891,25 @@ class LocalIndexStorageTopology:
         def read() -> RepositorySourceRootAuthority:
             if self._closed_unlocked():
                 raise LocalIndexServiceError("local index topology is closed")
-            for candidate_id, authority in self._repositories:
+            for (path_id, path), (candidate_id, authority) in zip(
+                self._repository_paths,
+                self._repositories,
+                strict=True,
+            ):
+                if path_id != candidate_id:
+                    raise LocalIndexServiceError(
+                        "local index repository authority ordering changed"
+                    )
                 if candidate_id == repo_id:
-                    authority.verify()
+                    _verify_repository_binding(repo_id, path, authority)
                     return authority
             raise KeyError(repo_id)
 
         return self._lifecycle_lock.run(read)
 
-    def _verify_unlocked(self) -> None:
-        if self._closed_unlocked():
-            raise LocalIndexServiceError("local index topology is closed")
+    def _bound_topology_paths_unlocked(self) -> tuple[_TopologyPath, ...]:
+        """Revalidate retained bindings and return detached topology inputs."""
+
         self._catalog_factory.verify()
         for binding, private in (
             (self._cas, False),
@@ -811,6 +924,7 @@ class LocalIndexStorageTopology:
             )
             if observed != binding.identity:
                 raise LocalIndexServiceError(f"{binding.label} identity changed")
+        repository_identities: list[tuple[int, ...]] = []
         for (repo_id, path), (authority_id, authority) in zip(
             self._repository_paths,
             self._repositories,
@@ -820,18 +934,10 @@ class LocalIndexStorageTopology:
                 raise LocalIndexServiceError(
                     "local index repository authority ordering changed"
                 )
-            authority.verify()
-            if authority.root != path:
-                raise LocalIndexServiceError(
-                    f"repository {repo_id!r} authority path changed"
-                )
-            observed = _observe_real_directory(
-                path,
-                label=f"repository {repo_id!r}",
+            repository_identities.append(
+                _verify_repository_binding(repo_id, path, authority)
             )
-            if tuple(observed[:2]) != tuple(authority.root_identity[:2]):
-                raise LocalIndexServiceError(f"repository {repo_id!r} identity changed")
-        topology_paths = (
+        return (
             *_catalog_topology_paths(self._catalog_factory),
             _TopologyPath(
                 self._cas.label,
@@ -855,17 +961,26 @@ class LocalIndexStorageTopology:
                 _TopologyPath(
                     f"repository {repo_id!r}",
                     path,
-                    authority.root_identity[0],
+                    identity[0],
                     path,
                 )
-                for (repo_id, path), (_authority_id, authority) in zip(
+                for (repo_id, path), identity in zip(
                     self._repository_paths,
-                    self._repositories,
+                    repository_identities,
                     strict=True,
                 )
             ),
         )
+
+    def _verify_unlocked(self) -> None:
+        if self._closed_unlocked():
+            raise LocalIndexServiceError("local index topology is closed")
+        topology_paths = self._bound_topology_paths_unlocked()
         _require_disjoint_topology(topology_paths)
+        # Physical ancestry and mount inspection can run arbitrary filesystem
+        # syscalls. Sandwich it with a final retained binding check so a rename
+        # or replacement cannot be accepted at the public return boundary.
+        self._bound_topology_paths_unlocked()
 
     def verify(self) -> None:
         """Revalidate every retained path and physical-separation invariant."""

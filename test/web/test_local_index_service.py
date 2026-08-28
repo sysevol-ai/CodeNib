@@ -255,6 +255,64 @@ def test_local_index_topology_detects_replaced_workspace_root(
         topology.close()
 
 
+def test_local_index_topology_normalizes_replaced_repository_authority(
+    tmp_path: Path,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    topology = LocalIndexStorageTopology.acquire(config, repositories)
+    repository = repositories["repo"]
+    displaced = tmp_path / "repository-displaced"
+    repository.rename(displaced)
+    repository.mkdir()
+
+    try:
+        with pytest.raises(
+            LocalIndexServiceError,
+            match="repository 'repo' binding changed",
+        ):
+            topology.repository_authority("repo")
+    finally:
+        topology.close()
+
+
+@pytest.mark.parametrize("target", ("catalog", "workspace", "repository"))
+def test_local_index_topology_rechecks_bindings_after_physical_inspection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    topology = LocalIndexStorageTopology.acquire(config, repositories)
+    real_require = local_index_service._require_disjoint_topology
+    mutated = False
+
+    def inspect_then_replace(paths) -> None:
+        nonlocal mutated
+        real_require(paths)
+        if target == "catalog":
+            config.catalog_path.rename(tmp_path / "catalog-displaced.sqlite3")
+            _provision_catalog(config.catalog_path)
+        elif target == "workspace":
+            config.worker_workspace_root.rename(tmp_path / "worker-displaced")
+            config.worker_workspace_root.mkdir(mode=0o700)
+        else:
+            repositories["repo"].rename(tmp_path / "repository-displaced")
+            repositories["repo"].mkdir()
+        mutated = True
+
+    monkeypatch.setattr(
+        local_index_service,
+        "_require_disjoint_topology",
+        inspect_then_replace,
+    )
+    try:
+        with pytest.raises(LocalIndexServiceError, match="binding changed"):
+            topology.verify()
+        assert mutated
+    finally:
+        topology.close()
+
+
 def test_local_index_topology_rejects_symlinked_storage_root(
     tmp_path: Path,
 ) -> None:
@@ -279,27 +337,46 @@ def test_local_index_topology_rejects_repository_storage_overlap(
 
 
 @pytest.mark.parametrize(
-    ("suffix", "label"),
+    ("suffix", "error"),
     (
-        ("-wal", "WAL sidecar"),
-        ("-shm", "SHM sidecar"),
-        ("-journal", "rollback journal"),
+        ("-wal", "catalog WAL sidecar must be one real"),
+        ("-shm", "catalog SHM sidecar must be one real"),
+        ("-journal", "rollback journal is not allowed"),
     ),
 )
 def test_local_index_topology_reserves_catalog_sidecar_namespace(
     tmp_path: Path,
     suffix: str,
-    label: str,
+    error: str,
 ) -> None:
     config, repositories = _topology_config(tmp_path)
     sidecar = Path(f"{config.catalog_path}{suffix}")
     config.worker_workspace_root.rename(sidecar)
     config = replace(config, worker_workspace_root=sidecar)
 
-    with pytest.raises(
-        LocalIndexServiceError,
-        match=rf"catalog {label} must not overlap worker workspace root",
-    ):
+    with pytest.raises(LocalIndexServiceError, match=error):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+@pytest.mark.parametrize(
+    ("suffix", "error"),
+    (
+        ("-wal", "catalog WAL sidecar must be one real"),
+        ("-shm", "catalog SHM sidecar must be one real"),
+        ("-journal", "rollback journal is not allowed"),
+    ),
+)
+def test_local_index_topology_rejects_unconfigured_unsafe_catalog_sidecar(
+    tmp_path: Path,
+    suffix: str,
+    error: str,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    sidecar = Path(f"{config.catalog_path}{suffix}")
+    assert not sidecar.exists()
+    sidecar.mkdir()
+
+    with pytest.raises(LocalIndexServiceError, match=error):
         LocalIndexStorageTopology.acquire(config, repositories)
 
 
@@ -387,6 +464,40 @@ def test_local_index_topology_rejects_mapped_physical_alias(
         LocalIndexStorageTopology.acquire(config, repositories)
 
 
+def test_local_index_topology_rejects_descendant_mount_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    device = config.cas_root.stat().st_dev
+    mount_device = f"{os.major(device)}:{os.minor(device)}"
+    mappings = (
+        local_index_service._LinuxMountMapping(
+            device=mount_device,
+            root=PurePosixPath("/physical/cache"),
+            mount_point=config.cas_root,
+        ),
+        local_index_service._LinuxMountMapping(
+            device=mount_device,
+            root=PurePosixPath("/physical/repository"),
+            mount_point=repositories["repo"],
+        ),
+        local_index_service._LinuxMountMapping(
+            device=mount_device,
+            root=PurePosixPath("/physical/cache"),
+            mount_point=repositories["repo"] / "mounted-cache",
+        ),
+    )
+    monkeypatch.setattr(
+        local_index_service,
+        "_linux_mount_mappings",
+        lambda: mappings,
+    )
+
+    with pytest.raises(LocalIndexServiceError, match="physical alias"):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
 def test_local_index_topology_rejects_catalog_mount_point(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -420,6 +531,22 @@ def test_local_index_topology_requires_private_workspace_roots(
 
     with pytest.raises(LocalIndexServiceError, match="private owner-only"):
         LocalIndexStorageTopology.acquire(config, repositories)
+
+
+def test_local_index_topology_gates_posix_private_mode_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    config.runtime_workspace_root.chmod(0o755)
+    monkeypatch.setattr(
+        local_index_service,
+        "_POSIX_PRIVATE_MODE_SEMANTICS",
+        False,
+    )
+
+    topology = LocalIndexStorageTopology.acquire(config, repositories)
+    topology.close()
 
 
 def test_local_index_topology_requires_exact_repository_mapping(
