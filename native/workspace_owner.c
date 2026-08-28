@@ -27,6 +27,12 @@
 #include <sys/syscall.h>
 #endif
 
+#if defined(O_CLOEXEC) && defined(O_DIRECTORY) && defined(O_NOFOLLOW)
+#define CODENIB_DIRECTORY_FD_OPEN_SUPPORTED 1
+#else
+#define CODENIB_DIRECTORY_FD_OPEN_SUPPORTED 0
+#endif
+
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
 #endif
@@ -64,6 +70,8 @@
 #define CODENIB_ORPHAN_ATTEMPTS 64
 #define CODENIB_MAX_FILE_WRITE_BYTES (8 * 1024 * 1024)
 #define CODENIB_FD_SAFETY_MARGIN 64
+#define CODENIB_DIRECTORY_FD_CLOSED -1
+#define CODENIB_DIRECTORY_FD_UNOPENED -2
 
 enum workspace_namespace_state {
   WORKSPACE_EMPTY = 0,
@@ -174,6 +182,20 @@ typedef struct WorkspaceOwner {
   int replacement_lock_active;
   uint64_t receipt_generation;
 } WorkspaceOwner;
+
+typedef struct {
+  PyObject_HEAD int fd;
+  int guard_fd;
+  pid_t owner_pid;
+  dev_t device;
+  ino_t inode;
+  int identity_known;
+  int exposed;
+  int active_registered;
+} DirectoryFdOwner;
+
+static Py_ssize_t active_directory_fd_owner_count = 0;
+static pid_t active_directory_fd_owner_pid = 0;
 
 typedef struct {
   PyObject_HEAD WorkspaceOwner *owner;
@@ -641,6 +663,19 @@ static int raw_close_terminal(int descriptor) {
 #else
   (void)descriptor;
   return ENOSYS;
+#endif
+}
+
+static int close_directory_fd_terminal(int descriptor) {
+#if defined(__linux__) && defined(SYS_close)
+  return raw_close_terminal(descriptor);
+#else
+  int result;
+  if (descriptor < 0) {
+    return 0;
+  }
+  result = close(descriptor);
+  return result == 0 ? 0 : (errno == 0 ? EIO : errno);
 #endif
 }
 
@@ -5179,6 +5214,439 @@ static PyType_Spec WorkspaceOwner_spec = {
 
 static PyObject *WorkspaceOwnerTypeObject = NULL;
 
+static int require_directory_fd_owner_pid(DirectoryFdOwner *self) {
+  if (getpid() == self->owner_pid) {
+    return 0;
+  }
+  PyErr_SetString(
+      PyExc_RuntimeError,
+      "native directory descriptor owner cannot cross a PID boundary");
+  return -1;
+}
+
+static void register_active_directory_fd_owner(DirectoryFdOwner *self) {
+  if (!self->active_registered) {
+    if (active_directory_fd_owner_count == 0) {
+      active_directory_fd_owner_pid = self->owner_pid;
+    }
+    self->active_registered = 1;
+    active_directory_fd_owner_count += 1;
+  }
+}
+
+static void
+settle_active_directory_fd_owner_registration(DirectoryFdOwner *self) {
+  if (self->fd == CODENIB_DIRECTORY_FD_CLOSED &&
+      self->guard_fd == CODENIB_DIRECTORY_FD_CLOSED &&
+      self->active_registered) {
+    self->active_registered = 0;
+    if (active_directory_fd_owner_count > 0) {
+      active_directory_fd_owner_count -= 1;
+    }
+    if (active_directory_fd_owner_count == 0) {
+      active_directory_fd_owner_pid = 0;
+    }
+  }
+}
+
+enum directory_fd_slot_state {
+  DIRECTORY_FD_SLOT_ERROR = -1,
+  DIRECTORY_FD_SLOT_DIFFERENT = 0,
+  DIRECTORY_FD_SLOT_EXACT = 1,
+  DIRECTORY_FD_SLOT_CLOSED = 2,
+  DIRECTORY_FD_SLOT_POLICY_CHANGED = 3,
+};
+
+static int inspect_directory_fd_slot(DirectoryFdOwner *self, int descriptor) {
+  struct stat metadata;
+  int flags;
+
+  if (descriptor < 0) {
+    return DIRECTORY_FD_SLOT_CLOSED;
+  }
+  if (native_fstat_retry(descriptor, &metadata) < 0) {
+    if (errno == EBADF) {
+      return DIRECTORY_FD_SLOT_CLOSED;
+    }
+    return DIRECTORY_FD_SLOT_ERROR;
+  }
+  if (!self->identity_known || !S_ISDIR(metadata.st_mode) ||
+      metadata.st_dev != self->device || metadata.st_ino != self->inode) {
+    return DIRECTORY_FD_SLOT_DIFFERENT;
+  }
+  flags = native_fcntl_getfd_retry(descriptor);
+  if (flags < 0) {
+    if (errno == EBADF) {
+      return DIRECTORY_FD_SLOT_CLOSED;
+    }
+    return DIRECTORY_FD_SLOT_ERROR;
+  }
+  if ((flags & FD_CLOEXEC) == 0) {
+    /* The integer can still name the owned OFD.  Keep this distinct from a
+       foreign inode so cleanup never drops an inheritable original merely
+       because its descriptor policy was tampered with. */
+    return DIRECTORY_FD_SLOT_POLICY_CHANGED;
+  }
+  return DIRECTORY_FD_SLOT_EXACT;
+}
+
+static int require_exact_directory_fd_slot(DirectoryFdOwner *self,
+                                           int descriptor) {
+  int state = inspect_directory_fd_slot(self, descriptor);
+  if (state == DIRECTORY_FD_SLOT_EXACT) {
+    return 0;
+  }
+  if (state == DIRECTORY_FD_SLOT_CLOSED) {
+    return EBADF;
+  }
+  if (state == DIRECTORY_FD_SLOT_DIFFERENT) {
+    return ESTALE;
+  }
+  if (state == DIRECTORY_FD_SLOT_POLICY_CHANGED) {
+    return EPERM;
+  }
+  return errno == 0 ? EIO : errno;
+}
+
+static int close_directory_fd_slot(DirectoryFdOwner *self, int *slot) {
+  int descriptor = *slot;
+  int close_error;
+  int state;
+
+  if (descriptor < 0) {
+    *slot = CODENIB_DIRECTORY_FD_CLOSED;
+    return 0;
+  }
+  close_error = close_directory_fd_terminal(descriptor);
+  if (close_error == 0) {
+    *slot = CODENIB_DIRECTORY_FD_CLOSED;
+    return 0;
+  }
+
+  /* Linux normally releases an fd before reporting a late close error, but
+     seccomp can reject close before the syscall executes.  Reinspect the
+     exact slot: retain a still-owned descriptor for a later retry, while an
+     already-closed or foreign replacement is terminal for this owner. */
+  state = inspect_directory_fd_slot(self, descriptor);
+  if (state == DIRECTORY_FD_SLOT_CLOSED ||
+      state == DIRECTORY_FD_SLOT_DIFFERENT) {
+    *slot = CODENIB_DIRECTORY_FD_CLOSED;
+  }
+  return close_error;
+}
+
+static int settle_directory_fd_owner(DirectoryFdOwner *self) {
+  int descriptor = self->fd;
+  int guard = self->guard_fd;
+  int inherited = getpid() != self->owner_pid;
+  int descriptor_error = 0;
+  int guard_error = 0;
+  int verification_error = 0;
+  int descriptor_state;
+  int guard_state;
+
+  if (inherited) {
+    int comparison;
+    if (descriptor == CODENIB_DIRECTORY_FD_UNOPENED &&
+        guard == CODENIB_DIRECTORY_FD_UNOPENED) {
+      self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+      self->guard_fd = CODENIB_DIRECTORY_FD_CLOSED;
+      settle_active_directory_fd_owner_registration(self);
+      return 0;
+    }
+    if (descriptor == CODENIB_DIRECTORY_FD_CLOSED &&
+        guard == CODENIB_DIRECTORY_FD_CLOSED) {
+      return 0;
+    }
+    if (descriptor < 0 || guard < 0) {
+      return ESTALE;
+    }
+    comparison = compare_open_file_description_for_cleanup(descriptor, guard);
+    if (comparison == OFD_COMPARISON_ERROR) {
+      return errno == 0 ? EIO : errno;
+    }
+    if (comparison == OFD_DIFFERENT) {
+      /* An earlier fork-child callback may have replaced either number.  PID
+         mismatch cannot prove which side remains ours, so leave both alone
+         and let the Python at-fork boundary fail-stop the child. */
+      return ESTALE;
+    }
+    verification_error = require_exact_directory_fd_slot(self, descriptor);
+    if (verification_error == 0) {
+      verification_error = require_exact_directory_fd_slot(self, guard);
+    }
+    if (verification_error != 0) {
+      /* Even an OFD-same pair can have been installed by an earlier child
+         callback.  Never close identity-mismatched inherited numbers. */
+      return verification_error == EBADF ? ESTALE : verification_error;
+    }
+  } else if (!self->exposed && descriptor >= 0) {
+    /* Native open publishes the primary slot before its guard and identity
+       acquisition can fail.  Reconstruct missing identity on cleanup, then
+       settle only descriptors still authenticated to that exact directory.
+       Until this succeeds the active registration keeps fork fail-stopped. */
+    if (!self->identity_known) {
+      if (record_identity(descriptor, &self->device, &self->inode, S_IFDIR) <
+          0) {
+        return errno == 0 ? EIO : errno;
+      }
+      self->identity_known = 1;
+    }
+    verification_error = require_exact_directory_fd_slot(self, descriptor);
+    if (verification_error != 0) {
+      return verification_error == EBADF ? ESTALE : verification_error;
+    }
+    if (guard >= 0) {
+      int comparison =
+          compare_open_file_description_for_cleanup(descriptor, guard);
+      if (comparison == OFD_COMPARISON_ERROR) {
+        return errno == 0 ? EIO : errno;
+      }
+      if (comparison == OFD_DIFFERENT) {
+        return ESTALE;
+      }
+      verification_error = require_exact_directory_fd_slot(self, guard);
+      if (verification_error != 0) {
+        return verification_error == EBADF ? ESTALE : verification_error;
+      }
+    }
+    descriptor_error = close_directory_fd_slot(self, &self->fd);
+    if (self->fd == CODENIB_DIRECTORY_FD_CLOSED) {
+      if (self->guard_fd >= 0) {
+        guard_error = close_directory_fd_slot(self, &self->guard_fd);
+      } else {
+        self->guard_fd = CODENIB_DIRECTORY_FD_CLOSED;
+      }
+    }
+    if (self->fd == CODENIB_DIRECTORY_FD_CLOSED &&
+        self->guard_fd == CODENIB_DIRECTORY_FD_CLOSED) {
+      self->identity_known = 0;
+      settle_active_directory_fd_owner_registration(self);
+    }
+    if (descriptor_error != 0) {
+      return descriptor_error;
+    }
+    return guard_error;
+  } else if (descriptor < 0) {
+    if (descriptor == CODENIB_DIRECTORY_FD_UNOPENED &&
+        guard == CODENIB_DIRECTORY_FD_UNOPENED) {
+      self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+      self->guard_fd = CODENIB_DIRECTORY_FD_CLOSED;
+      self->identity_known = 0;
+      settle_active_directory_fd_owner_registration(self);
+      return 0;
+    }
+    self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+    if (guard >= 0) {
+      verification_error = require_exact_directory_fd_slot(self, guard);
+      if (verification_error != 0) {
+        return verification_error == EBADF ? ESTALE : verification_error;
+      }
+      guard_error = close_directory_fd_slot(self, &self->guard_fd);
+    } else {
+      self->guard_fd = CODENIB_DIRECTORY_FD_CLOSED;
+    }
+    if (self->guard_fd == CODENIB_DIRECTORY_FD_CLOSED) {
+      self->identity_known = 0;
+      settle_active_directory_fd_owner_registration(self);
+    }
+    return guard_error;
+  }
+  if (!inherited && guard >= 0 && self->exposed) {
+    int comparison =
+        compare_open_file_description_for_cleanup(descriptor, guard);
+    if (comparison == OFD_COMPARISON_ERROR) {
+      int comparison_error = errno == 0 ? EIO : errno;
+      descriptor_state = inspect_directory_fd_slot(self, descriptor);
+      guard_state = inspect_directory_fd_slot(self, guard);
+      if ((descriptor_state == DIRECTORY_FD_SLOT_CLOSED ||
+           descriptor_state == DIRECTORY_FD_SLOT_DIFFERENT) &&
+          (guard_state == DIRECTORY_FD_SLOT_CLOSED ||
+           guard_state == DIRECTORY_FD_SLOT_DIFFERENT)) {
+        /* Neither integer can still name the recorded owned directory.  Do
+           not touch a foreign replacement, but retire the stale slots and
+           active registration so later forks are not poisoned forever. */
+        self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+        self->guard_fd = CODENIB_DIRECTORY_FD_CLOSED;
+        self->identity_known = 0;
+        settle_active_directory_fd_owner_registration(self);
+        return ESTALE;
+      }
+      if (comparison_error == EBADF &&
+          descriptor_state == DIRECTORY_FD_SLOT_CLOSED &&
+          guard_state == DIRECTORY_FD_SLOT_EXACT) {
+        self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+        guard_error = close_directory_fd_slot(self, &self->guard_fd);
+        if (self->guard_fd == CODENIB_DIRECTORY_FD_CLOSED) {
+          self->identity_known = 0;
+          settle_active_directory_fd_owner_registration(self);
+        }
+        return guard_error != 0 ? guard_error : ESTALE;
+      }
+      /* Keep the complete pair when the comparison itself was inconclusive.
+         A later explicit cleanup retry can authenticate it; dropping the
+         guard would make the exposed descriptor number unsafe to close. */
+      return comparison_error;
+    }
+    if (comparison == OFD_DIFFERENT) {
+      descriptor_state = inspect_directory_fd_slot(self, descriptor);
+      guard_state = inspect_directory_fd_slot(self, guard);
+      if ((descriptor_state == DIRECTORY_FD_SLOT_CLOSED ||
+           descriptor_state == DIRECTORY_FD_SLOT_DIFFERENT) &&
+          (guard_state == DIRECTORY_FD_SLOT_CLOSED ||
+           guard_state == DIRECTORY_FD_SLOT_DIFFERENT)) {
+        self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+        self->guard_fd = CODENIB_DIRECTORY_FD_CLOSED;
+        self->identity_known = 0;
+        settle_active_directory_fd_owner_registration(self);
+        return ESTALE;
+      }
+      if (descriptor_state == DIRECTORY_FD_SLOT_ERROR) {
+        return errno == 0 ? EIO : errno;
+      }
+      if (descriptor_state == DIRECTORY_FD_SLOT_EXACT ||
+          descriptor_state == DIRECTORY_FD_SLOT_POLICY_CHANGED) {
+        /* The public slot can still be the original OFD while an enumerable
+           hidden-guard number was independently reopened onto the same inode.
+           Exact metadata does not prove OFD continuity: retain both slots and
+           the fork guard until a caller restores an OFD-same pair. */
+        return ESTALE;
+      }
+      if (guard_state != DIRECTORY_FD_SLOT_EXACT) {
+        /* Either side may have been replaced.  Without an exact hidden guard
+           there is no remaining capability that identifies the owned OFD. */
+        return guard_state == DIRECTORY_FD_SLOT_ERROR
+                   ? (errno == 0 ? EIO : errno)
+                   : ESTALE;
+      }
+      /* The exposed integer was closed and reused.  Close only the hidden
+         original; never touch the foreign descriptor now using that number. */
+      self->fd = CODENIB_DIRECTORY_FD_CLOSED;
+      guard_error = close_directory_fd_slot(self, &self->guard_fd);
+      if (self->guard_fd == CODENIB_DIRECTORY_FD_CLOSED) {
+        self->identity_known = 0;
+        settle_active_directory_fd_owner_registration(self);
+      }
+      return guard_error != 0 ? guard_error : ESTALE;
+    }
+  }
+  if (guard < 0 && self->exposed) {
+    return ESTALE;
+  }
+  if (!self->identity_known) {
+    verification_error = ESTALE;
+  } else {
+    verification_error = require_exact_directory_fd_slot(self, descriptor);
+    if (verification_error == 0) {
+      verification_error = require_exact_directory_fd_slot(self, guard);
+    }
+  }
+  if (verification_error != 0) {
+    /* Authentication failures never authorize a close.  This is especially
+       important in a fork child, where earlier callbacks may have reused both
+       stored numbers for an unrelated OFD. */
+    return verification_error == EBADF ? ESTALE : verification_error;
+  }
+
+  descriptor_error = close_directory_fd_slot(self, &self->fd);
+  if (self->fd == CODENIB_DIRECTORY_FD_CLOSED) {
+    guard_error = close_directory_fd_slot(self, &self->guard_fd);
+  }
+  if (self->fd == CODENIB_DIRECTORY_FD_CLOSED &&
+      self->guard_fd == CODENIB_DIRECTORY_FD_CLOSED) {
+    self->identity_known = 0;
+    settle_active_directory_fd_owner_registration(self);
+  }
+  if (descriptor_error != 0) {
+    return descriptor_error;
+  }
+  return guard_error;
+}
+
+static PyObject *DirectoryFdOwner_new(PyTypeObject *type, PyObject *args,
+                                      PyObject *keywords) {
+  (void)type;
+  (void)args;
+  (void)keywords;
+  PyErr_SetString(PyExc_TypeError,
+                  "native directory descriptor owners cannot be constructed");
+  return NULL;
+}
+
+static void DirectoryFdOwner_dealloc(DirectoryFdOwner *self) {
+  freefunc release;
+  PyObject *error_type;
+  PyObject *error_value;
+  PyObject *error_traceback;
+  int settle_error;
+
+  PyErr_Fetch(&error_type, &error_value, &error_traceback);
+  settle_error = settle_directory_fd_owner(self);
+  (void)settle_error;
+  release = (freefunc)PyType_GetSlot(Py_TYPE(self), Py_tp_free);
+  if (release != NULL) {
+    release((PyObject *)self);
+  }
+  PyErr_Restore(error_type, error_value, error_traceback);
+}
+
+static PyType_Slot DirectoryFdOwner_slots[] = {
+    {Py_tp_new, DirectoryFdOwner_new},
+    {Py_tp_dealloc, DirectoryFdOwner_dealloc},
+    {Py_tp_doc, "Opaque native owner for one directory descriptor."},
+    {0, NULL},
+};
+
+static PyType_Spec DirectoryFdOwner_spec = {
+    "codenib._workspace_owner_impl._DirectoryFdOwner",
+    sizeof(DirectoryFdOwner),
+    0,
+    Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
+    DirectoryFdOwner_slots,
+};
+
+static PyObject *DirectoryFdOwnerTypeObject = NULL;
+
+static DirectoryFdOwner *require_directory_fd_owner_exact(PyObject *candidate) {
+  if (DirectoryFdOwnerTypeObject == NULL ||
+      Py_TYPE(candidate) != (PyTypeObject *)DirectoryFdOwnerTypeObject) {
+    PyErr_SetString(PyExc_TypeError,
+                    "directory descriptor owner has an invalid native type");
+    return NULL;
+  }
+  return (DirectoryFdOwner *)candidate;
+}
+
+static PyObject *new_directory_fd_owner(void) {
+  allocfunc allocate;
+  DirectoryFdOwner *owner;
+
+  if (DirectoryFdOwnerTypeObject == NULL) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native directory descriptor owner type is unavailable");
+    return NULL;
+  }
+  allocate = (allocfunc)PyType_GetSlot(
+      (PyTypeObject *)DirectoryFdOwnerTypeObject, Py_tp_alloc);
+  if (allocate == NULL) {
+    return NULL;
+  }
+  owner = (DirectoryFdOwner *)allocate(
+      (PyTypeObject *)DirectoryFdOwnerTypeObject, 0);
+  if (owner == NULL) {
+    return NULL;
+  }
+  owner->fd = CODENIB_DIRECTORY_FD_UNOPENED;
+  owner->guard_fd = CODENIB_DIRECTORY_FD_UNOPENED;
+  owner->owner_pid = getpid();
+  owner->device = 0;
+  owner->inode = 0;
+  owner->identity_known = 0;
+  owner->exposed = 0;
+  owner->active_registered = 0;
+  return (PyObject *)owner;
+}
+
 static PyObject *WorkspacePublishPermit_new(PyTypeObject *type, PyObject *args,
                                             PyObject *keywords) {
   (void)type;
@@ -5835,7 +6303,312 @@ static PyObject *module_require_owner_exact(PyObject *module, PyObject *owner) {
   return owner;
 }
 
+static PyObject *
+module_create_directory_fd_owner_exact(PyObject *module,
+                                       PyObject *Py_UNUSED(ignored)) {
+  (void)module;
+  return new_directory_fd_owner();
+}
+
+static PyObject *module_open_directory_fd_exact(PyObject *module,
+                                                PyObject *args) {
+  DirectoryFdOwner *owner;
+  PyObject *path_object;
+  char *path;
+  Py_ssize_t path_size;
+  int descriptor = -1;
+  int guard = -1;
+  int error;
+  int attempts;
+  dev_t device;
+  ino_t inode;
+
+  (void)module;
+  if (!PyTuple_CheckExact(args) || PyTuple_Size(args) != 2) {
+    PyErr_SetString(PyExc_TypeError,
+                    "open_directory_fd_exact requires exactly 2 arguments");
+    return NULL;
+  }
+  owner = require_directory_fd_owner_exact(PyTuple_GetItem(args, 0));
+  path_object = PyTuple_GetItem(args, 1);
+  if (owner == NULL || path_object == NULL) {
+    return NULL;
+  }
+  if (require_directory_fd_owner_pid(owner) < 0) {
+    return NULL;
+  }
+  if (owner->fd != CODENIB_DIRECTORY_FD_UNOPENED) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native directory descriptor owner cannot be reopened");
+    return NULL;
+  }
+  if (!CODENIB_DIRECTORY_FD_OPEN_SUPPORTED) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native directory descriptor open flags are unavailable");
+    return NULL;
+  }
+  if (!PyBytes_CheckExact(path_object)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "directory descriptor path must be exact bytes");
+    return NULL;
+  }
+  if (PyBytes_AsStringAndSize(path_object, &path, &path_size) < 0) {
+    return NULL;
+  }
+  if (path_size <= 0 || path_size > CODENIB_MAX_PATH_BYTES ||
+      memchr(path, '\0', (size_t)path_size) != NULL) {
+    PyErr_SetString(
+        PyExc_ValueError,
+        "directory descriptor path is empty, unbounded, or contains NUL");
+    return NULL;
+  }
+  for (attempts = 0; attempts < 64; ++attempts) {
+    descriptor = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (descriptor >= 0 || errno != EINTR) {
+      break;
+    }
+  }
+  if (descriptor < 0) {
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  /* Commit the first exact fd and fork-failstop registration before guard
+     duplication, identity capture, or any cleanup attempt can fail.  Python's
+     precreated construction owner can therefore settle every partial state. */
+  owner->fd = descriptor;
+  register_active_directory_fd_owner(owner);
+  guard = duplicate_cloexec(descriptor);
+  if (guard < 0) {
+    error = errno == 0 ? EIO : errno;
+    if (record_identity(descriptor, &device, &inode, S_IFDIR) == 0) {
+      owner->device = device;
+      owner->inode = inode;
+      owner->identity_known = 1;
+    }
+    errno = error;
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  owner->guard_fd = guard;
+  if (record_identity(descriptor, &device, &inode, S_IFDIR) < 0) {
+    error = errno == 0 ? EIO : errno;
+    errno = error;
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  /* This assignment is the ownership commit point.  No Python operation can
+     observe either descriptor between successful acquisition and native
+     retention.  The hidden duplicate authenticates the exposed integer at
+     every later borrow and close. */
+  owner->device = device;
+  owner->inode = inode;
+  owner->identity_known = 1;
+  /* Authenticate every later close, even before the explicit Python borrow.
+     An earlier-registered fork-child callback can inspect, close, and reuse a
+     process fd number after native open returns but before Python stores it. */
+  owner->exposed = 1;
+  Py_RETURN_NONE;
+}
+
+static PyObject *module_borrow_directory_fd_exact(PyObject *module,
+                                                  PyObject *candidate) {
+  DirectoryFdOwner *owner;
+  int comparison;
+  struct stat metadata;
+
+  (void)module;
+  owner = require_directory_fd_owner_exact(candidate);
+  if (owner == NULL) {
+    return NULL;
+  }
+  if (require_directory_fd_owner_pid(owner) < 0) {
+    return NULL;
+  }
+  if (owner->fd < 0 || owner->guard_fd < 0 || !owner->identity_known) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native directory descriptor owner is not open");
+    return NULL;
+  }
+  comparison =
+      compare_open_file_description_for_cleanup(owner->fd, owner->guard_fd);
+  if (comparison != OFD_SAME) {
+    if (comparison == OFD_DIFFERENT || errno == 0) {
+      errno = ESTALE;
+    }
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  if (native_fstat_retry(owner->fd, &metadata) < 0) {
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  if (!S_ISDIR(metadata.st_mode) || metadata.st_dev != owner->device ||
+      metadata.st_ino != owner->inode) {
+    errno = ESTALE;
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  /* Mark the number exposed before allocating its Python representation so a
+     failed return handoff still forces authenticated cleanup. */
+  owner->exposed = 1;
+  return PyLong_FromLong(owner->fd);
+}
+
+static PyObject *module_mkdir_directory_fd_child_exact(PyObject *module,
+                                                       PyObject *args) {
+  DirectoryFdOwner *owner;
+  PyObject *name_object;
+  PyObject *pre_mutation_check;
+  PyObject *check_result;
+  char *name;
+  Py_ssize_t name_size;
+  int comparison;
+  int attempts;
+  int verification_error;
+
+  (void)module;
+  if (!PyTuple_CheckExact(args) || PyTuple_Size(args) != 3) {
+    PyErr_SetString(
+        PyExc_TypeError,
+        "mkdir_directory_fd_child_exact requires exactly 3 arguments");
+    return NULL;
+  }
+  owner = require_directory_fd_owner_exact(PyTuple_GetItem(args, 0));
+  name_object = PyTuple_GetItem(args, 1);
+  pre_mutation_check = PyTuple_GetItem(args, 2);
+  if (owner == NULL || name_object == NULL || pre_mutation_check == NULL) {
+    return NULL;
+  }
+  if (require_directory_fd_owner_pid(owner) < 0) {
+    return NULL;
+  }
+  if (owner->fd < 0 || owner->guard_fd < 0 || !owner->identity_known) {
+    PyErr_SetString(PyExc_RuntimeError,
+                    "native directory descriptor owner is not open");
+    return NULL;
+  }
+  if (!PyBytes_CheckExact(name_object)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "directory child name must be exact bytes");
+    return NULL;
+  }
+  if (PyBytes_AsStringAndSize(name_object, &name, &name_size) < 0) {
+    return NULL;
+  }
+  if (name_size <= 0 || name_size > CODENIB_MAX_COMPONENT_BYTES ||
+      memchr(name, '\0', (size_t)name_size) != NULL ||
+      memchr(name, '/', (size_t)name_size) != NULL ||
+      (name_size == 1 && name[0] == '.') ||
+      (name_size == 2 && name[0] == '.' && name[1] == '.')) {
+    PyErr_SetString(PyExc_ValueError,
+                    "directory child name is invalid or unbounded");
+    return NULL;
+  }
+  if (!PyCallable_Check(pre_mutation_check)) {
+    PyErr_SetString(PyExc_TypeError,
+                    "directory pre-mutation check must be callable");
+    return NULL;
+  }
+
+  check_result = PyObject_CallNoArgs(pre_mutation_check);
+  if (check_result == NULL) {
+    return NULL;
+  }
+  if (check_result != Py_None) {
+    Py_DECREF(check_result);
+    PyErr_SetString(PyExc_RuntimeError,
+                    "directory pre-mutation check returned a result");
+    return NULL;
+  }
+  Py_DECREF(check_result);
+
+  /* No ordinary Python instruction, signal poll, or caller-controlled decref
+     occurs in this native frame between the final topology check and mkdirat.
+     Reauthenticate the opaque owner after the callback in case it settled the
+     descriptor itself.  Python tracing and separately privileged actors can
+     still mutate path or mount topology at callback boundaries, so callers
+     must retain the documented controlled, quiescent-namespace contract. */
+  comparison =
+      compare_open_file_description_for_cleanup(owner->fd, owner->guard_fd);
+  if (comparison != OFD_SAME) {
+    if (comparison == OFD_DIFFERENT || errno == 0) {
+      errno = ESTALE;
+    }
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  verification_error = require_exact_directory_fd_slot(owner, owner->fd);
+  if (verification_error == 0) {
+    verification_error =
+        require_exact_directory_fd_slot(owner, owner->guard_fd);
+  }
+  if (verification_error != 0) {
+    errno = verification_error;
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  for (attempts = 0; attempts < 64; ++attempts) {
+    if (mkdirat(owner->fd, name, 0700) == 0) {
+      Py_RETURN_TRUE;
+    }
+    if (errno == EEXIST) {
+      Py_RETURN_FALSE;
+    }
+    if (errno != EINTR) {
+      break;
+    }
+  }
+  return PyErr_SetFromErrno(PyExc_OSError);
+}
+
+static PyObject *module_close_directory_fd_owner_exact(PyObject *module,
+                                                       PyObject *candidate) {
+  DirectoryFdOwner *owner;
+  int close_error;
+
+  (void)module;
+  owner = require_directory_fd_owner_exact(candidate);
+  if (owner == NULL) {
+    return NULL;
+  }
+  if (owner->fd == CODENIB_DIRECTORY_FD_CLOSED &&
+      owner->guard_fd == CODENIB_DIRECTORY_FD_CLOSED) {
+    Py_RETURN_NONE;
+  }
+  close_error = settle_directory_fd_owner(owner);
+  if (close_error != 0) {
+    errno = close_error;
+    return PyErr_SetFromErrno(PyExc_OSError);
+  }
+  Py_RETURN_NONE;
+}
+
+static PyObject *module_directory_fd_owner_closed_exact(PyObject *module,
+                                                        PyObject *candidate) {
+  DirectoryFdOwner *owner;
+
+  (void)module;
+  owner = require_directory_fd_owner_exact(candidate);
+  if (owner == NULL) {
+    return NULL;
+  }
+  return PyBool_FromLong(owner->fd == CODENIB_DIRECTORY_FD_CLOSED &&
+                         owner->guard_fd == CODENIB_DIRECTORY_FD_CLOSED);
+}
+
+static PyObject *module_fail_fork_child_if_directory_fd_owner_active_exact(
+    PyObject *module, PyObject *Py_UNUSED(ignored)) {
+  (void)module;
+  if (active_directory_fd_owner_count > 0) {
+    if (active_directory_fd_owner_pid == getpid()) {
+      PyErr_SetString(
+          PyExc_RuntimeError,
+          "native directory fork guard requires a fork-child process");
+      return NULL;
+    }
+    /* The Python facade registers this exact C callable directly.  It never
+       guesses which enumerable fd numbers survived an earlier child callback:
+       process exit releases every inherited OFD without affecting the parent.
+     */
+    _exit(70);
+  }
+  Py_RETURN_NONE;
+}
+
 #define CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION 6
+#define CODENIB_DIRECTORY_FD_OWNER_PROTOCOL_VERSION 1
 
 static PyObject *module_require_support(PyObject *module,
                                         PyObject *Py_UNUSED(ignored)) {
@@ -5876,6 +6649,26 @@ static PyMethodDef workspace_module_methods[] = {
      "Create the internally pinned exact native owner type."},
     {"require_owner_exact", (PyCFunction)module_require_owner_exact, METH_O,
      "Authenticate against the internally pinned native owner type."},
+    {"create_directory_fd_owner_exact",
+     (PyCFunction)module_create_directory_fd_owner_exact, METH_NOARGS,
+     "Create one pre-open exact native directory descriptor owner."},
+    {"open_directory_fd_exact", (PyCFunction)module_open_directory_fd_exact,
+     METH_VARARGS, "Open a directory directly into its exact native owner."},
+    {"borrow_directory_fd_exact", (PyCFunction)module_borrow_directory_fd_exact,
+     METH_O,
+     "Borrow the descriptor retained by an exact native directory owner."},
+    {"mkdir_directory_fd_child_exact",
+     (PyCFunction)module_mkdir_directory_fd_child_exact, METH_VARARGS,
+     "Create one child after an exact final pre-mutation callback."},
+    {"close_directory_fd_owner_exact",
+     (PyCFunction)module_close_directory_fd_owner_exact, METH_O,
+     "Close an exact native directory descriptor owner."},
+    {"directory_fd_owner_closed_exact",
+     (PyCFunction)module_directory_fd_owner_closed_exact, METH_O,
+     "Return whether an exact native directory owner was settled."},
+    {"fail_fork_child_if_directory_fd_owner_active_exact",
+     (PyCFunction)module_fail_fork_child_if_directory_fd_owner_active_exact,
+     METH_NOARGS, "Fail-stop a fork child that inherited a live owner."},
     {"provision_owner_exact", (PyCFunction)module_provision_owner_exact,
      METH_VARARGS, "Provision through exact native-owner dispatch."},
     {"provision_owner_interruptibly_exact",
@@ -5982,6 +6775,7 @@ PyMODINIT_FUNC PyInit__workspace_owner_impl(void) {
   PyObject *publish_permit_type;
   PyObject *replacement_permit_type;
   PyObject *receipt_token_type;
+  PyObject *directory_fd_owner_type;
 
   module = PyModule_Create(&workspace_owner_module);
   if (module == NULL) {
@@ -5989,6 +6783,17 @@ PyMODINIT_FUNC PyInit__workspace_owner_impl(void) {
   }
   if (PyModule_AddIntConstant(module, "workspace_owner_protocol_version",
                               CODENIB_WORKSPACE_OWNER_PROTOCOL_VERSION) < 0) {
+    Py_DECREF(module);
+    return NULL;
+  }
+  if (PyModule_AddIntConstant(module, "directory_fd_owner_protocol_version",
+                              CODENIB_DIRECTORY_FD_OWNER_PROTOCOL_VERSION) <
+      0) {
+    Py_DECREF(module);
+    return NULL;
+  }
+  if (PyModule_AddIntConstant(module, "directory_fd_owner_supported",
+                              CODENIB_DIRECTORY_FD_OPEN_SUPPORTED) < 0) {
     Py_DECREF(module);
     return NULL;
   }
@@ -6018,9 +6823,19 @@ PyMODINIT_FUNC PyInit__workspace_owner_impl(void) {
     Py_DECREF(module);
     return NULL;
   }
+  directory_fd_owner_type = PyType_FromSpec(&DirectoryFdOwner_spec);
+  if (directory_fd_owner_type == NULL) {
+    Py_DECREF(receipt_token_type);
+    Py_DECREF(replacement_permit_type);
+    Py_DECREF(publish_permit_type);
+    Py_DECREF(owner_type);
+    Py_DECREF(module);
+    return NULL;
+  }
   /* Keep the exact type private: every operation enters through a pinned
      module-level wrapper, never through mutable attribute dispatch. */
   WorkspaceOwnerTypeObject = owner_type;
+  DirectoryFdOwnerTypeObject = directory_fd_owner_type;
   WorkspacePublishPermitTypeObject = publish_permit_type;
   WorkspaceReplacementPermitTypeObject = replacement_permit_type;
   WorkspaceReceiptTokenTypeObject = receipt_token_type;

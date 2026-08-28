@@ -634,6 +634,18 @@ def test_registry_publishers_use_separate_workflows() -> None:
     )
     wheel_smoke = wheel_env["CIBW_TEST_COMMAND"]
     assert "workspace_owner_protocol_version == 6" in wheel_smoke
+    assert "directory_fd_owner_protocol_version == 1" in wheel_smoke
+    assert "directory_fd_owner_supported == 1" in wheel_smoke
+    for symbol in (
+        "create_directory_fd_owner_exact",
+        "open_directory_fd_exact",
+        "borrow_directory_fd_exact",
+        "mkdir_directory_fd_child_exact",
+        "close_directory_fd_owner_exact",
+        "directory_fd_owner_closed_exact",
+        "fail_fork_child_if_directory_fd_owner_active_exact",
+    ):
+        assert symbol in wheel_smoke
     for symbol in (
         "provision_owner_interruptibly_exact",
         "capture_owner_destination_exact",
@@ -669,6 +681,19 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "not os.get_inheritable(parent_descriptor)" in wheel_smoke
     assert "implementation.require_support() is None" in wheel_smoke
     assert "_workspace_owner.require_support()" in wheel_smoke
+    assert "_workspace_owner._directory_fd_owner_protocol_available" in wheel_smoke
+    assert "_workspace_owner._require_directory_fd_owner_support()" in wheel_smoke
+    for call in (
+        "_workspace_owner._create_directory_fd_owner()",
+        "_workspace_owner._open_directory_fd(",
+        "_workspace_owner._borrow_directory_fd(",
+        "_workspace_owner._mkdir_directory_fd_child(",
+        "_workspace_owner._close_directory_fd_owner(",
+        "_workspace_owner._directory_fd_owner_closed(",
+    ):
+        assert call in wheel_smoke
+    assert "stat.S_ISDIR(os.fstat(directory_descriptor).st_mode)" in wheel_smoke
+    assert "not os.get_inheritable(directory_descriptor)" in wheel_smoke
 
     limited_abi_job = verification["jobs"]["limited-abi-compile"]
     assert "if" not in limited_abi_job
@@ -714,6 +739,7 @@ def test_registry_publishers_use_separate_workflows() -> None:
     assert "scripts/smoke_release_install.py" in source_exercise
     assert 'find_spec("codenib._workspace_owner_impl")' in source_exercise
     assert "_workspace_owner.require_support()" in source_exercise
+    assert "_workspace_owner._require_directory_fd_owner_support()" in source_exercise
     assert "LocalWorkspaceProvider(Path(root))" in source_exercise
     assert "provider.require_support()" in source_exercise
     assert "UnsupportedWorkspaceCreation" in source_exercise
@@ -736,6 +762,18 @@ def test_registry_publishers_use_separate_workflows() -> None:
     ]
     assert 'name == "_workspace_owner_impl.abi3.so"' in abi3_exercise
     assert "workspace_owner_protocol_version == 6" in abi3_exercise
+    assert "directory_fd_owner_protocol_version == 1" in abi3_exercise
+    assert "directory_fd_owner_supported == 1" in abi3_exercise
+    for symbol in (
+        "create_directory_fd_owner_exact",
+        "open_directory_fd_exact",
+        "borrow_directory_fd_exact",
+        "mkdir_directory_fd_child_exact",
+        "close_directory_fd_owner_exact",
+        "directory_fd_owner_closed_exact",
+        "fail_fork_child_if_directory_fd_owner_active_exact",
+    ):
+        assert symbol in abi3_exercise
     for symbol in (
         "provision_owner_interruptibly_exact",
         "capture_owner_destination_exact",
@@ -753,6 +791,19 @@ def test_registry_publishers_use_separate_workflows() -> None:
         assert symbol in abi3_exercise
     assert "implementation.require_support() is None" in abi3_exercise
     assert "_workspace_owner.require_support() is None" in abi3_exercise
+    assert "_workspace_owner._directory_fd_owner_protocol_available" in abi3_exercise
+    assert "_workspace_owner._require_directory_fd_owner_support()" in abi3_exercise
+    for call in (
+        "_workspace_owner._create_directory_fd_owner()",
+        "_workspace_owner._open_directory_fd(",
+        "_workspace_owner._borrow_directory_fd(",
+        "_workspace_owner._mkdir_directory_fd_child(",
+        "_workspace_owner._close_directory_fd_owner(",
+        "_workspace_owner._directory_fd_owner_closed(",
+    ):
+        assert call in abi3_exercise
+    assert "stat.S_ISDIR(os.fstat(directory_descriptor).st_mode)" in abi3_exercise
+    assert "not os.get_inheritable(directory_descriptor)" in abi3_exercise
     assert "LocalWorkspaceProvider(root)" in abi3_exercise
     assert "run_strict_workspace(" in abi3_exercise
     assert "root.mkdir(mode=0o700)" in abi3_exercise

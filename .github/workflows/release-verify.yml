@@ -128,6 +128,21 @@ jobs:
 
             assert platform.machine() == '${{ matrix.arch }}'
             assert implementation.workspace_owner_protocol_version == 6
+            assert implementation.directory_fd_owner_protocol_version == 1
+            assert implementation.directory_fd_owner_supported == 1
+            directory_fd_owner_symbols = (
+                "create_directory_fd_owner_exact",
+                "open_directory_fd_exact",
+                "borrow_directory_fd_exact",
+                "mkdir_directory_fd_child_exact",
+                "close_directory_fd_owner_exact",
+                "directory_fd_owner_closed_exact",
+                "fail_fork_child_if_directory_fd_owner_active_exact",
+            )
+            assert all(
+                callable(getattr(implementation, name, None))
+                for name in directory_fd_owner_symbols
+            )
             protocol_v6_symbols = (
                 "provision_owner_interruptibly_exact",
                 "capture_owner_destination_exact",
@@ -166,6 +181,8 @@ jobs:
             )
             assert implementation.require_support() is None
             assert _workspace_owner.require_support() is None
+            assert _workspace_owner._directory_fd_owner_protocol_available
+            assert _workspace_owner._require_directory_fd_owner_support() is None
 
             plan_digest = hashlib.sha256(b"cibuildwheel-protocol-v6").hexdigest()
             plan_digest_bytes = plan_digest.encode("ascii")
@@ -293,6 +310,32 @@ jobs:
 
             with TemporaryDirectory() as temporary:
                 root = Path(temporary)
+
+                lease_directory = root / "lease"
+                lease_directory.mkdir(mode=0o700)
+                directory_owner = _workspace_owner._create_directory_fd_owner()
+                _workspace_owner._open_directory_fd(
+                    directory_owner,
+                    os.fsencode(lease_directory),
+                )
+                directory_descriptor = _workspace_owner._borrow_directory_fd(
+                    directory_owner
+                )
+                assert stat.S_ISDIR(os.fstat(directory_descriptor).st_mode)
+                assert not os.get_inheritable(directory_descriptor)
+                assert _workspace_owner._mkdir_directory_fd_child(
+                    directory_owner,
+                    b"child",
+                    lambda: None,
+                )
+                assert not _workspace_owner._mkdir_directory_fd_child(
+                    directory_owner,
+                    b"child",
+                    lambda: None,
+                )
+                assert (lease_directory / "child").is_dir()
+                _workspace_owner._close_directory_fd_owner(directory_owner)
+                assert _workspace_owner._directory_fd_owner_closed(directory_owner)
 
                 success_root = root / "success"
                 success_root.mkdir(mode=0o700)
@@ -607,6 +650,12 @@ jobs:
               pass
           else:
               raise SystemExit("workspace support did not fail closed")
+          try:
+              _workspace_owner._require_directory_fd_owner_support()
+          except RuntimeError:
+              pass
+          else:
+              raise SystemExit("directory-fd-owner support did not fail closed")
 
           with TemporaryDirectory() as root:
               provider = LocalWorkspaceProvider(Path(root))
@@ -683,6 +732,21 @@ jobs:
 
           assert Path(implementation.__file__).name == "_workspace_owner_impl.abi3.so"
           assert implementation.workspace_owner_protocol_version == 6
+          assert implementation.directory_fd_owner_protocol_version == 1
+          assert implementation.directory_fd_owner_supported == 1
+          directory_fd_owner_symbols = (
+              "create_directory_fd_owner_exact",
+              "open_directory_fd_exact",
+              "borrow_directory_fd_exact",
+              "mkdir_directory_fd_child_exact",
+              "close_directory_fd_owner_exact",
+              "directory_fd_owner_closed_exact",
+              "fail_fork_child_if_directory_fd_owner_active_exact",
+          )
+          assert all(
+              callable(getattr(implementation, name, None))
+              for name in directory_fd_owner_symbols
+          )
           protocol_v6_symbols = (
               "provision_owner_interruptibly_exact",
               "capture_owner_destination_exact",
@@ -703,6 +767,8 @@ jobs:
           )
           assert implementation.require_support() is None
           assert _workspace_owner.require_support() is None
+          assert _workspace_owner._directory_fd_owner_protocol_available
+          assert _workspace_owner._require_directory_fd_owner_support() is None
           facade_v6_symbols = (
               "provision_owner",
               "capture_owner_destination",
@@ -728,6 +794,31 @@ jobs:
               root.mkdir(mode=0o700)
               root.chmod(0o700)
               assert stat.S_IMODE(root.stat().st_mode) == 0o700
+              lease_directory = root / "lease"
+              lease_directory.mkdir(mode=0o700)
+              directory_owner = _workspace_owner._create_directory_fd_owner()
+              _workspace_owner._open_directory_fd(
+                  directory_owner,
+                  os.fsencode(lease_directory),
+              )
+              directory_descriptor = _workspace_owner._borrow_directory_fd(
+                  directory_owner
+              )
+              assert stat.S_ISDIR(os.fstat(directory_descriptor).st_mode)
+              assert not os.get_inheritable(directory_descriptor)
+              assert _workspace_owner._mkdir_directory_fd_child(
+                  directory_owner,
+                  b"child",
+                  lambda: None,
+              )
+              assert not _workspace_owner._mkdir_directory_fd_child(
+                  directory_owner,
+                  b"child",
+                  lambda: None,
+              )
+              assert (lease_directory / "child").is_dir()
+              _workspace_owner._close_directory_fd_owner(directory_owner)
+              assert _workspace_owner._directory_fd_owner_closed(directory_owner)
               destination = root / "published"
               provider = LocalWorkspaceProvider(root)
               provider.require_support()

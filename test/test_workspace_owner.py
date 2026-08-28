@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import ctypes.util
+import errno
 import fcntl
 import gc
 import hashlib
@@ -1042,6 +1043,98 @@ def test_workspace_owner_facade_rejects_each_incomplete_protocol_v6_abi() -> Non
     )
 
 
+def test_directory_fd_owner_protocol_is_additive_to_workspace_protocol() -> None:
+    workspace_symbols = (
+        "require_support",
+        "create_owner_exact",
+        "claim_owner_publish_permit_exact",
+        "claim_owner_replacement_permit_exact",
+        "require_owner_exact",
+        "close_owner_exact",
+        "provision_owner_exact",
+        "provision_owner_interruptibly_exact",
+        "capture_owner_destination_exact",
+        "acquire_owner_replacement_lease_exact",
+        "provision_owner_replacement_exact",
+        "provision_owner_replacement_interruptibly_exact",
+        "verify_owner_authority_exact",
+        "verify_owner_adoption_binding_exact",
+        "verify_owner_destination_binding_exact",
+        "verify_owner_replacement_binding_exact",
+        "borrow_owner_parent_descriptor_exact",
+        "borrow_owner_root_descriptor_exact",
+        "borrow_owner_destination_descriptor_exact",
+        "borrow_owner_directory_descriptor_exact",
+        "begin_owner_file_exact",
+        "write_owner_file_exact",
+        "finish_owner_file_exact",
+        "abort_owner_file_exact",
+        "seal_owner_directories_exact",
+        "seal_owner_directories_interruptibly_exact",
+        "sync_owner_parent_exact",
+        "mark_owner_adopted_exact",
+        "rename_owner_child_noreplace_exact",
+        "exchange_owner_replacement_exact",
+        "commit_owner_receipt_exact",
+        "abort_owner_exact",
+        "quarantine_owner_exact",
+        "owner_state_exact",
+        "owner_closed_exact",
+    )
+    script = textwrap.dedent(
+        f"""
+        import sys
+        import types
+
+        implementation = types.ModuleType("codenib._workspace_owner_impl")
+        implementation.workspace_owner_protocol_version = 6
+        for name in {workspace_symbols!r}:
+            setattr(implementation, name, lambda *args, **kwargs: None)
+        sys.modules[implementation.__name__] = implementation
+
+        import codenib._workspace_owner as facade
+
+        assert facade._workspace_owner_protocol_available
+        assert not facade._directory_fd_owner_protocol_available
+        assert facade.require_support() is None
+        try:
+            facade._require_directory_fd_owner_support()
+        except RuntimeError as error:
+            assert "directory-fd-owner extension ABI" in str(error)
+        else:
+            raise AssertionError("missing additive fd-owner ABI was accepted")
+        """
+    )
+    repository_root = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(repository_root), environment.get("PYTHONPATH", ""))
+    )
+
+    subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repository_root,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_directory_fd_owner_support_rejects_missing_native_flags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        workspace_owner,
+        "_directory_fd_owner_protocol_available",
+        True,
+    )
+    monkeypatch.setattr(workspace_owner, "_directory_fd_owner_supported", 0)
+
+    with pytest.raises(RuntimeError, match="native directory open flags"):
+        workspace_owner._require_directory_fd_owner_support()
+
+
 def test_workspace_owner_cleanup_does_not_repeat_the_support_probe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1069,6 +1162,599 @@ def test_workspace_owner_cleanup_does_not_repeat_the_support_probe(
     assert workspace_owner.require_exact_owner(candidate) is candidate
     assert workspace_owner.close_owner_exact(candidate) is None
     assert closed == [candidate]
+
+
+def test_native_directory_fd_owner_has_exact_lifecycle(tmp_path: Path) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    directory = tmp_path / "leased"
+    directory.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+
+    assert not workspace_owner._directory_fd_owner_closed(owner)
+    with pytest.raises(RuntimeError, match="not open"):
+        workspace_owner._borrow_directory_fd(owner)
+
+    assert workspace_owner._open_directory_fd(owner, os.fsencode(directory)) is None
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    metadata = os.fstat(descriptor)
+    assert stat.S_ISDIR(metadata.st_mode)
+    assert fcntl.fcntl(descriptor, fcntl.F_GETFD) & fcntl.FD_CLOEXEC
+    assert fcntl.fcntl(descriptor, fcntl.F_GETFL) & os.O_ACCMODE == os.O_RDONLY
+    checks: list[bool] = []
+
+    def check_before_mkdir() -> None:
+        checks.append(True)
+
+    assert workspace_owner._mkdir_directory_fd_child(
+        owner,
+        b"child",
+        check_before_mkdir,
+    )
+    assert not workspace_owner._mkdir_directory_fd_child(
+        owner,
+        b"child",
+        check_before_mkdir,
+    )
+    assert checks == [True, True]
+    assert (directory / "child").is_dir()
+    with pytest.raises(RuntimeError, match="cannot be reopened"):
+        workspace_owner._open_directory_fd(owner, os.fsencode(directory))
+    assert workspace_owner._close_directory_fd_owner(owner) is None
+    assert workspace_owner._close_directory_fd_owner(owner) is None
+    assert workspace_owner._directory_fd_owner_closed(owner)
+    with pytest.raises(OSError) as caught:
+        os.fstat(descriptor)
+    assert caught.value.errno == errno.EBADF
+    with pytest.raises(RuntimeError, match="not open"):
+        workspace_owner._borrow_directory_fd(owner)
+    with pytest.raises(RuntimeError, match="cannot be reopened"):
+        workspace_owner._open_directory_fd(owner, os.fsencode(directory))
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_native_directory_fd_owner_failstops_fork_child(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+
+    directory = tmp_path / "leased"
+    directory.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(directory))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    child_pid = os.fork()
+    if child_pid == 0:  # pragma: no cover - native callback must exit first
+        os._exit(5)
+
+    try:
+        waited_pid, status = os.waitpid(child_pid, 0)
+        assert waited_pid == child_pid
+        assert os.waitstatus_to_exitcode(status) == 70
+        assert os.fstat(descriptor).st_ino == directory.stat().st_ino
+    finally:
+        workspace_owner._close_directory_fd_owner(owner)
+
+
+def test_native_directory_fd_owner_fork_guard_rejects_parent_call(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+
+    directory = tmp_path / "leased"
+    directory.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(directory))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    try:
+        with pytest.raises(RuntimeError, match="requires a fork-child process"):
+            workspace_owner._fail_fork_child_if_directory_fd_owner_active()
+        assert os.fstat(descriptor).st_ino == directory.stat().st_ino
+        assert not workspace_owner._directory_fd_owner_closed(owner)
+    finally:
+        workspace_owner._close_directory_fd_owner(owner)
+
+    assert workspace_owner._fail_fork_child_if_directory_fd_owner_active() is None
+
+
+def test_native_directory_fd_owner_does_not_close_reused_foreign_fd(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    leased = tmp_path / "leased"
+    foreign = tmp_path / "foreign"
+    leased.mkdir()
+    foreign.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(leased))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    os.close(descriptor)
+    foreign_source = os.open(
+        foreign,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+    )
+    foreign_descriptor = foreign_source
+    if foreign_source != descriptor:
+        os.dup2(foreign_source, descriptor, inheritable=False)
+        foreign_descriptor = descriptor
+    try:
+        expected = os.fstat(foreign_descriptor)
+        with pytest.raises(OSError) as caught:
+            workspace_owner._close_directory_fd_owner(owner)
+
+        assert caught.value.errno == errno.ESTALE
+        assert workspace_owner._directory_fd_owner_closed(owner)
+        observed = os.fstat(foreign_descriptor)
+        assert (observed.st_dev, observed.st_ino) == (
+            expected.st_dev,
+            expected.st_ino,
+        )
+        assert workspace_owner._close_directory_fd_owner(owner) is None
+    finally:
+        os.close(foreign_descriptor)
+        if foreign_source != foreign_descriptor:
+            os.close(foreign_source)
+
+
+def test_native_directory_fd_owner_terminalizes_two_closed_slots(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    directory = tmp_path / "leased"
+    directory.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(directory))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    expected = directory.stat()
+    owned_descriptors = []
+    for raw_descriptor in os.listdir("/proc/self/fd"):
+        try:
+            candidate = int(raw_descriptor)
+            observed = os.fstat(candidate)
+        except (OSError, ValueError):
+            continue
+        if (observed.st_dev, observed.st_ino) == (
+            expected.st_dev,
+            expected.st_ino,
+        ):
+            owned_descriptors.append(candidate)
+    assert descriptor in owned_descriptors
+    assert len(owned_descriptors) == 2
+    for candidate in owned_descriptors:
+        os.close(candidate)
+
+    with pytest.raises(OSError) as caught:
+        workspace_owner._close_directory_fd_owner(owner)
+
+    assert caught.value.errno == errno.ESTALE
+    assert workspace_owner._directory_fd_owner_closed(owner)
+    assert workspace_owner._fail_fork_child_if_directory_fd_owner_active() is None
+
+
+def test_native_directory_fd_owner_retains_same_inode_with_unsafe_flags(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    leased = tmp_path / "leased"
+    foreign = tmp_path / "foreign"
+    leased.mkdir()
+    foreign.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(leased))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    expected = leased.stat()
+    owner_slots = []
+    for raw_descriptor in os.listdir("/proc/self/fd"):
+        try:
+            candidate = int(raw_descriptor)
+            observed = os.fstat(candidate)
+        except (OSError, ValueError):
+            continue
+        if (observed.st_dev, observed.st_ino) == (
+            expected.st_dev,
+            expected.st_ino,
+        ):
+            owner_slots.append(candidate)
+    assert len(owner_slots) == 2
+    guard = next(candidate for candidate in owner_slots if candidate != descriptor)
+    os.set_inheritable(descriptor, True)
+    os.close(guard)
+    foreign_source = os.open(
+        foreign,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+    )
+    if foreign_source != guard:
+        os.dup2(foreign_source, guard, inheritable=False)
+    try:
+        with pytest.raises(OSError) as caught:
+            workspace_owner._close_directory_fd_owner(owner)
+
+        assert caught.value.errno in (errno.EPERM, errno.ESTALE)
+        assert not workspace_owner._directory_fd_owner_closed(owner)
+        assert os.fstat(descriptor).st_ino == expected.st_ino
+    finally:
+        os.close(guard)
+        os.dup2(descriptor, guard, inheritable=False)
+        os.set_inheritable(descriptor, False)
+        if foreign_source != guard:
+            os.close(foreign_source)
+        workspace_owner._close_directory_fd_owner(owner)
+
+    assert workspace_owner._directory_fd_owner_closed(owner)
+
+
+def test_native_directory_fd_owner_retains_independently_reopened_guard(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    leased = tmp_path / "leased"
+    leased.mkdir()
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(leased))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    expected = leased.stat()
+    owner_slots = []
+    for raw_descriptor in os.listdir("/proc/self/fd"):
+        try:
+            candidate = int(raw_descriptor)
+            observed = os.fstat(candidate)
+        except (OSError, ValueError):
+            continue
+        if (observed.st_dev, observed.st_ino) == (
+            expected.st_dev,
+            expected.st_ino,
+        ):
+            owner_slots.append(candidate)
+    assert len(owner_slots) == 2
+    guard = next(candidate for candidate in owner_slots if candidate != descriptor)
+    fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    os.close(guard)
+    replacement_source = os.open(
+        leased,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+    )
+    if replacement_source != guard:
+        os.dup2(replacement_source, guard, inheritable=False)
+    try:
+        with pytest.raises(OSError) as caught:
+            workspace_owner._close_directory_fd_owner(owner)
+
+        assert caught.value.errno == errno.ESTALE
+        assert not workspace_owner._directory_fd_owner_closed(owner)
+        assert os.fstat(descriptor).st_ino == expected.st_ino
+        assert os.fstat(guard).st_ino == expected.st_ino
+        with pytest.raises(RuntimeError, match="fork-child process"):
+            workspace_owner._fail_fork_child_if_directory_fd_owner_active()
+    finally:
+        os.close(guard)
+        os.dup2(descriptor, guard, inheritable=False)
+        if replacement_source != guard:
+            os.close(replacement_source)
+        workspace_owner._close_directory_fd_owner(owner)
+
+    assert workspace_owner._directory_fd_owner_closed(owner)
+
+
+def test_directory_fd_owner_facade_keeps_exact_functions_pinned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    implementation = workspace_owner._implementation
+    assert implementation is not None
+
+    def reject_mutable_dispatch(*_args: object) -> object:
+        raise AssertionError("mutable implementation dispatch was consulted")
+
+    for name in (
+        "create_directory_fd_owner_exact",
+        "open_directory_fd_exact",
+        "borrow_directory_fd_exact",
+        "mkdir_directory_fd_child_exact",
+        "close_directory_fd_owner_exact",
+        "directory_fd_owner_closed_exact",
+        "fail_fork_child_if_directory_fd_owner_active_exact",
+    ):
+        monkeypatch.setattr(implementation, name, reject_mutable_dispatch)
+
+    owner = workspace_owner._create_directory_fd_owner()
+    workspace_owner._open_directory_fd(owner, os.fsencode(tmp_path))
+    assert workspace_owner._borrow_directory_fd(owner) >= 0
+    assert workspace_owner._mkdir_directory_fd_child(
+        owner,
+        b"pinned-child",
+        lambda: None,
+    )
+    assert not workspace_owner._directory_fd_owner_closed(owner)
+    workspace_owner._close_directory_fd_owner(owner)
+    assert workspace_owner._directory_fd_owner_closed(owner)
+
+
+def test_native_directory_fd_owner_rejects_invalid_paths(tmp_path: Path) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+
+    for invalid in ("not-bytes", bytearray(b"not-exact")):
+        owner = workspace_owner._create_directory_fd_owner()
+        with pytest.raises(TypeError, match="exact bytes"):
+            workspace_owner._open_directory_fd(owner, invalid)  # type: ignore[arg-type]
+        workspace_owner._close_directory_fd_owner(owner)
+
+    for invalid in (b"", b"embedded\0nul", b"x" * 4097):
+        owner = workspace_owner._create_directory_fd_owner()
+        with pytest.raises(ValueError, match="empty, unbounded, or contains NUL"):
+            workspace_owner._open_directory_fd(owner, invalid)
+        workspace_owner._close_directory_fd_owner(owner)
+
+    target = tmp_path / "target"
+    target.mkdir()
+    symlink = tmp_path / "symlink"
+    symlink.symlink_to(target, target_is_directory=True)
+    owner = workspace_owner._create_directory_fd_owner()
+    with pytest.raises(OSError):
+        workspace_owner._open_directory_fd(owner, os.fsencode(symlink))
+    workspace_owner._close_directory_fd_owner(owner)
+
+
+def test_native_directory_fd_owner_is_exact_and_destructor_closes(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    owner = workspace_owner._create_directory_fd_owner()
+    owner_type = type(owner)
+    with pytest.raises(TypeError, match="cannot be constructed"):
+        owner_type()
+    with pytest.raises(AttributeError):
+        owner.fd = -1
+    with pytest.raises(TypeError, match="invalid native type"):
+        workspace_owner._borrow_directory_fd(object())
+
+    workspace_owner._open_directory_fd(owner, os.fsencode(tmp_path))
+    descriptor = workspace_owner._borrow_directory_fd(owner)
+    del owner
+    gc.collect()
+
+    with pytest.raises(OSError) as caught:
+        os.fstat(descriptor)
+    assert caught.value.errno == errno.EBADF
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or ctypes.util.find_library("seccomp") is None,
+    reason="requires Linux libseccomp",
+)
+def test_native_directory_fd_owner_retains_close_denied_by_seccomp(
+    tmp_path: Path,
+) -> None:
+    if not workspace_owner._directory_fd_owner_protocol_available:
+        pytest.skip("optional workspace-owner extension is not built")
+    directory = tmp_path / "leased"
+    directory.mkdir()
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import ctypes.util
+        import errno
+        import fcntl
+        import os
+        import sys
+
+        import codenib._workspace_owner as workspace_owner
+
+        owner = workspace_owner._create_directory_fd_owner()
+        workspace_owner._open_directory_fd(owner, os.fsencode(sys.argv[1]))
+        descriptor = workspace_owner._borrow_directory_fd(owner)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        expected = os.fstat(descriptor)
+
+        library_name = ctypes.util.find_library("seccomp") or "libseccomp.so.2"
+        library = ctypes.CDLL(library_name, use_errno=True)
+        library.seccomp_init.argtypes = [ctypes.c_uint32]
+        library.seccomp_init.restype = ctypes.c_void_p
+        library.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+        library.seccomp_syscall_resolve_name.restype = ctypes.c_int
+        library.seccomp_rule_add.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_int,
+            ctypes.c_uint,
+        ]
+        library.seccomp_rule_add.restype = ctypes.c_int
+        library.seccomp_load.argtypes = [ctypes.c_void_p]
+        library.seccomp_load.restype = ctypes.c_int
+        library.seccomp_release.argtypes = [ctypes.c_void_p]
+
+        allow = 0x7FFF0000
+        deny = 0x00050000 | errno.EPERM
+        context = library.seccomp_init(allow)
+        if not context:
+            os._exit(77)
+        close_number = library.seccomp_syscall_resolve_name(b"close")
+        if close_number < 0:
+            os._exit(77)
+        if library.seccomp_rule_add(context, deny, close_number, 0) != 0:
+            os._exit(77)
+        if library.seccomp_load(context) != 0:
+            os._exit(77)
+        library.seccomp_release(context)
+
+        for _ in range(2):
+            try:
+                workspace_owner._close_directory_fd_owner(owner)
+            except PermissionError as error:
+                assert error.errno == errno.EPERM
+            else:
+                os._exit(3)
+            assert not workspace_owner._directory_fd_owner_closed(owner)
+            observed = os.fstat(descriptor)
+            assert (observed.st_dev, observed.st_ino) == (
+                expected.st_dev,
+                expected.st_ino,
+            )
+        os._exit(0)
+        """
+    )
+    repository_root = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(repository_root), environment.get("PYTHONPATH", ""))
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, os.fspath(directory)],
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if completed.returncode == 77:
+        pytest.skip("libseccomp filter could not be installed")
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux") or ctypes.util.find_library("seccomp") is None,
+    reason="requires Linux libseccomp",
+)
+def test_native_directory_open_failure_retains_partial_owner_and_fork_guard(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "leased"
+    directory.mkdir()
+    script = textwrap.dedent(
+        """
+        import ctypes
+        import ctypes.util
+        import errno
+        import fcntl
+        import os
+        import sys
+
+        import codenib._workspace_owner as workspace_owner
+
+        class ArgCmp(ctypes.Structure):
+            _fields_ = [
+                ("arg", ctypes.c_uint),
+                ("op", ctypes.c_int),
+                ("datum_a", ctypes.c_uint64),
+                ("datum_b", ctypes.c_uint64),
+            ]
+
+        owner = workspace_owner._create_directory_fd_owner()
+        expected = os.stat(sys.argv[1])
+        library_name = ctypes.util.find_library("seccomp") or "libseccomp.so.2"
+        library = ctypes.CDLL(library_name, use_errno=True)
+        library.seccomp_init.argtypes = [ctypes.c_uint32]
+        library.seccomp_init.restype = ctypes.c_void_p
+        library.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
+        library.seccomp_syscall_resolve_name.restype = ctypes.c_int
+        library.seccomp_rule_add.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_int,
+            ctypes.c_uint,
+        ]
+        library.seccomp_rule_add.restype = ctypes.c_int
+        library.seccomp_rule_add_array.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            ctypes.c_int,
+            ctypes.c_uint,
+            ctypes.POINTER(ArgCmp),
+        ]
+        library.seccomp_rule_add_array.restype = ctypes.c_int
+        library.seccomp_load.argtypes = [ctypes.c_void_p]
+        library.seccomp_load.restype = ctypes.c_int
+        library.seccomp_release.argtypes = [ctypes.c_void_p]
+
+        allow = 0x7FFF0000
+        deny = 0x00050000 | errno.EPERM
+        equal = 4
+        context = library.seccomp_init(allow)
+        if not context:
+            raise SystemExit(77)
+        fcntl_number = library.seccomp_syscall_resolve_name(b"fcntl")
+        close_number = library.seccomp_syscall_resolve_name(b"close")
+        comparison = ArgCmp(1, equal, fcntl.F_DUPFD_CLOEXEC, 0)
+        if (
+            fcntl_number < 0
+            or close_number < 0
+            or library.seccomp_rule_add_array(
+                context,
+                deny,
+                fcntl_number,
+                1,
+                ctypes.byref(comparison),
+            )
+            != 0
+            or library.seccomp_rule_add(context, deny, close_number, 0) != 0
+            or library.seccomp_load(context) != 0
+        ):
+            library.seccomp_release(context)
+            raise SystemExit(77)
+        library.seccomp_release(context)
+
+        try:
+            workspace_owner._open_directory_fd(owner, os.fsencode(sys.argv[1]))
+        except OSError as error:
+            assert error.errno == errno.EPERM
+        else:
+            raise AssertionError("guard-duplication denial was accepted")
+        assert not workspace_owner._directory_fd_owner_closed(owner)
+        matching = []
+        for raw_descriptor in os.listdir("/proc/self/fd"):
+            try:
+                descriptor = int(raw_descriptor)
+                observed = os.fstat(descriptor)
+            except (OSError, ValueError):
+                continue
+            if (observed.st_dev, observed.st_ino) == (
+                expected.st_dev,
+                expected.st_ino,
+            ):
+                matching.append(descriptor)
+        assert len(matching) == 1
+        try:
+            workspace_owner._close_directory_fd_owner(owner)
+        except OSError as error:
+            assert error.errno == errno.EPERM
+        else:
+            raise AssertionError("close denial was reported as terminal")
+        assert not workspace_owner._directory_fd_owner_closed(owner)
+
+        child = os.fork()
+        if child == 0:
+            os._exit(3)
+        _waited, status = os.waitpid(child, 0)
+        assert os.waitstatus_to_exitcode(status) == 70
+        """
+    )
+    repository_root = Path(__file__).resolve().parents[1]
+    environment = dict(os.environ)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        (str(repository_root), environment.get("PYTHONPATH", ""))
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script, os.fspath(directory)],
+        cwd=repository_root,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    if completed.returncode == 77:
+        pytest.skip("libseccomp filter could not be installed")
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
 
 
 @pytest.mark.skipif(

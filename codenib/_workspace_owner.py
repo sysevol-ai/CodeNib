@@ -12,9 +12,11 @@ filesystem mutation and must never select a path-based fallback.
 
 from __future__ import annotations
 
+import os
 from typing import Any, Callable
 
 _EXPECTED_WORKSPACE_OWNER_PROTOCOL_VERSION = 6
+_EXPECTED_DIRECTORY_FD_OWNER_PROTOCOL_VERSION = 1
 _IMPORT_ERROR: BaseException | None = None
 
 try:
@@ -31,6 +33,12 @@ def _implementation_attribute(name: str) -> Any:
 
 
 _protocol_version = _implementation_attribute("workspace_owner_protocol_version")
+_directory_fd_owner_protocol_version = _implementation_attribute(
+    "directory_fd_owner_protocol_version"
+)
+_directory_fd_owner_supported = _implementation_attribute(
+    "directory_fd_owner_supported"
+)
 _require_support_exact = _implementation_attribute("require_support")
 _create_owner_exact = _implementation_attribute("create_owner_exact")
 _claim_owner_publish_permit_exact = _implementation_attribute(
@@ -41,6 +49,23 @@ _claim_owner_replacement_permit_exact = _implementation_attribute(
 )
 _require_owner_exact = _implementation_attribute("require_owner_exact")
 _close_owner_exact = _implementation_attribute("close_owner_exact")
+_create_directory_fd_owner_exact = _implementation_attribute(
+    "create_directory_fd_owner_exact"
+)
+_open_directory_fd_exact = _implementation_attribute("open_directory_fd_exact")
+_borrow_directory_fd_exact = _implementation_attribute("borrow_directory_fd_exact")
+_mkdir_directory_fd_child_exact = _implementation_attribute(
+    "mkdir_directory_fd_child_exact"
+)
+_close_directory_fd_owner_exact = _implementation_attribute(
+    "close_directory_fd_owner_exact"
+)
+_directory_fd_owner_closed_exact = _implementation_attribute(
+    "directory_fd_owner_closed_exact"
+)
+_fail_fork_child_if_directory_fd_owner_active_exact = _implementation_attribute(
+    "fail_fork_child_if_directory_fd_owner_active_exact"
+)
 _provision_owner_exact = _implementation_attribute("provision_owner_exact")
 _provision_owner_interruptibly_exact = _implementation_attribute(
     "provision_owner_interruptibly_exact"
@@ -150,6 +175,24 @@ _workspace_owner_protocol_available = (
     )
 )
 
+_directory_fd_owner_protocol_available = (
+    type(_directory_fd_owner_protocol_version) is int
+    and _directory_fd_owner_protocol_version
+    == _EXPECTED_DIRECTORY_FD_OWNER_PROTOCOL_VERSION
+    and all(
+        callable(symbol)
+        for symbol in (
+            _create_directory_fd_owner_exact,
+            _open_directory_fd_exact,
+            _borrow_directory_fd_exact,
+            _mkdir_directory_fd_child_exact,
+            _close_directory_fd_owner_exact,
+            _directory_fd_owner_closed_exact,
+            _fail_fork_child_if_directory_fd_owner_active_exact,
+        )
+    )
+)
+
 if not _workspace_owner_protocol_available:
     _require_support_exact = None
     _create_owner_exact = None
@@ -186,6 +229,28 @@ if not _workspace_owner_protocol_available:
     _quarantine_owner_exact = None
     _owner_state_exact = None
     _owner_closed_exact = None
+
+if not _directory_fd_owner_protocol_available:
+    _create_directory_fd_owner_exact = None
+    _open_directory_fd_exact = None
+    _borrow_directory_fd_exact = None
+    _mkdir_directory_fd_child_exact = None
+    _close_directory_fd_owner_exact = None
+    _directory_fd_owner_closed_exact = None
+    _fail_fork_child_if_directory_fd_owner_active_exact = None
+
+
+# Register the immutable native callable in the facade that creates these
+# owners.  A raw facade consumer must receive the same fork boundary as the
+# higher-level lease wrapper, and mutable implementation dispatch must not be
+# consulted from the child callback.
+_NATIVE_FORK_CHILD_DIRECTORY_OWNER_GUARD = (
+    _fail_fork_child_if_directory_fd_owner_active_exact
+)
+if hasattr(os, "register_at_fork") and callable(
+    _NATIVE_FORK_CHILD_DIRECTORY_OWNER_GUARD
+):
+    os.register_at_fork(after_in_child=_NATIVE_FORK_CHILD_DIRECTORY_OWNER_GUARD)
 
 
 def require_support() -> None:
@@ -289,6 +354,107 @@ def close_owner_exact(candidate: object) -> None:
     result = _close_owner_exact(candidate)
     if result is not None:
         raise RuntimeError("native workspace close result changed")
+
+
+def _create_directory_fd_owner() -> object:
+    """Create a native owner before its directory descriptor is opened."""
+
+    _require_directory_fd_owner_support()
+    assert _create_directory_fd_owner_exact is not None
+    return _create_directory_fd_owner_exact()
+
+
+def _open_directory_fd(owner: object, path: bytes) -> None:
+    """Open exact bytes directly into a precreated native owner."""
+
+    _require_directory_fd_owner_support()
+    if type(path) is not bytes:
+        raise TypeError("directory descriptor path must be exact bytes")
+    assert _open_directory_fd_exact is not None
+    result = _open_directory_fd_exact(owner, path)
+    if result is not None:
+        raise RuntimeError("native directory descriptor open result changed")
+
+
+def _borrow_directory_fd(owner: object) -> int:
+    """Borrow the open descriptor; the native owner remains responsible."""
+
+    _require_directory_fd_owner_support()
+    assert _borrow_directory_fd_exact is not None
+    return _require_descriptor(
+        _borrow_directory_fd_exact(owner),
+        "directory-owner descriptor",
+    )
+
+
+def _mkdir_directory_fd_child(
+    owner: object,
+    name: bytes,
+    pre_mutation_check: Callable[[], None],
+) -> bool:
+    """Create one child directly after an exact native-bound policy check."""
+
+    _require_directory_fd_owner_support()
+    if type(name) is not bytes:
+        raise TypeError("directory child name must be exact bytes")
+    if not callable(pre_mutation_check):
+        raise TypeError("directory pre-mutation check must be callable")
+    assert _mkdir_directory_fd_child_exact is not None
+    result = _mkdir_directory_fd_child_exact(
+        owner,
+        name,
+        pre_mutation_check,
+    )
+    if type(result) is not bool:
+        raise RuntimeError("native directory child creation result changed")
+    return result
+
+
+def _close_directory_fd_owner(owner: object) -> None:
+    """Settle an exact directory owner without mutable instance dispatch."""
+
+    _require_directory_fd_owner_support()
+    assert _close_directory_fd_owner_exact is not None
+    result = _close_directory_fd_owner_exact(owner)
+    if result is not None:
+        raise RuntimeError("native directory descriptor close result changed")
+
+
+def _directory_fd_owner_closed(owner: object) -> bool:
+    """Return whether an exact directory owner has been settled."""
+
+    _require_directory_fd_owner_support()
+    assert _directory_fd_owner_closed_exact is not None
+    result = _directory_fd_owner_closed_exact(owner)
+    if type(result) is not bool:
+        raise RuntimeError("native directory descriptor closed result changed")
+    return result
+
+
+def _fail_fork_child_if_directory_fd_owner_active() -> None:
+    """Fail-stop a child before it can use an inherited directory owner."""
+
+    _require_directory_fd_owner_support()
+    assert _fail_fork_child_if_directory_fd_owner_active_exact is not None
+    result = _fail_fork_child_if_directory_fd_owner_active_exact()
+    if result is not None:
+        raise RuntimeError("native directory fork guard result changed")
+
+
+def _require_directory_fd_owner_support() -> None:
+    """Require the additive exact directory-descriptor owner ABI."""
+
+    if not _directory_fd_owner_protocol_available:
+        raise RuntimeError(
+            "private directory leases require the CodeNib directory-fd-owner "
+            "extension ABI"
+        ) from _IMPORT_ERROR
+    if type(_directory_fd_owner_supported) is not int or (
+        _directory_fd_owner_supported != 1
+    ):
+        raise RuntimeError(
+            "private directory leases require native directory open flags"
+        )
 
 
 def _require_none_result(result: object, label: str) -> None:
