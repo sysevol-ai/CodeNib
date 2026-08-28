@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createIndexJob,
   fetchEdgeLabel,
+  fetchIndexJob,
+  fetchIndexStatus,
   fetchWikiTree,
   fetchWikiPage,
   isSourceCheckedWikiPage,
@@ -11,6 +14,136 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("index control API", () => {
+  it("loads the three-surface repository status", async () => {
+    const payload = {
+      repo_id: "owner/repo #1",
+      last_indexed_commit: "abc1234",
+      current_head: "def5678",
+      stale: true,
+      indexes: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchIndexStatus("owner/repo #1")).resolves.toBe(payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/repos\/owner%2Frepo%20%231\/index-status$/),
+      { signal: undefined },
+    );
+  });
+
+  it("creates a retry-safe index job with the caller's idempotency key", async () => {
+    const payload = { job_id: "job-1", status: "queued" };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = {
+      indexes: ["bm25", "vector"] as const,
+      mode: "incremental" as const,
+      force: false,
+    };
+    await expect(
+      createIndexJob(
+        "owner/repo",
+        { ...request, indexes: [...request.indexes] },
+        { idempotencyKey: "ui-index-job-1" },
+      ),
+    ).resolves.toBe(payload);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toMatch(/\/api\/repos\/owner%2Frepo\/index-jobs$/);
+    expect(init).toMatchObject({
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": "ui-index-job-1",
+      },
+    });
+    expect(JSON.parse(String(init.body))).toEqual(request);
+  });
+
+  it("polls a bounded event page with an encoded job ID", async () => {
+    const payload = { job_id: "job/1", status: "running" };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      fetchIndexJob("job/1", { afterSequence: 12, eventLimit: 8 }),
+    ).resolves.toBe(payload);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/index-jobs\/job%2F1\?after_sequence=12&event_limit=8$/,
+      ),
+      { signal: undefined },
+    );
+  });
+
+  it("surfaces bounded server detail for rejected update requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 409,
+      text: async () => JSON.stringify({ detail: "An update is already active." }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      createIndexJob(
+        "repo",
+        { indexes: ["vector"], mode: "incremental" },
+        { idempotencyKey: "ui-index-job-2" },
+      ),
+    ).rejects.toThrow(
+      "Failed to create index update (409): An update is already active.",
+    );
+  });
+
+  it("fails closed without making dynamic requests in a static export", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("window", {
+      __CODENIB_RUNTIME__: { mode: "static" },
+    });
+
+    await expect(fetchIndexStatus("repo")).rejects.toThrow(
+      "Index controls require a CodeNib runtime",
+    );
+    await expect(
+      createIndexJob(
+        "repo",
+        { indexes: ["bm25"], mode: "full" },
+        { idempotencyKey: "ui-index-job-3" },
+      ),
+    ).rejects.toThrow("Index controls require a CodeNib runtime");
+    await expect(fetchIndexJob("job-1")).rejects.toThrow(
+      "Index controls require a CodeNib runtime",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid polling bounds before issuing a request", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchIndexJob("job-1", { afterSequence: -1 })).rejects.toThrow(
+      "Index job event cursor is invalid",
+    );
+    await expect(fetchIndexJob("job-1", { eventLimit: 65 })).rejects.toThrow(
+      "Index job event limit is invalid",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("fetchEdgeLabel", () => {

@@ -48,6 +48,162 @@ export interface RepoInfo {
   incremental?: WindowStats | null;
 }
 
+export type IndexType = "bm25" | "vector" | "symbol_graph";
+export type IndexSurfaceState = "built" | "missing" | "stale" | "updating" | "failed";
+export type IndexUpdateMode = "incremental" | "patch" | "rebuild" | "unavailable";
+
+export interface IndexUpdateMetrics {
+  changed_files: number | null;
+  chunks_reembedded: number | null;
+  chunks_from_cache: number | null;
+  cache_hit_rate: number | null;
+  new_commit: string | null;
+}
+
+export interface IndexSurfaceStatus {
+  index_type: IndexType;
+  state: IndexSurfaceState;
+  stale: boolean;
+  indexed_commit: string | null;
+  built_at: string | null;
+  update_mode: IndexUpdateMode;
+  updates_enabled: boolean;
+  update_reason: string;
+  job_id: string | null;
+  metrics: IndexUpdateMetrics | null;
+}
+
+export interface RepoIndexStatus {
+  repo_id: string;
+  last_indexed_commit: string | null;
+  current_head: string | null;
+  stale: boolean;
+  indexes: IndexSurfaceStatus[];
+}
+
+export interface IndexJobSurface {
+  index_type: IndexType;
+  requested_mode: "auto" | "full" | "incremental";
+  required: boolean;
+}
+
+export interface IndexJobEvent {
+  sequence: number;
+  attempt_count: number;
+  event_key: string;
+  kind: "progress" | "view_result";
+  index_type: IndexType | null;
+  effective_mode: "full" | "incremental" | "rebuild_fallback" | "unavailable" | null;
+  outcome: "succeeded" | "failed" | "skipped" | null;
+  payload: Record<string, unknown>;
+  created_at_ms: number;
+}
+
+export interface IndexJobStatusResponse {
+  job_id: string;
+  repo_id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+  cancel_requested: boolean;
+  attempt_count: number;
+  max_attempts: number;
+  indexes: IndexJobSurface[];
+  result_snapshot_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+  started_at_ms: number | null;
+  finished_at_ms: number | null;
+  events: IndexJobEvent[];
+  next_event_sequence: number;
+}
+
+export interface IndexJobCreateRequest {
+  indexes: IndexType[];
+  mode: "full" | "incremental";
+  force?: boolean;
+}
+
+function requireIndexRuntime(): void {
+  if (isStaticRuntime()) {
+    throw new Error("Index controls require a CodeNib runtime");
+  }
+}
+
+export async function fetchIndexStatus(
+  repoId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<RepoIndexStatus> {
+  requireIndexRuntime();
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/index-status`,
+    { signal: options.signal },
+  );
+  if (!res.ok) throw await responseError(res, "Failed to load index status");
+  return res.json();
+}
+
+export async function createIndexJob(
+  repoId: string,
+  request: IndexJobCreateRequest,
+  options: { idempotencyKey: string; signal?: AbortSignal },
+): Promise<IndexJobStatusResponse> {
+  requireIndexRuntime();
+  const key = options.idempotencyKey;
+  if (!key || key !== key.trim() || key.length > 256) {
+    throw new Error("Index update idempotency key is invalid");
+  }
+  const res = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/index-jobs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": key,
+      },
+      body: JSON.stringify(request),
+      signal: options.signal,
+    },
+  );
+  if (!res.ok) throw await responseError(res, "Failed to create index update");
+  return res.json();
+}
+
+export async function fetchIndexJob(
+  jobId: string,
+  options: {
+    afterSequence?: number;
+    eventLimit?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<IndexJobStatusResponse> {
+  requireIndexRuntime();
+  const params = new URLSearchParams();
+  if (options.afterSequence != null) {
+    if (!Number.isSafeInteger(options.afterSequence) || options.afterSequence < 0) {
+      throw new Error("Index job event cursor is invalid");
+    }
+    params.set("after_sequence", String(options.afterSequence));
+  }
+  if (options.eventLimit != null) {
+    if (
+      !Number.isSafeInteger(options.eventLimit) ||
+      options.eventLimit < 1 ||
+      options.eventLimit > 64
+    ) {
+      throw new Error("Index job event limit is invalid");
+    }
+    params.set("event_limit", String(options.eventLimit));
+  }
+  const query = params.toString();
+  const res = await fetch(
+    `${API_BASE}/api/index-jobs/${encodeURIComponent(jobId)}${query ? `?${query}` : ""}`,
+    { signal: options.signal },
+  );
+  if (!res.ok) throw await responseError(res, "Failed to load index job");
+  return res.json();
+}
+
 export interface GraphCoverage {
   available_languages: string[];
   unavailable_languages: string[];
