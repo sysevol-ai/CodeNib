@@ -886,6 +886,209 @@ pre {
   color: #fca5a5;
 }
 
+.index-job-control,
+.index-job-unavailable {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+}
+
+.index-job-control-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.index-job-control-head strong {
+  color: var(--text);
+  font-size: 11px;
+}
+
+.index-job-control-head span,
+.index-job-unavailable {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.index-job-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 7px;
+  margin-top: 7px;
+}
+
+.index-job-selection label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.index-job-selection label:has(input:disabled) {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.index-job-selection input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.index-job-fallback-note {
+  margin: 7px 0 0;
+  color: #b45309;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.index-job-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.index-job-actions button,
+.index-job-request-error button {
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 9px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.index-job-actions button:first-child {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.index-job-actions button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+  opacity: 0.55;
+}
+
+.index-job-submitting,
+.index-job-request-error {
+  margin-top: 7px;
+  padding: 6px 7px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+.index-job-request-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: #b91c1c;
+  overflow-wrap: anywhere;
+}
+
+.index-job-request-error button {
+  flex: 0 0 auto;
+  min-height: 24px;
+}
+
+.index-job-progress {
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-muted);
+}
+
+.index-job-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.index-job-progress .index-state.queued::before,
+.index-job-progress .index-state.running::before {
+  background: var(--accent);
+}
+
+.index-job-progress .index-state.failed::before,
+.index-job-progress .index-state.cancelled::before {
+  background: #dc2626;
+}
+
+.index-job-error {
+  margin: 6px 0 0;
+  color: #b91c1c;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.index-job-results {
+  display: grid;
+  gap: 5px;
+  margin: 7px 0 0;
+  padding: 7px 0 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.index-job-results li {
+  display: grid;
+  gap: 1px;
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+.index-job-results li > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text);
+  font-weight: 650;
+}
+
+.index-job-results small {
+  color: var(--text-muted);
+  font-size: 8px;
+}
+
+.index-job-outcome {
+  color: var(--text-secondary);
+  font-size: 8px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.index-job-outcome.failed {
+  color: #b91c1c;
+}
+
+[data-theme="dark"] .index-job-fallback-note {
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .index-job-request-error,
+[data-theme="dark"] .index-job-error,
+[data-theme="dark"] .index-job-outcome.failed {
+  color: #fca5a5;
+}
+
 .toc-tree {
   list-style: none;
   margin: 0;

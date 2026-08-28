@@ -120,6 +120,19 @@ describe("index status invariants", () => {
         ],
       }),
     ).toBe(false);
+
+    const conflicting = statusFixture();
+    conflicting.indexes[0] = {
+      ...conflicting.indexes[0],
+      state: "updating",
+      job_id: "job-1",
+    };
+    conflicting.indexes[1] = {
+      ...conflicting.indexes[1],
+      state: "updating",
+      job_id: "job-2",
+    };
+    expect(hasCanonicalIndexSurfaces(conflicting)).toBe(false);
   });
 
   it("keeps failures visible above in-progress and stale surfaces", () => {

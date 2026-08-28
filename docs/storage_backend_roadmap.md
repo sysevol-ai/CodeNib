@@ -1594,7 +1594,9 @@ background loops, exposes the durable reader/writer and BM25 capability, and
 settles them before CAS and topology release. The optional production Web
 lifespan now owns that composition
 and verifies a real first-build job through strict materialization and RCU
-replacement. MCP, UI controls, vector/graph adapters, and default storage
+replacement. The dynamic repository rail now exposes the three canonical index
+surfaces, durable job progress, and one capability-bound update action. MCP,
+landing/Ask freshness controls, vector/graph adapters, and default storage
 routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
@@ -1691,8 +1693,9 @@ routing remain absent.
   and advertising updates when either owned loop faults, reports unbound
   repositories as unavailable, and rejects a retained BM25 replacement whose
   source-selection policy or normalized language sequence differs from the
-  active Web generation. The remaining #266 work is to expose status/results
-  and update controls in the UI.
+  active Web generation. The remaining #266 work includes landing-page badges,
+  Ask freshness choices, production vector/graph update adapters, and their
+  default routing.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle
@@ -1806,6 +1809,18 @@ routing remain absent.
   granting active-job, event, lease, execution, or publication discovery. The
   default server continues to return unavailable because no storage/target
   binding installs the reader, writer, or planner by default.
+- The dynamic repository detail rail now renders exactly BM25, Embeddings, and
+  Symbol graph status, commit drift, update modes, disabled reasons, and retained
+  incremental metrics. Its update control selects one writable surface so it
+  stays within the current durable writer contract, maps `rebuild` to one full
+  request and `incremental`/`patch` to one incremental request, and never claims
+  unsupported force behavior. Caller-owned idempotency keys remain bound to the
+  canonical request intent across response-loss retries. The control resumes an
+  active durable job from the status overlay, polls bounded event pages with a
+  bounded retained window, displays sanitized results and failures, and refreshes
+  the repository status after terminal settlement. Static exports omit the
+  runtime-only control. The production local service currently advertises only
+  retained-source BM25 rebuilds; vector and graph writes remain unavailable.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization

@@ -13,6 +13,7 @@ import {
   type IndexType,
   type RepoIndexStatus,
 } from "@/lib/api";
+import IndexJobControl from "./IndexJobControl";
 
 const INDEX_TYPES = ["bm25", "vector", "symbol_graph"] as const;
 
@@ -46,10 +47,18 @@ const STATE_PRIORITY: Record<IndexSurfaceState, number> = {
 };
 
 export function hasCanonicalIndexSurfaces(status: RepoIndexStatus): boolean {
+  const activeJobIds = new Set(
+    status.indexes
+      .map((surface) => surface.job_id)
+      .filter((jobId): jobId is string => Boolean(jobId)),
+  );
   return (
     status.indexes.length === INDEX_TYPES.length &&
+    activeJobIds.size <= 1 &&
     status.indexes.every(
-      (surface, index) => surface.index_type === INDEX_TYPES[index],
+      (surface, index) =>
+        surface.index_type === INDEX_TYPES[index] &&
+        (surface.state === "updating") === Boolean(surface.job_id),
     )
   );
 }
@@ -224,7 +233,14 @@ export default function IndexStatusControl({ repoId }: { repoId: string }) {
             {error}
           </div>
         ) : visibleStatus ? (
-          <IndexStatusDetails status={visibleStatus} />
+          <>
+            <IndexStatusDetails status={visibleStatus} />
+            <IndexJobControl
+              key={visibleStatus.repo_id}
+              status={visibleStatus}
+              onRefresh={load}
+            />
+          </>
         ) : (
           <div className="index-status-loading" role="status">
             Loading index status…
