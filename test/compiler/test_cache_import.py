@@ -80,6 +80,7 @@ from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.compiler.manifest_import import RepoManifestImportResult
 from codenib.compiler.manifest_materialization import (
     materialize_retained_repo_manifest_ref,
+    materialize_retained_repo_manifest_snapshot,
 )
 from codenib.compiler.manifest_storage import (
     VECTOR_PROFILE_AXES,
@@ -3292,6 +3293,7 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
     tmp_path: Path,
 ) -> None:
     fixture = _cache_fixture(tmp_path)
+    materialized_owner = PublishedWorkspaceReceiptOwner()
     retry_bm25_owner = PublishedWorkspaceReceiptOwner()
     retry_context_owner = PublishedWorkspaceReceiptOwner()
     plan = _expected_bm25_job_plan(fixture)
@@ -3369,6 +3371,25 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
                 receipt = cas.verify(persisted["digest"])
                 assert receipt.byte_size == persisted["byte_size"]
                 assert receipt.storage_key == persisted["storage_key"]
+            materialized = materialize_retained_repo_manifest_snapshot(
+                _REPOSITORY_KEY,
+                result.job.result_snapshot_id,
+                fixture.workspace / "materialized-job-context",
+                catalog=catalog,
+                object_store=cas,
+                workspace_provider=fixture.provider,
+                output_receipt_owner=materialized_owner,
+                environ={},
+            )
+            assert materialized.export_receipt.snapshot_id == (
+                result.job.result_snapshot_id
+            )
+            assert materialized.artifact.views == ("bm25",)
+            assert materialized_owner.active
+            assert cas.retained_receipt_sets == [
+                expected_receipts,
+                expected_receipts,
+            ]
             first_ref = catalog.resolve_ref(repository_id)
             _seed_bm25_snapshot(
                 catalog,
@@ -3405,6 +3426,7 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
             assert cas.retained_receipt_sets == [
                 expected_receipts,
                 expected_receipts,
+                expected_receipts,
             ]
             assert catalog.job_publication_calls == 2
             assert fixture.bm25_owner.active
@@ -3414,6 +3436,7 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
     finally:
         retry_context_owner.close()
         retry_bm25_owner.close()
+        materialized_owner.close()
         fixture.close()
 
 
