@@ -1690,8 +1690,9 @@ routing remain absent.
   hybrid-mode storage startup until vector publication exists, stops admitting
   and advertising updates when either owned loop faults, reports unbound
   repositories as unavailable, and rejects a retained BM25 replacement whose
-  source-selection policy differs from the active Web generation. The remaining
-  #266 work is to expose status/results and update controls in the UI.
+  source-selection policy or normalized language sequence differs from the
+  active Web generation. The remaining #266 work is to expose status/results
+  and update controls in the UI.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle
