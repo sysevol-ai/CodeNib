@@ -81,6 +81,15 @@ export function mergeIndexJobEvents(
   };
 }
 
+export type IndexJobPollDisposition = "continue" | "wait" | "settled";
+
+export function indexJobPollDisposition(
+  next: IndexJobStatusResponse,
+): IndexJobPollDisposition {
+  if (next.events.length === EVENT_PAGE_SIZE) return "continue";
+  return ACTIVE_JOB_STATES.has(next.status) ? "wait" : "settled";
+}
+
 function createIdempotencyKey(): string {
   const randomUUID = globalThis.crypto?.randomUUID;
   if (typeof randomUUID !== "function") {
@@ -202,14 +211,21 @@ export default function IndexJobControl({
     () => enabledTypes[0] ?? null,
   );
   const [job, setJob] = useState<IndexJobStatusResponse | null>(null);
+  const [drainingJobId, setDrainingJobId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pollRevision, setPollRevision] = useState(0);
   const pendingCreate = useRef<PendingIndexJobCreate | null>(null);
   const statusJobId = activeIndexJobId(status);
   const jobIsActive = Boolean(job && ACTIVE_JOB_STATES.has(job.status));
-  const pollingJobId = jobIsActive ? job!.job_id : job ? null : statusJobId;
-  const busy = submitting || jobIsActive || Boolean(statusJobId && !job);
+  const pollingJobId = jobIsActive
+    ? job!.job_id
+    : (drainingJobId ?? (job ? null : statusJobId));
+  const busy =
+    submitting ||
+    jobIsActive ||
+    Boolean(drainingJobId) ||
+    Boolean(statusJobId && !job);
 
   const enabledSignature = enabledTypes.join("\u0000");
   useEffect(() => {
@@ -229,6 +245,7 @@ export default function IndexJobControl({
     if (!pollingJobId) return;
     let stopped = false;
     let timer: number | undefined;
+    const controller = new AbortController();
     let cursor =
       job?.job_id === pollingJobId ? job.next_event_sequence : 0;
 
@@ -237,6 +254,7 @@ export default function IndexJobControl({
         const next = await fetchIndexJob(pollingJobId, {
           afterSequence: cursor,
           eventLimit: EVENT_PAGE_SIZE,
+          signal: controller.signal,
         });
         if (stopped) return;
         if (next.job_id !== pollingJobId || next.repo_id !== status.repo_id) {
@@ -245,26 +263,38 @@ export default function IndexJobControl({
         cursor = next.next_event_sequence;
         setJob((current) => mergeIndexJobEvents(current, next));
         setError(null);
-        const terminal = !ACTIVE_JOB_STATES.has(next.status);
-        const pageMayContinue = next.events.length === EVENT_PAGE_SIZE;
-        if (terminal) {
+        const disposition = indexJobPollDisposition(next);
+        if (disposition === "continue") {
+          if (!ACTIVE_JOB_STATES.has(next.status)) {
+            setDrainingJobId(next.job_id);
+          }
+          timer = window.setTimeout(poll, 0);
+          return;
+        }
+        if (disposition === "settled") {
+          setDrainingJobId(null);
           await onRefresh();
           return;
         }
-        timer = window.setTimeout(poll, pageMayContinue ? 0 : 1_000);
+        timer = window.setTimeout(poll, 1_000);
       } catch (failure) {
-        if (!stopped) {
+        if (!stopped && !controller.signal.aborted) {
           setError(failure instanceof Error ? failure.message : String(failure));
         }
       }
     };
 
-    timer = window.setTimeout(poll, job ? 750 : 0);
+    timer = window.setTimeout(
+      poll,
+      drainingJobId === pollingJobId ? 0 : job ? 750 : 0,
+    );
     return () => {
       stopped = true;
+      controller.abort();
       if (timer != null) window.clearTimeout(timer);
     };
   }, [
+    drainingJobId,
     job?.job_id,
     job?.status,
     onRefresh,
@@ -290,6 +320,7 @@ export default function IndexJobControl({
     pendingCreate.current = prepared;
     setSubmitting(true);
     setError(null);
+    setDrainingJobId(null);
     setJob(null);
     try {
       const created = await createIndexJob(

@@ -12,6 +12,7 @@ import type {
 import IndexJobControl, {
   activeIndexJobId,
   indexJobRequestForSurface,
+  indexJobPollDisposition,
   IndexJobProgress,
   mergeIndexJobEvents,
   prepareIndexJobCreate,
@@ -181,6 +182,35 @@ describe("index job polling invariants", () => {
     expect(
       mergeIndexJobEvents(first, second).events.map((event) => event.sequence),
     ).toEqual([1, 2]);
+  });
+
+  it("drains a full terminal event page before settling", () => {
+    const event = {
+      sequence: 1,
+      attempt_count: 1,
+      event_key: "progress-1",
+      kind: "progress" as const,
+      index_type: null,
+      effective_mode: null,
+      outcome: null,
+      payload: {},
+      created_at_ms: 1,
+    };
+    const fullTerminalPage = jobFixture({
+      status: "succeeded",
+      events: Array.from({ length: 64 }, (_, index) => ({
+        ...event,
+        sequence: index + 1,
+        event_key: `progress-${index + 1}`,
+      })),
+      next_event_sequence: 64,
+    });
+
+    expect(indexJobPollDisposition(fullTerminalPage)).toBe("continue");
+    expect(
+      indexJobPollDisposition({ ...fullTerminalPage, events: [] }),
+    ).toBe("settled");
+    expect(indexJobPollDisposition(jobFixture())).toBe("wait");
   });
 
   it("accepts one active job and rejects cross-job overlays", () => {
