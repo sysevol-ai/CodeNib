@@ -1576,9 +1576,9 @@ generation identity.
 The first #266 status, durable-read, explicitly injected one-view write,
 retained-source BM25 planning, guarded reconciliation, retained publication,
 and polling slices are present. The success callback exists but is not installed
-by the default server. Typed local-storage configuration parsing is present;
-physical topology acquisition, service composition, Web lifespan ownership,
-MCP, UI controls, and default routing remain absent.
+by the default server. Typed local-storage configuration parsing and explicit
+physical topology acquisition are present; service composition, Web lifespan
+ownership, MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
