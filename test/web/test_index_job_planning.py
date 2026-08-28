@@ -14,7 +14,7 @@ from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.job_resources import LocalBM25SourceJobTarget
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import RepositoryChangedError
-from codenib.storage import SourceRevision, SQLiteCatalog
+from codenib.storage import SourceRevision, SQLiteCatalog, ViewProfile
 from codenib.web.index_job_planning import LocalBM25SourceJobPlanner
 from codenib.web.index_job_writes import (
     CatalogIndexJobWriter,
@@ -161,7 +161,7 @@ def test_local_bm25_source_planner_revalidates_source_after_catalog_calls(
             return revision.source_revision_id
 
         def create_view_profile(self, view_type, config=None, *, name="default"):
-            return target.profile.profile_id
+            return ViewProfile.create(view_type, config or {}, name=name).profile_id
 
         def read_ref_generation(self, repository_id, ref_name="main"):
             return 0

@@ -38,6 +38,7 @@ from .models import (
     DEFAULT_NAMESPACE_NAME,
     INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS,
     INDEX_JOB_PUBLICATION_CONTRACT,
+    INDEX_JOB_SUPPORTING_VIEW_PREFIX,
     MAX_INDEX_JOB_EVENTS_PER_ATTEMPT,
     MAX_VIEW_GENERATION_MEMBERS,
     VIEW_GENERATION_MEMBERS_METADATA_KEY,
@@ -71,6 +72,7 @@ from .models import (
     canonical_json,
     canonical_utc_timestamp,
     content_id,
+    is_index_job_supporting_view,
     normalize_digest,
     normalize_view_generation_metadata,
     snapshot_index_job_event_payload,
@@ -82,7 +84,7 @@ from .protocols import (
     snapshot_retained_import_response,
 )
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 
 CatalogError = StorageError
 CatalogConflictError = PublishConflict
@@ -190,7 +192,7 @@ UNION ALL
 SELECT completed_at_ms FROM index_job_publications
 """
 _SQLITE_INT64_MAX = 9_223_372_036_854_775_807
-_MAX_JOB_PUBLICATION_OUTPUTS = 64
+_MAX_JOB_PUBLICATION_OUTPUTS = 128
 _MAX_RUNNABLE_JOB_SCAN_LIMIT = 256
 _MAX_JOB_EVENT_PAGE_LIMIT = 256
 _SQLITE_LEGACY_AUTOCOMMIT = getattr(
@@ -3601,6 +3603,44 @@ _SCHEMA_V7 = (
     """,
 )
 
+
+def _supporting_view_publication_trigger_sql() -> str:
+    """Derive the v8 trigger while preserving every historical schema."""
+
+    historical = _V6_INDEX_JOB_PUBLICATIONS_VALIDATE_INSERT
+    old_bound = "json_array_length(NEW.closure_json, '$.outputs') BETWEEN 1 AND 64"
+    old_request_gate = """                OR requested.job_id IS NULL
+                OR requested.profile_id != json_extract(
+                    output.value, '$.profile_id'
+                )"""
+    new_request_gate = f"""                OR (
+                    requested.job_id IS NULL
+                    AND substr(
+                        json_extract(output.value, '$.view_type'),
+                        1,
+                        length({INDEX_JOB_SUPPORTING_VIEW_PREFIX!r})
+                    ) != {INDEX_JOB_SUPPORTING_VIEW_PREFIX!r}
+                )
+                OR (
+                    requested.job_id IS NOT NULL
+                    AND requested.profile_id != json_extract(
+                        output.value, '$.profile_id'
+                    )
+                )"""
+    if historical.count(old_bound) != 1 or historical.count(old_request_gate) != 1:
+        raise AssertionError("historical job publication trigger shape changed")
+    return historical.replace(old_bound, old_bound.replace("64", "128"), 1).replace(
+        old_request_gate,
+        new_request_gate,
+        1,
+    )
+
+
+_SCHEMA_V8 = (
+    "DROP TRIGGER index_job_publications_validate_insert",
+    _supporting_view_publication_trigger_sql(),
+)
+
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: _SCHEMA_V1,
     2: _SCHEMA_V2,
@@ -3609,6 +3649,7 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
     5: _SCHEMA_V5,
     6: _SCHEMA_V6,
     7: _SCHEMA_V7,
+    8: _SCHEMA_V8,
 }
 
 _CatalogSchemaObject = tuple[str, str, str, str | None]
@@ -5356,7 +5397,11 @@ class SQLiteCatalog:
     ) -> tuple[dict[str, Any], ...]:
         requested = {view.view_type: view for view in requested_views}
         offered = {output.view_type: output for output in outputs}
-        extras = sorted(set(offered) - set(requested))
+        extras = sorted(
+            view_type
+            for view_type in set(offered) - set(requested)
+            if not is_index_job_supporting_view(view_type)
+        )
         missing = sorted(
             view_type
             for view_type, view in requested.items()

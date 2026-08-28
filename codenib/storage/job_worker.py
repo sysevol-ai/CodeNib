@@ -43,6 +43,7 @@ from .models import (
     StorageValidationError,
     assert_no_secret_fields,
     canonical_json,
+    is_index_job_supporting_view,
     snapshot_index_job_event_payload,
 )
 from .protocols import (
@@ -61,6 +62,7 @@ _MAX_JOB_ID_CHARS = 80
 _MAX_JOB_ERROR_CODE_CHARS = 128
 _MAX_JOB_ERROR_MESSAGE_CHARS = 4_096
 _MAX_JOB_ATTEMPTS = 1_000
+_MAX_JOB_PUBLICATION_VIEWS = 128
 _MAX_LEASE_DURATION_MS = 2_147_483_647
 _MAX_SCAN_LIMIT = 256
 _CATALOG_INT64_MAX = 2**63 - 1
@@ -608,6 +610,7 @@ class IndexJobExecutionResult:
     retryable: bool = False
     error_code: str | None = None
     error_message: str | None = None
+    supporting_artifacts: tuple[IndexJobViewArtifact, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self) is not IndexJobExecutionResult:
@@ -646,10 +649,51 @@ class IndexJobExecutionResult:
             raise StorageValidationError(
                 "worker execution result views belong to different jobs"
             )
+        if type(self.supporting_artifacts) is not tuple:
+            raise StorageValidationError(
+                "worker supporting artifacts must be an exact tuple"
+            )
+        if any(
+            type(artifact) is not IndexJobViewArtifact
+            for artifact in self.supporting_artifacts
+        ):
+            raise StorageValidationError(
+                "worker supporting artifacts must use exact artifact models"
+            )
+        supporting_artifacts = tuple(
+            IndexJobViewArtifact(
+                view_type=artifact.view_type,
+                profile_id=artifact.profile_id,
+                object_artifact=artifact.object_artifact,
+                schema_version=artifact.schema_version,
+                metadata_json=artifact.metadata_json,
+                member_artifacts=artifact.member_artifacts,
+            )
+            for artifact in self.supporting_artifacts
+        )
+        supporting_order = tuple(
+            artifact.view_type for artifact in supporting_artifacts
+        )
+        if supporting_order != tuple(sorted(supporting_order)) or len(
+            supporting_order
+        ) != len(set(supporting_order)):
+            raise StorageValidationError(
+                "worker supporting artifacts are not canonical"
+            )
+        if any(
+            not is_index_job_supporting_view(artifact.view_type)
+            for artifact in supporting_artifacts
+        ):
+            raise StorageValidationError(
+                "worker supporting artifacts must use the reserved view namespace"
+            )
         artifacts = tuple(view.artifact for view in views if view.artifact is not None)
-        if artifacts:
+        publication_artifacts = artifacts + supporting_artifacts
+        if len(publication_artifacts) > _MAX_JOB_PUBLICATION_VIEWS:
+            raise StorageValidationError("worker publication cannot exceed 128 views")
+        if publication_artifacts:
             try:
-                _preflight_job_artifacts(artifacts)
+                _preflight_job_artifacts(publication_artifacts)
             except StorageValidationError:
                 raise
             except (StorageIntegrityError, TypeError) as exc:
@@ -681,9 +725,14 @@ class IndexJobExecutionResult:
         object.__setattr__(self, "views", views)
         object.__setattr__(self, "error_code", code)
         object.__setattr__(self, "error_message", message)
+        object.__setattr__(self, "supporting_artifacts", supporting_artifacts)
         if self.publishable and self.retryable:
             raise StorageValidationError(
                 "publishable worker execution result cannot be retryable"
+            )
+        if supporting_artifacts and not self.publishable:
+            raise StorageValidationError(
+                "worker supporting artifacts require a publishable result"
             )
 
     @property
@@ -702,6 +751,12 @@ class IndexJobExecutionResult:
     @property
     def artifacts(self) -> tuple[IndexJobViewArtifact, ...]:
         return tuple(view.artifact for view in self.views if view.artifact is not None)
+
+    @property
+    def publication_artifacts(self) -> tuple[IndexJobViewArtifact, ...]:
+        """Return requested results plus reserved snapshot-support generations."""
+
+        return self.artifacts + self.supporting_artifacts
 
 
 @runtime_checkable
@@ -1905,6 +1960,9 @@ class IndexJobWorker:
                                     retryable=returned.retryable,
                                     error_code=returned.error_code,
                                     error_message=returned.error_message,
+                                    supporting_artifacts=(
+                                        returned.supporting_artifacts
+                                    ),
                                 )
                             except Exception:
                                 failure_code = "worker_executor_incomplete"
@@ -2734,7 +2792,7 @@ class IndexJobWorker:
         before_catalog_publish: Callable[[], None] | None = None,
     ) -> IndexJobWorkerRunResult:
         _artifacts, expected_outputs, _receipts = _preflight_job_artifacts(
-            result.artifacts
+            result.publication_artifacts
         )
         pre_catalog_failure: BaseException | None = None
 
@@ -2764,7 +2822,7 @@ class IndexJobWorker:
                 object_store=self._object_store,
                 owner_id=authority.owner_id,
                 fencing_token=authority.fencing_token,
-                outputs=result.artifacts,
+                outputs=result.publication_artifacts,
                 _retention_cleanup_as_integrity=True,
                 _before_catalog_publish=(
                     run_before_catalog_publish
