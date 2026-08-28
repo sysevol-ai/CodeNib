@@ -10,6 +10,7 @@ import os
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from threading import get_ident
 from time import monotonic
@@ -774,6 +775,11 @@ class LocalIndexRuntimeService:
                     storage_binding.repository_id,
                     storage_binding.ref_name,
                 )
+                repository_topology_verifier = partial(
+                    _repository_topology_guard,
+                    topology,
+                    storage_binding.repo_id,
+                )
                 worker_target = LocalBM25SourceJobTarget(
                     repository_root=repository_root,
                     workspace_provider=worker_provider,
@@ -792,7 +798,7 @@ class LocalIndexRuntimeService:
                         _repository_head(root)
                     ),
                     workspace_parent_identity=topology.worker_workspace_identity,
-                    topology_verifier=topology.verify,
+                    topology_verifier=repository_topology_verifier,
                     attempt_orphan_sink=attempt_pool.accept,
                 )
                 web_bindings.append(web_binding)

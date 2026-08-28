@@ -340,15 +340,17 @@ class LocalIndexStorageConfig:
         ):
             raise TypeError("index_storage repository bindings must use exact values")
         by_repo: set[str] = set()
-        by_storage: set[tuple[str, str]] = set()
+        by_repository_id: set[str] = set()
         for repository in self.repositories:
             if repository.namespace_name != namespace.name:
                 raise ValueError("index_storage repository namespace differs")
-            storage_key = (repository.repository_id, repository.ref_name)
-            if repository.repo_id in by_repo or storage_key in by_storage:
+            if (
+                repository.repo_id in by_repo
+                or repository.repository_id in by_repository_id
+            ):
                 raise ValueError("index_storage repository bindings must be unique")
             by_repo.add(repository.repo_id)
-            by_storage.add(storage_key)
+            by_repository_id.add(repository.repository_id)
         _exact_config_integer(
             self.catalog_busy_timeout_ms,
             source="index_storage catalog_busy_timeout_ms",

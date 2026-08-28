@@ -311,6 +311,15 @@ def test_local_index_runtime_filters_before_scoped_topology_verification(
             is True
         )
         assert calls == [("repository", "demo")]
+        target = service._background._worker._worker._resolver.resource_factory.targets[
+            0
+        ]
+        assert target.topology_verifier is not None
+        target.topology_verifier()
+        assert calls == [
+            ("repository", "demo"),
+            ("repository", "demo"),
+        ]
     finally:
         service.close()
         registry.close()
