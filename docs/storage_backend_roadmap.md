@@ -306,6 +306,18 @@ points unchanged for non-interruptible callers. The native directory-plan and
 directory-`fsync` loops poll only after the current record or syscall has been
 attested and before future work, preserving both exact callback identity and
 storage-error precedence.
+The BM25 attempt-pool lease uses a separate additive
+`directory_fd_owner_protocol_version == 1` ABI; the core
+`workspace_owner_protocol_version` remains 6. The additive surface precreates
+an opaque native owner, opens exact path bytes with
+`O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC` directly into that owner
+before control returns to Python, and exposes only owner-retained borrow,
+final-check-plus-child-`mkdirat`, close, and closed operations. Missing symbols
+or native open flags fail the
+Linux lease preflight before shard bootstrap. A pinned native at-fork callback
+fail-stops any child that inherits a live directory owner instead of guessing
+whether an earlier child callback reused its enumerable descriptor numbers;
+fork resumes normally once all owners are closed.
 Its success states are `destination-captured` -> `destination-leased` ->
 `replacement-provisioning` -> `replacement-provisioned` ->
 `replacement-adopted` -> `replacement-exchanged-unreceipted` ->
@@ -1366,20 +1378,44 @@ owner, cleanup failure, and prior cause. Expected-empty checks use the retained
 directory descriptor directly
 and fail closed on any name under the declared quiescence contract, without
 claiming a hostile-writer allocation budget. Interrupted rename, removal, and
-synchronization likewise retain an explicit retry owner. It acquires no
-cross-process lease and contains no BM25 name discovery or policy. A separate
-target-bound BM25 coordinator now supplies that policy only after successful
-worker settlement and an exact caller assertion that no other cooperative
-process can enter the pool. It snapshots and classifies the complete bounded
-parent before mutation, recognizes only the fixed current and legacy
+synchronization likewise retain an explicit retry owner. The generic reclaimer
+itself acquires no cross-process lease and contains no BM25 name discovery or
+policy. The phase-A target-bound BM25 binding creates or reopens one permanent
+owner-only `0700` shard named
+`.codenib-bm25-attempt-pool-v1-repo_<64-hex>` per repository below the retained
+workspace and binds exact repository, workspace, and shard identities into
+paired opaque routes. Phase A admits only disjoint repository/workspace paths
+selected by one authenticated Linux mount and rejects repository-descendant
+mounts before creation; independently mounted backing stores remain pending
+rather than trusting incomplete overlay/FUSE/network physical mappings. The
+caller must retain controlled, externally quiescent repository/workspace path
+ancestry and mount topology from bootstrap through routed-owner close;
+in-process tracing or a same-euid/privileged actor that renames those ancestors
+or changes mounts during mutation is outside this phase's authority contract.
+Native final revalidation and child `mkdirat` share one C frame to remove
+ordinary Python opcode/cancellation handoffs, but do not pretend to lock the
+kernel namespace. A
+routed writer takes blocking `LOCK_SH` immediately
+before attempt-root preparation and holds it through child and outer-root
+cleanup, exact-group lost-return retry, orphan delivery and acknowledgement,
+and final route validation. The paired reaper takes blocking `LOCK_EX` before
+reclaimer construction and holds it through the complete bounded sweep,
+reclaimer close, and post-sweep route validation; incomplete cleanup retains
+the exact composite owner and lease.
+
+Within that boundary the coordinator snapshots and classifies the complete
+bounded parent before mutation, recognizes only the fixed current and legacy
 source-attempt lineages, rejects malformed reserved and provenance-free hashed
 fallback names, routes only already-discarded lineage to direct cleanup, and
 requires the final snapshot to contain exactly the original unrelated names.
-It carries no catalog, publication, or global retained-owner routing authority;
-automatic multi-target cleanup and a cross-process writer/reaper lease remain
-pending. The legacy one-shot directory-discard and plain stage-construction
-return contracts remain unchanged; cancellation-safe integrations must use the
-retained owner and explicit receipt acknowledgement.
+This supplies cooperative cross-process writer/reaper exclusion only for that
+routed repository shard and grants no catalog, publication, global
+target-discovery, or default/background reaping authority. Automatic
+multi-target shard discovery/routing and default reaping remain pending. The
+workspace-root legacy pool remains a separate manual, caller-quiescent,
+unleased compatibility cleanup. The legacy one-shot directory-discard and
+plain stage-construction return contracts remain unchanged; cancellation-safe
+integrations must use the retained owner and explicit receipt acknowledgement.
 
 The compiler-cache bridge now also has a resource-scoped resolver seam. It
 attests the canonical running request before opening attempt resources, accepts
@@ -1429,8 +1465,10 @@ storage topology. The planner captures that same topology-guarded retained
 source and registers only its content-addressed planning identities through a
 least-authority catalog surface. The guarded result reconciler, retained
 publisher, and polling loop remain dependency-injected; no default Web lifespan
-installation, local storage configuration, or default route selects either
-production binding yet.
+installation, acquired local-storage service composition, or default route
+selects either production binding yet. Typed local-storage configuration parsing
+is implemented, but it remains a side-effect-free opt-in until those runtime
+ownership gates are installed.
 
 The production CLI binding exposes both trusted local adapters through
 `codenib jobs run-once` and `codenib jobs run`, with an explicit mutually
@@ -1443,19 +1481,27 @@ passes that authority into every fresh capture, and accepts only the exact FULL
 BM25 builder profile selected by its language and exclusion arguments. It also
 re-resolves display provenance per attempt and rejects HEAD drift before fenced
 publication rather than stamping later source bytes with the startup commit.
-The source candidate filter rechecks retained topology before lease acquisition,
+The source candidate filter rechecks retained topology before catalog job-lease
+acquisition,
 and every later attempt verifier promotes topology loss to a storage-integrity
 alarm, so a continuous scheduler terminates instead of consuming job retries.
-A default-off `--reclaim-quiescent-attempts` source-mode flag runs the bounded
-coordinator exactly once after a successful `run-once` worker return or
-continuous-scheduler shutdown, while retained topology and CAS owners are still
-open. The flag is an operator assertion that no other cooperative process can
-enter that workspace through the post-worker sweep; exceptional worker unwind
-never invokes it, cache mode rejects it before path or storage setup, stdout
-remains unchanged, and stderr receives only bounded count diagnostics.
+A default-off `--reclaim-quiescent-attempts` source-mode flag runs exactly once
+after a successful `run-once` worker return or continuous-scheduler shutdown,
+while retained topology and CAS owners are still open. Phase A first takes the
+configured repository shard's blocking exclusive route, waiting for
+cooperative routed writers, and sweeps that shard; it then scans the
+workspace-root legacy pool separately without a lease. The coordinator calls
+remain explicitly caller-authorized, but current-shard writer exclusion comes
+from `LOCK_EX`; the legacy pass still depends on actual operator-enforced
+workspace quiescence. The permanent shard is retained and excluded from
+combined count diagnostics. Exceptional worker unwind never invokes either
+pass, cache mode rejects the flag before path or storage setup, stdout remains
+unchanged, and stderr receives only bounded count diagnostics. Other
+repository shards are not discovered, and no default or background reaper is
+installed.
 A trusted candidate filter runs on a detached canonical job before owner
-allocation or lease acquisition, so foreign repositories and unsupported view
-requests remain untouched. `run-once`
+allocation or catalog job-lease acquisition, so foreign repositories and
+unsupported view requests remain untouched. `run-once`
 examines one bounded advisory page and executes at most one eligible job. The
 continuous scheduler freezes an attested catalog insertion watermark for each
 cycle, carries an attested keyset cursor across its bounded pages, wraps only
@@ -1484,9 +1530,12 @@ caller-owned path-build root whose authenticated cleanup receipt is accepted
 before ownership is released. The descriptor-owned quiescent directory
 reclamation primitive, bounded descriptor child snapshot, and direct
 already-quarantined-child cleanup are implemented. Exact BM25 attempt-name
-classification, the caller-asserted post-worker coordinator, and default-off
-CLI wiring are also implemented; automatic multi-target retry routing and a
-cross-process writer/reaper lease remain pending.
+classification, phase-A per-repository shard bootstrap and paired
+writer/reaper routes, exact-group retained-owner retry routing, and the
+default-off two-pass CLI sweep are implemented. The production routed source
+path writes only into its leased shard; the compatibility workspace-root path
+and its cleanup remain unleased and manual. Automatic multi-target shard
+discovery/routing and default/background reaping remain pending.
 Vector and graph source builders, generic builder routing, and remaining
 runtime wiring remain.
 
@@ -1527,7 +1576,8 @@ generation identity.
 The first #266 status, durable-read, explicitly injected one-view write,
 retained-source BM25 planning, guarded reconciliation, retained publication,
 and polling slices are present. The success callback exists but is not installed
-by the default server; Web lifespan ownership, local storage configuration,
+by the default server. Typed local-storage configuration parsing is present;
+physical topology acquisition, service composition, Web lifespan ownership,
 MCP, UI controls, and default routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
@@ -1580,18 +1630,25 @@ MCP, UI controls, and default routing remain absent.
   entry, and explicit Web planner are implemented. The generic descriptor-bound
   quiescent directory reclamation primitive, bounded descriptor child snapshot,
   and direct already-quarantined cleanup remain policy-free and carry no
-  publication authority. A separate exact-target coordinator and default-off
-  CLI flag now add bounded BM25 attempt-name policy only after successful worker
-  settlement under caller-asserted process quiescence. The planner captures the
-  same frozen local target as the worker, revalidates source after planning, and
-  uses a separate least-authority catalog surface that can register only
-  content-addressed source/profile identities and read one ref generation. Add
-  a cooperative cross-process writer/reaper lease and automatic multi-target
-  routing, then add vector and graph source adapters, install the existing
-  reconciler and polling loop in the production server lifespan, invoke its
-  callback from attested worker success, and wire MCP, UI, and default routes.
-  Older self-publishing ingress APIs remain compatibility paths and are never
-  nested inside the worker.
+  publication authority. The production retained-source binding assigns its
+  exact repository to one permanent shard and paired least-authority routes.
+  Writers hold `LOCK_SH` from attempt-root preparation through receipt
+  acknowledgement, retryable cleanup, and route validation; the reaper holds
+  `LOCK_EX` from before reclaimer construction through reclaimer close and
+  post-validation. The default-off CLI runs this leased shard sweep only after
+  successful worker settlement or shutdown, then performs the separate
+  unleased legacy-root pass. The planner captures the same frozen local target
+  as the worker, revalidates source after planning, and uses a separate
+  least-authority catalog surface that can register only content-addressed
+  source/profile identities and read one ref generation. The generic
+  descriptor reclaimer remains policy-free and carries no publication
+  authority. Automatic multi-target shard discovery/routing and installed
+  default/background reaping remain pending, and legacy cleanup continues to
+  require explicit operator quiescence. Then add vector and graph source
+  adapters, install the existing reconciler and polling loop in the production
+  server lifespan, invoke its callback from attested worker success, and wire
+  MCP, UI, and default routes. Older self-publishing ingress APIs remain
+  compatibility paths and are never nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,

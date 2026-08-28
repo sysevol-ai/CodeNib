@@ -378,9 +378,10 @@ source. `--exclude-dir PATH` is repeatable and defines the exact custom subtree
 exclusions for this worker profile; `--clear-exclude-dirs` explicitly selects
 none. These source-only options are rejected with `--cache-dir`.
 
-`--scan-limit` may select 1 through 256 candidates. Lease and heartbeat timing
-are configurable, but the heartbeat must remain less than one third of the
-lease. The default text output reports disposition, job ID, and attempt; use
+`--scan-limit` may select 1 through 256 candidates. Catalog job-lease and
+heartbeat timing are configurable, but the heartbeat must remain less than one
+third of the lease. The default text output reports disposition, job ID, and
+attempt; use
 `--json` for one compact canonical object. A processed retry, failure,
 cancellation, or authority loss is a durable worker disposition rather than a
 CLI infrastructure failure. Storage-integrity, topology, and cleanup failures
@@ -392,6 +393,43 @@ outputs; cache imports own BM25/vector and context outputs as applicable. After
 CAS ingestion and worker-owned publication, receipt authorities close and the
 exact owned directories are atomically moved to authenticated orphan names for
 later quiescent GC; the command never recursively deletes a mutable path.
+
+Source mode creates or reopens one permanent owner-only `0700` attempt-pool
+shard named `.codenib-bm25-attempt-pool-v1-repo_<64-hex>` for the exact
+repository below the retained workspace. Bootstrap requires Linux directory
+`flock` support and the additive native directory-FD-owner protocol v1; the
+core workspace-owner protocol remains v6. Repository and workspace must be
+disjoint paths selected by the same authenticated Linux mount; nested
+repository mounts and independently mounted overlay/FUSE/network views are
+rejected before shard creation because their backing paths cannot be proven
+disjoint. The caller must keep the repository/workspace path ancestry and
+selected mount namespace controlled and externally quiescent from bootstrap
+until every routed writer/reaper owner has closed; CodeNib does not claim safety
+against an in-process trace callback or same-euid/privileged actor renaming
+those ancestors or changing mounts during a filesystem mutation. The native
+bootstrap recheck and `mkdirat` share one C frame to close ordinary Python
+opcode, cancellation, and signal-delivery handoffs within that contract. The
+native owner retains the exact
+directory descriptor before returning it to Python. A native at-fork guard
+fail-stops a child while any such owner is live, before `os.fork()` can return
+to application code. Earlier-registered child callbacks may already have
+changed enumerable descriptor numbers, so the guard deliberately closes none
+of them and terminates the child instead; fork can continue normally again
+after every owner settles.
+
+A routed source writer takes `LOCK_SH` immediately before outer-attempt
+preparation and holds it through child/root cleanup, lost-return recovery,
+orphan delivery and acknowledgement, and final route validation. With
+`--reclaim-quiescent-attempts`, the post-success coordinator takes `LOCK_EX`
+before constructing the descriptor-bound reclaimer and keeps it through the
+bounded shard sweep, reclaimer close, and post-validation. It then performs a
+separate unleased compatibility sweep of the legacy workspace-root pool, so
+the operator must still keep that legacy namespace quiescent. The flag never
+runs after an exceptional worker or infrastructure unwind; normal returned
+failed, requeued, cancelled, or lost-authority dispositions have already
+settled their resource scopes and may still be followed by the requested
+sweep. It does not discover other repository shards or install a default or
+background reaper. Automatic multi-target shard routing remains future work.
 
 `codenib jobs run` retains the same authorities while traversing the complete
 runnable keyspace frozen at the start of each cycle. The catalog first records

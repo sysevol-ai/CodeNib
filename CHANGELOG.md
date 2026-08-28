@@ -11,6 +11,20 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Added
+
+- Repository-bound BM25 source-attempt shards with cooperative shared writer
+  and exclusive reaper leases, plus a default-off post-operation-return cleanup
+  pass that retains legacy workspace cleanup as an explicit compatibility step.
+
+### Security
+
+- Native directory descriptors are committed to opaque owners before returning
+  to Python, and writer/reaper leases remain coupled to retryable cleanup and
+  exact repository, workspace, and shard identities. Attempt-pool bootstrap
+  rejects nested or independently selected mount views before shard creation
+  within its documented controlled, quiescent path-and-mount contract.
+
 ## [0.2.2] - 2026-08-21
 
 ### Added
