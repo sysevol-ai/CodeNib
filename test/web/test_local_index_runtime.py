@@ -489,6 +489,41 @@ def test_local_index_runtime_reclaims_stale_attempts_before_start(
         registry.close()
 
 
+def test_local_index_runtime_defers_busy_attempt_sweeps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    calls: list[bool] = []
+
+    def defer_busy(
+        _coordinator,
+        *,
+        caller_asserts_quiescence=False,
+        blocking=True,
+    ):
+        assert caller_asserts_quiescence is True
+        calls.append(blocking)
+        return None
+
+    monkeypatch.setattr(
+        local_runtime_module.LocalBM25AttemptPoolCoordinator,
+        "reclaim",
+        defer_busy,
+    )
+    service = LocalIndexRuntimeService.acquire(storage, registry)
+    try:
+        service.start()
+        assert service.healthy is True
+        service.close()
+        assert service.closed is True
+        assert calls == [False, False]
+    finally:
+        if not service.closed:
+            service.close()
+        registry.close()
+
+
 def test_local_index_runtime_retains_routed_reaper_cleanup_owner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -509,7 +544,12 @@ def test_local_index_runtime_retains_routed_reaper_cleanup_owner(
     failure = RuntimeError("routed reaper cleanup failed")
     failure.publication_cleanup_owners = (cleanup_owner,)  # type: ignore[attr-defined]
 
-    def fail_once(coordinator, *, caller_asserts_quiescence=False):
+    def fail_once(
+        coordinator,
+        *,
+        caller_asserts_quiescence=False,
+        blocking=True,
+    ):
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -517,6 +557,7 @@ def test_local_index_runtime_retains_routed_reaper_cleanup_owner(
         return real_reclaim(
             coordinator,
             caller_asserts_quiescence=caller_asserts_quiescence,
+            blocking=blocking,
         )
 
     monkeypatch.setattr(

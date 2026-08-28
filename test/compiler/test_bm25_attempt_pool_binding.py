@@ -723,6 +723,48 @@ def test_leased_attempt_pool_reclaims_shard_only_under_exclusive_route(
             is None
         )
 
+        installed: list[PrivateDirectoryLeaseOwner] = []
+        writer_lease = binding.writer_route._acquire(
+            check_cancelled=lambda: None,
+            construction_owner=installed.append,
+        )
+        deferred: list[BM25AttemptPoolReclamation | None] = []
+        failures: list[BaseException] = []
+
+        def try_nonblocking_reclaim() -> None:
+            try:
+                deferred.append(
+                    LocalBM25AttemptPoolCoordinator(
+                        target,
+                        reaper_route=binding.reaper_route,
+                    ).reclaim(
+                        caller_asserts_quiescence=True,
+                        blocking=False,
+                    )
+                )
+            except BaseException as error:  # noqa: B036 - exact failure asserted
+                failures.append(error)
+
+        contender = threading.Thread(target=try_nonblocking_reclaim)
+        contender.start()
+        contender.join(timeout=10)
+        try:
+            assert not contender.is_alive()
+            assert failures == []
+            assert deferred == [None]
+        finally:
+            writer_lease.close()
+
+        assert installed == [writer_lease]
+        assert writer_lease.closed
+        assert (
+            _probe_raw_lease(
+                binding.reaper_route._state.directory_lease_route,
+                DirectoryLeaseMode.EXCLUSIVE,
+            )
+            is None
+        )
+
         legacy = LocalBM25AttemptPoolCoordinator(
             target,
             _legacy_workspace=True,
@@ -881,7 +923,7 @@ def test_incomplete_reclaimer_close_retains_exclusive_lease(
         cleanup = job_resources_module._BM25AttemptPoolReaperCleanupOwner(
             binding.reaper_route
         )
-        cleanup._acquire()
+        cleanup._acquire(blocking=True)
         reclaimer = cleanup._open_reclaimer()
         real_close = job_resources_module.QuiescentDirectoryReclaimer.close
         monkeypatch.setattr(

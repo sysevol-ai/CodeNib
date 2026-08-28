@@ -302,16 +302,26 @@ class _LocalBM25AttemptPoolReaper:
 
         self._lock.run(forget_closed)
 
-    def _sweep(self, registration: _LocalBM25AttemptPoolRegistration) -> None:
+    def _sweep(self, registration: _LocalBM25AttemptPoolRegistration) -> bool:
         self._settle_cleanup_owners(registration)
         try:
-            LocalBM25AttemptPoolCoordinator(
+            result = LocalBM25AttemptPoolCoordinator(
                 registration.target,
                 reaper_route=registration.binding.reaper_route,
-            ).reclaim(caller_asserts_quiescence=True)
+            ).reclaim(
+                caller_asserts_quiescence=True,
+                blocking=False,
+            )
         except BaseException as error:  # noqa: B036 - retain exclusive route owner
             self._retain_cleanup_owners(registration, error)
             raise
+        if result is None:
+            logger.debug(
+                "Deferred busy local attempt-pool sweep: repository_id=%s",
+                registration.repository_id,
+            )
+            return False
+        return True
 
     def _reclaim_pending_one(self, repository_id: str) -> bool:
         registration = self._registration(repository_id)
@@ -322,7 +332,8 @@ class _LocalBM25AttemptPoolReaper:
         # the complete bounded shard. Keep the exact receipts queued until that
         # sweep returns, so a failed or interrupted route cleanup remains
         # retryable without falling back to path authority.
-        self._sweep(registration)
+        if not self._sweep(registration):
+            return True
         self._forget(registration, receipts)
         return True
 

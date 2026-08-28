@@ -215,6 +215,11 @@ def test_bm25_attempt_pool_coordinator_requires_exact_quiescence_and_topology(
         coordinator.reclaim()
     with pytest.raises(TypeError, match="exact bool"):
         coordinator.reclaim(caller_asserts_quiescence=1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="blocking flag"):
+        coordinator.reclaim(
+            caller_asserts_quiescence=True,
+            blocking=1,  # type: ignore[arg-type]
+        )
 
     no_topology_target = LocalBM25SourceJobTarget(
         repository_root=target.repository_root,

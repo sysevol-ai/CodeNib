@@ -707,11 +707,13 @@ class _BM25AttemptPoolReaperCleanupOwner:
             )
         self._lease = lease
 
-    def _acquire(self) -> None:
+    def _acquire(self, *, blocking: bool) -> None:
+        if type(blocking) is not bool:
+            raise TypeError("BM25 attempt-pool reaper blocking flag is invalid")
         if self._lease is not None:
             raise RuntimeError("BM25 attempt-pool reaper lease is already acquired")
         lease = self._route._acquire(
-            blocking=True,
+            blocking=blocking,
             check_cancelled=None,
             construction_owner=self._install_lease,
         )
@@ -898,11 +900,14 @@ class LocalBM25AttemptPoolCoordinator:
         self,
         *,
         caller_asserts_quiescence: bool = False,
-    ) -> BM25AttemptPoolReclamation:
-        """Reclaim recognized stale attempts after an exact caller assertion."""
+        blocking: bool = True,
+    ) -> BM25AttemptPoolReclamation | None:
+        """Reclaim recognized attempts, or defer a busy non-blocking route."""
 
         if type(caller_asserts_quiescence) is not bool:
             raise TypeError("BM25 attempt-pool quiescence assertion must be exact bool")
+        if type(blocking) is not bool:
+            raise TypeError("BM25 attempt-pool reaper blocking flag must be exact bool")
         if caller_asserts_quiescence is not True:
             raise StorageValidationError(
                 "BM25 attempt-pool reclamation requires caller-asserted quiescence"
@@ -1000,7 +1005,12 @@ class LocalBM25AttemptPoolCoordinator:
             incomplete_owner=reaper_cleanup,
         )
         with _run_context_with_cleanup_actions((cleanup_action,)):
-            reaper_cleanup._acquire()
+            try:
+                reaper_cleanup._acquire(blocking=blocking)
+            except BlockingIOError:
+                if blocking:
+                    raise
+                return None
             return run_with_topology(
                 "reclaimer lifetime",
                 sweep,
