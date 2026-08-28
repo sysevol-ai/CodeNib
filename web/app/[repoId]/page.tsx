@@ -2,6 +2,7 @@
 
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
+import IndexStatusControl from "@/components/IndexStatusControl";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import { AppLink } from "@/lib/router";
@@ -631,6 +632,7 @@ export default function WikiPageView({
               <div className="rail-sub mono">Last indexed {repo.commit_short}</div>
             )
           )}
+          {!staticRuntime && <IndexStatusControl repoId={repoId} />}
           {error ? (
             <div className="page-load-error" role="alert">
               <div>Failed to load this wiki.</div>

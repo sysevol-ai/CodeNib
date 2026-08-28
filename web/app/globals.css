@@ -644,6 +644,248 @@ pre {
   outline-offset: 1px;
 }
 
+.index-status-control {
+  padding: 0 0 14px;
+  margin: 0 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.index-status-control > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  list-style: none;
+}
+
+.index-status-control > summary::-webkit-details-marker {
+  display: none;
+}
+
+.index-status-control > summary::before {
+  content: "›";
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.15s ease;
+}
+
+.index-status-control[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.index-status-control > summary > :first-child {
+  margin-right: auto;
+}
+
+.index-status-summary-note {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.index-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.index-state::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.index-state.built::before {
+  background: #16a34a;
+}
+
+.index-state.stale::before,
+.index-state.missing::before {
+  background: #d97706;
+}
+
+.index-state.updating::before {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.index-state.failed::before {
+  background: #dc2626;
+}
+
+.index-status-panel {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+
+.index-status-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.index-status-panel-head strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.index-status-panel-head p {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.index-status-panel-head button {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.index-status-panel-head button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.index-status-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.index-status-row {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-muted);
+}
+
+.index-status-row-head,
+.index-status-mode,
+.index-status-commits {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.index-status-name {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.index-status-mode {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.index-status-mode .mono {
+  color: var(--text-muted);
+}
+
+.index-status-reason {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.index-status-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 7px;
+  margin: 7px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
+.index-status-metrics > div {
+  min-width: 0;
+}
+
+.index-status-metrics dt {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+.index-status-metrics dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.index-status-commits {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 9px;
+}
+
+.index-status-commits b {
+  color: var(--text);
+  font-weight: 550;
+}
+
+.index-status-stale {
+  color: #b45309;
+  font-weight: 650;
+}
+
+.index-status-error,
+.index-status-loading {
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.index-status-error {
+  color: #b91c1c;
+}
+
+[data-theme="dark"] .index-status-stale {
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .index-status-error {
+  color: #fca5a5;
+}
+
 .toc-tree {
   list-style: none;
   margin: 0;
