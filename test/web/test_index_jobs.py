@@ -31,6 +31,7 @@ from codenib.web.index_jobs import (
     IndexJobRepoBinding,
     overlay_active_job,
 )
+from codenib.web.local_index_service import LocalIndexServiceError
 from codenib.web.schemas import (
     IndexJobStatusResponse,
     IndexJobSurface,
@@ -432,6 +433,36 @@ def test_index_job_endpoint_is_unavailable_without_reader(monkeypatch) -> None:
         asyncio.run(web_app.index_job_status("job_" + "f" * 64, 0, 64))
 
     assert raised.value.status_code == 503
+
+
+def test_index_job_endpoint_sanitizes_local_catalog_factory_failure(
+    monkeypatch,
+) -> None:
+    job = _job()
+    private_failure = LocalIndexServiceError("private catalog topology detail")
+
+    def unavailable_factory():
+        raise private_failure
+
+    reader = CatalogIndexJobReader(
+        unavailable_factory,
+        (IndexJobRepoBinding("demo", _STORAGE_REPO),),
+    )
+
+    async def inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(web_app.app.state, "index_job_reader", reader, raising=False)
+    monkeypatch.setattr(web_app.asyncio, "to_thread", inline)
+
+    with pytest.raises(HTTPException) as raised:
+        asyncio.run(web_app.index_job_status(job.job_id, 0, 64))
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "Durable index job status is unavailable"
+    assert isinstance(raised.value.__cause__, IndexJobReadError)
+    assert raised.value.__cause__.__cause__ is private_failure
+    assert "topology" not in raised.value.detail
 
 
 def test_repo_status_releases_bundle_pin_before_active_job_read(monkeypatch) -> None:

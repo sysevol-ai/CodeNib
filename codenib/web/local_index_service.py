@@ -14,13 +14,13 @@ from pathlib import Path
 from typing import Iterator
 
 from .._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
-from ..storage import SQLiteCatalog
+from ..storage import SQLiteCatalog, StorageError
 
 _MAX_BUSY_TIMEOUT_MS = 86_400_000
 _MISSING_CATALOG = object()
 
 
-class LocalIndexServiceError(RuntimeError):
+class LocalIndexServiceError(StorageError):
     """The explicitly configured local index service is unavailable."""
 
 
@@ -84,9 +84,11 @@ class _CatalogSessionOwner:
     def acquire(self, factory) -> SQLiteCatalog:
         if self._catalog is not _MISSING_CATALOG:
             raise RuntimeError("local index catalog session is already open")
-        catalog = factory()
-        self._catalog = catalog
-        return catalog
+        # The cleanup owner is reachable before the factory runs. A direct
+        # attribute store leaves only the native-return-to-STORE_ATTR edge that
+        # Python cannot protect without a constructor-owned handoff protocol.
+        self._catalog = factory()
+        return self._catalog  # type: ignore[return-value]
 
     def close(self) -> None:
         catalog = self._catalog
