@@ -1749,7 +1749,7 @@ MCP, UI controls, and default routing remain absent.
   retry. The explicit composition now opens the strict preprovisioned CAS,
   freezes loaded repository inputs, builds matching BM25 worker/runtime targets,
   owns the fair scheduler and guarded reconciliation loop, and releases them in
-  background/reaper/lease/CAS/topology order. Lifespan installation remains a
+  background/reaper/CAS/topology order. Lifespan installation remains a
   separate gate.
 - An explicitly injected Web reader can now project authorized durable jobs and
   at most 64 events without exposing worker owner IDs, fencing tokens, or raw
