@@ -45,6 +45,7 @@ _LOCAL_INDEX_MAX_REPOSITORIES = 4_096
 _LOCAL_INDEX_MAX_DELAY_MS = 86_400_000
 _LOCAL_INDEX_MAX_LEASE_MS = 2_147_483_647
 _LOCAL_INDEX_MAX_SCAN_LIMIT = 256
+_YAML_MERGE_TAG = "tag:yaml.org,2002:merge"
 # Keep the read-only default config lightweight; storage models are imported
 # only after this explicit opt-in is present.
 _DEFAULT_LOCAL_INDEX_NAMESPACE = "default"
@@ -81,7 +82,12 @@ def _exact_config_integer(
 def _absolute_config_path(value: Any, *, source: str) -> Path:
     text = _exact_config_text(value, source=source, max_length=32_768)
     path = Path(text)
-    if not path.is_absolute() or path == path.parent or str(path) != text:
+    if (
+        not path.is_absolute()
+        or path == path.parent
+        or str(path) != text
+        or (os.name == "posix" and path.anchor != os.path.sep)
+    ):
         raise ValueError(f"{source} must be a canonical absolute non-root path")
     return path
 
@@ -105,6 +111,40 @@ def _reject_unknown_config_keys(
     unknown = set(value) - allowed
     if unknown:
         raise ValueError(f"{source} contains unsupported key {sorted(unknown)[0]!r}")
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects explicit duplicates per profile file."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeySafeLoader,
+    node: yaml.MappingNode,
+    deep: bool = False,
+) -> Dict[Any, Any]:
+    seen: set[Any] = set()
+    for key_node, _value_node in node.value:
+        # Preserve SafeLoader's standard YAML merge-key behavior. Explicit
+        # keys remain unique in this document, while profile layering is still
+        # handled later by _merge_config_data.
+        if key_node.tag == _YAML_MERGE_TAG:
+            continue
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in seen
+        except TypeError:
+            # SafeLoader will report an invalid unhashable mapping key below.
+            continue
+        if duplicate:
+            raise ValueError("demo config contains a duplicate YAML mapping key")
+        seen.add(key)
+    return yaml.SafeLoader.construct_mapping(loader, node, deep=deep)
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +315,7 @@ class LocalIndexStorageConfig:
                 not path.is_absolute()
                 or path == path.parent
                 or Path(os.path.abspath(os.fspath(path))) != path
+                or (os.name == "posix" and path.anchor != os.path.sep)
             ):
                 raise ValueError(
                     f"index_storage {name} must be a canonical absolute non-root path"
@@ -533,7 +574,7 @@ def _load_config_data(path: Path, *, chain: tuple[Path, ...] = ()) -> Dict[str, 
         return {}
 
     with resolved.open(encoding="utf-8") as handle:
-        loaded = yaml.safe_load(handle) or {}
+        loaded = yaml.load(handle, Loader=_UniqueKeySafeLoader) or {}
     if not isinstance(loaded, dict):
         raise ValueError(f"demo config must contain a YAML mapping: {resolved}")
 

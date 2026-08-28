@@ -180,6 +180,13 @@ index_storage:
             "must not overlap",
         ),
         (
+            _local_index_storage_yaml().replace(
+                "/srv/codenib/cas",
+                "//srv/codenib/cas",
+            ),
+            "canonical absolute",
+        ),
+        (
             _local_index_storage_yaml().replace("org/demo", "org/demo.git"),
             "repository key is not canonical",
         ),
@@ -226,6 +233,20 @@ def test_local_index_storage_config_rejects_duplicate_storage_bindings(
     )
 
     with pytest.raises(ValueError, match="bindings must be unique"):
+        load_config(str(config_path))
+
+
+def test_config_rejects_duplicate_yaml_keys_within_one_profile(
+    tmp_path: Path,
+) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        _local_index_storage_yaml(
+            "    demo:\n" "      repository_key: org/replacement\n"
+        )
+    )
+
+    with pytest.raises(ValueError, match="duplicate YAML mapping key"):
         load_config(str(config_path))
 
 
