@@ -45,6 +45,7 @@ _CATALOG_SIDECARS = (
     ("-journal", "rollback journal"),
 )
 _MISSING_CATALOG = object()
+_MISSING_TOPOLOGY = object()
 _LOCAL_TOPOLOGY_TOKEN = object()
 _POSIX_PRIVATE_MODE_SEMANTICS = os.name == "posix"
 _WINDOWS_REPARSE_POINT_ATTRIBUTE = getattr(
@@ -267,6 +268,92 @@ class _LinuxPhysicalPath:
     path: PurePosixPath
 
 
+class _LinuxMountIndexNode:
+    """One lexical component in the bounded Linux mount-point trie."""
+
+    __slots__ = ("children", "mappings")
+
+    def __init__(self) -> None:
+        self.children: dict[str, _LinuxMountIndexNode] = {}
+        self.mappings: list[_LinuxMountMapping] = []
+
+
+class _LinuxMountIndex:
+    """Resolve ancestors and enumerate descendants in mount-table input time."""
+
+    __slots__ = ("_root",)
+
+    def __init__(self, mappings: tuple[_LinuxMountMapping, ...]) -> None:
+        if type(mappings) is not tuple or any(
+            type(mapping) is not _LinuxMountMapping for mapping in mappings
+        ):
+            raise TypeError("Linux mount mappings must be an exact tuple")
+        root = _LinuxMountIndexNode()
+        for mapping in mappings:
+            node = root
+            for part in mapping.mount_point.parts:
+                child = node.children.get(part)
+                if child is None:
+                    child = _LinuxMountIndexNode()
+                    node.children[part] = child
+                node = child
+            node.mappings.append(mapping)
+        self._root = root
+
+    def _path_node(self, path: Path) -> _LinuxMountIndexNode | None:
+        node = self._root
+        for part in path.parts:
+            node = node.children.get(part)
+            if node is None:
+                return None
+        return node
+
+    def exact(self, path: Path) -> tuple[_LinuxMountMapping, ...]:
+        node = self._path_node(path)
+        return () if node is None else tuple(node.mappings)
+
+    def descendants(self, path: Path) -> Iterator[_LinuxMountMapping]:
+        node = self._path_node(path)
+        if node is None:
+            return
+        pending = list(node.children.values())
+        while pending:
+            descendant = pending.pop()
+            yield from descendant.mappings
+            pending.extend(descendant.children.values())
+
+    def physical_path(self, path: Path) -> _LinuxPhysicalPath | None:
+        node = self._root
+        selected: list[_LinuxMountMapping] = []
+        for part in path.parts:
+            node = node.children.get(part)
+            if node is None:
+                break
+            if node.mappings:
+                selected = node.mappings
+        if not selected:
+            return None
+        if len(selected) != 1:
+            raise LocalIndexServiceError(
+                "Linux mount table contains an ambiguous stacked mapping"
+            )
+        mapping = selected[0]
+        try:
+            relative = path.relative_to(mapping.mount_point)
+        except ValueError as exc:  # pragma: no cover - trie proves containment
+            raise LocalIndexServiceError("Linux mount mapping changed") from exc
+        internal = PurePosixPath(
+            posixpath.normpath(
+                posixpath.join(mapping.root.as_posix(), relative.as_posix())
+            )
+        )
+        if not internal.is_absolute():  # pragma: no cover - absolute root proves this
+            raise LocalIndexServiceError(
+                "Linux mount mapping produced a relative physical path"
+            )
+        return _LinuxPhysicalPath(mapping.device, internal)
+
+
 def _linux_mount_mappings() -> tuple[_LinuxMountMapping, ...]:
     if not sys.platform.startswith("linux"):
         return ()
@@ -341,36 +428,9 @@ def _linux_mount_mappings() -> tuple[_LinuxMountMapping, ...]:
 
 def _linux_physical_path(
     path: Path,
-    mappings: tuple[_LinuxMountMapping, ...],
+    index: _LinuxMountIndex,
 ) -> _LinuxPhysicalPath | None:
-    candidates = tuple(
-        mapping
-        for mapping in mappings
-        if path == mapping.mount_point or mapping.mount_point in path.parents
-    )
-    if not candidates:
-        return None
-    deepest = max(len(mapping.mount_point.parts) for mapping in candidates)
-    selected = tuple(
-        mapping for mapping in candidates if len(mapping.mount_point.parts) == deepest
-    )
-    if len(selected) != 1:
-        raise LocalIndexServiceError(
-            "Linux mount table contains an ambiguous stacked mapping"
-        )
-    mapping = selected[0]
-    try:
-        relative = path.relative_to(mapping.mount_point)
-    except ValueError as exc:  # pragma: no cover - candidates prove containment
-        raise LocalIndexServiceError("Linux mount mapping changed") from exc
-    internal = PurePosixPath(
-        posixpath.normpath(posixpath.join(mapping.root.as_posix(), relative.as_posix()))
-    )
-    if not internal.is_absolute():  # pragma: no cover - absolute root proves this
-        raise LocalIndexServiceError(
-            "Linux mount mapping produced a relative physical path"
-        )
-    return _LinuxPhysicalPath(mapping.device, internal)
+    return index.physical_path(path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -419,11 +479,9 @@ def _catalog_topology_paths(
 
 
 def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
-    mappings = _linux_mount_mappings()
+    mount_index = _LinuxMountIndex(_linux_mount_mappings())
     for subject in paths:
-        if subject.ancestry_root != subject.path and any(
-            mapping.mount_point == subject.path for mapping in mappings
-        ):
+        if subject.ancestry_root != subject.path and mount_index.exact(subject.path):
             raise LocalIndexServiceError(
                 f"{subject.label} must not be a Linux mount point"
             )
@@ -453,7 +511,7 @@ def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
             ancestry_identities.setdefault(identity, (ancestor, subject.label))
 
     for subject in paths:
-        mapped = _linux_physical_path(subject.path, mappings)
+        mapped = _linux_physical_path(subject.path, mount_index)
         if mapped is not None:
             expected_device = f"{os.major(subject.device)}:{os.minor(subject.device)}"
             if mapped.device != expected_device:
@@ -469,10 +527,8 @@ def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
     for subject in paths:
         if subject.ancestry_root != subject.path:
             continue
-        for mapping in mappings:
-            if subject.path not in mapping.mount_point.parents:
-                continue
-            mapped = _linux_physical_path(mapping.mount_point, mappings)
+        for mapping in mount_index.descendants(subject.path):
+            mapped = _linux_physical_path(mapping.mount_point, mount_index)
             if mapped is None:  # pragma: no cover - the mapping is a candidate
                 raise LocalIndexServiceError("Linux descendant mount mapping changed")
             key = (mapping.mount_point, mapped.device, mapped.path)
@@ -666,6 +722,76 @@ class ExistingLocalIndexCatalogFactory:
             yield catalog
 
 
+class LocalIndexStorageTopologyOwner:
+    """Caller-created owner that receives a topology before acquisition returns."""
+
+    __slots__ = ("_lifecycle_lock", "_topology")
+
+    def __init__(self) -> None:
+        self._lifecycle_lock = _CancellationSafeRLock()
+        self._topology: object = _MISSING_TOPOLOGY
+
+    @property
+    def topology(self) -> "LocalIndexStorageTopology":
+        """Borrow the active topology retained by this owner."""
+
+        def borrow() -> LocalIndexStorageTopology:
+            topology = self._topology
+            if type(topology) is not LocalIndexStorageTopology or topology.closed:
+                raise RuntimeError("local index topology owner is not active")
+            return topology
+
+        return self._lifecycle_lock.run(borrow)
+
+    @property
+    def closed(self) -> bool:
+        def observe() -> bool:
+            topology = self._topology
+            if topology is _MISSING_TOPOLOGY:
+                return True
+            if type(topology) is not LocalIndexStorageTopology:
+                raise RuntimeError("local index topology owner state changed")
+            return topology.closed
+
+        return self._lifecycle_lock.run(observe)
+
+    def _require_empty(self) -> None:
+        if self._topology is not _MISSING_TOPOLOGY:
+            raise RuntimeError("local index topology owner is already used")
+
+    def _install(self, topology: "LocalIndexStorageTopology") -> None:
+        """Publish the topology into caller reachability before public return."""
+
+        def install() -> None:
+            self._require_empty()
+            if type(topology) is not LocalIndexStorageTopology:
+                raise TypeError("local index topology owner requires an exact topology")
+            self._topology = topology
+
+        self._lifecycle_lock.run(install)
+
+    def close(self) -> None:
+        """Close the retained topology and remain retryable after interruption."""
+
+        def close_owned() -> None:
+            topology = self._topology
+            if topology is _MISSING_TOPOLOGY:
+                return
+            if type(topology) is not LocalIndexStorageTopology:
+                raise RuntimeError("local index topology owner state changed")
+            topology.close()
+            if topology.closed:
+                self._topology = _MISSING_TOPOLOGY
+
+        self._lifecycle_lock.run(close_owned)
+
+    def __enter__(self) -> "LocalIndexStorageTopologyOwner":
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _traceback: object) -> None:
+        self.close()
+
+
 class LocalIndexStorageTopology:
     """Retain exact catalog, storage-root, and repository authorities."""
 
@@ -714,11 +840,16 @@ class LocalIndexStorageTopology:
         cls,
         config: LocalIndexStorageConfig,
         repository_roots: Mapping[str, Path],
+        *,
+        owner: LocalIndexStorageTopologyOwner,
     ) -> "LocalIndexStorageTopology":
         """Open every configured authority without creating storage paths."""
 
         if type(config) is not LocalIndexStorageConfig:
             raise TypeError("local index topology requires the exact storage config")
+        if type(owner) is not LocalIndexStorageTopologyOwner:
+            raise TypeError("local index topology requires an exact caller owner")
+        owner._lifecycle_lock.run(owner._require_empty)
         if not isinstance(repository_roots, Mapping) or any(
             type(repo_id) is not str for repo_id in repository_roots
         ):
@@ -853,6 +984,7 @@ class LocalIndexStorageTopology:
                 repositories=repositories,
                 source_owner=source_owner,
             )
+            owner._install(topology)
             topology.verify()
             return topology
 
@@ -980,7 +1112,8 @@ class LocalIndexStorageTopology:
         # Physical ancestry and mount inspection can run arbitrary filesystem
         # syscalls. Sandwich it with a final retained binding check so a rename
         # or replacement cannot be accepted at the public return boundary.
-        self._bound_topology_paths_unlocked()
+        final_topology_paths = self._bound_topology_paths_unlocked()
+        _require_disjoint_topology(final_topology_paths)
 
     def verify(self) -> None:
         """Revalidate every retained path and physical-separation invariant."""
@@ -1024,4 +1157,5 @@ __all__ = [
     "ExistingLocalIndexCatalogFactory",
     "LocalIndexServiceError",
     "LocalIndexStorageTopology",
+    "LocalIndexStorageTopologyOwner",
 ]
