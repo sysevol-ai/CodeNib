@@ -354,6 +354,64 @@ pre {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.repo-index-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  min-height: 25px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.repo-index-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.repo-index-badge {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-muted);
+  font-size: 9px;
+}
+
+.repo-index-freshness {
+  color: #b45309;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.repo-index-summary.loading {
+  animation: repo-index-pulse 1.4s ease-in-out infinite;
+}
+
+.repo-index-summary.unavailable {
+  color: var(--text-secondary);
+}
+
+[data-theme="dark"] .repo-index-freshness {
+  color: #fbbf24;
+}
+
+@keyframes repo-index-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .repo-index-summary.loading {
+    animation: none;
+  }
+}
+
 .repo-card .repo-card-footer {
   margin-top: auto;
   padding-top: 12px;

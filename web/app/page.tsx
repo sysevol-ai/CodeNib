@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
+import RepoIndexBadges from "@/components/RepoIndexBadges";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { AppLink, navigate } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
@@ -24,12 +25,19 @@ function incrementalNote(r: RepoInfo): string | null {
   return `${commits} · ${s.speedup}× warm-patch speedup`;
 }
 
-function RepoCard({ r }: { r: RepoInfo }) {
+function RepoCard({
+  r,
+  showIndexStatus,
+}: {
+  r: RepoInfo;
+  showIndexStatus: boolean;
+}) {
   const incremental = incrementalNote(r);
   return (
     <AppLink className="repo-card" href={`/${r.id}`} aria-label={`Open ${r.repo} wiki`}>
       <div className="repo-card-title">{r.repo}</div>
       <div className="repo-card-desc">{repoDescription(r)}</div>
+      {showIndexStatus && <RepoIndexBadges repoId={r.id} />}
       <div className="repo-card-footer">
         <span className={`lang lang-${(r.language || "").toLowerCase().split("/")[0]}`}>
           {r.language || "code"}
@@ -189,7 +197,7 @@ export default function Landing() {
         {!error && loading && repos.length === 0 && <div className="empty">Loading repositories…</div>}
         {!error && !loading && repos.length === 0 && <div className="empty">No repositories found.</div>}
         {filtered.map((r) => (
-          <RepoCard key={r.id} r={r} />
+          <RepoCard key={r.id} r={r} showIndexStatus={!staticRuntime} />
         ))}
       </div>
     </div>

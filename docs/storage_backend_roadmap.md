@@ -1596,8 +1596,8 @@ lifespan now owns that composition
 and verifies a real first-build job through strict materialization and RCU
 replacement. The dynamic repository rail now exposes the three canonical index
 surfaces, durable job progress, and one capability-bound update action. MCP,
-landing/Ask freshness controls, vector/graph adapters, and default storage
-routing remain absent.
+Ask freshness controls, vector/graph adapters, and default storage routing
+remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1693,9 +1693,8 @@ routing remain absent.
   and advertising updates when either owned loop faults, reports unbound
   repositories as unavailable, and rejects a retained BM25 replacement whose
   source-selection policy or normalized language sequence differs from the
-  active Web generation. The remaining #266 work includes landing-page badges,
-  Ask freshness choices, production vector/graph update adapters, and their
-  default routing.
+  active Web generation. The remaining #266 work includes Ask freshness choices,
+  production vector/graph update adapters, and their default routing.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle
@@ -1821,6 +1820,12 @@ routing remain absent.
   the repository status after terminal settlement. Static exports omit the
   runtime-only control. The production local service currently advertises only
   retained-source BM25 rebuilds; vector and graph writes remain unavailable.
+- Dynamic landing-page repository cards now fetch the same strict three-surface
+  status and show compact text-plus-color BM25, Embeddings, and Graph badges
+  together with repository freshness. Each card aborts an obsolete request,
+  rejects a cross-repository or noncanonical response, and degrades without
+  hiding the repository when status is unavailable. Static exports issue no
+  status request and render no runtime-only badge placeholder.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization
