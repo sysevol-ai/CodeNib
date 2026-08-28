@@ -764,12 +764,19 @@ def _measure_canonical_json(
     value: Mapping[str, Any],
     *,
     max_bytes: int,
+    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
-    for chunk in _iter_canonical_json_chunks(value, max_bytes=max_bytes):
-        digest.update(chunk)
-        size += len(chunk)
+    try:
+        for chunk in _interruptible_chunks(
+            _iter_canonical_json_chunks(value, max_bytes=max_bytes),
+            check_cancelled,
+        ):
+            digest.update(chunk)
+            size += len(chunk)
+    except _ManifestChunkStop as signal:
+        _raise_exact_chunk_stop(signal)
     return digest.hexdigest(), size
 
 
@@ -1330,6 +1337,40 @@ def _prepare_import_inside_authority(
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
         check_cancelled=check_cancelled,
     )
+    return _prepare_projection_inside_authority(
+        prepared,
+        plan=plan,
+        repository_source=repository_source,
+        source_identity=source_identity,
+        object_store=object_store,
+        max_projection_bytes=max_projection_bytes,
+        projection_reachability=projection_reachability,
+        check_cancelled=check_cancelled,
+    )
+
+
+def _prepare_projection_inside_authority(
+    prepared: _PreparedManifestViews,
+    *,
+    plan: RepoManifestImportPlan,
+    repository_source: RepositorySourceBinding,
+    source_identity: SourceRevision,
+    object_store: RetainedImportObjectStore,
+    max_projection_bytes: int,
+    projection_reachability: str | None,
+    check_cancelled: Callable[[], None] | None = None,
+) -> _PreparedImport:
+    """Add one projection to already ingested, authority-scoped views."""
+
+    if type(prepared) is not _PreparedManifestViews:
+        raise TypeError("prepared manifest views are invalid")
+    if projection_reachability not in {
+        None,
+        REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
+    }:
+        raise StorageValidationError(
+            "repository manifest projection reachability is invalid"
+        )
 
     if check_cancelled is not None:
         check_cancelled()
@@ -1345,6 +1386,7 @@ def _prepare_import_inside_authority(
     projection_digest, projection_size = _measure_canonical_json(
         projection_value,
         max_bytes=max_projection_bytes,
+        check_cancelled=check_cancelled,
     )
     projection_chunks: Iterable[bytes] = _iter_canonical_json_chunks(
         projection_value,
@@ -1437,11 +1479,14 @@ def _prepare_job_snapshot_artifacts_inside_authority(
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
     max_projection_bytes: int,
+    projection_required: (
+        Callable[[tuple[IndexJobViewArtifact, ...]], bool] | None
+    ) = None,
     check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedJobSnapshotArtifacts:
     """Ingest a loadable job snapshot without granting catalog authority."""
 
-    prepared = _prepare_import_inside_authority(
+    prepared_views = _prepare_manifest_views_inside_authority(
         receipt,
         publication,
         plan=plan,
@@ -1456,6 +1501,33 @@ def _prepare_job_snapshot_artifacts_inside_authority(
         max_bundle_files=max_bundle_files,
         max_bundle_bytes=max_bundle_bytes,
         max_bundle_metadata_bytes=max_bundle_metadata_bytes,
+        check_cancelled=check_cancelled,
+    )
+    artifacts = tuple(
+        _prepared_view_job_artifact(view, check_cancelled=check_cancelled)
+        for view in prepared_views.views
+    )
+    include_projection = True
+    if projection_required is not None:
+        include_projection = projection_required(artifacts)
+        if type(include_projection) is not bool:
+            raise TypeError("job projection decision must be an exact boolean")
+    if not include_projection:
+        if check_cancelled is None:
+            repository_source.verify_snapshot()
+        else:
+            repository_source.verify_snapshot(check_cancelled=check_cancelled)
+        return _PreparedJobSnapshotArtifacts(
+            artifacts=artifacts,
+            supporting_artifacts=(),
+        )
+
+    prepared = _prepare_projection_inside_authority(
+        prepared_views,
+        plan=plan,
+        repository_source=repository_source,
+        source_identity=source_identity,
+        object_store=object_store,
         max_projection_bytes=max_projection_bytes,
         projection_reachability=REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
         check_cancelled=check_cancelled,
@@ -1464,10 +1536,6 @@ def _prepare_job_snapshot_artifacts_inside_authority(
         object_store,
         prepared.projection,
         check_cancelled=check_cancelled,
-    )
-    artifacts = tuple(
-        _prepared_view_job_artifact(view, check_cancelled=check_cancelled)
-        for view in prepared.views
     )
     stored_by_digest = {
         stored.record.digest: stored for stored in prepared.stored_objects
