@@ -60,7 +60,7 @@ from .index_jobs import (
     IndexJobReadError,
     overlay_active_job,
 )
-from .index_status import build_repo_index_status
+from .index_status import build_repo_index_status, validate_index_update_capabilities
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
@@ -267,15 +267,18 @@ def _index_update_capabilities(repo_id: str):
     """Resolve writer capabilities for one Web repository binding."""
 
     resolver = getattr(app.state, "index_update_capabilities_resolver", None)
-    if resolver is None:
-        return getattr(app.state, "index_update_capabilities", None)
-    if not callable(resolver):
+    if resolver is not None and not callable(resolver):
         raise HTTPException(
             status_code=503,
             detail="Index update capabilities are unavailable",
         )
     try:
-        return resolver(repo_id)
+        candidate = (
+            getattr(app.state, "index_update_capabilities", None)
+            if resolver is None
+            else resolver(repo_id)
+        )
+        return validate_index_update_capabilities(candidate)
     except Exception as exc:
         logger.warning(
             "Index update capability resolution unavailable: %s",

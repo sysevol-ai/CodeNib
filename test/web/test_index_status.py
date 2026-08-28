@@ -279,6 +279,42 @@ def test_index_status_endpoint_resolves_update_capabilities_per_repository(
     assert status.indexes[0].update_mode == "unavailable"
 
 
+@pytest.mark.parametrize(
+    "invalid_capabilities",
+    [
+        [],
+        {"zoekt": IndexUpdateCapability()},
+        {"bm25": object()},
+    ],
+    ids=["not-a-mapping", "unknown-index", "invalid-capability"],
+)
+def test_index_status_endpoint_sanitizes_invalid_resolver_capabilities(
+    monkeypatch,
+    invalid_capabilities,
+) -> None:
+    bundle = _bundle({"bm25": _entry("bm25")})
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id: str):
+            assert repo_id == "repo"
+            yield bundle
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(
+        web_app.app.state,
+        "index_update_capabilities_resolver",
+        lambda _repo_id: invalid_capabilities,
+        raising=False,
+    )
+
+    with pytest.raises(web_app.HTTPException) as raised:
+        asyncio.run(web_app.index_status("repo"))
+
+    assert raised.value.status_code == 503
+    assert raised.value.detail == "Index update capabilities are unavailable"
+
+
 def test_index_status_endpoint_retains_pin_until_cancelled_projection_settles(
     monkeypatch,
 ) -> None:

@@ -44,9 +44,11 @@ class IndexUpdateCapability:
 _UNAVAILABLE = IndexUpdateCapability()
 
 
-def _capability_snapshot(
+def validate_index_update_capabilities(
     capabilities: Mapping[str, IndexUpdateCapability] | None,
 ) -> dict[str, IndexUpdateCapability]:
+    """Return a detached, complete capability snapshot or reject bad input."""
+
     result = {index_type: _UNAVAILABLE for index_type in PRIMARY_INDEX_TYPES}
     if capabilities is None:
         return result
@@ -193,7 +195,7 @@ def build_repo_index_status(
         getattr(entry, "repo_dir", None),
         current_head_resolver,
     )
-    capabilities = _capability_snapshot(update_capabilities)
+    capabilities = validate_index_update_capabilities(update_capabilities)
     indexes = [
         _surface_status(
             manifest,
@@ -224,4 +226,5 @@ __all__ = [
     "IndexUpdateCapability",
     "PRIMARY_INDEX_TYPES",
     "build_repo_index_status",
+    "validate_index_update_capabilities",
 ]
