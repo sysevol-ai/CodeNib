@@ -55,7 +55,11 @@ from .index_job_service import IndexJobBackgroundService
 from .index_job_writes import CatalogIndexJobWriter, IndexJobWriter
 from .index_jobs import CatalogIndexJobReader, IndexJobReader, IndexJobRepoBinding
 from .index_status import IndexUpdateCapability
-from .local_index_service import LocalIndexServiceError, LocalIndexStorageTopology
+from .local_index_service import (
+    LocalIndexServiceError,
+    LocalIndexStorageTopology,
+    LocalIndexStorageTopologyOwner,
+)
 from .repo_registry import RepoBundle, RepoRegistry
 from .retained_bm25_activation import (
     LocalRetainedBm25RuntimeTarget,
@@ -151,6 +155,9 @@ class _LocalAttemptPoolLeaseOwner:
                     "local worker workspace is already owned by another process"
                 )
 
+        # Reject topology drift before publishing an unentered generator into
+        # cleanup ownership. Later checks are protected by the retained owner.
+        topology_verifier()
         context = compiler_cache_lock(
             root,
             create=True,
@@ -164,7 +171,6 @@ class _LocalAttemptPoolLeaseOwner:
         self._owner_thread_id = get_ident()
         self._topology_verifier = topology_verifier
         try:
-            topology_verifier()
             context.__enter__()
             self._entered = True
             topology_verifier()
@@ -529,11 +535,11 @@ def _configured_repositories(
         return tuple(selected)
 
 
-def _topology_guard(topology: LocalIndexStorageTopology) -> None:
+def _shared_topology_guard(topology: LocalIndexStorageTopology) -> None:
     try:
-        topology.verify()
+        topology.verify_shared_storage()
     except LocalIndexServiceError as exc:
-        raise StorageIntegrityError("local Web index storage topology changed") from exc
+        raise StorageIntegrityError("local Web index shared storage changed") from exc
 
 
 def _repository_topology_guard(
@@ -588,7 +594,7 @@ class LocalIndexRuntimeService:
         token: object,
         *,
         topology: LocalIndexStorageTopology,
-        topology_owner: _LocalRuntimeResourceOwner,
+        topology_owner: LocalIndexStorageTopologyOwner,
         attempt_pool: _LocalBM25AttemptPoolReaper,
         attempt_pool_lease_owner: _LocalAttemptPoolLeaseOwner,
         object_store_owner: _LocalRuntimeResourceOwner,
@@ -634,7 +640,7 @@ class LocalIndexRuntimeService:
             selected_repo.storage.repo_id: selected_repo.repository_root
             for selected_repo in selected
         }
-        topology_owner = _LocalRuntimeResourceOwner()
+        topology_owner = LocalIndexStorageTopologyOwner()
         attempt_pool_lease_owner = _LocalAttemptPoolLeaseOwner()
         attempt_pool = _LocalBM25AttemptPoolReaper(attempt_pool_lease_owner)
         object_store_owner = _LocalRuntimeResourceOwner()
@@ -730,19 +736,19 @@ class LocalIndexRuntimeService:
             cleanup_actions,
             cleanup_on_success=False,
         ):
-            topology = topology_owner.acquire(
-                lambda: LocalIndexStorageTopology.acquire(
-                    config,
-                    repository_roots,
-                )
+            topology = LocalIndexStorageTopology.acquire(
+                config,
+                repository_roots,
+                owner=topology_owner,
             )
             catalog_factory = topology.catalog_factory
             _verify_catalog_bindings(catalog_factory, selected)
             topology.verify()
+            shared_topology_verifier = partial(_shared_topology_guard, topology)
             attempt_pool_lease_owner.acquire(
                 config.worker_workspace_root,
                 wait_timeout_ms=config.catalog_busy_timeout_ms,
-                topology_verifier=topology.verify,
+                topology_verifier=shared_topology_verifier,
             )
             topology.verify()
             object_store = object_store_owner.acquire(
@@ -756,12 +762,6 @@ class LocalIndexRuntimeService:
             runtime_provider = LocalWorkspaceProvider(config.runtime_workspace_root)
             worker_provider.require_support()
             runtime_provider.require_support()
-            runtime_workspace = _TopologyBoundWorkspaceProvider(
-                runtime_provider,
-                topology.runtime_workspace_identity,
-                topology.verify,
-            )
-
             web_bindings: list[IndexJobRepoBinding] = []
             worker_targets: list[LocalBM25SourceJobTarget] = []
             runtime_targets: list[LocalRetainedBm25RuntimeTarget] = []
@@ -779,6 +779,11 @@ class LocalIndexRuntimeService:
                     _repository_topology_guard,
                     topology,
                     storage_binding.repo_id,
+                )
+                runtime_workspace = _TopologyBoundWorkspaceProvider(
+                    runtime_provider,
+                    topology.runtime_workspace_identity,
+                    repository_topology_verifier,
                 )
                 worker_target = LocalBM25SourceJobTarget(
                     repository_root=repository_root,

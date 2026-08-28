@@ -590,8 +590,6 @@ def test_jobs_run_once_parser_exposes_bounded_worker_inputs() -> None:
     with pytest.raises(SystemExit) as invalid:
         cli.build_parser().parse_args([*base, "--scan-limit", "0"])
     assert invalid.value.code == 2
-
-
 def test_jobs_worker_parser_requires_one_explicit_input_mode() -> None:
     topology = [
         "--catalog",

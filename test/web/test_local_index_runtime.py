@@ -24,6 +24,7 @@ from codenib.storage import (
     IndexJobStatus,
     LocalCAS,
     SQLiteCatalog,
+    StorageIntegrityError,
     StorageNotFound,
 )
 from codenib.web.config import (
@@ -135,6 +136,46 @@ def _runtime_fixture(
         ),
     )
     return storage, registry
+
+
+def _add_second_runtime_repository(
+    tmp_path: Path,
+    storage: LocalIndexStorageConfig,
+    registry: RepoRegistry,
+) -> tuple[LocalIndexStorageConfig, dict[str, Path]]:
+    parent = tmp_path / "other-root"
+    parent.mkdir()
+    repository, commit = _repository(parent)
+    with SQLiteCatalog(storage.catalog_path, create=False) as catalog:
+        repository_id = catalog.create_repository("org/other")
+    binding = LocalIndexStorageRepository(
+        repo_id="other",
+        repository_key="org/other",
+    )
+    assert binding.repository_id == repository_id
+    registry._bundles["other"] = RepoBundle(
+        entry=RepoEntry(
+            instance_id="other",
+            repo="org/other",
+            base_commit=commit,
+            language="python",
+            repo_dir=str(repository),
+            manifest_path=str(parent / "repo_manifest.json"),
+        ),
+        manifest=RepoManifest(
+            repo_path=str(repository),
+            commit=commit,
+            last_indexed_commit=commit,
+            languages=["python"],
+        ),
+    )
+    return (
+        replace(storage, repositories=(*storage.repositories, binding)),
+        {
+            "demo": Path(registry._bundles["demo"].entry.repo_dir),
+            "other": repository,
+        },
+    )
 
 
 def _candidate(repository_id: str, *, idempotency_key: str) -> IndexJobRecord:
@@ -325,6 +366,43 @@ def test_local_index_runtime_filters_before_scoped_topology_verification(
         registry.close()
 
 
+def test_local_index_runtime_scopes_shared_lease_and_runtime_providers(
+    tmp_path: Path,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    storage, repositories = _add_second_runtime_repository(
+        tmp_path,
+        storage,
+        registry,
+    )
+    service = LocalIndexRuntimeService.acquire(storage, registry)
+    displaced = tmp_path / "demo-displaced"
+    repositories["demo"].rename(displaced)
+    try:
+        # Attempt-pool ownership depends only on catalog/CAS/workspace roots.
+        service._attempt_pool_lease_owner.require_held()
+
+        loader = service._background._runtime._reconciler._publisher._loader
+        targets = {
+            target.binding.repo_id: target for target in loader._by_storage.values()
+        }
+        assert set(targets) == {"demo", "other"}
+        assert (
+            targets["demo"].workspace_provider
+            is not targets["other"].workspace_provider
+        )
+        targets["other"].workspace_provider.require_support()
+        with pytest.raises(
+            StorageIntegrityError,
+            match="repository topology changed",
+        ):
+            targets["demo"].workspace_provider.require_support()
+    finally:
+        displaced.rename(repositories["demo"])
+        service.close()
+        registry.close()
+
+
 def test_local_index_runtime_preserves_context_failure_after_cleanup(
     tmp_path: Path,
 ) -> None:
@@ -405,6 +483,37 @@ def test_attempt_pool_lease_owner_retains_interrupted_enter(
     assert active is False
     assert owner.closed is True
     assert events == ["verify", "enter", "exit"]
+
+
+def test_attempt_pool_lease_owner_verifies_before_publishing_context(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    monkeypatch.setattr(
+        local_runtime_module,
+        "compiler_cache_lock",
+        lambda *_args, **_kwargs: pytest.fail(
+            "lock context must follow the initial topology check"
+        ),
+    )
+    owner = local_runtime_module._LocalAttemptPoolLeaseOwner()
+
+    def reject_topology() -> None:
+        events.append("verify")
+        raise LocalIndexServiceError("workspace binding changed")
+
+    with pytest.raises(LocalIndexServiceError, match="binding changed"):
+        owner.acquire(
+            tmp_path,
+            wait_timeout_ms=0,
+            topology_verifier=reject_topology,
+        )
+
+    assert events == ["verify"]
+    assert owner.closed
+    owner.close()
 
 
 def test_local_index_runtime_reclaims_stale_attempts_before_start(

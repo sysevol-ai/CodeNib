@@ -1064,9 +1064,15 @@ class LocalIndexStorageTopology:
     def _bound_topology_paths_unlocked(
         self,
         repository_id: str | None = None,
+        *,
+        include_repositories: bool = True,
     ) -> tuple[_TopologyPath, ...]:
         """Revalidate shared roots plus the selected repository bindings."""
 
+        if type(include_repositories) is not bool:
+            raise TypeError("local index repository verification policy is invalid")
+        if not include_repositories and repository_id is not None:
+            raise ValueError("shared-only topology cannot select a repository")
         self._catalog_factory.verify()
         for binding, private in (
             (self._cas, False),
@@ -1081,7 +1087,9 @@ class LocalIndexStorageTopology:
             )
             if observed != binding.identity:
                 raise LocalIndexServiceError(f"{binding.label} identity changed")
-        if repository_id is None:
+        if not include_repositories:
+            repository_indexes = ()
+        elif repository_id is None:
             repository_indexes = range(len(self._repository_paths))
         else:
             selected_index = self._repository_indexes.get(repository_id)
@@ -1130,15 +1138,26 @@ class LocalIndexStorageTopology:
             ),
         )
 
-    def _verify_unlocked(self, repository_id: str | None = None) -> None:
+    def _verify_unlocked(
+        self,
+        repository_id: str | None = None,
+        *,
+        include_repositories: bool = True,
+    ) -> None:
         if self._closed_unlocked():
             raise LocalIndexServiceError("local index topology is closed")
-        topology_paths = self._bound_topology_paths_unlocked(repository_id)
+        topology_paths = self._bound_topology_paths_unlocked(
+            repository_id,
+            include_repositories=include_repositories,
+        )
         _require_disjoint_topology(topology_paths)
         # Physical ancestry and mount inspection can run arbitrary filesystem
         # syscalls. Sandwich it with a final retained binding check so a rename
         # or replacement cannot be accepted at the public return boundary.
-        final_topology_paths = self._bound_topology_paths_unlocked(repository_id)
+        final_topology_paths = self._bound_topology_paths_unlocked(
+            repository_id,
+            include_repositories=include_repositories,
+        )
         _require_disjoint_topology(final_topology_paths)
 
     def verify(self) -> None:
@@ -1152,6 +1171,13 @@ class LocalIndexStorageTopology:
         if type(repo_id) is not str:
             raise TypeError("local index repository ID must be exact text")
         self._lifecycle_lock.run(lambda: self._verify_unlocked(repo_id))
+
+    def verify_shared_storage(self) -> None:
+        """Revalidate catalog, CAS, and workspace roots without repositories."""
+
+        self._lifecycle_lock.run(
+            lambda: self._verify_unlocked(include_repositories=False)
+        )
 
     def _close_unlocked(self) -> None:
         cleanup_actions = (
