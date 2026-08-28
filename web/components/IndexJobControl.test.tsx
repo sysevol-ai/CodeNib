@@ -13,6 +13,7 @@ import IndexJobControl, {
   activeIndexJobId,
   indexJobRequestForSurface,
   indexJobPollDisposition,
+  indexJobPollingId,
   IndexJobProgress,
   mergeIndexJobEvents,
   prepareIndexJobCreate,
@@ -137,7 +138,10 @@ describe("IndexJobControl", () => {
           index_type: "bm25",
           effective_mode: "rebuild_fallback",
           outcome: "failed",
-          payload: { changed_files: 3 },
+          payload: {
+            changed_files: 3,
+            new_commit: "abcdef1234567890",
+          },
           created_at_ms: 3,
         },
       ],
@@ -147,6 +151,7 @@ describe("IndexJobControl", () => {
 
     expect(html).toContain("Rebuild fallback");
     expect(html).toContain("3 changed files");
+    expect(html).toContain("commit abcdef12");
     expect(html).toContain(
       "The index worker failed while preparing artifacts.",
     );
@@ -211,6 +216,14 @@ describe("index job polling invariants", () => {
       indexJobPollDisposition({ ...fullTerminalPage, events: [] }),
     ).toBe("settled");
     expect(indexJobPollDisposition(jobFixture())).toBe("wait");
+  });
+
+  it("follows a refreshed active job after retaining a terminal result", () => {
+    const terminal = jobFixture({ status: "succeeded" });
+
+    expect(indexJobPollingId(terminal, null, "job-2")).toBe("job-2");
+    expect(indexJobPollingId(jobFixture(), null, "job-2")).toBe("job-1");
+    expect(indexJobPollingId(terminal, "job-1", "job-2")).toBe("job-1");
   });
 
   it("accepts one active job and rejects cross-job overlays", () => {

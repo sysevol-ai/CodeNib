@@ -90,6 +90,15 @@ export function indexJobPollDisposition(
   return ACTIVE_JOB_STATES.has(next.status) ? "wait" : "settled";
 }
 
+export function indexJobPollingId(
+  job: IndexJobStatusResponse | null,
+  drainingJobId: string | null,
+  statusJobId: string | null,
+): string | null {
+  if (job && ACTIVE_JOB_STATES.has(job.status)) return job.job_id;
+  return drainingJobId ?? statusJobId;
+}
+
 function createIdempotencyKey(): string {
   const randomUUID = globalThis.crypto?.randomUUID;
   if (typeof randomUUID !== "function") {
@@ -133,6 +142,13 @@ function eventMetricSummary(event: IndexJobEvent): string | null {
   const cacheHitRate = event.payload.cache_hit_rate;
   if (typeof cacheHitRate === "number") {
     parts.push(`${Math.round(cacheHitRate * 100)}% cache hits`);
+  }
+  const newCommit = event.payload.new_commit;
+  if (
+    typeof newCommit === "string" &&
+    /^[0-9a-f]{7,64}$/.test(newCommit)
+  ) {
+    parts.push(`commit ${newCommit.slice(0, 8)}`);
   }
   return parts.length ? parts.join(" · ") : null;
 }
@@ -218,14 +234,12 @@ export default function IndexJobControl({
   const pendingCreate = useRef<PendingIndexJobCreate | null>(null);
   const statusJobId = activeIndexJobId(status);
   const jobIsActive = Boolean(job && ACTIVE_JOB_STATES.has(job.status));
-  const pollingJobId = jobIsActive
-    ? job!.job_id
-    : (drainingJobId ?? (job ? null : statusJobId));
+  const pollingJobId = indexJobPollingId(job, drainingJobId, statusJobId);
   const busy =
     submitting ||
     jobIsActive ||
     Boolean(drainingJobId) ||
-    Boolean(statusJobId && !job);
+    Boolean(statusJobId);
 
   const enabledSignature = enabledTypes.join("\u0000");
   useEffect(() => {
