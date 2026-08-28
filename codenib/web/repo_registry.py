@@ -28,6 +28,7 @@ from .._owned_file_publication import _CancellationSafeRLock
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import IndexEntry, RepoManifest
 from ..index.embedding._lifecycle import close_vector_after_failure
+from ..languages import normalize_chunker_language
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
 from ..repository_source_selection import RepositorySourceSelection
@@ -56,6 +57,7 @@ _REGISTRY_CLEANUP_CONTEXT = local()
 _REGISTRY_RELOAD_CONTEXT = local()
 _REGISTRY_DEFERRED_DRAIN_CONTEXT = local()
 _REGISTRY_LOCK_RESULT_MISSING = object()
+_MAX_RETAINED_BM25_LANGUAGES = 64
 
 
 @dataclass(slots=True)
@@ -422,6 +424,30 @@ def _exact_manifest_source_selection(manifest: Any) -> RepositorySourceSelection
     if type(selection) is not RepositorySourceSelection:
         raise TypeError("repository manifest source selection uses an invalid type")
     return selection
+
+
+def _exact_manifest_chunker_languages(
+    manifest: Any,
+    *,
+    fallback_language: str,
+) -> tuple[str, ...]:
+    """Reconstruct the normalized language sequence frozen by the builder."""
+
+    raw_languages = tuple(getattr(manifest, "languages", ()) or ())
+    if not raw_languages and fallback_language:
+        raw_languages = (fallback_language,)
+    if not 1 <= len(raw_languages) <= _MAX_RETAINED_BM25_LANGUAGES:
+        raise ValueError("repository manifest languages are not bounded")
+    languages: list[str] = []
+    for raw_language in raw_languages:
+        if type(raw_language) is not str:
+            raise TypeError("repository manifest language must be exact text")
+        language = normalize_chunker_language(raw_language)
+        if language is None:
+            raise ValueError("repository manifest language is unsupported")
+        if language not in languages:
+            languages.append(language)
+    return tuple(languages)
 
 
 def _require_authenticated_source_paths(
@@ -1871,6 +1897,16 @@ class RepoRegistry:
         ) != _exact_manifest_source_selection(manifest):
             raise ValueError(
                 "retained BM25 source selection differs from the active Web source"
+            )
+        if _exact_manifest_chunker_languages(
+            current_manifest,
+            fallback_language=entry.language,
+        ) != _exact_manifest_chunker_languages(
+            manifest,
+            fallback_language=entry.language,
+        ):
+            raise ValueError(
+                "retained BM25 languages differ from the active Web generation"
             )
 
         if (

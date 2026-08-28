@@ -683,14 +683,14 @@ def test_local_index_runtime_executes_submitted_bm25_job(
 
 
 @pytest.mark.parametrize(
-    "source_policy_drift",
-    (False, True),
-    ids=("matching-policy", "reloaded-policy"),
+    "reload_drift",
+    (None, "source-selection", "languages"),
+    ids=("matching-generation", "reloaded-policy", "reloaded-languages"),
 )
 def test_web_lifespan_executes_job_and_guards_registry_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    source_policy_drift: bool,
+    reload_drift: str | None,
 ) -> None:
     activation_failures = []
     monkeypatch.setattr(
@@ -755,9 +755,13 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
             assert initial is not None
             assert initial.index_job_activation is None
             expected_active = initial
-            if source_policy_drift:
-                reloaded_selection = RepositorySourceSelection(
-                    (*selection.exclude_subtrees, "policy-change")
+            if reload_drift is not None:
+                reloaded_selection = (
+                    RepositorySourceSelection(
+                        (*selection.exclude_subtrees, "policy-change")
+                    )
+                    if reload_drift == "source-selection"
+                    else selection
                 )
                 reloaded_source = fingerprint_repository(
                     repository,
@@ -769,7 +773,9 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
                     last_indexed_commit=commit,
                     source_fingerprint=reloaded_source.value,
                     source_selection=reloaded_selection,
-                    languages=["python"],
+                    languages=(
+                        ["javascript"] if reload_drift == "languages" else ["python"]
+                    ),
                     file_count=reloaded_source.file_count,
                 ).save(manifest_path)
                 registry.load_all()
@@ -792,10 +798,10 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
                 observed = application.state.index_job_reader.get(created.job_id)
                 active = registry.get("demo")
                 activation = None if active is None else active.index_job_activation
-                if source_policy_drift:
+                if reload_drift is not None:
                     if activation is not None:
                         pytest.fail(
-                            "drifted source policy reached registry publication"
+                            "drifted runtime inputs reached registry publication"
                         )
                     if observed.status == "succeeded" and activation_failures:
                         break
@@ -819,19 +825,22 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
                 await asyncio.sleep(0.02)
 
             assert active is not None
-            if source_policy_drift:
+            if reload_drift is not None:
                 assert active is expected_active
                 assert active.index_job_activation is None
-                assert active.manifest.source_selection != selection
+                if reload_drift == "source-selection":
+                    assert active.manifest.source_selection != selection
+                    expected_failure = "source selection differs"
+                else:
+                    assert active.manifest.languages == ["javascript"]
+                    expected_failure = "languages differ"
                 assert activation_failures
                 failure_chain = []
                 failure = activation_failures[-1]
                 while failure is not None:
                     failure_chain.append(str(failure))
                     failure = failure.__cause__
-                assert any(
-                    "source selection differs" in message for message in failure_chain
-                )
+                assert any(expected_failure in message for message in failure_chain)
             else:
                 assert active is not initial
                 assert active.bm25 is not None
