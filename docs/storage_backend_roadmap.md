@@ -1206,10 +1206,15 @@ reject values outside signed SQLite int64 before SQL execution.
 
 The receipt-retaining coordinator freezes exact artifact receipts and keeps
 them retained across the complete catalog transaction and returned-result
-attestation. Required views must be present, optional views may be omitted, and
-extra, duplicate, or profile-mismatched outputs fail closed. Publication is
-bounded to 64 output views and 32,768 aggregate compound members, with the full
-closure also subject to the retained response node/text budget. Per-view
+attestation. Required requested views must be present, optional requested views
+may be omitted, and duplicate, profile-mismatched, or unrequested public outputs
+fail closed. Job requests cannot name the reserved `codenib.internal.*`
+namespace; executors may add only that reserved snapshot-support closure.
+Publication is bounded to 128 combined requested/supporting views and 32,768
+aggregate compound members, with the full closure also subject to the retained
+response node/text budget. SQLite schema 8 migrates the declarative publication
+trigger to the same rule while preserving exact v1-v7 schema authentication and
+reopen validation. Per-view
 semantic compatibility remains the responsibility of the outstanding adapters;
 an explicit profile label alone does not establish byte-level semantics.
 
@@ -1231,11 +1236,14 @@ whole-context evidence publication, then releases before the retained context
 is converted to one canonical view-bundle receipt plus every independently
 reachable member receipt. `publish_job_artifacts` remains the sole catalog
 mutation: it retains that complete receipt set through the atomic job/snapshot/
-ref transaction and returned-result attestation. The job path publishes only
-the BM25 generation, not the direct M1 importer's internal manifest projection.
-The caller still owns repository/source/profile registration, job creation,
-lease acquisition, and all receipt owners; the adapter adds no worker, CLI,
-runtime, vector, graph, or default-route wiring. Exact retry remains historical:
+ref transaction and returned-result attestation. The caller-visible result is
+still exactly the requested BM25 generation, while the same atomic snapshot now
+also carries the reserved internal manifest projection and its complete member
+closure required by strict retained loading. The caller still owns
+repository/source/profile registration, including the deterministic projection
+profile, job creation, lease acquisition, and all receipt owners; the production
+Web planner registers both profiles through its least-authority session. Exact
+retry remains historical:
 a committed BM25 job returns its original snapshot without moving a ref that a
 later valid publication has already advanced.
 
@@ -1559,8 +1567,10 @@ runtime wiring remain.
 
 ### M3: Jobs and runtime hot switching
 
-Status: in progress. Schema-v6 durable execution control is implemented for the
-local SQLite catalog. The backend-neutral prepare-only whole-job worker is
+Status: in progress. Schema-v6 durable execution control, schema-7 fair
+insertion sequencing, and the schema-8 supporting-view publication contract are
+implemented for the local SQLite catalog. The backend-neutral prepare-only
+whole-job worker is
 implemented and verified with file-backed SQLite integration coverage. An
 explicit one-view compiler-cache executor now supplies parser-inert BM25 or
 schema-8 vector artifacts without catalog authority, and the first
@@ -1644,7 +1654,8 @@ MCP, UI controls, and default routing remain absent.
   unleased legacy-root pass. The planner captures the same frozen local target
   as the worker, revalidates source after planning, and uses a separate
   least-authority catalog surface that can register only content-addressed
-  source/profile identities and read one ref generation. The generic
+  source/profile identities and read one ref generation; it also registers the
+  reserved manifest-projection support profile. The generic
   descriptor reclaimer remains policy-free and carries no publication
   authority. The Web composition bootstraps the same paired routes for each
   configured target, directs every at-least-once receipt to its exact shard,
