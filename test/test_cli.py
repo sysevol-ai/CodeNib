@@ -714,7 +714,7 @@ def test_bm25_source_operation_reclaims_once_only_after_successful_return(
     monkeypatch.setattr(
         cli,
         "_reclaim_local_bm25_source_attempt_pool",
-        lambda target: events.append(f"reclaim:{target}"),
+        lambda target, route: events.append(f"reclaim:{target}:{route}"),
     )
 
     observed = cli._run_local_bm25_source_worker_operation(
@@ -722,6 +722,7 @@ def test_bm25_source_operation_reclaims_once_only_after_successful_return(
         operation,
         "worker",
         "target",
+        "route",
         lambda: events.append("verify"),
     )
 
@@ -731,7 +732,7 @@ def test_bm25_source_operation_reclaims_once_only_after_successful_return(
         "page-two",
         "operation-return",
         "verify",
-        *(("reclaim:target", "verify") if reclaim else ()),
+        *(("reclaim:target:route", "verify") if reclaim else ()),
     ]
 
 
@@ -748,13 +749,14 @@ def test_bm25_source_operation_does_not_reclaim_exceptional_unwind(
     monkeypatch.setattr(
         cli,
         "_reclaim_local_bm25_source_attempt_pool",
-        lambda _target: pytest.fail("exceptional worker must not reclaim"),
+        lambda _target, _route: pytest.fail("exceptional worker must not reclaim"),
     )
 
     with pytest.raises(RuntimeError) as caught:
         cli._run_local_bm25_source_worker_operation(
             SimpleNamespace(reclaim_quiescent_attempts=True),
             fail,
+            object(),
             object(),
             object(),
             lambda: events.append("verify"),
@@ -771,13 +773,34 @@ def test_bm25_attempt_pool_summary_is_bounded_stderr_only(
     import codenib.compiler.job_resources as job_resources_module
 
     target = object()
+    reaper_route = object()
 
     class Coordinator:
-        def __init__(self, candidate: object) -> None:
+        def __init__(
+            self,
+            candidate: object,
+            *,
+            reaper_route=None,
+            _legacy_workspace: bool = False,
+        ) -> None:
             assert candidate is target
+            self.reaper_route = reaper_route
+            self.legacy_workspace = _legacy_workspace
 
         def reclaim(self, *, caller_asserts_quiescence: bool):
             assert caller_asserts_quiescence is True
+            if self.reaper_route is None:
+                assert self.legacy_workspace is True
+                return job_resources_module.BM25AttemptPoolReclamation(
+                    scanned_children=3,
+                    reclaimed_children=1,
+                    current_children=0,
+                    legacy_children=1,
+                    discarded_children=1,
+                    retained_unrelated_children=2,
+                )
+            assert self.reaper_route is reaper_route
+            assert self.legacy_workspace is False
             return job_resources_module.BM25AttemptPoolReclamation(
                 scanned_children=7,
                 reclaimed_children=5,
@@ -787,19 +810,25 @@ def test_bm25_attempt_pool_summary_is_bounded_stderr_only(
                 retained_unrelated_children=2,
             )
 
+    class ReaperRoute:
+        def _verify(self) -> None:
+            return None
+
+    reaper_route = ReaperRoute()
+
     monkeypatch.setattr(
         job_resources_module,
         "LocalBM25AttemptPoolCoordinator",
         Coordinator,
     )
 
-    cli._reclaim_local_bm25_source_attempt_pool(target)
+    cli._reclaim_local_bm25_source_attempt_pool(target, reaper_route)
 
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == (
-        "BM25 attempt-pool reclamation: scanned=7 reclaimed=5 "
-        "current=3 legacy=2 discarded=4 retained=2\n"
+        "BM25 attempt-pool reclamation: scanned=9 reclaimed=6 "
+        "current=3 legacy=3 discarded=5 retained=3\n"
     )
 
 

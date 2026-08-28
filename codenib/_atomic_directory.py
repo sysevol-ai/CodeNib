@@ -9563,6 +9563,9 @@ class QuiescentDirectoryReclaimer:
         parent: Path,
         *,
         expected_parent_identity: tuple[int, ...],
+        _construction_owner: (
+            Callable[[QuiescentDirectoryReclaimer], None] | None
+        ) = None,
     ) -> None:
         if type(self) is not QuiescentDirectoryReclaimer:
             raise TypeError("quiescent directory reclaimer cannot be subclassed")
@@ -9576,6 +9579,10 @@ class QuiescentDirectoryReclaimer:
             or any(type(value) is not int for value in expected_parent_identity)
         ):
             raise TypeError("quiescent directory reclaimer parent identity is invalid")
+        if _construction_owner is not None and not callable(_construction_owner):
+            raise TypeError(
+                "quiescent directory reclaimer construction owner must be callable"
+            )
         _require_quiescent_reclaimer_support()
         lexical = lexical_directory_path(parent)
         self._parent = lexical
@@ -9586,6 +9593,8 @@ class QuiescentDirectoryReclaimer:
         self._active: _QuiescentDirectoryReclaimOperation | None = None
         self._closed = False
         try:
+            if _construction_owner is not None:
+                _construction_owner(self)
             authority = _open_publication_authority(
                 lexical,
                 parent_resource=None,

@@ -21,6 +21,7 @@ import pytest
 
 import codenib.cli as cli_module
 import codenib.compiler as compiler_module
+import codenib.compiler.bm25_attempt_pool as bm25_attempt_pool_module
 import codenib.compiler.cache_import as cache_import_module
 import codenib.compiler.job_resolver as job_resolver_module
 import codenib.compiler.job_resources as job_resources_module
@@ -33,6 +34,13 @@ from codenib._captured_directory import (
 )
 from codenib.code_chunker import CodeChunker
 from codenib.code_chunking.base import BaseCodeChunker
+from codenib.compiler._directory_lease import (
+    DirectoryLeaseMode,
+    PrivateDirectoryLeaseOwner,
+    PrivateDirectoryLeaseRoute,
+    acquire_private_directory_lease,
+)
+from codenib.compiler.bm25_attempt_pool import bootstrap_local_bm25_attempt_pool
 from codenib.compiler.index_builders import BM25IndexBuilder
 from codenib.compiler.job_resolver import (
     BM25SourceJobResolver,
@@ -69,6 +77,7 @@ from codenib.storage import (
     StorageValidationError,
     ViewProfile,
 )
+from codenib.storage.models import NamespaceIdentity, RepositoryIdentity
 
 _COMMIT = "a" * 40
 _REPOSITORY_KEY = "owner/repo"
@@ -161,6 +170,80 @@ def _source_fixture(
         attempt_provider=LocalWorkspaceProvider(tmp_path),
         owners=[],
     )
+
+
+def _directory_identity(path: Path) -> tuple[int, ...]:
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        return publication_parent_identity(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _source_repository_id() -> str:
+    namespace = NamespaceIdentity("default")
+    return RepositoryIdentity(
+        namespace_id=namespace.namespace_id,
+        repository_key=_REPOSITORY_KEY,
+    ).repository_id
+
+
+def _probe_nonblocking_reaper(reaper_route) -> BaseException | None:
+    results: list[BaseException | None] = []
+
+    def acquire() -> None:
+        installed: list[object] = []
+        try:
+            owner = reaper_route._acquire(
+                blocking=False,
+                check_cancelled=None,
+                construction_owner=installed.append,
+            )
+        except BaseException as error:  # noqa: B036 - exact contention is asserted
+            results.append(error)
+            return
+        try:
+            results.append(None)
+        finally:
+            owner.close()
+
+    thread = threading.Thread(target=acquire)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert len(results) == 1
+    return results[0]
+
+
+def _probe_nonblocking_directory_lease(
+    route: PrivateDirectoryLeaseRoute,
+    mode: DirectoryLeaseMode,
+) -> BaseException | None:
+    results: list[BaseException | None] = []
+
+    def acquire() -> None:
+        installed: list[PrivateDirectoryLeaseOwner] = []
+        try:
+            owner = acquire_private_directory_lease(
+                route,
+                mode=mode,
+                blocking=False,
+                _construction_owner=installed.append,
+            )
+        except BaseException as error:  # noqa: B036 - contention is asserted
+            results.append(error)
+            return
+        try:
+            results.append(None)
+        finally:
+            owner.close()
+
+    thread = threading.Thread(target=acquire)
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert len(results) == 1
+    return results[0]
 
 
 def _git_head(repository: Path) -> str:
@@ -1920,7 +2003,9 @@ def test_jobs_run_once_source_bm25_executes_matching_catalog_job(
         }
         assert not tuple(fixture.workspace.glob(".codenib-source-job-*"))
         assert not tuple(fixture.workspace.glob(".codenib-source-worker-topology-*"))
-        orphans = tuple(fixture.workspace.glob(".*.discarded-*"))
+        shards = tuple(fixture.workspace.glob(".codenib-bm25-attempt-pool-v1-repo_*"))
+        assert len(shards) == 1
+        orphans = tuple(shards[0].glob(".*.discarded-*"))
         if reclaim_quiescent_attempts:
             assert orphans == ()
             assert captured.err.endswith(
@@ -2229,6 +2314,616 @@ def test_local_bm25_source_scope_threads_repository_root_authority(
             assert observed == [authority]
             assert len(accepted_orphans) == 1
             assert accepted_orphans[0].reopen(lambda reader: reader.inventory()) == ()
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_source_scope_holds_shared_lease_through_orphan_ack(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    accepted_orphans: list[DirectoryOrphan] = []
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+
+            def accept(orphan: DirectoryOrphan) -> None:
+                contention = _probe_nonblocking_reaper(binding.reaper_route)
+                assert type(contention) is BlockingIOError
+                accepted_orphans.append(orphan)
+
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_orphan_sink=accept,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with resources.create_scope(
+                context, object_store=cas
+            ).resources as executor:
+                assert (
+                    executor.attempt_workspace_provider.allowed_root.parent
+                    == binding.writer_route._shard_path
+                )
+                assert type(_probe_nonblocking_reaper(binding.reaper_route)) is (
+                    BlockingIOError
+                )
+
+            assert len(accepted_orphans) == 1
+            assert accepted_orphans[0].path.parent == binding.writer_route._shard_path
+            assert _probe_nonblocking_reaper(binding.reaper_route) is None
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_source_acquisition_cancellation_settles_empty_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Cancelled(BaseException):
+        pass
+
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    cancellation = Cancelled("writer lease acquisition cancelled")
+    real_acquire = bm25_attempt_pool_module._LocalBM25AttemptPoolWriterRoute._acquire
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+
+            def cancel_acquire(route, *, check_cancelled, construction_owner):
+                assert route is binding.writer_route
+
+                def cancel() -> None:
+                    raise cancellation
+
+                return real_acquire(
+                    route,
+                    check_cancelled=cancel,
+                    construction_owner=construction_owner,
+                )
+
+            monkeypatch.setattr(
+                bm25_attempt_pool_module._LocalBM25AttemptPoolWriterRoute,
+                "_acquire",
+                cancel_acquire,
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(Cancelled) as caught:
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            assert caught.value is cancellation
+            assert tuple(binding.writer_route._shard_path.iterdir()) == ()
+            assert _probe_nonblocking_reaper(binding.reaper_route) is None
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_source_route_return_cancellation_skips_global_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Cancelled(BaseException):
+        pass
+
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    cancellation = Cancelled("writer lease route return cancelled")
+    retry_calls = 0
+    real_acquire = bm25_attempt_pool_module._LocalBM25AttemptPoolWriterRoute._acquire
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+
+            def cancel_after_route_return(
+                route,
+                *,
+                check_cancelled,
+                construction_owner,
+            ):
+                real_acquire(
+                    route,
+                    check_cancelled=check_cancelled,
+                    construction_owner=construction_owner,
+                )
+                raise cancellation
+
+            def reject_global_retry(*_args, **_kwargs) -> None:
+                nonlocal retry_calls
+                retry_calls += 1
+                raise AssertionError("unstarted lease cleanup entered global retry")
+
+            monkeypatch.setattr(
+                bm25_attempt_pool_module._LocalBM25AttemptPoolWriterRoute,
+                "_acquire",
+                cancel_after_route_return,
+            )
+            monkeypatch.setattr(
+                job_resources_module,
+                "_retry_retained_owned_path_build_cleanup_for_group",
+                reject_global_retry,
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(Cancelled) as caught:
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            assert caught.value is cancellation
+            assert retry_calls == 0
+            assert tuple(binding.writer_route._shard_path.iterdir()) == ()
+            assert _probe_nonblocking_reaper(binding.reaper_route) is None
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_source_failure_precedes_shared_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    source_failure = OSError("source capture failed before writer lease")
+    acquire_calls = 0
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+
+            def reject_source(*_args, **_kwargs):
+                raise source_failure
+
+            def reject_acquire(*_args, **_kwargs):
+                nonlocal acquire_calls
+                acquire_calls += 1
+                pytest.fail("source failure must precede writer lease acquisition")
+
+            monkeypatch.setattr(
+                job_resources_module,
+                "capture_repository_source",
+                reject_source,
+            )
+            monkeypatch.setattr(
+                bm25_attempt_pool_module._LocalBM25AttemptPoolWriterRoute,
+                "_acquire",
+                reject_acquire,
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(OSError) as caught:
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            assert caught.value is source_failure
+            assert acquire_calls == 0
+            assert tuple(binding.writer_route._shard_path.iterdir()) == ()
+            assert _probe_nonblocking_reaper(binding.reaper_route) is None
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_rejects_wrong_writer_lease_before_prepare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    wrong_owner: PrivateDirectoryLeaseOwner | None = None
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            installed: list[PrivateDirectoryLeaseOwner] = []
+            wrong_owner = acquire_private_directory_lease(
+                binding.writer_route._state.directory_lease_route,
+                mode=DirectoryLeaseMode.EXCLUSIVE,
+                blocking=True,
+                _construction_owner=installed.append,
+            )
+
+            def hand_off_wrong_mode(
+                _route,
+                *,
+                check_cancelled,
+                construction_owner,
+            ) -> PrivateDirectoryLeaseOwner:
+                assert callable(check_cancelled)
+                construction_owner(wrong_owner)
+                return wrong_owner
+
+            monkeypatch.setattr(
+                bm25_attempt_pool_module._LocalBM25AttemptPoolWriterRoute,
+                "_acquire",
+                hand_off_wrong_mode,
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(
+                StorageIntegrityError,
+                match="writer lease authority is inconsistent",
+            ):
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            assert tuple(binding.writer_route._shard_path.iterdir()) == ()
+    finally:
+        if wrong_owner is not None:
+            wrong_owner.close()
+        fixture.close()
+
+
+def test_routed_bm25_sink_failure_retains_composite_and_shared_lease(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    accepted_orphans: list[DirectoryOrphan] = []
+    rejection = RuntimeError("routed attempt sink refused receipt")
+
+    def accept(orphan: DirectoryOrphan) -> None:
+        accepted_orphans.append(orphan)
+        if len(accepted_orphans) == 1:
+            raise rejection
+
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_orphan_sink=accept,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(
+                StorageIntegrityError,
+                match="attempt resource cleanup did not settle",
+            ) as caught:
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            cleanup = next(
+                owner
+                for owner in getattr(
+                    caught.value,
+                    "publication_cleanup_owners",
+                    (),
+                )
+                if type(owner)
+                is job_resources_module._BM25AttemptPoolWriterCleanupOwner
+            )
+            assert {name for name in dir(cleanup) if not name.startswith("_")} == {
+                "close",
+                "closed",
+            }
+            assert not cleanup.closed
+            assert type(_probe_nonblocking_reaper(binding.reaper_route)) is (
+                BlockingIOError
+            )
+
+            cleanup.close()
+
+            assert cleanup.closed
+            assert len(accepted_orphans) == 2
+            assert accepted_orphans[0] is accepted_orphans[1]
+            assert _probe_nonblocking_reaper(binding.reaper_route) is None
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_shard_replacement_fails_before_writer_unlock(
+    tmp_path: Path,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    moved_route: PrivateDirectoryLeaseRoute | None = None
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            shard = binding.writer_route._shard_path
+            moved = shard.with_name(shard.name + ".moved")
+
+            def replace_shard(_orphan: DirectoryOrphan) -> None:
+                nonlocal moved_route
+                shard.rename(moved)
+                shard.mkdir(mode=0o700)
+                moved_route = PrivateDirectoryLeaseRoute(
+                    moved,
+                    binding.writer_route._shard_identity,
+                    os.getpid(),
+                )
+                assert (
+                    type(
+                        _probe_nonblocking_directory_lease(
+                            moved_route,
+                            DirectoryLeaseMode.EXCLUSIVE,
+                        )
+                    )
+                    is BlockingIOError
+                )
+
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_orphan_sink=replace_shard,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(
+                StorageIntegrityError,
+                match="shard identity changed",
+            ):
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            assert moved_route is not None
+            assert (
+                _probe_nonblocking_directory_lease(
+                    moved_route,
+                    DirectoryLeaseMode.EXCLUSIVE,
+                )
+                is None
+            )
+            with pytest.raises(
+                StorageIntegrityError,
+                match="shard identity changed",
+            ):
+                binding.writer_route._acquire(
+                    check_cancelled=None,
+                    construction_owner=lambda _owner: None,
+                )
+            assert tuple(shard.iterdir()) == ()
+    finally:
+        fixture.close()
+
+
+def test_routed_bm25_prepare_return_failure_recovers_only_its_group(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = BM25IndexBuilder()
+    fixture = _source_fixture(tmp_path)
+    workspace_identity = _directory_identity(fixture.workspace)
+    interruption = KeyboardInterrupt("attempt root prepare return interrupted")
+    accepted_orphans: list[DirectoryOrphan] = []
+    real_prepare = job_resources_module.OwnedPathBuildDirectory.prepare
+    try:
+        with (
+            pin_repository_source_root(fixture.repository) as authority,
+            LocalCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=fixture.workspace,
+                workspace_identity=workspace_identity,
+                repository_id=_source_repository_id(),
+                repository_authority=authority,
+                topology_verifier=lambda: None,
+            )
+            target = LocalBM25SourceJobTarget(
+                repository_root=fixture.repository,
+                workspace_provider=fixture.provider,
+                repository_key=_REPOSITORY_KEY,
+                display_commit=_COMMIT,
+                builder=builder,
+                repository_root_authority=authority,
+                workspace_parent_identity=workspace_identity,
+                topology_verifier=lambda: None,
+                attempt_orphan_sink=accepted_orphans.append,
+                attempt_pool_writer_route=binding.writer_route,
+                environ={},
+            )
+            context = _execution_context(
+                catalog,
+                fixture,
+                bm25_source_job_profile(builder),
+            )
+
+            def interrupt_prepare(_cls, destination, **kwargs):
+                real_prepare(destination, **kwargs)
+                raise interruption
+
+            monkeypatch.setattr(
+                job_resources_module.OwnedPathBuildDirectory,
+                "prepare",
+                classmethod(interrupt_prepare),
+            )
+            resources = LocalBM25SourceJobResourceFactory((target,))
+
+            with pytest.raises(KeyboardInterrupt) as caught:
+                with resources.create_scope(context, object_store=cas).resources:
+                    pass
+
+            assert caught.value is interruption
+            assert len(accepted_orphans) == 1
+            assert accepted_orphans[0].path.parent == binding.writer_route._shard_path
+            assert _probe_nonblocking_reaper(binding.reaper_route) is None
     finally:
         fixture.close()
 

@@ -3996,13 +3996,41 @@ def _run_with_local_compiler_cache_job_worker(
         raise
 
 
-def _reclaim_local_bm25_source_attempt_pool(target) -> None:
+def _reclaim_local_bm25_source_attempt_pool(target, reaper_route) -> None:
     """Run one count-only explicit-quiescent sweep and report it on stderr."""
 
-    from .compiler.job_resources import LocalBM25AttemptPoolCoordinator
+    from .compiler.job_resources import (
+        BM25AttemptPoolReclamation,
+        LocalBM25AttemptPoolCoordinator,
+    )
 
-    reclamation = LocalBM25AttemptPoolCoordinator(target).reclaim(
+    routed = LocalBM25AttemptPoolCoordinator(
+        target,
+        reaper_route=reaper_route,
+    ).reclaim(
         caller_asserts_quiescence=True,
+    )
+    reaper_route._verify()
+    legacy = LocalBM25AttemptPoolCoordinator(
+        target,
+        _legacy_workspace=True,
+    ).reclaim(
+        caller_asserts_quiescence=True,
+    )
+    reaper_route._verify()
+    if legacy.scanned_children < 1 or legacy.retained_unrelated_children < 1:
+        raise RuntimeError(
+            "BM25 attempt-pool permanent shard disappeared during legacy sweep"
+        )
+    reclamation = BM25AttemptPoolReclamation(
+        scanned_children=(routed.scanned_children + legacy.scanned_children - 1),
+        reclaimed_children=(routed.reclaimed_children + legacy.reclaimed_children),
+        current_children=routed.current_children + legacy.current_children,
+        legacy_children=routed.legacy_children + legacy.legacy_children,
+        discarded_children=(routed.discarded_children + legacy.discarded_children),
+        retained_unrelated_children=(
+            routed.retained_unrelated_children + legacy.retained_unrelated_children - 1
+        ),
     )
     print(
         "BM25 attempt-pool reclamation: "
@@ -4022,6 +4050,7 @@ def _run_local_bm25_source_worker_operation(
     operation,
     worker,
     target,
+    reaper_route,
     topology_verifier: Callable[[], None],
 ):
     """Run once, then optionally sweep only after worker resources settle."""
@@ -4029,7 +4058,7 @@ def _run_local_bm25_source_worker_operation(
     result = operation(worker)
     topology_verifier()
     if getattr(args, "reclaim_quiescent_attempts", False):
-        _reclaim_local_bm25_source_attempt_pool(target)
+        _reclaim_local_bm25_source_attempt_pool(target, reaper_route)
         topology_verifier()
     return result
 
@@ -4043,6 +4072,7 @@ def _run_with_local_bm25_source_job_worker(
     from . import LocalWorkspaceProvider
     from ._atomic_directory import _OrderedAction, _run_context_with_cleanup_actions
     from .artifacts.runtime import SourceBindingCleanupOwner
+    from .compiler.bm25_attempt_pool import bootstrap_local_bm25_attempt_pool
     from .compiler.index_builders import BM25IndexBuilder
     from .compiler.job_resolver import BM25SourceJobResolver
     from .compiler.job_resources import (
@@ -4051,6 +4081,7 @@ def _run_with_local_bm25_source_job_worker(
     )
     from .source_fingerprint import pin_repository_source_root
     from .storage import IndexJobWorker, LocalCAS
+    from .storage.models import NamespaceIdentity, RepositoryIdentity
 
     repository, namespace = _retained_materialization_identity(
         args.repository,
@@ -4124,6 +4155,18 @@ def _run_with_local_bm25_source_job_worker(
             attempt_topology_verifier = _bm25_source_job_infrastructure_guard(
                 topology.verify
             )
+            namespace_identity = NamespaceIdentity(namespace)
+            repository_identity = RepositoryIdentity(
+                namespace_id=namespace_identity.namespace_id,
+                repository_key=repository,
+            )
+            attempt_pool_binding = bootstrap_local_bm25_attempt_pool(
+                workspace_root=paths.workspace_root,
+                workspace_identity=topology.workspace_binding.identity,
+                repository_id=repository_identity.repository_id,
+                repository_authority=repository_authority,
+                topology_verifier=attempt_topology_verifier,
+            )
             target = LocalBM25SourceJobTarget(
                 repository_root=paths.repo_path,
                 workspace_provider=provider,
@@ -4141,6 +4184,7 @@ def _run_with_local_bm25_source_job_worker(
                 ),
                 workspace_parent_identity=topology.workspace_binding.identity,
                 topology_verifier=attempt_topology_verifier,
+                attempt_pool_writer_route=attempt_pool_binding.writer_route,
             )
             resources = LocalBM25SourceJobResourceFactory((target,))
             worker = IndexJobWorker(
@@ -4167,6 +4211,7 @@ def _run_with_local_bm25_source_job_worker(
                 operation,
                 worker,
                 target,
+                attempt_pool_binding.reaper_route,
                 topology.verify,
             )
         if result is missing_result:  # pragma: no cover - callback always returns

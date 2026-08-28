@@ -14,11 +14,12 @@ from contextlib import contextmanager
 from dataclasses import InitVar, dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Callable, Iterator, Mapping
+from typing import Callable, Iterator, Mapping, final
 
 from .._atomic_directory import (
     DirectoryOrphan,
     QuiescentDirectoryReclaimer,
+    _annotate_secondary_error,
     _attach_publication_cleanup_owner,
     _OrderedAction,
     _run_callback_with_post_validations,
@@ -30,6 +31,7 @@ from .._atomic_directory import (
 from .._captured_directory import (
     OwnedPathBuildDirectory,
     PublishedWorkspaceReceiptOwner,
+    _retry_retained_owned_path_build_cleanup_for_group,
 )
 from .._local_workspace_provider import LocalWorkspaceProvider
 from .._workspace_provider import StrictWorkspaceRequest, StrictWorkspaceSession
@@ -58,6 +60,11 @@ from ..storage.protocols import (
     InterruptibleReceiptVerifyingObjectStore,
     InterruptibleStreamingObjectStore,
     RetainedImportObjectStore,
+)
+from ._directory_lease import DirectoryLeaseMode, PrivateDirectoryLeaseOwner
+from .bm25_attempt_pool import (
+    _LocalBM25AttemptPoolReaperRoute,
+    _LocalBM25AttemptPoolWriterRoute,
 )
 from .cache_import import (
     CompilerCacheJobExecutor,
@@ -379,6 +386,11 @@ class LocalBM25SourceJobTarget:
         repr=False,
         compare=False,
     )
+    attempt_pool_writer_route: _LocalBM25AttemptPoolWriterRoute | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
     _repository_id: str = field(init=False, repr=False)
     _builder: _BM25BuilderConfiguration = field(init=False, repr=False)
     _profile_id: str = field(init=False, repr=False)
@@ -436,6 +448,12 @@ class LocalBM25SourceJobTarget:
         attempt_orphan_sink = self.attempt_orphan_sink
         if attempt_orphan_sink is not None and not callable(attempt_orphan_sink):
             raise TypeError("BM25 source target orphan sink is invalid")
+        attempt_pool_writer_route = self.attempt_pool_writer_route
+        if (
+            attempt_pool_writer_route is not None
+            and type(attempt_pool_writer_route) is not _LocalBM25AttemptPoolWriterRoute
+        ):
+            raise TypeError("BM25 source target attempt-pool writer route is invalid")
         namespace = NamespaceIdentity(self.namespace_name)
         repository = RepositoryIdentity(
             namespace_id=namespace.namespace_id,
@@ -458,6 +476,28 @@ class LocalBM25SourceJobTarget:
             raise StorageValidationError(
                 "BM25 source target repository key is not canonical"
             )
+        if attempt_pool_writer_route is not None:
+            if repository_authority is None:
+                raise StorageValidationError(
+                    "routed BM25 source target requires a repository authority"
+                )
+            if workspace_parent_identity is None or len(workspace_parent_identity) != 4:
+                raise StorageValidationError(
+                    "routed BM25 source target requires an exact workspace identity"
+                )
+            attempt_pool_writer_route._verify()
+            if (
+                attempt_pool_writer_route._repository_id != repository.repository_id
+                or attempt_pool_writer_route._repository_root != repository_root
+                or attempt_pool_writer_route._repository_root_identity
+                != tuple(repository_authority.root_identity)
+                or attempt_pool_writer_route._workspace_root != workspace_root
+                or attempt_pool_writer_route._workspace_identity
+                != tuple(workspace_parent_identity)
+            ):
+                raise StorageValidationError(
+                    "BM25 source target attempt-pool route binding is inconsistent"
+                )
         configuration = _snapshot_builder(builder)
         profile = configuration.profile()
         object.__setattr__(self, "repository_root", repository_root)
@@ -492,12 +532,18 @@ class LocalBM25SourceJobTarget:
     def attempt_pool_root(self) -> Path:
         """Return the private parent that owns source-job attempt roots."""
 
+        route = self.attempt_pool_writer_route
+        if route is not None:
+            return route._shard_path
         return self.workspace_provider.allowed_root
 
     @property
     def attempt_pool_identity(self) -> tuple[int, ...] | None:
         """Return the retained identity for the source-job attempt parent."""
 
+        route = self.attempt_pool_writer_route
+        if route is not None:
+            return route._shard_identity
         return self.workspace_parent_identity
 
     @property
@@ -631,11 +677,136 @@ class BM25AttemptPoolReclamation:
     retained_unrelated_children: int
 
 
+@final
+class _BM25AttemptPoolReaperCleanupOwner:
+    """Keep EX held until its exact reclaimer and topology checks settle."""
+
+    __slots__ = ("_lease", "_reclaimer", "_route")
+
+    def __init__(self, route: _LocalBM25AttemptPoolReaperRoute) -> None:
+        if type(self) is not _BM25AttemptPoolReaperCleanupOwner:
+            raise TypeError("BM25 attempt-pool reaper cleanup must use the exact type")
+        if type(route) is not _LocalBM25AttemptPoolReaperRoute:
+            raise TypeError("BM25 attempt-pool reaper cleanup route is invalid")
+        self._route = route
+        self._lease: PrivateDirectoryLeaseOwner | None = None
+        self._reclaimer: QuiescentDirectoryReclaimer | None = None
+
+    def _install_lease(self, lease: PrivateDirectoryLeaseOwner) -> None:
+        if type(lease) is not PrivateDirectoryLeaseOwner:
+            raise TypeError("BM25 attempt-pool reaper lease has an invalid type")
+        if self._lease is not None:
+            raise RuntimeError("BM25 attempt-pool reaper lease is already installed")
+        if (
+            lease.mode is not DirectoryLeaseMode.EXCLUSIVE
+            or lease.path != self._route._shard_path
+            or lease.identity != self._route._shard_identity
+        ):
+            raise StorageIntegrityError(
+                "BM25 attempt-pool reaper lease authority is inconsistent"
+            )
+        self._lease = lease
+
+    def _acquire(self) -> None:
+        if self._lease is not None:
+            raise RuntimeError("BM25 attempt-pool reaper lease is already acquired")
+        lease = self._route._acquire(
+            blocking=True,
+            check_cancelled=None,
+            construction_owner=self._install_lease,
+        )
+        if self._lease is not lease:
+            raise StorageIntegrityError(
+                "BM25 attempt-pool reaper lease handoff is inconsistent"
+            )
+
+    def _install_reclaimer(self, reclaimer: QuiescentDirectoryReclaimer) -> None:
+        if type(reclaimer) is not QuiescentDirectoryReclaimer:
+            raise TypeError("BM25 attempt-pool reclaimer has an invalid type")
+        if self._reclaimer is not None:
+            raise RuntimeError("BM25 attempt-pool reclaimer is already installed")
+        self._reclaimer = reclaimer
+
+    def _open_reclaimer(self) -> QuiescentDirectoryReclaimer:
+        lease = self._lease
+        if lease is None or lease.closed:
+            raise StorageIntegrityError(
+                "BM25 attempt-pool reclaimer requires an active exclusive lease"
+            )
+        reclaimer = QuiescentDirectoryReclaimer(
+            self._route._shard_path,
+            expected_parent_identity=self._route._shard_identity,
+            _construction_owner=self._install_reclaimer,
+        )
+        if self._reclaimer is not reclaimer:
+            raise StorageIntegrityError(
+                "BM25 attempt-pool reclaimer handoff is inconsistent"
+            )
+        return reclaimer
+
+    @property
+    def closed(self) -> bool:
+        lease = self._lease
+        reclaimer = self._reclaimer
+        return bool(
+            (lease is None or lease.closed) and (reclaimer is None or reclaimer.closed)
+        )
+
+    def close(self) -> None:
+        lease = self._lease
+        if lease is None:
+            return
+        reclaimer = self._reclaimer
+        if lease.closed and reclaimer is not None and not reclaimer.closed:
+            raise StorageIntegrityError(
+                "BM25 attempt-pool EX lease closed before its reclaimer"
+            )
+        primary_error: BaseException | None = None
+        if reclaimer is not None and not reclaimer.closed:
+            try:
+                reclaimer.close()
+            except BaseException as error:  # noqa: B036 - inspect exact settlement
+                if not reclaimer.closed:
+                    raise
+                primary_error = error
+        if reclaimer is not None and not reclaimer.closed:
+            raise StorageIntegrityError(
+                "BM25 attempt-pool reclaimer remained active under its EX lease"
+            )
+        try:
+            self._route._verify()
+        except BaseException as error:  # noqa: B036 - unlock after validation fault
+            if primary_error is None:
+                primary_error = error
+            else:
+                _annotate_secondary_error(
+                    primary_error,
+                    "BM25 attempt-pool route validation also failed",
+                    error,
+                )
+        try:
+            lease.close()
+        except BaseException as cleanup_error:  # noqa: B036 - preserve validation
+            if primary_error is not None:
+                raise primary_error from cleanup_error
+            raise
+        if primary_error is not None:
+            raise primary_error
+        if not self.closed:
+            raise RuntimeError("BM25 attempt-pool reaper cleanup did not settle")
+
+
 @dataclass(frozen=True, slots=True)
 class LocalBM25AttemptPoolCoordinator:
     """Apply exact BM25 name policy under a caller-asserted quiescent boundary."""
 
     target: LocalBM25SourceJobTarget
+    reaper_route: _LocalBM25AttemptPoolReaperRoute | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+    _legacy_workspace: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if type(self) is not LocalBM25AttemptPoolCoordinator:
@@ -644,19 +815,70 @@ class LocalBM25AttemptPoolCoordinator:
             raise TypeError(
                 "local BM25 attempt-pool coordinator requires an exact target"
             )
+        if (
+            self.reaper_route is not None
+            and type(self.reaper_route) is not _LocalBM25AttemptPoolReaperRoute
+        ):
+            raise TypeError("local BM25 attempt-pool reaper route is invalid")
+        if type(self._legacy_workspace) is not bool:
+            raise TypeError("local BM25 legacy-pool selection must be exact bool")
+        if self.reaper_route is not None and self._legacy_workspace:
+            raise StorageValidationError(
+                "leased and legacy BM25 attempt-pool routes are mutually exclusive"
+            )
 
-    def _require_target(self) -> tuple[Path, tuple[int, ...]]:
+    def _require_target(
+        self,
+    ) -> tuple[
+        Path,
+        tuple[int, ...],
+        _BM25AttemptPoolReaperCleanupOwner | None,
+    ]:
         target = self.target
         if target.topology_verifier is None:
             raise StorageValidationError(
                 "BM25 attempt-pool reclamation requires retained topology"
             )
-        attempt_pool_root = target.attempt_pool_root
-        if attempt_pool_root != target.workspace_root:
+        reaper_route = self.reaper_route
+        writer_route = target.attempt_pool_writer_route
+        if reaper_route is None and writer_route is not None:
+            if not self._legacy_workspace:
+                raise StorageValidationError(
+                    "routed BM25 attempt-pool reclamation requires its reaper route"
+                )
+        elif self._legacy_workspace:
+            raise StorageValidationError(
+                "legacy BM25 attempt-pool selection requires a routed target"
+            )
+        if reaper_route is None:
+            attempt_pool_root = target.workspace_root
+            identity = target.workspace_parent_identity
+        else:
+            if type(writer_route) is not _LocalBM25AttemptPoolWriterRoute:
+                raise StorageValidationError(
+                    "leased BM25 attempt-pool reclamation requires its writer route"
+                )
+            writer_route._verify()
+            reaper_route._verify()
+            if (
+                writer_route._route_token is not reaper_route._route_token
+                or writer_route._repository_id != reaper_route._repository_id
+                or writer_route._shard_path != reaper_route._shard_path
+                or writer_route._shard_identity != reaper_route._shard_identity
+            ):
+                raise StorageValidationError(
+                    "BM25 attempt-pool writer and reaper routes are inconsistent"
+                )
+            attempt_pool_root = reaper_route._shard_path
+            identity = reaper_route._shard_identity
+        if (
+            reaper_route is None
+            and target.attempt_pool_writer_route is None
+            and target.attempt_pool_root != target.workspace_root
+        ):
             raise StorageValidationError(
                 "BM25 attempt-pool reclamation target changed its workspace root"
             )
-        identity = target.attempt_pool_identity
         if (
             type(identity) is not tuple
             or len(identity) != 4
@@ -665,7 +887,12 @@ class LocalBM25AttemptPoolCoordinator:
             raise StorageValidationError(
                 "BM25 attempt-pool reclamation requires an exact parent identity"
             )
-        return attempt_pool_root, identity
+        cleanup = (
+            None
+            if reaper_route is None
+            else _BM25AttemptPoolReaperCleanupOwner(reaper_route)
+        )
+        return attempt_pool_root, identity, cleanup
 
     def reclaim(
         self,
@@ -680,26 +907,35 @@ class LocalBM25AttemptPoolCoordinator:
             raise StorageValidationError(
                 "BM25 attempt-pool reclamation requires caller-asserted quiescence"
             )
-        attempt_pool_root, identity = self._require_target()
+        attempt_pool_root, identity, reaper_cleanup = self._require_target()
         target = self.target
 
-        def run_with_topology(label: str, callback):
+        def verify_topology() -> None:
             target.verify_topology()
+            if self.reaper_route is not None:
+                self.reaper_route._verify()
+
+        def run_with_topology(label: str, callback):
+            verify_topology()
             return _run_callback_with_post_validations(
                 callback,
                 (
                     (
                         f"BM25 attempt-pool {label} topology validation also failed",
-                        target.verify_topology,
+                        verify_topology,
                     ),
                 ),
             )
 
         def sweep() -> BM25AttemptPoolReclamation:
-            with QuiescentDirectoryReclaimer(
-                attempt_pool_root,
-                expected_parent_identity=identity,
-            ) as reclaimer:
+            if reaper_cleanup is None:
+                reclaimer = QuiescentDirectoryReclaimer(
+                    attempt_pool_root,
+                    expected_parent_identity=identity,
+                )
+            else:
+                reclaimer = reaper_cleanup._open_reclaimer()
+            with reclaimer:
                 child_names = run_with_topology(
                     "snapshot",
                     reclaimer.snapshot_child_names,
@@ -751,10 +987,24 @@ class LocalBM25AttemptPoolCoordinator:
                 retained_unrelated_children=len(retained),
             )
 
-        return run_with_topology(
-            "reclaimer lifetime",
-            sweep,
+        if reaper_cleanup is None:
+            return run_with_topology(
+                "reclaimer lifetime",
+                sweep,
+            )
+        cleanup_action = _OrderedAction(
+            label="BM25 attempt-pool leased reclaimer cleanup also failed",
+            action=reaper_cleanup.close,
+            complete=lambda: reaper_cleanup.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=reaper_cleanup,
         )
+        with _run_context_with_cleanup_actions((cleanup_action,)):
+            reaper_cleanup._acquire()
+            return run_with_topology(
+                "reclaimer lifetime",
+                sweep,
+            )
 
 
 @dataclass(slots=True)
@@ -874,6 +1124,158 @@ class _BM25AttemptRootCleanupOwner:
         if not owner.closed:
             raise RuntimeError("BM25 source job attempt root did not close")
         self._closed = True
+
+
+@final
+class _BM25AttemptPoolWriterCleanupOwner:
+    """Settle one routed attempt completely before releasing its shared lease."""
+
+    __slots__ = (
+        "_accept_orphan",
+        "_admitted",
+        "_attempt_root",
+        "_child_owners",
+        "_lease",
+        "_retention_group",
+        "_route",
+    )
+
+    def __init__(
+        self,
+        *,
+        route: _LocalBM25AttemptPoolWriterRoute,
+        retention_group: object,
+        child_owners: tuple[_AttemptWorkspaceCleanupOwner, ...],
+        attempt_root: _BM25AttemptRootCleanupOwner,
+        accept_orphan: Callable[[DirectoryOrphan], None],
+    ) -> None:
+        if type(self) is not _BM25AttemptPoolWriterCleanupOwner:
+            raise TypeError("BM25 attempt-pool writer cleanup must use the exact type")
+        if type(route) is not _LocalBM25AttemptPoolWriterRoute:
+            raise TypeError("BM25 attempt-pool writer cleanup route is invalid")
+        if type(child_owners) is not tuple or any(
+            type(owner) is not _AttemptWorkspaceCleanupOwner for owner in child_owners
+        ):
+            raise TypeError("BM25 attempt-pool child cleanup owners are invalid")
+        if type(attempt_root) is not _BM25AttemptRootCleanupOwner:
+            raise TypeError("BM25 attempt-pool root cleanup owner is invalid")
+        if not callable(accept_orphan):
+            raise TypeError("BM25 attempt-pool orphan sink is invalid")
+        self._route = route
+        self._retention_group = retention_group
+        self._child_owners = child_owners
+        self._attempt_root = attempt_root
+        self._accept_orphan = accept_orphan
+        self._lease: PrivateDirectoryLeaseOwner | None = None
+        self._admitted = False
+
+    def _install_lease(self, lease: PrivateDirectoryLeaseOwner) -> None:
+        if type(lease) is not PrivateDirectoryLeaseOwner:
+            raise TypeError("BM25 attempt-pool writer lease has an invalid type")
+        if self._lease is not None:
+            raise RuntimeError("BM25 attempt-pool writer lease is already installed")
+        if (
+            lease.mode is not DirectoryLeaseMode.SHARED
+            or lease.path != self._route._shard_path
+            or lease.identity != self._route._shard_identity
+        ):
+            raise StorageIntegrityError(
+                "BM25 attempt-pool writer lease authority is inconsistent"
+            )
+        self._lease = lease
+
+    def _acquire(self, check_cancelled: Callable[[], None]) -> None:
+        if not callable(check_cancelled):
+            raise TypeError("BM25 attempt-pool writer stop check must be callable")
+        if self._lease is not None:
+            raise RuntimeError("BM25 attempt-pool writer lease is already acquired")
+        lease = self._route._acquire(
+            check_cancelled=check_cancelled,
+            construction_owner=self._install_lease,
+        )
+        if self._lease is not lease:
+            raise StorageIntegrityError(
+                "BM25 attempt-pool writer lease handoff is inconsistent"
+            )
+        self._admitted = True
+
+    @property
+    def closed(self) -> bool:
+        lease = self._lease
+        if lease is None:
+            return True
+        return bool(
+            lease.closed
+            and all(owner.closed for owner in self._child_owners)
+            and self._attempt_root.closed
+        )
+
+    def _settle_attempt(self) -> None:
+        for child in self._child_owners:
+            if not child.closed:
+                child.close()
+        if self._attempt_root.owner is None:
+            _retry_retained_owned_path_build_cleanup_for_group(
+                self._retention_group,
+                self._accept_orphan,
+            )
+        if not self._attempt_root.closed:
+            self._attempt_root.close()
+        if any(not child.closed for child in self._child_owners):
+            raise StorageIntegrityError(
+                "BM25 source job child cleanup remained active under its writer lease"
+            )
+        if not self._attempt_root.closed:
+            raise StorageIntegrityError(
+                "BM25 source job attempt root remained active under its writer lease"
+            )
+
+    def _settle_unstarted_attempt(self) -> None:
+        for child in self._child_owners:
+            if not child.closed:
+                child.close()
+        if not self._attempt_root.closed:
+            self._attempt_root.close()
+
+    def close(self) -> None:
+        lease = self._lease
+        if lease is None:
+            return
+        if not self._admitted:
+            # The route publishes the live lease before returning it.  A
+            # cancellation at that return handoff therefore owns no attempt
+            # yet and must not enter the process-global retained-build retry
+            # boundary merely to release SH.
+            self._settle_unstarted_attempt()
+        elif lease.closed:
+            if not self.closed:
+                raise StorageIntegrityError(
+                    "BM25 attempt-pool writer lease closed before attempt cleanup"
+                )
+            return
+        else:
+            self._settle_attempt()
+        if lease.closed:
+            if not self.closed:
+                raise StorageIntegrityError(
+                    "BM25 attempt-pool writer lease closed before attempt cleanup"
+                )
+            return
+        validation_error: BaseException | None = None
+        try:
+            self._route._verify()
+        except BaseException as error:  # noqa: B036 - unlock after validation fault
+            validation_error = error
+        try:
+            lease.close()
+        except BaseException as cleanup_error:  # noqa: B036 - preserve validation
+            if validation_error is not None:
+                raise validation_error from cleanup_error
+            raise
+        if validation_error is not None:
+            raise validation_error
+        if not lease.closed:
+            raise RuntimeError("BM25 attempt-pool writer lease did not close")
 
 
 def _cleanup_owner_pending(owner: object) -> bool:
@@ -1324,36 +1726,63 @@ class LocalBM25SourceJobResourceFactory:
             target.accept_attempt_orphan,
         )
         source_owner = SourceBindingCleanupOwner()
-        cleanup_owners = (
-            *child_cleanups,
-            attempt_root_cleanup,
-            source_owner,
-        )
-        cleanup_actions = tuple(
-            _OrderedAction(
-                label=f"BM25 source job {cleanup.label} cleanup also failed",
-                action=cleanup.close,
-                complete=lambda cleanup=cleanup: cleanup.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=cleanup,
+        writer_route = target.attempt_pool_writer_route
+        retention_group = object()
+        writer_cleanup = (
+            None
+            if writer_route is None
+            else _BM25AttemptPoolWriterCleanupOwner(
+                route=writer_route,
+                retention_group=retention_group,
+                child_owners=child_cleanups,
+                attempt_root=attempt_root_cleanup,
+                accept_orphan=target.accept_attempt_orphan,
             )
-            for cleanup in child_cleanups
-        ) + (
-            _OrderedAction(
-                label="BM25 source job attempt root cleanup also failed",
-                action=attempt_root_cleanup.close,
-                complete=lambda: attempt_root_cleanup.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=attempt_root_cleanup,
-            ),
-            _OrderedAction(
-                label="BM25 source job source cleanup also failed",
-                action=source_owner.close,
-                complete=lambda: source_owner.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=source_owner,
-            ),
         )
+        source_cleanup_action = _OrderedAction(
+            label="BM25 source job source cleanup also failed",
+            action=source_owner.close,
+            complete=lambda: source_owner.closed,
+            retry_incomplete="cancellation",
+            incomplete_owner=source_owner,
+        )
+        if writer_cleanup is None:
+            cleanup_owners = (
+                *child_cleanups,
+                attempt_root_cleanup,
+                source_owner,
+            )
+            cleanup_actions = tuple(
+                _OrderedAction(
+                    label=f"BM25 source job {cleanup.label} cleanup also failed",
+                    action=cleanup.close,
+                    complete=lambda cleanup=cleanup: cleanup.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=cleanup,
+                )
+                for cleanup in child_cleanups
+            ) + (
+                _OrderedAction(
+                    label="BM25 source job attempt root cleanup also failed",
+                    action=attempt_root_cleanup.close,
+                    complete=lambda: attempt_root_cleanup.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=attempt_root_cleanup,
+                ),
+                source_cleanup_action,
+            )
+        else:
+            cleanup_owners = (writer_cleanup, source_owner)
+            cleanup_actions = (
+                _OrderedAction(
+                    label="BM25 source job leased attempt cleanup also failed",
+                    action=writer_cleanup.close,
+                    complete=lambda: writer_cleanup.closed,
+                    retry_incomplete="cancellation",
+                    incomplete_owner=writer_cleanup,
+                ),
+                source_cleanup_action,
+            )
 
         try:
             with _run_context_with_cleanup_actions(cleanup_actions):
@@ -1380,9 +1809,19 @@ class LocalBM25SourceJobResourceFactory:
                     )
                 check_cancelled()
                 target.verify_topology()
+                if writer_cleanup is None:
+                    attempt_pool_root = target.attempt_pool_root
+                    attempt_pool_identity = target.workspace_parent_identity
+                    retained_group = None
+                else:
+                    writer_cleanup._acquire(check_cancelled)
+                    attempt_pool_root = writer_route._shard_path
+                    attempt_pool_identity = writer_route._shard_identity
+                    retained_group = retention_group
                 attempt_root = OwnedPathBuildDirectory.prepare(
-                    target.attempt_pool_root / prefix,
-                    expected_parent_identity=target.workspace_parent_identity,
+                    attempt_pool_root / prefix,
+                    expected_parent_identity=attempt_pool_identity,
+                    _retention_group=retained_group,
                 )
                 attempt_root_cleanup.install(attempt_root)
                 target.verify_topology()

@@ -1291,6 +1291,24 @@ def _retry_owned_path_build_cleanup() -> tuple[atomic_directory.DirectoryOrphan,
     return tuple(orphans)
 
 
+def _retry_owned_path_build_cleanup_for_group(
+    retention_group: object,
+) -> tuple[atomic_directory.DirectoryOrphan, ...]:
+    orphans: list[atomic_directory.DirectoryOrphan] = []
+    captured_directory._retry_retained_owned_path_build_cleanup_for_group(
+        retention_group,
+        orphans.append,
+    )
+    return tuple(orphans)
+
+
+class _OpaqueRetentionGroup:
+    """An unhashable route token whose value comparison must never run."""
+
+    def __eq__(self, _other: object) -> bool:
+        raise AssertionError("retention groups must be compared by identity")
+
+
 def test_owned_path_build_rejects_subclass_construction_before_mutation(
     tmp_path: Path,
 ) -> None:
@@ -2269,6 +2287,93 @@ def test_owned_path_build_prepare_return_handoff_is_quiescently_retryable(
     assert orphans[0].reopen(lambda reader: reader.inventory()) == ()
 
 
+def test_owned_path_build_group_is_installed_before_constructor_assignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    retention_group = _OpaqueRetentionGroup()
+    other_group = _OpaqueRetentionGroup()
+    interruption = KeyboardInterrupt("constructor assignment handoff")
+    real_init = OwnedPathBuildDirectory.__init__
+
+    def construct_then_interrupt(owner, *args, **kwargs) -> None:
+        real_init(owner, *args, **kwargs)
+        raise interruption
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "__init__",
+        construct_then_interrupt,
+    )
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        OwnedPathBuildDirectory.prepare(
+            parent / "attempt",
+            _retention_group=retention_group,
+        )
+
+    assert caught.value is interruption
+    retained = tuple(captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    assert len(retained) == 1
+    owner = retained[0]
+    assert owner._retention_group is retention_group
+    assert owner._state == "opening"
+    assert owner._stage is None
+    assert not tuple(parent.iterdir())
+
+    assert _retry_owned_path_build_cleanup_for_group(other_group) == ()
+    assert not owner.closed
+    assert owner in captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+    assert _retry_owned_path_build_cleanup_for_group(retention_group) == ()
+    assert owner.closed
+    assert not captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES
+
+
+def test_owned_path_build_group_survives_prepare_return_handoff(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    retention_group = _OpaqueRetentionGroup()
+    other_group = _OpaqueRetentionGroup()
+    interruption = KeyboardInterrupt("grouped prepare return handoff")
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        _interrupt_owned_path_return(
+            OwnedPathBuildDirectory.prepare.__func__,
+            lambda: OwnedPathBuildDirectory.prepare(
+                parent / "attempt",
+                _retention_group=retention_group,
+            ),
+            predicate=lambda _frame, result: isinstance(
+                result,
+                OwnedPathBuildDirectory,
+            ),
+            error=interruption,
+        )
+
+    assert caught.value is interruption
+    retained = tuple(captured_directory._RETAINED_OWNED_PATH_BUILD_DIRECTORIES)
+    assert len(retained) == 1
+    owner = retained[0]
+    assert owner._retention_group is retention_group
+    assert owner.path.is_dir()
+
+    assert _retry_owned_path_build_cleanup_for_group(other_group) == ()
+    assert not owner.closed
+    orphans = _retry_owned_path_build_cleanup_for_group(retention_group)
+
+    assert len(orphans) == 1
+    assert owner.closed
+    assert not owner.path.exists()
+    assert orphans[0].reopen(lambda reader: reader.inventory()) == ()
+
+
 def test_owned_path_build_quiescent_acceptor_failure_retains_exact_receipt(
     tmp_path: Path,
 ) -> None:
@@ -2991,6 +3096,120 @@ def test_owned_path_build_quiescent_first_failure_retains_later_owners(
     assert second.closed
 
 
+def test_owned_path_build_group_retry_is_exact_and_stops_at_first_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    group_a = _OpaqueRetentionGroup()
+    group_b = _OpaqueRetentionGroup()
+    first_a = OwnedPathBuildDirectory.prepare(
+        parent / "first-a",
+        _retention_group=group_a,
+    )
+    owner_b = OwnedPathBuildDirectory.prepare(
+        parent / "owner-b",
+        _retention_group=group_b,
+    )
+    second_a = OwnedPathBuildDirectory.prepare(
+        parent / "second-a",
+        _retention_group=group_a,
+    )
+    legacy = OwnedPathBuildDirectory.prepare(parent / "legacy")
+    owners_and_payloads = (
+        (first_a, b"first-a"),
+        (owner_b, b"owner-b"),
+        (second_a, b"second-a"),
+        (legacy, b"legacy"),
+    )
+    for owner, payload in owners_and_payloads:
+        owner.path.joinpath("payload.bin").write_bytes(payload)
+
+    none_callbacks: list[atomic_directory.DirectoryOrphan] = []
+    with pytest.raises(TypeError, match="retention group must not be None"):
+        captured_directory._retry_retained_owned_path_build_cleanup_for_group(
+            None,
+            none_callbacks.append,
+        )
+    assert not none_callbacks
+    assert all(not owner.closed for owner, _payload in owners_and_payloads)
+
+    real_retry = OwnedPathBuildDirectory._retry_quiescent_cleanup
+    failure = RuntimeError("first routed cleanup failed")
+    attempted: list[OwnedPathBuildDirectory] = []
+
+    def fail_first_a(
+        owner: OwnedPathBuildDirectory,
+        accept_orphan,
+    ) -> None:
+        attempted.append(owner)
+        if owner is first_a:
+            raise failure
+        real_retry(owner, accept_orphan)
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_retry_quiescent_cleanup",
+        fail_first_a,
+    )
+
+    with pytest.raises(RuntimeError, match="first routed cleanup failed") as caught:
+        captured_directory._retry_retained_owned_path_build_cleanup_for_group(
+            group_a,
+            lambda _orphan: None,
+        )
+
+    assert caught.value is failure
+    assert attempted == [first_a]
+    assert all(not owner.closed for owner, _payload in owners_and_payloads)
+
+    monkeypatch.setattr(
+        OwnedPathBuildDirectory,
+        "_retry_quiescent_cleanup",
+        real_retry,
+    )
+    accepted_a = _retry_owned_path_build_cleanup_for_group(group_a)
+
+    assert first_a.closed
+    assert second_a.closed
+    assert not owner_b.closed
+    assert not legacy.closed
+    assert tuple(
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        for orphan in accepted_a
+    ) == (b"first-a", b"second-a")
+    assert owner_b.path.joinpath("payload.bin").read_bytes() == b"owner-b"
+    assert legacy.path.joinpath("payload.bin").read_bytes() == b"legacy"
+
+    accepted_b = _retry_owned_path_build_cleanup_for_group(group_b)
+
+    assert owner_b.closed
+    assert not legacy.closed
+    assert len(accepted_b) == 1
+    assert (
+        accepted_b[0].reopen(
+            lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+        )
+        == b"owner-b"
+    )
+
+    unfiltered_grouped = OwnedPathBuildDirectory.prepare(
+        parent / "unfiltered-grouped",
+        _retention_group=group_b,
+    )
+    unfiltered_grouped.path.joinpath("payload.bin").write_bytes(b"unfiltered")
+    accepted_unfiltered = _retry_owned_path_build_cleanup()
+
+    assert legacy.closed
+    assert unfiltered_grouped.closed
+    assert tuple(
+        orphan.reopen(lambda reader: reader.read_bytes("payload.bin", max_bytes=16))
+        for orphan in accepted_unfiltered
+    ) == (b"legacy", b"unfiltered")
+
+
 def test_owned_path_build_quiescent_return_interrupt_follows_acceptance(
     tmp_path: Path,
 ) -> None:
@@ -3513,6 +3732,73 @@ def test_owned_path_build_retained_registry_resets_forked_lock_without_cleanup(
         holder.join(timeout=5)
 
     assert not holder.is_alive()
+    assert os.WIFEXITED(status)
+    assert os.WEXITSTATUS(status) == 0
+    assert owner.path.joinpath("payload.bin").read_bytes() == b"parent"
+    assert not owner.closed
+    owner.close()
+    assert owner.closed
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_owned_path_build_group_retry_drops_inherited_owner_without_callback(
+    tmp_path: Path,
+) -> None:
+    _retry_owned_path_build_cleanup()
+    parent = tmp_path / "private"
+    parent.mkdir(mode=0o700)
+    child_parent = tmp_path / "child-private"
+    child_parent.mkdir(mode=0o700)
+    group_token = _OpaqueRetentionGroup()
+    owner = OwnedPathBuildDirectory.prepare(
+        parent / "attempt",
+        _retention_group=group_token,
+    )
+    owner.path.joinpath("payload.bin").write_bytes(b"parent")
+    child = os.fork()
+    if child == 0:  # pragma: no branch - child reports exact status
+        signal.signal(signal.SIGALRM, lambda *_args: os._exit(100))
+        signal.alarm(5)
+        try:
+            inherited_callbacks: list[atomic_directory.DirectoryOrphan] = []
+            captured_directory._retry_retained_owned_path_build_cleanup_for_group(
+                group_token,
+                inherited_callbacks.append,
+            )
+            if inherited_callbacks:
+                os._exit(101)
+            if captured_directory._snapshot_owned_path_build_directories():
+                os._exit(102)
+            if owner.path.joinpath("payload.bin").read_bytes() != b"parent":
+                os._exit(103)
+            try:
+                owner.close()
+            except RuntimeError as error:
+                if "PID boundary" not in str(error):
+                    os._exit(104)
+            else:
+                os._exit(105)
+            child_owner = OwnedPathBuildDirectory.prepare(
+                child_parent / "attempt",
+                _retention_group=group_token,
+            )
+            child_owner.path.joinpath("payload.bin").write_bytes(b"child")
+            child_orphans = _retry_owned_path_build_cleanup_for_group(group_token)
+            if len(child_orphans) != 1 or not child_owner.closed:
+                os._exit(106)
+            if (
+                child_orphans[0].reopen(
+                    lambda reader: reader.read_bytes("payload.bin", max_bytes=16)
+                )
+                != b"child"
+            ):
+                os._exit(107)
+        except BaseException:  # noqa: B036 - child reports exact failure
+            os._exit(108)
+        os._exit(0)
+
+    _pid, status = os.waitpid(child, 0)
+
     assert os.WIFEXITED(status)
     assert os.WEXITSTATUS(status) == 0
     assert owner.path.joinpath("payload.bin").read_bytes() == b"parent"

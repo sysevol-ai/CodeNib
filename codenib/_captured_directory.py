@@ -5932,18 +5932,13 @@ def _snapshot_owned_path_build_directories() -> tuple[OwnedPathBuildDirectory, .
     )
 
 
-def retry_retained_owned_path_build_cleanup(
+def _run_retained_owned_path_build_cleanup(
     accept_orphan: Callable[[DirectoryOrphan], None],
+    *,
+    retention_group: object | None,
+    filter_by_retention_group: bool,
 ) -> None:
-    """Close retained path builds after their worker scope is quiescent.
-
-    This explicit boundary also settles a build whose successful ``prepare``
-    return was interrupted before its caller could receive the owner.  The
-    callback accepts each authenticated orphan before its full owner is
-    released. Delivery is at least once, so the callback must be idempotent and
-    must not recursively invoke this retry boundary. The first owner or sink
-    failure ends the round; every later owner remains registered for retry.
-    """
+    """Run one serialized all-owner or exact-group cleanup round."""
 
     if not callable(accept_orphan):
         raise TypeError("owned path build orphan acceptor must be callable")
@@ -5958,12 +5953,52 @@ def retry_retained_owned_path_build_cleanup(
     def retry_round() -> None:
         owners = _snapshot_owned_path_build_directories()
         for owner in owners:
+            if filter_by_retention_group and not (
+                type(owner) is OwnedPathBuildDirectory
+                and owner._retention_group is retention_group
+            ):
+                continue
             owner._retry_quiescent_cleanup(accept_orphan)
 
     _run_with_owned_path_build_lease(
         retry_lease,
         retry_round,
         release_label="owned path build retry lease release also failed",
+    )
+
+
+def retry_retained_owned_path_build_cleanup(
+    accept_orphan: Callable[[DirectoryOrphan], None],
+) -> None:
+    """Close retained path builds after their worker scope is quiescent.
+
+    This explicit boundary also settles a build whose successful ``prepare``
+    return was interrupted before its caller could receive the owner.  The
+    callback accepts each authenticated orphan before its full owner is
+    released. Delivery is at least once, so the callback must be idempotent and
+    must not recursively invoke this retry boundary. The first owner or sink
+    failure ends the round; every later owner remains registered for retry.
+    """
+
+    _run_retained_owned_path_build_cleanup(
+        accept_orphan,
+        retention_group=None,
+        filter_by_retention_group=False,
+    )
+
+
+def _retry_retained_owned_path_build_cleanup_for_group(
+    group_token: object,
+    accept_orphan: Callable[[DirectoryOrphan], None],
+) -> None:
+    """Close only owners carrying one exact opaque retention-group token."""
+
+    if group_token is None:
+        raise TypeError("owned path build retention group must not be None")
+    _run_retained_owned_path_build_cleanup(
+        accept_orphan,
+        retention_group=group_token,
+        filter_by_retention_group=True,
     )
 
 
@@ -6024,6 +6059,7 @@ class OwnedPathBuildDirectory:
         *,
         require_private_parent: bool,
         expected_parent_identity: tuple[int, ...] | None = None,
+        _retention_group: object | None = None,
     ) -> None:
         if type(self) is not OwnedPathBuildDirectory:
             raise TypeError(
@@ -6035,6 +6071,10 @@ class OwnedPathBuildDirectory:
             or any(type(value) is not int for value in expected_parent_identity)
         ):
             raise TypeError("owned path build parent identity is invalid")
+        # The token is caller authority, not a value derived from the path.
+        # Install it before registry publication so an interrupted constructor
+        # handoff can never expose an untagged retained owner for this route.
+        self._retention_group = _retention_group
         self._destination = destination
         self._path = destination
         self._require_private_parent = require_private_parent
@@ -6060,6 +6100,7 @@ class OwnedPathBuildDirectory:
         create_parent: bool = False,
         require_private_parent: bool = True,
         expected_parent_identity: tuple[int, ...] | None = None,
+        _retention_group: object | None = None,
     ) -> OwnedPathBuildDirectory:
         """Create a fresh private build root under one retained authority.
 
@@ -6093,6 +6134,7 @@ class OwnedPathBuildDirectory:
             lexical,
             require_private_parent=require_private_parent,
             expected_parent_identity=expected_parent_identity,
+            _retention_group=_retention_group,
         )
         cleanup = _OrderedAction(
             label="owned path build preparation cleanup also failed",
