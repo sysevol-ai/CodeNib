@@ -1182,7 +1182,13 @@ def _publish_bm25_job(
     context_owner: PublishedWorkspaceReceiptOwner | None = None,
     bm25_destination: Path | None = None,
     context_destination: Path | None = None,
+    max_projection_bytes: int | None = None,
 ) -> CompilerCacheJobPublicationResult:
+    limits = (
+        {}
+        if max_projection_bytes is None
+        else {"max_projection_bytes": max_projection_bytes}
+    )
     return publish_compiler_cache_bm25_job(
         fixture.cache,
         job_id=job_id,
@@ -1198,6 +1204,7 @@ def _publish_bm25_job(
         catalog=catalog,
         object_store=cas,
         environ={},
+        **limits,
     )
 
 
@@ -3482,6 +3489,7 @@ def test_compiler_cache_bm25_job_replays_legacy_requested_only_snapshot(
                 context_owner=retry_context_owner,
                 bm25_destination=fixture.workspace / "legacy-retry-bm25",
                 context_destination=fixture.workspace / "legacy-retry-context",
+                max_projection_bytes=1,
             )
 
             assert replay.job == legacy

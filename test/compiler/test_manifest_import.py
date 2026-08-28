@@ -948,6 +948,27 @@ def test_expected_chunks_infinite_empty_tail_stops_cooperatively() -> None:
     assert cancellation_calls == 3
 
 
+def test_projection_measurement_polls_cancellation_between_chunks() -> None:
+    stop = SystemExit("projection measurement cancelled")
+    cancellation_calls = 0
+
+    def check_cancelled() -> None:
+        nonlocal cancellation_calls
+        cancellation_calls += 1
+        if cancellation_calls == 3:
+            raise stop
+
+    with pytest.raises(SystemExit) as caught:
+        manifest_import_module._measure_canonical_json(
+            {"items": [{"value": value} for value in range(1_000)]},
+            max_bytes=1024 * 1024,
+            check_cancelled=check_cancelled,
+        )
+
+    assert caught.value is stop
+    assert cancellation_calls == 3
+
+
 def _prepare_vector_job_artifacts(
     fixture: _ContextFixture,
     object_store: LocalCAS,

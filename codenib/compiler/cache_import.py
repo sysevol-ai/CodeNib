@@ -2233,6 +2233,7 @@ def _ingest_prepared_compiler_cache_job(
     context_output_owner: PublishedWorkspaceReceiptOwner,
     object_store: RetainedImportObjectStore,
     check_cancelled: Callable[[], None] | None = None,
+    replay_job: IndexJobRecord | None = None,
 ) -> _PreparedJobSnapshotArtifacts:
     """Ingest one loadable cache snapshot without catalog authority."""
 
@@ -2242,6 +2243,12 @@ def _ingest_prepared_compiler_cache_job(
         raise TypeError("compiler cache job operation is invalid")
     if type(binding) is not _CompilerCacheJobBinding:
         raise TypeError("compiler cache job binding is invalid")
+    if replay_job is not None and (
+        type(replay_job) is not IndexJobRecord
+        or replay_job.status is not IndexJobStatus.SUCCEEDED
+        or replay_job.result_snapshot_id is None
+    ):
+        raise TypeError("compiler cache replay job is invalid")
     _require_compiler_cache_job_profile(
         binding,
         preparation.import_plan,
@@ -2249,6 +2256,19 @@ def _ingest_prepared_compiler_cache_job(
     )
     if check_cancelled is not None:
         check_cancelled()
+    projection_decider: Callable[[tuple[IndexJobViewArtifact, ...]], bool] | None = None
+    if replay_job is not None:
+
+        def require_projection(
+            artifacts: tuple[IndexJobViewArtifact, ...],
+        ) -> bool:
+            return replay_job.result_snapshot_id != _index_job_artifact_snapshot_id(
+                replay_job,
+                artifacts,
+            )
+
+        projection_decider = require_projection
+
     artifacts = context_output_owner.consume(
         lambda receipt, publication: _prepare_job_snapshot_artifacts_inside_authority(
             receipt,
@@ -2266,6 +2286,7 @@ def _ingest_prepared_compiler_cache_job(
             max_bundle_bytes=operation.inputs.max_bundle_bytes,
             max_bundle_metadata_bytes=operation.inputs.max_bundle_metadata_bytes,
             max_projection_bytes=operation.inputs.max_projection_bytes,
+            projection_required=projection_decider,
             check_cancelled=check_cancelled,
         ),
         check_cancelled=check_cancelled,
@@ -2273,8 +2294,21 @@ def _ingest_prepared_compiler_cache_job(
     if (
         type(artifacts) is not _PreparedJobSnapshotArtifacts
         or len(artifacts.artifacts) != 1
-        or len(artifacts.supporting_artifacts) != 1
+        or len(artifacts.supporting_artifacts) > 1
     ):
+        raise StorageIntegrityError(
+            f"compiler cache {view_type} ingestion returned invalid job artifacts"
+        )
+    expected_supporting_artifacts = 1
+    if replay_job is not None:
+        requested_snapshot_id = _index_job_artifact_snapshot_id(
+            replay_job,
+            artifacts.artifacts,
+        )
+        expected_supporting_artifacts = int(
+            replay_job.result_snapshot_id != requested_snapshot_id
+        )
+    if len(artifacts.supporting_artifacts) != expected_supporting_artifacts:
         raise StorageIntegrityError(
             f"compiler cache {view_type} ingestion returned invalid job artifacts"
         )
@@ -3011,6 +3045,9 @@ def _publish_compiler_cache_job(
             "compiler cache job or repository source changed before CAS ingestion"
         )
 
+    # A schema-v7 success has no support projection. Decide from the requested
+    # artifacts before any projection measurement or write, while retaining a
+    # single ingestion pass for current loadable snapshots.
     snapshot_artifacts = _ingest_prepared_compiler_cache_job(
         preparation,
         operation,
@@ -3019,6 +3056,9 @@ def _publish_compiler_cache_job(
         repository_source=repository_source,
         context_output_owner=context_output_owner,
         object_store=object_store,
+        replay_job=(
+            current.job if current.job.status is IndexJobStatus.SUCCEEDED else None
+        ),
     )
     current = _read_compiler_cache_job_binding(
         normalized_job_id,
