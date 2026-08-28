@@ -237,6 +237,47 @@ def _preflight_job_artifacts(
     return artifacts, frozen_outputs, retained_receipts
 
 
+def _index_job_output_snapshot_id(
+    job: IndexJobRecord,
+    outputs: Sequence[IndexJobViewOutput],
+) -> str:
+    return content_id(
+        "snapshot",
+        {
+            "repository_id": job.repository_id,
+            "source_revision_id": job.source_revision_id,
+            "views": [
+                [
+                    output.view_type,
+                    content_id(
+                        "view",
+                        {
+                            "repository_id": job.repository_id,
+                            "source_revision_id": job.source_revision_id,
+                            "profile_id": output.profile_id,
+                            "view_type": output.view_type,
+                            "object_digest": output.object_record.digest,
+                            "schema_version": output.schema_version,
+                            "metadata": output.generation_metadata,
+                        },
+                    ),
+                ]
+                for output in outputs
+            ],
+        },
+    )
+
+
+def _index_job_artifact_snapshot_id(
+    job: IndexJobRecord,
+    artifacts: Sequence[IndexJobViewArtifact],
+) -> str:
+    """Return the exact snapshot identity implied by detached artifacts."""
+
+    _artifacts, outputs, _receipts = _preflight_job_artifacts(artifacts)
+    return _index_job_output_snapshot_id(job, outputs)
+
+
 def publish_job_artifacts(
     job_id: str,
     *,
@@ -497,7 +538,6 @@ def _attest_completed_publication(
     ):
         raise StorageIntegrityError("catalog omitted a required output view")
 
-    snapshot_members: list[list[str]] = []
     for output in outputs:
         request = request_views.get(output.view_type)
         if request is not None and (
@@ -505,27 +545,7 @@ def _attest_completed_publication(
             or request.get("profile_id") != output.profile_id
         ):
             raise StorageIntegrityError("catalog accepted an output profile mismatch")
-        generation_id = content_id(
-            "view",
-            {
-                "repository_id": completed.repository_id,
-                "source_revision_id": completed.source_revision_id,
-                "profile_id": output.profile_id,
-                "view_type": output.view_type,
-                "object_digest": output.object_record.digest,
-                "schema_version": output.schema_version,
-                "metadata": output.generation_metadata,
-            },
-        )
-        snapshot_members.append([output.view_type, generation_id])
-    expected_snapshot_id = content_id(
-        "snapshot",
-        {
-            "repository_id": completed.repository_id,
-            "source_revision_id": completed.source_revision_id,
-            "views": snapshot_members,
-        },
-    )
+    expected_snapshot_id = _index_job_output_snapshot_id(completed, outputs)
     if completed.result_snapshot_id != expected_snapshot_id:
         raise StorageIntegrityError("catalog returned a different publication snapshot")
 

@@ -90,6 +90,7 @@ from .manifest import MANIFEST_FILENAME, MANIFEST_VERSION, IndexEntry, RepoManif
 from .manifest_import import (
     DEFAULT_MAX_CONTEXT_BYTES,
     DEFAULT_MAX_CONTEXT_FILES,
+    DEFAULT_MAX_PROJECTION_BYTES,
     _snapshot_environment,
     _snapshot_forbidden_paths,
 )
@@ -856,6 +857,7 @@ class BM25SourceJobExecutor:
     max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES
     max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES
     max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES
+    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES
     forbidden_paths: Iterable[Path] = ()
     environ: Mapping[str, str] | None = field(
         default=None,
@@ -977,6 +979,7 @@ class BM25SourceJobExecutor:
             max_bundle_files=self.max_bundle_files,
             max_bundle_bytes=self.max_bundle_bytes,
             max_bundle_metadata_bytes=self.max_bundle_metadata_bytes,
+            max_projection_bytes=self.max_projection_bytes,
             forbidden_paths=self.forbidden_paths,
             environ=self.environ,
             check_cancelled=check_cancelled,
@@ -1067,6 +1070,7 @@ class BM25SourceJobExecutor:
             max_bundle_files=self.max_bundle_files,
             max_bundle_bytes=self.max_bundle_bytes,
             max_bundle_metadata_bytes=self.max_bundle_metadata_bytes,
+            max_projection_bytes=self.max_projection_bytes,
             forbidden_paths=self.forbidden_paths,
             environ=self.environ,
         )

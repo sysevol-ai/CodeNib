@@ -87,6 +87,7 @@ from codenib.compiler.manifest_storage import (
     plan_repo_manifest_import_bytes,
 )
 from codenib.compiler.retained_manifest_contract import (
+    REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
     REPO_MANIFEST_PROJECTION_VIEW,
     repo_manifest_projection_profile,
 )
@@ -119,6 +120,7 @@ from codenib.storage import (
     SQLiteCatalog,
     StorageIntegrityError,
     StorageValidationError,
+    publish_job_artifacts,
 )
 
 _Result = TypeVar("_Result")
@@ -1049,6 +1051,18 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "native_index_authorization",
     } & set(preparation_signature.parameters)
     assert "stop_token" in preparation_signature.parameters
+    assert (
+        preparation_signature.parameters["max_projection_bytes"].default
+        == cache_import_module.DEFAULT_MAX_PROJECTION_BYTES
+    )
+    assert all(
+        inspect.signature(adapter).parameters["max_projection_bytes"].default
+        == cache_import_module.DEFAULT_MAX_PROJECTION_BYTES
+        for adapter in (
+            publish_compiler_cache_bm25_job,
+            publish_compiler_cache_vector_job,
+        )
+    )
     executor_signature = inspect.signature(CompilerCacheJobExecutor)
     assert not {
         "catalog",
@@ -1057,6 +1071,10 @@ def test_compiler_cache_import_is_a_lazy_public_export() -> None:
         "ref_name",
         "expected_generation",
     } & set(executor_signature.parameters)
+    assert (
+        executor_signature.parameters["max_projection_bytes"].default
+        == cache_import_module.DEFAULT_MAX_PROJECTION_BYTES
+    )
     compile_signature = inspect.signature(compile_and_import_repo)
     assert list(compile_signature.parameters)[:4] == [
         "compiler",
@@ -1190,7 +1208,13 @@ def _prepare_bm25_job(
     views,
     cas: LocalCAS,
     stop_token: _TestStopToken | None = None,
+    max_projection_bytes: int | None = None,
 ) -> CompilerCacheJobPreparationResult:
+    limits = (
+        {}
+        if max_projection_bytes is None
+        else {"max_projection_bytes": max_projection_bytes}
+    )
     return prepare_compiler_cache_job_view(
         fixture.cache,
         view_type="bm25",
@@ -1206,6 +1230,7 @@ def _prepare_bm25_job(
         object_store=cas,
         stop_token=stop_token,
         environ={},
+        **limits,
     )
 
 
@@ -1261,6 +1286,51 @@ def test_prepare_compiler_cache_job_view_leaves_catalog_running(
             assert len(cas.put_chunk_receipts) == 4
             assert cas.retained_receipt_sets == []
             assert fixture.provider.run_count == 2
+    finally:
+        fixture.close()
+
+
+def test_prepare_compiler_cache_job_view_honors_projection_limit(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            SQLiteCatalog(tmp_path / "catalog.sqlite") as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog,
+                fixture,
+                plan,
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="projection-limit-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+
+            with pytest.raises(
+                StorageValidationError,
+                match="repository manifest projection exceeds 1 bytes",
+            ):
+                _prepare_bm25_job(
+                    fixture,
+                    job=running,
+                    views=catalog.get_job_views(queued.job_id),
+                    cas=cas,
+                    max_projection_bytes=1,
+                )
+
+            assert catalog.get_job(queued.job_id) == running
     finally:
         fixture.close()
 
@@ -3275,6 +3345,11 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
                 REPO_MANIFEST_PROJECTION_VIEW,
             )
             bm25 = summary["views"]["bm25"]
+            projection = summary["views"][REPO_MANIFEST_PROJECTION_VIEW]
+            assert projection["metadata"]["reachability"] == (
+                REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY
+            )
+            assert projection["member_objects"] == []
             assert bm25["profile"]["profile_id"] == profile_id
             assert bm25["schema_version"] == VIEW_BUNDLE_SCHEMA
             assert bm25["object"]["media_type"] == VIEW_BUNDLE_MEDIA_TYPE
@@ -3329,6 +3404,96 @@ def test_compiler_cache_bm25_job_publishes_only_exact_bundle_and_replays(
             assert fixture.context_owner.active
             assert retry_bm25_owner.active
             assert retry_context_owner.active
+    finally:
+        retry_context_owner.close()
+        retry_bm25_owner.close()
+        fixture.close()
+
+
+def test_compiler_cache_bm25_job_replays_legacy_requested_only_snapshot(
+    tmp_path: Path,
+) -> None:
+    fixture = _cache_fixture(tmp_path)
+    retry_bm25_owner = PublishedWorkspaceReceiptOwner()
+    retry_context_owner = PublishedWorkspaceReceiptOwner()
+    plan = _expected_bm25_job_plan(fixture)
+    try:
+        with (
+            _JobTrackingCAS(tmp_path / "cas") as cas,
+            _RetentionAwareJobCatalog(
+                tmp_path / "catalog.sqlite",
+                cas,
+            ) as catalog,
+        ):
+            repository_id, source_revision_id, profile_id = _register_bm25_job_subject(
+                catalog,
+                fixture,
+                plan,
+            )
+            queued = _create_bm25_job(
+                catalog,
+                repository_id=repository_id,
+                source_revision_id=source_revision_id,
+                profile_id=profile_id,
+            )
+            lease = catalog.acquire_job_lease(
+                queued.job_id,
+                owner_id="legacy-worker",
+                lease_duration_ms=60_000,
+            )
+            running = catalog.get_job(queued.job_id)
+            prepared = _prepare_bm25_job(
+                fixture,
+                job=running,
+                views=catalog.get_job_views(queued.job_id),
+                cas=cas,
+            )
+            legacy = publish_job_artifacts(
+                queued.job_id,
+                catalog=catalog,
+                object_store=cas,
+                owner_id=lease.owner_id,
+                fencing_token=lease.fencing_token,
+                outputs=(prepared.artifact,),
+            )
+            legacy_summary = catalog.get_manifest_summary(legacy.result_snapshot_id)
+            assert tuple(legacy_summary["views"]) == ("bm25",)
+            requested_receipts = tuple(
+                sorted(
+                    (
+                        prepared.artifact.object_artifact.receipt,
+                        *(
+                            member.receipt
+                            for member in prepared.artifact.member_artifacts
+                        ),
+                    ),
+                    key=lambda receipt: receipt.digest,
+                )
+            )
+
+            replay = _publish_bm25_job(
+                fixture,
+                job_id=queued.job_id,
+                owner_id=lease.owner_id,
+                fencing_token=lease.fencing_token,
+                catalog=catalog,
+                cas=cas,
+                bm25_owner=retry_bm25_owner,
+                context_owner=retry_context_owner,
+                bm25_destination=fixture.workspace / "legacy-retry-bm25",
+                context_destination=fixture.workspace / "legacy-retry-context",
+            )
+
+            assert replay.job == legacy
+            assert replay.job.result_snapshot_id == legacy.result_snapshot_id
+            assert tuple(
+                catalog.get_manifest_summary(replay.job.result_snapshot_id)["views"]
+            ) == ("bm25",)
+            assert cas.retained_receipt_sets == [
+                requested_receipts,
+                requested_receipts,
+            ]
+            assert catalog.job_publication_calls == 2
     finally:
         retry_context_owner.close()
         retry_bm25_owner.close()

@@ -27,6 +27,9 @@ DEFAULT_NAMESPACE_NAME = "default"
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
 INDEX_JOB_PUBLICATION_CONTRACT = "codenib.index-job-publication.v1"
 INDEX_JOB_SUPPORTING_VIEW_PREFIX = "codenib.internal."
+REPO_MANIFEST_PROJECTION_VIEW = "codenib.internal.repo-manifest"
+REPO_MANIFEST_PROJECTION_SCHEMA = "codenib.internal.repo-manifest.v2"
+REPO_MANIFEST_PROJECTION_PROFILE_NAME = "canonical"
 INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH = 16
 INDEX_JOB_EVENT_PAYLOAD_MAX_NODES = 1_024
 INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS = 16 * 1_024
@@ -722,6 +725,20 @@ class ViewProfile:
         )
 
 
+def repo_manifest_projection_profile() -> ViewProfile:
+    """Return the canonical profile required by retained manifest snapshots."""
+
+    return ViewProfile.create(
+        REPO_MANIFEST_PROJECTION_VIEW,
+        {
+            "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
+            "builder_schema": REPO_MANIFEST_PROJECTION_SCHEMA,
+            "artifact_schema": REPO_MANIFEST_PROJECTION_SCHEMA,
+        },
+        name=REPO_MANIFEST_PROJECTION_PROFILE_NAME,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ObjectRecord:
     """Catalog metadata for one immutable object-store payload."""
@@ -1227,11 +1244,6 @@ class IndexJobRequest:
                 requested_mode=view_request.get("requested_mode"),
                 required=view_request.get("required"),
             )
-            if is_index_job_supporting_view(normalized_view.view_type):
-                raise StorageValidationError(
-                    "index job requests cannot include reserved supporting views: "
-                    f"{view_type}"
-                )
             if (
                 normalized_view.view_type != view_type
                 or normalized_view.profile_id != view_request["profile_id"]
@@ -1261,7 +1273,7 @@ class IndexJobRequest:
         expected_ref_generation: int = 0,
         max_attempts: int = 3,
     ) -> IndexJobRequest:
-        return cls(
+        created = cls(
             repository_id=repository_id,
             source_revision_id=source_revision_id,
             ref_name=ref_name,
@@ -1270,6 +1282,20 @@ class IndexJobRequest:
             max_attempts=max_attempts,
             request_json=canonical_json(request),
         )
+        # Schema-v7 catalogs could persist requests under this prefix. The
+        # low-level constructor remains able to rehydrate those durable rows;
+        # admission for every new request stays closed at this factory.
+        reserved = tuple(
+            view.view_type
+            for view in created.view_requests
+            if is_index_job_supporting_view(view.view_type)
+        )
+        if reserved:
+            raise StorageValidationError(
+                "index job requests cannot include reserved supporting views: "
+                + ", ".join(reserved)
+            )
+        return created
 
     @property
     def request(self) -> dict[str, Any]:
@@ -1939,6 +1965,9 @@ __all__ = [
     "INDEX_JOB_REQUEST_CONTRACT",
     "INDEX_JOB_PUBLICATION_CONTRACT",
     "INDEX_JOB_SUPPORTING_VIEW_PREFIX",
+    "REPO_MANIFEST_PROJECTION_PROFILE_NAME",
+    "REPO_MANIFEST_PROJECTION_SCHEMA",
+    "REPO_MANIFEST_PROJECTION_VIEW",
     "INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH",
     "INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS",
     "INDEX_JOB_EVENT_PAYLOAD_MAX_NODES",
@@ -1986,6 +2015,7 @@ __all__ = [
     "is_index_job_supporting_view",
     "normalize_digest",
     "normalize_view_generation_metadata",
+    "repo_manifest_projection_profile",
     "snapshot_index_job_event_payload",
     "view_generation_member_digests",
 ]

@@ -75,6 +75,7 @@ from .models import (
     is_index_job_supporting_view,
     normalize_digest,
     normalize_view_generation_metadata,
+    repo_manifest_projection_profile,
     snapshot_index_job_event_payload,
     view_generation_member_digests,
 )
@@ -4563,6 +4564,51 @@ class SQLiteCatalog:
         if owner.primary_error is not None:
             raise owner.primary_error
 
+    def _ensure_repo_manifest_projection_profile(self) -> None:
+        """Backfill the support profile required by upgraded queued jobs."""
+
+        profile = repo_manifest_projection_profile()
+        digest = profile.profile_id.removeprefix("profile_")
+        expected = (
+            profile.profile_id,
+            profile.view_type,
+            profile.name,
+            profile.config_json,
+            digest,
+        )
+        rows = self._connection.execute(
+            """
+            SELECT profile_id, view_type, name, config_json, profile_digest
+            FROM view_profiles
+            WHERE profile_id = ? OR profile_digest = ?
+            ORDER BY profile_id
+            """,
+            (profile.profile_id, digest),
+        ).fetchall()
+        if not rows:
+            self._connection.execute(
+                """
+                INSERT INTO view_profiles(
+                    profile_id, view_type, name, config_json,
+                    profile_digest, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (*expected, _now()),
+            )
+            rows = self._connection.execute(
+                """
+                SELECT profile_id, view_type, name, config_json, profile_digest
+                FROM view_profiles
+                WHERE profile_id = ? OR profile_digest = ?
+                ORDER BY profile_id
+                """,
+                (profile.profile_id, digest),
+            ).fetchall()
+        if len(rows) != 1 or tuple(rows[0]) != expected:
+            raise CatalogError(
+                "repository manifest projection profile identity conflicts"
+            )
+
     @_coordinated_catalog_method
     def _migrate(self) -> None:
         with self._transaction():
@@ -4615,6 +4661,8 @@ class SQLiteCatalog:
                     (version, _now()),
                 )
                 self._connection.execute(f"PRAGMA user_version = {version:d}")
+            if self.schema_version >= 8:
+                self._ensure_repo_manifest_projection_profile()
             if self.schema_version >= 5:
                 self._validate_publication_aggregates()
             if self.schema_version >= 6:
