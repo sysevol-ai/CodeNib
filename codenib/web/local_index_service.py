@@ -37,6 +37,13 @@ from .config import LocalIndexStorageConfig
 _MAX_BUSY_TIMEOUT_MS = 86_400_000
 _MAX_MOUNTINFO_ENTRIES = 65_536
 _MAX_MOUNTINFO_LINE_BYTES = 64 * 1024
+_MAX_RETAINED_TOPOLOGY_RESOURCES = 16_384
+_TOPOLOGY_TRANSIENT_RESOURCE_RESERVE = 64
+_CATALOG_SIDECARS = (
+    ("-wal", "WAL sidecar"),
+    ("-shm", "SHM sidecar"),
+    ("-journal", "rollback journal"),
+)
 _MISSING_CATALOG = object()
 _LOCAL_TOPOLOGY_TOKEN = object()
 
@@ -124,6 +131,66 @@ def _observe_real_directory(
         stat.S_IFMT(metadata.st_mode),
         int(getattr(metadata, "st_file_attributes", 0)),
     )
+
+
+def _open_descriptor_count() -> int | None:
+    if os.name != "posix":
+        return None
+    candidates = (Path("/proc/self/fd"), Path("/dev/fd"))
+    for candidate in candidates:
+        try:
+            return len(os.listdir(candidate))
+        except OSError:
+            continue
+    return None
+
+
+def _available_topology_resource_budget() -> int:
+    """Bound retained authorities while reserving room for request-time I/O."""
+
+    if os.name != "posix":
+        # Windows has no RLIMIT_NOFILE equivalent. Keep the aggregate HANDLE
+        # chain bounded independently of the configured repository-count cap.
+        return _MAX_RETAINED_TOPOLOGY_RESOURCES
+    try:
+        import resource
+
+        soft_limit, _hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    except (ImportError, OSError, ValueError):
+        # RLIMIT_NOFILE is expected on supported POSIX hosts. Without it there
+        # is no sound way to admit a long-lived descriptor chain.
+        return 0
+    if soft_limit == resource.RLIM_INFINITY:
+        return _MAX_RETAINED_TOPOLOGY_RESOURCES
+    available = max(0, int(soft_limit))
+    open_descriptors = _open_descriptor_count()
+    if open_descriptors is None:
+        return 0
+    available = max(0, available - open_descriptors)
+    available = max(0, available - _TOPOLOGY_TRANSIENT_RESOURCE_RESERVE)
+    return min(available, _MAX_RETAINED_TOPOLOGY_RESOURCES)
+
+
+def _require_topology_resource_budget(
+    repository_paths: tuple[tuple[str, Path], ...],
+    storage_roots: tuple[Path, ...],
+) -> None:
+    # Both source-root and publication authorities retain the anchor plus one
+    # descriptor/HANDLE per lexical component. Their current implementations do
+    # not share common ancestors between configured roots.
+    required = sum(
+        len(path.parts)
+        for path in (
+            *(path for _repo_id, path in repository_paths),
+            *storage_roots,
+        )
+    )
+    available = _available_topology_resource_budget()
+    if required > available:
+        raise LocalIndexServiceError(
+            "local index storage topology exceeds its retained resource budget "
+            f"({required} required, {available} available)"
+        )
 
 
 def _directory_ancestry(
@@ -266,6 +333,34 @@ class _TopologyPath:
     path: Path
     device: int
     ancestry_root: Path
+
+
+def _catalog_topology_paths(
+    catalog_factory: "ExistingLocalIndexCatalogFactory",
+) -> tuple[_TopologyPath, ...]:
+    path = catalog_factory.catalog_path
+    parent = path.parent
+    parent_identity = _observe_real_directory(
+        parent,
+        label="local index catalog parent",
+    )
+    return (
+        _TopologyPath(
+            "local index catalog",
+            path,
+            catalog_factory.catalog_identity[0],
+            parent,
+        ),
+        *(
+            _TopologyPath(
+                f"local index catalog {label}",
+                Path(f"{path}{suffix}"),
+                parent_identity[0],
+                parent,
+            )
+            for suffix, label in _CATALOG_SIDECARS
+        ),
+    )
 
 
 def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
@@ -560,14 +655,14 @@ class LocalIndexStorageTopology:
             _observe_real_directory(path, label=label, private=private)
             for path, label, private in root_specs
         )
+        repository_path_tuple = tuple(repository_paths)
+        _require_topology_resource_budget(
+            repository_path_tuple,
+            tuple(path for path, _label, _private in root_specs),
+        )
         catalog_factory.verify()
         topology_paths = (
-            _TopologyPath(
-                "local index catalog",
-                config.catalog_path,
-                catalog_factory.catalog_identity[0],
-                config.catalog_path.parent,
-            ),
+            *_catalog_topology_paths(catalog_factory),
             *(
                 _TopologyPath(label, path, identity[0], path)
                 for (path, label, _private), identity in zip(
@@ -649,7 +744,7 @@ class LocalIndexStorageTopology:
                 cas=cas,
                 worker_workspace=worker_workspace,
                 runtime_workspace=runtime_workspace,
-                repository_paths=tuple(repository_paths),
+                repository_paths=repository_path_tuple,
                 repositories=repositories,
                 source_owner=source_owner,
             )
@@ -737,12 +832,7 @@ class LocalIndexStorageTopology:
             if tuple(observed[:2]) != tuple(authority.root_identity[:2]):
                 raise LocalIndexServiceError(f"repository {repo_id!r} identity changed")
         topology_paths = (
-            _TopologyPath(
-                "local index catalog",
-                self._config.catalog_path,
-                self._catalog_factory.catalog_identity[0],
-                self._config.catalog_path.parent,
-            ),
+            *_catalog_topology_paths(self._catalog_factory),
             _TopologyPath(
                 self._cas.label,
                 self._cas.path,

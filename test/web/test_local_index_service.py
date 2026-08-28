@@ -7,6 +7,7 @@ from __future__ import annotations
 import dis
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -275,6 +276,86 @@ def test_local_index_topology_rejects_repository_storage_overlap(
 
     with pytest.raises(LocalIndexServiceError, match="must not overlap"):
         LocalIndexStorageTopology.acquire(config, {"repo": repository})
+
+
+@pytest.mark.parametrize(
+    ("suffix", "label"),
+    (
+        ("-wal", "WAL sidecar"),
+        ("-shm", "SHM sidecar"),
+        ("-journal", "rollback journal"),
+    ),
+)
+def test_local_index_topology_reserves_catalog_sidecar_namespace(
+    tmp_path: Path,
+    suffix: str,
+    label: str,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    sidecar = Path(f"{config.catalog_path}{suffix}")
+    config.worker_workspace_root.rename(sidecar)
+    config = replace(config, worker_workspace_root=sidecar)
+
+    with pytest.raises(
+        LocalIndexServiceError,
+        match=rf"catalog {label} must not overlap worker workspace root",
+    ):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+def test_local_index_topology_rejects_retained_resource_overcommit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    required = sum(
+        len(path.parts)
+        for path in (
+            *repositories.values(),
+            config.cas_root,
+            config.worker_workspace_root,
+            config.runtime_workspace_root,
+        )
+    )
+    monkeypatch.setattr(
+        local_index_service,
+        "_available_topology_resource_budget",
+        lambda: required - 1,
+    )
+    monkeypatch.setattr(
+        local_index_service,
+        "pin_repository_source_root",
+        lambda *_args, **_kwargs: pytest.fail(
+            "repository pinning must follow resource admission"
+        ),
+    )
+
+    with pytest.raises(LocalIndexServiceError, match="retained resource budget"):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+def test_local_index_topology_accepts_exact_retained_resource_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    required = sum(
+        len(path.parts)
+        for path in (
+            *repositories.values(),
+            config.cas_root,
+            config.worker_workspace_root,
+            config.runtime_workspace_root,
+        )
+    )
+    monkeypatch.setattr(
+        local_index_service,
+        "_available_topology_resource_budget",
+        lambda: required,
+    )
+
+    topology = LocalIndexStorageTopology.acquire(config, repositories)
+    topology.close()
 
 
 def test_local_index_topology_rejects_mapped_physical_alias(
