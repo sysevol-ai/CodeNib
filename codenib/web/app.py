@@ -61,11 +61,16 @@ from .index_jobs import (
     IndexJobReadError,
     overlay_active_job,
 )
-from .index_status import build_repo_index_status, validate_index_update_capabilities
+from .index_status import (
+    IndexUpdateCapability,
+    build_repo_index_status,
+    validate_index_update_capabilities,
+)
 from .local_index_runtime import (
     LocalIndexRuntimeService,
     open_local_index_runtime_service,
 )
+from .local_index_service import LocalIndexServiceError
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
@@ -97,6 +102,53 @@ _MISSING_APP_STATE = object()
 class _LocalRuntimeLifespanState:
     service: LocalIndexRuntimeService | None = None
     startup_cleanup_pending: bool = False
+
+
+class _LiveLocalIndexJobWriter:
+    """Stop admitting durable writes as soon as the owned loops fault."""
+
+    __slots__ = ("_service", "_writer")
+
+    def __init__(
+        self, service: LocalIndexRuntimeService, writer: IndexJobWriter
+    ) -> None:
+        if not isinstance(writer, IndexJobWriter):
+            raise TypeError("local runtime writer does not implement its contract")
+        self._service = service
+        self._writer = writer
+
+    def create(
+        self,
+        repo_id: str,
+        *,
+        indexes: tuple[str, ...],
+        mode: str,
+        force: bool,
+        idempotency_key: str,
+    ) -> IndexJobStatusResponse:
+        if self._service.state != "running" or self._service.healthy is not True:
+            raise IndexJobWriteError("local index runtime is unhealthy")
+        return self._writer.create(
+            repo_id,
+            indexes=indexes,
+            mode=mode,
+            force=force,
+            idempotency_key=idempotency_key,
+        )
+
+
+def _live_local_index_capabilities(
+    service: LocalIndexRuntimeService,
+    repo_id: str,
+) -> Mapping[str, IndexUpdateCapability] | None:
+    """Return unavailable for an unhealthy runtime or an unbound repository."""
+
+    if service.state != "running" or service.healthy is not True:
+        return None
+    try:
+        return service.capabilities(repo_id)
+    except KeyError:
+        return None
 
 
 def _has_pending_publication_cleanup(failure: BaseException) -> bool:
@@ -179,15 +231,21 @@ def _configured_local_index_runtime(app, config, registry, lifecycle):
     if storage is None:
         yield None
         return
+    if getattr(config, "mode", "sparse") != "sparse":
+        raise LocalIndexServiceError(
+            "local index runtime currently requires sparse Web mode"
+        )
 
     try:
         with open_local_index_runtime_service(storage, registry) as service:
             lifecycle.service = service
+            writer = _LiveLocalIndexJobWriter(service, service.writer)
+            capabilities = partial(_live_local_index_capabilities, service)
             bindings = {
                 "index_runtime_service": service,
                 "index_job_reader": service.reader,
-                "index_job_writer": service.writer,
-                "index_update_capabilities_resolver": service.capabilities,
+                "index_job_writer": writer,
+                "index_update_capabilities_resolver": capabilities,
             }
             previous = {
                 name: getattr(app.state, name, _MISSING_APP_STATE) for name in bindings

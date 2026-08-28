@@ -103,9 +103,20 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
     storage = object()
     previous_reader = object()
     reader = object()
-    writer = object()
+
+    class Writer:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, repo_id, **kwargs):
+            self.calls.append((repo_id, kwargs))
+            return "created"
+
+    writer = Writer()
 
     def capabilities(repo_id):
+        if repo_id != "demo":
+            raise KeyError(repo_id)
         return {"repo_id": repo_id}
 
     class Runtime:
@@ -128,6 +139,7 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
         wiki_generation_api_key=None,
         wiki_generation_options={},
         index_storage=storage,
+        mode="sparse",
     )
 
     class Registry:
@@ -171,8 +183,33 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
             events.append("serve")
             assert application.state.index_runtime_service is runtime
             assert application.state.index_job_reader is reader
-            assert application.state.index_job_writer is writer
-            assert application.state.index_update_capabilities_resolver is capabilities
+            bound_writer = application.state.index_job_writer
+            bound_capabilities = application.state.index_update_capabilities_resolver
+            assert bound_writer is not writer
+            assert bound_capabilities is not capabilities
+            assert bound_capabilities("demo") == {"repo_id": "demo"}
+            assert bound_capabilities("unbound") is None
+            assert (
+                bound_writer.create(
+                    "demo",
+                    indexes=("bm25",),
+                    mode="full",
+                    force=False,
+                    idempotency_key="healthy",
+                )
+                == "created"
+            )
+            runtime.healthy = False
+            assert bound_capabilities("demo") is None
+            with pytest.raises(web_app.IndexJobWriteError, match="unhealthy"):
+                bound_writer.create(
+                    "demo",
+                    indexes=("bm25",),
+                    mode="full",
+                    force=False,
+                    idempotency_key="unhealthy",
+                )
+            runtime.healthy = True
 
     asyncio.run(run_lifespan())
 
@@ -192,11 +229,34 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
         assert not hasattr(application.state, name)
 
 
+def test_configured_lifespan_rejects_hybrid_before_runtime_open(monkeypatch):
+    @contextmanager
+    def reject_open(*_args, **_kwargs):
+        pytest.fail("hybrid Web mode must fail before runtime acquisition")
+        yield  # pragma: no cover - contextmanager generator marker
+
+    monkeypatch.setattr(web_app, "open_local_index_runtime_service", reject_open)
+    application = SimpleNamespace(state=SimpleNamespace())
+    config = SimpleNamespace(index_storage=object(), mode="hybrid")
+    lifecycle = web_app._LocalRuntimeLifespanState()
+
+    with pytest.raises(web_app.LocalIndexServiceError, match="sparse Web mode"):
+        with web_app._configured_local_index_runtime(
+            application,
+            config,
+            object(),
+            lifecycle,
+        ):
+            pytest.fail("hybrid Web mode reached request serving")
+
+    assert lifecycle.service is None
+
+
 def test_lifespan_retains_registry_when_runtime_close_is_incomplete(monkeypatch):
     events = []
     runtime = SimpleNamespace(
         reader=object(),
-        writer=object(),
+        writer=SimpleNamespace(create=lambda *_args, **_kwargs: None),
         capabilities=lambda _repo_id: {},
         state="running",
         healthy=True,
