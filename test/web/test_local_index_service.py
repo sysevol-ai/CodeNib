@@ -487,6 +487,35 @@ def test_local_index_topology_rejects_unconfigured_unsafe_catalog_sidecar(
         _acquire_topology(config, repositories)
 
 
+def test_optional_catalog_sidecar_accepts_confirmed_disappearance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "catalog.sqlite3-wal"
+    sidecar.write_bytes(b"transient WAL")
+    real_lstat = Path.lstat
+    observations = 0
+
+    def disappear(path: Path):
+        nonlocal observations
+        if path == sidecar:
+            observations += 1
+            if observations == 1:
+                sidecar.unlink()
+        return real_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", disappear)
+
+    assert (
+        local_index_service._observe_optional_catalog_sidecar(
+            sidecar,
+            label="WAL sidecar",
+        )
+        is None
+    )
+    assert observations == 2
+
+
 def test_local_index_topology_rejects_retained_resource_overcommit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

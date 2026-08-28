@@ -73,13 +73,31 @@ def _canonical_catalog_path(value: Path) -> Path:
     return value
 
 
-def _observe_catalog_identity(path: Path) -> tuple[int, int, int]:
-    """Attest one non-aliased, single-linked existing catalog file."""
-
+def _observe_catalog_identity_maybe_missing(
+    path: Path,
+    *,
+    missing_ok: bool,
+) -> tuple[int, int, int] | None:
     try:
         resolved_before = path.resolve(strict=True)
         metadata = path.lstat()
         resolved_after = path.resolve(strict=True)
+    except FileNotFoundError as exc:
+        if missing_ok:
+            # WAL/SHM files are SQLite-owned and may disappear between any two
+            # observations. Accept only a second exact missing observation;
+            # a broken link or immediate replacement remains unsafe.
+            try:
+                path.lstat()
+            except FileNotFoundError:
+                return None
+            except OSError as retry_exc:
+                raise LocalIndexServiceError(
+                    "local index catalog cannot be inspected safely"
+                ) from retry_exc
+        raise LocalIndexServiceError(
+            "local index catalog cannot be inspected safely"
+        ) from exc
     except (OSError, RuntimeError, ValueError) as exc:
         raise LocalIndexServiceError(
             "local index catalog cannot be inspected safely"
@@ -105,6 +123,15 @@ def _observe_catalog_identity(path: Path) -> tuple[int, int, int]:
     return identity
 
 
+def _observe_catalog_identity(path: Path) -> tuple[int, int, int]:
+    """Attest one non-aliased, single-linked existing catalog file."""
+
+    identity = _observe_catalog_identity_maybe_missing(path, missing_ok=False)
+    if identity is None:  # pragma: no cover - missing_ok=False proves this
+        raise LocalIndexServiceError("local index catalog cannot be inspected safely")
+    return identity
+
+
 def _observe_optional_catalog_sidecar(
     path: Path,
     *,
@@ -113,15 +140,7 @@ def _observe_optional_catalog_sidecar(
     """Validate one existing WAL/SHM path without requiring its presence."""
 
     try:
-        path.lstat()
-    except FileNotFoundError:
-        return None
-    except OSError as exc:
-        raise LocalIndexServiceError(
-            f"local index catalog {label} cannot be inspected safely"
-        ) from exc
-    try:
-        return _observe_catalog_identity(path)
+        return _observe_catalog_identity_maybe_missing(path, missing_ok=True)
     except LocalIndexServiceError as exc:
         raise LocalIndexServiceError(
             f"local index catalog {label} must be one real single-linked file"
