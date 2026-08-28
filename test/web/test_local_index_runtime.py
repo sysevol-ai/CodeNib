@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,7 +16,16 @@ import codenib.web.local_index_runtime as local_runtime_module
 from codenib.compiler.cache_lock import COMPILER_CACHE_LOCK_FILENAME
 from codenib.compiler.manifest import RepoManifest
 from codenib.repository_source_selection import RepositorySourceSelection
-from codenib.storage import LocalCAS, SQLiteCatalog
+from codenib.storage import (
+    INDEX_JOB_REQUEST_CONTRACT,
+    CatalogError,
+    IndexJobRecord,
+    IndexJobRequest,
+    IndexJobStatus,
+    LocalCAS,
+    SQLiteCatalog,
+    StorageNotFound,
+)
 from codenib.web.config import (
     LocalIndexRuntimeConfig,
     LocalIndexStorageConfig,
@@ -28,7 +38,10 @@ from codenib.web.local_index_runtime import (
     LocalIndexRuntimeService,
     open_local_index_runtime_service,
 )
-from codenib.web.local_index_service import LocalIndexServiceError
+from codenib.web.local_index_service import (
+    LocalIndexServiceError,
+    LocalIndexStorageTopology,
+)
 from codenib.web.repo_registry import RepoBundle, RepoRegistry
 
 
@@ -65,6 +78,8 @@ def _repository(root: Path) -> tuple[Path, str]:
 
 def _runtime_fixture(
     tmp_path: Path,
+    *,
+    registry_mode: str = "sparse",
 ) -> tuple[LocalIndexStorageConfig, RepoRegistry]:
     repository, commit = _repository(tmp_path)
     catalog_path = tmp_path / "catalog.sqlite3"
@@ -98,7 +113,10 @@ def _runtime_fixture(
         ),
         runtime=LocalIndexRuntimeConfig(poll_interval_ms=10),
     )
-    registry = RepoRegistry(QAConfig(mode="sparse"))
+    registry = RepoRegistry(
+        QAConfig(mode=registry_mode),
+        allow_missing_native_index_authorization=registry_mode == "hybrid",
+    )
     registry._bundles["demo"] = RepoBundle(
         entry=RepoEntry(
             instance_id="demo",
@@ -117,6 +135,45 @@ def _runtime_fixture(
         ),
     )
     return storage, registry
+
+
+def _candidate(repository_id: str, *, idempotency_key: str) -> IndexJobRecord:
+    request = IndexJobRequest.create(
+        repository_id,
+        "src_" + "a" * 64,
+        idempotency_key,
+        {
+            "contract": INDEX_JOB_REQUEST_CONTRACT,
+            "views": {
+                "bm25": {
+                    "profile_id": "profile_" + "b" * 64,
+                    "requested_mode": "full",
+                    "required": True,
+                }
+            },
+        },
+    )
+    return IndexJobRecord(
+        job_id=request.job_id,
+        repository_id=request.repository_id,
+        source_revision_id=request.source_revision_id,
+        ref_name=request.ref_name,
+        idempotency_key=request.idempotency_key,
+        expected_ref_generation=request.expected_ref_generation,
+        max_attempts=request.max_attempts,
+        request_json=request.request_json,
+        request_digest=request.request_digest,
+        status=IndexJobStatus.QUEUED,
+        cancel_requested=False,
+        attempt_count=0,
+        result_snapshot_id=None,
+        error_code=None,
+        error_message=None,
+        created_at_ms=1,
+        updated_at_ms=1,
+        started_at_ms=None,
+        finished_at_ms=None,
+    )
 
 
 def test_local_index_runtime_composes_and_settles_production_loops(
@@ -142,6 +199,121 @@ def test_local_index_runtime_composes_and_settles_production_loops(
     assert service is not None
     assert service.state == "closed"
     assert service.closed is True
+
+
+def test_local_index_runtime_rejects_loaded_repository_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    bundle = registry._bundles["demo"]
+    registry._bundles["demo"] = RepoBundle(
+        entry=replace(bundle.entry, repo="other/repo"),
+        manifest=bundle.manifest,
+    )
+    try:
+        with pytest.raises(LocalIndexServiceError, match="identity differs"):
+            LocalIndexRuntimeService.acquire(storage, registry)
+    finally:
+        registry.close()
+
+
+def test_local_index_runtime_rejects_hybrid_registry_before_acquisition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path, registry_mode="hybrid")
+    monkeypatch.setattr(
+        LocalIndexStorageTopology,
+        "acquire",
+        lambda *_args, **_kwargs: pytest.fail(
+            "hybrid mode must be rejected before topology acquisition"
+        ),
+    )
+    try:
+        with pytest.raises(LocalIndexServiceError, match="sparse Web mode"):
+            LocalIndexRuntimeService.acquire(storage, registry)
+    finally:
+        registry.close()
+
+
+def test_local_index_runtime_attests_catalog_before_workspace_lease(
+    tmp_path: Path,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    storage.catalog_path.unlink()
+    with SQLiteCatalog(storage.catalog_path):
+        pass
+    try:
+        with pytest.raises(StorageNotFound, match="not found"):
+            LocalIndexRuntimeService.acquire(storage, registry)
+        assert not (
+            storage.worker_workspace_root / COMPILER_CACHE_LOCK_FILENAME
+        ).exists()
+    finally:
+        registry.close()
+
+
+def test_local_index_runtime_rejects_invalid_catalog_before_workspace_lease(
+    tmp_path: Path,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    storage.catalog_path.unlink()
+    storage.catalog_path.write_bytes(b"not a SQLite catalog")
+    try:
+        with pytest.raises(CatalogError, match="existing SQLite catalog"):
+            LocalIndexRuntimeService.acquire(storage, registry)
+        assert not (
+            storage.worker_workspace_root / COMPILER_CACHE_LOCK_FILENAME
+        ).exists()
+    finally:
+        registry.close()
+
+
+def test_local_index_runtime_filters_before_scoped_topology_verification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    service = LocalIndexRuntimeService.acquire(storage, registry)
+    expected_repository_id = storage.repositories[0].repository_id
+    calls: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        local_runtime_module.LocalBM25SourceJobResourceFactory,
+        "accepts_candidate",
+        lambda _resources, candidate: (
+            candidate.repository_id == expected_repository_id
+        ),
+    )
+    monkeypatch.setattr(
+        LocalIndexStorageTopology,
+        "verify",
+        lambda _topology: calls.append(("global", None)),
+    )
+    monkeypatch.setattr(
+        LocalIndexStorageTopology,
+        "verify_repository",
+        lambda _topology, repo_id: calls.append(("repository", repo_id)),
+    )
+    candidate_filter = service._background._worker._worker._candidate_filter
+    assert candidate_filter is not None
+    try:
+        assert (
+            candidate_filter(
+                _candidate("repo_unconfigured", idempotency_key="unconfigured")
+            )
+            is False
+        )
+        assert calls == []
+        assert (
+            candidate_filter(
+                _candidate(expected_repository_id, idempotency_key="configured")
+            )
+            is True
+        )
+        assert calls == [("repository", "demo")]
+    finally:
+        service.close()
+        registry.close()
 
 
 def test_local_index_runtime_preserves_context_failure_after_cleanup(

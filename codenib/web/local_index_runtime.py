@@ -486,6 +486,10 @@ def _configured_repositories(
     config: LocalIndexStorageConfig,
     registry: RepoRegistry,
 ) -> tuple[_ConfiguredRepository, ...]:
+    if registry.configured_index_types() != ("bm25",):
+        raise LocalIndexServiceError(
+            "local index runtime currently requires sparse Web mode"
+        )
     with registry.pin_all() as active_bundles:
         by_repo: dict[str, RepoBundle] = {}
         for bundle in active_bundles:
@@ -506,6 +510,11 @@ def _configured_repositories(
                 raise LocalIndexServiceError(
                     "configured local index repository is not loaded"
                 )
+            if bundle.entry.repo != binding.repository_key:
+                raise LocalIndexServiceError(
+                    "configured local index repository identity differs from its "
+                    "loaded Web bundle"
+                )
             repository_root = Path(bundle.entry.repo_dir)
             selected.append(
                 _ConfiguredRepository(
@@ -524,6 +533,30 @@ def _topology_guard(topology: LocalIndexStorageTopology) -> None:
         topology.verify()
     except LocalIndexServiceError as exc:
         raise StorageIntegrityError("local Web index storage topology changed") from exc
+
+
+def _repository_topology_guard(
+    topology: LocalIndexStorageTopology,
+    repo_id: str,
+) -> None:
+    try:
+        topology.verify_repository(repo_id)
+    except (KeyError, LocalIndexServiceError) as exc:
+        raise StorageIntegrityError(
+            "local Web index repository topology changed"
+        ) from exc
+
+
+def _verify_catalog_bindings(
+    catalog_factory,
+    selected: tuple[_ConfiguredRepository, ...],
+) -> None:
+    """Open the existing catalog and require every configured repository ID."""
+
+    with catalog_factory() as catalog:
+        for selected_repo in selected:
+            binding = selected_repo.storage
+            catalog.read_ref_generation(binding.repository_id, binding.ref_name)
 
 
 def _safe_runtime_failure(failure: IndexJobActivationError) -> None:
@@ -702,6 +735,8 @@ class LocalIndexRuntimeService:
                     repository_roots,
                 )
             )
+            catalog_factory = topology.catalog_factory
+            _verify_catalog_bindings(catalog_factory, selected)
             topology.verify()
             attempt_pool_lease_owner.acquire(
                 config.worker_workspace_root,
@@ -785,12 +820,22 @@ class LocalIndexRuntimeService:
             targets = tuple(worker_targets)
             attempt_pool.install(targets[0])
             attempt_pool.reclaim_stale()
-            catalog_factory = topology.catalog_factory
             resources = LocalBM25SourceJobResourceFactory(targets)
+            topology_repo_ids = {
+                selected_repo.storage.repository_id: selected_repo.storage.repo_id
+                for selected_repo in selected
+            }
 
             def accepts_candidate(candidate) -> bool:
-                _topology_guard(topology)
-                return resources.accepts_candidate(candidate)
+                if not resources.accepts_candidate(candidate):
+                    return False
+                repo_id = topology_repo_ids.get(candidate.repository_id)
+                if repo_id is None:  # pragma: no cover - target-map invariant
+                    raise StorageIntegrityError(
+                        "local BM25 candidate has no repository topology"
+                    )
+                _repository_topology_guard(topology, repo_id)
+                return True
 
             worker = IndexJobWorker(
                 catalog_factory=catalog_factory,

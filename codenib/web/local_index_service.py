@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Iterator
 
 from .._atomic_directory import (
@@ -820,6 +821,7 @@ class LocalIndexStorageTopology:
         "_config",
         "_lifecycle_lock",
         "_repositories",
+        "_repository_indexes",
         "_repository_paths",
         "_runtime_workspace",
         "_source_owner",
@@ -851,6 +853,9 @@ class LocalIndexStorageTopology:
         self._runtime_workspace = runtime_workspace
         self._repository_paths = repository_paths
         self._repositories = repositories
+        self._repository_indexes = MappingProxyType(
+            {repo_id: index for index, (repo_id, _path) in enumerate(repository_paths)}
+        )
         self._source_owner = source_owner
         self._lifecycle_lock = _CancellationSafeRLock()
 
@@ -1042,24 +1047,25 @@ class LocalIndexStorageTopology:
         def read() -> RepositorySourceRootAuthority:
             if self._closed_unlocked():
                 raise LocalIndexServiceError("local index topology is closed")
-            for (path_id, path), (candidate_id, authority) in zip(
-                self._repository_paths,
-                self._repositories,
-                strict=True,
-            ):
-                if path_id != candidate_id:
-                    raise LocalIndexServiceError(
-                        "local index repository authority ordering changed"
-                    )
-                if candidate_id == repo_id:
-                    _verify_repository_binding(repo_id, path, authority)
-                    return authority
-            raise KeyError(repo_id)
+            index = self._repository_indexes.get(repo_id)
+            if index is None:
+                raise KeyError(repo_id)
+            path_id, path = self._repository_paths[index]
+            authority_id, authority = self._repositories[index]
+            if path_id != repo_id or authority_id != repo_id:
+                raise LocalIndexServiceError(
+                    "local index repository authority ordering changed"
+                )
+            _verify_repository_binding(repo_id, path, authority)
+            return authority
 
         return self._lifecycle_lock.run(read)
 
-    def _bound_topology_paths_unlocked(self) -> tuple[_TopologyPath, ...]:
-        """Revalidate retained bindings and return detached topology inputs."""
+    def _bound_topology_paths_unlocked(
+        self,
+        repository_id: str | None = None,
+    ) -> tuple[_TopologyPath, ...]:
+        """Revalidate shared roots plus the selected repository bindings."""
 
         self._catalog_factory.verify()
         for binding, private in (
@@ -1075,18 +1081,23 @@ class LocalIndexStorageTopology:
             )
             if observed != binding.identity:
                 raise LocalIndexServiceError(f"{binding.label} identity changed")
-        repository_identities: list[tuple[int, ...]] = []
-        for (repo_id, path), (authority_id, authority) in zip(
-            self._repository_paths,
-            self._repositories,
-            strict=True,
-        ):
+        if repository_id is None:
+            repository_indexes = range(len(self._repository_paths))
+        else:
+            selected_index = self._repository_indexes.get(repository_id)
+            if selected_index is None:
+                raise KeyError(repository_id)
+            repository_indexes = (selected_index,)
+        verified_repositories: list[tuple[str, Path, tuple[int, ...]]] = []
+        for index in repository_indexes:
+            repo_id, path = self._repository_paths[index]
+            authority_id, authority = self._repositories[index]
             if authority_id != repo_id:
                 raise LocalIndexServiceError(
                     "local index repository authority ordering changed"
                 )
-            repository_identities.append(
-                _verify_repository_binding(repo_id, path, authority)
+            verified_repositories.append(
+                (repo_id, path, _verify_repository_binding(repo_id, path, authority))
             )
         return (
             *_catalog_topology_paths(self._catalog_factory),
@@ -1115,29 +1126,32 @@ class LocalIndexStorageTopology:
                     identity[0],
                     path,
                 )
-                for (repo_id, path), identity in zip(
-                    self._repository_paths,
-                    repository_identities,
-                    strict=True,
-                )
+                for repo_id, path, identity in verified_repositories
             ),
         )
 
-    def _verify_unlocked(self) -> None:
+    def _verify_unlocked(self, repository_id: str | None = None) -> None:
         if self._closed_unlocked():
             raise LocalIndexServiceError("local index topology is closed")
-        topology_paths = self._bound_topology_paths_unlocked()
+        topology_paths = self._bound_topology_paths_unlocked(repository_id)
         _require_disjoint_topology(topology_paths)
         # Physical ancestry and mount inspection can run arbitrary filesystem
         # syscalls. Sandwich it with a final retained binding check so a rename
         # or replacement cannot be accepted at the public return boundary.
-        final_topology_paths = self._bound_topology_paths_unlocked()
+        final_topology_paths = self._bound_topology_paths_unlocked(repository_id)
         _require_disjoint_topology(final_topology_paths)
 
     def verify(self) -> None:
         """Revalidate every retained path and physical-separation invariant."""
 
         self._lifecycle_lock.run(self._verify_unlocked)
+
+    def verify_repository(self, repo_id: str) -> None:
+        """Revalidate shared storage plus one selected repository authority."""
+
+        if type(repo_id) is not str:
+            raise TypeError("local index repository ID must be exact text")
+        self._lifecycle_lock.run(lambda: self._verify_unlocked(repo_id))
 
     def _close_unlocked(self) -> None:
         cleanup_actions = (

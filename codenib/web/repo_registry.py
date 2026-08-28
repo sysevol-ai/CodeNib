@@ -3170,6 +3170,11 @@ class RepoRegistry:
         if cleanup_failure is not None:
             raise cleanup_failure
 
+    def configured_index_types(self) -> Tuple[str, ...]:
+        """Return the configured retrieval-mode contract used by this registry."""
+
+        return tuple(self._config.index_types())
+
     @contextmanager
     def pin_all(self) -> Iterator[Tuple[RepoBundle, ...]]:
         """Pin one coherent snapshot of every currently published bundle."""
