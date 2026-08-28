@@ -694,6 +694,8 @@ def test_registry_publishers_use_separate_workflows() -> None:
         assert call in wheel_smoke
     assert "stat.S_ISDIR(os.fstat(directory_descriptor).st_mode)" in wheel_smoke
     assert "not os.get_inheritable(directory_descriptor)" in wheel_smoke
+    assert '(lease_directory / "child").rmdir()' in wheel_smoke
+    assert "lease_directory.rmdir()" in wheel_smoke
 
     limited_abi_job = verification["jobs"]["limited-abi-compile"]
     assert "if" not in limited_abi_job
@@ -804,6 +806,8 @@ def test_registry_publishers_use_separate_workflows() -> None:
         assert call in abi3_exercise
     assert "stat.S_ISDIR(os.fstat(directory_descriptor).st_mode)" in abi3_exercise
     assert "not os.get_inheritable(directory_descriptor)" in abi3_exercise
+    assert '(lease_directory / "child").rmdir()' in abi3_exercise
+    assert "lease_directory.rmdir()" in abi3_exercise
     assert "LocalWorkspaceProvider(root)" in abi3_exercise
     assert "run_strict_workspace(" in abi3_exercise
     assert "root.mkdir(mode=0o700)" in abi3_exercise

@@ -336,6 +336,8 @@ jobs:
                 assert (lease_directory / "child").is_dir()
                 _workspace_owner._close_directory_fd_owner(directory_owner)
                 assert _workspace_owner._directory_fd_owner_closed(directory_owner)
+                (lease_directory / "child").rmdir()
+                lease_directory.rmdir()
 
                 success_root = root / "success"
                 success_root.mkdir(mode=0o700)
@@ -819,6 +821,8 @@ jobs:
               assert (lease_directory / "child").is_dir()
               _workspace_owner._close_directory_fd_owner(directory_owner)
               assert _workspace_owner._directory_fd_owner_closed(directory_owner)
+              (lease_directory / "child").rmdir()
+              lease_directory.rmdir()
               destination = root / "published"
               provider = LocalWorkspaceProvider(root)
               provider.require_support()
