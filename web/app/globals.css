@@ -3662,6 +3662,86 @@ a.evidence-row:hover {
   line-height: 1.35;
   margin: 10px 0 18px;
 }
+
+.ask-index-checking,
+.ask-index-freshness {
+  margin: 4px 0 20px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-surface);
+}
+
+.ask-index-checking {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.ask-index-freshness.stale,
+.ask-index-freshness.updating {
+  border-color: rgba(217, 119, 6, 0.35);
+  background: rgba(217, 119, 6, 0.05);
+}
+
+.ask-index-freshness.failed {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.ask-index-freshness-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.ask-index-freshness-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.ask-index-freshness p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ask-index-commits {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.ask-index-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.ask-index-actions button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ask-index-actions button:first-child {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.ask-index-freshness .index-job-control {
+  margin-top: 12px;
+}
+
 .askbar-inline {
   position: static;
   width: 100%;

@@ -1596,8 +1596,7 @@ lifespan now owns that composition
 and verifies a real first-build job through strict materialization and RCU
 replacement. The dynamic repository rail now exposes the three canonical index
 surfaces, durable job progress, and one capability-bound update action. MCP,
-Ask freshness controls, vector/graph adapters, and default storage routing
-remain absent.
+vector/graph adapters, and default storage routing remain absent.
 
 - The backend-neutral worker now owns advisory scan/claim, per-attempt task
   authority, independent heartbeat sessions, cancellation precedence, bounded
@@ -1693,8 +1692,8 @@ remain absent.
   and advertising updates when either owned loop faults, reports unbound
   repositories as unavailable, and rejects a retained BM25 replacement whose
   source-selection policy or normalized language sequence differs from the
-  active Web generation. The remaining #266 work includes Ask freshness choices,
-  production vector/graph update adapters, and their default routing.
+  active Web generation. The remaining #266 work includes production
+  vector/graph update adapters and their default routing.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle
@@ -1826,6 +1825,17 @@ remain absent.
   rejects a cross-repository or noncanonical response, and degrades without
   hiding the repository when status is unavailable. Static exports issue no
   status request and render no runtime-only badge placeholder.
+- The Ask route now performs one abortable, two-second-bounded strict status read
+  before dispatching a first question. A stale, updating, or failed BM25/vector
+  retrieval surface holds that question and offers an explicit current-snapshot
+  choice or a retrieval-only update control; unavailable status fails open to
+  the already loaded runtime. A successful guarded refresh that makes the
+  retrieval snapshot current automatically dispatches the held question, while
+  choosing the incumbent never cancels an update already running in the
+  background. Missing unavailable vector and all symbol-graph state are not
+  misrepresented as Ask retrieval freshness. React StrictMode replay and route
+  changes cannot duplicate the first question, and static exports make no
+  runtime status request.
 - Keep read-only/prebuilt paths safe through copy-on-write or explicit refusal.
 
 ### M4: Cross-file reference de-materialization

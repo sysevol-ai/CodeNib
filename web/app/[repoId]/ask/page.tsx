@@ -4,22 +4,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
+import AskIndexFreshness, {
+  askIndexAttention,
+} from "@/components/AskIndexFreshness";
 import CodePanel from "@/components/CodePanel";
 import {
   askQuestion,
+  fetchIndexStatus,
   fetchRepos,
   fetchWikiTree,
   type ChatMessage,
   type ChatResponse,
   type RepoInfo,
+  type RepoIndexStatus,
   type WikiPageRef,
 } from "@/lib/api";
 import { codeRefs } from "@/lib/citations";
+import { hasCanonicalIndexSurfaces } from "@/lib/indexStatus";
 import { relatedWikiPages } from "@/lib/relatedWiki";
 import { AppLink } from "@/lib/router";
+import { isStaticRuntime } from "@/lib/runtime";
 
 // DeepWiki clamps the question to ~200 chars before "Show full text".
 const Q_TRUNCATE = 200;
+const INDEX_STATUS_GATE_TIMEOUT_MS = 2_000;
 
 // One question + its (eventual) answer in the conversation thread.
 interface Turn {
@@ -28,17 +36,86 @@ interface Turn {
   err: string | null;
 }
 
+interface QueuedQuestion {
+  id: number;
+  query: string;
+}
+
 function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
   const q = query.trim();
+  const staticRuntime = isStaticRuntime();
 
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [wikiPages, setWikiPages] = useState<WikiPageRef[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingSeconds, setLoadingSeconds] = useState(0);
+  const [indexStatus, setIndexStatus] = useState<RepoIndexStatus | null>(null);
+  const [indexStatusResolved, setIndexStatusResolved] = useState(false);
+  const [pendingQuestion, setPendingQuestion] =
+    useState<QueuedQuestion | null>(null);
+  const [showIndexUpdate, setShowIndexUpdate] = useState(false);
   // Bumped whenever the thread resets so in-flight answers from a previous
   // conversation can't land in the new one.
   const genRef = useRef(0);
+  const indexStatusRequest = useRef<AbortController | null>(null);
+  const indexStatusRequestId = useRef(0);
+  const questionId = useRef(0);
+  const conversationKey = `${repoId}\u0000${q}`;
+  const conversationKeyRef = useRef(conversationKey);
+  const dispatchedQuestionId = useRef(0);
+  const consumedPendingId = useRef(0);
+  const [queuedQuestion, setQueuedQuestion] =
+    useState<QueuedQuestion | null>(() =>
+      q ? { id: ++questionId.current, query: q } : null,
+    );
+
+  const loadIndexStatus = useCallback(async () => {
+    indexStatusRequest.current?.abort();
+    const controller = new AbortController();
+    indexStatusRequest.current = controller;
+    const requestId = ++indexStatusRequestId.current;
+    setIndexStatusResolved(false);
+    if (staticRuntime) {
+      indexStatusRequest.current = null;
+      setIndexStatus(null);
+      setIndexStatusResolved(true);
+      return;
+    }
+
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      INDEX_STATUS_GATE_TIMEOUT_MS,
+    );
+    try {
+      const next = await fetchIndexStatus(repoId, {
+        signal: controller.signal,
+      });
+      if (next.repo_id !== repoId || !hasCanonicalIndexSurfaces(next)) {
+        throw new Error("Index status response is incomplete");
+      }
+      if (indexStatusRequestId.current === requestId) setIndexStatus(next);
+    } catch {
+      // Index awareness must not make an otherwise usable Ask route fail. A
+      // bounded unavailable read falls back to the currently loaded runtime.
+    } finally {
+      window.clearTimeout(timeout);
+      if (indexStatusRequestId.current === requestId) {
+        indexStatusRequest.current = null;
+        setIndexStatusResolved(true);
+      }
+    }
+  }, [repoId, staticRuntime]);
+
+  useEffect(() => {
+    setIndexStatus(null);
+    void loadIndexStatus();
+    return () => {
+      indexStatusRequestId.current += 1;
+      indexStatusRequest.current?.abort();
+      indexStatusRequest.current = null;
+    };
+  }, [loadIndexStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,15 +184,47 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
     [repoId]
   );
 
-  // A new URL question (arriving from a wiki page's ask bar) starts a fresh
-  // conversation; follow-ups submitted on this page append in place instead.
+  // A new URL question starts one fresh conversation. The key ref also avoids
+  // issuing a duplicate initial request when React StrictMode replays effects.
   useEffect(() => {
+    if (conversationKeyRef.current === conversationKey) return;
+    conversationKeyRef.current = conversationKey;
     genRef.current += 1;
     setTurns([]);
     setLoading(false);
     setQExpanded(new Set());
-    if (q) runAsk(q, []);
-  }, [repoId, q, runAsk]);
+    setPendingQuestion(null);
+    setShowIndexUpdate(false);
+    consumedPendingId.current = 0;
+    setQueuedQuestion(
+      q ? { id: ++questionId.current, query: q } : null,
+    );
+  }, [conversationKey, q]);
+
+  const indexAttention = useMemo(
+    () => (indexStatus ? askIndexAttention(indexStatus) : null),
+    [indexStatus],
+  );
+
+  // A first question waits only for the bounded status read. Missing or failed
+  // status awareness fails open to the already loaded retrieval snapshot.
+  useEffect(() => {
+    if (!queuedQuestion || !indexStatusResolved) return;
+    if (dispatchedQuestionId.current === queuedQuestion.id) return;
+    dispatchedQuestionId.current = queuedQuestion.id;
+    setQueuedQuestion(null);
+    if (indexStatus && indexAttention?.needsAttention) {
+      setPendingQuestion(queuedQuestion);
+      return;
+    }
+    runAsk(queuedQuestion.query, []);
+  }, [
+    indexAttention,
+    indexStatus,
+    indexStatusResolved,
+    queuedQuestion,
+    runAsk,
+  ]);
 
   function followUp(query: string) {
     if (loading) return;
@@ -128,7 +237,50 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
     runAsk(query, history);
   }
 
+  function submitQuestion(query: string) {
+    if (loading) return;
+    if (turns.length > 0) {
+      followUp(query);
+      return;
+    }
+    setQueuedQuestion({ id: ++questionId.current, query });
+  }
+
+  const askPendingQuestion = useCallback(() => {
+    if (!pendingQuestion || consumedPendingId.current === pendingQuestion.id) {
+      return;
+    }
+    consumedPendingId.current = pendingQuestion.id;
+    const next = pendingQuestion.query;
+    setPendingQuestion(null);
+    setShowIndexUpdate(false);
+    runAsk(next, []);
+  }, [pendingQuestion, runAsk]);
+
+  // Once the guarded runtime refresh reports a current retrieval snapshot,
+  // continue the held question without asking the user to submit it again.
+  useEffect(() => {
+    if (
+      !showIndexUpdate ||
+      !pendingQuestion ||
+      !indexStatusResolved ||
+      !indexStatus ||
+      indexAttention?.needsAttention
+    ) {
+      return;
+    }
+    askPendingQuestion();
+  }, [
+    askPendingQuestion,
+    indexAttention,
+    indexStatus,
+    indexStatusResolved,
+    pendingQuestion,
+    showIndexUpdate,
+  ]);
+
   const repoName = repo ? repo.repo : repoId;
+  const waitingQuestion = pendingQuestion ?? queuedQuestion;
   // Per-turn citation lists so a chip's index lines up with the code pane.
   const turnRefs = useMemo(
     () => turns.map((t) => codeRefs(t.resp?.citations ?? [])),
@@ -208,14 +360,33 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
 
           {turns.length === 0 && (
             <>
-              <h1 className="ask-q">Ask about {repoName}</h1>
-              <AskBar
-                repoId={repoId}
-                repo={repoName}
-                onSubmit={followUp}
-                disabled={loading}
-                inline
-              />
+              <h1 className="ask-q">
+                {waitingQuestion?.query ?? `Ask about ${repoName}`}
+              </h1>
+              {queuedQuestion && !indexStatusResolved && (
+                <div className="ask-index-checking" role="status">
+                  Checking retrieval index freshness…
+                </div>
+              )}
+              {indexStatus && indexAttention?.needsAttention && (
+                <AskIndexFreshness
+                  status={indexStatus}
+                  hasPendingQuestion={Boolean(pendingQuestion)}
+                  showUpdateControl={showIndexUpdate}
+                  onShowUpdate={() => setShowIndexUpdate(true)}
+                  onAskCurrent={askPendingQuestion}
+                  onRefresh={loadIndexStatus}
+                />
+              )}
+              {!waitingQuestion && (
+                <AskBar
+                  repoId={repoId}
+                  repo={repoName}
+                  onSubmit={submitQuestion}
+                  disabled={loading}
+                  inline
+                />
+              )}
             </>
           )}
 
@@ -312,7 +483,12 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
       </div>
 
       {turns.length > 0 && (
-        <AskBar repoId={repoId} repo={repoName} onSubmit={followUp} disabled={loading} />
+        <AskBar
+          repoId={repoId}
+          repo={repoName}
+          onSubmit={submitQuestion}
+          disabled={loading}
+        />
       )}
     </div>
   );
