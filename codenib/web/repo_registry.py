@@ -413,6 +413,17 @@ def _manifest_requires_authenticated_source(manifest: Any) -> bool:
     ) is RepositorySourceSelection and bool(getattr(manifest, "source_fingerprint", ""))
 
 
+def _exact_manifest_source_selection(manifest: Any) -> RepositorySourceSelection:
+    """Normalize the legacy default while rejecting malformed policy state."""
+
+    selection = getattr(manifest, "source_selection", None)
+    if selection is None:
+        return RepositorySourceSelection()
+    if type(selection) is not RepositorySourceSelection:
+        raise TypeError("repository manifest source selection uses an invalid type")
+    return selection
+
+
 def _require_authenticated_source_paths(
     paths: Any,
     source_reader: "RepositorySourceReader",
@@ -1855,6 +1866,12 @@ class RepoRegistry:
         manifest = context.manifest
         if type(manifest) is not RepoManifest:
             raise TypeError("retained BM25 manifest uses an invalid type")
+        if _exact_manifest_source_selection(
+            current_manifest
+        ) != _exact_manifest_source_selection(manifest):
+            raise ValueError(
+                "retained BM25 source selection differs from the active Web source"
+            )
 
         if (
             receipt.repository_id != binding.repository_id

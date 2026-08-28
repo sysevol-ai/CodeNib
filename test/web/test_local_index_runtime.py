@@ -682,9 +682,15 @@ def test_local_index_runtime_executes_submitted_bm25_job(
     )
 
 
-def test_web_lifespan_executes_job_and_publishes_registry_generation(
+@pytest.mark.parametrize(
+    "source_policy_drift",
+    (False, True),
+    ids=("matching-policy", "reloaded-policy"),
+)
+def test_web_lifespan_executes_job_and_guards_registry_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    source_policy_drift: bool,
 ) -> None:
     activation_failures = []
     monkeypatch.setattr(
@@ -748,6 +754,29 @@ def test_web_lifespan_executes_job_and_publishes_registry_generation(
             initial = registry.get("demo")
             assert initial is not None
             assert initial.index_job_activation is None
+            expected_active = initial
+            if source_policy_drift:
+                reloaded_selection = RepositorySourceSelection(
+                    (*selection.exclude_subtrees, "policy-change")
+                )
+                reloaded_source = fingerprint_repository(
+                    repository,
+                    selection=reloaded_selection,
+                )
+                RepoManifest(
+                    repo_path=str(repository),
+                    commit=commit,
+                    last_indexed_commit=commit,
+                    source_fingerprint=reloaded_source.value,
+                    source_selection=reloaded_selection,
+                    languages=["python"],
+                    file_count=reloaded_source.file_count,
+                ).save(manifest_path)
+                registry.load_all()
+                expected_active = registry.get("demo")
+                assert expected_active is not None
+                assert expected_active is not initial
+                assert expected_active.index_job_activation is None
 
             created = application.state.index_job_writer.create(
                 "demo",
@@ -763,7 +792,14 @@ def test_web_lifespan_executes_job_and_publishes_registry_generation(
                 observed = application.state.index_job_reader.get(created.job_id)
                 active = registry.get("demo")
                 activation = None if active is None else active.index_job_activation
-                if (
+                if source_policy_drift:
+                    if activation is not None:
+                        pytest.fail(
+                            "drifted source policy reached registry publication"
+                        )
+                    if observed.status == "succeeded" and activation_failures:
+                        break
+                elif (
                     observed.status == "succeeded"
                     and activation is not None
                     and activation.snapshot_id == observed.result_snapshot_id
@@ -782,10 +818,24 @@ def test_web_lifespan_executes_job_and_publishes_registry_generation(
                     pytest.fail("lifespan runtime did not publish the BM25 result")
                 await asyncio.sleep(0.02)
 
-            assert active is not initial
             assert active is not None
-            assert active.bm25 is not None
-            assert active.index_job_activation.job_id == created.job_id
+            if source_policy_drift:
+                assert active is expected_active
+                assert active.index_job_activation is None
+                assert active.manifest.source_selection != selection
+                assert activation_failures
+                failure_chain = []
+                failure = activation_failures[-1]
+                while failure is not None:
+                    failure_chain.append(str(failure))
+                    failure = failure.__cause__
+                assert any(
+                    "source selection differs" in message for message in failure_chain
+                )
+            else:
+                assert active is not initial
+                assert active.bm25 is not None
+                assert active.index_job_activation.job_id == created.job_id
             assert service.healthy is True
 
     asyncio.run(run_lifespan())
