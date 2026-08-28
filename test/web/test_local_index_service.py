@@ -502,6 +502,102 @@ def test_optional_catalog_sidecar_accepts_confirmed_disappearance(
     assert observations == 2
 
 
+def test_optional_catalog_sidecar_retries_safe_reappearance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "catalog.sqlite3-wal"
+    real_resolve = Path.resolve
+    observations = 0
+
+    def reappear(path: Path, strict: bool = False):
+        nonlocal observations
+        if path == sidecar:
+            observations += 1
+            if observations == 1:
+                try:
+                    return real_resolve(path, strict=strict)
+                finally:
+                    sidecar.write_bytes(b"replacement WAL")
+        return real_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", reappear)
+
+    assert not sidecar.exists()
+    identity = local_index_service._observe_optional_catalog_sidecar(
+        sidecar,
+        label="WAL sidecar",
+    )
+
+    assert identity is not None
+    assert identity == (
+        sidecar.stat().st_dev,
+        sidecar.stat().st_ino,
+        sidecar.stat().st_nlink,
+    )
+    assert observations == 3
+
+
+def test_optional_catalog_sidecar_rejects_unsafe_reappearance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "catalog.sqlite3-wal"
+    missing_target = tmp_path / "missing-target"
+    real_resolve = Path.resolve
+    observations = 0
+
+    def reappear_as_broken_link(path: Path, strict: bool = False):
+        nonlocal observations
+        if path == sidecar:
+            observations += 1
+            if observations == 1:
+                try:
+                    return real_resolve(path, strict=strict)
+                finally:
+                    sidecar.symlink_to(missing_target)
+        return real_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", reappear_as_broken_link)
+
+    with pytest.raises(LocalIndexServiceError, match="must be one real"):
+        local_index_service._observe_optional_catalog_sidecar(
+            sidecar,
+            label="WAL sidecar",
+        )
+
+    assert observations == 1
+
+
+def test_optional_catalog_sidecar_bounds_continuous_reappearance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "catalog.sqlite3-wal"
+    sidecar.write_bytes(b"churning WAL")
+    real_resolve = Path.resolve
+    observations = 0
+
+    def keep_reappearing(path: Path, strict: bool = False):
+        nonlocal observations
+        if path == sidecar:
+            observations += 1
+            raise FileNotFoundError(path)
+        return real_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", keep_reappearing)
+
+    with pytest.raises(LocalIndexServiceError, match="must be one real"):
+        local_index_service._observe_optional_catalog_sidecar(
+            sidecar,
+            label="WAL sidecar",
+        )
+
+    assert (
+        observations == local_index_service._MAX_OPTIONAL_CATALOG_OBSERVATION_ATTEMPTS
+    )
+
+
 def test_local_index_topology_rejects_retained_resource_overcommit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

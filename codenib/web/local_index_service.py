@@ -38,6 +38,7 @@ from .config import LocalIndexStorageConfig
 _MAX_BUSY_TIMEOUT_MS = 86_400_000
 _MAX_MOUNTINFO_ENTRIES = 65_536
 _MAX_MOUNTINFO_LINE_BYTES = 64 * 1024
+_MAX_OPTIONAL_CATALOG_OBSERVATION_ATTEMPTS = 8
 _MAX_RETAINED_TOPOLOGY_RESOURCES = 16_384
 _TOPOLOGY_TRANSIENT_RESOURCE_RESERVE = 64
 _CATALOG_SIDECARS = (
@@ -60,6 +61,26 @@ class LocalIndexServiceError(StorageError):
     """The explicitly configured local index service is unavailable."""
 
 
+def _catalog_file_identity(metadata: os.stat_result) -> tuple[int, int, int]:
+    identity = (
+        int(metadata.st_dev),
+        int(metadata.st_ino),
+        int(metadata.st_nlink),
+    )
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or identity[0] < 1
+        or identity[1] < 1
+        or identity[2] != 1
+        or getattr(metadata, "st_file_attributes", 0) & _WINDOWS_REPARSE_POINT_ATTRIBUTE
+    ):
+        raise LocalIndexServiceError(
+            "local index catalog must be one real single-linked file"
+        )
+    return identity
+
+
 def _canonical_catalog_path(value: Path) -> Path:
     if type(value) is not type(Path()):
         raise TypeError("local index catalog path must be an exact Path")
@@ -79,49 +100,45 @@ def _observe_catalog_identity_maybe_missing(
     *,
     missing_ok: bool,
 ) -> tuple[int, int, int] | None:
-    try:
-        resolved_before = path.resolve(strict=True)
-        metadata = path.lstat()
-        resolved_after = path.resolve(strict=True)
-    except FileNotFoundError as exc:
-        if missing_ok:
-            # WAL/SHM files are SQLite-owned and may disappear between any two
-            # observations. Accept only a second exact missing observation;
-            # a broken link or immediate replacement remains unsafe.
+    for attempt in range(_MAX_OPTIONAL_CATALOG_OBSERVATION_ATTEMPTS):
+        try:
+            resolved_before = path.resolve(strict=True)
+            metadata = path.lstat()
+            resolved_after = path.resolve(strict=True)
+        except FileNotFoundError as exc:
+            if not missing_ok:
+                raise LocalIndexServiceError(
+                    "local index catalog cannot be inspected safely"
+                ) from exc
+            # WAL/SHM files are SQLite-owned and may disappear or reappear
+            # between observations. Accept a confirmed absence, retry a safe
+            # reappearance, and reject an unsafe replacement immediately.
             try:
-                path.lstat()
+                replacement = path.lstat()
             except FileNotFoundError:
                 return None
             except OSError as retry_exc:
                 raise LocalIndexServiceError(
                     "local index catalog cannot be inspected safely"
                 ) from retry_exc
-        raise LocalIndexServiceError(
-            "local index catalog cannot be inspected safely"
-        ) from exc
-    except (OSError, RuntimeError, ValueError) as exc:
-        raise LocalIndexServiceError(
-            "local index catalog cannot be inspected safely"
-        ) from exc
-    identity = (
-        int(metadata.st_dev),
-        int(metadata.st_ino),
-        int(metadata.st_nlink),
-    )
-    if (
-        resolved_before != path
-        or resolved_after != path
-        or not stat.S_ISREG(metadata.st_mode)
-        or stat.S_ISLNK(metadata.st_mode)
-        or identity[0] < 1
-        or identity[1] < 1
-        or identity[2] != 1
-        or getattr(metadata, "st_file_attributes", 0) & _WINDOWS_REPARSE_POINT_ATTRIBUTE
-    ):
-        raise LocalIndexServiceError(
-            "local index catalog must be one real single-linked file"
-        )
-    return identity
+            _catalog_file_identity(replacement)
+            if attempt + 1 < _MAX_OPTIONAL_CATALOG_OBSERVATION_ATTEMPTS:
+                continue
+            raise LocalIndexServiceError(
+                "local index catalog cannot be inspected safely"
+            ) from exc
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise LocalIndexServiceError(
+                "local index catalog cannot be inspected safely"
+            ) from exc
+        identity = _catalog_file_identity(metadata)
+        if resolved_before != path or resolved_after != path:
+            raise LocalIndexServiceError(
+                "local index catalog must be one real single-linked file"
+            )
+        return identity
+    else:  # pragma: no cover - every loop branch returns or raises
+        raise LocalIndexServiceError("local index catalog cannot be inspected safely")
 
 
 def _observe_catalog_identity(path: Path) -> tuple[int, int, int]:
