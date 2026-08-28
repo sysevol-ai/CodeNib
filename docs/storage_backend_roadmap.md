@@ -1534,10 +1534,10 @@ default-off two-pass CLI sweep are implemented. The production routed source
 path writes only into its leased shard; the compatibility workspace-root path
 and its cleanup remain unleased and manual. The local Web composition explicitly
 bootstraps each configured repository shard, routes its authenticated attempt
-receipts to the matching bounded reaper, reclaims exact receipts after worker
-results, and sweeps only those configured shards before start and after joined
-shutdown. Automatic shard discovery and default/background reaping remain
-pending.
+receipts to the matching bounded reaper, settles them after worker results under
+that route's exclusive lease, and sweeps only those configured shards before
+start and after joined shutdown. Automatic shard discovery and default server
+installation remain pending.
 Vector and graph source builders, generic builder routing, and remaining
 runtime wiring remain.
 
@@ -1650,11 +1650,11 @@ MCP, UI controls, and default routing remain absent.
   configured target, directs every at-least-once receipt to its exact shard,
   cleans it after worker results, and performs shard-policy sweeps only before
   worker start or after both background loops join. Automatic shard discovery
-  and installed default/background reaping remain pending, and legacy cleanup
-  continues to require explicit operator quiescence. Then add vector and graph
-  source adapters, install the composed service in the production server
-  lifespan, and wire MCP, UI, and default routes. Older self-publishing ingress
-  APIs remain compatibility paths and are never nested inside the worker.
+  and default server installation remain pending, and legacy cleanup continues
+  to require explicit operator quiescence. Then add vector and graph source
+  adapters, install the composed service in the production server lifespan, and
+  wire MCP, UI, and default routes. Older self-publishing ingress APIs remain
+  compatibility paths and are never nested inside the worker.
 - Complete the #266 job and update APIs with accurate incremental versus rebuild
   behavior; the first read-only status slice is described below.
 - `RepoRegistry.load_all()` now reconciles each complete registry snapshot,
@@ -1671,9 +1671,8 @@ MCP, UI controls, and default routing remain absent.
   cancellation-class cleanup failures never demoted behind ordinary errors.
   Bundle-derived Wiki, edge-label, and commit-window helpers are generation
   keyed and stale entries are pruned after replacement, removal, and shutdown.
-  The remaining #266 work is to own the existing reconciliation loop in the
-  production server lifespan, invoke its existing callback only after an
-  attested update job succeeds, and expose its status/results to the UI.
+  The remaining #266 work is to own the composed service in the production
+  server lifespan and expose its status/results to the UI.
 - The first #266 read slice exposes one pinned, detached status snapshot for
   exactly BM25, vector, and symbol-graph surfaces. It reports manifest/current
   commit drift and retained incremental metrics without exposing mutable bundle

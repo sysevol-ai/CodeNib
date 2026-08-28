@@ -12,20 +12,20 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from threading import get_ident
-from time import monotonic
 from types import MappingProxyType
 from typing import Callable, Iterator, Mapping
 
 from .._atomic_directory import (
     DirectoryOrphan,
-    QuiescentDirectoryReclaimer,
     _OrderedAction,
     _run_context_with_cleanup_actions,
 )
 from .._local_workspace_provider import LocalWorkspaceProvider
 from .._owned_file_publication import _CancellationSafeRLock
-from ..compiler.cache_lock import compiler_cache_lock
+from ..compiler.bm25_attempt_pool import (
+    LocalBM25AttemptPoolBinding,
+    bootstrap_local_bm25_attempt_pool,
+)
 from ..compiler.checkout_identity import checkout_commit
 from ..compiler.index_builders import BM25IndexBuilder
 from ..compiler.job_resolver import BM25SourceJobResolver
@@ -38,6 +38,7 @@ from ..languages import normalize_chunker_language
 from ..log_utils import get_logger
 from ..repository_source_selection import RepositorySourceSelection
 from ..storage import (
+    IndexJobRecord,
     IndexJobWorker,
     IndexJobWorkerRunResult,
     IndexJobWorkerScheduler,
@@ -72,7 +73,6 @@ _LOCAL_RUNTIME_TOKEN = object()
 _FULL_GIT_COMMIT_RE = re.compile(r"[0-9a-f]{40}\Z")
 _MAX_TARGET_LANGUAGES = 64
 _MAX_PENDING_ATTEMPT_ORPHANS = 4_096
-_MIN_ATTEMPT_POOL_LEASE_WAIT_SECONDS = 0.1
 
 logger = get_logger(__name__)
 
@@ -106,156 +106,90 @@ class _LocalRuntimeResourceOwner:
         self._resource = _MISSING_RESOURCE
 
 
-class _LocalAttemptPoolLeaseOwner:
-    """Retain the cooperative worker/reaper lease across background threads."""
+class _LocalBM25AttemptPoolRegistration:
+    """Retain one target's paired routes, receipts, and retryable cleanup."""
 
     __slots__ = (
-        "_context",
-        "_entered",
-        "_owner_pid",
-        "_owner_thread_id",
-        "_topology_verifier",
+        "binding",
+        "cleanup_owners",
+        "closed",
+        "orphans",
+        "repository_id",
+        "target",
     )
 
-    def __init__(self) -> None:
-        self._context: object = _MISSING_RESOURCE
-        self._entered = False
-        self._owner_pid: int | None = None
-        self._owner_thread_id: int | None = None
-        self._topology_verifier: Callable[[], None] | None = None
-
-    @property
-    def closed(self) -> bool:
-        return self._context is _MISSING_RESOURCE
-
-    def acquire(
+    def __init__(
         self,
-        root: Path,
-        *,
-        wait_timeout_ms: int,
-        topology_verifier: Callable[[], None],
+        repository_id: str,
+        target: LocalBM25SourceJobTarget,
+        binding: LocalBM25AttemptPoolBinding,
     ) -> None:
-        if self._context is not _MISSING_RESOURCE:
-            raise RuntimeError("local attempt-pool lease is already acquired")
-        if type(root) is not type(Path()):
-            raise TypeError("local attempt-pool lease root must be an exact Path")
-        if type(wait_timeout_ms) is not int or wait_timeout_ms < 0:
-            raise TypeError("local attempt-pool lease timeout is invalid")
-        if not callable(topology_verifier):
-            raise TypeError("local attempt-pool topology verifier is invalid")
-
-        deadline = monotonic() + max(
-            _MIN_ATTEMPT_POOL_LEASE_WAIT_SECONDS,
-            wait_timeout_ms / 1_000,
-        )
-
-        def check_wait() -> None:
-            if monotonic() >= deadline:
-                raise LocalIndexServiceError(
-                    "local worker workspace is already owned by another process"
-                )
-
-        # Reject topology drift before publishing an unentered generator into
-        # cleanup ownership. Later checks are protected by the retained owner.
-        topology_verifier()
-        context = compiler_cache_lock(
-            root,
-            create=True,
-            check_cancelled=check_wait,
-        )
-        # Publish the context before entering it. If cancellation lands after
-        # its generator yields but before this method returns, close() can
-        # still drive the retained generator through its finally block.
-        self._context = context
-        self._owner_pid = os.getpid()
-        self._owner_thread_id = get_ident()
-        self._topology_verifier = topology_verifier
-        try:
-            context.__enter__()
-            self._entered = True
-            topology_verifier()
-        except LocalIndexServiceError:
-            raise
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise LocalIndexServiceError(
-                "local worker workspace lease could not be acquired"
-            ) from exc
-
-    def require_held(self) -> None:
-        verifier = self._topology_verifier
-        if self._context is _MISSING_RESOURCE or not self._entered or verifier is None:
-            raise StorageIntegrityError("local attempt-pool lease is not held")
-        if self._owner_pid != os.getpid():
-            raise StorageIntegrityError("local attempt-pool lease crossed a process")
-        verifier()
-
-    def _release(self) -> None:
-        context = self._context
-        if context is _MISSING_RESOURCE:
-            return
-        if self._owner_pid != os.getpid():
-            raise StorageIntegrityError("local attempt-pool lease crossed a process")
-        if self._owner_thread_id != get_ident():
-            raise StorageIntegrityError("local attempt-pool lease crossed a thread")
-        context.__exit__(None, None, None)  # type: ignore[attr-defined]
-        self._context = _MISSING_RESOURCE
-        self._entered = False
-        self._owner_pid = None
-        self._owner_thread_id = None
-        self._topology_verifier = None
-
-    def close(self) -> None:
-        if self._context is _MISSING_RESOURCE:
-            return
-        verifier = self._topology_verifier
-        cleanup_actions = (
-            *(
-                (
-                    (
-                        "local attempt-pool pre-unlock topology validation also "
-                        "failed",
-                        verifier,
-                    ),
-                )
-                if verifier is not None and self._entered
-                else ()
-            ),
-            _OrderedAction(
-                label="local attempt-pool lease release also failed",
-                action=self._release,
-                complete=lambda: self.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=self,
-            ),
-        )
-        with _run_context_with_cleanup_actions(cleanup_actions):
-            pass
+        self.repository_id = repository_id
+        self.target = target
+        self.binding = binding
+        self.orphans: list[DirectoryOrphan] = []
+        self.cleanup_owners: list[object] = []
+        self.closed = False
 
 
 class _LocalBM25AttemptPoolReaper:
-    """Retain exact attempt receipts and reclaim only while the lease is held."""
+    """Route exact attempt receipts to independently leased repository shards."""
 
-    __slots__ = ("_lease", "_lock", "_orphans", "_state", "_target")
+    __slots__ = ("_by_parent", "_by_repository", "_lock", "_state")
 
-    def __init__(self, lease: _LocalAttemptPoolLeaseOwner) -> None:
-        self._lease = lease
+    def __init__(self) -> None:
+        self._by_parent: dict[
+            tuple[Path, tuple[int, ...]], _LocalBM25AttemptPoolRegistration
+        ] = {}
+        self._by_repository: dict[str, _LocalBM25AttemptPoolRegistration] = {}
         self._lock = _CancellationSafeRLock()
-        self._orphans: list[DirectoryOrphan] = []
         self._state = "open"
-        self._target: LocalBM25SourceJobTarget | None = None
 
     @property
     def closed(self) -> bool:
         return self._lock.run(lambda: self._state == "closed")
 
-    def install(self, target: LocalBM25SourceJobTarget) -> None:
+    def install(
+        self,
+        repository_id: str,
+        target: LocalBM25SourceJobTarget,
+        binding: LocalBM25AttemptPoolBinding,
+    ) -> None:
+        if type(repository_id) is not str or not repository_id:
+            raise TypeError("local attempt-pool repository ID is invalid")
         if type(target) is not LocalBM25SourceJobTarget:
             raise TypeError("local attempt-pool reaper target is invalid")
+        if type(binding) is not LocalBM25AttemptPoolBinding:
+            raise TypeError("local attempt-pool reaper binding is invalid")
+        if target.attempt_pool_writer_route is not binding.writer_route:
+            raise StorageIntegrityError(
+                "local attempt-pool target uses another writer route"
+            )
+        parent = target.attempt_pool_root
+        identity = target.attempt_pool_identity
+        if (
+            type(parent) is not type(Path())
+            or type(identity) is not tuple
+            or len(identity) != 4
+            or any(type(value) is not int for value in identity)
+        ):
+            raise StorageIntegrityError(
+                "local attempt-pool target has no routed parent authority"
+            )
+        key = (parent, identity)
+        registration = _LocalBM25AttemptPoolRegistration(
+            repository_id,
+            target,
+            binding,
+        )
 
         def commit() -> None:
-            if self._state != "open" or self._target is not None:
-                raise RuntimeError("local attempt-pool reaper is already configured")
-            self._target = target
+            if self._state != "open":
+                raise RuntimeError("local attempt-pool reaper is not configurable")
+            if repository_id in self._by_repository or key in self._by_parent:
+                raise RuntimeError("local attempt-pool route is already configured")
+            self._by_repository[repository_id] = registration
+            self._by_parent[key] = registration
 
         self._lock.run(commit)
 
@@ -264,110 +198,216 @@ class _LocalBM25AttemptPoolReaper:
 
         if type(orphan) is not DirectoryOrphan:
             raise TypeError("local attempt-pool orphan receipt is invalid")
-        self._lease.require_held()
+        key = (orphan.path.parent, orphan.parent_identity)
 
         def commit() -> None:
-            target = self._target
-            if self._state != "open" or target is None:
+            registration = self._by_parent.get(key)
+            if self._state != "open" or registration is None or registration.closed:
                 raise StorageIntegrityError("local attempt-pool reaper is unavailable")
-            if (
-                orphan.path.parent != target.attempt_pool_root
-                or orphan.parent_identity != target.attempt_pool_identity
-            ):
-                raise StorageIntegrityError(
-                    "local attempt-pool receipt uses another authority"
-                )
-            if any(candidate == orphan for candidate in self._orphans):
+            if any(candidate == orphan for candidate in registration.orphans):
                 return
-            if len(self._orphans) >= _MAX_PENDING_ATTEMPT_ORPHANS:
+            pending = sum(
+                len(candidate.orphans) for candidate in self._by_repository.values()
+            )
+            if pending >= _MAX_PENDING_ATTEMPT_ORPHANS:
                 raise StorageIntegrityError(
                     "local attempt-pool receipt queue exceeds its bound"
                 )
-            self._orphans.append(orphan)
+            registration.orphans.append(orphan)
 
         self._lock.run(commit)
 
-    def _snapshot(self) -> tuple[LocalBM25SourceJobTarget, tuple[DirectoryOrphan, ...]]:
-        def read():
-            target = self._target
-            if self._state not in {"open", "closing"} or target is None:
+    def _registration(
+        self,
+        repository_id: str,
+    ) -> _LocalBM25AttemptPoolRegistration:
+        if type(repository_id) is not str:
+            raise TypeError("local attempt-pool repository ID must be exact text")
+
+        def read() -> _LocalBM25AttemptPoolRegistration:
+            registration = self._by_repository.get(repository_id)
+            if (
+                self._state not in {"open", "closing"}
+                or registration is None
+                or registration.closed
+            ):
                 raise StorageIntegrityError("local attempt-pool reaper is unavailable")
-            return target, tuple(self._orphans)
+            return registration
 
         return self._lock.run(read)
 
-    def _forget(self, reclaimed: tuple[DirectoryOrphan, ...]) -> None:
+    def _forget(
+        self,
+        registration: _LocalBM25AttemptPoolRegistration,
+        reclaimed: tuple[DirectoryOrphan, ...],
+    ) -> None:
         if not reclaimed:
             return
 
         def commit() -> None:
-            self._orphans[:] = [
+            registration.orphans[:] = [
                 candidate
-                for candidate in self._orphans
+                for candidate in registration.orphans
                 if not any(candidate == receipt for receipt in reclaimed)
             ]
 
         self._lock.run(commit)
 
-    def reclaim_pending(self) -> None:
-        """Reclaim receipts at the scheduler's between-attempt boundary."""
-
-        target, receipts = self._snapshot()
-        if not receipts:
+    def _retain_cleanup_owners(
+        self,
+        registration: _LocalBM25AttemptPoolRegistration,
+        error: BaseException,
+    ) -> None:
+        owners = getattr(error, "publication_cleanup_owners", ())
+        if type(owners) is not tuple:
             return
-        identity = target.attempt_pool_identity
-        if type(identity) is not tuple or len(identity) != 4:
-            raise StorageIntegrityError(
-                "local attempt-pool target has no retained parent identity"
+
+        def commit() -> None:
+            for owner in owners:
+                if not callable(getattr(owner, "close", None)):
+                    continue
+                if any(candidate is owner for candidate in registration.cleanup_owners):
+                    continue
+                registration.cleanup_owners.append(owner)
+
+        self._lock.run(commit)
+
+    def _settle_cleanup_owners(
+        self,
+        registration: _LocalBM25AttemptPoolRegistration,
+    ) -> None:
+        owners = self._lock.run(lambda: tuple(registration.cleanup_owners))
+        if not owners:
+            return
+        actions = tuple(
+            _OrderedAction(
+                label="local attempt-pool retained route cleanup also failed",
+                action=owner.close,  # type: ignore[attr-defined]
+                complete=lambda owner=owner: bool(getattr(owner, "closed", False)),
+                retry_incomplete="cancellation",
+                incomplete_owner=owner,
             )
-        self._lease.require_held()
-        target.verify_topology()
-        with QuiescentDirectoryReclaimer(
-            target.attempt_pool_root,
-            expected_parent_identity=identity,
-        ) as reclaimer:
-            for orphan in receipts:
-                target.verify_topology()
-                reclaimed = reclaimer.reclaim_orphan(orphan)
-                if reclaimed is not True:  # pragma: no cover - exact API invariant
-                    raise StorageIntegrityError(
-                        "local attempt-pool receipt did not reclaim"
-                    )
-                target.verify_topology()
-        self._lease.require_held()
-        self._forget(receipts)
-
-    def reclaim_stale(self) -> None:
-        """Sweep recognized crash leftovers at an explicit quiescent boundary."""
-
-        target, _receipts = self._snapshot()
-        self._lease.require_held()
-        LocalBM25AttemptPoolCoordinator(target).reclaim(
-            caller_asserts_quiescence=True,
+            for owner in owners
+            if not bool(getattr(owner, "closed", False))
         )
-        self._lease.require_held()
+        with _run_context_with_cleanup_actions(actions):
+            pass
 
-    def close(self) -> None:
-        def begin() -> bool:
-            if self._state == "closed":
-                return False
-            if self._target is None:
-                if self._orphans:
-                    raise StorageIntegrityError(
-                        "unconfigured local attempt-pool reaper retained receipts"
-                    )
-                self._state = "closed"
-                return False
-            if self._state == "open":
-                self._state = "closing"
-            return True
+        def forget_closed() -> None:
+            registration.cleanup_owners[:] = [
+                owner
+                for owner in registration.cleanup_owners
+                if not bool(getattr(owner, "closed", False))
+            ]
 
-        if not self._lock.run(begin):
+        self._lock.run(forget_closed)
+
+    def _sweep(self, registration: _LocalBM25AttemptPoolRegistration) -> None:
+        self._settle_cleanup_owners(registration)
+        try:
+            LocalBM25AttemptPoolCoordinator(
+                registration.target,
+                reaper_route=registration.binding.reaper_route,
+            ).reclaim(caller_asserts_quiescence=True)
+        except BaseException as error:  # noqa: B036 - retain exclusive route owner
+            self._retain_cleanup_owners(registration, error)
+            raise
+
+    def _reclaim_pending_one(self, repository_id: str) -> bool:
+        registration = self._registration(repository_id)
+        receipts = self._lock.run(lambda: tuple(registration.orphans))
+        if not receipts:
+            return False
+        # The routed coordinator holds LOCK_EX while it classifies and removes
+        # the complete bounded shard. Keep the exact receipts queued until that
+        # sweep returns, so a failed or interrupted route cleanup remains
+        # retryable without falling back to path authority.
+        self._sweep(registration)
+        self._forget(registration, receipts)
+        return True
+
+    def reclaim_pending(self, repository_id: str) -> None:
+        """Reclaim receipts only through the completed job's repository route."""
+
+        self._reclaim_pending_one(repository_id)
+
+    def _reclaim_stale_one(self, repository_id: str) -> None:
+        self._sweep(self._registration(repository_id))
+
+    def reclaim_stale(self, repository_id: str | None = None) -> None:
+        """Sweep one route, or every configured route, under independent leases."""
+
+        if repository_id is not None:
+            self._reclaim_stale_one(repository_id)
             return
-        self.reclaim_pending()
-        self.reclaim_stale()
+        repository_ids = self._lock.run(lambda: tuple(sorted(self._by_repository)))
+        completed: set[str] = set()
+
+        def reclaim(candidate_id: str) -> None:
+            self._reclaim_stale_one(candidate_id)
+            completed.add(candidate_id)
+
+        actions = tuple(
+            _OrderedAction(
+                label=f"local attempt-pool {candidate_id} sweep also failed",
+                action=lambda candidate_id=candidate_id: reclaim(candidate_id),
+                complete=lambda candidate_id=candidate_id: candidate_id in completed,
+                retry_incomplete="cancellation",
+                incomplete_owner=self,
+            )
+            for candidate_id in repository_ids
+        )
+        with _run_context_with_cleanup_actions(actions):
+            pass
+
+    def _close_repository(self, repository_id: str) -> None:
+        registration = self._registration(repository_id)
+        if not self._reclaim_pending_one(repository_id):
+            self._sweep(registration)
 
         def finish() -> None:
+            registration.closed = True
+
+        self._lock.run(finish)
+
+    def close(self) -> None:
+        def begin() -> tuple[str, ...]:
+            if self._state == "closed":
+                return ()
+            if self._state == "open":
+                self._state = "closing"
+            return tuple(
+                repository_id
+                for repository_id, registration in sorted(self._by_repository.items())
+                if not registration.closed
+            )
+
+        repository_ids = self._lock.run(begin)
+        if not repository_ids:
+            self._lock.run(lambda: setattr(self, "_state", "closed"))
+            return
+        actions = tuple(
+            _OrderedAction(
+                label=f"local attempt-pool {repository_id} cleanup also failed",
+                action=lambda repository_id=repository_id: self._close_repository(
+                    repository_id
+                ),
+                complete=lambda repository_id=repository_id: bool(
+                    self._by_repository[repository_id].closed
+                ),
+                retry_incomplete="cancellation",
+                incomplete_owner=self,
+            )
+            for repository_id in repository_ids
+        )
+        with _run_context_with_cleanup_actions(actions):
+            pass
+
+        def finish() -> None:
+            if not all(
+                registration.closed for registration in self._by_repository.values()
+            ):
+                raise RuntimeError("local attempt-pool cleanup did not settle")
             self._state = "closed"
 
         self._lock.run(finish)
@@ -535,13 +575,6 @@ def _configured_repositories(
         return tuple(selected)
 
 
-def _shared_topology_guard(topology: LocalIndexStorageTopology) -> None:
-    try:
-        topology.verify_shared_storage()
-    except LocalIndexServiceError as exc:
-        raise StorageIntegrityError("local Web index shared storage changed") from exc
-
-
 def _repository_topology_guard(
     topology: LocalIndexStorageTopology,
     repo_id: str,
@@ -578,7 +611,6 @@ class LocalIndexRuntimeService:
 
     __slots__ = (
         "_attempt_pool",
-        "_attempt_pool_lease_owner",
         "_background",
         "_background_owner",
         "_capabilities",
@@ -596,7 +628,6 @@ class LocalIndexRuntimeService:
         topology: LocalIndexStorageTopology,
         topology_owner: LocalIndexStorageTopologyOwner,
         attempt_pool: _LocalBM25AttemptPoolReaper,
-        attempt_pool_lease_owner: _LocalAttemptPoolLeaseOwner,
         object_store_owner: _LocalRuntimeResourceOwner,
         background: IndexJobBackgroundService,
         background_owner: _LocalRuntimeResourceOwner,
@@ -609,7 +640,6 @@ class LocalIndexRuntimeService:
         self._topology = topology
         self._topology_owner = topology_owner
         self._attempt_pool = attempt_pool
-        self._attempt_pool_lease_owner = attempt_pool_lease_owner
         self._object_store_owner = object_store_owner
         self._background = background
         self._background_owner = background_owner
@@ -641,8 +671,7 @@ class LocalIndexRuntimeService:
             for selected_repo in selected
         }
         topology_owner = LocalIndexStorageTopologyOwner()
-        attempt_pool_lease_owner = _LocalAttemptPoolLeaseOwner()
-        attempt_pool = _LocalBM25AttemptPoolReaper(attempt_pool_lease_owner)
+        attempt_pool = _LocalBM25AttemptPoolReaper()
         object_store_owner = _LocalRuntimeResourceOwner()
         background_owner = _LocalRuntimeResourceOwner()
         topology: LocalIndexStorageTopology | None = None
@@ -663,13 +692,6 @@ class LocalIndexRuntimeService:
                 )
             attempt_pool.close()
 
-        def close_attempt_pool_lease() -> None:
-            if not background_closed() or not attempt_pool.closed:
-                raise StorageIntegrityError(
-                    "local index attempt cleanup must settle before lease release"
-                )
-            attempt_pool_lease_owner.close()
-
         def close_object_store() -> None:
             if not background_closed():
                 raise StorageIntegrityError(
@@ -681,7 +703,6 @@ class LocalIndexRuntimeService:
             if (
                 not background_closed()
                 or not attempt_pool.closed
-                or not attempt_pool_lease_owner.closed
                 or not object_store_owner.closed
             ):
                 raise StorageIntegrityError(
@@ -707,13 +728,6 @@ class LocalIndexRuntimeService:
                 complete=lambda: attempt_pool.closed,
                 retry_incomplete="cancellation",
                 incomplete_owner=attempt_pool,
-            ),
-            _OrderedAction(
-                label="local index attempt-pool lease cleanup also failed",
-                action=close_attempt_pool_lease,
-                complete=lambda: attempt_pool_lease_owner.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=attempt_pool_lease_owner,
             ),
             _OrderedAction(
                 label="local index object store cleanup also failed",
@@ -744,13 +758,6 @@ class LocalIndexRuntimeService:
             catalog_factory = topology.catalog_factory
             _verify_catalog_bindings(catalog_factory, selected)
             topology.verify()
-            shared_topology_verifier = partial(_shared_topology_guard, topology)
-            attempt_pool_lease_owner.acquire(
-                config.worker_workspace_root,
-                wait_timeout_ms=config.catalog_busy_timeout_ms,
-                topology_verifier=shared_topology_verifier,
-            )
-            topology.verify()
             object_store = object_store_owner.acquire(
                 lambda: LocalCAS(
                     config.cas_root,
@@ -780,6 +787,16 @@ class LocalIndexRuntimeService:
                     topology,
                     storage_binding.repo_id,
                 )
+                repository_authority = topology.repository_authority(
+                    storage_binding.repo_id
+                )
+                attempt_pool_binding = bootstrap_local_bm25_attempt_pool(
+                    workspace_root=config.worker_workspace_root,
+                    workspace_identity=topology.worker_workspace_identity,
+                    repository_id=storage_binding.repository_id,
+                    repository_authority=repository_authority,
+                    topology_verifier=repository_topology_verifier,
+                )
                 runtime_workspace = _TopologyBoundWorkspaceProvider(
                     runtime_provider,
                     topology.runtime_workspace_identity,
@@ -796,15 +813,19 @@ class LocalIndexRuntimeService:
                     ),
                     namespace_name=storage_binding.namespace_name,
                     environ=environment,
-                    repository_root_authority=topology.repository_authority(
-                        storage_binding.repo_id
-                    ),
+                    repository_root_authority=repository_authority,
                     display_commit_resolver=lambda root=repository_root: (
                         _repository_head(root)
                     ),
                     workspace_parent_identity=topology.worker_workspace_identity,
                     topology_verifier=repository_topology_verifier,
                     attempt_orphan_sink=attempt_pool.accept,
+                    attempt_pool_writer_route=attempt_pool_binding.writer_route,
+                )
+                attempt_pool.install(
+                    storage_binding.repository_id,
+                    worker_target,
+                    attempt_pool_binding,
                 )
                 web_bindings.append(web_binding)
                 worker_targets.append(worker_target)
@@ -829,7 +850,6 @@ class LocalIndexRuntimeService:
 
             bindings = tuple(web_bindings)
             targets = tuple(worker_targets)
-            attempt_pool.install(targets[0])
             attempt_pool.reclaim_stale()
             resources = LocalBM25SourceJobResourceFactory(targets)
             topology_repo_ids = {
@@ -877,7 +897,18 @@ class LocalIndexRuntimeService:
             )
 
             def on_worker_result(result: IndexJobWorkerRunResult) -> None:
-                attempt_pool.reclaim_pending()
+                if result.job_id is not None:
+                    with catalog_factory() as catalog:
+                        completed_job = catalog.get_job(result.job_id)
+                    if type(completed_job) is not IndexJobRecord:
+                        raise StorageIntegrityError(
+                            "local BM25 worker result has an invalid job record"
+                        )
+                    if completed_job.repository_id not in topology_repo_ids:
+                        raise StorageIntegrityError(
+                            "local BM25 worker result has no repository route"
+                        )
+                    attempt_pool.reclaim_pending(completed_job.repository_id)
                 try:
                     reconciler.on_worker_result(result)
                 except IndexJobActivationError as failure:
@@ -910,7 +941,6 @@ class LocalIndexRuntimeService:
                 topology=topology,
                 topology_owner=topology_owner,
                 attempt_pool=attempt_pool,
-                attempt_pool_lease_owner=attempt_pool_lease_owner,
                 object_store_owner=object_store_owner,
                 background=background,
                 background_owner=background_owner,
@@ -940,7 +970,6 @@ class LocalIndexRuntimeService:
         return (
             self._background.state == "closed"
             and self._attempt_pool.closed
-            and self._attempt_pool_lease_owner.closed
             and self._object_store_owner.closed
             and self._topology.closed
         )
@@ -978,13 +1007,6 @@ class LocalIndexRuntimeService:
                 )
             self._attempt_pool.close()
 
-        def close_attempt_pool_lease() -> None:
-            if not background_closed() or not self._attempt_pool.closed:
-                raise StorageIntegrityError(
-                    "local index attempt cleanup must settle before lease release"
-                )
-            self._attempt_pool_lease_owner.close()
-
         def close_object_store() -> None:
             if not background_closed():
                 raise StorageIntegrityError(
@@ -996,7 +1018,6 @@ class LocalIndexRuntimeService:
             if (
                 not background_closed()
                 or not self._attempt_pool.closed
-                or not self._attempt_pool_lease_owner.closed
                 or not self._object_store_owner.closed
             ):
                 raise StorageIntegrityError(
@@ -1018,13 +1039,6 @@ class LocalIndexRuntimeService:
                 complete=lambda: self._attempt_pool.closed,
                 retry_incomplete="cancellation",
                 incomplete_owner=self._attempt_pool,
-            ),
-            _OrderedAction(
-                label="local index attempt-pool lease cleanup also failed",
-                action=close_attempt_pool_lease,
-                complete=lambda: self._attempt_pool_lease_owner.closed,
-                retry_incomplete="cancellation",
-                incomplete_owner=self._attempt_pool_lease_owner,
             ),
             _OrderedAction(
                 label="local index object store cleanup also failed",

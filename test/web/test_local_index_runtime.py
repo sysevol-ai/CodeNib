@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 import codenib.web.local_index_runtime as local_runtime_module
-from codenib.compiler.cache_lock import COMPILER_CACHE_LOCK_FILENAME
 from codenib.compiler.manifest import RepoManifest
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.storage import (
@@ -277,7 +276,7 @@ def test_local_index_runtime_rejects_hybrid_registry_before_acquisition(
         registry.close()
 
 
-def test_local_index_runtime_attests_catalog_before_workspace_lease(
+def test_local_index_runtime_attests_catalog_before_attempt_pool_bootstrap(
     tmp_path: Path,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
@@ -287,14 +286,12 @@ def test_local_index_runtime_attests_catalog_before_workspace_lease(
     try:
         with pytest.raises(StorageNotFound, match="not found"):
             LocalIndexRuntimeService.acquire(storage, registry)
-        assert not (
-            storage.worker_workspace_root / COMPILER_CACHE_LOCK_FILENAME
-        ).exists()
+        assert tuple(storage.worker_workspace_root.iterdir()) == ()
     finally:
         registry.close()
 
 
-def test_local_index_runtime_rejects_invalid_catalog_before_workspace_lease(
+def test_local_index_runtime_rejects_invalid_catalog_before_attempt_pool_bootstrap(
     tmp_path: Path,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
@@ -303,9 +300,7 @@ def test_local_index_runtime_rejects_invalid_catalog_before_workspace_lease(
     try:
         with pytest.raises(CatalogError, match="existing SQLite catalog"):
             LocalIndexRuntimeService.acquire(storage, registry)
-        assert not (
-            storage.worker_workspace_root / COMPILER_CACHE_LOCK_FILENAME
-        ).exists()
+        assert tuple(storage.worker_workspace_root.iterdir()) == ()
     finally:
         registry.close()
 
@@ -366,7 +361,7 @@ def test_local_index_runtime_filters_before_scoped_topology_verification(
         registry.close()
 
 
-def test_local_index_runtime_scopes_shared_lease_and_runtime_providers(
+def test_local_index_runtime_scopes_attempt_routes_and_runtime_providers(
     tmp_path: Path,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
@@ -376,12 +371,19 @@ def test_local_index_runtime_scopes_shared_lease_and_runtime_providers(
         registry,
     )
     service = LocalIndexRuntimeService.acquire(storage, registry)
+    service.start()
+    repository_ids = {
+        binding.repo_id: binding.repository_id for binding in storage.repositories
+    }
+    registrations = service._attempt_pool._by_repository
+    assert set(registrations) == set(repository_ids.values())
+    assert (
+        registrations[repository_ids["demo"]].target.attempt_pool_root
+        != registrations[repository_ids["other"]].target.attempt_pool_root
+    )
     displaced = tmp_path / "demo-displaced"
     repositories["demo"].rename(displaced)
     try:
-        # Attempt-pool ownership depends only on catalog/CAS/workspace roots.
-        service._attempt_pool_lease_owner.require_held()
-
         loader = service._background._runtime._reconciler._publisher._loader
         targets = {
             target.binding.repo_id: target for target in loader._by_storage.values()
@@ -397,6 +399,31 @@ def test_local_index_runtime_scopes_shared_lease_and_runtime_providers(
             match="repository topology changed",
         ):
             targets["demo"].workspace_provider.require_support()
+
+        created = service.writer.create(
+            "other",
+            indexes=("bm25",),
+            mode="full",
+            force=False,
+            idempotency_key="healthy-route-after-foreign-drift",
+        )
+        deadline = time.monotonic() + 15
+        observed = created
+        while observed.status in {"queued", "running"}:
+            if time.monotonic() >= deadline:
+                pytest.fail("healthy repository job did not settle after foreign drift")
+            time.sleep(0.02)
+            observed = service.reader.get(created.job_id)
+        assert observed.status == "succeeded"
+
+        healthy_registration = registrations[repository_ids["other"]]
+        while tuple(
+            healthy_registration.target.attempt_pool_root.glob(".*codenib-source-job-*")
+        ):
+            if time.monotonic() >= deadline:
+                pytest.fail("healthy repository receipt was not routed to its shard")
+            time.sleep(0.02)
+        service._attempt_pool.reclaim_stale(repository_ids["other"])
     finally:
         displaced.rename(repositories["demo"])
         service.close()
@@ -422,107 +449,37 @@ def test_local_index_runtime_preserves_context_failure_after_cleanup(
     assert service.closed is True
 
 
-def test_local_index_runtime_rejects_a_second_attempt_pool_owner(
+def test_local_index_runtime_allows_cooperating_workers_on_the_same_shard(
     tmp_path: Path,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
     try:
-        with open_local_index_runtime_service(storage, registry) as service:
-            with pytest.raises(LocalIndexServiceError, match="workspace lease"):
-                LocalIndexRuntimeService.acquire(storage, registry)
-            assert service.healthy is True
+        with open_local_index_runtime_service(storage, registry) as first:
+            with open_local_index_runtime_service(storage, registry) as second:
+                assert first.healthy is True
+                assert second.healthy is True
+                first_target = next(
+                    iter(first._attempt_pool._by_repository.values())
+                ).target
+                second_target = next(
+                    iter(second._attempt_pool._by_repository.values())
+                ).target
+                assert first_target.attempt_pool_root == second_target.attempt_pool_root
         with open_local_index_runtime_service(storage, registry) as restarted:
             assert restarted.healthy is True
     finally:
         registry.close()
 
 
-def test_attempt_pool_lease_owner_retains_interrupted_enter(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    active = False
-    events: list[str] = []
-
-    class InterruptedContext:
-        def __enter__(self):
-            nonlocal active
-            active = True
-            events.append("enter")
-            raise KeyboardInterrupt("interrupt after lease acquisition")
-
-        def __exit__(self, *_args):
-            nonlocal active
-            active = False
-            events.append("exit")
-            return False
-
-    def lease_factory(root: Path, *, create: bool, check_cancelled):
-        assert root == tmp_path
-        assert create is True
-        assert callable(check_cancelled)
-        return InterruptedContext()
-
-    monkeypatch.setattr(
-        local_runtime_module,
-        "compiler_cache_lock",
-        lease_factory,
-    )
-    owner = local_runtime_module._LocalAttemptPoolLeaseOwner()
-
-    with pytest.raises(KeyboardInterrupt, match="after lease acquisition"):
-        owner.acquire(
-            tmp_path,
-            wait_timeout_ms=0,
-            topology_verifier=lambda: events.append("verify"),
-        )
-
-    assert active is True
-    assert owner.closed is False
-    owner.close()
-    assert active is False
-    assert owner.closed is True
-    assert events == ["verify", "enter", "exit"]
-
-
-def test_attempt_pool_lease_owner_verifies_before_publishing_context(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    events: list[str] = []
-
-    monkeypatch.setattr(
-        local_runtime_module,
-        "compiler_cache_lock",
-        lambda *_args, **_kwargs: pytest.fail(
-            "lock context must follow the initial topology check"
-        ),
-    )
-    owner = local_runtime_module._LocalAttemptPoolLeaseOwner()
-
-    def reject_topology() -> None:
-        events.append("verify")
-        raise LocalIndexServiceError("workspace binding changed")
-
-    with pytest.raises(LocalIndexServiceError, match="binding changed"):
-        owner.acquire(
-            tmp_path,
-            wait_timeout_ms=0,
-            topology_verifier=reject_topology,
-        )
-
-    assert events == ["verify"]
-    assert owner.closed
-    owner.close()
-
-
 def test_local_index_runtime_reclaims_stale_attempts_before_start(
     tmp_path: Path,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
-    stale = storage.worker_workspace_root / (
-        f".codenib-source-job-{'a' * 32}.normalize-{'b' * 24}"
+    shard = storage.worker_workspace_root / (
+        ".codenib-bm25-attempt-pool-v1-" + storage.repositories[0].repository_id
     )
+    shard.mkdir(mode=0o700)
+    stale = shard / (f".codenib-source-job-{'a' * 32}.normalize-{'b' * 24}")
     stale.mkdir()
     (stale / "payload").write_text("stale", encoding="utf-8")
     try:
@@ -532,36 +489,56 @@ def test_local_index_runtime_reclaims_stale_attempts_before_start(
         registry.close()
 
 
-def test_local_index_runtime_retains_lease_when_reaper_cleanup_fails(
+def test_local_index_runtime_retains_routed_reaper_cleanup_owner(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
     service = LocalIndexRuntimeService.acquire(storage, registry)
     service.start()
-    reaper_type = type(service._attempt_pool)
-    real_close = reaper_type.close
+    real_reclaim = local_runtime_module.LocalBM25AttemptPoolCoordinator.reclaim
     attempts = 0
 
-    def fail_once(reaper) -> None:
+    class RetryOwner:
+        closed = False
+
+        def close(self) -> None:
+            self.closed = True
+
+    cleanup_owner = RetryOwner()
+    failure = RuntimeError("routed reaper cleanup failed")
+    failure.publication_cleanup_owners = (cleanup_owner,)  # type: ignore[attr-defined]
+
+    def fail_once(coordinator, *, caller_asserts_quiescence=False):
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            raise RuntimeError("reaper cleanup failed")
-        real_close(reaper)
+            raise failure
+        return real_reclaim(
+            coordinator,
+            caller_asserts_quiescence=caller_asserts_quiescence,
+        )
 
-    monkeypatch.setattr(reaper_type, "close", fail_once)
+    monkeypatch.setattr(
+        local_runtime_module.LocalBM25AttemptPoolCoordinator,
+        "reclaim",
+        fail_once,
+    )
     try:
-        with pytest.raises(RuntimeError, match="reaper cleanup failed"):
+        with pytest.raises(RuntimeError, match="routed reaper cleanup failed"):
             service.close()
 
         assert service.state == "closed"
         assert service._attempt_pool.closed is False
-        assert service._attempt_pool_lease_owner.closed is False
         assert service._object_store_owner.closed is True
         assert service._topology.closed is False
+        registration = next(iter(service._attempt_pool._by_repository.values()))
+        assert registration.cleanup_owners == [cleanup_owner]
+        assert cleanup_owner.closed is False
 
         service.close()
+        assert cleanup_owner.closed is True
+        assert registration.cleanup_owners == []
         assert service.closed is True
     finally:
         if not service.closed:
@@ -595,7 +572,6 @@ def test_local_index_runtime_retains_resources_when_background_join_fails(
 
         assert service.state == "running"
         assert service._attempt_pool.closed is False
-        assert service._attempt_pool_lease_owner.closed is False
         assert service._object_store_owner.closed is False
         assert service._topology.closed is False
 
@@ -612,8 +588,12 @@ def test_local_index_runtime_executes_submitted_bm25_job(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     storage, registry = _runtime_fixture(tmp_path)
+    attempt_pool_root: Path | None = None
     try:
         with open_local_index_runtime_service(storage, registry) as service:
+            attempt_pool_root = next(
+                iter(service._attempt_pool._by_repository.values())
+            ).target.attempt_pool_root
             created = service.writer.create(
                 "demo",
                 indexes=("bm25",),
@@ -639,7 +619,7 @@ def test_local_index_runtime_executes_submitted_bm25_job(
                 and event.outcome == "succeeded"
                 for event in observed.events
             )
-            while tuple(storage.worker_workspace_root.glob(".*codenib-source-job-*")):
+            while tuple(attempt_pool_root.glob(".*codenib-source-job-*")):
                 if time.monotonic() >= deadline:
                     pytest.fail("background BM25 attempt receipt was not reclaimed")
                 time.sleep(0.02)
@@ -647,8 +627,10 @@ def test_local_index_runtime_executes_submitted_bm25_job(
     finally:
         registry.close()
 
+    assert attempt_pool_root is not None
     workspace_entries = tuple(storage.worker_workspace_root.iterdir())
-    assert [entry.name for entry in workspace_entries] == [COMPILER_CACHE_LOCK_FILENAME]
+    assert workspace_entries == (attempt_pool_root,)
+    assert tuple(attempt_pool_root.iterdir()) == ()
     assert not any(
         "attempt-root orphan" in record.getMessage() for record in caplog.records
     )
