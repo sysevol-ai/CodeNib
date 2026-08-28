@@ -23,6 +23,7 @@ import hashlib
 import os
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePosixPath
 from time import perf_counter
@@ -61,6 +62,10 @@ from .index_jobs import (
     overlay_active_job,
 )
 from .index_status import build_repo_index_status, validate_index_update_capabilities
+from .local_index_runtime import (
+    LocalIndexRuntimeService,
+    open_local_index_runtime_service,
+)
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
@@ -84,6 +89,29 @@ _WIKI_MEDIA_TYPES = {
 }
 
 logger = get_logger(__name__)
+
+_MISSING_APP_STATE = object()
+
+
+@dataclass(slots=True)
+class _LocalRuntimeLifespanState:
+    service: LocalIndexRuntimeService | None = None
+    startup_cleanup_pending: bool = False
+
+
+def _has_pending_publication_cleanup(failure: BaseException) -> bool:
+    """Fail closed when startup retained an unfinished cleanup owner."""
+
+    try:
+        owners = BaseException.__getattribute__(
+            failure,
+            "publication_cleanup_owners",
+        )
+    except AttributeError:
+        return False
+    except BaseException:  # noqa: B036 - malformed metadata retains the registry
+        return True
+    return type(owners) is not tuple or bool(owners)
 
 
 def _manifest_source_selection(bundle) -> RepositorySourceSelection:
@@ -140,6 +168,54 @@ def _wiki_narrator(config):
     )
 
 
+@contextmanager
+def _configured_local_index_runtime(app, config, registry, lifecycle):
+    """Expose one configured runtime only for its live service lifetime."""
+
+    if type(lifecycle) is not _LocalRuntimeLifespanState:
+        raise TypeError("local runtime lifespan state must use the exact model")
+
+    storage = getattr(config, "index_storage", None)
+    if storage is None:
+        yield None
+        return
+
+    try:
+        with open_local_index_runtime_service(storage, registry) as service:
+            lifecycle.service = service
+            bindings = {
+                "index_runtime_service": service,
+                "index_job_reader": service.reader,
+                "index_job_writer": service.writer,
+                "index_update_capabilities_resolver": service.capabilities,
+            }
+            previous = {
+                name: getattr(app.state, name, _MISSING_APP_STATE) for name in bindings
+            }
+            try:
+                for name, value in bindings.items():
+                    setattr(app.state, name, value)
+                yield service
+            finally:
+                # Stop exposing this generation before its synchronous close joins
+                # the worker and reconciler. Preserve any state a test harness or
+                # embedding application deliberately replaced while it was live.
+                for name, value in bindings.items():
+                    if getattr(app.state, name, _MISSING_APP_STATE) is not value:
+                        continue
+                    prior = previous[name]
+                    if prior is _MISSING_APP_STATE:
+                        delattr(app.state, name)
+                    else:
+                        setattr(app.state, name, prior)
+    except BaseException as failure:  # noqa: B036 - preserve startup authority
+        if lifecycle.service is None:
+            lifecycle.startup_cleanup_pending = _has_pending_publication_cleanup(
+                failure
+            )
+        raise
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = load_config()
@@ -157,6 +233,7 @@ async def lifespan(app: FastAPI):
         # source-bound capability is present.
         allow_missing_native_index_authorization=True,
     )
+    runtime_lifecycle = _LocalRuntimeLifespanState()
     try:
         logger.info("Loading QA repos from %s ...", config.registry_path)
         registry.load_all()
@@ -173,11 +250,34 @@ async def lifespan(app: FastAPI):
             app.state.narrator.enabled,
             app.state.narrator.cache_dir,
         )
-        logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
-        yield
+        with _configured_local_index_runtime(
+            app,
+            config,
+            registry,
+            runtime_lifecycle,
+        ) as configured:
+            if configured is not None:
+                logger.info(
+                    "Local index runtime: state=%s healthy=%s",
+                    configured.state,
+                    configured.healthy,
+                )
+            logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
+            yield
     finally:
         try:
-            registry.close()
+            # A failed runtime close keeps its registry dependency reachable
+            # through the retained cleanup owner on the raised exception. Do
+            # not retire repository generations underneath a still-live loop.
+            runtime_service = runtime_lifecycle.service
+            if not runtime_lifecycle.startup_cleanup_pending and (
+                runtime_service is None or runtime_service.closed
+            ):
+                registry.close()
+            else:
+                logger.error(
+                    "Local index runtime did not settle; retaining RepoRegistry"
+                )
         finally:
             for name in ("wiki_builders", "edge_labelers", "commit_windows"):
                 cache = getattr(app.state, name, None)
