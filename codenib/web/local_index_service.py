@@ -114,13 +114,7 @@ def _observe_real_directory(
         or metadata.st_dev < 1
         or metadata.st_ino < 1
         or wrong_owner
-        or (
-            private
-            and (
-                stat.S_IMODE(metadata.st_mode) & 0o077
-                or stat.S_IMODE(metadata.st_mode) & 0o700 != 0o700
-            )
-        )
+        or (private and stat.S_IMODE(metadata.st_mode) != 0o700)
     ):
         qualifier = "private owner-only " if private else ""
         raise LocalIndexServiceError(f"{label} must be one real {qualifier}directory")
@@ -276,6 +270,13 @@ class _TopologyPath:
 
 def _require_disjoint_topology(paths: tuple[_TopologyPath, ...]) -> None:
     mappings = _linux_mount_mappings()
+    for subject in paths:
+        if subject.ancestry_root != subject.path and any(
+            mapping.mount_point == subject.path for mapping in mappings
+        ):
+            raise LocalIndexServiceError(
+                f"{subject.label} must not be a Linux mount point"
+            )
     physical: list[tuple[_TopologyPath, _LinuxPhysicalPath | None]] = []
     lexical_stack: list[_TopologyPath] = []
     ancestry_identities: dict[tuple[int, int], tuple[Path, str]] = {}

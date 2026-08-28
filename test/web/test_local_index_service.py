@@ -306,11 +306,36 @@ def test_local_index_topology_rejects_mapped_physical_alias(
         LocalIndexStorageTopology.acquire(config, repositories)
 
 
-def test_local_index_topology_requires_private_workspace_roots(
+def test_local_index_topology_rejects_catalog_mount_point(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config, repositories = _topology_config(tmp_path)
-    config.runtime_workspace_root.chmod(0o755)
+    device = config.catalog_path.stat().st_dev
+    mappings = (
+        local_index_service._LinuxMountMapping(
+            device=f"{os.major(device)}:{os.minor(device)}",
+            root=PurePosixPath("/physical/catalog.sqlite3"),
+            mount_point=config.catalog_path,
+        ),
+    )
+    monkeypatch.setattr(
+        local_index_service,
+        "_linux_mount_mappings",
+        lambda: mappings,
+    )
+
+    with pytest.raises(LocalIndexServiceError, match="catalog.*mount point"):
+        LocalIndexStorageTopology.acquire(config, repositories)
+
+
+@pytest.mark.parametrize("mode", (0o755, 0o1700, 0o2700))
+def test_local_index_topology_requires_private_workspace_roots(
+    tmp_path: Path,
+    mode: int,
+) -> None:
+    config, repositories = _topology_config(tmp_path)
+    config.runtime_workspace_root.chmod(mode)
 
     with pytest.raises(LocalIndexServiceError, match="private owner-only"):
         LocalIndexStorageTopology.acquire(config, repositories)
