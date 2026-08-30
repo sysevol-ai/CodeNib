@@ -42,6 +42,26 @@ whenever a package changes lifecycle class, an experimental surface is retired,
 an architectural dependency direction changes, or a subtraction iteration is
 completed.
 
+## Storage Scope Guard
+
+- Every storage milestone must ship an end-to-end product consumer. Do not add
+  a protocol method, table, state, or failure mode without a current consumer
+  or a prior bug that exercises it.
+- Use one public protocol, one production backend, one forward migration, and
+  at most three domain tables as the default review budget, not a hard limit.
+  Exceeding it requires a named second consumer/backend or measured need.
+- Put protocols only at real I/O boundaries. Domain stores own their models and
+  migrations; construct concrete backends in composition roots and do not add
+  domain methods to generic `IndexCatalog` or `ObjectStore` contracts.
+- Do not add registries, capability variants, dynamic plugin discovery,
+  PostgreSQL, S3, or distributed coordination before a second production
+  backend or benchmark requires them.
+- Prefer one conformance suite, one backend integration suite, and one
+  end-to-end regression. Fault tests must target observable boundaries or a
+  named prior bug, not arbitrary Python-line interruption.
+- Keep roadmap updates outcome-oriented and concise. Put implementation traces
+  in code, tests, ADRs, or the changelog instead of growing the roadmap.
+
 ## Dev Commands
 
 ```bash

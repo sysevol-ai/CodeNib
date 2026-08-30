@@ -19,6 +19,34 @@ behavior over those canonical backends. Choosing the canonical backends does
 not itself promote retained compiler or runtime routes; A2, B1, and B2 remain
 separate gates.
 
+## Scope Reset: Product Verticals Before More Catalog Machinery
+
+The general catalog and object-store contracts are frozen at their currently
+exercised capabilities. New product domains must use a small domain-local
+protocol and prove it with one concrete adapter and one conformance suite;
+they do not extend `IndexCatalog` merely because both implementations use
+SQLite. A second backend, registry, distributed coordination mechanism, or
+new generic capability requires a named consumer and measured need.
+
+The active product vertical is **Wiki Store v1**:
+
+- keep one injectable Wiki persistence protocol next to `codenib/wiki/`;
+- implement it first as a separate SQLite WAL database with a single forward
+  migration and short transactions;
+- route the existing Wiki cache consumer through it while preserving current
+  API responses, static exports, `RepoManifest`, portable artifacts, and MCP
+  surfaces;
+- retain legacy JSON as a bounded read-through compatibility source for one
+  release, without making filesystem paths part of the new protocol;
+- verify protocol conformance, reopen/rollback/corruption behavior, and one
+  end-to-end Wiki cache hit before expanding the model.
+
+Wiki search, normalized link/citation graphs, revision browsing, PostgreSQL,
+object storage, distributed leases, remote garbage collection, and dynamic
+plugin discovery are deferred until a visible product route or benchmark
+requires each capability. Arbitrary Python-line interruption testing is out of
+scope; fault injection stays at declared transaction and resource boundaries.
+
 ## Architectural Boundaries
 
 The storage system has three independent layers:
