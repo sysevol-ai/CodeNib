@@ -25,6 +25,7 @@ from codenib.web.native_authority import authorize_local_manifest_vector  # noqa
 from codenib.web.repo_registry import RepoRegistry  # noqa: E402
 from codenib.wiki.agent_wiki import AgentWiki  # noqa: E402
 from codenib.wiki.prewarm import prewarm_wiki_cache  # noqa: E402
+from codenib.wiki.sqlite_store import SQLiteWikiStore  # noqa: E402
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -77,6 +78,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     registry.load_all()
     cache_dir = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+    database_path = Path(cache_dir) / "wiki.sqlite3"
+    store = (
+        None
+        if args.dry_run and not database_path.exists()
+        else SQLiteWikiStore(database_path)
+    )
 
     def wiki_factory(bundle):
         llm = LiteLLMChat(
@@ -91,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             bundle,
             model=config.wiki_generation_model,
             cache_dir=cache_dir,
+            store=store,
             llm=llm,
             api_base=config.wiki_generation_api_base,
             api_key=config.wiki_generation_api_key,

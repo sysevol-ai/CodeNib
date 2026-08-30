@@ -329,12 +329,13 @@ make wiki-cache-audit \
 ```
 
 Its JSON report separates Overview, root-page, and child-page coverage; lists
-degraded, fallback, and quality-invalid pages; and reports stale/orphaned cache
-storage. Newly generated pages also contribute retrieval, planning, model-call,
-repair-count, and total-latency summaries. Existing cache entries created before
-those metrics were introduced remain readable and are simply excluded from the
-latency sample. Add `--fail-on-fallback` and `--fail-on-quality-invalid` to use
-the report as an acceptance gate.
+degraded, fallback, and quality-invalid pages; and reports stale/orphaned Wiki
+database entries and legacy cache files separately during migration. Newly
+generated pages also contribute retrieval, planning,
+model-call, repair-count, and total-latency summaries. Existing cache entries
+created before those metrics were introduced remain readable and are simply
+excluded from the latency sample. Add `--fail-on-fallback` and
+`--fail-on-quality-invalid` to use the report as an acceptance gate.
 
 Prewarm the landing page for every registered repository with a small bounded
 worker pool after reviewing the selection in dry-run mode:

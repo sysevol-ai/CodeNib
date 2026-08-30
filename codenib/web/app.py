@@ -48,6 +48,7 @@ from ..wiki.media_generation import (
     redact_media_evidence_packs,
 )
 from ..wiki.narrator import Narrator
+from ..wiki.sqlite_store import SQLiteWikiStore
 from .config import load_config
 from .index_job_writes import (
     IndexJobConflictError,
@@ -319,6 +320,13 @@ async def lifespan(app: FastAPI):
         registry.load_all()
         app.state.registry = registry
         app.state.wiki_builders = {}
+        app.state.wiki_store = (
+            SQLiteWikiStore(
+                Path(os.path.abspath(config.data_dir)) / "wiki_cache" / "wiki.sqlite3"
+            )
+            if config.wiki_agent
+            else None
+        )
         app.state.edge_labelers = {}
         app.state.commit_windows = {}
         # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft
@@ -607,10 +615,15 @@ def _wiki(repo_id: str, bundle=None):
             from ..wiki.agent_wiki import AgentWiki
 
             wiki_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+            store = getattr(app.state, "wiki_store", None)
+            if store is None:
+                store = SQLiteWikiStore(Path(wiki_cache) / "wiki.sqlite3")
+                app.state.wiki_store = store
             return AgentWiki(
                 bundle,
                 config.wiki_generation_model,
                 cache_dir=wiki_cache,
+                store=store,
                 llm=_wiki_llm(config),
                 api_base=config.wiki_generation_api_base,
                 api_key=config.wiki_generation_api_key,

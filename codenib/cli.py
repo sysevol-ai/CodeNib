@@ -4497,6 +4497,7 @@ def _audit_local_wiki(local) -> dict[str, object]:
     from .web.repo_registry import RepoRegistry
     from .wiki.agent_wiki import AgentWiki
     from .wiki.quality import audit_wiki
+    from .wiki.sqlite_store import SQLiteWikiStore
 
     config = load_config(str(local.config_path))
     if local.runtime_env.get("CODENIB_DEMO_MODEL"):
@@ -4531,6 +4532,7 @@ def _audit_local_wiki(local) -> dict[str, object]:
         bundle,
         model,
         cache_dir=str(local.data_dir / "wiki_cache"),
+        store=SQLiteWikiStore(local.data_dir / "wiki_cache" / "wiki.sqlite3"),
         llm=client,
         api_base=config.wiki_generation_api_base,
         api_key=config.wiki_generation_api_key,

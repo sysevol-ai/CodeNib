@@ -230,11 +230,16 @@ class SQLiteWikiStore:
     def _identity(connection: sqlite3.Connection) -> tuple[int, int, frozenset[str]]:
         application_id = connection.execute("PRAGMA application_id").fetchone()[0]
         user_version = connection.execute("PRAGMA user_version").fetchone()[0]
-        tables = frozenset(row["name"] for row in connection.execute("""
+        tables = frozenset(
+            row["name"]
+            for row in connection.execute(
+                """
                 SELECT name
                 FROM sqlite_master
                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-                """))
+                """
+            )
+        )
         return application_id, user_version, tables
 
     def _initialize(self) -> None:

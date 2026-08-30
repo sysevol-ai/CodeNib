@@ -7,8 +7,8 @@
 Stage 1 (:mod:`outline`) proposes a conceptual page tree. This module is stage
 2: for each page it fuses the available retrieval views, builds source and
 relationship evidence, asks an LLM for a fact plan, and then writes a page
-whose citations are checked before publication. Outline + pages are disk-cached
-so generation can resume one page at a time.
+whose citations are checked before publication. Outline + pages are persisted
+through an injected Wiki store so generation can resume one page at a time.
 
 Drop-in for the demo's ``WikiBuilder``: exposes ``page_tree`` / ``page`` /
 ``source`` so ``codenib/web/app.py`` can serve it unchanged.
@@ -27,7 +27,7 @@ import tempfile
 import threading
 from contextlib import nullcontext
 from time import perf_counter, time
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from filelock import FileLock
 
@@ -68,6 +68,7 @@ from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
+from .store import WikiStore, WikiStoreCorruptionError, WikiStoredEntry, WikiStoreError
 
 logger = get_logger(__name__)
 
@@ -3163,6 +3164,7 @@ class AgentWiki:
         model: str,
         cache_dir: Optional[str] = None,
         *,
+        store: Optional[WikiStore] = None,
         llm: Any = None,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -3174,6 +3176,7 @@ class AgentWiki:
         self._api_base = api_base
         self._api_key = api_key
         self._cache_dir = cache_dir
+        self._store = store
         self._wb = WikiBuilder(bundle)  # reuse source() + symbol/citation helpers
         self._outline: Optional[Dict[str, Any]] = None
         self._pages: Dict[str, Dict[str, Any]] = {}
@@ -3209,8 +3212,8 @@ class AgentWiki:
         digest = getattr(selection, "digest", None)
         return digest if isinstance(digest, str) else ""
 
-    def _key(self, suffix: str) -> str:
-        """Return a stable cache identity for equivalent repository views."""
+    def _cache_identity(self, suffix: str) -> str:
+        """Return the unhashed identity shared by legacy and database caches."""
 
         entry = self._bundle.entry
         commit = getattr(entry, "commit_short", "") or getattr(entry, "base_commit", "")
@@ -3280,7 +3283,26 @@ class AgentWiki:
             f"{source_identity}/{source_selection_identity}/"
             f"{view_identity}/{suffix}"
         )
-        return hashlib.sha1(raw.encode()).hexdigest()[:16]
+        return raw
+
+    def _key(self, suffix: str) -> str:
+        """Return the legacy filename key for equivalent repository views."""
+
+        return hashlib.sha1(self._cache_identity(suffix).encode()).hexdigest()[:16]
+
+    def _store_entry_id(self, suffix: str) -> str:
+        """Return the collision-resistant primary key used by Wiki stores."""
+
+        return hashlib.sha256(self._cache_identity(suffix).encode()).hexdigest()
+
+    def _repository_id(self) -> str:
+        entry = self._bundle.entry
+        repository_id = str(
+            getattr(entry, "instance_id", "") or getattr(entry, "repo", "") or ""
+        )
+        if not repository_id:
+            raise ValueError("Wiki store requires a stable repository identity")
+        return repository_id
 
     def _legacy_key(self, suffix: str) -> str:
         """Return the timestamp-bound key used before stable cache identity."""
@@ -3364,6 +3386,11 @@ class AgentWiki:
         return f"page_{meta.get('id', 'page')}_{identity}"
 
     def _read_cache(self, suffix: str) -> Optional[Any]:
+        if self._store is not None:
+            stored = self._store.read(self._store_entry_id(suffix))
+            if stored is not None:
+                return self._stored_data(stored)
+
         paths = self._cache_candidate_paths(suffix)
         for index, path in enumerate(paths):
             if not os.path.isfile(path):
@@ -3375,7 +3402,20 @@ class AgentWiki:
                 continue
             if not isinstance(envelope, dict) or "data" not in envelope:
                 continue
-            if index > 0 and paths:
+            if self._store is not None:
+                try:
+                    stored = self._publish_store_cache(
+                        suffix,
+                        envelope,
+                        if_absent=True,
+                    )
+                except WikiStoreCorruptionError:
+                    raise
+                except (WikiStoreError, TypeError, ValueError) as exc:
+                    logger.warning("Could not adopt legacy Wiki cache: %s", exc)
+                else:
+                    return self._stored_data(stored)
+            elif index > 0 and paths:
                 # Adopt the current timestamp-bound entry into the stable key
                 # before a future equivalent index rebuild changes its legacy
                 # identity. Preserve the original model provenance envelope.
@@ -3389,6 +3429,11 @@ class AgentWiki:
     def _read_cache_read_only(self, suffix: str) -> Optional[Any]:
         """Read one cache entry without migrating or publishing cache data."""
 
+        if self._store is not None:
+            stored = self._store.read(self._store_entry_id(suffix))
+            if stored is not None:
+                return self._stored_data(stored)
+
         for path in self._cache_candidate_paths(suffix):
             if not os.path.isfile(path):
                 continue
@@ -3400,6 +3445,57 @@ class AgentWiki:
             if isinstance(envelope, dict) and "data" in envelope:
                 return envelope.get("data")
         return None
+
+    @staticmethod
+    def _stored_data(entry: WikiStoredEntry) -> Any:
+        envelope = entry.envelope
+        if not isinstance(envelope, Mapping) or "data" not in envelope:
+            raise WikiStoreCorruptionError(
+                f"Wiki entry {entry.entry_id!r} has no data envelope"
+            )
+        return envelope["data"]
+
+    @staticmethod
+    def _store_entry_metadata(
+        suffix: str,
+        envelope: dict[str, Any],
+    ) -> tuple[str, Optional[str]]:
+        if suffix == "outline":
+            return "outline", None
+        if suffix.startswith("evidence_page_"):
+            kind = "evidence"
+        elif suffix.startswith("page_"):
+            kind = "page"
+        else:
+            raise ValueError(f"unsupported Wiki cache suffix: {suffix!r}")
+        data = envelope.get("data")
+        page_id = str(data.get("id") or "") if isinstance(data, dict) else ""
+        if not page_id:
+            page_suffix = suffix.removeprefix("evidence_")
+            if page_suffix.startswith("page_"):
+                page_id = page_suffix[5:].rsplit("_", 1)[0]
+        if not page_id:
+            raise ValueError(f"Wiki {kind} cache entry has no page id")
+        return kind, page_id
+
+    def _publish_store_cache(
+        self,
+        suffix: str,
+        envelope: dict[str, Any],
+        *,
+        if_absent: bool = False,
+    ) -> WikiStoredEntry:
+        if self._store is None:
+            raise RuntimeError("Wiki store is not configured")
+        kind, page_id = self._store_entry_metadata(suffix, envelope)
+        return self._store.publish(
+            entry_id=self._store_entry_id(suffix),
+            repository_id=self._repository_id(),
+            kind=kind,
+            page_id=page_id,
+            envelope=envelope,
+            if_absent=if_absent,
+        )
 
     @staticmethod
     def _atomic_write_cache(
@@ -3443,6 +3539,8 @@ class AgentWiki:
                         pass
 
     def _cache_generation_lock(self, suffix: str) -> Any:
+        if self._store is not None:
+            return self._store.generation_guard(self._store_entry_id(suffix))
         path = self._cache_path(suffix)
         if not path:
             return nullcontext()
@@ -3544,21 +3642,27 @@ class AgentWiki:
         }
 
     def _write_cache(self, suffix: str, data: Any) -> None:
+        envelope = {
+            # Provenance only — none of this is part of the cache key, so a
+            # later backend swap reuses this entry.
+            "model": self._model,
+            "api_base": self._api_base or "",
+            "llm_identity": self._cache_llm_identity,
+            "data": data,
+        }
+        if self._store is not None:
+            try:
+                self._publish_store_cache(suffix, envelope)
+            except WikiStoreCorruptionError:
+                raise
+            except (WikiStoreError, TypeError, ValueError) as exc:
+                logger.warning("Could not publish Wiki cache: %s", exc)
+            return
         path = self._cache_path(suffix)
         if not path:
             return
         try:
-            self._atomic_write_cache(
-                path,
-                {
-                    # Provenance only — none of this is part of the cache key,
-                    # so a later backend swap reuses this entry.
-                    "model": self._model,
-                    "api_base": self._api_base or "",
-                    "llm_identity": self._cache_llm_identity,
-                    "data": data,
-                },
-            )
+            self._atomic_write_cache(path, envelope)
         except (OSError, TypeError):
             pass
 

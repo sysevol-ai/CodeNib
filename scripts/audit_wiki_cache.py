@@ -23,6 +23,7 @@ from codenib.web.config import load_config  # noqa: E402
 from codenib.web.native_authority import authorize_local_manifest_vector  # noqa: E402
 from codenib.web.repo_registry import RepoRegistry  # noqa: E402
 from codenib.wiki.cache_audit import audit_wiki_cache  # noqa: E402
+from codenib.wiki.sqlite_store import SQLiteWikiStore  # noqa: E402
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -66,11 +67,15 @@ def main(argv: list[str] | None = None) -> int:
         allow_missing_native_index_authorization=True,
     )
     registry.load_all()
+    cache_dir = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+    database_path = Path(cache_dir) / "wiki.sqlite3"
+    store = SQLiteWikiStore(database_path) if database_path.exists() else None
     report = audit_wiki_cache(
         registry,
         model=config.wiki_generation_model,
-        cache_dir=os.path.join(os.path.abspath(config.data_dir), "wiki_cache"),
+        cache_dir=cache_dir,
         repo_ids=args.repos,
+        store=store,
     )
     print(
         json.dumps(

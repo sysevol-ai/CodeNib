@@ -41,6 +41,13 @@ The active product vertical is **Wiki Store v1**:
 - verify protocol conformance, reopen/rollback/corruption behavior, and one
   end-to-end Wiki cache hit before expanding the model.
 
+Status: complete. The domain protocol, one-table SQLite adapter, AgentWiki
+consumer, web composition, maintenance paths, and legacy read-through are
+implemented. Contract, Wiki, CLI, static-export, manifest, context-artifact,
+and MCP compatibility gates pass without changing the generic catalog schema.
+It is a trusted, regenerable local cache: bounds and digests detect accidental
+damage, not a hostile process that can rewrite the database.
+
 Wiki search, normalized link/citation graphs, revision browsing, PostgreSQL,
 object storage, distributed leases, remote garbage collection, and dynamic
 plugin discovery are deferred until a visible product route or benchmark

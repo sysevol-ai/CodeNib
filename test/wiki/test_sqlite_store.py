@@ -177,13 +177,15 @@ def test_failed_publish_rolls_back_the_previous_entry(tmp_path: Path) -> None:
         envelope={"data": {"body": "original"}},
     )
     with sqlite3.connect(path) as connection:
-        connection.execute("""
+        connection.execute(
+            """
             CREATE TRIGGER reject_wiki_update
             BEFORE UPDATE ON wiki_entries
             BEGIN
                 SELECT RAISE(ABORT, 'injected update failure');
             END
-            """)
+            """
+        )
 
     with pytest.raises(WikiStoreError):
         store.publish(

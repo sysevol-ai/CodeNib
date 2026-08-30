@@ -30,6 +30,7 @@ from codenib.web.config import load_config  # noqa: E402
 from codenib.web.native_authority import authorize_local_manifest_vector  # noqa: E402
 from codenib.web.repo_registry import RepoRegistry  # noqa: E402
 from codenib.wiki.agent_wiki import AgentWiki  # noqa: E402
+from codenib.wiki.sqlite_store import SQLiteWikiStore  # noqa: E402
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -138,6 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     registry.load_all()
     selected = list(dict.fromkeys(args.repos or ["psf__requests"]))
     production_cache = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
+    production_store = SQLiteWikiStore(Path(production_cache) / "wiki.sqlite3")
     outlines: dict[str, dict[str, Any]] = {}
     bundles: dict[str, Any] = {}
     for repo_id in selected:
@@ -148,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             bundle,
             model=config.wiki_generation_model,
             cache_dir=production_cache,
+            store=production_store,
         )
         outline = reference._read_cache("outline")
         if not isinstance(outline, dict) or not outline.get("pages"):
@@ -180,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
                     bundles[repo_id],
                     model=model,
                     cache_dir=run_cache,
+                    store=SQLiteWikiStore(Path(run_cache) / "wiki.sqlite3"),
                     llm=llm,
                     api_base=api_base,
                     api_key=api_key,

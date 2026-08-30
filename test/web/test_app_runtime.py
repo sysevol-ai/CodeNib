@@ -1383,6 +1383,41 @@ def test_wiki_llm_receives_provider_configuration(monkeypatch):
     }
 
 
+def test_agent_wiki_receives_the_shared_wiki_store(tmp_path, monkeypatch):
+    import codenib.wiki.agent_wiki as agent_wiki
+
+    store = object()
+    bundle = object()
+    captured = {}
+    config = SimpleNamespace(
+        data_dir=str(tmp_path),
+        wiki_agent=True,
+        wiki_generation_model="wiki-model",
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+    )
+
+    def build(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return object()
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app, "_wiki_llm", lambda _config: "llm")
+    monkeypatch.setattr(agent_wiki, "AgentWiki", build)
+    monkeypatch.setattr(web_app.app.state, "wiki_builders", {}, raising=False)
+    monkeypatch.setattr(web_app.app.state, "wiki_store", store, raising=False)
+
+    created = web_app._wiki("repo")
+
+    assert web_app.app.state.wiki_builders["repo"] == ("repo", bundle, created)
+    assert captured["args"] == (bundle, "wiki-model")
+    assert captured["kwargs"]["store"] is store
+    assert captured["kwargs"]["cache_dir"] == str(tmp_path / "wiki_cache")
+    assert captured["kwargs"]["llm"] == "llm"
+
+
 def test_unavailable_codemap_returns_repository_setup_report(monkeypatch):
     class Window:
         available = False

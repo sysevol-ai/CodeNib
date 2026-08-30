@@ -10,6 +10,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
+import pytest
+
 from codenib.graph.code_graph import CodeGraph
 from codenib.wiki.agent_wiki import (
     AgentWiki,
@@ -39,6 +41,7 @@ from codenib.wiki.agent_wiki import (
 from codenib.wiki.builder import Symbol
 from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
 from codenib.wiki.quality import prose_integrity_report
+from codenib.wiki.sqlite_store import SQLiteWikiStore
 
 
 class _FakeVectorStore:
@@ -6713,6 +6716,90 @@ def test_agent_wiki_adopts_legacy_timestamp_cache_into_stable_key(tmp_path):
         assert json.load(handle)["model"] == "old-model"
 
 
+def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    original = AgentWiki(
+        bundle,
+        model="first-model",
+        cache_dir=str(cache_dir),
+        store=store,
+    )
+    payload = {"pages": [{"id": "overview", "title": "Overview"}]}
+
+    original._write_cache("outline", payload)
+
+    assert not list(cache_dir.glob("agentwiki_*.json"))
+
+    class UnexpectedLLM:
+        cache_identity = "must-not-run"
+
+        def complete(self, *_args, **_kwargs):
+            raise AssertionError("a database hit must not invoke the model")
+
+    reloaded = AgentWiki(
+        bundle,
+        model="different-model",
+        cache_dir=str(cache_dir),
+        store=SQLiteWikiStore(cache_dir / "wiki.sqlite3"),
+        llm=UnexpectedLLM(),
+    )
+    assert reloaded.outline() == payload
+    stored = store.read(original._store_entry_id("outline"))
+    assert stored is not None
+    assert stored.repository_id == "owner__repo-1"
+    assert stored.kind == "outline"
+    assert stored.page_id is None
+    assert stored.envelope["model"] == "first-model"
+
+
+def test_agent_wiki_lazily_adopts_json_into_store_but_read_only_does_not(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    wiki = AgentWiki(
+        bundle,
+        model="fake-model",
+        cache_dir=str(cache_dir),
+        store=store,
+    )
+    stable = wiki._cache_candidate_paths("outline")[0]
+    payload = {"pages": [{"id": "overview", "title": "Overview"}]}
+    wiki._atomic_write_cache(stable, {"model": "old-model", "data": payload})
+    entry_id = wiki._store_entry_id("outline")
+
+    assert wiki._read_cache_read_only("outline") == payload
+    assert store.read(entry_id) is None
+
+    assert wiki._read_cache("outline") == payload
+    adopted = store.read(entry_id)
+    assert adopted is not None
+    assert adopted.envelope["model"] == "old-model"
+
+
 def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(
     tmp_path, monkeypatch
 ):
@@ -7140,7 +7227,8 @@ def test_agent_wiki_coalesces_concurrent_page_generation(tmp_path):
     assert generation_calls == 1
 
 
-def test_agent_wiki_coalesces_generation_across_builder_instances(tmp_path):
+@pytest.mark.parametrize("use_store", [False, True])
+def test_agent_wiki_coalesces_generation_across_builder_instances(tmp_path, use_store):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -7156,10 +7244,19 @@ def test_agent_wiki_coalesces_generation_across_builder_instances(tmp_path):
     meta = {"id": "runtime", "title": "Runtime", "children": []}
     outline = {"pages": [meta]}
     cache_dir = tmp_path / "wiki-cache"
-    builders = [
-        AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
-        for _ in range(2)
-    ]
+    builders = []
+    for _ in range(2):
+        kwargs = {}
+        if use_store:
+            kwargs["store"] = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+        builders.append(
+            AgentWiki(
+                bundle,
+                model="fake-model",
+                cache_dir=str(cache_dir),
+                **kwargs,
+            )
+        )
     for wiki in builders:
         wiki._outline = outline
     generation_started = threading.Event()

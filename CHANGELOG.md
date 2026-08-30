@@ -16,6 +16,16 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Repository-bound BM25 source-attempt shards with cooperative shared writer
   and exclusive reaper leases, plus a default-off post-operation-return cleanup
   pass that retains legacy workspace cleanup as an explicit compatibility step.
+- A domain-local `WikiStore` harness and SQLite WAL implementation with
+  versioned schema initialization, bounded canonical JSON, integrity checks,
+  atomic publication, and cross-process generation guards.
+
+### Changed
+
+- AgentWiki, the web service, cache audit, prewarming, and Wiki benchmarking
+  now use `wiki_cache/wiki.sqlite3`. Eligible source-compatible JSON entries
+  remain available through read-through compatibility and are not rewritten or
+  deleted.
 
 ### Security
 

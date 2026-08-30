@@ -190,8 +190,14 @@ Opens at **http://localhost:3000**.
 3. Select a page
 4. On its first request, wait while the backend generates and caches it
 
-Wiki pages are cached under `<data_dir>/wiki_cache` (by default
-`.codenib_qa/wiki_cache`) so subsequent loads avoid another model call.
+Wiki pages are stored in `<data_dir>/wiki_cache/wiki.sqlite3` (by default under
+`.codenib_qa/wiki_cache`) so subsequent loads avoid another model call. The
+database uses SQLite WAL and validates each persisted JSON envelope. Existing
+source-compatible `agentwiki_*.json` entries remain a read-through
+compatibility source and are adopted lazily; pre-selection entries are not
+eligible once a manifest records its source-selection identity. The web and
+maintenance entry points write new data only to the database.
+
 **Refresh this wiki** only re-fetches the current tree and page; it does not
 invalidate that cache or force generation. After repairing a model or index,
 prefer the bounded `wiki-cache-prewarm --retry-degraded-now` maintenance path

@@ -13,7 +13,9 @@ import os
 from collections import Counter
 from typing import Any, Callable, Iterable, Optional
 
+from .._bounded_json import canonical_json_bytes
 from .agent_wiki import AgentWiki
+from .store import WikiStore, WikiStoredEntry
 
 
 def _summary(values: Iterable[float]) -> dict[str, Any]:
@@ -63,6 +65,12 @@ def _read_cache(paths: Iterable[str]) -> Optional[Any]:
     return None
 
 
+def _stored_entry_bytes(entry: WikiStoredEntry) -> int:
+    """Return the domain-canonical byte size of one stored envelope."""
+
+    return len(canonical_json_bytes(dict(entry.envelope)))
+
+
 def audit_wiki_cache(
     registry: Any,
     *,
@@ -70,6 +78,7 @@ def audit_wiki_cache(
     cache_dir: str | os.PathLike[str],
     repo_ids: Optional[Iterable[str]] = None,
     wiki_factory: Callable[..., AgentWiki] = AgentWiki,
+    store: Optional[WikiStore] = None,
 ) -> dict[str, Any]:
     """Inspect only cache entries reachable from each current Wiki outline.
 
@@ -89,6 +98,7 @@ def audit_wiki_cache(
     retry_scheduled_pages: list[dict[str, Any]] = []
     retry_exhausted_pages: list[dict[str, Any]] = []
     current_cache_paths: set[str] = set()
+    current_entry_ids: set[str] = set()
     metric_samples: dict[str, list[float]] = {
         "total_ms": [],
         "retrieval_ms": [],
@@ -114,10 +124,17 @@ def audit_wiki_cache(
         bundle = registry.get(repo_id)
         if bundle is None:
             continue
-        wiki = wiki_factory(bundle, model=model, cache_dir=cache_root)
+        wiki_kwargs: dict[str, Any] = {"model": model, "cache_dir": cache_root}
+        if store is not None:
+            wiki_kwargs["store"] = store
+        wiki = wiki_factory(bundle, **wiki_kwargs)
         outline_paths = _cache_paths(cache_root, wiki, "outline")
         current_cache_paths.update(os.path.abspath(path) for path in outline_paths)
-        outline = _read_cache(outline_paths)
+        if store is not None:
+            current_entry_ids.add(wiki._store_entry_id("outline"))
+            outline = wiki._read_cache_read_only("outline")
+        else:
+            outline = _read_cache(outline_paths)
         if not isinstance(outline, dict) or not outline.get("pages"):
             missing_outlines.append(repo_id)
             repo_reports.append(
@@ -162,9 +179,18 @@ def audit_wiki_cache(
             suffix = wiki._page_cache_suffix(meta)
             paths = _cache_paths(cache_root, wiki, suffix)
             current_cache_paths.update(os.path.abspath(path) for path in paths)
-            evidence_paths = _cache_paths(cache_root, wiki, f"evidence_{suffix}")
+            evidence_paths = _cache_paths(
+                cache_root,
+                wiki,
+                f"evidence_{suffix}",
+            )
             current_cache_paths.update(os.path.abspath(path) for path in evidence_paths)
-            page = _read_cache(paths)
+            if store is not None:
+                current_entry_ids.add(wiki._store_entry_id(suffix))
+                current_entry_ids.add(wiki._store_entry_id(f"evidence_{suffix}"))
+                page = wiki._read_cache_read_only(suffix)
+            else:
+                page = _read_cache(paths)
             if isinstance(page, dict):
                 totals["cached_pages"] += 1
                 repo_counts["cached_pages"] += 1
@@ -246,12 +272,45 @@ def audit_wiki_cache(
             for path in glob.glob(os.path.join(cache_root, "agentwiki_*.json"))
         }
     orphan_paths = all_cache_paths - current_cache_paths
-    orphan_bytes = sum(
-        os.path.getsize(path) for path in orphan_paths if os.path.isfile(path)
-    )
-    cache_bytes = sum(
+    legacy_bytes = sum(
         os.path.getsize(path) for path in all_cache_paths if os.path.isfile(path)
     )
+    orphan_legacy_bytes = sum(
+        os.path.getsize(path) for path in orphan_paths if os.path.isfile(path)
+    )
+
+    if store is not None:
+        entries = store.scan(repository_ids=selected or None)
+        orphan_entries = tuple(
+            entry for entry in entries if entry.entry_id not in current_entry_ids
+        )
+        database_bytes = sum(_stored_entry_bytes(entry) for entry in entries)
+        orphan_database_bytes = sum(
+            _stored_entry_bytes(entry) for entry in orphan_entries
+        )
+        storage_report = {
+            "backend": type(store).__name__,
+            "entries": len(entries),
+            "database_bytes": database_bytes,
+            "orphan_entries": len(orphan_entries),
+            "orphan_database_bytes": orphan_database_bytes,
+            "files": len(all_cache_paths),
+            "legacy_bytes": legacy_bytes,
+            "orphan_files": len(orphan_paths),
+            "orphan_legacy_bytes": orphan_legacy_bytes,
+            # Preserve the v1 file-counter meanings for existing report readers.
+            "bytes": legacy_bytes,
+            "orphan_bytes": orphan_legacy_bytes,
+            "total_bytes": database_bytes + legacy_bytes,
+            "total_orphan_bytes": orphan_database_bytes + orphan_legacy_bytes,
+        }
+    else:
+        storage_report = {
+            "files": len(all_cache_paths),
+            "bytes": legacy_bytes,
+            "orphan_files": len(orphan_paths),
+            "orphan_bytes": orphan_legacy_bytes,
+        }
     return {
         "schema_version": 1,
         "repositories": len(repo_reports),
@@ -296,12 +355,7 @@ def audit_wiki_cache(
             retry_exhausted_pages,
             key=lambda item: (item["repo"], item["id"]),
         ),
-        "storage": {
-            "files": len(all_cache_paths),
-            "bytes": cache_bytes,
-            "orphan_files": len(orphan_paths),
-            "orphan_bytes": orphan_bytes,
-        },
+        "storage": storage_report,
         "repos": sorted(repo_reports, key=lambda item: item["repo"]),
     }
 
