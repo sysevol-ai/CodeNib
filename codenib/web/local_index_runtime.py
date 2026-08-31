@@ -37,6 +37,7 @@ from ..compiler.job_resources import (
 from ..languages import normalize_chunker_language
 from ..log_utils import get_logger
 from ..repository_source_selection import RepositorySourceSelection
+from ..source_fingerprint import lexical_repository_path
 from ..storage import (
     IndexJobRecord,
     IndexJobWorker,
@@ -627,6 +628,7 @@ class LocalIndexRuntimeService:
         "_capabilities",
         "_object_store_owner",
         "_reader",
+        "_repositories",
         "_topology",
         "_topology_owner",
         "_writer",
@@ -645,6 +647,7 @@ class LocalIndexRuntimeService:
         reader: CatalogIndexJobReader,
         writer: CatalogIndexJobWriter,
         capabilities: Mapping[str, Mapping[str, IndexUpdateCapability]],
+        repositories: tuple[_ConfiguredRepository, ...],
     ) -> None:
         if token is not _LOCAL_RUNTIME_TOKEN:
             raise TypeError("local index runtime service requires acquisition")
@@ -656,6 +659,9 @@ class LocalIndexRuntimeService:
         self._background_owner = background_owner
         self._reader = reader
         self._writer = writer
+        self._repositories = MappingProxyType(
+            {repository.storage.repo_id: repository for repository in repositories}
+        )
         self._capabilities = MappingProxyType(
             {
                 repo_id: MappingProxyType(dict(repo_capabilities))
@@ -958,6 +964,7 @@ class LocalIndexRuntimeService:
                 reader=reader,
                 writer=writer,
                 capabilities=capabilities,
+                repositories=selected,
             )
 
     @property
@@ -994,6 +1001,26 @@ class LocalIndexRuntimeService:
         if capabilities is None:
             raise KeyError(repo_id)
         return dict(capabilities)
+
+    def accepts_repository(self, repo_id: str, bundle: RepoBundle) -> bool:
+        """Return whether a live Web bundle matches this runtime's frozen inputs."""
+
+        if type(repo_id) is not str or type(bundle) is not RepoBundle:
+            return False
+        configured = self._repositories.get(repo_id)
+        if configured is None:
+            return False
+        try:
+            return (
+                bundle.entry.instance_id == repo_id
+                and bundle.entry.repo == configured.storage.repository_key
+                and lexical_repository_path(bundle.entry.repo_dir)
+                == configured.repository_root
+                and tuple(_repository_languages(bundle)) == configured.languages
+                and _repository_selection(bundle) == configured.source_selection
+            )
+        except (AttributeError, LocalIndexServiceError, OSError, TypeError, ValueError):
+            return False
 
     def start(self) -> None:
         """Start both loops or settle the whole local service before failing."""

@@ -138,6 +138,10 @@ class _LiveLocalIndexJobWriter:
                 raise IndexJobNotFoundError(
                     "Web repository is no longer configured for index updates"
                 )
+            if not self._service.accepts_repository(repo_id, bundle):
+                raise IndexJobWriteError(
+                    "Web repository no longer matches the local index runtime"
+                )
             # Health is an entry-time availability signal, not part of the
             # catalog transaction. A job accepted just before a loop fault is
             # durable and remains recoverable by the next service process.
@@ -154,16 +158,20 @@ class _LiveLocalIndexJobWriter:
 
 def _live_local_index_capabilities(
     service: LocalIndexRuntimeService,
+    registry: RepoRegistry,
     repo_id: str,
 ) -> Mapping[str, IndexUpdateCapability] | None:
     """Return unavailable for an unhealthy runtime or an unbound repository."""
 
     if service.state != "running" or service.healthy is not True:
         return None
-    try:
-        return service.capabilities(repo_id)
-    except KeyError:
-        return None
+    with registry.pin(repo_id) as bundle:
+        if bundle is None or not service.accepts_repository(repo_id, bundle):
+            return None
+        try:
+            return service.capabilities(repo_id)
+        except KeyError:
+            return None
 
 
 def _has_pending_publication_cleanup(failure: BaseException) -> bool:
@@ -255,7 +263,7 @@ def _configured_local_index_runtime(app, config, registry, lifecycle):
         with open_local_index_runtime_service(storage, registry) as service:
             lifecycle.service = service
             writer = _LiveLocalIndexJobWriter(service, service.writer, registry)
-            capabilities = partial(_live_local_index_capabilities, service)
+            capabilities = partial(_live_local_index_capabilities, service, registry)
             bindings = {
                 "index_runtime_service": service,
                 "index_job_reader": service.reader,

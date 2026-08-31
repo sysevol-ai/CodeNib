@@ -113,6 +113,7 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
             return "created"
 
     writer = Writer()
+    original_bundle = object()
 
     def capabilities(repo_id):
         if repo_id != "demo":
@@ -129,6 +130,10 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
             self.writer = writer
             self.capabilities = capabilities
 
+        @staticmethod
+        def accepts_repository(repo_id, bundle):
+            return repo_id == "demo" and bundle is original_bundle
+
     runtime = Runtime()
     config = SimpleNamespace(
         registry_path="/tmp/qa_registry.json",
@@ -144,14 +149,14 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
 
     class Registry:
         def __init__(self, _config, **_kwargs):
-            self.active = {"demo"}
+            self.active = {"demo": original_bundle}
 
         def load_all(self):
             events.append("registry-load")
 
         @contextmanager
         def pin(self, repo_id):
-            yield object() if repo_id in self.active else None
+            yield self.active.get(repo_id)
 
         def list_infos(self):
             return []
@@ -214,6 +219,16 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
                     idempotency_key="unhealthy",
                 )
             runtime.healthy = True
+            application.state.registry.active["demo"] = object()
+            assert bound_capabilities("demo") is None
+            with pytest.raises(web_app.IndexJobWriteError, match="no longer matches"):
+                bound_writer.create(
+                    "demo",
+                    indexes=("bm25",),
+                    mode="full",
+                    force=False,
+                    idempotency_key="reloaded",
+                )
             application.state.registry.active.clear()
             with pytest.raises(web_app.IndexJobNotFoundError, match="no longer"):
                 bound_writer.create(

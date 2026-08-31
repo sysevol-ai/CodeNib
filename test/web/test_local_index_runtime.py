@@ -16,7 +16,7 @@ import pytest
 
 import codenib.web.app as web_app
 import codenib.web.local_index_runtime as local_runtime_module
-from codenib.compiler.manifest import RepoManifest
+from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.source_fingerprint import fingerprint_repository
 from codenib.storage import (
@@ -259,6 +259,56 @@ def test_local_index_runtime_rejects_loaded_repository_identity_mismatch(
         with pytest.raises(LocalIndexServiceError, match="identity differs"):
             LocalIndexRuntimeService.acquire(storage, registry)
     finally:
+        registry.close()
+
+
+@pytest.mark.parametrize(
+    "drift",
+    ("repository-key", "repository-root", "languages", "source-selection"),
+)
+def test_local_index_runtime_rejects_reloaded_build_input_drift(
+    tmp_path: Path,
+    drift: str,
+) -> None:
+    storage, registry = _runtime_fixture(tmp_path)
+    service = LocalIndexRuntimeService.acquire(storage, registry)
+    original = registry._bundles["demo"]
+    entry = original.entry
+    manifest = original.manifest
+    if drift == "repository-key":
+        entry = replace(entry, repo="org/other")
+    elif drift == "repository-root":
+        replacement_root = tmp_path / "replacement-repository"
+        replacement_root.mkdir()
+        entry = replace(entry, repo_dir=str(replacement_root))
+    elif drift == "languages":
+        manifest = replace(manifest, languages=["javascript"])
+    else:
+        manifest = replace(
+            manifest,
+            source_selection=RepositorySourceSelection(
+                (*manifest.source_selection.exclude_subtrees, "policy-change")
+            ),
+        )
+    replacement = RepoBundle(entry=entry, manifest=manifest)
+    equivalent = RepoBundle(
+        entry=replace(original.entry),
+        manifest=replace(
+            original.manifest,
+            languages=list(original.manifest.languages),
+            source_selection=RepositorySourceSelection(
+                original.manifest.source_selection.exclude_subtrees
+            ),
+        ),
+    )
+
+    try:
+        assert service.accepts_repository("demo", original) is True
+        assert service.accepts_repository("demo", equivalent) is True
+        assert service.accepts_repository("demo", replacement) is False
+        assert service.accepts_repository("other", original) is False
+    finally:
+        service.close()
         registry.close()
 
 
@@ -683,14 +733,27 @@ def test_local_index_runtime_executes_submitted_bm25_job(
 
 
 @pytest.mark.parametrize(
-    "reload_drift",
-    (None, "source-selection", "languages"),
-    ids=("matching-generation", "reloaded-policy", "reloaded-languages"),
+    ("reload_drift", "incumbent_status"),
+    (
+        (None, None),
+        (None, "stale"),
+        (None, "failed"),
+        ("source-selection", None),
+        ("languages", None),
+    ),
+    ids=(
+        "matching-generation",
+        "stale-bm25",
+        "failed-bm25",
+        "reloaded-policy",
+        "reloaded-languages",
+    ),
 )
 def test_web_lifespan_executes_job_and_guards_registry_generation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     reload_drift: str | None,
+    incumbent_status: str | None,
 ) -> None:
     activation_failures = []
     monkeypatch.setattr(
@@ -708,7 +771,7 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
 
     source = fingerprint_repository(repository, selection=selection)
     manifest_path = tmp_path / "artifacts" / "repo_manifest.json"
-    RepoManifest(
+    initial_manifest = RepoManifest(
         repo_path=str(repository),
         commit=commit,
         last_indexed_commit=commit,
@@ -716,7 +779,17 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
         source_selection=selection,
         languages=["python"],
         file_count=source.file_count,
-    ).save(manifest_path)
+    )
+    if incumbent_status is not None:
+        initial_manifest.indexes["bm25"] = IndexEntry(
+            index_type="bm25",
+            path=str(tmp_path / "stale-bm25"),
+            built_at="2026-08-30T00:00:00Z",
+            built_at_epoch=0.0,
+            status=incumbent_status,
+        )
+        assert initial_manifest.index_is_current("bm25") is False
+    initial_manifest.save(manifest_path)
     config = QAConfig(
         mode="sparse",
         data_dir=str(tmp_path / "web-data"),
@@ -784,7 +857,26 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
                 assert expected_active is not initial
                 assert expected_active.index_job_activation is None
 
-            created = application.state.index_job_writer.create(
+            writer = application.state.index_job_writer
+            if reload_drift is not None:
+                assert (
+                    application.state.index_update_capabilities_resolver("demo") is None
+                )
+                with pytest.raises(
+                    web_app.IndexJobWriteError,
+                    match="no longer matches",
+                ):
+                    writer.create(
+                        "demo",
+                        indexes=("bm25",),
+                        mode="full",
+                        force=False,
+                        idempotency_key="reloaded-runtime-binding",
+                    )
+                # Model work durably accepted immediately before the reload.
+                # The publication guard must still reject that old-input result.
+                writer = service.writer
+            created = writer.create(
                 "demo",
                 indexes=("bm25",),
                 mode="full",

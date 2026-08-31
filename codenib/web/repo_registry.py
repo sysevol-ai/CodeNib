@@ -1867,9 +1867,7 @@ class RepoRegistry:
         if entry.instance_id != instance_id:
             raise RuntimeError("active Web repository identity changed")
         current_indexes = set(current_manifest.indexes)
-        if current_indexes and (
-            current_indexes != {"bm25"} or not current_manifest.index_is_current("bm25")
-        ):
+        if current_indexes and current_indexes != {"bm25"}:
             raise ValueError(
                 "retained BM25 publication cannot replace an incompatible generation"
             )
