@@ -267,6 +267,7 @@ def test_local_index_runtime_rejects_loaded_repository_identity_mismatch(
     (
         "repository-key",
         "repository-root",
+        "manifest-root",
         "languages",
         "source-selection",
         "multi-view",
@@ -287,6 +288,10 @@ def test_local_index_runtime_rejects_reloaded_build_input_drift(
         replacement_root = tmp_path / "replacement-repository"
         replacement_root.mkdir()
         entry = replace(entry, repo_dir=str(replacement_root))
+    elif drift == "manifest-root":
+        replacement_root = tmp_path / "replacement-manifest-repository"
+        replacement_root.mkdir()
+        manifest = replace(manifest, repo_path=str(replacement_root))
     elif drift == "languages":
         manifest = replace(manifest, languages=["javascript"])
     elif drift == "source-selection":

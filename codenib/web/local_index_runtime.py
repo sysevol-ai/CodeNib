@@ -1017,6 +1017,8 @@ class LocalIndexRuntimeService:
                 and bundle.entry.repo == configured.storage.repository_key
                 and lexical_repository_path(bundle.entry.repo_dir)
                 == configured.repository_root
+                and lexical_repository_path(bundle.manifest.repo_path)
+                == configured.repository_root
                 and tuple(_repository_languages(bundle)) == configured.languages
                 and _repository_selection(bundle) == configured.source_selection
                 and (not current_indexes or current_indexes == {"bm25"})
