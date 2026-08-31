@@ -44,34 +44,45 @@ completed.
 
 ## Storage Scope Guard
 
-- Every storage milestone must ship one named end-to-end product vertical that
-  exercises the domain-store boundary and production backend. Do not add a
-  protocol method, table, state, or failure mode without a current consumer or
-  a prior bug that exercises it.
-- Use one public protocol, one production backend, one forward migration, and
-  at most three domain tables as the default review budget, not a hard limit.
-  Exceeding it requires a named second consumer/backend or measured need.
+- Each PR that adds a public storage capability must name the non-test
+  production call site and end-to-end vertical that exercise it. Do not add a
+  protocol method, table, state, or failure mode unless it serves that call
+  site, a reproduced bug, or a documented data-safety, security, or
+  compatibility invariant with a deterministic regression. Tests, roadmap
+  entries, and planned adapters do not count as consumers.
+- Use one public protocol, one production backend, one schema change per PR,
+  and at most three domain tables as the default review budget, not a hard
+  limit. Preserve the complete forward path from every supported deployed
+  schema. Map each excess item to a current call site or named correctness
+  invariant and explain why it cannot be deferred.
 - Put protocols only at real I/O boundaries. Domain stores own their models and
   migrations; construct concrete backends in composition roots and do not add
-  domain methods to generic `IndexCatalog` or `ObjectStore` contracts.
-- Do not add registries, capability variants, dynamic plugin discovery,
-  PostgreSQL, S3, or distributed coordination before a second production
-  backend or benchmark requires them.
+  domain methods to generic `IndexCatalog` or `ObjectStore` contracts. Treat
+  pluggable as constructor injection plus backend-neutral conformance, not a
+  registry, capability matrix, or dynamic discovery system.
+- A non-default backend requires a documented deployment constraint that the
+  canonical backend cannot meet plus representative workload and operational
+  evidence. Registries or dynamic discovery additionally require at least two
+  supported implementations and a current runtime selection route;
+  distributed coordination requires a named multi-worker deployment invariant.
 - Define durable enqueue success at the catalog transaction boundary; treat
   worker and runtime health as availability signals. Do not add a cross-layer
   lock merely to make one health observation atomic with a recoverable enqueue
   unless the product promises synchronous execution or a reproduced data-safety
   invariant requires it.
-- A new cross-thread/process lock, retained owner, or multi-phase lifecycle must
-  name its invariant, linearization point, multi-lock order, and interruption
-  recovery owner, and include a deterministic race test. Otherwise reuse an
-  existing transaction, lease, pin, or recovery path, or simplify the design.
+- For a non-trivial cross-thread/process lock, retained owner, or multi-phase
+  lifecycle, state the invariant and linearization point in the PR or adjacent
+  docstring. Also state lock order when multiple locks exist and recovery
+  ownership when state outlives the call; add one deterministic test of the
+  invariant or reproduced race. Otherwise reuse an existing transaction,
+  lease, pin, or recovery path, or simplify the design.
 - Prefer one backend-neutral conformance harness driven by a backend
   fixture/factory, one backend integration suite, and one product-vertical
   regression. Fault tests must target observable boundaries or a named prior
   bug, not arbitrary Python-line interruption.
-- Keep roadmap updates outcome-oriented and concise. Put implementation traces
-  in code, tests, ADRs, or the changelog instead of growing the roadmap.
+- Replace a milestone's prior status with its current outcomes, open gates, and
+  PR/ADR links; do not append implementation chronology. Put implementation
+  traces in code, tests, ADRs, or the changelog.
 
 ## Dev Commands
 

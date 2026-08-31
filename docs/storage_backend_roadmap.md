@@ -21,12 +21,14 @@ separate gates.
 
 ## Scope Reset: Product Verticals Before More Catalog Machinery
 
-The general catalog and object-store contracts are frozen at their currently
-exercised capabilities. New product domains must use a small domain-local
-protocol and prove it with one concrete adapter and one conformance suite;
-they do not extend `IndexCatalog` merely because both implementations use
-SQLite. A second backend, registry, distributed coordination mechanism, or
-new generic capability requires a named consumer and measured need.
+The public catalog and object-store methods with named non-test production call
+sites are frozen; compatible implementation fixes remain allowed. A product
+domain introduces a small domain-local protocol only when its current consumer
+needs an injectable I/O boundary, and proves that boundary with one production
+adapter and one conformance suite. It does not extend `IndexCatalog` merely
+because both implementations use SQLite. Tests, this roadmap, and planned
+adapters do not count as consumers. A new generic capability must satisfy the
+evidence gates in `AGENTS.md`.
 
 The active product vertical is **Wiki Store v1**:
 
@@ -36,8 +38,11 @@ The active product vertical is **Wiki Store v1**:
 - route the existing Wiki cache consumer through it while preserving current
   API responses, static exports, `RepoManifest`, portable artifacts, and MCP
   surfaces;
-- retain legacy JSON as a bounded read-through compatibility source for one
-  release, without making filesystem paths part of the new protocol;
+- retain legacy JSON as a bounded read-through compatibility source through the
+  first release containing Wiki Store v1, without making filesystem paths part
+  of the new protocol; remove it through
+  [#749](https://github.com/sysevol-ai/CodeNib/issues/749) after that migration
+  window;
 - verify protocol conformance, reopen/rollback/corruption behavior, and one
   end-to-end Wiki cache hit before expanding the model.
 
