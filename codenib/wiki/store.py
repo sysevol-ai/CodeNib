@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, ContextManager, Protocol
 
 WIKI_ENVELOPE_MAX_BYTES = 16 * 1024 * 1024
+_WIKI_CACHE_PROVENANCE_FIELD = "_codenib_cache_provenance"
 
 
 class WikiStoreError(RuntimeError):

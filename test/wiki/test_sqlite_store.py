@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import multiprocessing
 import os
 import queue
@@ -14,11 +13,18 @@ import sqlite3
 import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
-from codenib.wiki.sqlite_store import SQLiteWikiStore, _sqlite_error
+from codenib.wiki.sqlite_store import (
+    _APPLICATION_ID,
+    _SCHEMA_VERSION,
+    SQLiteWikiStore,
+    _record_digest,
+    _sqlite_error,
+)
 from codenib.wiki.store import (
     WikiStoreCorruptionError,
     WikiStoreError,
@@ -64,6 +70,20 @@ def _probe_generation_guard_process(
         result_queue.put("entered-after-release")
 
 
+def _exercise_store_operation(store: SQLiteWikiStore, operation: str) -> object:
+    if operation == "read":
+        return store.read("page:repo-a:overview")
+    if operation == "scan":
+        return store.scan()
+    if operation == "publish":
+        return store.publish(
+            entry_id="page:repo-a:overview",
+            repository_id="repo-a",
+            envelope={"data": {"body": "replacement"}},
+        )
+    raise AssertionError(f"unexpected test operation: {operation}")
+
+
 class TestSQLiteWikiStoreContract(WikiStoreContract):
     @pytest.fixture
     def store(self, tmp_path: Path) -> SQLiteWikiStore:
@@ -86,6 +106,18 @@ def test_reopen_preserves_entries_and_uses_wal(tmp_path: Path) -> None:
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert connection.execute("PRAGMA application_id").fetchone()[0] != 0
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+
+
+def test_existing_only_uri_preserves_reserved_path_characters(tmp_path: Path) -> None:
+    path = tmp_path / "wiki cache#1.sqlite3"
+    store = SQLiteWikiStore(path)
+    expected = store.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "persisted"}},
+    )
+
+    assert store.read(expected.entry_id) == expected
 
 
 def test_new_database_and_wal_sidecars_are_private_under_common_umask(
@@ -253,6 +285,125 @@ def test_unidentified_view_only_database_is_not_treated_as_empty(
         )
 
 
+@pytest.mark.parametrize(
+    "schema_sql",
+    (
+        "CREATE VIEW unexpected_view AS SELECT 1 AS value",
+        "CREATE INDEX unexpected_index ON wiki_entries(entry_id)",
+        """
+        CREATE TRIGGER unexpected_trigger
+        AFTER INSERT ON wiki_entries
+        BEGIN
+            DELETE FROM wiki_entries WHERE entry_id = NEW.entry_id;
+        END
+        """,
+    ),
+)
+def test_identified_database_rejects_unexpected_schema_objects(
+    tmp_path: Path,
+    schema_sql: str,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    live_store = SQLiteWikiStore(path)
+    with sqlite3.connect(path) as connection:
+        assert (
+            connection.execute("PRAGMA journal_mode = DELETE").fetchone()[0] == "delete"
+        )
+        connection.execute(schema_sql)
+
+    with pytest.raises(WikiStoreSchemaError, match="schema object"):
+        SQLiteWikiStore(path)
+    with pytest.raises(WikiStoreSchemaError, match="schema object"):
+        live_store.scan()
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+
+
+def test_identified_database_rejects_misbound_expected_index(tmp_path: Path) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    SQLiteWikiStore(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP INDEX wiki_entries_repository_entry_idx")
+        connection.execute(
+            "CREATE INDEX wiki_entries_repository_entry_idx "
+            "ON wiki_entries(entry_id)"
+        )
+
+    with pytest.raises(WikiStoreSchemaError, match="schema object"):
+        SQLiteWikiStore(path)
+
+
+def test_identified_database_rejects_primary_key_collation_change(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            f"""
+            CREATE TABLE wiki_entries (
+                entry_id TEXT COLLATE NOCASE PRIMARY KEY NOT NULL,
+                repository_id TEXT NOT NULL,
+                envelope_json BLOB NOT NULL,
+                record_sha256 TEXT NOT NULL CHECK (length(record_sha256) = 64)
+            );
+            CREATE INDEX wiki_entries_repository_entry_idx
+                ON wiki_entries(repository_id, entry_id);
+            PRAGMA application_id = {_APPLICATION_ID};
+            PRAGMA user_version = {_SCHEMA_VERSION};
+            """
+        )
+
+    with pytest.raises(WikiStoreSchemaError, match="schema object"):
+        SQLiteWikiStore(path)
+
+
+@pytest.mark.parametrize("operation", ("read", "publish", "scan"))
+def test_operations_do_not_recreate_a_removed_database(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    store = SQLiteWikiStore(path)
+    path.unlink()
+
+    with pytest.raises(WikiStoreError, match="operation"):
+        _exercise_store_operation(store, operation)
+
+    assert not path.exists()
+
+
+@pytest.mark.parametrize("operation", ("read", "publish", "scan"))
+def test_operations_reject_a_foreign_replacement_database(
+    tmp_path: Path,
+    operation: str,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    replacement = tmp_path / "replacement.sqlite3"
+    store = SQLiteWikiStore(path)
+    with sqlite3.connect(replacement) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE wiki_entries (
+                entry_id TEXT PRIMARY KEY NOT NULL,
+                repository_id TEXT NOT NULL,
+                envelope_json BLOB NOT NULL,
+                record_sha256 TEXT NOT NULL CHECK (length(record_sha256) = 64)
+            );
+            CREATE INDEX wiki_entries_repository_entry_idx
+                ON wiki_entries(repository_id, entry_id);
+            """
+        )
+    os.replace(replacement, path)
+
+    with pytest.raises(WikiStoreSchemaError, match="not an initialized"):
+        _exercise_store_operation(store, operation)
+
+    with sqlite3.connect(path) as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM wiki_entries").fetchone()[0] == 0
+        )
+
+
 def test_error_mapping_supports_python_without_sqlite_result_constants(
     tmp_path: Path,
     monkeypatch,
@@ -303,6 +454,43 @@ def test_payload_digest_corruption_is_reported(tmp_path: Path) -> None:
         store.read("outline:repo-a")
 
 
+@pytest.mark.parametrize(
+    ("column", "replacement", "lookup"),
+    (
+        ("entry_id", "page:repo-b:overview", "page:repo-b:overview"),
+        ("repository_id", "repo-b", "page:repo-a:overview"),
+    ),
+)
+def test_identity_metadata_corruption_is_reported(
+    tmp_path: Path,
+    column: str,
+    replacement: str,
+    lookup: str,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    store = SQLiteWikiStore(path)
+    store.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "persisted"}},
+    )
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            f"UPDATE wiki_entries SET {column} = ? WHERE entry_id = ?",
+            (replacement, "page:repo-a:overview"),
+        )
+
+    with pytest.raises(WikiStoreCorruptionError, match="SHA-256"):
+        store.read(lookup)
+    if column == "repository_id":
+        with pytest.raises(WikiStoreCorruptionError, match="SHA-256"):
+            store.publish(
+                entry_id="page:repo-a:overview",
+                repository_id="repo-a",
+                envelope={"data": {"body": "replacement"}},
+            )
+
+
 def test_overflowed_json_number_is_reported_as_corruption(tmp_path: Path) -> None:
     path = tmp_path / "wiki.sqlite3"
     store = SQLiteWikiStore(path)
@@ -314,14 +502,14 @@ def test_overflowed_json_number_is_reported_as_corruption(tmp_path: Path) -> Non
                 entry_id,
                 repository_id,
                 envelope_json,
-                envelope_sha256
+                record_sha256
             ) VALUES (?, ?, ?, ?)
             """,
             (
                 "page:repo-a:overview",
                 "repo-a",
                 payload,
-                hashlib.sha256(payload).hexdigest(),
+                _record_digest("page:repo-a:overview", "repo-a", payload),
             ),
         )
 
@@ -329,7 +517,10 @@ def test_overflowed_json_number_is_reported_as_corruption(tmp_path: Path) -> Non
         store.read("page:repo-a:overview")
 
 
-def test_failed_publish_rolls_back_the_previous_entry(tmp_path: Path) -> None:
+def test_failed_publish_rolls_back_the_previous_entry(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     path = tmp_path / "wiki.sqlite3"
     store = SQLiteWikiStore(path)
     original = store.publish(
@@ -337,16 +528,23 @@ def test_failed_publish_rolls_back_the_previous_entry(tmp_path: Path) -> None:
         repository_id="repo-a",
         envelope={"data": {"body": "original"}},
     )
-    with sqlite3.connect(path) as connection:
-        connection.execute(
-            """
-            CREATE TRIGGER reject_wiki_update
-            BEFORE UPDATE ON wiki_entries
-            BEGIN
-                SELECT RAISE(ABORT, 'injected update failure');
-            END
-            """
-        )
+    original_connection = store._connection
+
+    @contextmanager
+    def connection_with_rejected_update():
+        with original_connection() as connection:
+            connection.execute(
+                """
+                CREATE TEMP TRIGGER reject_wiki_update
+                BEFORE UPDATE ON wiki_entries
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected update failure');
+                END
+                """
+            )
+            yield connection
+
+    monkeypatch.setattr(store, "_connection", connection_with_rejected_update)
 
     with pytest.raises(WikiStoreError):
         store.publish(
@@ -355,8 +553,6 @@ def test_failed_publish_rolls_back_the_previous_entry(tmp_path: Path) -> None:
             envelope={"data": {"body": "replacement"}},
         )
 
-    with sqlite3.connect(path) as connection:
-        connection.execute("DROP TRIGGER reject_wiki_update")
     assert store.read(original.entry_id) == original
 
 

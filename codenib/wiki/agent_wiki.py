@@ -75,6 +75,7 @@ from .quality import redundancy_terms as _redundancy_terms
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
 from .store import (
+    _WIKI_CACHE_PROVENANCE_FIELD,
     WIKI_ENVELOPE_MAX_BYTES,
     WikiStore,
     WikiStoreCorruptionError,
@@ -3511,9 +3512,26 @@ class AgentWiki:
     ) -> WikiStoredEntry:
         if self._store is None:
             raise RuntimeError("Wiki store is not configured")
+        entry_id = self._store_entry_id(suffix)
+        repository_id = self._repository_id()
+        cache_files = [
+            os.path.basename(path) for path in self._cache_candidate_paths(suffix)
+        ]
+        if cache_files:
+            # Legacy files remain readable for one release. Bind their names to
+            # the canonical record so audits can ignore stale adopted copies.
+            envelope = {
+                **envelope,
+                _WIKI_CACHE_PROVENANCE_FIELD: {
+                    "schema": 1,
+                    "entry_id": entry_id,
+                    "repository_id": repository_id,
+                    "legacy_filenames": cache_files,
+                },
+            }
         return self._store.publish(
-            entry_id=self._store_entry_id(suffix),
-            repository_id=self._repository_id(),
+            entry_id=entry_id,
+            repository_id=repository_id,
             envelope=envelope,
             if_absent=if_absent,
         )

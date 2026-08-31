@@ -41,6 +41,7 @@ from .store import (
 _APPLICATION_ID = 0x434E574B  # ``CNWK``
 _SCHEMA_VERSION = 1
 _MAX_IDENTIFIER_BYTES = 4_096
+_RECORD_DIGEST_DOMAIN = b"codenib-wiki-record-v1\0"
 # Stable SQLite primary result codes. Python 3.10 does not expose the matching
 # ``sqlite3.SQLITE_*`` module constants even though exceptions carry the code.
 _SQLITE_CORRUPT = 11
@@ -51,22 +52,48 @@ _SQLITE_CORRUPTION_MESSAGES = frozenset(
 )
 _SQLITE_CORRUPTION_PREFIXES = ("malformed database schema",)
 
-_CREATE_SCHEMA_SQL = """
+_CREATE_TABLE_SQL = """
 CREATE TABLE wiki_entries (
     entry_id TEXT PRIMARY KEY NOT NULL,
     repository_id TEXT NOT NULL,
     envelope_json BLOB NOT NULL,
-    envelope_sha256 TEXT NOT NULL CHECK (length(envelope_sha256) = 64)
-);
-CREATE INDEX wiki_entries_repository_entry_idx
-    ON wiki_entries(repository_id, entry_id);
-"""
+    record_sha256 TEXT NOT NULL CHECK (length(record_sha256) = 64)
+)
+""".strip()
 
-_EXPECTED_COLUMNS = (
-    ("entry_id", "TEXT", 1, 1),
-    ("repository_id", "TEXT", 1, 0),
-    ("envelope_json", "BLOB", 1, 0),
-    ("envelope_sha256", "TEXT", 1, 0),
+_CREATE_INDEX_SQL = """
+CREATE INDEX wiki_entries_repository_entry_idx
+    ON wiki_entries(repository_id, entry_id)
+""".strip()
+
+
+def _normalize_schema_sql(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return " ".join(value.split())
+
+
+_EXPECTED_SCHEMA_OBJECTS = frozenset(
+    (
+        (
+            "table",
+            "wiki_entries",
+            "wiki_entries",
+            _normalize_schema_sql(_CREATE_TABLE_SQL),
+        ),
+        (
+            "index",
+            "sqlite_autoindex_wiki_entries_1",
+            "wiki_entries",
+            None,
+        ),
+        (
+            "index",
+            "wiki_entries_repository_entry_idx",
+            "wiki_entries",
+            _normalize_schema_sql(_CREATE_INDEX_SQL),
+        ),
+    )
 )
 
 
@@ -149,7 +176,22 @@ def _canonical_envelope(envelope: Mapping[str, Any]) -> bytes:
     return bytes(payload)
 
 
-def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
+def _record_digest(entry_id: str, repository_id: str, payload: bytes) -> str:
+    """Authenticate record identity and payload without concatenation ambiguity."""
+
+    digest = hashlib.sha256(_RECORD_DIGEST_DOMAIN)
+    for value in (entry_id.encode("utf-8"), repository_id.encode("utf-8"), payload):
+        digest.update(len(value).to_bytes(8, "big"))
+        digest.update(value)
+    return digest.hexdigest()
+
+
+def _decode_envelope(
+    entry_id: str,
+    repository_id: str,
+    payload: object,
+    digest: object,
+) -> dict[str, Any]:
     if isinstance(payload, memoryview):
         payload = payload.tobytes()
     if type(payload) is not bytes:
@@ -158,7 +200,7 @@ def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
         raise WikiStoreCorruptionError("Wiki entry payload exceeds its size limit")
     if type(digest) is not str:
         raise WikiStoreCorruptionError("Wiki entry has an invalid SHA-256 digest")
-    observed_digest = hashlib.sha256(payload).hexdigest()
+    observed_digest = _record_digest(entry_id, repository_id, payload)
     if observed_digest != digest:
         raise WikiStoreCorruptionError("Wiki entry failed its SHA-256 integrity check")
     try:
@@ -229,27 +271,39 @@ class SQLiteWikiStore:
 
     def _open_raw(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
-            str(self.path),
+            f"{self.path.as_uri()}?mode=rw",
             isolation_level=None,
+            uri=True,
         )
         connection.row_factory = sqlite3.Row
         return connection
 
     @staticmethod
-    def _identity(connection: sqlite3.Connection) -> tuple[int, int, frozenset[str]]:
+    def _identity(
+        connection: sqlite3.Connection,
+    ) -> tuple[int, int, frozenset[tuple[str, str, str, str | None]]]:
         application_id = connection.execute("PRAGMA application_id").fetchone()[0]
         user_version = connection.execute("PRAGMA user_version").fetchone()[0]
-        tables = frozenset(
-            row["name"]
+        schema_objects = frozenset(
+            (
+                row["type"],
+                row["name"],
+                row["tbl_name"],
+                _normalize_schema_sql(row["sql"]),
+            )
             for row in connection.execute(
                 """
-                SELECT name
+                SELECT type, name, tbl_name, sql
                 FROM sqlite_master
-                WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                WHERE type IN ('table', 'index', 'view', 'trigger')
+                  AND (
+                      name NOT GLOB 'sqlite_*'
+                      OR name = 'sqlite_autoindex_wiki_entries_1'
+                  )
                 """
             )
         )
-        return application_id, user_version, tables
+        return application_id, user_version, schema_objects
 
     @staticmethod
     def _is_empty_database(connection: sqlite3.Connection) -> bool:
@@ -275,12 +329,7 @@ class SQLiteWikiStore:
                         and user_version == 0
                         and self._is_empty_database(connection)
                     ):
-                        schema_statements = tuple(
-                            statement.strip()
-                            for statement in _CREATE_SCHEMA_SQL.split(";")
-                            if statement.strip()
-                        )
-                        for statement in schema_statements:
+                        for statement in (_CREATE_TABLE_SQL, _CREATE_INDEX_SQL):
                             connection.execute(statement)
                         connection.execute(
                             f"PRAGMA application_id = {_APPLICATION_ID:d}"
@@ -304,7 +353,9 @@ class SQLiteWikiStore:
 
     @staticmethod
     def _require_schema(connection: sqlite3.Connection) -> None:
-        application_id, user_version, tables = SQLiteWikiStore._identity(connection)
+        application_id, user_version, schema_objects = SQLiteWikiStore._identity(
+            connection
+        )
         if application_id != _APPLICATION_ID:
             raise WikiStoreSchemaError(
                 "file is not an initialized CodeNib Wiki database"
@@ -318,14 +369,10 @@ class SQLiteWikiStore:
             raise WikiStoreSchemaError(
                 f"unsupported Wiki database schema version: {user_version}"
             )
-        if tables != frozenset(("wiki_entries",)):
-            raise WikiStoreSchemaError("Wiki database has an unexpected table layout")
-        columns = tuple(
-            (row["name"], row["type"], row["notnull"], row["pk"])
-            for row in connection.execute("PRAGMA table_info(wiki_entries)")
-        )
-        if columns != _EXPECTED_COLUMNS:
-            raise WikiStoreSchemaError("Wiki database has an unexpected entry schema")
+        if schema_objects != _EXPECTED_SCHEMA_OBJECTS:
+            raise WikiStoreSchemaError(
+                "Wiki database has an unexpected schema object layout"
+            )
 
     @staticmethod
     def _configure_database(connection: sqlite3.Connection) -> None:
@@ -342,6 +389,7 @@ class SQLiteWikiStore:
         connection: sqlite3.Connection | None = None
         try:
             connection = self._open_raw()
+            self._require_schema(connection)
             self._configure_connection(connection)
             yield connection
         except WikiStoreError:
@@ -363,7 +411,12 @@ class SQLiteWikiStore:
             raise WikiStoreCorruptionError(
                 "Wiki entry contains invalid identity metadata"
             ) from exc
-        envelope = _decode_envelope(row["envelope_json"], row["envelope_sha256"])
+        envelope = _decode_envelope(
+            entry_id,
+            repository_id,
+            row["envelope_json"],
+            row["record_sha256"],
+        )
         return WikiStoredEntry(
             entry_id=entry_id,
             repository_id=repository_id,
@@ -391,11 +444,11 @@ class SQLiteWikiStore:
         if type(if_absent) is not bool:
             raise WikiStoreValidationError("if_absent must be a boolean")
         payload = _canonical_envelope(envelope)
-        digest = hashlib.sha256(payload).hexdigest()
+        digest = _record_digest(entry_id, repository_id, payload)
         published = WikiStoredEntry(
             entry_id=entry_id,
             repository_id=repository_id,
-            envelope=_decode_envelope(payload, digest),
+            envelope=_decode_envelope(entry_id, repository_id, payload, digest),
         )
 
         with self._connection() as connection:
@@ -405,26 +458,18 @@ class SQLiteWikiStore:
                     "SELECT * FROM wiki_entries WHERE entry_id = ?", (entry_id,)
                 ).fetchone()
                 if row is not None:
-                    try:
-                        current_repository_id = _validate_identifier(
-                            row["repository_id"], field="repository_id"
-                        )
-                    except WikiStoreValidationError as exc:
-                        raise WikiStoreCorruptionError(
-                            "Wiki entry contains invalid identity metadata"
-                        ) from exc
-                    if current_repository_id != repository_id:
+                    current = self._entry_from_row(row)
+                    if current.repository_id != repository_id:
                         raise WikiStoreValidationError(
                             "entry_id is already bound to different Wiki metadata"
                         )
                     if if_absent:
-                        current = self._entry_from_row(row)
                         connection.commit()
                         return current
                     connection.execute(
                         """
                         UPDATE wiki_entries
-                        SET envelope_json = ?, envelope_sha256 = ?
+                        SET envelope_json = ?, record_sha256 = ?
                         WHERE entry_id = ?
                         """,
                         (sqlite3.Binary(payload), digest, entry_id),
@@ -436,7 +481,7 @@ class SQLiteWikiStore:
                             entry_id,
                             repository_id,
                             envelope_json,
-                            envelope_sha256
+                            record_sha256
                         ) VALUES (?, ?, ?, ?)
                         """,
                         (

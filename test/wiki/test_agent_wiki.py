@@ -42,6 +42,7 @@ from codenib.wiki.builder import Symbol
 from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
 from codenib.wiki.quality import prose_integrity_report
 from codenib.wiki.sqlite_store import SQLiteWikiStore
+from codenib.wiki.store import _WIKI_CACHE_PROVENANCE_FIELD
 
 
 class _FakeVectorStore:
@@ -6761,6 +6762,15 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
     assert stored is not None
     assert stored.repository_id == "owner__repo-1"
     assert stored.envelope["model"] == "first-model"
+    assert stored.envelope[_WIKI_CACHE_PROVENANCE_FIELD] == {
+        "schema": 1,
+        "entry_id": original._store_entry_id("outline"),
+        "repository_id": "owner__repo-1",
+        "legacy_filenames": [
+            os.path.basename(path)
+            for path in original._cache_candidate_paths("outline")
+        ],
+    }
 
 
 def test_agent_wiki_lazily_adopts_json_into_store_but_read_only_does_not(tmp_path):
@@ -6796,6 +6806,9 @@ def test_agent_wiki_lazily_adopts_json_into_store_but_read_only_does_not(tmp_pat
     adopted = store.read(entry_id)
     assert adopted is not None
     assert adopted.envelope["model"] == "old-model"
+    assert adopted.envelope[_WIKI_CACHE_PROVENANCE_FIELD]["legacy_filenames"] == [
+        os.path.basename(path) for path in wiki._cache_candidate_paths("outline")
+    ]
 
 
 def test_agent_wiki_rejects_unbounded_legacy_json_before_serving_or_adoption(

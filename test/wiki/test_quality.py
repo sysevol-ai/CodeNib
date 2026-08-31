@@ -25,6 +25,7 @@ from codenib.wiki.quality import (
     summarize_page_audits,
 )
 from codenib.wiki.sqlite_store import SQLiteWikiStore
+from codenib.wiki.store import _WIKI_CACHE_PROVENANCE_FIELD
 
 
 def _page(*, repeated_prose: bool) -> dict:
@@ -1196,22 +1197,60 @@ def test_cache_audit_includes_unmigrated_legacy_pages(
     migrate_first_page,
 ):
     pages = [_page(repeated_prose=True), _page(repeated_prose=False)]
-    pages[1] = {**pages[1], "id": "runtime", "title": "Runtime"}
     envelopes = [{"model": "test", "data": page} for page in pages]
-    for index, envelope in enumerate(envelopes):
-        (tmp_path / f"agentwiki_page_{index}.json").write_text(json.dumps(envelope))
+    legacy_paths = [
+        tmp_path / f"agentwiki_page_{index}.json" for index in range(len(pages))
+    ]
+    for path, envelope in zip(legacy_paths, envelopes, strict=True):
+        path.write_text(json.dumps(envelope))
 
     store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    expected_pages = pages
     if migrate_first_page:
+        entry_id = "page:repo-a:overview"
+        repository_id = "repo-a"
+        canonical_page = {
+            **pages[0],
+            "markdown": pages[0]["markdown"] + "\n\nCanonical refresh. [E1]",
+        }
         store.publish(
-            entry_id="page:repo-a:overview",
-            repository_id="repo-a",
-            envelope=envelopes[0],
+            entry_id=entry_id,
+            repository_id=repository_id,
+            envelope={
+                "model": "test",
+                "data": canonical_page,
+                _WIKI_CACHE_PROVENANCE_FIELD: {
+                    "schema": 1,
+                    "entry_id": entry_id,
+                    "repository_id": repository_id,
+                    "legacy_filenames": [legacy_paths[0].name],
+                },
+            },
         )
+        expected_pages = [canonical_page, pages[1]]
 
     report = audit_cache(tmp_path)
 
-    assert report == summarize_page_audits(pages)
+    assert report == summarize_page_audits(expected_pages)
+    assert report["pages"] == 2
+
+
+def test_cache_audit_does_not_dedupe_marker_free_rows_across_repositories(
+    tmp_path,
+):
+    page = _page(repeated_prose=False)
+    envelope = {"model": "test", "data": page}
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    store.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope=envelope,
+    )
+    (tmp_path / "agentwiki_repo-b_overview.json").write_text(json.dumps(envelope))
+
+    report = audit_cache(tmp_path)
+
+    assert report == summarize_page_audits([page, page])
     assert report["pages"] == 2
 
 
