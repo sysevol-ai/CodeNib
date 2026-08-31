@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Iterable, List
 
@@ -22,6 +24,7 @@ from .evidence import (
     relation_endpoints_named,
     relation_matches_claim,
 )
+from .store import WikiStore
 
 _EVIDENCE_MARKER = re.compile(r"\[((?:E|R)\d+)\](?:\([^)]*\))?")
 _CATALOG_SENTENCE = re.compile(
@@ -33,6 +36,24 @@ _CATALOG_SENTENCE = re.compile(
     r"serializes?|sets?|simplifies?|supports?|utilizes?|visualizes?)\b",
     re.IGNORECASE,
 )
+
+
+def _cache_envelope_digest(envelope: Mapping[str, Any]) -> bytes | None:
+    """Identify exact database/legacy copies without conflating page IDs."""
+
+    try:
+        payload = json.dumps(
+            dict(envelope),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(payload).digest()
+
+
 _RAW_EVIDENCE_ID = re.compile(r"(?<![\w`\[])\b(?:E|R)\d+\b(?![\w`])")
 _SOURCE_FILE_SUBSYSTEM = re.compile(
     r"`?[\w./-]+\.(?:py|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|java|rb|php|cs|"
@@ -1101,17 +1122,43 @@ def audit_wiki(builder: Any) -> dict[str, Any]:
     }
 
 
-def audit_cache(cache_dir: str | Path) -> dict[str, Any]:
-    """Load and summarize generated page records from an AgentWiki cache."""
+def audit_cache(
+    cache_dir: str | Path,
+    *,
+    store: WikiStore | None = None,
+) -> dict[str, Any]:
+    """Load and summarize pages from the canonical database or legacy files."""
 
     pages = []
-    for path in sorted(Path(cache_dir).glob("agentwiki_*.json")):
+    stored_envelopes: set[bytes] = set()
+    cache_root = Path(cache_dir)
+    database_path = cache_root / "wiki.sqlite3"
+    if store is None and database_path.exists():
+        # This function is the compatibility composition root for the historical
+        # path-only audit API. Callers with another backend inject its WikiStore.
+        from .sqlite_store import SQLiteWikiStore
+
+        store = SQLiteWikiStore(database_path)
+    if store is not None:
+        for entry in store.scan():
+            payload = entry.envelope
+            data = payload.get("data") if isinstance(payload, Mapping) else None
+            if isinstance(data, dict) and data.get("id") and data.get("markdown"):
+                pages.append(data)
+                digest = _cache_envelope_digest(payload)
+                if digest is not None:
+                    stored_envelopes.add(digest)
+
+    for path in sorted(cache_root.glob("agentwiki_*.json")):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
         data = payload.get("data") if isinstance(payload, dict) else None
         if isinstance(data, dict) and data.get("id") and data.get("markdown"):
+            digest = _cache_envelope_digest(payload)
+            if digest is not None and digest in stored_envelopes:
+                continue
             pages.append(data)
     return summarize_page_audits(pages)
 

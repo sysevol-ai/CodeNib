@@ -197,16 +197,35 @@ class SQLiteWikiStore:
         self.path = resolved
         self._lock_directory = Path(f"{resolved}.locks")
         try:
-            self._lock_directory.mkdir(parents=True, exist_ok=True)
+            self._lock_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             # Lock acquisition linearizes schema identity and the WAL transition
             # for this database. Initialization takes no entry lock, retains no
             # owner after return, and the OS releases the file lock on exit.
             with FileLock(str(self._lock_directory / ".initialize.lock")):
+                self._create_database_file_if_missing()
                 self._initialize()
         except WikiStoreError:
             raise
         except OSError as exc:
             raise WikiStoreError("Wiki database initialization lock failed") from exc
+
+    def _create_database_file_if_missing(self) -> None:
+        """Create a new cache privately before SQLite can create WAL sidecars."""
+
+        try:
+            descriptor = os.open(
+                self.path,
+                os.O_CREAT | os.O_EXCL | os.O_RDWR,
+                0o600,
+            )
+        except FileExistsError:
+            return
+        except OSError as exc:
+            raise WikiStoreError("Wiki database file creation failed") from exc
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            raise WikiStoreError("Wiki database file creation failed") from exc
 
     def _open_raw(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
@@ -476,7 +495,7 @@ class SQLiteWikiStore:
         entry_id = _validate_identifier(entry_id, field="entry_id")
         lock_name = hashlib.sha256(entry_id.encode("utf-8")).hexdigest() + ".lock"
         try:
-            self._lock_directory.mkdir(parents=True, exist_ok=True)
+            self._lock_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             lock = FileLock(str(self._lock_directory / lock_name))
             lock.acquire()
         except OSError as exc:

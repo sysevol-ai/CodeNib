@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import hashlib
 import os
+import threading
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
@@ -97,6 +98,12 @@ _WIKI_MEDIA_TYPES = {
 logger = get_logger(__name__)
 
 _MISSING_APP_STATE = object()
+# A request pins its RepoBundle before acquiring this lock. The lock then
+# linearizes the process-local Wiki store/builder cache before SQLite takes its
+# cross-process initialization lock. Store operations never re-enter this lock,
+# and a failed construction publishes no cache entry, so the next request owns
+# recovery.
+_WIKI_BUILD_LOCK = threading.Lock()
 
 
 @dataclass(slots=True)
@@ -601,7 +608,7 @@ def _prune_retired_generation_caches(registry=None) -> None:
 
 
 def _wiki(repo_id: str, bundle=None):
-    """Lazily build + cache a wiki per repo (conceptual agent wiki by default)."""
+    """Lazily build and cache one Wiki helper per pinned bundle generation."""
     if bundle is None:
         bundle = _bundle(repo_id)
     cache = app.state.wiki_builders
@@ -627,7 +634,8 @@ def _wiki(repo_id: str, bundle=None):
             )
         return WikiBuilder(bundle, narrator=getattr(app.state, "narrator", None))
 
-    return _generation_cached(cache, repo_id, repo_id, bundle, build)
+    with _WIKI_BUILD_LOCK:
+        return _generation_cached(cache, repo_id, repo_id, bundle, build)
 
 
 def _wiki_media_dir(config, repo_id: str, page_id: str) -> Path:
@@ -984,7 +992,7 @@ async def create_index_job(
 @app.get("/api/repos/{repo_id}/wiki")
 async def wiki_tree(repo_id: str, cached_only: bool = False) -> dict:
     with _pinned_bundle(repo_id) as bundle:
-        builder = _wiki(repo_id, bundle)
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
         if cached_only:
             cached_page_tree = getattr(builder, "cached_page_tree", None)
             pages = (
@@ -1005,7 +1013,8 @@ async def wiki_page(
     materialize_media: bool = True,
 ) -> dict:
     with _pinned_bundle(repo_id) as bundle:
-        page = await _run_pinned_thread(_wiki(repo_id, bundle).page, page_id)
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        page = await _run_pinned_thread(builder.page, page_id)
         if page is None:
             raise HTTPException(
                 status_code=404,
@@ -1071,7 +1080,7 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
     they connect), using the same ``{nodes, edges}`` payload as ``/codemap``.
     """
     with _pinned_bundle(repo_id) as bundle:
-        builder = _wiki(repo_id, bundle)
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
         page_citations = getattr(builder, "page_citations", None)
         if callable(page_citations):
             citations = await _run_pinned_thread(page_citations, page_id)

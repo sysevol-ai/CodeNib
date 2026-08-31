@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import multiprocessing
+import os
 import queue
 import sqlite3
+import stat
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -84,6 +86,41 @@ def test_reopen_preserves_entries_and_uses_wal(tmp_path: Path) -> None:
         assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
         assert connection.execute("PRAGMA application_id").fetchone()[0] != 0
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+
+
+def test_new_database_and_wal_sidecars_are_private_under_common_umask(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    previous_umask = os.umask(0o022)
+    try:
+        store = SQLiteWikiStore(path)
+        entry = store.publish(
+            entry_id="page:repo-a:overview",
+            repository_id="repo-a",
+            envelope={"data": {"body": "private"}},
+        )
+
+        with sqlite3.connect(path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE wiki_entries SET repository_id = ? WHERE entry_id = ?",
+                ("repo-a", entry.entry_id),
+            )
+            private_files = (
+                path,
+                Path(f"{path}-wal"),
+                Path(f"{path}-shm"),
+            )
+            assert all(candidate.exists() for candidate in private_files)
+            assert all(
+                stat.S_IMODE(candidate.stat().st_mode) == 0o600
+                for candidate in private_files
+            )
+            assert stat.S_IMODE(Path(f"{path}.locks").stat().st_mode) == 0o700
+            connection.rollback()
+    finally:
+        os.umask(previous_umask)
 
 
 def test_empty_sqlite_v0_database_is_initialized(tmp_path: Path) -> None:

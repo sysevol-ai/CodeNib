@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from codenib.wiki.evidence import EvidenceItem, RelationItem
 from codenib.wiki.quality import (
     audit_cache,
@@ -22,6 +24,7 @@ from codenib.wiki.quality import (
     section_synthesis_report,
     summarize_page_audits,
 )
+from codenib.wiki.sqlite_store import SQLiteWikiStore
 
 
 def _page(*, repeated_prose: bool) -> dict:
@@ -1164,6 +1167,52 @@ def test_cache_audit_ignores_outline_records_and_summarizes_pages(tmp_path):
     assert report["pages"] == 2
     assert report["publishable"] == 1
     assert report["narrative_valid"] == 1
+
+
+def test_cache_audit_reads_the_canonical_sqlite_store(tmp_path):
+    page = _page(repeated_prose=False)
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    store.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"model": "test", "data": page},
+    )
+    store.publish(
+        entry_id="outline:repo-a",
+        repository_id="repo-a",
+        envelope={"model": "test", "data": {"pages": []}},
+    )
+
+    report = audit_cache(tmp_path)
+
+    assert list(tmp_path.glob("agentwiki_*.json")) == []
+    assert report == summarize_page_audits([page])
+    assert report["pages"] == 1
+
+
+@pytest.mark.parametrize("migrate_first_page", [False, True])
+def test_cache_audit_includes_unmigrated_legacy_pages(
+    tmp_path,
+    migrate_first_page,
+):
+    pages = [_page(repeated_prose=True), _page(repeated_prose=False)]
+    pages[1] = {**pages[1], "id": "runtime", "title": "Runtime"}
+    envelopes = [{"model": "test", "data": page} for page in pages]
+    for index, envelope in enumerate(envelopes):
+        (tmp_path / f"agentwiki_page_{index}.json").write_text(json.dumps(envelope))
+
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    if migrate_first_page:
+        store.publish(
+            entry_id="page:repo-a:overview",
+            repository_id="repo-a",
+            envelope=envelopes[0],
+        )
+
+    report = audit_cache(tmp_path)
+
+    assert report == summarize_page_audits(pages)
+    assert report["pages"] == 2
 
 
 def test_wiki_audit_generates_nested_pages_and_requires_generated_mode():

@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -835,6 +836,66 @@ def test_wiki_cache_rebuilds_when_bundle_generation_changes(monkeypatch):
     assert web_app.app.state.wiki_builders["repo"] == ("repo", new, refreshed)
 
 
+def test_wiki_cache_serializes_concurrent_lazy_construction(tmp_path, monkeypatch):
+    import codenib.wiki.agent_wiki as agent_wiki
+
+    first_entered = threading.Event()
+    release_first = threading.Event()
+    second_started = threading.Event()
+    second_entered = threading.Event()
+    call_guard = threading.Lock()
+    store = object()
+    bundle = object()
+    call_count = 0
+    config = SimpleNamespace(
+        data_dir=str(tmp_path),
+        wiki_agent=True,
+        wiki_generation_model="wiki-model",
+        wiki_generation_api_base=None,
+        wiki_generation_api_key=None,
+    )
+
+    def open_store(_path):
+        nonlocal call_count
+        with call_guard:
+            call_count += 1
+            ordinal = call_count
+        if ordinal == 1:
+            first_entered.set()
+            assert release_first.wait(timeout=5)
+        else:
+            second_entered.set()
+        return store
+
+    def open_second():
+        second_started.set()
+        return web_app._wiki("repo", bundle)
+
+    monkeypatch.setattr(web_app, "_WIKI_BUILD_LOCK", threading.Lock())
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "_wiki_llm", lambda _config: object())
+    monkeypatch.setattr(web_app, "SQLiteWikiStore", open_store)
+    monkeypatch.setattr(agent_wiki, "AgentWiki", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(web_app.app.state, "wiki_builders", {}, raising=False)
+    monkeypatch.setattr(web_app.app.state, "wiki_store", None, raising=False)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_result = executor.submit(web_app._wiki, "repo", bundle)
+        try:
+            assert first_entered.wait(timeout=5)
+            second_result = executor.submit(open_second)
+            assert second_started.wait(timeout=5)
+            assert not second_entered.wait(timeout=0.2)
+        finally:
+            release_first.set()
+        first = first_result.result(timeout=5)
+        second = second_result.result(timeout=5)
+
+    assert call_count == 1
+    assert second is first
+    assert web_app.app.state.wiki_store is store
+
+
 def test_generation_cache_drops_helpers_bound_to_retired_bundle():
     old = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
     new = SimpleNamespace(entry=SimpleNamespace(instance_id="repo"))
@@ -999,6 +1060,9 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
         def page(self, page_id):
             return {"id": page_id}
 
+        def page_citations(self, _page_id):
+            return []
+
     async def fake_to_thread(func, *args, **kwargs):
         if func is web_app._capture_thread_outcome:
             observed = args[0]
@@ -1010,16 +1074,26 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
         return func(*args, **kwargs)
 
     builder = Builder()
-    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: builder)
-    monkeypatch.setattr(
-        web_app,
-        "_bundle",
-        lambda _repo_id: SimpleNamespace(entry=SimpleNamespace(repo="org/repo")),
+
+    def code_graph():
+        return None
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo="org/repo"),
+        code_graph=code_graph,
+        graph_unavailable_note=lambda: "graph unavailable",
     )
+
+    def build_wiki(_repo_id, _bundle=None):
+        return builder
+
+    monkeypatch.setattr(web_app, "_wiki", build_wiki)
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
     monkeypatch.setattr(web_app.asyncio, "to_thread", fake_to_thread)
 
     tree = asyncio.run(web_app.wiki_tree("repo"))
     page = asyncio.run(web_app.wiki_page("repo", "overview"))
+    graph = asyncio.run(web_app.wiki_page_graph("repo", "overview"))
 
     assert tree == {"repo": "org/repo", "pages": [{"id": "overview"}]}
     assert page == {
@@ -1038,7 +1112,22 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
             "relation_count": 0,
         },
     }
-    assert calls == [("page_tree", ()), ("page", ("overview",))]
+    assert graph == {
+        "available": False,
+        "nodes": [],
+        "edges": [],
+        "mermaid": "",
+        "note": "graph unavailable",
+    }
+    assert calls == [
+        ("build_wiki", ("repo", bundle)),
+        ("page_tree", ()),
+        ("build_wiki", ("repo", bundle)),
+        ("page", ("overview",)),
+        ("build_wiki", ("repo", bundle)),
+        ("page_citations", ("overview",)),
+        ("code_graph", ()),
+    ]
 
 
 def test_cached_wiki_tree_does_not_generate_a_missing_outline(monkeypatch):
