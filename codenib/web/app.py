@@ -320,13 +320,10 @@ async def lifespan(app: FastAPI):
         registry.load_all()
         app.state.registry = registry
         app.state.wiki_builders = {}
-        app.state.wiki_store = (
-            SQLiteWikiStore(
-                Path(os.path.abspath(config.data_dir)) / "wiki_cache" / "wiki.sqlite3"
-            )
-            if config.wiki_agent
-            else None
-        )
+        # Wiki persistence is a regenerable, optional product surface. Open it
+        # on the first Wiki request so a damaged cache cannot block search and
+        # source APIs during application startup.
+        app.state.wiki_store = None
         app.state.edge_labelers = {}
         app.state.commit_windows = {}
         # Shared LLM narrator for DeepWiki-style prose; cached on disk, fails soft

@@ -246,23 +246,17 @@ def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path
         entry_id,
         *,
         repository_id="owner__repo",
-        kind="page",
-        page_id="overview",
         data=None,
     ):
         return SimpleNamespace(
             entry_id=entry_id,
             repository_id=repository_id,
-            kind=kind,
-            page_id=page_id,
             envelope={"model": "fake-model", "data": data or {}},
         )
 
     stored_entries = {
         seed_wiki._store_entry_id("outline"): entry(
             seed_wiki._store_entry_id("outline"),
-            kind="outline",
-            page_id=None,
             data=outline,
         ),
         seed_wiki._store_entry_id(page_suffix): entry(
@@ -274,7 +268,7 @@ def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path
                 "quality": {"valid": True},
             },
         ),
-        "orphan": entry("orphan", page_id="removed"),
+        "orphan": entry("orphan"),
         "other-repository": entry(
             "other-repository",
             repository_id="owner__other",
@@ -389,8 +383,6 @@ def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path
     store.publish(
         entry_id="orphan",
         repository_id="owner__repo",
-        kind="page",
-        page_id="removed",
         envelope={"data": {"id": "removed"}},
     )
 
@@ -407,13 +399,8 @@ def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path
     assert storage["orphan_entries"] == 1
     assert storage["files"] == 3
     assert storage["orphan_files"] == 1
-    assert storage["database_bytes"] > 0
+    assert storage["database_payload_bytes"] > 0
     assert storage["legacy_bytes"] > 0
     assert storage["bytes"] == storage["legacy_bytes"]
     assert storage["orphan_bytes"] == storage["orphan_legacy_bytes"]
-    assert storage["total_bytes"] == (
-        storage["database_bytes"] + storage["legacy_bytes"]
-    )
-    assert storage["total_orphan_bytes"] == (
-        storage["orphan_database_bytes"] + storage["orphan_legacy_bytes"]
-    )
+    assert storage["orphan_database_payload_bytes"] > 0

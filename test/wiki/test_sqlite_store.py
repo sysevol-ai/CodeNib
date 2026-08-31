@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -36,8 +35,6 @@ def test_reopen_preserves_entries_and_uses_wal(tmp_path: Path) -> None:
     expected = store.publish(
         entry_id="page:repo-a:overview",
         repository_id="repo-a",
-        kind="page",
-        page_id="overview",
         envelope={"data": {"body": "persisted"}},
     )
 
@@ -106,54 +103,12 @@ def test_unidentified_foreign_database_fails_before_wal_mutation(
         )
 
 
-@pytest.mark.parametrize(
-    ("kind", "page_id"),
-    (
-        ("outline", "overview"),
-        ("page", None),
-        ("page", ""),
-        ("evidence", None),
-        ("evidence", ""),
-    ),
-)
-def test_schema_enforces_kind_page_identity(
-    tmp_path: Path, kind: str, page_id: str | None
-) -> None:
-    path = tmp_path / "wiki.sqlite3"
-    SQLiteWikiStore(path)
-    payload = b"{}"
-
-    with sqlite3.connect(path) as connection, pytest.raises(sqlite3.IntegrityError):
-        connection.execute(
-            """
-            INSERT INTO wiki_entries(
-                entry_id,
-                repository_id,
-                kind,
-                page_id,
-                envelope_json,
-                envelope_sha256
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                f"{kind}:invalid",
-                "repo-a",
-                kind,
-                page_id,
-                payload,
-                hashlib.sha256(payload).hexdigest(),
-            ),
-        )
-
-
 def test_payload_digest_corruption_is_reported(tmp_path: Path) -> None:
     path = tmp_path / "wiki.sqlite3"
     store = SQLiteWikiStore(path)
     store.publish(
         entry_id="outline:repo-a",
         repository_id="repo-a",
-        kind="outline",
-        page_id=None,
         envelope={"data": {"pages": []}},
     )
     with sqlite3.connect(path) as connection:
@@ -172,8 +127,6 @@ def test_failed_publish_rolls_back_the_previous_entry(tmp_path: Path) -> None:
     original = store.publish(
         entry_id="page:repo-a:overview",
         repository_id="repo-a",
-        kind="page",
-        page_id="overview",
         envelope={"data": {"body": "original"}},
     )
     with sqlite3.connect(path) as connection:
@@ -191,8 +144,6 @@ def test_failed_publish_rolls_back_the_previous_entry(tmp_path: Path) -> None:
         store.publish(
             entry_id=original.entry_id,
             repository_id=original.repository_id,
-            kind=original.kind,
-            page_id=original.page_id,
             envelope={"data": {"body": "replacement"}},
         )
 
@@ -211,8 +162,6 @@ def test_concurrent_if_absent_publishers_observe_one_winner(tmp_path: Path) -> N
         return store.publish(
             entry_id="page:repo-a:overview",
             repository_id="repo-a",
-            kind="page",
-            page_id="overview",
             envelope={"data": {"candidate": candidate}},
             if_absent=True,
         ).envelope

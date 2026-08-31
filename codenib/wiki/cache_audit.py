@@ -284,16 +284,16 @@ def audit_wiki_cache(
         orphan_entries = tuple(
             entry for entry in entries if entry.entry_id not in current_entry_ids
         )
-        database_bytes = sum(_stored_entry_bytes(entry) for entry in entries)
-        orphan_database_bytes = sum(
+        database_payload_bytes = sum(_stored_entry_bytes(entry) for entry in entries)
+        orphan_database_payload_bytes = sum(
             _stored_entry_bytes(entry) for entry in orphan_entries
         )
         storage_report = {
             "backend": type(store).__name__,
             "entries": len(entries),
-            "database_bytes": database_bytes,
+            "database_payload_bytes": database_payload_bytes,
             "orphan_entries": len(orphan_entries),
-            "orphan_database_bytes": orphan_database_bytes,
+            "orphan_database_payload_bytes": orphan_database_payload_bytes,
             "files": len(all_cache_paths),
             "legacy_bytes": legacy_bytes,
             "orphan_files": len(orphan_paths),
@@ -301,8 +301,6 @@ def audit_wiki_cache(
             # Preserve the v1 file-counter meanings for existing report readers.
             "bytes": legacy_bytes,
             "orphan_bytes": orphan_legacy_bytes,
-            "total_bytes": database_bytes + legacy_bytes,
-            "total_orphan_bytes": orphan_database_bytes + orphan_legacy_bytes,
         }
     else:
         storage_report = {

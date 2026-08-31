@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
-from typing import Any, ContextManager, Literal, Protocol
+from typing import Any, ContextManager, Protocol
 
-WikiEntryKind = Literal["outline", "page", "evidence"]
+WIKI_ENVELOPE_MAX_BYTES = 16 * 1024 * 1024
 
 
 class WikiStoreError(RuntimeError):
@@ -35,8 +35,6 @@ class WikiStoredEntry:
 
     entry_id: str
     repository_id: str
-    kind: WikiEntryKind
-    page_id: str | None
     envelope: Mapping[str, Any]
 
 
@@ -51,8 +49,6 @@ class WikiStore(Protocol):
         *,
         entry_id: str,
         repository_id: str,
-        kind: WikiEntryKind,
-        page_id: str | None,
         envelope: Mapping[str, Any],
         if_absent: bool = False,
     ) -> WikiStoredEntry:
@@ -70,7 +66,7 @@ class WikiStore(Protocol):
 
 
 __all__ = [
-    "WikiEntryKind",
+    "WIKI_ENVELOPE_MAX_BYTES",
     "WikiStore",
     "WikiStoreCorruptionError",
     "WikiStoreError",

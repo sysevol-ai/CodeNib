@@ -30,7 +30,7 @@ from .._bounded_json import (
     validate_json_complexity,
 )
 from .store import (
-    WikiEntryKind,
+    WIKI_ENVELOPE_MAX_BYTES,
     WikiStoreCorruptionError,
     WikiStoredEntry,
     WikiStoreError,
@@ -40,27 +40,15 @@ from .store import (
 
 _APPLICATION_ID = 0x434E574B  # ``CNWK``
 _SCHEMA_VERSION = 1
-_MAX_ENVELOPE_BYTES = 16 * 1024 * 1024
 _MAX_IDENTIFIER_BYTES = 4_096
-_KINDS = frozenset(("outline", "page", "evidence"))
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 _CREATE_SCHEMA_SQL = """
 CREATE TABLE wiki_entries (
     entry_id TEXT PRIMARY KEY NOT NULL,
     repository_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK (kind IN ('outline', 'page', 'evidence')),
-    page_id TEXT,
     envelope_json BLOB NOT NULL,
-    envelope_sha256 TEXT NOT NULL CHECK (length(envelope_sha256) = 64),
-    CHECK (
-        (kind = 'outline' AND page_id IS NULL)
-        OR (
-            kind IN ('page', 'evidence')
-            AND page_id IS NOT NULL
-            AND length(page_id) > 0
-        )
-    )
+    envelope_sha256 TEXT NOT NULL CHECK (length(envelope_sha256) = 64)
 );
 CREATE INDEX wiki_entries_repository_entry_idx
     ON wiki_entries(repository_id, entry_id);
@@ -69,8 +57,6 @@ CREATE INDEX wiki_entries_repository_entry_idx
 _EXPECTED_COLUMNS = (
     ("entry_id", "TEXT", 1, 1),
     ("repository_id", "TEXT", 1, 0),
-    ("kind", "TEXT", 1, 0),
-    ("page_id", "TEXT", 0, 0),
     ("envelope_json", "BLOB", 1, 0),
     ("envelope_sha256", "TEXT", 1, 0),
 )
@@ -115,26 +101,6 @@ def _validate_identifier(value: object, *, field: str) -> str:
     return value
 
 
-def _validate_kind(value: object) -> WikiEntryKind:
-    if type(value) is not str or value not in _KINDS:
-        raise WikiStoreValidationError(
-            "kind must be one of 'outline', 'page', or 'evidence'"
-        )
-    return value  # type: ignore[return-value]
-
-
-def _validate_kind_page(
-    kind: WikiEntryKind, page_id: object
-) -> tuple[WikiEntryKind, str | None]:
-    if kind == "outline":
-        if page_id is not None:
-            raise WikiStoreValidationError("outline entries must not have a page_id")
-        return kind, None
-    if page_id is None:
-        raise WikiStoreValidationError(f"{kind} entries require a page_id")
-    return kind, _validate_identifier(page_id, field="page_id")
-
-
 def _canonical_envelope(envelope: Mapping[str, Any]) -> bytes:
     if not isinstance(envelope, Mapping):
         raise WikiStoreValidationError("envelope must be a JSON object")
@@ -143,9 +109,9 @@ def _canonical_envelope(envelope: Mapping[str, Any]) -> bytes:
         validate_json_complexity(value, label="Wiki envelope")
         payload = bytearray()
         for chunk in canonical_json_value_chunks(value):
-            if len(payload) + len(chunk) > _MAX_ENVELOPE_BYTES:
+            if len(payload) + len(chunk) > WIKI_ENVELOPE_MAX_BYTES:
                 raise WikiStoreValidationError(
-                    f"Wiki envelope exceeds its {_MAX_ENVELOPE_BYTES}-byte limit"
+                    "Wiki envelope exceeds its " f"{WIKI_ENVELOPE_MAX_BYTES}-byte limit"
                 )
             payload.extend(chunk)
     except WikiStoreValidationError:
@@ -164,7 +130,7 @@ def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
         payload = payload.tobytes()
     if type(payload) is not bytes:
         raise WikiStoreCorruptionError("Wiki entry payload is not a byte string")
-    if len(payload) > _MAX_ENVELOPE_BYTES:
+    if len(payload) > WIKI_ENVELOPE_MAX_BYTES:
         raise WikiStoreCorruptionError("Wiki entry payload exceeds its size limit")
     if type(digest) is not str or _SHA256_RE.fullmatch(digest) is None:
         raise WikiStoreCorruptionError("Wiki entry has an invalid SHA-256 digest")
@@ -175,7 +141,7 @@ def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
         validate_bounded_json_stream(
             io.BytesIO(payload),
             label="persisted Wiki envelope",
-            max_bytes=_MAX_ENVELOPE_BYTES,
+            max_bytes=WIKI_ENVELOPE_MAX_BYTES,
         )
         value = json.loads(
             payload.decode("utf-8", errors="strict"),
@@ -336,8 +302,6 @@ class SQLiteWikiStore:
             repository_id = _validate_identifier(
                 row["repository_id"], field="repository_id"
             )
-            kind = _validate_kind(row["kind"])
-            kind, page_id = _validate_kind_page(kind, row["page_id"])
         except WikiStoreValidationError as exc:
             raise WikiStoreCorruptionError(
                 "Wiki entry contains invalid identity metadata"
@@ -346,8 +310,6 @@ class SQLiteWikiStore:
         return WikiStoredEntry(
             entry_id=entry_id,
             repository_id=repository_id,
-            kind=kind,
-            page_id=page_id,
             envelope=envelope,
         )
 
@@ -364,19 +326,20 @@ class SQLiteWikiStore:
         *,
         entry_id: str,
         repository_id: str,
-        kind: WikiEntryKind,
-        page_id: str | None,
         envelope: Mapping[str, Any],
         if_absent: bool = False,
     ) -> WikiStoredEntry:
         entry_id = _validate_identifier(entry_id, field="entry_id")
         repository_id = _validate_identifier(repository_id, field="repository_id")
-        kind = _validate_kind(kind)
-        kind, page_id = _validate_kind_page(kind, page_id)
         if type(if_absent) is not bool:
             raise WikiStoreValidationError("if_absent must be a boolean")
         payload = _canonical_envelope(envelope)
         digest = hashlib.sha256(payload).hexdigest()
+        published = WikiStoredEntry(
+            entry_id=entry_id,
+            repository_id=repository_id,
+            envelope=_decode_envelope(payload, digest),
+        )
 
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -385,16 +348,20 @@ class SQLiteWikiStore:
                     "SELECT * FROM wiki_entries WHERE entry_id = ?", (entry_id,)
                 ).fetchone()
                 if row is not None:
-                    current = self._entry_from_row(row)
-                    if (
-                        current.repository_id != repository_id
-                        or current.kind != kind
-                        or current.page_id != page_id
-                    ):
+                    try:
+                        current_repository_id = _validate_identifier(
+                            row["repository_id"], field="repository_id"
+                        )
+                    except WikiStoreValidationError as exc:
+                        raise WikiStoreCorruptionError(
+                            "Wiki entry contains invalid identity metadata"
+                        ) from exc
+                    if current_repository_id != repository_id:
                         raise WikiStoreValidationError(
                             "entry_id is already bound to different Wiki metadata"
                         )
                     if if_absent:
+                        current = self._entry_from_row(row)
                         connection.commit()
                         return current
                     connection.execute(
@@ -411,29 +378,19 @@ class SQLiteWikiStore:
                         INSERT INTO wiki_entries(
                             entry_id,
                             repository_id,
-                            kind,
-                            page_id,
                             envelope_json,
                             envelope_sha256
-                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?)
                         """,
                         (
                             entry_id,
                             repository_id,
-                            kind,
-                            page_id,
                             sqlite3.Binary(payload),
                             digest,
                         ),
                     )
-                stored_row = connection.execute(
-                    "SELECT * FROM wiki_entries WHERE entry_id = ?", (entry_id,)
-                ).fetchone()
-                if stored_row is None:
-                    raise WikiStoreError("Wiki entry disappeared during publication")
-                stored = self._entry_from_row(stored_row)
                 connection.commit()
-                return stored
+                return published
             except BaseException:
                 if connection.in_transaction:
                     connection.rollback()

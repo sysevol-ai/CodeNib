@@ -448,6 +448,52 @@ def test_lifespan_closes_registry_when_startup_is_cancelled(monkeypatch):
     assert captured == {"closed": True}
 
 
+def test_lifespan_defers_optional_wiki_store_initialization(monkeypatch):
+    events = []
+    config = SimpleNamespace(
+        registry_path="/tmp/qa_registry.json",
+        data_dir="/tmp/data",
+        wiki_agent=True,
+        wiki_generation_model="model",
+    )
+
+    class Registry:
+        def __init__(self, _config, **_kwargs):
+            pass
+
+        def load_all(self):
+            events.append("registry-load")
+
+        def list_infos(self):
+            return []
+
+        def close(self):
+            events.append("registry-close")
+
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(web_app, "RepoRegistry", Registry)
+    monkeypatch.setattr(
+        web_app,
+        "SQLiteWikiStore",
+        lambda *_args, **_kwargs: pytest.fail("Wiki store opened during startup"),
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_wiki_narrator",
+        lambda _config: SimpleNamespace(model="model", enabled=True, cache_dir=None),
+    )
+    application = SimpleNamespace(state=SimpleNamespace())
+
+    async def run_lifespan():
+        async with web_app.lifespan(application):
+            events.append("serve")
+            assert application.state.wiki_store is None
+
+    asyncio.run(run_lifespan())
+
+    assert events == ["registry-load", "serve", "registry-close"]
+
+
 def test_oversized_chat_request_is_rejected_before_runtime_lookup(monkeypatch):
     def unexpected_registry_lookup():
         raise AssertionError("invalid chat payload reached the repository runtime")

@@ -26,16 +26,12 @@ class WikiStoreContract:
         published = store.publish(
             entry_id="outline:repo-a",
             repository_id="repo-a",
-            kind="outline",
-            page_id=None,
             envelope=source,
         )
         source["data"]["title"] = "caller mutation"
 
         assert published.entry_id == "outline:repo-a"
         assert published.repository_id == "repo-a"
-        assert published.kind == "outline"
-        assert published.page_id is None
         assert published.envelope == {
             "data": {"title": "Overview", "sections": ["one"]}
         }
@@ -49,16 +45,12 @@ class WikiStoreContract:
         first = store.publish(
             entry_id="page:repo-a:overview",
             repository_id="repo-a",
-            kind="page",
-            page_id="overview",
             envelope={"data": {"body": "first"}},
         )
 
         second = store.publish(
             entry_id="page:repo-a:overview",
             repository_id="repo-a",
-            kind="page",
-            page_id="overview",
             envelope={"data": {"body": "second"}},
         )
 
@@ -70,16 +62,12 @@ class WikiStoreContract:
         first = store.publish(
             entry_id="evidence:repo-a:overview",
             repository_id="repo-a",
-            kind="evidence",
-            page_id="overview",
             envelope={"data": {"citations": [1]}},
         )
 
         winner = store.publish(
             entry_id="evidence:repo-a:overview",
             repository_id="repo-a",
-            kind="evidence",
-            page_id="overview",
             envelope={"data": {"citations": [2]}},
             if_absent=True,
         )
@@ -98,8 +86,6 @@ class WikiStoreContract:
             store.publish(
                 entry_id=entry_id,
                 repository_id=repository_id,
-                kind="page",
-                page_id=entry_id.removeprefix("page:"),
                 envelope={"data": {"entry_id": entry_id}},
             )
 
@@ -117,8 +103,6 @@ class WikiStoreContract:
         store.publish(
             entry_id="outline:stable",
             repository_id="repo-a",
-            kind="outline",
-            page_id=None,
             envelope={"data": {}},
         )
 
@@ -126,8 +110,6 @@ class WikiStoreContract:
             store.publish(
                 entry_id="outline:stable",
                 repository_id="repo-b",
-                kind="outline",
-                page_id=None,
                 envelope={"data": {}},
             )
 
@@ -136,8 +118,6 @@ class WikiStoreContract:
         (
             ({"entry_id": ""}, "entry_id"),
             ({"repository_id": ""}, "repository_id"),
-            ({"kind": "asset"}, "kind"),
-            ({"page_id": ""}, "page_id"),
             ({"if_absent": 1}, "if_absent"),
             ({"envelope": {"bad": float("nan")}}, "bounded JSON"),
         ),
@@ -151,8 +131,6 @@ class WikiStoreContract:
         arguments: dict[str, object] = {
             "entry_id": "page:valid",
             "repository_id": "repo-a",
-            "kind": "page",
-            "page_id": "valid",
             "envelope": {"data": {}},
         }
         arguments.update(kwargs)
@@ -160,37 +138,11 @@ class WikiStoreContract:
         with pytest.raises(WikiStoreValidationError, match=message):
             store.publish(**arguments)
 
-    @pytest.mark.parametrize(
-        ("kind", "page_id", "message"),
-        (
-            ("outline", "overview", "must not have"),
-            ("page", None, "require a page_id"),
-            ("evidence", None, "require a page_id"),
-        ),
-    )
-    def test_kind_controls_page_identity(
-        self,
-        store: WikiStore,
-        kind: str,
-        page_id: str | None,
-        message: str,
-    ) -> None:
-        with pytest.raises(WikiStoreValidationError, match=message):
-            store.publish(
-                entry_id=f"{kind}:invalid",
-                repository_id="repo-a",
-                kind=kind,
-                page_id=page_id,
-                envelope={"data": {}},
-            )
-
     def test_publish_rejects_an_oversize_envelope(self, store: WikiStore) -> None:
         with pytest.raises(WikiStoreValidationError, match="16777216-byte limit"):
             store.publish(
                 entry_id="page:oversize",
                 repository_id="repo-a",
-                kind="page",
-                page_id="oversize",
                 envelope={"data": "x" * (16 * 1024 * 1024)},
             )
 
@@ -199,8 +151,6 @@ def test_stored_entry_is_frozen() -> None:
     entry = WikiStoredEntry(
         entry_id="outline:repo-a",
         repository_id="repo-a",
-        kind="outline",
-        page_id=None,
         envelope={"data": {}},
     )
 

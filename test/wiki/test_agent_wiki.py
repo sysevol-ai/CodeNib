@@ -6760,8 +6760,6 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
     stored = store.read(original._store_entry_id("outline"))
     assert stored is not None
     assert stored.repository_id == "owner__repo-1"
-    assert stored.kind == "outline"
-    assert stored.page_id is None
     assert stored.envelope["model"] == "first-model"
 
 
@@ -6798,6 +6796,40 @@ def test_agent_wiki_lazily_adopts_json_into_store_but_read_only_does_not(tmp_pat
     adopted = store.read(entry_id)
     assert adopted is not None
     assert adopted.envelope["model"] == "old-model"
+
+
+def test_agent_wiki_rejects_unbounded_legacy_json_before_serving_or_adoption(
+    tmp_path,
+):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    wiki = AgentWiki(
+        bundle,
+        model="fake-model",
+        cache_dir=str(cache_dir),
+        store=store,
+    )
+    nested = {}
+    for _ in range(70):
+        nested = {"child": nested}
+    stable = wiki._cache_candidate_paths("outline")[0]
+    wiki._atomic_write_cache(stable, {"data": nested})
+
+    assert wiki._read_cache_read_only("outline") is None
+    assert wiki._read_cache("outline") is None
+    assert store.read(wiki._store_entry_id("outline")) is None
 
 
 def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(

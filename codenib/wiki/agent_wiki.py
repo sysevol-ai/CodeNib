@@ -20,6 +20,7 @@ import copy
 import dataclasses
 import hashlib
 import html
+import io
 import json
 import os
 import re
@@ -31,6 +32,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from filelock import FileLock
 
+from .._bounded_json import validate_bounded_json_stream, validate_json_complexity
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
 from .builder import WikiBuilder
@@ -68,9 +70,57 @@ from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
-from .store import WikiStore, WikiStoreCorruptionError, WikiStoredEntry, WikiStoreError
+from .store import (
+    WIKI_ENVELOPE_MAX_BYTES,
+    WikiStore,
+    WikiStoreCorruptionError,
+    WikiStoredEntry,
+    WikiStoreError,
+)
 
 logger = get_logger(__name__)
+
+
+def _reject_duplicate_cache_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        value[key] = item
+    return value
+
+
+def _reject_nonfinite_cache_number(value: str) -> None:
+    raise ValueError(f"non-finite JSON number: {value}")
+
+
+def _read_legacy_cache_envelope(path: str) -> dict[str, Any] | None:
+    """Read one legacy cache only after bounding its bytes and JSON shape."""
+
+    try:
+        with open(path, "rb") as handle:
+            payload = handle.read(WIKI_ENVELOPE_MAX_BYTES + 1)
+        if len(payload) > WIKI_ENVELOPE_MAX_BYTES:
+            return None
+        validate_bounded_json_stream(
+            io.BytesIO(payload),
+            label="legacy Wiki cache",
+            max_bytes=WIKI_ENVELOPE_MAX_BYTES,
+        )
+        envelope = json.loads(
+            payload.decode("utf-8", errors="strict"),
+            object_pairs_hook=_reject_duplicate_cache_object,
+            parse_constant=_reject_nonfinite_cache_number,
+        )
+        validate_json_complexity(envelope, label="legacy Wiki cache")
+    except MemoryError:
+        raise
+    except (OSError, ValueError, RecursionError):
+        return None
+    if not isinstance(envelope, dict) or "data" not in envelope:
+        return None
+    return envelope
+
 
 _EXT_LANG = {
     "py": "python",
@@ -3395,12 +3445,8 @@ class AgentWiki:
         for index, path in enumerate(paths):
             if not os.path.isfile(path):
                 continue
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    envelope = json.load(fh)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not isinstance(envelope, dict) or "data" not in envelope:
+            envelope = _read_legacy_cache_envelope(path)
+            if envelope is None:
                 continue
             if self._store is not None:
                 try:
@@ -3437,12 +3483,8 @@ class AgentWiki:
         for path in self._cache_candidate_paths(suffix):
             if not os.path.isfile(path):
                 continue
-            try:
-                with open(path, encoding="utf-8") as handle:
-                    envelope = json.load(handle)
-            except (OSError, json.JSONDecodeError):
-                continue
-            if isinstance(envelope, dict) and "data" in envelope:
+            envelope = _read_legacy_cache_envelope(path)
+            if envelope is not None:
                 return envelope.get("data")
         return None
 
@@ -3455,29 +3497,6 @@ class AgentWiki:
             )
         return envelope["data"]
 
-    @staticmethod
-    def _store_entry_metadata(
-        suffix: str,
-        envelope: dict[str, Any],
-    ) -> tuple[str, Optional[str]]:
-        if suffix == "outline":
-            return "outline", None
-        if suffix.startswith("evidence_page_"):
-            kind = "evidence"
-        elif suffix.startswith("page_"):
-            kind = "page"
-        else:
-            raise ValueError(f"unsupported Wiki cache suffix: {suffix!r}")
-        data = envelope.get("data")
-        page_id = str(data.get("id") or "") if isinstance(data, dict) else ""
-        if not page_id:
-            page_suffix = suffix.removeprefix("evidence_")
-            if page_suffix.startswith("page_"):
-                page_id = page_suffix[5:].rsplit("_", 1)[0]
-        if not page_id:
-            raise ValueError(f"Wiki {kind} cache entry has no page id")
-        return kind, page_id
-
     def _publish_store_cache(
         self,
         suffix: str,
@@ -3487,12 +3506,9 @@ class AgentWiki:
     ) -> WikiStoredEntry:
         if self._store is None:
             raise RuntimeError("Wiki store is not configured")
-        kind, page_id = self._store_entry_metadata(suffix, envelope)
         return self._store.publish(
             entry_id=self._store_entry_id(suffix),
             repository_id=self._repository_id(),
-            kind=kind,
-            page_id=page_id,
             envelope=envelope,
             if_absent=if_absent,
         )
