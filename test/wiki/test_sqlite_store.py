@@ -103,6 +103,19 @@ def test_unidentified_foreign_database_fails_before_wal_mutation(
         )
 
 
+def test_error_mapping_supports_python_without_sqlite_result_constants(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    for name in ("SQLITE_CORRUPT", "SQLITE_NOTADB", "SQLITE_SCHEMA"):
+        monkeypatch.delattr(sqlite3, name, raising=False)
+    database_directory = tmp_path / "wiki.sqlite3"
+    database_directory.mkdir()
+
+    with pytest.raises(WikiStoreError, match="initialization"):
+        SQLiteWikiStore(database_directory)
+
+
 def test_payload_digest_corruption_is_reported(tmp_path: Path) -> None:
     path = tmp_path / "wiki.sqlite3"
     store = SQLiteWikiStore(path)

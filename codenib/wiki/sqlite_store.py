@@ -40,6 +40,11 @@ from .store import (
 _APPLICATION_ID = 0x434E574B  # ``CNWK``
 _SCHEMA_VERSION = 1
 _MAX_IDENTIFIER_BYTES = 4_096
+# Stable SQLite primary result codes. Python 3.10 does not expose the matching
+# ``sqlite3.SQLITE_*`` module constants even though exceptions carry the code.
+_SQLITE_CORRUPT = 11
+_SQLITE_SCHEMA = 17
+_SQLITE_NOTADB = 26
 
 _CREATE_SCHEMA_SQL = """
 CREATE TABLE wiki_entries (
@@ -76,9 +81,9 @@ def _reject_nonfinite_number(value: str) -> None:
 def _sqlite_error(operation: str, exc: sqlite3.Error) -> WikiStoreError:
     error_code = getattr(exc, "sqlite_errorcode", None)
     primary_code = error_code & 0xFF if isinstance(error_code, int) else None
-    if primary_code in {sqlite3.SQLITE_CORRUPT, sqlite3.SQLITE_NOTADB}:
+    if primary_code in {_SQLITE_CORRUPT, _SQLITE_NOTADB}:
         return WikiStoreCorruptionError(f"Wiki database {operation} found corruption")
-    if primary_code == sqlite3.SQLITE_SCHEMA:
+    if primary_code == _SQLITE_SCHEMA:
         return WikiStoreSchemaError(f"Wiki database schema changed during {operation}")
     if isinstance(exc, sqlite3.IntegrityError):
         return WikiStoreValidationError(
