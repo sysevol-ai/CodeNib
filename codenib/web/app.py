@@ -868,6 +868,13 @@ async def list_repos() -> list[RepoInfo]:
     return [await decorate(info) for info in registry.list_infos()]
 
 
+# Query aliases carry configured IDs containing "/" without a greedy path
+# converter that would shadow nested routes such as Wiki pages. Keep the
+# segment routes for existing callers.
+@app.get(
+    "/api/index-status",
+    response_model=RepoIndexStatus,
+)
 @app.get(
     "/api/repos/{repo_id}/index-status",
     response_model=RepoIndexStatus,
@@ -942,6 +949,11 @@ async def index_job_status(
         ) from exc
 
 
+@app.post(
+    "/api/index-jobs",
+    response_model=IndexJobStatusResponse,
+    status_code=202,
+)
 @app.post(
     "/api/repos/{repo_id}/index-jobs",
     response_model=IndexJobStatusResponse,

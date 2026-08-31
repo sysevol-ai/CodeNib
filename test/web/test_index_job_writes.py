@@ -118,10 +118,10 @@ def _queued_job(
     )
 
 
-def _response() -> IndexJobStatusResponse:
+def _response(*, repo_id: str = "demo") -> IndexJobStatusResponse:
     return IndexJobStatusResponse(
         job_id="job_" + "a" * 64,
-        repo_id="demo",
+        repo_id=repo_id,
         status="queued",
         cancel_requested=False,
         attempt_count=0,
@@ -481,8 +481,8 @@ def test_catalog_writer_hides_unknown_bindings_and_invalid_plans() -> None:
         )
 
 
-def test_create_endpoint_requires_header_and_uses_injected_writer(monkeypatch) -> None:
-    expected = _response()
+def test_create_query_route_accepts_slash_id_and_validates_request(monkeypatch) -> None:
+    expected = _response(repo_id="owner/repo")
     calls = []
 
     class Writer:
@@ -494,26 +494,26 @@ def test_create_endpoint_requires_header_and_uses_injected_writer(monkeypatch) -
     client = TestClient(web_app.app)
 
     missing = client.post(
-        "/api/repos/demo/index-jobs",
+        "/api/index-jobs?repo_id=owner%2Frepo",
         json={"indexes": ["bm25"], "mode": "full"},
     )
     duplicate = client.post(
-        "/api/repos/demo/index-jobs",
+        "/api/index-jobs?repo_id=owner%2Frepo",
         headers={"Idempotency-Key": "request"},
         json={"indexes": ["bm25", "bm25"], "mode": "full"},
     )
     coerced_force = client.post(
-        "/api/repos/demo/index-jobs",
+        "/api/index-jobs?repo_id=owner%2Frepo",
         headers={"Idempotency-Key": "request"},
         json={"indexes": ["bm25"], "mode": "full", "force": "false"},
     )
     unknown_field = client.post(
-        "/api/repos/demo/index-jobs",
+        "/api/index-jobs?repo_id=owner%2Frepo",
         headers={"Idempotency-Key": "request"},
         json={"indexes": ["bm25"], "mode": "full", "unknown": True},
     )
     created = client.post(
-        "/api/repos/demo/index-jobs",
+        "/api/index-jobs?repo_id=owner%2Frepo",
         headers={"Idempotency-Key": "request"},
         json={"indexes": ["bm25"], "mode": "full", "force": False},
     )
@@ -526,7 +526,7 @@ def test_create_endpoint_requires_header_and_uses_injected_writer(monkeypatch) -
     assert created.json()["job_id"] == expected.job_id
     assert calls == [
         (
-            "demo",
+            "owner/repo",
             {
                 "indexes": ("bm25",),
                 "mode": "full",

@@ -1826,6 +1826,9 @@ routing remain absent.
   Repository status overlays queued/running jobs only after releasing its RCU
   bundle pin. The default server still has no job reader or writer, so this read
   API returns unavailable until production storage bindings are configured.
+  Status keeps the existing single-segment repository route and provides
+  `GET /api/index-status?repo_id=...` when a configured ID contains `/`; this
+  avoids a catch-all route that could consume Wiki page paths.
 - A separate least-authority job-creation catalog can now atomically enqueue an
   exact idempotent request only when its repository/ref has no queued or running
   job. Exact replay returns the existing job, while two concurrent new requests
@@ -1836,10 +1839,11 @@ routing remain absent.
   losers conflict on either an active slot or a changed ref-generation fence,
   while committed retries replay before source capture. The trusted
   source/profile planner remains an explicit injected capability.
-- The first Web write slice exposes `POST /api/repos/{repo_id}/index-jobs` with
-  a required bounded idempotency header and returns the detached durable job
-  status. Its generic catalog adapter accepts exactly one `full` BM25 or vector
-  view; the production retained-source planner currently accepts BM25 only.
+- The first Web write slice exposes `POST /api/repos/{repo_id}/index-jobs` and
+  the slash-safe `POST /api/index-jobs?repo_id=...` alias with a required
+  bounded idempotency header, returning the detached durable job status. Its
+  generic catalog adapter accepts exactly one `full` BM25 or vector view; the
+  production retained-source planner currently accepts BM25 only.
   Multi-view, incremental, symbol-graph, and forced requests fail before
   planning or catalog access. Planner identities and storage failures stay
   private, conflicts map to one public response, and an exact repository/key

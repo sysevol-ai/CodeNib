@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
 from codenib.compiler.manifest import LEGACY_MANIFEST_VERSION, IndexEntry, RepoManifest
@@ -196,14 +197,26 @@ def test_status_passes_repository_path_to_head_resolver() -> None:
     assert observed == [Path("/repo")]
 
 
-def test_index_status_endpoint_pins_generation_through_projection(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("url", "repo_id"),
+    (
+        ("/api/repos/repo/index-status", "repo"),
+        ("/api/index-status?repo_id=owner%2Frepo", "owner/repo"),
+    ),
+)
+def test_index_status_routes_preserve_id_and_pin_generation(
+    monkeypatch,
+    url,
+    repo_id,
+) -> None:
     events: list[str] = []
     bundle = _bundle({"bm25": _entry("bm25")})
+    bundle.entry.instance_id = repo_id
 
     class Registry:
         @contextmanager
-        def pin(self, repo_id: str):
-            assert repo_id == "repo"
+        def pin(self, requested_repo_id: str):
+            assert requested_repo_id == repo_id
             events.append("pin-enter")
             try:
                 yield bundle
@@ -223,10 +236,39 @@ def test_index_status_endpoint_pins_generation_through_projection(monkeypatch) -
     monkeypatch.setattr(web_app.app.state, "index_head_resolver", head, raising=False)
     monkeypatch.setattr(web_app, "_run_pinned_thread", inline)
 
-    status = asyncio.run(web_app.index_status("repo"))
+    response = TestClient(web_app.app).get(url)
 
-    assert status.indexes[0].state == "built"
+    assert response.status_code == 200
+    assert response.json()["repo_id"] == repo_id
+    assert response.json()["indexes"][0]["state"] == "built"
     assert events == ["pin-enter", "thread", "head", "pin-exit"]
+
+
+def test_index_status_query_alias_does_not_shadow_wiki_page(monkeypatch) -> None:
+    bundle = SimpleNamespace(entry=SimpleNamespace(repo="org/repo"))
+
+    class Registry:
+        @contextmanager
+        def pin(self, repo_id: str):
+            assert repo_id == "demo"
+            yield bundle
+
+    class Builder:
+        def page(self, page_id: str):
+            assert page_id == "index-status"
+            return {"id": page_id, "media_slots": []}
+
+    async def inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle: Builder())
+    monkeypatch.setattr(web_app, "_run_pinned_thread", inline)
+
+    response = TestClient(web_app.app).get("/api/repos/demo/wiki/index-status")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "index-status"
 
 
 def test_index_status_endpoint_resolves_update_capabilities_per_repository(
