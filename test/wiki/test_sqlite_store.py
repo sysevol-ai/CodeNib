@@ -231,7 +231,11 @@ def test_error_mapping_supports_python_without_sqlite_result_constants(
 
 @pytest.mark.parametrize(
     "message",
-    ("file is not a database", "database disk image is malformed"),
+    (
+        "file is not a database",
+        "database disk image is malformed",
+        "malformed database schema (broken) - incomplete input",
+    ),
 )
 def test_error_mapping_without_result_attributes_identifies_corruption(
     message: str,

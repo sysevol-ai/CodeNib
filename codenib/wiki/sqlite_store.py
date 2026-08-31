@@ -49,6 +49,7 @@ _SQLITE_NOTADB = 26
 _SQLITE_CORRUPTION_MESSAGES = frozenset(
     ("database disk image is malformed", "file is not a database")
 )
+_SQLITE_CORRUPTION_PREFIXES = ("malformed database schema",)
 
 _CREATE_SCHEMA_SQL = """
 CREATE TABLE wiki_entries (
@@ -89,7 +90,10 @@ def _sqlite_error(operation: str, exc: sqlite3.Error) -> WikiStoreError:
     if primary_code in {_SQLITE_CORRUPT, _SQLITE_NOTADB} or (
         primary_code is None
         and type(exc) is sqlite3.DatabaseError
-        and message in _SQLITE_CORRUPTION_MESSAGES
+        and (
+            message in _SQLITE_CORRUPTION_MESSAGES
+            or message.startswith(_SQLITE_CORRUPTION_PREFIXES)
+        )
     ):
         return WikiStoreCorruptionError(f"Wiki database {operation} found corruption")
     if primary_code == _SQLITE_SCHEMA or (
@@ -110,7 +114,11 @@ def _validate_identifier(value: object, *, field: str) -> str:
         raise WikiStoreValidationError(f"{field} must be a non-empty string")
     if "\x00" in value:
         raise WikiStoreValidationError(f"{field} must not contain NUL bytes")
-    if len(value.encode("utf-8")) > _MAX_IDENTIFIER_BYTES:
+    try:
+        encoded = value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise WikiStoreValidationError(f"{field} must contain valid Unicode") from exc
+    if len(encoded) > _MAX_IDENTIFIER_BYTES:
         raise WikiStoreValidationError(
             f"{field} exceeds its {_MAX_IDENTIFIER_BYTES}-byte limit"
         )

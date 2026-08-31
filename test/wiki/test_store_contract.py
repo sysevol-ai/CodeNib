@@ -146,6 +146,32 @@ class WikiStoreContract:
                 envelope={"data": "x" * (16 * 1024 * 1024)},
             )
 
+    def test_invalid_unicode_identifiers_raise_validation_errors(
+        self,
+        store: WikiStore,
+    ) -> None:
+        invalid = "\ud800"
+
+        with pytest.raises(WikiStoreValidationError, match="valid Unicode"):
+            store.read(invalid)
+        with pytest.raises(WikiStoreValidationError, match="valid Unicode"):
+            store.publish(
+                entry_id=invalid,
+                repository_id="repo-a",
+                envelope={"data": {}},
+            )
+        with pytest.raises(WikiStoreValidationError, match="valid Unicode"):
+            store.publish(
+                entry_id="page:valid",
+                repository_id=invalid,
+                envelope={"data": {}},
+            )
+        with pytest.raises(WikiStoreValidationError, match="valid Unicode"):
+            store.scan(repository_ids=[invalid])
+        with pytest.raises(WikiStoreValidationError, match="valid Unicode"):
+            with store.generation_guard(invalid):
+                pass
+
 
 def test_stored_entry_is_frozen() -> None:
     entry = WikiStoredEntry(
