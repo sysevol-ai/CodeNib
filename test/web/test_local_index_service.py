@@ -259,32 +259,18 @@ def test_local_index_topology_owner_retains_return_boundary_interruption(
     config, repositories = _topology_config(tmp_path)
     owner = LocalIndexStorageTopologyOwner()
     interruption = KeyboardInterrupt("topology return interrupted")
-    acquire = LocalIndexStorageTopology.acquire
-    implementation = acquire.__func__
-    instructions = tuple(dis.get_instructions(implementation))
-    return_offsets = {
-        instruction.offset
-        for index, instruction in enumerate(instructions)
-        if instruction.opname == "RETURN_VALUE"
-        and any(
-            candidate.opname == "LOAD_FAST" and candidate.argval == "topology"
-            for candidate in instructions[max(0, index - 15) : index]
-        )
-    }
-    assert len(return_offsets) == 1
+    implementation = LocalIndexStorageTopology.acquire.__func__
     injected = False
     previous_trace = sys.gettrace()
 
-    def trace(frame, event: str, _arg: object):
+    def trace(frame, event: str, value: object):
         nonlocal injected
-        if event == "call" and frame.f_code is implementation.__code__:
-            frame.f_trace_opcodes = True
-            return trace
         if (
             not injected
             and frame.f_code is implementation.__code__
-            and event == "opcode"
-            and frame.f_lasti in return_offsets
+            and event == "return"
+            and value is not None
+            and value is frame.f_locals.get("topology")
         ):
             injected = True
             sys.settrace(None)
@@ -294,7 +280,7 @@ def test_local_index_topology_owner_retains_return_boundary_interruption(
     sys.settrace(trace)
     try:
         with pytest.raises(KeyboardInterrupt) as raised:
-            acquire(config, repositories, owner=owner)
+            LocalIndexStorageTopology.acquire(config, repositories, owner=owner)
     finally:
         sys.settrace(previous_trace)
 
