@@ -144,10 +144,14 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
 
     class Registry:
         def __init__(self, _config, **_kwargs):
-            pass
+            self.active = {"demo"}
 
         def load_all(self):
             events.append("registry-load")
+
+        @contextmanager
+        def pin(self, repo_id):
+            yield object() if repo_id in self.active else None
 
         def list_infos(self):
             return []
@@ -210,6 +214,15 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
                     idempotency_key="unhealthy",
                 )
             runtime.healthy = True
+            application.state.registry.active.clear()
+            with pytest.raises(web_app.IndexJobNotFoundError, match="no longer"):
+                bound_writer.create(
+                    "demo",
+                    indexes=("bm25",),
+                    mode="full",
+                    force=False,
+                    idempotency_key="retired",
+                )
 
     asyncio.run(run_lifespan())
 
@@ -220,6 +233,7 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
         "runtime-close",
         "registry-close",
     ]
+    assert [repo_id for repo_id, _kwargs in writer.calls] == ["demo"]
     assert application.state.index_job_reader is previous_reader
     for name in (
         "index_runtime_service",

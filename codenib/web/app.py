@@ -105,17 +105,21 @@ class _LocalRuntimeLifespanState:
 
 
 class _LiveLocalIndexJobWriter:
-    """Stop admitting durable writes as soon as the owned loops fault."""
+    """Gate writes on the live repository and observable runtime health."""
 
-    __slots__ = ("_service", "_writer")
+    __slots__ = ("_registry", "_service", "_writer")
 
     def __init__(
-        self, service: LocalIndexRuntimeService, writer: IndexJobWriter
+        self,
+        service: LocalIndexRuntimeService,
+        writer: IndexJobWriter,
+        registry: RepoRegistry,
     ) -> None:
         if not isinstance(writer, IndexJobWriter):
             raise TypeError("local runtime writer does not implement its contract")
         self._service = service
         self._writer = writer
+        self._registry = registry
 
     def create(
         self,
@@ -126,15 +130,26 @@ class _LiveLocalIndexJobWriter:
         force: bool,
         idempotency_key: str,
     ) -> IndexJobStatusResponse:
-        if self._service.state != "running" or self._service.healthy is not True:
-            raise IndexJobWriteError("local index runtime is unhealthy")
-        return self._writer.create(
-            repo_id,
-            indexes=indexes,
-            mode=mode,
-            force=force,
-            idempotency_key=idempotency_key,
-        )
+        # A pin is the admission point: a concurrent reload may retire this
+        # generation afterwards, but a request that starts after retirement
+        # must not reach the lifespan-wide writer bound to the old checkout.
+        with self._registry.pin(repo_id) as bundle:
+            if bundle is None:
+                raise IndexJobNotFoundError(
+                    "Web repository is no longer configured for index updates"
+                )
+            # Health is an entry-time availability signal, not part of the
+            # catalog transaction. A job accepted just before a loop fault is
+            # durable and remains recoverable by the next service process.
+            if self._service.state != "running" or self._service.healthy is not True:
+                raise IndexJobWriteError("local index runtime is unhealthy")
+            return self._writer.create(
+                repo_id,
+                indexes=indexes,
+                mode=mode,
+                force=force,
+                idempotency_key=idempotency_key,
+            )
 
 
 def _live_local_index_capabilities(
@@ -239,7 +254,7 @@ def _configured_local_index_runtime(app, config, registry, lifecycle):
     try:
         with open_local_index_runtime_service(storage, registry) as service:
             lifecycle.service = service
-            writer = _LiveLocalIndexJobWriter(service, service.writer)
+            writer = _LiveLocalIndexJobWriter(service, service.writer, registry)
             capabilities = partial(_live_local_index_capabilities, service)
             bindings = {
                 "index_runtime_service": service,
