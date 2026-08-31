@@ -1734,9 +1734,10 @@ routing remain absent.
   so the ref-writer fence spans the actual generation swap. It rejects
   ref-generation regression, same-generation snapshot/timestamp conflict,
   storage-binding drift, and legacy registry-file replacement of an active
-  durable generation. It permits a first durable BM25 generation to replace an
-  authenticated source-only bundle while still rejecting stale or incompatible
-  indexed incumbents.
+  durable generation. It permits a durable BM25 generation to replace an
+  authenticated source-only bundle or a compatible sole-BM25 incumbent,
+  including stale and failed repair, while rejecting incompatible multi-view
+  generations.
 - The concrete local retained-BM25 publisher binds each configured storage ref
   to one canonical repository root, private workspace authority, namespace,
   object store, and retained catalog. It performs fail-fast current-result

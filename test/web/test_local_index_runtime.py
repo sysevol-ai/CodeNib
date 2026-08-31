@@ -264,7 +264,13 @@ def test_local_index_runtime_rejects_loaded_repository_identity_mismatch(
 
 @pytest.mark.parametrize(
     "drift",
-    ("repository-key", "repository-root", "languages", "source-selection"),
+    (
+        "repository-key",
+        "repository-root",
+        "languages",
+        "source-selection",
+        "multi-view",
+    ),
 )
 def test_local_index_runtime_rejects_reloaded_build_input_drift(
     tmp_path: Path,
@@ -283,12 +289,17 @@ def test_local_index_runtime_rejects_reloaded_build_input_drift(
         entry = replace(entry, repo_dir=str(replacement_root))
     elif drift == "languages":
         manifest = replace(manifest, languages=["javascript"])
-    else:
+    elif drift == "source-selection":
         manifest = replace(
             manifest,
             source_selection=RepositorySourceSelection(
                 (*manifest.source_selection.exclude_subtrees, "policy-change")
             ),
+        )
+    else:
+        manifest = replace(
+            manifest,
+            indexes={"bm25": object(), "vector": object()},
         )
     replacement = RepoBundle(entry=entry, manifest=manifest)
     equivalent = RepoBundle(

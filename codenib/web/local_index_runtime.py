@@ -1011,6 +1011,7 @@ class LocalIndexRuntimeService:
         if configured is None:
             return False
         try:
+            current_indexes = set(bundle.manifest.indexes)
             return (
                 bundle.entry.instance_id == repo_id
                 and bundle.entry.repo == configured.storage.repository_key
@@ -1018,6 +1019,7 @@ class LocalIndexRuntimeService:
                 == configured.repository_root
                 and tuple(_repository_languages(bundle)) == configured.languages
                 and _repository_selection(bundle) == configured.source_selection
+                and (not current_indexes or current_indexes == {"bm25"})
             )
         except (AttributeError, LocalIndexServiceError, OSError, TypeError, ValueError):
             return False
