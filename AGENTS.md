@@ -44,9 +44,10 @@ completed.
 
 ## Storage Scope Guard
 
-- Every storage milestone must ship an end-to-end product consumer. Do not add
-  a protocol method, table, state, or failure mode without a current consumer
-  or a prior bug that exercises it.
+- Every storage milestone must ship one named end-to-end product vertical that
+  exercises the domain-store boundary and production backend. Do not add a
+  protocol method, table, state, or failure mode without a current consumer or
+  a prior bug that exercises it.
 - Use one public protocol, one production backend, one forward migration, and
   at most three domain tables as the default review budget, not a hard limit.
   Exceeding it requires a named second consumer/backend or measured need.
@@ -65,9 +66,10 @@ completed.
   name its invariant, linearization point, multi-lock order, and interruption
   recovery owner, and include a deterministic race test. Otherwise reuse an
   existing transaction, lease, pin, or recovery path, or simplify the design.
-- Prefer one conformance suite, one backend integration suite, and one
-  end-to-end regression. Fault tests must target observable boundaries or a
-  named prior bug, not arbitrary Python-line interruption.
+- Prefer one backend-neutral conformance harness driven by a backend
+  fixture/factory, one backend integration suite, and one product-vertical
+  regression. Fault tests must target observable boundaries or a named prior
+  bug, not arbitrary Python-line interruption.
 - Keep roadmap updates outcome-oriented and concise. Put implementation traces
   in code, tests, ADRs, or the changelog instead of growing the roadmap.
 
