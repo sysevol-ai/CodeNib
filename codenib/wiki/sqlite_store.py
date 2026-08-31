@@ -15,7 +15,6 @@ import hashlib
 import io
 import json
 import os
-import re
 import sqlite3
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
@@ -41,7 +40,6 @@ from .store import (
 _APPLICATION_ID = 0x434E574B  # ``CNWK``
 _SCHEMA_VERSION = 1
 _MAX_IDENTIFIER_BYTES = 4_096
-_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 _CREATE_SCHEMA_SQL = """
 CREATE TABLE wiki_entries (
@@ -132,7 +130,7 @@ def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
         raise WikiStoreCorruptionError("Wiki entry payload is not a byte string")
     if len(payload) > WIKI_ENVELOPE_MAX_BYTES:
         raise WikiStoreCorruptionError("Wiki entry payload exceeds its size limit")
-    if type(digest) is not str or _SHA256_RE.fullmatch(digest) is None:
+    if type(digest) is not str:
         raise WikiStoreCorruptionError("Wiki entry has an invalid SHA-256 digest")
     observed_digest = hashlib.sha256(payload).hexdigest()
     if observed_digest != digest:
@@ -159,16 +157,7 @@ def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
 class SQLiteWikiStore:
     """A short-connection, transactional SQLite store for Wiki envelopes."""
 
-    def __init__(
-        self,
-        path: str | os.PathLike[str],
-        *,
-        busy_timeout_ms: int = 5_000,
-    ) -> None:
-        if type(busy_timeout_ms) is not int or busy_timeout_ms < 0:
-            raise WikiStoreValidationError(
-                "busy_timeout_ms must be a non-negative integer"
-            )
+    def __init__(self, path: str | os.PathLike[str]) -> None:
         if str(path) == ":memory:":
             raise WikiStoreValidationError(
                 "short-connection Wiki stores require a filesystem path"
@@ -179,14 +168,12 @@ class SQLiteWikiStore:
         except (OSError, RuntimeError, TypeError, ValueError) as exc:
             raise WikiStoreValidationError("invalid Wiki database path") from exc
         self.path = resolved
-        self._busy_timeout_ms = busy_timeout_ms
         self._lock_directory = Path(f"{resolved}.locks")
         self._initialize()
 
     def _open_raw(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
             str(self.path),
-            timeout=self._busy_timeout_ms / 1_000,
             isolation_level=None,
         )
         connection.row_factory = sqlite3.Row
@@ -276,8 +263,8 @@ class SQLiteWikiStore:
         if str(journal_mode).lower() != "wal":
             raise WikiStoreError("SQLite WAL mode could not be enabled")
 
-    def _configure_connection(self, connection: sqlite3.Connection) -> None:
-        connection.execute(f"PRAGMA busy_timeout = {self._busy_timeout_ms:d}")
+    @staticmethod
+    def _configure_connection(connection: sqlite3.Connection) -> None:
         connection.execute("PRAGMA synchronous = NORMAL")
 
     @contextmanager

@@ -31,14 +31,14 @@ class TestSQLiteWikiStoreContract(WikiStoreContract):
 
 def test_reopen_preserves_entries_and_uses_wal(tmp_path: Path) -> None:
     path = tmp_path / "wiki.sqlite3"
-    store = SQLiteWikiStore(path, busy_timeout_ms=1_234)
+    store = SQLiteWikiStore(path)
     expected = store.publish(
         entry_id="page:repo-a:overview",
         repository_id="repo-a",
         envelope={"data": {"body": "persisted"}},
     )
 
-    reopened = SQLiteWikiStore(path, busy_timeout_ms=1_234)
+    reopened = SQLiteWikiStore(path)
 
     assert reopened.read(expected.entry_id) == expected
     with sqlite3.connect(path) as connection:
