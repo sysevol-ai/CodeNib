@@ -24,6 +24,7 @@ from typing import Any
 from filelock import FileLock
 
 from .._bounded_json import (
+    _bounded_parse_float,
     canonical_json_value_chunks,
     validate_bounded_json_stream,
     validate_json_complexity,
@@ -45,6 +46,9 @@ _MAX_IDENTIFIER_BYTES = 4_096
 _SQLITE_CORRUPT = 11
 _SQLITE_SCHEMA = 17
 _SQLITE_NOTADB = 26
+_SQLITE_CORRUPTION_MESSAGES = frozenset(
+    ("database disk image is malformed", "file is not a database")
+)
 
 _CREATE_SCHEMA_SQL = """
 CREATE TABLE wiki_entries (
@@ -81,9 +85,18 @@ def _reject_nonfinite_number(value: str) -> None:
 def _sqlite_error(operation: str, exc: sqlite3.Error) -> WikiStoreError:
     error_code = getattr(exc, "sqlite_errorcode", None)
     primary_code = error_code & 0xFF if isinstance(error_code, int) else None
-    if primary_code in {_SQLITE_CORRUPT, _SQLITE_NOTADB}:
+    message = str(exc).strip().casefold()
+    if primary_code in {_SQLITE_CORRUPT, _SQLITE_NOTADB} or (
+        primary_code is None
+        and type(exc) is sqlite3.DatabaseError
+        and message in _SQLITE_CORRUPTION_MESSAGES
+    ):
         return WikiStoreCorruptionError(f"Wiki database {operation} found corruption")
-    if primary_code == _SQLITE_SCHEMA:
+    if primary_code == _SQLITE_SCHEMA or (
+        primary_code is None
+        and not isinstance(exc, sqlite3.IntegrityError)
+        and message == "database schema has changed"
+    ):
         return WikiStoreSchemaError(f"Wiki database schema changed during {operation}")
     if isinstance(exc, sqlite3.IntegrityError):
         return WikiStoreValidationError(
@@ -150,6 +163,7 @@ def _decode_envelope(payload: object, digest: object) -> dict[str, Any]:
             payload.decode("utf-8", errors="strict"),
             object_pairs_hook=_reject_duplicate_object,
             parse_constant=_reject_nonfinite_number,
+            parse_float=_bounded_parse_float,
         )
         if not isinstance(value, dict):
             raise ValueError("Wiki envelope is not a JSON object")
@@ -174,7 +188,17 @@ class SQLiteWikiStore:
             raise WikiStoreValidationError("invalid Wiki database path") from exc
         self.path = resolved
         self._lock_directory = Path(f"{resolved}.locks")
-        self._initialize()
+        try:
+            self._lock_directory.mkdir(parents=True, exist_ok=True)
+            # Lock acquisition linearizes schema identity and the WAL transition
+            # for this database. Initialization takes no entry lock, retains no
+            # owner after return, and the OS releases the file lock on exit.
+            with FileLock(str(self._lock_directory / ".initialize.lock")):
+                self._initialize()
+        except WikiStoreError:
+            raise
+        except OSError as exc:
+            raise WikiStoreError("Wiki database initialization lock failed") from exc
 
     def _open_raw(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
@@ -200,16 +224,30 @@ class SQLiteWikiStore:
         )
         return application_id, user_version, tables
 
+    @staticmethod
+    def _is_empty_database(connection: sqlite3.Connection) -> bool:
+        return (
+            connection.execute("SELECT 1 FROM sqlite_master LIMIT 1").fetchone() is None
+        )
+
     def _initialize(self) -> None:
         connection: sqlite3.Connection | None = None
         try:
             connection = self._open_raw()
-            application_id, user_version, tables = self._identity(connection)
-            if application_id == 0 and user_version == 0 and not tables:
+            application_id, user_version, _ = self._identity(connection)
+            if (
+                application_id == 0
+                and user_version == 0
+                and self._is_empty_database(connection)
+            ):
                 connection.execute("BEGIN IMMEDIATE")
                 try:
-                    application_id, user_version, tables = self._identity(connection)
-                    if application_id == 0 and user_version == 0 and not tables:
+                    application_id, user_version, _ = self._identity(connection)
+                    if (
+                        application_id == 0
+                        and user_version == 0
+                        and self._is_empty_database(connection)
+                    ):
                         schema_statements = tuple(
                             statement.strip()
                             for statement in _CREATE_SCHEMA_SQL.split(";")

@@ -6832,6 +6832,36 @@ def test_agent_wiki_rejects_unbounded_legacy_json_before_serving_or_adoption(
     assert store.read(wiki._store_entry_id("outline")) is None
 
 
+def test_agent_wiki_rejects_overflowed_legacy_json_number(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    cache_dir = tmp_path / "wiki-cache"
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    wiki = AgentWiki(
+        bundle,
+        model="fake-model",
+        cache_dir=str(cache_dir),
+        store=store,
+    )
+    stable = wiki._cache_candidate_paths("outline")[0]
+    with open(stable, "w", encoding="utf-8") as handle:
+        handle.write('{"data":{"score":1e9999}}')
+
+    assert wiki._read_cache_read_only("outline") is None
+    assert wiki._read_cache("outline") is None
+    assert store.read(wiki._store_entry_id("outline")) is None
+
+
 def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(
     tmp_path, monkeypatch
 ):

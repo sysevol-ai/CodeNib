@@ -32,7 +32,11 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from filelock import FileLock
 
-from .._bounded_json import validate_bounded_json_stream, validate_json_complexity
+from .._bounded_json import (
+    _bounded_parse_float,
+    validate_bounded_json_stream,
+    validate_json_complexity,
+)
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
 from .builder import WikiBuilder
@@ -111,6 +115,7 @@ def _read_legacy_cache_envelope(path: str) -> dict[str, Any] | None:
             payload.decode("utf-8", errors="strict"),
             object_pairs_hook=_reject_duplicate_cache_object,
             parse_constant=_reject_nonfinite_cache_number,
+            parse_float=_bounded_parse_float,
         )
         validate_json_complexity(envelope, label="legacy Wiki cache")
     except MemoryError:
