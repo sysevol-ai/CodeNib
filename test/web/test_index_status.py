@@ -233,7 +233,7 @@ def test_index_status_endpoint_resolves_update_capabilities_per_repository(
     monkeypatch,
 ) -> None:
     bundle = _bundle({"bm25": _entry("bm25")})
-    observed: list[str] = []
+    observed: list[tuple[str, object]] = []
 
     class Registry:
         @contextmanager
@@ -241,8 +241,8 @@ def test_index_status_endpoint_resolves_update_capabilities_per_repository(
             assert repo_id == "repo"
             yield bundle
 
-    def resolve(repo_id: str):
-        observed.append(repo_id)
+    def resolve(repo_id: str, pinned_bundle):
+        observed.append((repo_id, pinned_bundle))
         return None
 
     async def inline(function, *args, **kwargs):
@@ -274,7 +274,7 @@ def test_index_status_endpoint_resolves_update_capabilities_per_repository(
 
     status = asyncio.run(web_app.index_status("repo"))
 
-    assert observed == ["repo"]
+    assert observed == [("repo", bundle)]
     assert status.indexes[0].updates_enabled is False
     assert status.indexes[0].update_mode == "unavailable"
 
@@ -304,7 +304,7 @@ def test_index_status_endpoint_sanitizes_invalid_resolver_capabilities(
     monkeypatch.setattr(
         web_app.app.state,
         "index_update_capabilities_resolver",
-        lambda _repo_id: invalid_capabilities,
+        lambda _repo_id, _bundle: invalid_capabilities,
         raising=False,
     )
 

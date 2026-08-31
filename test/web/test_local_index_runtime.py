@@ -876,7 +876,10 @@ def test_web_lifespan_executes_job_and_guards_registry_generation(
             writer = application.state.index_job_writer
             if reload_drift is not None:
                 assert (
-                    application.state.index_update_capabilities_resolver("demo") is None
+                    application.state.index_update_capabilities_resolver(
+                        "demo", expected_active
+                    )
+                    is None
                 )
                 with pytest.raises(
                     web_app.IndexJobWriteError,

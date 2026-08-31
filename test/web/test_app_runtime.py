@@ -196,8 +196,8 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
             bound_capabilities = application.state.index_update_capabilities_resolver
             assert bound_writer is not writer
             assert bound_capabilities is not capabilities
-            assert bound_capabilities("demo") == {"repo_id": "demo"}
-            assert bound_capabilities("unbound") is None
+            assert bound_capabilities("demo", original_bundle) == {"repo_id": "demo"}
+            assert bound_capabilities("unbound", original_bundle) is None
             assert (
                 bound_writer.create(
                     "demo",
@@ -209,7 +209,7 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
                 == "created"
             )
             runtime.healthy = False
-            assert bound_capabilities("demo") is None
+            assert bound_capabilities("demo", original_bundle) is None
             with pytest.raises(web_app.IndexJobWriteError, match="unhealthy"):
                 bound_writer.create(
                     "demo",
@@ -220,7 +220,10 @@ def test_lifespan_owns_configured_local_index_runtime(monkeypatch):
                 )
             runtime.healthy = True
             application.state.registry.active["demo"] = object()
-            assert bound_capabilities("demo") is None
+            assert (
+                bound_capabilities("demo", application.state.registry.active["demo"])
+                is None
+            )
             with pytest.raises(web_app.IndexJobWriteError, match="no longer matches"):
                 bound_writer.create(
                     "demo",

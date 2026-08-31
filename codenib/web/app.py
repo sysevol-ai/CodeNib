@@ -73,7 +73,7 @@ from .local_index_runtime import (
 from .local_index_service import LocalIndexServiceError
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .repo_registry import RepoRegistry
+from .repo_registry import RepoBundle, RepoRegistry
 from .repository_files import bound_source_slice
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
@@ -158,20 +158,19 @@ class _LiveLocalIndexJobWriter:
 
 def _live_local_index_capabilities(
     service: LocalIndexRuntimeService,
-    registry: RepoRegistry,
     repo_id: str,
+    bundle: RepoBundle,
 ) -> Mapping[str, IndexUpdateCapability] | None:
-    """Return unavailable for an unhealthy runtime or an unbound repository."""
+    """Resolve capabilities against the bundle already pinned by the route."""
 
     if service.state != "running" or service.healthy is not True:
         return None
-    with registry.pin(repo_id) as bundle:
-        if bundle is None or not service.accepts_repository(repo_id, bundle):
-            return None
-        try:
-            return service.capabilities(repo_id)
-        except KeyError:
-            return None
+    if not service.accepts_repository(repo_id, bundle):
+        return None
+    try:
+        return service.capabilities(repo_id)
+    except KeyError:
+        return None
 
 
 def _has_pending_publication_cleanup(failure: BaseException) -> bool:
@@ -263,7 +262,7 @@ def _configured_local_index_runtime(app, config, registry, lifecycle):
         with open_local_index_runtime_service(storage, registry) as service:
             lifecycle.service = service
             writer = _LiveLocalIndexJobWriter(service, service.writer, registry)
-            capabilities = partial(_live_local_index_capabilities, service, registry)
+            capabilities = partial(_live_local_index_capabilities, service)
             bindings = {
                 "index_runtime_service": service,
                 "index_job_reader": service.reader,
@@ -444,8 +443,8 @@ def _index_job_writer() -> IndexJobWriter:
     return writer
 
 
-def _index_update_capabilities(repo_id: str):
-    """Resolve writer capabilities for one Web repository binding."""
+def _index_update_capabilities(repo_id: str, bundle: RepoBundle):
+    """Resolve writer capabilities for one pinned Web repository generation."""
 
     resolver = getattr(app.state, "index_update_capabilities_resolver", None)
     if resolver is not None and not callable(resolver):
@@ -457,7 +456,7 @@ def _index_update_capabilities(repo_id: str):
         candidate = (
             getattr(app.state, "index_update_capabilities", None)
             if resolver is None
-            else resolver(repo_id)
+            else resolver(repo_id, bundle)
         )
         return validate_index_update_capabilities(candidate)
     except Exception as exc:
@@ -860,7 +859,7 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
 
     with _pinned_bundle(repo_id) as bundle:
         kwargs = {
-            "update_capabilities": _index_update_capabilities(repo_id),
+            "update_capabilities": _index_update_capabilities(repo_id, bundle),
         }
         head_resolver = getattr(app.state, "index_head_resolver", None)
         if callable(head_resolver):
