@@ -31,8 +31,8 @@ new generic capability requires a named consumer and measured need.
 The active product vertical is **Wiki Store v1**:
 
 - keep one injectable Wiki persistence protocol next to `codenib/wiki/`;
-- implement it first as a separate SQLite WAL database with a single forward
-  migration and short transactions;
+- implement it first as a separate SQLite WAL database with one v1 schema
+  initialization, bounded legacy JSON import, and short transactions;
 - route the existing Wiki cache consumer through it while preserving current
   API responses, static exports, `RepoManifest`, portable artifacts, and MCP
   surfaces;

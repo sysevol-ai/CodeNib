@@ -56,6 +56,15 @@ completed.
 - Do not add registries, capability variants, dynamic plugin discovery,
   PostgreSQL, S3, or distributed coordination before a second production
   backend or benchmark requires them.
+- Define durable enqueue success at the catalog transaction boundary; treat
+  worker and runtime health as availability signals. Do not add a cross-layer
+  lock merely to make one health observation atomic with a recoverable enqueue
+  unless the product promises synchronous execution or a reproduced data-safety
+  invariant requires it.
+- A new cross-thread/process lock, retained owner, or multi-phase lifecycle must
+  name its invariant, linearization point, multi-lock order, and interruption
+  recovery owner, and include a deterministic race test. Otherwise reuse an
+  existing transaction, lease, pin, or recovery path, or simplify the design.
 - Prefer one conformance suite, one backend integration suite, and one
   end-to-end regression. Fault tests must target observable boundaries or a
   named prior bug, not arbitrary Python-line interruption.
