@@ -2,6 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -134,6 +135,48 @@ def test_cache_audit_does_not_create_a_missing_cache_directory(tmp_path):
 
     assert report["missing_outlines"] == ["owner__repo"]
     assert not cache_dir.exists()
+
+
+def test_cache_audit_applies_runtime_validation_to_legacy_json(tmp_path):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path / "repo"),
+            instance_id="owner__repo",
+            commit_short="abc123",
+            language="python",
+        ),
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+        vector_store=None,
+        bm25=None,
+    )
+
+    class Registry:
+        def list_infos(self):
+            return [SimpleNamespace(id="owner__repo")]
+
+        def get(self, repo_id):
+            return bundle if repo_id == "owner__repo" else None
+
+    cache_dir = tmp_path / "wiki-cache"
+    cache_dir.mkdir()
+    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    outline_path = wiki._cache_candidate_paths("outline")[0]
+    outline_path = Path(outline_path)
+    outline_path.write_text(
+        '{"data":{"pages":[]},"data":{"pages":['
+        '{"id":"overview","title":"Overview","children":[]}]}}',
+        encoding="utf-8",
+    )
+
+    report = audit_wiki_cache(
+        Registry(),
+        model="fake-model",
+        cache_dir=cache_dir,
+    )
+
+    assert report["missing_outlines"] == ["owner__repo"]
+    assert report["repositories"] == 1
 
 
 def test_cache_audit_rejects_unknown_repository_selectors(tmp_path):

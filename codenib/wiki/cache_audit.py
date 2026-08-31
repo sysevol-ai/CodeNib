@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import glob
-import json
 import math
 import os
 from collections import Counter
@@ -51,18 +50,6 @@ def _cache_paths(cache_root: str, wiki: AgentWiki, suffix: str) -> tuple[str, ..
     if paths:
         return paths
     return (os.path.join(cache_root, f"agentwiki_{wiki._key(suffix)}.json"),)
-
-
-def _read_cache(paths: Iterable[str]) -> Optional[Any]:
-    for path in paths:
-        try:
-            with open(path, encoding="utf-8") as handle:
-                payload = json.load(handle)
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(payload, dict) and "data" in payload:
-            return payload.get("data")
-    return None
 
 
 def _stored_entry_bytes(entry: WikiStoredEntry) -> int:
@@ -132,9 +119,7 @@ def audit_wiki_cache(
         current_cache_paths.update(os.path.abspath(path) for path in outline_paths)
         if store is not None:
             current_entry_ids.add(wiki._store_entry_id("outline"))
-            outline = wiki._read_cache_read_only("outline")
-        else:
-            outline = _read_cache(outline_paths)
+        outline = wiki._read_cache_read_only("outline")
         if not isinstance(outline, dict) or not outline.get("pages"):
             missing_outlines.append(repo_id)
             repo_reports.append(
@@ -188,9 +173,7 @@ def audit_wiki_cache(
             if store is not None:
                 current_entry_ids.add(wiki._store_entry_id(suffix))
                 current_entry_ids.add(wiki._store_entry_id(f"evidence_{suffix}"))
-                page = wiki._read_cache_read_only(suffix)
-            else:
-                page = _read_cache(paths)
+            page = wiki._read_cache_read_only(suffix)
             if isinstance(page, dict):
                 totals["cached_pages"] += 1
                 repo_counts["cached_pages"] += 1
