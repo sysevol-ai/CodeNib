@@ -143,7 +143,7 @@ def _directory_names(descriptor: int) -> list[str]:
 def _entry_metadata(descriptor: int, name: str) -> os.stat_result | None:
     try:
         return os.stat(name, dir_fd=descriptor, follow_symlinks=False)
-    except (FileNotFoundError, PermissionError):
+    except FileNotFoundError:
         return None
 
 
@@ -224,7 +224,6 @@ def _scan_canonical_files(
     expected_layout_errors = (
         FileNotFoundError,
         NotADirectoryError,
-        PermissionError,
         StorageIntegrityError,
         StorageValidationError,
         ValueError,

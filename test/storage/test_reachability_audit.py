@@ -299,3 +299,22 @@ def test_audit_does_not_follow_replaced_shard(
     assert files["present"]["count"] == 0
     assert files["missing"]["count"] == 1
     assert files["invalid"]["samples"] == [f"sha256/{shard_name}"]
+
+
+def test_audit_fails_when_cas_traversal_is_denied(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cas_root = tmp_path / "cas"
+
+    def deny_traversal(descriptor: int) -> list[str]:
+        raise PermissionError("denied")
+
+    with (
+        SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog,
+        LocalCAS(cas_root),
+    ):
+        monkeypatch.setattr(audit_module, "_directory_names", deny_traversal)
+
+        with pytest.raises(PermissionError, match="denied"):
+            _audit(catalog, cas_root)
