@@ -4248,6 +4248,80 @@ def _compact_json_line(payload: dict[str, object]) -> str:
     )
 
 
+def _print_storage_audit(payload: dict[str, object]) -> None:
+    """Render the bounded operator summary without implying reclaimability."""
+
+    print("Local storage audit: observation only; no reclaimability decision")
+    print(f"Catalog: {payload.get('catalog_path') or '-'}")
+    print(f"CAS:     {payload.get('cas_root') or '-'}")
+    print("Limits:  writers not quiesced; stores non-atomic; hashes not verified")
+    catalog = payload.get("catalog")
+    reachability = catalog.get("reachability") if isinstance(catalog, dict) else None
+    if isinstance(reachability, dict):
+        print("Catalog objects:")
+        for category in (
+            "current_ref",
+            "historical_snapshot",
+            "generation_only",
+            "unbound_registered",
+        ):
+            summary = reachability.get(category)
+            if isinstance(summary, dict):
+                print(
+                    f"  {category:<20} "
+                    f"{summary.get('object_count', 0):>8} objects  "
+                    f"{summary.get('registered_bytes', 0):>12} bytes"
+                )
+    cas = payload.get("cas")
+    cas_observations = cas.get("observations") if isinstance(cas, dict) else None
+    if isinstance(cas_observations, dict):
+        print("CAS observations:")
+        for category in (
+            "present",
+            "missing",
+            "size_mismatch",
+            "unregistered",
+            "invalid",
+        ):
+            summary = cas_observations.get(category)
+            if isinstance(summary, dict):
+                print(f"  {category:<20} {summary.get('count', 0):>8} observations")
+
+
+def _run_storage_audit(args: argparse.Namespace) -> int:
+    """Inspect one SQLite/LocalCAS pair through a private catalog snapshot."""
+
+    from .storage._reachability_audit import _audit_local_storage_snapshot
+    from .storage.sqlite_catalog import _catalog_validation_snapshot
+
+    catalog_path = _lexical_cli_path(args.catalog, label="catalog")
+    cas_root = _lexical_cli_path(args.cas_root, label="CAS root")
+    if _paths_overlap(catalog_path, cas_root):
+        raise CLIError("catalog must not overlap the CAS root")
+    if args.sample_limit > 1_000:
+        raise CLIError("sample_limit must be between 0 and 1000")
+    try:
+        with _catalog_validation_snapshot(catalog_path) as snapshot_path:
+            payload = _audit_local_storage_snapshot(
+                snapshot_path,
+                cas_root,
+                sample_limit=args.sample_limit,
+            )
+        payload["catalog_path"] = os.fspath(catalog_path)
+        payload["cas_root"] = os.fspath(cas_root)
+        payload["catalog_source_open_mode"] = "copied-validation-snapshot"
+    except CLIError:
+        raise
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise CLIError(str(exc)) from exc
+
+    if args.json:
+        print(_compact_json_line(payload))
+    else:
+        _print_storage_audit(payload)
+    return 0
+
+
 def _run_jobs_run_once(args: argparse.Namespace) -> int:
     """Run one bounded prepare-only index worker scan."""
 
@@ -6631,6 +6705,43 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     jobs_run_parser.set_defaults(handler=_run_jobs_continuous)
+
+    storage_parser = subparsers.add_parser(
+        "storage",
+        help="inspect explicitly configured local retained storage",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    storage_subparsers = storage_parser.add_subparsers(
+        dest="storage_command",
+        required=True,
+    )
+    storage_audit_parser = storage_subparsers.add_parser(
+        "audit",
+        help="report SQLite/CAS reachability without deleting objects",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    storage_audit_parser.add_argument(
+        "--catalog",
+        required=True,
+        help="existing initialized SQLite catalog path",
+    )
+    storage_audit_parser.add_argument(
+        "--cas-root",
+        required=True,
+        help="existing local CAS root",
+    )
+    storage_audit_parser.add_argument(
+        "--sample-limit",
+        type=_argparse_nonnegative_int,
+        default=20,
+        help="maximum diagnostic samples retained per category (at most 1000)",
+    )
+    storage_audit_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="emit machine-readable compact JSON output",
+    )
+    storage_audit_parser.set_defaults(handler=_run_storage_audit)
 
     publish_parser = subparsers.add_parser(
         "publish",

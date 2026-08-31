@@ -30,7 +30,7 @@ because both implementations use SQLite. Tests, this roadmap, and planned
 adapters do not count as consumers. A new generic capability must satisfy the
 evidence gates in `AGENTS.md`.
 
-The active product vertical is **Wiki Store v1**:
+The completed product vertical is **Wiki Store v1**:
 
 - keep one injectable Wiki persistence protocol next to `codenib/wiki/`;
 - implement it first as a separate SQLite WAL database with one v1 schema
@@ -52,6 +52,31 @@ implemented. Contract, Wiki, CLI, static-export, manifest, context-artifact,
 and MCP compatibility gates pass without changing the generic catalog schema.
 It is a trusted, regenerable local cache: bounds and digests detect accidental
 damage, not a hostile process that can rewrite the database.
+
+The active storage-evidence vertical is **Local Reachability Audit v1**. It is
+deliberately specific to the canonical SQLite catalog and local SHA-256 CAS:
+
+- inspect one private validation copy of the current catalog schema through a
+  read-only connection so the audit does not migrate or write the source;
+- classify registered objects as current-ref, historical-snapshot,
+  generation-only, or registered-but-unbound, including compound-generation
+  members;
+- compare those records with a metadata-only local CAS scan that rejects
+  observed symlink, special-file, and multiply-linked entries, and report
+  missing, size-mismatched, unregistered, or invalid entries;
+- keep the implementation private to `codenib storage audit` and expose only
+  bounded report output; do not add a backend-neutral enumeration API,
+  retention state, or deletion path.
+
+Status: complete. The report states that catalog and CAS observations are not
+cross-store atomic, content hashes were not verified, writers were not
+quiesced, and reclaimability was not assessed. Historical snapshots remain
+publicly addressable through explicit snapshot loading, while unbound catalog
+rows, CAS-only files, and temporary entries may be legitimate publication
+windows. The filesystem walk is sequential rather than a consistency snapshot,
+and source-catalog churn may require rerunning the validation copy. The audit
+is evidence for a later retention design, never a GC authorization.
+Tracking: [#750](https://github.com/sysevol-ai/CodeNib/issues/750).
 
 Wiki search, normalized link/citation graphs, revision browsing, PostgreSQL,
 object storage, distributed leases, remote garbage collection, and dynamic
@@ -1916,12 +1941,16 @@ publication carries forward unchanged units and applies path-aware upserts and
 deletes without resolving cross-file monikers into reusable artifacts. Tests
 cover clean/incremental convergence, profile invalidation, failed publication,
 receipt tampering, member reachability, migration, and cross-snapshot cache
-isolation.
+isolation. `codenib storage audit` now supplies a non-deleting SQLite/LocalCAS
+reachability and logical-size observation before any retention policy is
+chosen. It uses the existing primary/member relationships without changing the
+schema or generic protocols, and explicitly reports no reclaimable-byte
+decision.
 
 - Extend the current path/content identity with portable file mode and package
   identity where future non-clangd adapters require them.
-- Add snapshot leases, pins, retention policy, mark-and-sweep GC, and crash
-  recovery.
+- Use representative audit evidence to define snapshot leases, pins and a
+  retention policy before adding mark-and-sweep deletion or crash recovery.
 - Discover and ownership-validate view-bundle `.previous-*` files before
   reclaiming verified old outputs and missing-destination sentinels.
 - Generalize the clangd semantic-facts upsert/delete generation to the

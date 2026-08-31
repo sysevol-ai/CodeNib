@@ -19,6 +19,9 @@ All notable user-facing changes are recorded here. CodeNib follows
 - A domain-local `WikiStore` harness and SQLite WAL implementation with
   versioned schema initialization, bounded canonical JSON, integrity checks,
   atomic publication, and cross-process generation guards.
+- A report-only `codenib storage audit` command that classifies SQLite catalog
+  object reachability and compares it with local CAS metadata without changing
+  storage or claiming that any bytes are reclaimable.
 
 ### Changed
 
