@@ -1,6 +1,6 @@
 {
-  "schema_version": 3,
-  "benchmark": "retained_storage_explicit_route_gate_v3",
+  "schema_version": 4,
+  "benchmark": "retained_storage_explicit_route_gate_v4",
   "policy": {
     "status": "unratified",
     "canonical_iterations": 20,

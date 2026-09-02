@@ -123,6 +123,12 @@ Status: in progress.
   reachability implementation. The batch removed one command, 498 production
   lines, and 512 dedicated test lines while retaining the shared SQLite catalog
   validation snapshot used by surviving compatibility paths.
+- The unreleased catalog-selected MCP cold-start mode is gone. Existing retained
+  data now follows the published bridge: `artifact materialize`, then ordinary
+  `mcp --artifact [--repo]`; the profiling candidate arms use the same route.
+  This batch removed 1,322 production lines and 3,004 test lines, one CLI mode,
+  eight mode-only options, four retained-context exports, and the direct CLI
+  and server execution paths.
 - Remove zero-consumer protocols and their intersection/conformance tests in
   focused batches.
 - Separate any genuinely required compatibility adapter from experimental

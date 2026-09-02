@@ -18,17 +18,14 @@ an active receipt, then transfers the new generation to a caller-owned
 remain normative for commands that can still open existing retained data; they
 are not a product-database roadmap.
 
-The provider is not enabled by CodeNib's default compiler or runtime path. Six
+The provider is not enabled by CodeNib's default compiler or runtime path. Five
 explicit routes use it: `codenib index --publish-retained` builds and publishes
 current BM25/vector views in one compiler-cache lease, `codenib artifact
 import-cache` recaptures an already existing selected cache, `codenib jobs
 run-once` prepares and publishes at most one eligible durable cache-import or
 retained-source BM25 job, `codenib jobs run` continuously schedules the same
-explicitly scoped jobs,
-`codenib artifact materialize` publishes a retained catalog ref or immutable
-snapshot to a missing portable-artifact directory, and retained `codenib mcp`
-cold-start materializes and holds one such generation for a single stdio server
-lifetime.
+explicitly scoped jobs, and `codenib artifact materialize` publishes a retained
+catalog ref or immutable snapshot to a missing portable-artifact directory.
 The only product database is `codenib.wiki.store.WikiStore` with its supported
 SQLite WAL implementation. The catalog, local SHA-256 CAS, and routes listed
 above are frozen experimental/compatibility code while existing data receives
@@ -188,8 +185,8 @@ advancing the ref again.
 This remains explicit offline dual-write. Keep the source/cache and storage
 namespaces trusted and quiescent, and apply the payload-size and storage-media
 benchmark gate described below before enabling it by default or treating it as
-a latency-sensitive worker path. Catalog-selected MCP cold start is available
-only through the explicit route below; runtime hot switching remains M3.
+a latency-sensitive worker path. MCP reuse goes through `artifact materialize`
+and the ordinary `mcp --artifact` path; runtime hot switching is not supported.
 
 ## Import compiler query views
 
@@ -542,83 +539,6 @@ warns that the output now exists, do not assume that the path is disposable or
 retry over it; verify the retained artifact before reuse or reclaim it through
 an ownership-aware workflow.
 
-## Serve a retained snapshot directly
-
-The retained `codenib mcp` mode combines selection, materialization, and one
-query-server lifetime without serializing a receipt or reopening the artifact
-as an unrelated path capability. It accepts the same prepared authorities as
-`artifact materialize`, plus an explicit missing output:
-
-```bash
-codenib mcp \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repo /srv/checkouts/repository \
-  --repository owner/repository \
-  --ref main \
-  --expected-generation 7 \
-  --output /var/lib/codenib/workspaces/repository-mcp-v1
-```
-
-Omit `--ref` to resolve `main` once at startup, or use `--snapshot
-<snapshot-id>`. `--expected-generation` is ref-only. These storage arguments
-form one all-or-none mode and cannot be combined with a positional manifest,
-or `--artifact`. `--repo` is optional: when supplied it must name one existing
-real checkout whose lexical hierarchy is free of links and physically disjoint
-from the catalog, CAS, workspace, and output. The catalog must already be
-initialized, the strict CAS preprovisioned, the workspace private and exact
-`0700`, and the output missing under that workspace; this command does not
-provision or replace any of them.
-
-During startup CodeNib materializes the selected immutable generation, builds
-the query binding through the active publication receipt's authenticated
-reader, and loads the complete `ServerContext` before the reader callback ends.
-It then closes SQLite, CAS, and path-topology authorities before starting MCP
-stdio. The caller-owned workspace receipt remains active until `mcp.run`
-returns or fails. Shutdown first removes the module-global context, then closes
-the runtime context, and only after that releases the receipt. The materialized
-output persists after normal shutdown and after receipt cleanup; a failure
-after publication warns about the existing path rather than deleting it.
-
-Omit `--repo` for the existing source-disabled, query-only cold start. With
-`--repo`, CodeNib pins the checkout's lexical anchor, every ancestor, and root
-before provider or storage work, then requires the source capture opened inside
-the artifact-reader callback to match that same live object chain. The CLI
-rejects lexical, object-identity, ancestry, bind-mount, and mapped-physical
-source/storage aliases. The preflight pin closes before `mcp.run`; the
-independent authenticated source binding remains active through serving and
-enables BM25 result content plus `read_source` with verification scope
-`content-bytes`.
-
-Both forms require a BM25 view, which loads from canonical persisted documents.
-A selected portable vector remains native-parser inert and reports its
-authorization error; adding source does not authorize native LSP state, attest
-the mutable Git commit, or make the portable context fully equivalent to an
-ordinary manifest startup. The route never treats cache hashes as permission to
-parse FAISS, and vector-only snapshots are rejected for this runtime. The ref
-is not polled or re-resolved, the receipt is not a catalog/CAS GC pin, and no
-live context replacement occurs. Those in-flight request pins and atomic swaps
-remain M3 work; durable evidence retention and reclamation remain M5 work.
-
-The source-bound route uses `bind_context_artifact_reader` inside the active
-publication-reader callback and passes a separately owned preflight root
-authority through the retained ref/snapshot loader. Their one-shot owner keeps
-the captured source reachable through cancellation, closes context, source,
-then publication receipt in the parent, and revokes source before receipt in a
-forked child without acquiring the copied context lock. The explicit CLI route
-and compatibility E2E establish this lifecycle. The v3 report-only protocol
-now measures its narrow BM25/content-authority and full-runtime projections
-separately, but canonical source-bound receipts and ratified budgets are still
-required before either policy track can advance.
-
-These retained-read routes and the explicit BM25/vector ingress above do not
-complete the hybrid-storage M1 milestone. Benchmark-backed promotion of the
-opt-in compiler and runtime routes is still missing. The production
-`provider-bound-exact` strict BM25 seam is now complete, but it does not select
-or promote a default route. Graph and Zoekt ingress remain M2 or later work;
-fenced jobs and runtime hot switching remain separate milestones.
-
 ## Measure the retained storage gate
 
 `make retained-storage-gate` runs the manual A1 comparison harness. A1 is
@@ -673,7 +593,7 @@ authorities. The worker then launches a fresh inner route process. Those
 locations are therefore not controller flags, and provisioning is excluded
 from the timed inner route.
 
-The v3 harness compares five pairs and alternates AB/BA order for every pair:
+The v4 harness compares five pairs and alternates AB/BA order for every pair:
 
 - Compiler cold: A runs ordinary `codenib index --preset fast` from an empty
   cache; B runs the same command with retained publication.
@@ -681,18 +601,19 @@ The v3 harness compares five pairs and alternates AB/BA order for every pair:
   measures an ordinary update; B performs the retained exact retry with the
   original expected ref generation and verifies that the ref does not advance.
 - Runtime cold compatibility: A loads the ordinary source-bound manifest MCP
-  context; B resolves one catalog ref and loads the source-disabled retained
-  context. This sentinel measures the existing behavior gap instead of hiding
-  it.
+  context; B loads a source-disabled artifact materialized from one catalog ref
+  before the stopwatch. This sentinel measures the existing behavior gap
+  instead of hiding it.
 - Runtime cold query-only: outside the stopwatch, A packs the current BM25 view
   as a portable context artifact and B prepares retained storage. Inside the
-  stopwatch, A runs `codenib mcp --artifact` without `--repo`, while B resolves
-  and materializes the retained ref. Both are source-disabled and use the real
-  parser and command handler.
+  stopwatch, both arms run `codenib mcp --artifact` without `--repo`; B's
+  artifact was materialized from retained storage before the stopwatch. Both
+  are source-disabled and use the real parser and command handler.
 - Runtime cold source-bound: A starts the ordinary manifest MCP route and B
-  resolves and materializes the retained ref with the same explicit `--repo`
-  checkout. Both have content-byte source authority. The report judges their
-  BM25/content-authority projection separately from full runtime compatibility.
+  loads the artifact materialized from a retained ref with the same explicit
+  `--repo` checkout. Both have content-byte source authority. The report judges
+  their BM25/content-authority projection separately from full runtime
+  compatibility.
 
 Only `mcp.run` is replaced by a ready callback that executes the same fixed
 BM25 queries, captures public `get_manifest`, and attempts one fixed public
@@ -700,7 +621,7 @@ BM25 queries, captures public `get_manifest`, and attempts one fixed public
 query-only arms must return the exact source-unavailable response. Those probes
 and normal context cleanup are inside the runtime stopwatch. With three
 subjects, two media classes, five cells, two arms, four warmups, and 20 measured
-rounds, a canonical v3 run contains 1,440 fresh inner route processes. The
+rounds, a canonical v4 run contains 1,440 fresh inner route processes. The
 source-bound pair adds 288 samples, or 25 percent, over v2.
 
 Here, compiler cold means an empty CodeNib compiler cache, and runtime cold
@@ -751,12 +672,12 @@ Do not infer promotion thresholds from one A1 run. A2 must execute the approved
 fixed subject/media matrix and retain its canonical receipts. The compiler,
 query-only runtime, and narrowly scoped source-bound BM25 tracks may ratify
 their own numeric policies independently; B1 requires the first and query-only
-B2 requires the second. The reader-native source seam and topology-safe
-explicit route now exist, but replacing the ordinary source-bound manifest MCP
-path remains blocked on equal public behavior, artifact provenance, native
-capability policy, and required view coverage. A future source-bound BM25
-default requires its own A2 decision and does not satisfy that full
-compatibility gate. The independent gate C
+B2 requires the second. The ordinary artifact path provides the reader-native
+source seam; no direct catalog-selected MCP route remains. Replacing the
+ordinary source-bound manifest MCP path remains blocked on equal public
+behavior, artifact provenance, native capability policy, and required view
+coverage. A future source-bound BM25 default requires its own A2 decision and
+does not satisfy that full compatibility gate. The independent gate C
 `provider-bound-exact` native provider is now complete, independently of this
 measurement protocol. The strict BM25 route carries both its receipt-derived
 immutable binding and the separately active source owner to the one-shot Local
