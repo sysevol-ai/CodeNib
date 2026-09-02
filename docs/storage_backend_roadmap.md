@@ -120,8 +120,9 @@ Current outcome:
   artifact-neutral `_bounded_json` module.
 - The unreleased reachability audit, catalog-selected MCP cold start, and
   `index --publish-retained` routes, retained benchmark, durable jobs stack, and
-  schema-v5-v8 expansion are gone. Ordinary `index`, `publish`, and
-  `mcp --artifact [--repo]` behavior is unchanged.
+  schema-v5-v8 expansion are gone. The two private retained BM25 generation
+  plan/replay helpers orphaned by the jobs removal are gone as well. Ordinary
+  `index`, `publish`, and `mcp --artifact [--repo]` behavior is unchanged.
 - The published compatibility bridge remains explicit: `artifact import-cache`
   captures an existing compiler cache and `artifact materialize` produces a
   portable artifact. The released schema-v4 `JobCatalog` models, protocol, and
