@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
 from codenib.compiler.manifest import LEGACY_MANIFEST_VERSION, IndexEntry, RepoManifest
-from codenib.web.index_status import IndexUpdateCapability, build_repo_index_status
+from codenib.web.index_status import build_repo_index_status
 
 _INDEXED = "a" * 40
 _CURRENT = "b" * 40
@@ -75,9 +75,6 @@ def test_status_returns_exact_primary_surfaces_with_safe_defaults() -> None:
         "missing",
         "failed",
     ]
-    assert all(index.update_mode == "unavailable" for index in status.indexes)
-    assert all(index.updates_enabled is False for index in status.indexes)
-    assert all(index.update_reason for index in status.indexes)
 
 
 def test_status_marks_fresh_manifest_view_stale_when_head_moves() -> None:
@@ -105,7 +102,7 @@ def test_status_accepts_an_indexed_commit_prefix() -> None:
     assert status.indexes[0].state == "built"
 
 
-def test_status_projects_explicit_capabilities_and_valid_metrics() -> None:
+def test_status_projects_valid_metrics() -> None:
     status = build_repo_index_status(
         _bundle(
             {
@@ -121,26 +118,10 @@ def test_status_projects_explicit_capabilities_and_valid_metrics() -> None:
                 )
             }
         ),
-        update_capabilities={
-            "bm25": IndexUpdateCapability(mode="rebuild", enabled=True, reason=""),
-            "vector": IndexUpdateCapability(
-                mode="incremental",
-                enabled=True,
-                reason="",
-            ),
-            "symbol_graph": IndexUpdateCapability(
-                mode="patch",
-                enabled=False,
-                reason="No admitted verifier is configured.",
-            ),
-        },
         current_head_resolver=lambda path: _INDEXED,
     )
 
     vector = status.indexes[1]
-    assert status.indexes[0].update_mode == "rebuild"
-    assert vector.update_mode == "incremental"
-    assert vector.updates_enabled is True
     assert vector.metrics.model_dump() == {
         "changed_files": 4,
         "chunks_reembedded": 3,
@@ -148,8 +129,6 @@ def test_status_projects_explicit_capabilities_and_valid_metrics() -> None:
         "cache_hit_rate": 0.4,
         "new_commit": _INDEXED,
     }
-    assert status.indexes[2].update_mode == "patch"
-    assert status.indexes[2].updates_enabled is False
 
 
 def test_status_omits_malformed_optional_metrics() -> None:
@@ -172,17 +151,6 @@ def test_status_omits_malformed_optional_metrics() -> None:
     )
 
     assert status.indexes[1].metrics is None
-
-
-def test_status_rejects_unknown_or_incoherent_writer_capabilities() -> None:
-    with pytest.raises(ValueError, match="unsupported index update capability"):
-        build_repo_index_status(
-            _bundle({}),
-            update_capabilities={"zoekt": IndexUpdateCapability()},
-            current_head_resolver=lambda path: _INDEXED,
-        )
-    with pytest.raises(ValueError, match="cannot be enabled"):
-        IndexUpdateCapability(mode="unavailable", enabled=True, reason="")
 
 
 def test_status_passes_repository_path_to_head_resolver() -> None:
@@ -269,92 +237,6 @@ def test_index_status_query_alias_does_not_shadow_wiki_page(monkeypatch) -> None
 
     assert response.status_code == 200
     assert response.json()["id"] == "index-status"
-
-
-def test_index_status_endpoint_resolves_update_capabilities_per_repository(
-    monkeypatch,
-) -> None:
-    bundle = _bundle({"bm25": _entry("bm25")})
-    observed: list[tuple[str, object]] = []
-
-    class Registry:
-        @contextmanager
-        def pin(self, repo_id: str):
-            assert repo_id == "repo"
-            yield bundle
-
-    def resolve(repo_id: str, pinned_bundle):
-        observed.append((repo_id, pinned_bundle))
-        return None
-
-    async def inline(function, *args, **kwargs):
-        return function(*args, **kwargs)
-
-    globally_enabled = {
-        "bm25": IndexUpdateCapability(mode="rebuild", enabled=True, reason="")
-    }
-    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
-    monkeypatch.setattr(
-        web_app.app.state,
-        "index_update_capabilities",
-        globally_enabled,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        web_app.app.state,
-        "index_update_capabilities_resolver",
-        resolve,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        web_app.app.state,
-        "index_head_resolver",
-        lambda _path: _INDEXED,
-        raising=False,
-    )
-    monkeypatch.setattr(web_app, "_run_pinned_thread", inline)
-
-    status = asyncio.run(web_app.index_status("repo"))
-
-    assert observed == [("repo", bundle)]
-    assert status.indexes[0].updates_enabled is False
-    assert status.indexes[0].update_mode == "unavailable"
-
-
-@pytest.mark.parametrize(
-    "invalid_capabilities",
-    [
-        [],
-        {"zoekt": IndexUpdateCapability()},
-        {"bm25": object()},
-    ],
-    ids=["not-a-mapping", "unknown-index", "invalid-capability"],
-)
-def test_index_status_endpoint_sanitizes_invalid_resolver_capabilities(
-    monkeypatch,
-    invalid_capabilities,
-) -> None:
-    bundle = _bundle({"bm25": _entry("bm25")})
-
-    class Registry:
-        @contextmanager
-        def pin(self, repo_id: str):
-            assert repo_id == "repo"
-            yield bundle
-
-    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
-    monkeypatch.setattr(
-        web_app.app.state,
-        "index_update_capabilities_resolver",
-        lambda _repo_id, _bundle: invalid_capabilities,
-        raising=False,
-    )
-
-    with pytest.raises(web_app.HTTPException) as raised:
-        asyncio.run(web_app.index_status("repo"))
-
-    assert raised.value.status_code == 503
-    assert raised.value.detail == "Index update capabilities are unavailable"
 
 
 def test_index_status_endpoint_retains_pin_until_cancelled_projection_settles(

@@ -31,10 +31,10 @@ For the current multi-language SCIP cold-start and acceleration program, use
 whenever a backend is promoted, a C++ acceleration gate changes, or a related
 issue/PR is closed.
 
-For the hybrid storage backend program, use
-`docs/storage_backend_roadmap.md` as the durable objective record. Update it
-whenever a storage milestone changes status, a publication or compatibility
-gate changes, or a related issue/PR is reconciled.
+For storage scope and subtraction, use `docs/storage_backend_roadmap.md` as the
+durable objective record. Update it whenever the Wiki database boundary
+changes, a retained compatibility surface is removed, or a proposal attempts
+to reopen the generic backend program.
 
 For the cognitive-debt reduction program, use
 `docs/cognitive_debt_roadmap.md` as the durable objective record. Update it
@@ -44,42 +44,38 @@ completed.
 
 ## Storage Scope Guard
 
-- Each PR that adds a public storage capability must name the non-test
-  production call site and end-to-end vertical that exercise it. Do not add a
-  protocol method, table, state, or failure mode unless it serves that call
-  site, a reproduced bug, or a documented data-safety, security, or
-  compatibility invariant with a deterministic regression. Tests, roadmap
-  entries, and planned adapters do not count as consumers.
-- Use one public protocol, one production backend, one schema change per PR,
-  and at most three domain tables as the default review budget, not a hard
-  limit. Preserve the complete forward path from every supported deployed
-  schema. Map each excess item to a current call site or named correctness
-  invariant and explain why it cannot be deferred.
-- Put protocols only at real I/O boundaries. Domain stores own their models and
-  migrations; construct concrete backends in composition roots and do not add
-  domain methods to generic `IndexCatalog` or `ObjectStore` contracts. Treat
-  pluggable as constructor injection plus backend-neutral conformance, not a
-  registry, capability matrix, or dynamic discovery system.
-- A non-default backend requires a documented deployment constraint that the
-  canonical backend cannot meet plus representative workload and operational
-  evidence. Registries or dynamic discovery additionally require at least two
-  supported implementations and a current runtime selection route;
-  distributed coordination requires a named multi-worker deployment invariant.
-- Define durable enqueue success at the catalog transaction boundary; treat
-  worker and runtime health as availability signals. Do not add a cross-layer
-  lock merely to make one health observation atomic with a recoverable enqueue
-  unless the product promises synchronous execution or a reproduced data-safety
-  invariant requires it.
+- The only product database boundary is `codenib.wiki.store.WikiStore`; its
+  supported implementation is the domain-local SQLite WAL store. Keep
+  pluggability to constructor injection plus the Wiki conformance harness. Do
+  not add a backend registry, capability matrix, or dynamic discovery system.
+- Keep `RepoManifest`, BM25, FAISS, igraph, and portable context payloads as
+  manifest-bound file artifacts. Do not move their refs, snapshots, jobs,
+  leases, or lifecycle into a generic database or object-store abstraction.
+- Treat `codenib.storage` and explicit retained-storage CLI commands as frozen
+  experimental/compatibility surfaces. Changes are limited to high-severity
+  correctness/security fixes, compatibility needed for planned removal, and
+  subtraction. Do not add schema state, protocol methods, backends, re-exports,
+  or product routes to them.
+- PostgreSQL, S3-compatible storage, generic garbage collection, shared ANN,
+  distributed coordination, and backend discovery are closed plans. Reopening
+  one requires a current non-test product route, a deployment constraint the
+  existing Wiki/artifact model cannot meet, representative measurements, and
+  an explicit scope decision. Tests, roadmap entries, and planned adapters do
+  not count as consumers.
+- Put any future persistence protocol at a real domain I/O boundary. Name the
+  current production call site, use one domain protocol and one implementation
+  first, and remove the old path in the same program. Sharing SQLite does not
+  justify extending `IndexCatalog` or `ObjectStore`.
 - For a non-trivial cross-thread/process lock, retained owner, or multi-phase
   lifecycle, state the invariant and linearization point in the PR or adjacent
   docstring. Also state lock order when multiple locks exist and recovery
   ownership when state outlives the call; add one deterministic test of the
   invariant or reproduced race. Otherwise reuse an existing transaction,
   lease, pin, or recovery path, or simplify the design.
-- Prefer one backend-neutral conformance harness driven by a backend
-  fixture/factory, one backend integration suite, and one product-vertical
-  regression. Fault tests must target observable boundaries or a named prior
-  bug, not arbitrary Python-line interruption.
+- Prefer one domain conformance harness driven by a store fixture/factory, one
+  implementation suite, and one product-vertical regression. Fault tests must
+  target observable boundaries or a named prior bug, not arbitrary Python-line
+  interruption.
 - Replace a milestone's prior status with its current outcomes, open gates, and
   PR/ADR links; do not append implementation chronology. Put implementation
   traces in code, tests, ADRs, or the changelog.

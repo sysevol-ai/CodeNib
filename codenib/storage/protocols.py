@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     BinaryIO,
     Callable,
@@ -20,7 +21,6 @@ from typing import (
     runtime_checkable,
 )
 
-from .cas import BlobInfo
 from .models import (
     INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH,
     INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS,
@@ -44,6 +44,9 @@ from .models import (
     RefJobLease,
     StorageIntegrityError,
 )
+
+if TYPE_CHECKING:
+    from .cas import BlobInfo
 
 RETAINED_IMPORT_RESPONSE_MAX_DEPTH = 64
 RETAINED_IMPORT_RESPONSE_MAX_NODES = 250_000

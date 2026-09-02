@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import math
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -16,52 +15,6 @@ from ..compiler.checkout_identity import checkout_commit
 from .schemas import IndexSurfaceStatus, IndexUpdateMetrics, RepoIndexStatus
 
 PRIMARY_INDEX_TYPES = ("bm25", "vector", "symbol_graph")
-_UPDATE_MODES = frozenset({"incremental", "patch", "rebuild", "unavailable"})
-_DEFAULT_UPDATE_REASON = "Web index updates are not configured for this server."
-
-
-@dataclass(frozen=True, slots=True)
-class IndexUpdateCapability:
-    """Effective writer capability supplied by the owning job service."""
-
-    mode: str = "unavailable"
-    enabled: bool = False
-    reason: str = _DEFAULT_UPDATE_REASON
-
-    def __post_init__(self) -> None:
-        if type(self.mode) is not str or self.mode not in _UPDATE_MODES:
-            raise ValueError("index update capability has an invalid mode")
-        if type(self.enabled) is not bool:
-            raise TypeError("index update capability enabled flag must be a boolean")
-        if self.enabled and self.mode == "unavailable":
-            raise ValueError("an unavailable index update cannot be enabled")
-        if type(self.reason) is not str or len(self.reason) > 512:
-            raise ValueError("index update capability reason is invalid")
-        if not self.enabled and not self.reason.strip():
-            raise ValueError("a disabled index update requires a reason")
-
-
-_UNAVAILABLE = IndexUpdateCapability()
-
-
-def validate_index_update_capabilities(
-    capabilities: Mapping[str, IndexUpdateCapability] | None,
-) -> dict[str, IndexUpdateCapability]:
-    """Return a detached, complete capability snapshot or reject bad input."""
-
-    result = {index_type: _UNAVAILABLE for index_type in PRIMARY_INDEX_TYPES}
-    if capabilities is None:
-        return result
-    if not isinstance(capabilities, Mapping):
-        raise TypeError("index update capabilities must be a mapping")
-    unknown = set(capabilities) - set(PRIMARY_INDEX_TYPES)
-    if unknown:
-        raise ValueError(f"unsupported index update capability: {sorted(unknown)[0]!r}")
-    for index_type, capability in capabilities.items():
-        if type(capability) is not IndexUpdateCapability:
-            raise TypeError("index update capabilities require exact capability values")
-        result[index_type] = capability
-    return result
 
 
 def _bounded_text(value: object, *, max_length: int = 128) -> str | None:
@@ -136,7 +89,6 @@ def _surface_status(
     index_type: str,
     *,
     current_head: str | None,
-    capability: IndexUpdateCapability,
 ) -> IndexSurfaceStatus:
     indexes = getattr(manifest, "indexes", None)
     entry = indexes.get(index_type) if isinstance(indexes, Mapping) else None
@@ -171,9 +123,6 @@ def _surface_status(
         stale=state == "stale",
         indexed_commit=indexed_commit,
         built_at=built_at,
-        update_mode=capability.mode,
-        updates_enabled=capability.enabled,
-        update_reason=capability.reason,
         metrics=metrics,
     )
 
@@ -181,7 +130,6 @@ def _surface_status(
 def build_repo_index_status(
     bundle: object,
     *,
-    update_capabilities: Mapping[str, IndexUpdateCapability] | None = None,
     current_head_resolver: Callable[[Path], str | None] = checkout_commit,
 ) -> RepoIndexStatus:
     """Project one pinned bundle into a detached reader-facing status value."""
@@ -195,13 +143,11 @@ def build_repo_index_status(
         getattr(entry, "repo_dir", None),
         current_head_resolver,
     )
-    capabilities = validate_index_update_capabilities(update_capabilities)
     indexes = [
         _surface_status(
             manifest,
             index_type,
             current_head=current_head,
-            capability=capabilities[index_type],
         )
         for index_type in PRIMARY_INDEX_TYPES
     ]
@@ -223,8 +169,6 @@ def build_repo_index_status(
 
 
 __all__ = [
-    "IndexUpdateCapability",
     "PRIMARY_INDEX_TYPES",
     "build_repo_index_status",
-    "validate_index_update_capabilities",
 ]

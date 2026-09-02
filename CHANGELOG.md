@@ -29,6 +29,18 @@ All notable user-facing changes are recorded here. CodeNib follows
   now use `wiki_cache/wiki.sqlite3`. Eligible source-compatible JSON entries
   remain available through read-through compatibility and are not rewritten or
   deleted.
+- The supported product database boundary is now the domain-local `WikiStore`
+  with its SQLite WAL implementation. `RepoManifest`, BM25, FAISS, igraph, and
+  portable context payloads remain file artifacts; generic retained storage and
+  its explicit CLI commands are frozen as experimental/compatibility surfaces.
+
+### Removed
+
+- The optional Web `index_storage` configuration and its catalog-backed local
+  runtime, retained BM25 activation, reconciliation, durable index-job
+  orchestration, `/api/index-jobs` write/read routes, and index-status job or
+  update-capability fields. Index status remains available as a read-only
+  `RepoManifest` projection.
 
 ### Security
 
