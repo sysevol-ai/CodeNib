@@ -494,246 +494,6 @@ def test_create_job_is_idempotent_and_conflicts_on_any_request_change(tmp_path) 
             )
 
 
-def test_create_job_if_idle_is_idempotent_and_scoped_per_ref(tmp_path) -> None:
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
-        repository_id, source_revision_id = _repository(catalog)
-        profile_id = catalog.create_view_profile("bm25", {})
-        request = _request(profile_id, mode="full")
-        first = catalog.create_job_if_idle(
-            repository_id,
-            source_revision_id,
-            "first",
-            request,
-        )
-
-        assert (
-            catalog.create_job_if_idle(
-                repository_id,
-                source_revision_id,
-                "first",
-                request,
-            )
-            == first
-        )
-        with pytest.raises(CatalogConflictError, match="already has an active"):
-            catalog.create_job_if_idle(
-                repository_id,
-                source_revision_id,
-                "blocked",
-                request,
-            )
-
-        release = catalog.create_job_if_idle(
-            repository_id,
-            source_revision_id,
-            "release",
-            request,
-            ref_name="release",
-        )
-        assert release.ref_name == "release"
-        catalog.acquire_job_lease(
-            release.job_id,
-            owner_id="worker",
-            lease_duration_ms=60_000,
-        )
-        with pytest.raises(CatalogConflictError, match="already has an active"):
-            catalog.create_job_if_idle(
-                repository_id,
-                source_revision_id,
-                "release-blocked",
-                request,
-                ref_name="release",
-            )
-
-        cancelled = catalog.request_job_cancel(first.job_id)
-        assert cancelled.status is IndexJobStatus.CANCELLED
-        replacement = catalog.create_job_if_idle(
-            repository_id,
-            source_revision_id,
-            "replacement",
-            request,
-        )
-        assert replacement.job_id != first.job_id
-
-
-def test_create_job_if_idle_rejects_a_stale_publication_fence(tmp_path) -> None:
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
-        repository_id, source_revision_id = _repository(catalog)
-        profile_id = catalog.create_view_profile("bm25", {})
-        digest = catalog.register_object(
-            "d" * 64,
-            storage_key=f"sha256/{'d' * 2}/{'d' * 62}",
-            byte_size=1,
-        )
-        view_id = catalog.stage_view_generation(
-            repository_id,
-            source_revision_id,
-            profile_id,
-            "bm25",
-            digest,
-            schema_version="1",
-        )
-        original = catalog.create_job_if_idle(
-            repository_id,
-            source_revision_id,
-            "original-request",
-            _request(profile_id, mode="full"),
-            expected_ref_generation=0,
-        )
-        published = catalog.publish_snapshot(
-            repository_id,
-            source_revision_id,
-            [view_id],
-            expected_generation=0,
-        )
-
-        assert published["generation"] == 1
-        assert (
-            catalog.create_job_if_idle(
-                repository_id,
-                source_revision_id,
-                "original-request",
-                _request(profile_id, mode="full"),
-                expected_ref_generation=0,
-            )
-            == original
-        )
-        assert (
-            catalog.request_job_cancel(original.job_id).status
-            is IndexJobStatus.CANCELLED
-        )
-        with pytest.raises(CatalogConflictError, match="generation changed"):
-            catalog.create_job_if_idle(
-                repository_id,
-                source_revision_id,
-                "stale-request",
-                _request(profile_id, mode="full"),
-                expected_ref_generation=0,
-            )
-        current = catalog.create_job_if_idle(
-            repository_id,
-            source_revision_id,
-            "current-request",
-            _request(profile_id, mode="full"),
-            expected_ref_generation=1,
-        )
-
-        assert current.expected_ref_generation == 1
-
-
-def test_find_job_by_idempotency_returns_only_exact_repository_job(tmp_path) -> None:
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
-        repository_id, source_revision_id = _repository(catalog)
-        other_repository, _ = _repository(catalog, "owner/other")
-        profile_id = catalog.create_view_profile("bm25", {})
-        job = catalog.create_job_if_idle(
-            repository_id,
-            source_revision_id,
-            "browser-request",
-            _request(profile_id, mode="full"),
-        )
-
-        assert (
-            catalog.find_job_by_idempotency(
-                repository_id,
-                "browser-request",
-            )
-            == job
-        )
-        assert catalog.find_job_by_idempotency(repository_id, "missing") is None
-        assert (
-            catalog.find_job_by_idempotency(other_repository, "browser-request") is None
-        )
-
-
-def test_two_connections_atomically_create_only_one_idle_ref_job(tmp_path) -> None:
-    path = tmp_path / "catalog.sqlite3"
-    with SQLiteCatalog(path) as catalog:
-        repository_id, source_revision_id = _repository(catalog)
-        profile_id = catalog.create_view_profile("bm25", {})
-    request = _request(profile_id, mode="full")
-    barrier = threading.Barrier(2)
-
-    def create(idempotency_key: str) -> tuple[str, str]:
-        with SQLiteCatalog(path) as catalog:
-            barrier.wait(timeout=5)
-            try:
-                job = catalog.create_job_if_idle(
-                    repository_id,
-                    source_revision_id,
-                    idempotency_key,
-                    request,
-                )
-                return "created", job.job_id
-            except CatalogConflictError as exc:
-                return "conflict", str(exc)
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(executor.map(create, ("first", "second")))
-
-    assert sorted(result[0] for result in results) == ["conflict", "created"]
-    with SQLiteCatalog(path) as catalog:
-        queued = catalog._connection.execute(
-            """
-            SELECT COUNT(*) FROM index_jobs
-            WHERE repository_id = ? AND ref_name = 'main' AND status = 'queued'
-            """,
-            (repository_id,),
-        ).fetchone()[0]
-        assert queued == 1
-
-
-def test_find_active_job_prefers_running_then_oldest_queued_per_ref(tmp_path) -> None:
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
-        repository_id, source_revision_id = _repository(catalog)
-        profile_id = catalog.create_view_profile("bm25", {})
-        request = _request(profile_id)
-
-        assert catalog.find_active_job(repository_id) is None
-        first = catalog.create_job(
-            repository_id,
-            source_revision_id,
-            "first",
-            request,
-        )
-        second = catalog.create_job(
-            repository_id,
-            source_revision_id,
-            "second",
-            request,
-        )
-        other_ref = catalog.create_job(
-            repository_id,
-            source_revision_id,
-            "other-ref",
-            request,
-            ref_name="release",
-        )
-
-        assert catalog.find_active_job(repository_id) == first
-        assert catalog.find_active_job(repository_id, "release") == other_ref
-
-        catalog.acquire_job_lease(
-            second.job_id,
-            owner_id="worker",
-            lease_duration_ms=60_000,
-        )
-
-        active = catalog.find_active_job(repository_id)
-        assert active is not None
-        assert active.job_id == second.job_id
-
-
-def test_find_active_job_validates_repository_and_ref(tmp_path) -> None:
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
-        repository_id, _source_revision_id = _repository(catalog)
-
-        with pytest.raises(CatalogNotFoundError, match="not found"):
-            catalog.find_active_job("repo_" + "f" * 64)
-        with pytest.raises(StorageValidationError, match="NUL"):
-            catalog.find_active_job(repository_id, "bad\x00ref")
-
-
 def test_job_views_and_contract_are_revalidated_against_canonical_request(
     tmp_path,
 ) -> None:
@@ -855,7 +615,7 @@ def test_acquire_retry_is_idempotent_but_other_owners_are_fenced(tmp_path) -> No
 
         assert retried == first
         assert catalog.get_job(job.job_id).attempt_count == 1
-        with pytest.raises(sqlite3.IntegrityError, match="ref job lease"):
+        with pytest.raises(sqlite3.IntegrityError, match="duplicate ref job lease"):
             catalog._connection.execute(
                 """
                 INSERT OR REPLACE INTO ref_job_leases(
@@ -921,10 +681,7 @@ def test_duplicate_insert_guards_block_replace_from_plain_connections(
 
     connection = open_plain_connection()
     try:
-        with pytest.raises(
-            sqlite3.IntegrityError,
-            match="duplicate index job|initial v6 index job state",
-        ):
+        with pytest.raises(sqlite3.IntegrityError, match="duplicate index job"):
             connection.execute(
                 """
                 INSERT OR REPLACE INTO index_jobs(
@@ -947,10 +704,7 @@ def test_duplicate_insert_guards_block_replace_from_plain_connections(
             )
         alternate_job_id = "job_" + "f" * 64
         assert alternate_job_id != job.job_id
-        with pytest.raises(
-            sqlite3.IntegrityError,
-            match="duplicate index job|initial v6 index job state",
-        ):
+        with pytest.raises(sqlite3.IntegrityError, match="duplicate index job"):
             connection.execute(
                 """
                 INSERT OR REPLACE INTO index_jobs(
@@ -1040,10 +794,7 @@ def test_duplicate_insert_guards_block_replace_from_plain_connections(
 
     connection = open_plain_connection()
     try:
-        with pytest.raises(
-            sqlite3.IntegrityError,
-            match="duplicate ref job lease|initial ref job lease state",
-        ):
+        with pytest.raises(sqlite3.IntegrityError, match="duplicate ref job lease"):
             connection.execute(
                 """
                 INSERT OR REPLACE INTO ref_job_leases(
@@ -1099,16 +850,15 @@ def test_plain_connection_cannot_move_lease_via_job_unique_identity(
     try:
         assert connection.execute("PRAGMA recursive_triggers").fetchone()[0] == 0
         assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 0
-        with pytest.raises(sqlite3.IntegrityError, match="status transition"):
-            connection.execute(
-                """
-                UPDATE index_jobs
-                SET status = 'queued', error_code = 'raw_half_state'
-                WHERE job_id = ?
-                """,
-                (job.job_id,),
-            )
-        with pytest.raises(sqlite3.IntegrityError, match="ref job lease"):
+        connection.execute(
+            """
+            UPDATE index_jobs
+            SET status = 'queued', error_code = 'raw_half_state'
+            WHERE job_id = ?
+            """,
+            (job.job_id,),
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="duplicate ref job lease"):
             connection.execute(
                 """
                 INSERT OR REPLACE INTO ref_job_leases(
@@ -1316,7 +1066,7 @@ def test_expired_lease_cannot_mutate_and_takeover_atomically_requeues(tmp_path) 
 
 
 @pytest.mark.parametrize("raw_status", ["queued", "failed", "cancelled"])
-def test_v6_rejects_nonrunning_half_state_without_erasing_authority(
+def test_expired_nonrunning_half_state_is_reclaimed_without_fencing_aba(
     tmp_path,
     raw_status: str,
 ) -> None:
@@ -1345,45 +1095,57 @@ def test_v6_rejects_nonrunning_half_state_without_erasing_authority(
         )
         now_ms = catalog._db_now_ms()
         if raw_status == "queued":
-            statement = """
+            catalog._connection.execute(
+                """
                 UPDATE index_jobs
                 SET status = 'queued', error_code = 'raw_half_state',
                     updated_at_ms = ?
                 WHERE job_id = ?
-            """
-            parameters = (now_ms, first.job_id)
+                """,
+                (now_ms, first.job_id),
+            )
         else:
-            statement = """
+            catalog._connection.execute(
+                """
                 UPDATE index_jobs
                 SET status = ?, cancel_requested = ?,
                     error_code = 'raw_half_state', finished_at_ms = ?,
                     updated_at_ms = ?
                 WHERE job_id = ?
-            """
-            parameters = (
-                raw_status,
-                int(raw_status == "cancelled"),
-                now_ms,
-                now_ms,
-                first.job_id,
+                """,
+                (
+                    raw_status,
+                    int(raw_status == "cancelled"),
+                    now_ms,
+                    now_ms,
+                    first.job_id,
+                ),
             )
-        with pytest.raises(sqlite3.IntegrityError, match="status transition"):
-            catalog._connection.execute(statement, parameters)
         with pytest.raises(CatalogConflictError, match="active"):
             catalog.acquire_job_lease(
                 second.job_id,
                 owner_id="worker-2",
                 lease_duration_ms=30_000,
             )
-        assert catalog.get_job(first.job_id).status is IndexJobStatus.RUNNING
-        assert (
-            catalog.acquire_job_lease(
-                first.job_id,
-                owner_id="worker-1",
-                lease_duration_ms=1,
-            )
-            == stale
+
+    with SQLiteCatalog(path) as catalog:
+        # The test clock is connection-local.  Reopening restores the real DB
+        # clock, which is beyond the synthetic lease and permits takeover.
+        assert catalog._db_now_ms() > stale.lease_expires_at_ms
+        current = catalog.acquire_job_lease(
+            second.job_id, owner_id="worker-2", lease_duration_ms=30_000
         )
+        assert current.fencing_token == stale.fencing_token + 1
+        assert catalog.get_job(first.job_id).status.value == raw_status
+        with pytest.raises(CatalogConflictError, match="fenced lease"):
+            catalog.finish_job_attempt(
+                second.job_id,
+                owner_id="worker-1",
+                fencing_token=stale.fencing_token,
+                outcome=IndexJobCompletion.FAILED,
+                error_code="stale_worker",
+            )
+        assert catalog.get_job(second.job_id).status is IndexJobStatus.RUNNING
 
 
 def test_queued_and_running_cancellation_have_distinct_semantics(tmp_path) -> None:
@@ -1481,7 +1243,7 @@ def test_m1_rejects_success_and_result_snapshot_binds_full_source_identity(
         )
         now_ms = catalog._db_now_ms()
 
-        with pytest.raises(sqlite3.IntegrityError, match="M1|status transition"):
+        with pytest.raises(sqlite3.IntegrityError, match="M1"):
             catalog._connection.execute(
                 """
                 UPDATE index_jobs
@@ -1491,10 +1253,7 @@ def test_m1_rejects_success_and_result_snapshot_binds_full_source_identity(
                 """,
                 (correct_snapshot, now_ms, now_ms, job.job_id),
             )
-        with pytest.raises(
-            sqlite3.IntegrityError,
-            match="M1|initial v6 index job state",
-        ):
+        with pytest.raises(sqlite3.IntegrityError, match="M1"):
             catalog._connection.execute(
                 """
                 INSERT INTO index_jobs(
@@ -1531,9 +1290,7 @@ def test_m1_rejects_success_and_result_snapshot_binds_full_source_identity(
         catalog._connection.execute(
             "DROP TRIGGER m1_index_jobs_cannot_update_succeeded"
         )
-        with pytest.raises(
-            sqlite3.IntegrityError, match="FOREIGN KEY|status transition"
-        ):
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
             catalog._connection.execute(
                 """
                 UPDATE index_jobs
@@ -1552,16 +1309,14 @@ def test_job_finish_and_slot_release_roll_back_together(tmp_path) -> None:
         lease = catalog.acquire_job_lease(
             job.job_id, owner_id="worker", lease_duration_ms=30_000
         )
-        catalog._connection.execute(
-            """
+        catalog._connection.execute("""
             CREATE TRIGGER fail_job_slot_release
             BEFORE UPDATE ON ref_job_leases
             WHEN NEW.job_id IS NULL
             BEGIN
                 SELECT RAISE(ABORT, 'simulated slot release failure');
             END
-            """
-        )
+            """)
 
         with pytest.raises(sqlite3.IntegrityError, match="simulated slot"):
             catalog.finish_job_attempt(

@@ -25,16 +25,13 @@ import inspect
 import json
 import os
 import re
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import Any, NoReturn
+from typing import Any
 
-from .._atomic_directory import (
-    PublicationDirectoryReader,
-    _attach_publication_cleanup_owner,
-)
+from .._atomic_directory import PublicationDirectoryReader
 from .._captured_directory import (
     PublishedWorkspaceReceipt,
     PublishedWorkspaceReceiptOwner,
@@ -42,9 +39,7 @@ from .._captured_directory import (
     WorkspaceFile,
     WorkspacePlan,
 )
-from ..artifacts.portable_views import (
-    _validate_content_bound_portable_query_view_reader_with_identity,
-)
+from ..artifacts.portable_views import validate_content_bound_portable_query_view_reader
 from ..artifacts.runtime import verify_context_artifact_reader
 from ..source_fingerprint import RepositorySourceBinding
 from ..storage.cas import BlobInfo
@@ -67,13 +62,10 @@ from ..storage.models import (
 )
 from ..storage.protocols import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
-    InterruptibleReceiptVerifyingObjectStore,
-    InterruptibleStreamingObjectStore,
     RetainedImportCatalog,
     RetainedImportObjectStore,
     snapshot_retained_import_response,
 )
-from ..storage.publication import IndexJobObjectArtifact, IndexJobViewArtifact
 from ..storage.view_bundle import (
     DEFAULT_MAX_BUNDLE_BYTES,
     DEFAULT_MAX_BUNDLE_FILES,
@@ -95,7 +87,6 @@ from .retained_manifest_contract import (
     REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
     REPO_MANIFEST_PROJECTION_PROFILE_NAME,
     REPO_MANIFEST_PROJECTION_SCHEMA,
-    REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
     REPO_MANIFEST_PROJECTION_VIEW,
 )
 from .retained_manifest_contract import (
@@ -135,18 +126,6 @@ _OBJECT_STORE_METHODS = (
     "verify_receipt",
     "retain_receipts",
 )
-
-
-class _ManifestChunkStop(BaseException):
-    """Carry an exact callback ``StopIteration`` across generator boundaries."""
-
-    __slots__ = ("error",)
-
-    def __init__(self, error: StopIteration) -> None:
-        super().__init__(error)
-        self.error = error
-
-
 _CATALOG_METHODS = (
     "retained_import_contract",
     "create_namespace",
@@ -217,12 +196,6 @@ class _PreparedView:
 
 
 @dataclass(frozen=True, slots=True)
-class _PreparedManifestViews:
-    artifact_plan_digest: str
-    views: tuple[_PreparedView, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class _PreparedImport:
     artifact_plan_digest: str
     views: tuple[_PreparedView, ...]
@@ -238,14 +211,6 @@ class _PreparedImport:
             values.extend(member[3] for member in view.members)
         values.append(self.projection)
         return _unique_stored_objects(values)
-
-
-@dataclass(frozen=True, slots=True)
-class _PreparedJobSnapshotArtifacts:
-    """Requested job outputs plus reserved snapshot-support generations."""
-
-    artifacts: tuple[IndexJobViewArtifact, ...]
-    supporting_artifacts: tuple[IndexJobViewArtifact, ...]
 
 
 def _validate_result_items(result: RepoManifestImportResult) -> None:
@@ -573,26 +538,8 @@ def _unique_stored_objects(
 def _verify_exact_receipt(
     object_store: RetainedImportObjectStore,
     stored: _StoredObject,
-    *,
-    check_cancelled: Callable[[], None] | None = None,
 ) -> None:
-    if check_cancelled is None:
-        observed = object_store.verify_receipt(stored.receipt)
-    else:
-        if not isinstance(object_store, InterruptibleReceiptVerifyingObjectStore):
-            raise TypeError(
-                "cancellable manifest import requires interruptible receipt "
-                "verification"
-            )
-        _require_static_methods(
-            object_store,
-            label="cancellable manifest import object store",
-            names=("verify_receipt_interruptibly",),
-        )
-        observed = object_store.verify_receipt_interruptibly(
-            stored.receipt,
-            check_cancelled=check_cancelled,
-        )
+    observed = object_store.verify_receipt(stored.receipt)  # type: ignore[attr-defined]
     verified = _exact_blob_object(
         observed,
         expected_digest=stored.record.digest,
@@ -602,40 +549,6 @@ def _verify_exact_receipt(
     )
     if verified.receipt.storage_key != stored.receipt.storage_key:
         raise StorageIntegrityError("object-store receipt storage key changed")
-
-
-def _put_exact_chunks(
-    object_store: RetainedImportObjectStore,
-    chunks: Iterable[bytes],
-    expected_digest: str,
-    expected_size: int,
-    *,
-    check_cancelled: Callable[[], None] | None = None,
-) -> BlobInfo:
-    if check_cancelled is None:
-        return object_store.put_chunks(
-            chunks,
-            expected_digest,
-            expected_size,
-        )
-    if not isinstance(object_store, InterruptibleStreamingObjectStore):
-        raise TypeError(
-            "cancellable manifest import requires interruptible streaming ingestion"
-        )
-    _require_static_methods(
-        object_store,
-        label="cancellable manifest import object store",
-        names=("put_chunks_interruptibly",),
-    )
-    try:
-        return object_store.put_chunks_interruptibly(
-            chunks,
-            expected_digest,
-            expected_size,
-            check_cancelled=check_cancelled,
-        )
-    except _ManifestChunkStop as signal:
-        _raise_exact_chunk_stop(signal)
 
 
 def _semantic_object(record: ObjectRecord) -> dict[str, Any]:
@@ -764,19 +677,12 @@ def _measure_canonical_json(
     value: Mapping[str, Any],
     *,
     max_bytes: int,
-    check_cancelled: Callable[[], None] | None = None,
 ) -> tuple[str, int]:
     digest = hashlib.sha256()
     size = 0
-    try:
-        for chunk in _interruptible_chunks(
-            _iter_canonical_json_chunks(value, max_bytes=max_bytes),
-            check_cancelled,
-        ):
-            digest.update(chunk)
-            size += len(chunk)
-    except _ManifestChunkStop as signal:
-        _raise_exact_chunk_stop(signal)
+    for chunk in _iter_canonical_json_chunks(value, max_bytes=max_bytes):
+        digest.update(chunk)
+        size += len(chunk)
     return digest.hexdigest(), size
 
 
@@ -801,496 +707,9 @@ def _validate_context_matches_plan(
         )
 
 
-def _interruptible_chunks(
-    chunks: Iterable[bytes],
-    check_cancelled: Callable[[], None] | None,
-) -> Iterator[bytes]:
-    if check_cancelled is not None:
-        _poll_chunk_cancellation(check_cancelled)
-    iterator = iter(chunks)
-    while True:
-        if check_cancelled is not None:
-            _poll_chunk_cancellation(check_cancelled)
-        try:
-            chunk = next(iterator)
-        except StopIteration:
-            return
-        yield chunk
-
-
-def _interruptible_expected_chunks(
-    chunks: Iterable[bytes],
-    expected_size: int,
-    check_cancelled: Callable[[], None] | None,
-) -> Iterator[bytes]:
-    """Poll before future bytes and after an empty terminal guard item."""
-
-    if check_cancelled is not None and expected_size:
-        _poll_chunk_cancellation(check_cancelled)
-    iterator = iter(chunks)
-    observed_size = 0
-    terminal_probe_observed = False
-    while True:
-        if check_cancelled is not None and (
-            observed_size < expected_size or terminal_probe_observed
-        ):
-            _poll_chunk_cancellation(check_cancelled)
-        try:
-            chunk = next(iterator)
-        except StopIteration:
-            return
-        if type(chunk) is not bytes:
-            raise TypeError("manifest source chunk producer must yield exact bytes")
-        at_expected_size = observed_size == expected_size
-        if at_expected_size and chunk:
-            raise StorageIntegrityError(
-                "manifest source chunk producer exceeds its expected size"
-            )
-        observed_size += len(chunk)
-        if observed_size > expected_size:
-            raise StorageIntegrityError(
-                "manifest source chunk producer exceeds its expected size"
-            )
-        if at_expected_size:
-            terminal_probe_observed = True
-        yield chunk
-
-
-def _drain(
-    chunks: Iterable[bytes],
-    *,
-    check_cancelled: Callable[[], None] | None = None,
-) -> None:
-    try:
-        for _chunk in _interruptible_chunks(chunks, check_cancelled):
-            pass
-    except _ManifestChunkStop as signal:
-        _raise_exact_chunk_stop(signal)
-
-
-def _poll_chunk_cancellation(check_cancelled: Callable[[], None]) -> None:
-    try:
-        check_cancelled()
-    except StopIteration as error:
-        raise _ManifestChunkStop(error) from error
-
-
-def _raise_exact_chunk_stop(signal: _ManifestChunkStop) -> NoReturn:
-    error = signal.error
-    _inherit_manifest_chunk_stop_settlement(signal, error)
-    raise error
-
-
-def _inherit_manifest_chunk_stop_settlement(
-    source: BaseException,
-    target: BaseException,
-) -> None:
-    for attribute in ("__notes__", "_codenib_cleanup_notes"):
-        try:
-            values = BaseException.__getattribute__(source, attribute)
-        except BaseException:  # noqa: B036 - best-effort diagnostics only
-            continue
-        if type(values) not in (list, tuple):
-            continue
-        for note in values:
-            if type(note) is not str:
-                continue
-            try:
-                add_note = getattr(BaseException, "add_note", None)
-                if add_note is not None:
-                    add_note(target, note)
-                    continue
-                try:
-                    retained = BaseException.__getattribute__(
-                        target,
-                        "_codenib_cleanup_notes",
-                    )
-                except AttributeError:
-                    retained = ()
-                if type(retained) is not tuple:
-                    retained = ()
-                BaseException.__setattr__(
-                    target,
-                    "_codenib_cleanup_notes",
-                    (*retained, note),
-                )
-            except BaseException:  # noqa: B036 - never mask the exact stop
-                pass
-
-    try:
-        publication_owners = BaseException.__getattribute__(
-            source,
-            "publication_cleanup_owners",
-        )
-    except BaseException:  # noqa: B036 - no retained publication cleanup
-        publication_owners = ()
-    if type(publication_owners) is tuple:
-        for owner in publication_owners:
-            _attach_publication_cleanup_owner(target, owner)
-
-    try:
-        bundle_owners = BaseException.__getattribute__(
-            source,
-            "_codenib_bundle_stream_cleanup_owners",
-        )
-    except BaseException:  # noqa: B036 - no retained bundle cleanup
-        bundle_owners = ()
-    if type(bundle_owners) is tuple:
-        try:
-            try:
-                retained_bundle_owners = BaseException.__getattribute__(
-                    target,
-                    "_codenib_bundle_stream_cleanup_owners",
-                )
-            except AttributeError:
-                retained_bundle_owners = ()
-            if type(retained_bundle_owners) is not tuple:
-                retained_bundle_owners = ()
-            merged = list(retained_bundle_owners)
-            for owner in bundle_owners:
-                if not any(candidate is owner for candidate in merged):
-                    merged.append(owner)
-            BaseException.__setattr__(
-                target,
-                "_codenib_bundle_stream_cleanup_owners",
-                tuple(merged),
-            )
-        except BaseException:  # noqa: B036 - exact stop remains primary
-            pass
-
-
-def _prepare_manifest_views_inside_authority(
-    receipt: PublishedWorkspaceReceipt,
-    publication: PublicationDirectoryReader,
-    *,
-    plan: RepoManifestImportPlan,
-    repository_source: RepositorySourceBinding,
-    repository_key: str,
-    source_identity: SourceRevision,
-    object_store: RetainedImportObjectStore,
-    environment: Mapping[str, str],
-    forbidden_paths: tuple[Path, ...],
-    max_context_files: int,
-    max_context_bytes: int,
-    max_bundle_files: int,
-    max_bundle_bytes: int,
-    max_bundle_metadata_bytes: int,
-    check_cancelled: Callable[[], None] | None = None,
-) -> _PreparedManifestViews:
-    if check_cancelled is not None:
-        if not isinstance(
-            object_store,
-            InterruptibleReceiptVerifyingObjectStore,
-        ):
-            raise TypeError(
-                "cancellable manifest import requires interruptible receipt "
-                "verification"
-            )
-        if not isinstance(object_store, InterruptibleStreamingObjectStore):
-            raise TypeError(
-                "cancellable manifest import requires interruptible streaming "
-                "ingestion"
-            )
-        _require_static_methods(
-            object_store,
-            label="cancellable manifest import object store",
-            names=(
-                "put_chunks_interruptibly",
-                "verify_receipt_interruptibly",
-            ),
-        )
-    if type(receipt) is not PublishedWorkspaceReceipt:
-        raise TypeError("retained context receipt has an invalid type")
-    if type(publication) is not PublicationDirectoryReader:
-        raise TypeError("retained context reader has an invalid type")
-    if check_cancelled is not None:
-        check_cancelled()
-    artifact_plan_digest = _snapshot_workspace_plan_digest(receipt)
-    verified = verify_context_artifact_reader(
-        publication,
-        expected_repository=repository_key,
-        expected_commit=plan.source.display_commit,
-        expected_manifest_version=plan.manifest.version,
-        max_files=max_context_files,
-        max_bytes=max_context_bytes,
-        check_cancelled=check_cancelled,
-    )
-    _validate_context_matches_plan(
-        plan,
-        verified=verified,
-        repository_key=repository_key,
-    )
-    if check_cancelled is not None:
-        check_cancelled()
-
-    planned: list[
-        tuple[ViewImportIntent, PublicationDirectoryReader, PlannedViewBundle]
-    ] = []
-    # Every selected view is semantically validated and fully bundle-planned
-    # before the first object-store producer is invoked.
-    for intent in plan.views:
-        if check_cancelled is not None:
-            check_cancelled()
-        prefix = PurePosixPath("views") / intent.view_type
-        view_reader = publication.subtree(prefix)
-        repository_identity = (
-            repository_source.authenticated_identity_snapshot()
-            if check_cancelled is None
-            else repository_source.authenticated_identity_snapshot(
-                check_cancelled=check_cancelled,
-            )
-        )
-        _validate_content_bound_portable_query_view_reader_with_identity(
-            view_reader,
-            repository_source=repository_source,
-            repository_identity=repository_identity,
-            view_type=intent.view_type,
-            view_config=intent.manifest_entry["config"],
-            forbidden_paths=forbidden_paths,
-            environ=environment,
-            check_cancelled=check_cancelled,
-        )
-        source_ownership = view_reader.capture_ownership(
-            check_cancelled=check_cancelled,
-        )
-        bundle = plan_view_bundle_reader(
-            publication,
-            prefix,
-            source_ownership,
-            view_type=intent.view_type,
-            max_files=max_bundle_files,
-            max_bytes=max_bundle_bytes,
-            max_metadata_bytes=max_bundle_metadata_bytes,
-            check_cancelled=check_cancelled,
-        )
-        if check_cancelled is not None:
-            check_cancelled()
-        planned.append((intent, view_reader, bundle))
-
-    prepared_views: list[_PreparedView] = []
-    stored_by_digest: dict[str, _StoredObject] = {}
-    for intent, view_reader, bundle in planned:
-        if check_cancelled is not None:
-            check_cancelled()
-
-        def store_bundle(
-            chunks: Iterable[bytes],
-            *,
-            expected_bundle: PlannedViewBundle = bundle,
-            expected_view_type: str = intent.view_type,
-        ) -> _StoredObject:
-            streamed_chunks = (
-                chunks
-                if check_cancelled is None
-                else _interruptible_expected_chunks(
-                    chunks,
-                    expected_bundle.byte_size,
-                    check_cancelled,
-                )
-            )
-            raw = _put_exact_chunks(
-                object_store,
-                streamed_chunks,
-                expected_bundle.digest,
-                expected_bundle.byte_size,
-                check_cancelled=check_cancelled,
-            )
-            stored = _exact_blob_object(
-                raw,
-                expected_digest=expected_bundle.digest,
-                expected_size=expected_bundle.byte_size,
-                media_type=VIEW_BUNDLE_MEDIA_TYPE,
-                label=f"portable {expected_view_type} bundle ingestion",
-            )
-            _verify_exact_receipt(
-                object_store,
-                stored,
-                check_cancelled=check_cancelled,
-            )
-            existing = stored_by_digest.get(stored.record.digest)
-            if existing is not None and not _same_object(
-                existing.record,
-                stored.record,
-            ):
-                raise StorageIntegrityError("bundle object metadata conflicts")
-            stored_by_digest[stored.record.digest] = stored
-            return stored
-
-        bundle_object = consume_planned_view_bundle(
-            publication,
-            bundle,
-            store_bundle,
-            check_cancelled=check_cancelled,
-        )
-        if check_cancelled is not None:
-            check_cancelled()
-
-        members: list[tuple[str, int, int, _StoredObject]] = []
-        for member in bundle.members:
-            if check_cancelled is not None:
-                check_cancelled()
-            existing = stored_by_digest.get(member.digest)
-            if existing is not None and (
-                existing.record.byte_size != member.byte_size
-                or existing.record.media_type != _MEMBER_MEDIA_TYPE
-            ):
-                raise StorageIntegrityError(
-                    "duplicate member digest has conflicting metadata"
-                )
-            with view_reader.iter_authenticated_chunks(
-                member.path,
-                max_bytes=member.byte_size,
-            ) as chunks:
-                if existing is None:
-                    interruptible_chunks = _interruptible_expected_chunks(
-                        chunks,
-                        member.byte_size,
-                        check_cancelled,
-                    )
-                    raw_member = _put_exact_chunks(
-                        object_store,
-                        interruptible_chunks,
-                        member.digest,
-                        member.byte_size,
-                        check_cancelled=check_cancelled,
-                    )
-                    stored = _exact_blob_object(
-                        raw_member,
-                        expected_digest=member.digest,
-                        expected_size=member.byte_size,
-                        media_type=_MEMBER_MEDIA_TYPE,
-                        label=f"portable {intent.view_type} member ingestion",
-                    )
-                    # A conforming store may return a reused receipt without
-                    # touching its producer.  Finish source authentication
-                    # through the same cancellation-aware iterator before
-                    # fully revalidating the already-attested receipt.
-                    _drain(interruptible_chunks)
-                else:
-                    _drain(
-                        _interruptible_expected_chunks(
-                            chunks,
-                            member.byte_size,
-                            check_cancelled,
-                        )
-                    )
-                    stored = existing
-            if existing is None:
-                _verify_exact_receipt(
-                    object_store,
-                    stored,
-                    check_cancelled=check_cancelled,
-                )
-                stored_by_digest[stored.record.digest] = stored
-            members.append((member.path, member.byte_size, member.mode, stored))
-            if check_cancelled is not None:
-                check_cancelled()
-
-        member_digests = tuple(sorted({item[3].record.digest for item in members}))
-        generation = ViewGeneration.create(
-            source_identity,
-            intent.profile,
-            bundle_object.record,
-            schema_version=VIEW_BUNDLE_SCHEMA,
-            metadata=_intent_generation_metadata(intent),
-            member_object_digests=member_digests,
-        )
-        prepared_views.append(
-            _PreparedView(
-                intent=intent,
-                bundle=bundle_object,
-                members=tuple(members),
-                generation=generation,
-            )
-        )
-
-    return _PreparedManifestViews(
-        artifact_plan_digest=artifact_plan_digest,
-        views=tuple(prepared_views),
-    )
-
-
-def _prepare_job_view_artifacts_inside_authority(
-    receipt: PublishedWorkspaceReceipt,
-    publication: PublicationDirectoryReader,
-    *,
-    plan: RepoManifestImportPlan,
-    repository_source: RepositorySourceBinding,
-    repository_key: str,
-    source_identity: SourceRevision,
-    object_store: RetainedImportObjectStore,
-    environment: Mapping[str, str],
-    forbidden_paths: tuple[Path, ...],
-    max_context_files: int,
-    max_context_bytes: int,
-    max_bundle_files: int,
-    max_bundle_bytes: int,
-    max_bundle_metadata_bytes: int,
-    check_cancelled: Callable[[], None] | None = None,
-) -> tuple[IndexJobViewArtifact, ...]:
-    """Ingest exact selected-view receipts without a manifest projection."""
-
-    prepared = _prepare_manifest_views_inside_authority(
-        receipt,
-        publication,
-        plan=plan,
-        repository_source=repository_source,
-        repository_key=repository_key,
-        source_identity=source_identity,
-        object_store=object_store,
-        environment=environment,
-        forbidden_paths=forbidden_paths,
-        max_context_files=max_context_files,
-        max_context_bytes=max_context_bytes,
-        max_bundle_files=max_bundle_files,
-        max_bundle_bytes=max_bundle_bytes,
-        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
-        check_cancelled=check_cancelled,
-    )
-    artifacts = tuple(
-        _prepared_view_job_artifact(view, check_cancelled=check_cancelled)
-        for view in prepared.views
-    )
-    if check_cancelled is None:
-        repository_source.verify_snapshot()
-    else:
-        repository_source.verify_snapshot(check_cancelled=check_cancelled)
-    return artifacts
-
-
-def _prepared_view_job_artifact(
-    view: _PreparedView,
-    *,
-    check_cancelled: Callable[[], None] | None,
-) -> IndexJobViewArtifact:
-    if check_cancelled is not None:
-        check_cancelled()
-    members = _unique_stored_objects(member[3] for member in view.members)
-    artifact = IndexJobViewArtifact.create(
-        view.intent.view_type,
-        view.intent.profile_id,
-        view.bundle.receipt,
-        schema_version=VIEW_BUNDLE_SCHEMA,
-        media_type=view.bundle.record.media_type,
-        metadata=_intent_generation_metadata(view.intent),
-        member_artifacts=tuple(
-            IndexJobObjectArtifact(member.receipt, member.record.media_type)
-            for member in members
-        ),
-    )
-    output = artifact._output()
-    if (
-        output.view_type != view.generation.view_type
-        or output.profile_id != view.generation.profile_id
-        or output.object_record != view.bundle.record
-        or output.schema_version != view.generation.schema_version
-        or canonical_json(output.generation_metadata) != view.generation.metadata_json
-        or output.member_object_records != tuple(member.record for member in members)
-    ):
-        raise StorageIntegrityError(
-            "retained job artifact differs from its prepared view generation"
-        )
-    return artifact
+def _drain(chunks: Iterable[bytes]) -> None:
+    for _chunk in chunks:
+        pass
 
 
 def _prepare_import_inside_authority(
@@ -1310,100 +729,150 @@ def _prepare_import_inside_authority(
     max_bundle_bytes: int,
     max_bundle_metadata_bytes: int,
     max_projection_bytes: int,
-    projection_reachability: str | None = None,
-    check_cancelled: Callable[[], None] | None = None,
 ) -> _PreparedImport:
-    if projection_reachability not in {
-        None,
-        REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
-    }:
-        raise StorageValidationError(
-            "repository manifest projection reachability is invalid"
-        )
-    prepared = _prepare_manifest_views_inside_authority(
-        receipt,
+    if type(receipt) is not PublishedWorkspaceReceipt:
+        raise TypeError("retained context receipt has an invalid type")
+    if type(publication) is not PublicationDirectoryReader:
+        raise TypeError("retained context reader has an invalid type")
+    artifact_plan_digest = _snapshot_workspace_plan_digest(receipt)
+    verified = verify_context_artifact_reader(
         publication,
-        plan=plan,
-        repository_source=repository_source,
+        expected_repository=repository_key,
+        expected_commit=plan.source.display_commit,
+        expected_manifest_version=plan.manifest.version,
+        max_files=max_context_files,
+        max_bytes=max_context_bytes,
+    )
+    _validate_context_matches_plan(
+        plan,
+        verified=verified,
         repository_key=repository_key,
-        source_identity=source_identity,
-        object_store=object_store,
-        environment=environment,
-        forbidden_paths=forbidden_paths,
-        max_context_files=max_context_files,
-        max_context_bytes=max_context_bytes,
-        max_bundle_files=max_bundle_files,
-        max_bundle_bytes=max_bundle_bytes,
-        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
-        check_cancelled=check_cancelled,
-    )
-    return _prepare_projection_inside_authority(
-        prepared,
-        plan=plan,
-        repository_source=repository_source,
-        source_identity=source_identity,
-        object_store=object_store,
-        max_projection_bytes=max_projection_bytes,
-        projection_reachability=projection_reachability,
-        check_cancelled=check_cancelled,
     )
 
-
-def _prepare_projection_inside_authority(
-    prepared: _PreparedManifestViews,
-    *,
-    plan: RepoManifestImportPlan,
-    repository_source: RepositorySourceBinding,
-    source_identity: SourceRevision,
-    object_store: RetainedImportObjectStore,
-    max_projection_bytes: int,
-    projection_reachability: str | None,
-    check_cancelled: Callable[[], None] | None = None,
-) -> _PreparedImport:
-    """Add one projection to already ingested, authority-scoped views."""
-
-    if type(prepared) is not _PreparedManifestViews:
-        raise TypeError("prepared manifest views are invalid")
-    if projection_reachability not in {
-        None,
-        REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
-    }:
-        raise StorageValidationError(
-            "repository manifest projection reachability is invalid"
+    planned: list[
+        tuple[ViewImportIntent, PublicationDirectoryReader, PlannedViewBundle]
+    ] = []
+    # Every selected view is semantically validated and fully bundle-planned
+    # before the first object-store producer is invoked.
+    for intent in plan.views:
+        prefix = PurePosixPath("views") / intent.view_type
+        view_reader = publication.subtree(prefix)
+        validate_content_bound_portable_query_view_reader(
+            view_reader,
+            repository_source=repository_source,
+            view_type=intent.view_type,
+            view_config=intent.manifest_entry["config"],
+            forbidden_paths=forbidden_paths,
+            environ=environment,
         )
+        source_ownership = view_reader.capture_ownership()
+        bundle = plan_view_bundle_reader(
+            publication,
+            prefix,
+            source_ownership,
+            view_type=intent.view_type,
+            max_files=max_bundle_files,
+            max_bytes=max_bundle_bytes,
+            max_metadata_bytes=max_bundle_metadata_bytes,
+        )
+        planned.append((intent, view_reader, bundle))
 
-    if check_cancelled is not None:
-        check_cancelled()
+    prepared_views: list[_PreparedView] = []
+    stored_by_digest: dict[str, _StoredObject] = {}
+    for intent, view_reader, bundle in planned:
+        raw_bundle = consume_planned_view_bundle(
+            publication,
+            bundle,
+            lambda chunks, bundle=bundle: object_store.put_chunks(  # type: ignore[attr-defined]
+                chunks,
+                bundle.digest,
+                bundle.byte_size,
+            ),
+        )
+        bundle_object = _exact_blob_object(
+            raw_bundle,
+            expected_digest=bundle.digest,
+            expected_size=bundle.byte_size,
+            media_type=VIEW_BUNDLE_MEDIA_TYPE,
+            label=f"portable {intent.view_type} bundle ingestion",
+        )
+        existing_bundle = stored_by_digest.get(bundle_object.record.digest)
+        if existing_bundle is not None and not _same_object(
+            existing_bundle.record, bundle_object.record
+        ):
+            raise StorageIntegrityError("bundle object metadata conflicts")
+        stored_by_digest[bundle_object.record.digest] = bundle_object
+
+        members: list[tuple[str, int, int, _StoredObject]] = []
+        for member in bundle.members:
+            existing = stored_by_digest.get(member.digest)
+            with view_reader.iter_authenticated_chunks(
+                member.path,
+                max_bytes=member.byte_size,
+            ) as chunks:
+                if existing is None:
+                    raw_member = object_store.put_chunks(  # type: ignore[attr-defined]
+                        chunks,
+                        member.digest,
+                        member.byte_size,
+                    )
+                    stored = _exact_blob_object(
+                        raw_member,
+                        expected_digest=member.digest,
+                        expected_size=member.byte_size,
+                        media_type=_MEMBER_MEDIA_TYPE,
+                        label=f"portable {intent.view_type} member ingestion",
+                    )
+                    stored_by_digest[stored.record.digest] = stored
+                else:
+                    _drain(chunks)
+                    if (
+                        existing.record.byte_size != member.byte_size
+                        or existing.record.media_type != _MEMBER_MEDIA_TYPE
+                    ):
+                        raise StorageIntegrityError(
+                            "duplicate member digest has conflicting metadata"
+                        )
+                    stored = existing
+            members.append((member.path, member.byte_size, member.mode, stored))
+
+        member_digests = tuple(sorted({item[3].record.digest for item in members}))
+        generation = ViewGeneration.create(
+            source_identity,
+            intent.profile,
+            bundle_object.record,
+            schema_version=VIEW_BUNDLE_SCHEMA,
+            metadata=_intent_generation_metadata(intent),
+            member_object_digests=member_digests,
+        )
+        prepared_views.append(
+            _PreparedView(
+                intent=intent,
+                bundle=bundle_object,
+                members=tuple(members),
+                generation=generation,
+            )
+        )
 
     projection_profile = _projection_profile()
     projection_value = _projection_value(
         plan,
-        artifact_plan_digest=prepared.artifact_plan_digest,
+        artifact_plan_digest=artifact_plan_digest,
         repository_id=source_identity.repository_id,
         source=source_identity,
-        views=prepared.views,
+        views=prepared_views,
     )
     projection_digest, projection_size = _measure_canonical_json(
         projection_value,
         max_bytes=max_projection_bytes,
-        check_cancelled=check_cancelled,
     )
-    projection_chunks: Iterable[bytes] = _iter_canonical_json_chunks(
-        projection_value,
-        max_bytes=max_projection_bytes,
-    )
-    if check_cancelled is not None:
-        projection_chunks = _interruptible_expected_chunks(
-            projection_chunks,
-            projection_size,
-            check_cancelled,
-        )
-    raw_projection = _put_exact_chunks(
-        object_store,
-        projection_chunks,
+    raw_projection = object_store.put_chunks(  # type: ignore[attr-defined]
+        _iter_canonical_json_chunks(
+            projection_value,
+            max_bytes=max_projection_bytes,
+        ),
         projection_digest,
         projection_size,
-        check_cancelled=check_cancelled,
     )
     projection_object = _exact_blob_object(
         raw_projection,
@@ -1412,35 +881,22 @@ def _prepare_projection_inside_authority(
         media_type=REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
         label="repository manifest projection ingestion",
     )
-    # A job publishes every selected generation in the same snapshot, so the
-    # sibling views already retain their complete primary/member closure. Keep
-    # standalone imports self-contained, but do not duplicate those edges in
-    # the job-only projection generation.
-    dependencies = (
-        tuple(
-            sorted(
-                {
-                    dependency.record.digest
-                    for view in prepared.views
-                    for dependency in (
-                        view.bundle,
-                        *(member[3] for member in view.members),
-                    )
-                }
-            )
+    dependencies = tuple(
+        sorted(
+            {
+                dependency.record.digest
+                for view in prepared_views
+                for dependency in (view.bundle, *(member[3] for member in view.members))
+            }
         )
-        if projection_reachability is None
-        else ()
     )
     projection_metadata = {
         "contract": REPO_MANIFEST_PROJECTION_SCHEMA,
         "manifest_version": plan.manifest.version,
         "manifest_digest": plan.manifest_digest,
         "plan_digest": plan.plan_digest,
-        "projected_views": [view.intent.view_type for view in prepared.views],
+        "projected_views": [view.intent.view_type for view in prepared_views],
     }
-    if projection_reachability is not None:
-        projection_metadata["reachability"] = projection_reachability
     projection_generation = ViewGeneration.create(
         source_identity,
         projection_profile,
@@ -1449,140 +905,13 @@ def _prepare_projection_inside_authority(
         metadata=projection_metadata,
         member_object_digests=dependencies,
     )
-    if check_cancelled is None:
-        repository_source.verify_snapshot()
-    else:
-        repository_source.verify_snapshot(check_cancelled=check_cancelled)
+    repository_source.verify_snapshot()
     return _PreparedImport(
-        artifact_plan_digest=prepared.artifact_plan_digest,
-        views=prepared.views,
+        artifact_plan_digest=artifact_plan_digest,
+        views=tuple(prepared_views),
         projection=projection_object,
         projection_profile=projection_profile,
         projection_generation=projection_generation,
-    )
-
-
-def _prepare_job_snapshot_artifacts_inside_authority(
-    receipt: PublishedWorkspaceReceipt,
-    publication: PublicationDirectoryReader,
-    *,
-    plan: RepoManifestImportPlan,
-    repository_source: RepositorySourceBinding,
-    repository_key: str,
-    source_identity: SourceRevision,
-    object_store: RetainedImportObjectStore,
-    environment: Mapping[str, str],
-    forbidden_paths: tuple[Path, ...],
-    max_context_files: int,
-    max_context_bytes: int,
-    max_bundle_files: int,
-    max_bundle_bytes: int,
-    max_bundle_metadata_bytes: int,
-    max_projection_bytes: int,
-    projection_required: (
-        Callable[[tuple[IndexJobViewArtifact, ...]], bool] | None
-    ) = None,
-    check_cancelled: Callable[[], None] | None = None,
-) -> _PreparedJobSnapshotArtifacts:
-    """Ingest a loadable job snapshot without granting catalog authority."""
-
-    prepared_views = _prepare_manifest_views_inside_authority(
-        receipt,
-        publication,
-        plan=plan,
-        repository_source=repository_source,
-        repository_key=repository_key,
-        source_identity=source_identity,
-        object_store=object_store,
-        environment=environment,
-        forbidden_paths=forbidden_paths,
-        max_context_files=max_context_files,
-        max_context_bytes=max_context_bytes,
-        max_bundle_files=max_bundle_files,
-        max_bundle_bytes=max_bundle_bytes,
-        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
-        check_cancelled=check_cancelled,
-    )
-    artifacts = tuple(
-        _prepared_view_job_artifact(view, check_cancelled=check_cancelled)
-        for view in prepared_views.views
-    )
-    include_projection = True
-    if projection_required is not None:
-        include_projection = projection_required(artifacts)
-        if type(include_projection) is not bool:
-            raise TypeError("job projection decision must be an exact boolean")
-    if not include_projection:
-        if check_cancelled is None:
-            repository_source.verify_snapshot()
-        else:
-            repository_source.verify_snapshot(check_cancelled=check_cancelled)
-        return _PreparedJobSnapshotArtifacts(
-            artifacts=artifacts,
-            supporting_artifacts=(),
-        )
-
-    prepared = _prepare_projection_inside_authority(
-        prepared_views,
-        plan=plan,
-        repository_source=repository_source,
-        source_identity=source_identity,
-        object_store=object_store,
-        max_projection_bytes=max_projection_bytes,
-        projection_reachability=REPO_MANIFEST_PROJECTION_SNAPSHOT_REACHABILITY,
-        check_cancelled=check_cancelled,
-    )
-    _verify_exact_receipt(
-        object_store,
-        prepared.projection,
-        check_cancelled=check_cancelled,
-    )
-    stored_by_digest = {
-        stored.record.digest: stored for stored in prepared.stored_objects
-    }
-    try:
-        projection_members = tuple(
-            stored_by_digest[digest]
-            for digest in prepared.projection_generation.member_object_digests
-        )
-    except KeyError as exc:  # pragma: no cover - local preparation invariant
-        raise StorageIntegrityError(
-            "manifest projection references an unavailable retained object"
-        ) from exc
-    projection_metadata = json.loads(prepared.projection_generation.metadata_json)
-    projection_metadata.pop(VIEW_GENERATION_MEMBERS_METADATA_KEY, None)
-    projection_artifact = IndexJobViewArtifact.create(
-        REPO_MANIFEST_PROJECTION_VIEW,
-        prepared.projection_profile.profile_id,
-        prepared.projection.receipt,
-        schema_version=REPO_MANIFEST_PROJECTION_SCHEMA,
-        media_type=REPO_MANIFEST_PROJECTION_MEDIA_TYPE,
-        metadata=projection_metadata,
-        member_artifacts=tuple(
-            IndexJobObjectArtifact(member.receipt, member.record.media_type)
-            for member in projection_members
-        ),
-    )
-    projection_output = projection_artifact._output()
-    if (
-        projection_output.view_type != prepared.projection_generation.view_type
-        or projection_output.profile_id != prepared.projection_generation.profile_id
-        or projection_output.object_record != prepared.projection.record
-        or projection_output.schema_version
-        != prepared.projection_generation.schema_version
-        or canonical_json(projection_output.generation_metadata)
-        != prepared.projection_generation.metadata_json
-        or projection_output.member_object_records
-        != tuple(member.record for member in projection_members)
-    ):
-        raise StorageIntegrityError(
-            "retained job projection differs from its prepared generation"
-        )
-    if check_cancelled is not None:
-        check_cancelled()
-    return _PreparedJobSnapshotArtifacts(
-        artifacts=artifacts,
-        supporting_artifacts=(projection_artifact,),
     )
 
 

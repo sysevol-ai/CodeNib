@@ -211,12 +211,10 @@ def _corrupt_catalog_schema(path: Path, corruption: str) -> None:
             )
         elif corruption == "index":
             connection.execute("DROP INDEX source_revisions_repository_idx")
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE INDEX source_revisions_repository_idx
                     ON source_revisions(source_revision_id)
-                """
-            )
+                """)
         elif corruption == "foreign-key":
             _rewrite_schema_sql(
                 connection,
@@ -231,15 +229,13 @@ def _corrupt_catalog_schema(path: Path, corruption: str) -> None:
             )
         elif corruption == "trigger":
             connection.execute("DROP TRIGGER objects_are_immutable")
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TRIGGER objects_are_immutable
                 BEFORE UPDATE ON objects
                 BEGIN
                     SELECT 1;
                 END
-                """
-            )
+                """)
         elif corruption == "extra-object":
             connection.execute("CREATE TABLE counterfeit(value TEXT)")
         else:  # pragma: no cover - the parametrization is closed
@@ -750,12 +746,10 @@ def test_existing_only_serializes_slow_wal_copy_with_public_writer(
         try:
             with SQLiteCatalog(path, create=False) as reader:
                 assert reader.schema_version == LATEST_SCHEMA_VERSION
-                observed = reader._connection.execute(
-                    """
+                observed = reader._connection.execute("""
                     SELECT repository_id FROM repositories
                     WHERE repository_key = 'owner/coordinated-before'
-                    """
-                ).fetchone()
+                    """).fetchone()
                 assert observed[0] == preexisting_repository[0]
         finally:
             begin_writes.set()
@@ -2071,14 +2065,12 @@ def test_existing_only_mode_rejects_empty_or_foreign_databases(tmp_path):
 
     migration_db = tmp_path / "foreign-migrations.sqlite3"
     connection = sqlite3.connect(migration_db)
-    connection.execute(
-        """
+    connection.execute("""
         CREATE TABLE schema_migrations (
             version INTEGER PRIMARY KEY,
             applied_at TEXT NOT NULL
         )
-        """
-    )
+        """)
     connection.execute(
         "INSERT INTO schema_migrations(version, applied_at) VALUES (1, 'foreign')"
     )
@@ -2138,15 +2130,21 @@ def test_reopen_rejects_mismatched_schema_version_records(tmp_path):
         SQLiteCatalog(path)
 
 
-def test_reopen_rejects_catalog_newer_than_implementation(tmp_path):
-    path = tmp_path / "catalog.sqlite3"
+@pytest.mark.parametrize("future_version", range(5, 9))
+def test_reopen_rejects_unpublished_v5_through_v8_catalogs(
+    tmp_path,
+    future_version,
+):
+    path = tmp_path / f"catalog-v{future_version}.sqlite3"
     with SQLiteCatalog(path):
         pass
-    future_version = LATEST_SCHEMA_VERSION + 1
     connection = sqlite3.connect(path)
-    connection.execute(
+    connection.executemany(
         "INSERT INTO schema_migrations(version, applied_at) VALUES (?, 'future')",
-        (future_version,),
+        (
+            (version,)
+            for version in range(LATEST_SCHEMA_VERSION + 1, future_version + 1)
+        ),
     )
     connection.execute(f"PRAGMA user_version = {future_version}")
     connection.commit()
@@ -2202,13 +2200,11 @@ def test_commit_failure_rolls_back_and_leaves_connection_reusable(tmp_path):
 
         with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
             with catalog._transaction():
-                catalog._connection.execute(
-                    """
+                catalog._connection.execute("""
                     INSERT INTO repositories(
                         repository_id, namespace_id, repository_key, created_at
                     ) VALUES ('invalid-repo', 'missing-namespace', 'invalid', 'now')
-                    """
-                )
+                    """)
 
         assert catalog._connection.in_transaction is False
         assert (
@@ -2895,26 +2891,6 @@ def test_publish_retry_for_current_snapshot_is_desired_state_idempotent(tmp_path
                 "changed": False,
             }
         assert catalog.resolve_ref(repository_id)["generation"] == 1
-
-
-def test_read_ref_generation_exposes_only_initial_or_published_fence(tmp_path):
-    with SQLiteCatalog(tmp_path / "catalog.sqlite3") as catalog:
-        repository_id, source_revision_id, _, _, view_id = _setup_staged_view(catalog)
-
-        assert catalog.read_ref_generation(repository_id) == 0
-        published = catalog.publish_snapshot(
-            repository_id,
-            source_revision_id,
-            [view_id],
-            expected_generation=0,
-            ref_name="serving",
-        )
-
-        assert published["generation"] == 1
-        assert catalog.read_ref_generation(repository_id) == 0
-        assert catalog.read_ref_generation(repository_id, "serving") == 1
-        with pytest.raises(CatalogNotFoundError):
-            catalog.read_ref_generation("repo_" + "f" * 64)
 
 
 @pytest.mark.parametrize(
@@ -4113,12 +4089,10 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (ready_view,),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute(
-                """
+            catalog._connection.execute("""
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'cross-source'
-                """
-            )
+                """)
 
         catalog._connection.execute(
             """
@@ -4137,12 +4111,10 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (staged_view,),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute(
-                """
+            catalog._connection.execute("""
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'staged-view'
-                """
-            )
+                """)
 
         catalog._connection.execute(
             """
@@ -4154,12 +4126,10 @@ def test_direct_sql_cannot_seal_invalid_or_expose_building_snapshots(tmp_path):
             (repository_two, source_two),
         )
         with pytest.raises(sqlite3.IntegrityError, match="snapshot seal"):
-            catalog._connection.execute(
-                """
+            catalog._connection.execute("""
                 UPDATE snapshots SET status = 'ready', published_at = 'now'
                 WHERE snapshot_id = 'empty'
-                """
-            )
+                """)
         with pytest.raises(CatalogValidationError, match="not ready"):
             catalog.get_manifest_summary("empty")
 
@@ -4206,15 +4176,13 @@ def test_late_ref_failure_rolls_back_building_snapshot_and_view_seal(tmp_path):
             profile_id,
             _object(catalog, "a"),
         )
-        catalog._connection.execute(
-            """
+        catalog._connection.execute("""
             CREATE TRIGGER fail_ref_publication
             BEFORE INSERT ON refs
             BEGIN
                 SELECT RAISE(ABORT, 'simulated ref failure');
             END
-            """
-        )
+            """)
 
         with pytest.raises(sqlite3.IntegrityError, match="simulated ref failure"):
             catalog.publish_snapshot(

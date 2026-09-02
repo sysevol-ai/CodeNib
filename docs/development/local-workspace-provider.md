@@ -18,13 +18,11 @@ an active receipt, then transfers the new generation to a caller-owned
 remain normative for commands that can still open existing retained data; they
 are not a product-database roadmap.
 
-The provider is not enabled by CodeNib's default compiler or runtime path. Four
+The provider is not enabled by CodeNib's default compiler or runtime path. Two
 explicit routes use it: `codenib artifact import-cache` recaptures an already
-existing selected cache, `codenib jobs run-once` prepares and publishes at most
-one eligible durable cache-import or retained-source BM25 job, `codenib jobs
-run` continuously schedules the same explicitly scoped jobs, and `codenib
-artifact materialize` publishes a retained catalog ref or immutable snapshot to
-a missing portable-artifact directory.
+existing selected cache, and `codenib artifact materialize` publishes a
+retained catalog ref or immutable snapshot to a missing portable-artifact
+directory.
 The only product database is `codenib.wiki.store.WikiStore` with its supported
 SQLite WAL implementation. The catalog, local SHA-256 CAS, and routes listed
 above are frozen experimental/compatibility code while existing data receives
@@ -136,8 +134,8 @@ comma-separated value such as `--view bm25,vector`, to select views explicitly;
 the CLI canonicalizes the result to BM25 then vector. This remains an offline
 bootstrap for an already existing cache: the normal `codenib index` command
 only writes that local cache, while retained publication requires this separate
-explicit import. It does not import graph or Zoekt views, run an M2 fenced job,
-or hot-switch a runtime.
+explicit import. It does not import graph or Zoekt views or hot-switch a
+runtime.
 
 Prepare these authorities before running it:
 
@@ -251,167 +249,6 @@ committed before its result was observed, retry the exact same source, cache,
 repository, namespace, and ref with the original `--expected-generation`.
 The retry gets fresh missing evidence destinations but resolves the same
 snapshot and generation without advancing the ref again.
-
-## Run durable index jobs
-
-`codenib jobs run-once` examines one bounded advisory catalog page and executes
-at most one job for one explicitly configured local repository target. Select
-exactly one worker input:
-
-- `--cache-dir PATH` retains the existing compiler-cache adapter. A job must
-  request exactly one required `full` BM25 or vector view whose profile and
-  dirty source-revision identity match that current cache.
-- `--source-bm25` enables the retained-source builder. A job must request one
-  required `full` BM25 view whose profile exactly matches the selected
-  languages and source exclusions, and whose dirty source fingerprint matches
-  a fresh authenticated capture. Vector, graph, optional, incremental, and
-  multi-view jobs remain in the queue.
-
-Neither mode creates jobs or hot-switches a query runtime. Source mode builds a
-private attempt generation directly from source; cache mode does not build or
-update a stale cache.
-
-The repository, optional cache, SQLite catalog, strict LocalCAS, and private
-workspace root obey the same physical-separation and existing-only requirements
-as `artifact import-cache`. Source mode pins the repository hierarchy before
-provider probing, language detection, or Git inspection and hands that exact
-authority to every attempt capture. It requires a Git checkout with a full
-resolved `HEAD`; each attempt resolves that commit around source capture and
-again before returning its prepared result, so a long-running worker never
-stamps later bytes with its startup commit. The commit is display metadata,
-while the authenticated dirty source fingerprint remains the durable source
-identity. Every source attempt, BM25 view, and context provision is also bound
-to the retained startup workspace identity and rechecks the complete storage
-topology before and after provider work. The worker opens an
-independent exact SQLite session for its main transaction and every heartbeat,
-while retaining one strict CAS authority for the complete invocation. A
-claim-time eligibility filter runs before owner allocation or catalog mutation,
-so jobs outside the selected adapter and explicit target remain untouched.
-
-For example, process at most one current-cache job from the first 64 advisory
-candidates:
-
-```bash
-codenib jobs run-once /srv/src/repository \
-  --cache-dir /var/lib/codenib/compiler-cache/repository \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository
-```
-
-Build a matching Python BM25 job directly from retained source instead:
-
-```bash
-codenib jobs run-once /srv/src/repository \
-  --source-bm25 \
-  --language python \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository
-```
-
-Repeat `--language` or pass comma-separated values for a multi-language BM25
-profile. If it is omitted, CodeNib detects supported languages from the selected
-source. `--exclude-dir PATH` is repeatable and defines the exact custom subtree
-exclusions for this worker profile; `--clear-exclude-dirs` explicitly selects
-none. These source-only options are rejected with `--cache-dir`.
-
-`--scan-limit` may select 1 through 256 candidates. Catalog job-lease and
-heartbeat timing are configurable, but the heartbeat must remain less than one
-third of the lease. The default text output reports disposition, job ID, and
-attempt; use
-`--json` for one compact canonical object. A processed retry, failure,
-cancellation, or authority loss is a durable worker disposition rather than a
-CLI infrastructure failure. Storage-integrity, topology, and cleanup failures
-still make the command fail.
-
-Each attempt captures a fresh retained source and uses new nonce-scoped output
-destinations. Source builds own an attempt generation plus BM25 and context
-outputs; cache imports own BM25/vector and context outputs as applicable. After
-CAS ingestion and worker-owned publication, receipt authorities close and the
-exact owned directories are atomically moved to authenticated orphan names for
-later quiescent GC; the command never recursively deletes a mutable path.
-
-Source mode creates or reopens one permanent owner-only `0700` attempt-pool
-shard named `.codenib-bm25-attempt-pool-v1-repo_<64-hex>` for the exact
-repository below the retained workspace. Bootstrap requires Linux directory
-`flock` support and the additive native directory-FD-owner protocol v1; the
-core workspace-owner protocol remains v6. Repository and workspace must be
-disjoint paths selected by the same authenticated Linux mount; nested
-repository mounts and independently mounted overlay/FUSE/network views are
-rejected before shard creation because their backing paths cannot be proven
-disjoint. The caller must keep the repository/workspace path ancestry and
-selected mount namespace controlled and externally quiescent from bootstrap
-until every routed writer/reaper owner has closed; CodeNib does not claim safety
-against an in-process trace callback or same-euid/privileged actor renaming
-those ancestors or changing mounts during a filesystem mutation. The native
-bootstrap recheck and `mkdirat` share one C frame to close ordinary Python
-opcode, cancellation, and signal-delivery handoffs within that contract. The
-native owner retains the exact
-directory descriptor before returning it to Python. A native at-fork guard
-fail-stops a child while any such owner is live, before `os.fork()` can return
-to application code. Earlier-registered child callbacks may already have
-changed enumerable descriptor numbers, so the guard deliberately closes none
-of them and terminates the child instead; fork can continue normally again
-after every owner settles.
-
-A routed source writer takes `LOCK_SH` immediately before outer-attempt
-preparation and holds it through child/root cleanup, lost-return recovery,
-orphan delivery and acknowledgement, and final route validation. With
-`--reclaim-quiescent-attempts`, the post-success coordinator takes `LOCK_EX`
-before constructing the descriptor-bound reclaimer and keeps it through the
-bounded shard sweep, reclaimer close, and post-validation. It then performs a
-separate unleased compatibility sweep of the legacy workspace-root pool, so
-the operator must still keep that legacy namespace quiescent. The flag never
-runs after an exceptional worker or infrastructure unwind; normal returned
-failed, requeued, cancelled, or lost-authority dispositions have already
-settled their resource scopes and may still be followed by the requested
-sweep. It does not discover other repository shards or install a default or
-background reaper. Automatic multi-target shard routing remains future work.
-
-`codenib jobs run` retains the same authorities while traversing the complete
-runnable keyspace frozen at the start of each cycle. The catalog first records
-an immutable job-insertion watermark. SQLite schema 7 allocates it from an
-explicit gap-free `AUTOINCREMENT` sequence, backfills existing jobs in canonical
-creation order, and verifies the job-to-sequence closure before use. The token
-therefore survives routine `VACUUM` maintenance; it never relies on SQLite's
-implicit rowid. Every page in that cycle carries the same watermark, so jobs
-inserted concurrently are deferred to the next cycle and cannot keep the
-current traversal open forever. A processed page continues after the selected
-candidate; a fully examined page uses the catalog continuation that identifies
-its final candidate. The next page must advance beyond that cursor, and a
-malformed or nonadvancing continuation is a storage-integrity failure.
-Unsupported jobs at the front of the queue therefore cannot starve an eligible
-job on a later page. A requeued job is considered again after the scheduler
-wraps to a new cycle instead of monopolizing the current one.
-
-For example, run continuously with 64 candidates per page:
-
-```bash
-codenib jobs run /srv/src/repository \
-  --cache-dir /var/lib/codenib/compiler-cache/repository \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository
-```
-
-Only a complete cycle with no processed job waits. The idle delay starts at
-250 ms, doubles to a 5-second ceiling, and resets after a productive cycle;
-`--initial-idle-delay-ms` and `--max-idle-delay-ms` change those bounds.
-`--max-cycles` provides a deterministic bounded drain/smoke mode, while omitting
-it runs until shutdown. Default output emits one line per processed job and a
-final summary. `--json` emits compact JSON Lines with `job` and `summary`
-records. SIGTERM requests a graceful stop after the active page or job; SIGINT
-keeps the standard exit-130 interruption path. Catalog, topology, worker, and
-cleanup failures are never retried or downgraded by the idle scheduler.
-
-Cache mode still recaptures an already-current compiler cache; source mode can
-build only its exact FULL BM25 profile. Neither mode creates jobs, coordinates
-SQLite session startup across independent processes, registers a query runtime,
-or hot-switches a live bundle.
 
 ## Materialize a retained artifact
 

@@ -132,9 +132,14 @@ Status: in progress.
 - [x] Freeze `codenib.storage` and explicit retained-storage CLI commands as
       experimental/compatibility surfaces without adding PostgreSQL, S3,
       generic GC, or backend discovery.
+- [x] Remove the unreleased audit, direct MCP, index dual-write, benchmark-gate,
+      and durable-execution slices. The frozen CLI surface now contains only
+      the two published `artifact import-cache` and `artifact materialize`
+      compatibility bridges.
 - [ ] Remove the frozen surface in consumer-proven, release-aware batches.
-- [ ] Move portable-artifact validation contracts out of `codenib.storage` so
-      default Web imports no longer cross the generic storage namespace.
+- [x] Move portable-artifact validation contracts into the artifact-neutral
+      `_bounded_json` module so default Web imports no longer cross the generic
+      storage namespace; retain only the protocol compatibility wrapper.
 - [ ] Bound Wiki generation-lock waiting and make maintenance inspection
       physically read-only without broadening the Wiki protocol.
 
