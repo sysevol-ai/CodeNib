@@ -10,11 +10,13 @@ SPDX-License-Identifier: Apache-2.0
 
 # Local Workspace Provider
 
-`LocalWorkspaceProvider` is CodeNib's production Linux implementation of the
-strict workspace contract. It publishes one fully validated directory into a
-missing destination or replaces the exact generation named by an active
-receipt, then transfers the new generation to a caller-owned
-`PublishedWorkspaceReceiptOwner`.
+`LocalWorkspaceProvider` is the Linux implementation retained by CodeNib's
+frozen generic-storage compatibility surface. It publishes one fully validated
+directory into a missing destination or replaces the exact generation named by
+an active receipt, then transfers the new generation to a caller-owned
+`PublishedWorkspaceReceiptOwner`. The protocol and recovery details below
+remain normative for commands that can still open existing retained data; they
+are not a product-database roadmap.
 
 The provider is not enabled by CodeNib's default compiler or runtime path. Six
 explicit routes use it: `codenib index --publish-retained` builds and publishes
@@ -27,12 +29,12 @@ explicitly scoped jobs,
 snapshot to a missing portable-artifact directory, and retained `codenib mcp`
 cold-start materializes and holds one such generation for a single stdio server
 lifetime.
-Storage-backend defaults are separate from route defaults. SQLite WAL and the
-local filesystem SHA-256 CAS are CodeNib's canonical supported production
-backends, not temporary bridges. PostgreSQL and S3-compatible adapters remain
-optional and demand-gated; they are not prerequisites for M1-M5 or retained
-route promotion. This backend choice does not enable any compiler or runtime
-route: A2, B1, and B2 remain separate gates.
+The only product database is `codenib.wiki.store.WikiStore` with its supported
+SQLite WAL implementation. The catalog, local SHA-256 CAS, and routes listed
+above are frozen experimental/compatibility code while existing data receives
+an explicit withdrawal path. PostgreSQL, S3-compatible storage, generic
+garbage collection, and retained-route promotion are closed plans. See
+`docs/storage_backend_roadmap.md` for the current scope decision.
 
 Protocol v4 introduced an internal existing-destination replacement primitive:
 it captures the incumbent, provisions and authenticates one hidden same-parent
@@ -125,16 +127,17 @@ callback cannot enter unless that same gate bound the same adopted workspace;
 the full callback lifetime is revoked before the provider call escapes.
 `LocalWorkspaceProvider` then provisions only through the handed-off workspace
 and the session publishes only through `publish_replacement_into(...)`. This
-completes Gate C. Automatic orphan GC, a crash journal, protection from hostile
-same-UID mutation, default route promotion, and the remaining M1 evidence gates
-are outside this seam.
+completes the historical Gate C implementation. Automatic orphan GC, a crash
+journal, protection from hostile same-UID mutation, and route promotion are
+outside this frozen compatibility seam.
 
 ## Publish a normal index build
 
 Use `--publish-retained` on the normal `codenib index` command to build or
 update BM25, vector, or both and publish the exact compiler result as one ready
-snapshot. This is the first production compiler-to-retained route; without the
-flag, `codenib index` keeps its existing local-cache behavior and output.
+snapshot. This experimental compiler-to-retained route is scheduled for
+removal; without the flag, `codenib index` keeps its existing local-cache
+behavior and output.
 
 The route requires the same existing initialized SQLite catalog, fully
 preprovisioned strict `LocalCAS`, and private owner-only Linux workspace root
@@ -988,5 +991,7 @@ borrowers must never close them. The primitive remains an authority boundary
 for trusted internal code, not a Python sandbox or full `_TreeOwnership`.
 `LocalWorkspaceProvider` now integrates it for the non-`None` binding whose
 derived expectation is `provider-bound-exact`, using the separately active
-source owner only through the private one-shot gate. Gate C is complete; M1
-remains open on canonical A2 evidence and configured-default decisions.
+source owner only through the private one-shot gate. The historical Gate C
+implementation is complete. This compatibility surface has no remaining
+promotion gate; its withdrawal follows the current storage subtraction
+roadmap.
