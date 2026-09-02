@@ -395,7 +395,7 @@ def _run_fake_cell(
     return result
 
 
-def test_public_v3_contract_and_deterministic_paired_order() -> None:
+def test_public_v4_contract_and_deterministic_paired_order() -> None:
     assert profiler.ARMS == ("legacy", "candidate")
     assert profiler.CELLS == (
         "compiler-cold",
@@ -600,7 +600,7 @@ def test_source_bound_runtime_has_content_authority_parity_not_manifest_parity(
         "context_provenance": "ordinary-manifest",
     }
     assert candidate["result"]["runtime"]["delivery"] == {
-        "route": "retained-ref",
+        "route": "retained-materialized-artifact",
         "context_provenance": "portable-context-artifact",
     }
 
@@ -1665,7 +1665,7 @@ def test_manifest_schema_is_exact_and_bm25_only(
         profiler.load_subject_manifest(path)
 
 
-def test_v3_manifest_accepts_only_the_frozen_five_cell_order(tmp_path: Path) -> None:
+def test_v4_manifest_accepts_only_the_frozen_five_cell_order(tmp_path: Path) -> None:
     subjects = [
         _subject_row(
             identifier=f"fixture-{payload_class}",
@@ -1688,8 +1688,8 @@ def test_v3_manifest_accepts_only_the_frozen_five_cell_order(tmp_path: Path) -> 
         "view_sets",
         "subjects",
     }
-    assert manifest["schema_version"] == 3
-    assert manifest["benchmark"] == "retained_storage_explicit_route_gate_v3"
+    assert manifest["schema_version"] == 4
+    assert manifest["benchmark"] == "retained_storage_explicit_route_gate_v4"
     assert manifest["cells"] == list(profiler.CELLS)
     metadata = path.stat()
     assert receipt == {
@@ -1723,7 +1723,7 @@ def test_atomic_writer_emits_canonical_json_and_preserves_old_report_on_nan(
     assert list(tmp_path.iterdir()) == [output]
 
 
-def test_canonical_v3_report_has_exact_shape_tracks_and_process_count(
+def test_canonical_v4_report_has_exact_shape_tracks_and_process_count(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     manifest_path, subject_roots, media_roots = _fixture(tmp_path)
@@ -1837,14 +1837,14 @@ def test_canonical_v3_report_has_exact_shape_tracks_and_process_count(
             "cleanup-return"
         ),
         "runtime-cold-query-only": (
-            "fresh-inner-import-parser-direct-or-retained-portable-artifact-"
-            "handler-through-ready-callback-fixed-queries-public-manifest-"
-            "source-read-refusal-and-normal-cleanup-return"
+            "fresh-inner-import-parser-direct-or-retained-materialized-"
+            "artifact-handler-through-ready-callback-fixed-queries-public-"
+            "manifest-source-read-refusal-and-normal-cleanup-return"
         ),
         "runtime-cold-source-bound": (
-            "fresh-inner-import-parser-ordinary-manifest-or-retained-source-"
-            "bound-handler-through-ready-callback-fixed-queries-public-manifest-"
-            "source-read-probe-and-normal-cleanup-return"
+            "fresh-inner-import-parser-ordinary-manifest-or-retained-"
+            "materialized-artifact-handler-through-ready-callback-fixed-queries-"
+            "public-manifest-source-read-probe-and-normal-cleanup-return"
         ),
     }
     assert report["configuration"]["cold_definitions"] == {
@@ -2387,6 +2387,12 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
                     request("runtime-cold", "candidate"), paths, candidate=True
                 ),
             ),
+            (
+                "cli",
+                profiler._materialize_arguments(
+                    request("runtime-cold", "candidate"), paths, generation=1
+                ),
+            ),
         ],
         ("runtime-cold-query-only", "legacy"): [
             (
@@ -2422,6 +2428,14 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
                     candidate=True,
                 ),
             ),
+            (
+                "cli",
+                profiler._materialize_arguments(
+                    request("runtime-cold-query-only", "candidate"),
+                    paths,
+                    generation=1,
+                ),
+            ),
         ],
         ("runtime-cold-source-bound", "legacy"): [
             (
@@ -2441,6 +2455,14 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
                     request("runtime-cold-source-bound", "candidate"),
                     paths,
                     candidate=True,
+                ),
+            ),
+            (
+                "cli",
+                profiler._materialize_arguments(
+                    request("runtime-cold-source-bound", "candidate"),
+                    paths,
+                    generation=1,
                 ),
             ),
         ],
@@ -2470,20 +2492,10 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
     )
     assert retained_arguments == [
         "mcp",
-        "--catalog",
-        paths["catalog"],
-        "--cas-root",
-        paths["cas_root"],
-        "--workspace-root",
-        paths["workspace_root"],
+        "--artifact",
+        paths["runtime_output"],
         "--repository",
         subject["repository_key"],
-        "--ref",
-        "main",
-        "--expected-generation",
-        "1",
-        "--output",
-        paths["runtime_output"],
     ]
     assert "--repo" not in retained_arguments
     source_bound_arguments = profiler._runtime_arguments(
@@ -2522,13 +2534,13 @@ def test_real_local_runtime_route_matrix_uses_each_public_mcp_delivery(
         (
             "runtime-cold-query-only",
             "candidate",
-            "retained-ref",
+            "retained-materialized-artifact",
             "source-disabled",
         ),
         (
             "runtime-cold-source-bound",
             "candidate",
-            "retained-ref",
+            "retained-materialized-artifact",
             "verified",
         ),
     )
@@ -2946,7 +2958,7 @@ def test_runtime_context_authority_contract_is_cell_and_arm_specific() -> None:
         "context_provenance": "portable-context-artifact",
     }
     assert candidate_authority["delivery"] == {
-        "route": "retained-ref",
+        "route": "retained-materialized-artifact",
         "context_provenance": "portable-context-artifact",
     }
     assert {

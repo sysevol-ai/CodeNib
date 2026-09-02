@@ -21,11 +21,12 @@ The manifest-backed ``runtime-cold`` cell is intentionally retained as a
 compatibility sentinel: its live-source legacy arm and source-disabled retained
 arm are not authority-equivalent.  ``runtime-cold-query-only`` is the comparable
 runtime cost cell; it measures a direct portable artifact without ``--repo``
-against the retained portable-artifact route.  Its v3 timed workload includes
-the public manifest and the canonical source-read refusal.  The source-bound
-cell compares the ordinary manifest route with retained ``--repo`` delivery.
-Its narrow content-authority projection is the performance comparison; its
-full runtime projection preserves public-manifest and delivery differences.
+against an artifact materialized from retained storage before the timer.  Its
+v4 timed workload includes the public manifest and the canonical source-read
+refusal.  The source-bound cell compares the ordinary manifest route with the
+same materialized artifact plus ``--repo``.  Its narrow content-authority
+projection is the performance comparison; its full runtime projection preserves
+public-manifest and delivery differences.
 """
 
 from __future__ import annotations
@@ -55,16 +56,16 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_MANIFEST = Path(__file__).with_name("retained_storage_subjects.json")
 _DEFAULT_OUTPUT = Path(tempfile.gettempdir()) / "codenib-retained-storage-gate.json"
 
-BENCHMARK_ID = "retained_storage_explicit_route_gate_v3"
-MANIFEST_SCHEMA_VERSION = 3
-REPORT_SCHEMA_VERSION = 3
+BENCHMARK_ID = "retained_storage_explicit_route_gate_v4"
+MANIFEST_SCHEMA_VERSION = 4
+REPORT_SCHEMA_VERSION = 4
 DEFAULT_ITERATIONS = 20
 DEFAULT_WARMUPS = 4
 DEFAULT_WORKER_TIMEOUT_SECONDS = 1800.0
 CANONICAL_PEAK_RSS_SOURCE = "proc-self-status-vmhwm-kib-v1"
 CANONICAL_IO_SOURCE = "proc-self-io-v1"
 _CANONICAL_MANIFEST_SHA256 = (
-    "sha256:22e01bd5acd133186a039df5a8e383308687fd8c9f8fd0554ce9592087ede6f8"
+    "sha256:a850fe84588994b125c3e4d6906ca537e04595cea3b93300e7f1b9750d675de4"
 )
 _CANONICAL_MANIFEST_SIZE = 3197
 
@@ -138,7 +139,7 @@ CELL_ROUTE_CONTRACTS = {
             "source": "content-bytes-v2",
         },
         "candidate": {
-            "route": "retained-ref",
+            "route": "retained-materialized-artifact",
             "context_provenance": "portable-context-artifact",
             "source": "source-disabled",
         },
@@ -150,7 +151,7 @@ CELL_ROUTE_CONTRACTS = {
             "source": "source-disabled",
         },
         "candidate": {
-            "route": "retained-ref",
+            "route": "retained-materialized-artifact",
             "context_provenance": "portable-context-artifact",
             "source": "source-disabled",
         },
@@ -162,7 +163,7 @@ CELL_ROUTE_CONTRACTS = {
             "source": "content-bytes-v2",
         },
         "candidate": {
-            "route": "retained-ref",
+            "route": "retained-materialized-artifact",
             "context_provenance": "portable-context-artifact",
             "source": "content-bytes-v2",
         },
@@ -779,7 +780,7 @@ def load_subject_manifest(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
         or receipt["size"] != _CANONICAL_MANIFEST_SIZE
     ):
         raise ValueError(
-            "checked-in subject manifest differs from the v3 canonical anchor"
+            "checked-in subject manifest differs from the v4 canonical anchor"
         )
     if payload_bytes.startswith(b"\xef\xbb\xbf"):
         raise ValueError("subject manifest must not use a UTF-8 BOM")
@@ -1236,13 +1237,13 @@ def _base_report(
                     "and-normal-cleanup-return"
                 ),
                 "runtime-cold-query-only": (
-                    "fresh-inner-import-parser-direct-or-retained-portable-"
+                    "fresh-inner-import-parser-direct-or-retained-materialized-"
                     "artifact-handler-through-ready-callback-fixed-queries-"
                     "public-manifest-source-read-refusal-and-normal-cleanup-return"
                 ),
                 "runtime-cold-source-bound": (
                     "fresh-inner-import-parser-ordinary-manifest-or-retained-"
-                    "source-bound-handler-through-ready-callback-fixed-queries-"
+                    "materialized-artifact-handler-through-ready-callback-fixed-queries-"
                     "public-manifest-source-read-probe-and-normal-cleanup-return"
                 ),
             },
@@ -2665,7 +2666,7 @@ def profile_retained_storage_gate(
         return _failure(
             report,
             "protocol",
-            RuntimeError("measurement protocol is not canonical v3"),
+            RuntimeError("measurement protocol is not canonical v4"),
         )
 
     tracks_passed = all(
@@ -3083,7 +3084,9 @@ def _prepare_sample(request: Mapping[str, Any], paths: Mapping[str, str]) -> Non
         "runtime-cold-source-bound",
     }:
         _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
-        if cell == "runtime-cold-query-only" and arm == "legacy":
+        if arm == "candidate":
+            _invoke_cli(_materialize_arguments(request, paths, generation=1))
+        elif cell == "runtime-cold-query-only":
             _invoke_cli(
                 (
                     "artifact",
@@ -4129,6 +4132,25 @@ def _runtime_arguments(
         raise RuntimeError("candidate runtime route requires a retained ref")
     arguments = [
         "mcp",
+        "--artifact",
+        paths["runtime_output"],
+        "--repository",
+        request["subject"]["repository_key"],
+    ]
+    if request["cell"] == "runtime-cold-source-bound":
+        arguments.extend(("--repo", request["subject_root"]))
+    return arguments
+
+
+def _materialize_arguments(
+    request: Mapping[str, Any],
+    paths: Mapping[str, str],
+    *,
+    generation: int,
+) -> list[str]:
+    return [
+        "artifact",
+        "materialize",
         "--catalog",
         paths["catalog"],
         "--cas-root",
@@ -4144,9 +4166,6 @@ def _runtime_arguments(
         "--output",
         paths["runtime_output"],
     ]
-    if request["cell"] == "runtime-cold-source-bound":
-        arguments.extend(("--repo", request["subject_root"]))
-    return arguments
 
 
 def _validate_route_config(value: object) -> tuple[dict[str, Any], dict[str, str]]:

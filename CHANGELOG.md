@@ -37,6 +37,9 @@ All notable user-facing changes are recorded here. CodeNib follows
   orchestration, `/api/index-jobs` write/read routes, and index-status job or
   update-capability fields. Index status remains available as a read-only
   `RepoManifest` projection.
+- The unreleased catalog-selected `codenib mcp` cold-start mode. Existing
+  retained data can still be materialized with `codenib artifact materialize` and
+  served through the supported `codenib mcp --artifact [--repo]` path.
 
 ### Security
 
