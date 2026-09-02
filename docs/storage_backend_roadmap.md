@@ -121,6 +121,8 @@ Current outcome:
 - The unreleased reachability audit, catalog-selected MCP cold start, and
   `index --publish-retained` routes are gone. Ordinary `index`, `publish`, and
   `mcp --artifact [--repo]` behavior is unchanged.
+- The post-v0.2.2 retained-storage benchmark is gone. It had no product or CI
+  workflow caller and its unratified policy could never authorize promotion.
 - The published compatibility bridge remains explicit: `artifact import-cache`
   captures an existing compiler cache and `artifact materialize` produces a
   portable artifact. The released schema-v4 `JobCatalog` API remains readable
@@ -128,8 +130,8 @@ Current outcome:
 
 Remaining gates:
 
-- Remove the report-only retained benchmark and the unreleased durable jobs,
-  worker, scheduler, publication, and schema-v5-v8 expansion.
+- Remove the unreleased durable jobs, worker, scheduler, publication, and
+  schema-v5-v8 expansion.
 - Inventory every remaining `codenib.storage` export against a non-test caller;
   delete zero-consumer protocols and intersection tests in focused batches.
 - Give every surviving compatibility surface a release/removal decision without

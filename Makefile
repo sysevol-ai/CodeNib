@@ -101,14 +101,6 @@ SCIP_MCP_CONSUMER_GATE_SUBJECT_ID ?=
 SCIP_MCP_CONSUMER_GATE_SUBJECT_MANIFEST ?= scripts/profiling/scip_mcp_consumer_subjects.json
 SCIP_MCP_CONSUMER_GATE_OUTPUT ?= $(CODENIB_RESULTS_DIR)/scip-mcp-consumer-gate.json
 SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS ?=
-RETAINED_STORAGE_GATE_SUBJECT_ROOTS ?=
-RETAINED_STORAGE_GATE_MEDIA_ROOTS ?=
-RETAINED_STORAGE_GATE_SUBJECT_MANIFEST ?= scripts/profiling/retained_storage_subjects.json
-RETAINED_STORAGE_GATE_OUTPUT ?= /tmp/codenib-retained-storage-gate.json
-RETAINED_STORAGE_GATE_ITERATIONS ?= 20
-RETAINED_STORAGE_GATE_WARMUPS ?= 4
-RETAINED_STORAGE_GATE_TIMEOUT ?= 1800
-RETAINED_STORAGE_GATE_EXTRA_ARGS ?=
 CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR ?=
 CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT ?=
 CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS ?=
@@ -218,7 +210,7 @@ endef
 .PHONY: active-scip-tools active-lsp-tools active-scip-env active-system-deps-ubuntu
 .PHONY: go-tool scip-go-tool rust-tool scip-python-tool scip-typescript-tool scip-clang-tool
 .PHONY: node-workspace-tools zoekt-tool python-lsp-tool ty-tool typescript-lsp-tool gopls-tool clangd-tool
-.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate scip-mcp-consumer-gate retained-storage-gate clangd-fact-generation-profile
+.PHONY: core-system-deps-ubuntu core-python-deps core-build core-test fact-buffer-profile fact-query-profile clangd-fact-query-profile clangd-workload-gate scip-mcp-consumer-gate clangd-fact-generation-profile
 .PHONY: scip-cold-start-tools scip-cold-start-tools-all scip-cold-start-env scip-cold-start-system-deps-ubuntu
 .PHONY: scip-candidates scip-candidates-all scip-candidate-env scip-candidate-system-deps-ubuntu
 .PHONY: scip-jvm-compat-system-deps-ubuntu
@@ -519,22 +511,6 @@ scip-mcp-consumer-gate: core-build
 		--subject-manifest "$(SCIP_MCP_CONSUMER_GATE_SUBJECT_MANIFEST)" \
 		--output "$(SCIP_MCP_CONSUMER_GATE_OUTPUT)" \
 		$(SCIP_MCP_CONSUMER_GATE_EXTRA_ARGS)
-
-retained-storage-gate: core-build
-	@test -n "$(RETAINED_STORAGE_GATE_SUBJECT_ROOTS)" || { echo "Set RETAINED_STORAGE_GATE_SUBJECT_ROOTS='subject-id=/path/to/repository ...'" >&2; exit 1; }
-	@test -n "$(RETAINED_STORAGE_GATE_MEDIA_ROOTS)" || { echo "Set RETAINED_STORAGE_GATE_MEDIA_ROOTS='media-id=/path/on/target-media ...'" >&2; exit 1; }
-	PYTHONPATH="build/core:$$PYTHONPATH" python -m pytest -q \
-		test/scripts/test_profile_retained_storage_gate.py
-	PYTHONPATH="build/core:$$PYTHONPATH" python \
-		scripts/profiling/profile_retained_storage_gate.py \
-		--subject-manifest "$(RETAINED_STORAGE_GATE_SUBJECT_MANIFEST)" \
-		$(foreach subject,$(RETAINED_STORAGE_GATE_SUBJECT_ROOTS),--subject-root "$(subject)") \
-		$(foreach media,$(RETAINED_STORAGE_GATE_MEDIA_ROOTS),--media-root "$(media)") \
-		--iterations "$(RETAINED_STORAGE_GATE_ITERATIONS)" \
-		--warmups "$(RETAINED_STORAGE_GATE_WARMUPS)" \
-		--worker-timeout-seconds "$(RETAINED_STORAGE_GATE_TIMEOUT)" \
-		--output "$(RETAINED_STORAGE_GATE_OUTPUT)" \
-		$(RETAINED_STORAGE_GATE_EXTRA_ARGS)
 
 clangd-fact-generation-profile: core-build
 	@test -n "$(CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR)" || { echo "Set CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index" >&2; exit 1; }
