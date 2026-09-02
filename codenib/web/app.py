@@ -24,14 +24,12 @@ import os
 import threading
 from collections.abc import Mapping
 from contextlib import asynccontextmanager, contextmanager
-from dataclasses import dataclass
 from functools import partial
 from pathlib import Path, PurePosixPath
 from time import perf_counter
-from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,31 +49,10 @@ from ..wiki.media_generation import (
 from ..wiki.narrator import Narrator
 from ..wiki.sqlite_store import SQLiteWikiStore
 from .config import load_config
-from .index_job_writes import (
-    IndexJobConflictError,
-    IndexJobRequestError,
-    IndexJobWriteError,
-    IndexJobWriter,
-)
-from .index_jobs import (
-    IndexJobNotFoundError,
-    IndexJobReader,
-    IndexJobReadError,
-    overlay_active_job,
-)
-from .index_status import (
-    IndexUpdateCapability,
-    build_repo_index_status,
-    validate_index_update_capabilities,
-)
-from .local_index_runtime import (
-    LocalIndexRuntimeService,
-    open_local_index_runtime_service,
-)
-from .local_index_service import LocalIndexServiceError
+from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
-from .repo_registry import RepoBundle, RepoRegistry
+from .repo_registry import RepoRegistry
 from .repository_files import bound_source_slice
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
@@ -83,8 +60,6 @@ from .schemas import (
     ChatResponse,
     EdgeLabelRequest,
     EdgeLabelResponse,
-    IndexJobCreateRequest,
-    IndexJobStatusResponse,
     RepoIndexStatus,
     RepoInfo,
     agent_result_to_response,
@@ -97,103 +72,12 @@ _WIKI_MEDIA_TYPES = {
 
 logger = get_logger(__name__)
 
-_MISSING_APP_STATE = object()
 # A request pins its RepoBundle before acquiring this lock. The lock then
 # linearizes the process-local Wiki store/builder cache before SQLite takes its
 # cross-process initialization lock. Store operations never re-enter this lock,
 # and a failed construction publishes no cache entry, so the next request owns
 # recovery.
 _WIKI_BUILD_LOCK = threading.Lock()
-
-
-@dataclass(slots=True)
-class _LocalRuntimeLifespanState:
-    service: LocalIndexRuntimeService | None = None
-    startup_cleanup_pending: bool = False
-
-
-class _LiveLocalIndexJobWriter:
-    """Gate writes on the live repository and observable runtime health."""
-
-    __slots__ = ("_registry", "_service", "_writer")
-
-    def __init__(
-        self,
-        service: LocalIndexRuntimeService,
-        writer: IndexJobWriter,
-        registry: RepoRegistry,
-    ) -> None:
-        if not isinstance(writer, IndexJobWriter):
-            raise TypeError("local runtime writer does not implement its contract")
-        self._service = service
-        self._writer = writer
-        self._registry = registry
-
-    def create(
-        self,
-        repo_id: str,
-        *,
-        indexes: tuple[str, ...],
-        mode: str,
-        force: bool,
-        idempotency_key: str,
-    ) -> IndexJobStatusResponse:
-        # A pin is the admission point: a concurrent reload may retire this
-        # generation afterwards, but a request that starts after retirement
-        # must not reach the lifespan-wide writer bound to the old checkout.
-        with self._registry.pin(repo_id) as bundle:
-            if bundle is None:
-                raise IndexJobNotFoundError(
-                    "Web repository is no longer configured for index updates"
-                )
-            if not self._service.accepts_repository(repo_id, bundle):
-                raise IndexJobWriteError(
-                    "Web repository no longer matches the local index runtime"
-                )
-            # Health is an entry-time availability signal, not part of the
-            # catalog transaction. A job accepted just before a loop fault is
-            # durable and remains recoverable by the next service process.
-            if self._service.state != "running" or self._service.healthy is not True:
-                raise IndexJobWriteError("local index runtime is unhealthy")
-            return self._writer.create(
-                repo_id,
-                indexes=indexes,
-                mode=mode,
-                force=force,
-                idempotency_key=idempotency_key,
-            )
-
-
-def _live_local_index_capabilities(
-    service: LocalIndexRuntimeService,
-    repo_id: str,
-    bundle: RepoBundle,
-) -> Mapping[str, IndexUpdateCapability] | None:
-    """Resolve capabilities against the bundle already pinned by the route."""
-
-    if service.state != "running" or service.healthy is not True:
-        return None
-    if not service.accepts_repository(repo_id, bundle):
-        return None
-    try:
-        return service.capabilities(repo_id)
-    except KeyError:
-        return None
-
-
-def _has_pending_publication_cleanup(failure: BaseException) -> bool:
-    """Fail closed when startup retained an unfinished cleanup owner."""
-
-    try:
-        owners = BaseException.__getattribute__(
-            failure,
-            "publication_cleanup_owners",
-        )
-    except AttributeError:
-        return False
-    except BaseException:  # noqa: B036 - malformed metadata retains the registry
-        return True
-    return type(owners) is not tuple or bool(owners)
 
 
 def _manifest_source_selection(bundle) -> RepositorySourceSelection:
@@ -250,60 +134,6 @@ def _wiki_narrator(config):
     )
 
 
-@contextmanager
-def _configured_local_index_runtime(app, config, registry, lifecycle):
-    """Expose one configured runtime only for its live service lifetime."""
-
-    if type(lifecycle) is not _LocalRuntimeLifespanState:
-        raise TypeError("local runtime lifespan state must use the exact model")
-
-    storage = getattr(config, "index_storage", None)
-    if storage is None:
-        yield None
-        return
-    if getattr(config, "mode", "sparse") != "sparse":
-        raise LocalIndexServiceError(
-            "local index runtime currently requires sparse Web mode"
-        )
-
-    try:
-        with open_local_index_runtime_service(storage, registry) as service:
-            lifecycle.service = service
-            writer = _LiveLocalIndexJobWriter(service, service.writer, registry)
-            capabilities = partial(_live_local_index_capabilities, service)
-            bindings = {
-                "index_runtime_service": service,
-                "index_job_reader": service.reader,
-                "index_job_writer": writer,
-                "index_update_capabilities_resolver": capabilities,
-            }
-            previous = {
-                name: getattr(app.state, name, _MISSING_APP_STATE) for name in bindings
-            }
-            try:
-                for name, value in bindings.items():
-                    setattr(app.state, name, value)
-                yield service
-            finally:
-                # Stop exposing this generation before its synchronous close joins
-                # the worker and reconciler. Preserve any state a test harness or
-                # embedding application deliberately replaced while it was live.
-                for name, value in bindings.items():
-                    if getattr(app.state, name, _MISSING_APP_STATE) is not value:
-                        continue
-                    prior = previous[name]
-                    if prior is _MISSING_APP_STATE:
-                        delattr(app.state, name)
-                    else:
-                        setattr(app.state, name, prior)
-    except BaseException as failure:  # noqa: B036 - preserve startup authority
-        if lifecycle.service is None:
-            lifecycle.startup_cleanup_pending = _has_pending_publication_cleanup(
-                failure
-            )
-        raise
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config = load_config()
@@ -321,7 +151,6 @@ async def lifespan(app: FastAPI):
         # source-bound capability is present.
         allow_missing_native_index_authorization=True,
     )
-    runtime_lifecycle = _LocalRuntimeLifespanState()
     try:
         logger.info("Loading QA repos from %s ...", config.registry_path)
         registry.load_all()
@@ -342,34 +171,11 @@ async def lifespan(app: FastAPI):
             app.state.narrator.enabled,
             app.state.narrator.cache_dir,
         )
-        with _configured_local_index_runtime(
-            app,
-            config,
-            registry,
-            runtime_lifecycle,
-        ) as configured:
-            if configured is not None:
-                logger.info(
-                    "Local index runtime: state=%s healthy=%s",
-                    configured.state,
-                    configured.healthy,
-                )
-            logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
-            yield
+        logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
+        yield
     finally:
         try:
-            # A failed runtime close keeps its registry dependency reachable
-            # through the retained cleanup owner on the raised exception. Do
-            # not retire repository generations underneath a still-live loop.
-            runtime_service = runtime_lifecycle.service
-            if not runtime_lifecycle.startup_cleanup_pending and (
-                runtime_service is None or runtime_service.closed
-            ):
-                registry.close()
-            else:
-                logger.error(
-                    "Local index runtime did not settle; retaining RepoRegistry"
-                )
+            registry.close()
         finally:
             for name in ("wiki_builders", "edge_labelers", "commit_windows"):
                 cache = getattr(app.state, name, None)
@@ -433,53 +239,6 @@ def _registry() -> RepoRegistry:
     if registry is None:
         raise HTTPException(status_code=503, detail="Server still starting up")
     return registry
-
-
-def _index_job_reader() -> IndexJobReader:
-    reader = getattr(app.state, "index_job_reader", None)
-    if not isinstance(reader, IndexJobReader):
-        raise HTTPException(
-            status_code=503,
-            detail="Durable index job status is not configured",
-        )
-    return reader
-
-
-def _index_job_writer() -> IndexJobWriter:
-    writer = getattr(app.state, "index_job_writer", None)
-    if not isinstance(writer, IndexJobWriter):
-        raise HTTPException(
-            status_code=503,
-            detail="Durable index job creation is not configured",
-        )
-    return writer
-
-
-def _index_update_capabilities(repo_id: str, bundle: RepoBundle):
-    """Resolve writer capabilities for one pinned Web repository generation."""
-
-    resolver = getattr(app.state, "index_update_capabilities_resolver", None)
-    if resolver is not None and not callable(resolver):
-        raise HTTPException(
-            status_code=503,
-            detail="Index update capabilities are unavailable",
-        )
-    try:
-        candidate = (
-            getattr(app.state, "index_update_capabilities", None)
-            if resolver is None
-            else resolver(repo_id, bundle)
-        )
-        return validate_index_update_capabilities(candidate)
-    except Exception as exc:
-        logger.warning(
-            "Index update capability resolution unavailable: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Index update capabilities are unavailable",
-        ) from exc
 
 
 def _bundle(repo_id: str):
@@ -883,122 +642,15 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
     """Return a detached status snapshot for one pinned bundle generation."""
 
     with _pinned_bundle(repo_id) as bundle:
-        kwargs = {
-            "update_capabilities": _index_update_capabilities(repo_id, bundle),
-        }
+        kwargs = {}
         head_resolver = getattr(app.state, "index_head_resolver", None)
         if callable(head_resolver):
             kwargs["current_head_resolver"] = head_resolver
-        status = await _run_pinned_thread(
+        return await _run_pinned_thread(
             build_repo_index_status,
             bundle,
             **kwargs,
         )
-    reader = getattr(app.state, "index_job_reader", None)
-    if reader is None:
-        return status
-    if not isinstance(reader, IndexJobReader):
-        raise HTTPException(
-            status_code=503,
-            detail="Durable index job status is unavailable",
-        )
-    try:
-        active_job = await asyncio.to_thread(reader.active, repo_id)
-        return overlay_active_job(status, active_job)
-    except IndexJobNotFoundError:
-        return status
-    except (IndexJobReadError, ValueError) as exc:
-        logger.warning(
-            "Durable index job overlay unavailable: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Durable index job status is unavailable",
-        ) from exc
-
-
-@app.get(
-    "/api/index-jobs/{job_id}",
-    response_model=IndexJobStatusResponse,
-)
-async def index_job_status(
-    job_id: str,
-    after_sequence: Annotated[int, Query(ge=0, lt=2**63)] = 0,
-    event_limit: Annotated[int, Query(ge=1, le=64)] = 64,
-) -> IndexJobStatusResponse:
-    """Return one authorized durable job and a bounded event page."""
-
-    try:
-        return await asyncio.to_thread(
-            _index_job_reader().get,
-            job_id,
-            after_sequence=after_sequence,
-            event_limit=event_limit,
-        )
-    except (IndexJobNotFoundError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=404, detail="Index job not found") from exc
-    except IndexJobReadError as exc:
-        logger.warning(
-            "Durable index job read unavailable: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Durable index job status is unavailable",
-        ) from exc
-
-
-@app.post(
-    "/api/index-jobs",
-    response_model=IndexJobStatusResponse,
-    status_code=202,
-)
-@app.post(
-    "/api/repos/{repo_id}/index-jobs",
-    response_model=IndexJobStatusResponse,
-    status_code=202,
-)
-async def create_index_job(
-    repo_id: str,
-    request: IndexJobCreateRequest,
-    idempotency_key: Annotated[
-        str,
-        Header(alias="Idempotency-Key", min_length=1, max_length=256),
-    ],
-) -> IndexJobStatusResponse:
-    """Atomically enqueue one explicitly supported durable index update."""
-
-    try:
-        return await asyncio.to_thread(
-            _index_job_writer().create,
-            repo_id,
-            indexes=tuple(request.indexes),
-            mode=request.mode,
-            force=request.force,
-            idempotency_key=idempotency_key,
-        )
-    except IndexJobNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail="Repository is not configured for index updates",
-        ) from exc
-    except IndexJobRequestError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except IndexJobConflictError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="An index update is already active or the idempotency key conflicts",
-        ) from exc
-    except IndexJobWriteError as exc:
-        logger.warning(
-            "Durable index job creation unavailable: %s",
-            type(exc).__name__,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Durable index job creation is unavailable",
-        ) from exc
 
 
 @app.get("/api/repos/{repo_id}/wiki")

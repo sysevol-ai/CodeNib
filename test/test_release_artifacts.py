@@ -969,10 +969,12 @@ def test_protocol_v6_workspace_replacement_limits_are_documented() -> None:
     provider = (root / "docs/development/local-workspace-provider.md").read_text(
         encoding="utf-8"
     )
-    roadmap = (root / "docs/storage_backend_roadmap.md").read_text(encoding="utf-8")
     provider_prose = " ".join(provider.split())
 
-    for text in (provider, roadmap):
+    # Keep the protocol's safety contract next to its compatibility
+    # implementation. The subtraction roadmap records lifecycle and removal
+    # decisions instead of duplicating this low-level recovery specification.
+    for text in (provider,):
         prose = " ".join(text.split())
         assert "protocol v4" in text.lower()
         assert "protocol v5" in text.lower()
@@ -1022,51 +1024,39 @@ def test_protocol_v6_workspace_replacement_limits_are_documented() -> None:
         "WorkspaceReceiptToken",
     ):
         assert symbol in provider
-    assert "This completes Gate C" in provider_prose
-    assert "Gate C is complete; M1 remains open" in provider_prose
-    assert "default route promotion" in provider_prose
-    assert (
-        "| C | Supply the `provider-bound-exact` strict BM25 native "
-        "provider. | Complete." in roadmap
-    )
-    assert "M1 remains in progress" in roadmap
+    assert "historical Gate C implementation is complete" in provider_prose
+    assert "frozen compatibility seam" in provider_prose
+    assert "has no remaining promotion gate" in provider_prose
 
 
-def test_embedded_storage_backend_policy_is_documented() -> None:
+def test_product_storage_scope_and_compatibility_policy_are_documented() -> None:
     root = Path(__file__).resolve().parents[1]
     provider = (root / "docs/development/local-workspace-provider.md").read_text(
         encoding="utf-8"
     )
     roadmap = (root / "docs/storage_backend_roadmap.md").read_text(encoding="utf-8")
-    provider_prose = " ".join(provider.split())
     roadmap_prose = " ".join(roadmap.split())
 
     assert (
-        "SQLite WAL and the local filesystem SHA-256 CAS are CodeNib's "
-        "canonical supported storage backends and production defaults, not "
-        "temporary bridge implementations"
+        "CodeNib has one product database boundary: " "`codenib.wiki.store.WikiStore`"
     ) in roadmap_prose
     assert (
-        "Neither adapter is a prerequisite for M1-M5, embedded completion, "
-        "or retained-route promotion"
+        "BM25, FAISS, igraph, and portable context payloads remain file artifacts"
     ) in roadmap_prose
-    assert "### M6: Optional server storage adapters" in roadmap
-    assert "Status: deferred; demand gate not activated." in roadmap
-    assert "Activate the PostgreSQL catalog and S3-compatible" in roadmap
-    assert "Neither adapter requires the other." in roadmap_prose
     assert (
-        "M6 and M7 are optional extensions and do not hold embedded completion "
-        "open unless their demand or benchmark gates are explicitly activated"
+        "experimental/compatibility code, not as the canonical product "
+        "persistence layer"
     ) in roadmap_prose
-    assert "Storage-backend defaults are separate from route defaults." in provider
-    assert "not temporary bridges" in provider_prose
-    assert "A2, B1, and B2 remain separate gates" in provider_prose
+    assert "## Closed Plans" in roadmap
+    assert "CodeNib no longer plans PostgreSQL, S3-compatible object storage" in (
+        roadmap_prose
+    )
+    assert "frozen generic-storage compatibility surface" in provider
+    assert "they are not a product-database roadmap" in " ".join(provider.split())
 
 
-def test_a2_readiness_receipt_is_documented_without_promotion() -> None:
+def test_retired_a2_readiness_receipt_remains_self_contained() -> None:
     root = Path(__file__).resolve().parents[1]
-    roadmap = (root / "docs/storage_backend_roadmap.md").read_text(encoding="utf-8")
-    roadmap_prose = " ".join(roadmap.split())
 
     def reject_duplicate_keys(pairs):
         result = {}
@@ -1092,38 +1082,6 @@ def test_a2_readiness_receipt_is_documented_without_promotion() -> None:
         object_pairs_hook=reject_duplicate_keys,
         parse_constant=reject_nonfinite,
     )
-
-    assert "4c907bf3588b40cbf67d3dd98c3db389ab093e62" in roadmap
-    assert "50e7455cac76e224df46c8a6b603c54645d43b89" in roadmap
-    assert (
-        "completed all 30 cells, observed 60/60 expected inner route processes "
-        "with all 60 unique, and recorded 480/480 true per-sample safety values"
-    ) in roadmap_prose
-    assert (
-        "240/240 aggregate safety summaries were also true; those summaries fold "
-        "the same per-sample values and are not additional checks"
-    ) in roadmap_prose
-    assert "720" not in roadmap
-    assert (
-        "The six `runtime-cold` source-disabled compatibility sentinel cells, "
-        "whose candidate arm is query-only, were red on their primary full-runtime "
-        "projection"
-    ) in roadmap_prose
-    assert (
-        "all six `runtime-cold-source-bound` cells passed their primary "
-        "content-authority projection while their full-runtime projection remained red"
-    ) in roadmap_prose
-    assert "both `manifest-runtime-compatibility` and" in roadmap_prose
-    assert "`source-bound-manifest-compatibility` remain blocked" in roadmap_prose
-    assert evidence_path.relative_to(root / "docs").as_posix() in roadmap
-    assert (
-        "the 1x0 iterations, warmups, and resulting sample count are noncanonical"
-    ) in roadmap_prose
-    assert "b4b2246982a29de0860dcaeaee5d1e1363e30f2002aa7576f6c8dcdc8c02a29a" in roadmap
-    assert "33575263b8dd37324b4c8ec2f9a87f49a64c6c9ca3ad007dad384d69f3432aa9" in roadmap
-    assert "is not A2 numeric evidence, ratifies no budget" in roadmap_prose
-    assert "promotes no compiler or runtime route or default" in roadmap_prose
-    assert "remains pending a quiet-host window" in roadmap_prose
 
     assert evidence["schema"] == "codenib.retained-storage-a2-readiness-aggregate.v1"
     assert evidence["source_binding"] == {

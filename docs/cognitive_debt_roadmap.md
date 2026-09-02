@@ -86,12 +86,15 @@ source and manifest contracts
   -> repository runtime and query executor
   -> product adapters (CLI, MCP, Wiki, Python API)
 
+Wiki consumer -> WikiStore -> SQLiteWikiStore
+manifest-bound views -> BM25 / FAISS / igraph / portable file artifacts
 labs and experiments -> published contracts only
-storage backends      -> source/manifest contracts only
 ```
 
 `web` must not own Wiki domain behavior, MCP must not own the reusable
 repository runtime, and `compiler` and `artifacts` must not import each other.
+Generic catalog, snapshot, job, lease, and object-store machinery is not on a
+protected product path.
 
 ## Workstreams
 
@@ -116,7 +119,30 @@ Status: in progress.
       without removing the promoted `FactQueryIndex` and clangd consumers;
       retain the exact negative M2 receipts in the SCIP roadmap.
 
-### S1: Stable versus labs packaging
+### S1: Wiki-only database boundary
+
+Status: in progress.
+
+- [x] Declare `codenib.wiki.store.WikiStore` and its SQLite WAL adapter as the
+      only product database boundary.
+- [x] Keep `RepoManifest`, BM25, FAISS, igraph, and portable context payloads
+      as manifest-bound file artifacts rather than catalog records.
+- [x] Remove the optional Web `index_storage` configuration, retained job
+      orchestration, reconciliation, and runtime-activation path.
+- [x] Freeze `codenib.storage` and explicit retained-storage CLI commands as
+      experimental/compatibility surfaces without adding PostgreSQL, S3,
+      generic GC, or backend discovery.
+- [ ] Remove the frozen surface in consumer-proven, release-aware batches.
+- [ ] Move portable-artifact validation contracts out of `codenib.storage` so
+      default Web imports no longer cross the generic storage namespace.
+- [ ] Bound Wiki generation-lock waiting and make maintenance inspection
+      physically read-only without broadening the Wiki protocol.
+
+Exit condition: protected product journeys use only the Wiki domain database
+and manifest-bound artifacts; every remaining generic storage surface has a
+named compatibility consumer and removal decision.
+
+### S2: Stable versus labs packaging
 
 Status: pending.
 
@@ -133,7 +159,7 @@ Status: pending.
 Exit condition: a normal CodeGraph or Wiki install does not ship research-only
 commands or speculative model serving.
 
-### S2: One repository runtime
+### S3: One repository runtime
 
 Status: in progress.
 
@@ -152,7 +178,7 @@ Status: in progress.
 Exit condition: BM25, vector, graph, source authority, and cleanup semantics
 have one implementation and one conformance suite.
 
-### S3: One query executor
+### S4: One query executor
 
 Status: pending.
 
@@ -164,7 +190,7 @@ Status: pending.
 Exit condition: MCP search, native exploration, and Wiki evidence cannot drift
 on the same plan and manifest.
 
-### S4: Restore ownership boundaries
+### S5: Restore ownership boundaries
 
 Status: pending.
 
@@ -175,7 +201,7 @@ Status: pending.
   are stable.
 - Add repository-wide import-boundary tests for the target direction.
 
-### S5: Repeated workflow extraction
+### S6: Repeated workflow extraction
 
 Status: pending.
 
@@ -194,6 +220,7 @@ Status: pending.
 | 2026-08-24 | Treat failed Python chunk acceleration candidates as closed experiments | Exact revisions, parity, timings, RSS, and gate decisions remain in `scip_multilanguage_roadmap.md` | Remove POC/gate code, ABIs, commands, tests, and active instructions |
 | 2026-08-24 | Retire three unowned retrieval evaluation scripts | RFC #133 remains closed and canonical retrieval metrics remain covered in `codenib.eval.retrieval_eval` | Remove the transitional comparator, manual smoke, and duplicate metric recomputation |
 | 2026-08-24 | Start runtime convergence at manifest freshness | `RepoManifest.index_is_current` already owns commit, fingerprint, and source-selection identity; authenticated graph loading requires a `symbol_graph` entry | Delete the weaker Web-only freshness rule and the unusable vector-sidecar discovery path; add rejection regressions |
+| 2026-09-01 | Make WikiStore the only product database and stop the generic backend program | Storage audit counts, protected-journey consumer tracing, and the one-table Wiki conformance results are summarized in `storage_backend_roadmap.md` | Remove the Web retained-storage vertical; freeze generic storage/CLI compatibility code and delete it by proven consumer; close PostgreSQL, S3, generic GC, and dynamic-registry plans |
 
 ## Completion Gate
 
@@ -202,6 +229,7 @@ The program is complete only when:
 - protected product journeys pass packaged acceptance;
 - stable code has one persisted-view loader and one query executor;
 - package dependency direction is enforced without lazy-import cycles;
+- protected product paths do not import or configure generic storage machinery;
 - every non-core surface has a lifecycle class and owner;
 - failed experiments leave durable evidence but no dormant implementation;
 - stable installation, public API, and required CI exclude labs-only work.

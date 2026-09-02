@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 import re
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from functools import partial
 from importlib.util import find_spec
 from threading import Lock, RLock, local
@@ -28,7 +28,6 @@ from .._owned_file_publication import _CancellationSafeRLock
 from ..compiler.artifact_fingerprints import require_bm25_manifest_artifact
 from ..compiler.manifest import IndexEntry, RepoManifest
 from ..index.embedding._lifecycle import close_vector_after_failure
-from ..languages import normalize_chunker_language
 from ..log_utils import get_logger
 from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_route
 from ..repository_source_selection import RepositorySourceSelection
@@ -43,21 +42,14 @@ if TYPE_CHECKING:
     from ..index.embedding.vector_store import CodeVectorStore
     from ..index.sparse_idx.bm25_index import BM25CodeIndexer
     from ..llm.litellm_chat import LiteLLMChat
-    from ..mcp.retained_context import (
-        RetainedServerContextOwner,
-        RetainedServerContextResult,
-    )
     from ..native_index_authorization import NativeIndexAuthorization
     from ..source_fingerprint import RepositorySourceBinding, RepositorySourceReader
-    from .index_job_activation import IndexJobRuntimeActivation
-    from .index_jobs import IndexJobRepoBinding
 
 logger = get_logger(__name__)
 _REGISTRY_CLEANUP_CONTEXT = local()
 _REGISTRY_RELOAD_CONTEXT = local()
 _REGISTRY_DEFERRED_DRAIN_CONTEXT = local()
 _REGISTRY_LOCK_RESULT_MISSING = object()
-_MAX_RETAINED_BM25_LANGUAGES = 64
 
 
 @dataclass(slots=True)
@@ -415,41 +407,6 @@ def _manifest_requires_authenticated_source(manifest: Any) -> bool:
     ) is RepositorySourceSelection and bool(getattr(manifest, "source_fingerprint", ""))
 
 
-def _exact_manifest_source_selection(manifest: Any) -> RepositorySourceSelection:
-    """Normalize the legacy default while rejecting malformed policy state."""
-
-    selection = getattr(manifest, "source_selection", None)
-    if selection is None:
-        return RepositorySourceSelection()
-    if type(selection) is not RepositorySourceSelection:
-        raise TypeError("repository manifest source selection uses an invalid type")
-    return selection
-
-
-def _exact_manifest_chunker_languages(
-    manifest: Any,
-    *,
-    fallback_language: str,
-) -> tuple[str, ...]:
-    """Reconstruct the normalized language sequence frozen by the builder."""
-
-    raw_languages = tuple(getattr(manifest, "languages", ()) or ())
-    if not raw_languages and fallback_language:
-        raw_languages = (fallback_language,)
-    if not 1 <= len(raw_languages) <= _MAX_RETAINED_BM25_LANGUAGES:
-        raise ValueError("repository manifest languages are not bounded")
-    languages: list[str] = []
-    for raw_language in raw_languages:
-        if type(raw_language) is not str:
-            raise TypeError("repository manifest language must be exact text")
-        language = normalize_chunker_language(raw_language)
-        if language is None:
-            raise ValueError("repository manifest language is unsupported")
-        if language not in languages:
-            languages.append(language)
-    return tuple(languages)
-
-
 def _require_authenticated_source_paths(
     paths: Any,
     source_reader: "RepositorySourceReader",
@@ -482,25 +439,6 @@ def _require_authenticated_documents(
     _require_authenticated_source_paths(paths, source_reader, subject=subject)
 
 
-def _load_retained_bm25_view(
-    bundle: "RepoBundle",
-    *,
-    runtime_owner: Any,
-) -> None:
-    """Reborrow one retained BM25 view without reopening its published path."""
-
-    if runtime_owner.state != "active":
-        raise RuntimeError("retained BM25 runtime owner is not active")
-    context = runtime_owner.context
-    if context.manifest is not bundle.manifest:
-        raise RuntimeError("retained BM25 runtime manifest identity changed")
-    if not context.verify_source_status():
-        raise RuntimeError("retained BM25 repository source changed")
-    if context.bm25 is None or context.loaded_views != frozenset({"bm25"}):
-        raise RuntimeError("retained BM25 runtime view is unavailable")
-    bundle.bm25 = context.bm25
-
-
 @dataclass
 class RepoBundle:
     """Everything needed to answer questions about one repo."""
@@ -517,17 +455,8 @@ class RepoBundle:
     # Borrowed exact source reader. Its creator retains and closes the owning
     # binding; escaped readers become unusable when that owner closes it.
     source_reader: Optional["RepositorySourceReader"] = None
-    index_job_activation: Optional["IndexJobRuntimeActivation"] = field(
-        default=None,
-        repr=False,
-    )
 
     def __post_init__(self) -> None:
-        if self.index_job_activation is not None:
-            from .index_job_activation import IndexJobRuntimeActivation
-
-            if type(self.index_job_activation) is not IndexJobRuntimeActivation:
-                raise TypeError("repo bundle index-job activation is invalid")
         self._views_lock = Lock()
         self._runtime_lock = Lock()
         self._views_loaded = self.view_loader is None
@@ -922,44 +851,6 @@ def _plain_repo_instance_id(value: Any) -> str:
     if not instance_id:
         raise ValueError("repository instance_id must be non-empty text")
     return instance_id
-
-
-def _require_monotonic_index_job_activation(
-    instance_id: str,
-    previous: object,
-    candidate: object,
-) -> None:
-    """Reject runtime publication regressions and non-durable replacement."""
-
-    from .index_job_activation import IndexJobRuntimeActivation
-
-    for value in (previous, candidate):
-        if value is not None and type(value) is not IndexJobRuntimeActivation:
-            raise RuntimeError("repository runtime activation identity is invalid")
-    if previous is not None and previous.repo_id != instance_id:
-        raise RuntimeError(
-            "active repository runtime activation targets another Web repo"
-        )
-    if candidate is not None and candidate.repo_id != instance_id:
-        raise RuntimeError("repository runtime activation targets another Web repo")
-    if previous is None:
-        return
-    if candidate is None:
-        raise RuntimeError(
-            "registry metadata cannot replace a durable runtime generation"
-        )
-    if (
-        candidate.repository_id != previous.repository_id
-        or candidate.ref_name != previous.ref_name
-    ):
-        raise RuntimeError("repository runtime activation storage binding changed")
-    if candidate.ref_generation < previous.ref_generation:
-        raise RuntimeError("repository runtime activation generation regressed")
-    if candidate.ref_generation == previous.ref_generation and (
-        candidate.snapshot_id != previous.snapshot_id
-        or candidate.ref_updated_at != previous.ref_updated_at
-    ):
-        raise RuntimeError("repository runtime activation fence conflicts")
 
 
 _REPO_LOOKUP_MISS = object()
@@ -1421,254 +1312,6 @@ class RepoRegistry:
 
         self._run_serialized_reload(operation)
 
-    def attest_retained_bm25_snapshot_if_equivalent(
-        self,
-        binding: "IndexJobRepoBinding",
-        activation: "IndexJobRuntimeActivation",
-        *,
-        transfer_if_current: Callable[[Callable[[], None]], None],
-    ) -> bool:
-        """Guard-attest an equivalent incumbent under the reload fence.
-
-        The reload lock is acquired before the durable current-result guard,
-        matching the lock order used by full snapshot publication. A normal
-        registry reload therefore cannot retire the incumbent between the
-        runtime proof and the durable guarded transfer.
-        """
-
-        from .index_job_activation import (
-            IndexJobActivationError,
-            IndexJobRuntimeActivation,
-        )
-        from .index_jobs import IndexJobRepoBinding
-
-        if type(binding) is not IndexJobRepoBinding:
-            raise TypeError("binding must be an exact IndexJobRepoBinding")
-        if type(activation) is not IndexJobRuntimeActivation:
-            raise TypeError("activation must be an exact IndexJobRuntimeActivation")
-        if (
-            activation.repo_id != binding.repo_id
-            or activation.repository_id != binding.repository_id
-            or activation.ref_name != binding.ref_name
-        ):
-            raise ValueError("retained BM25 activation binding differs")
-        if not callable(transfer_if_current):
-            raise TypeError("retained BM25 guarded transfer must be callable")
-
-        instance_id = binding.repo_id
-
-        def operation() -> bool:
-            with self._generation_lock:
-                bundle = self._bundles.get(instance_id)
-                if bundle is None:
-                    raise IndexJobActivationError(
-                        "Web repository has no active runtime generation"
-                    )
-                incumbent = bundle.index_job_activation
-                if incumbent is None:
-                    return False
-                if type(incumbent) is not IndexJobRuntimeActivation:
-                    raise IndexJobActivationError(
-                        "active Web runtime activation identity is invalid"
-                    )
-                if (
-                    incumbent.repo_id != binding.repo_id
-                    or incumbent.repository_id != binding.repository_id
-                    or incumbent.ref_name != binding.ref_name
-                ):
-                    raise IndexJobActivationError(
-                        "active Web runtime activation binding changed"
-                    )
-                if incumbent.ref_generation > activation.ref_generation:
-                    raise IndexJobActivationError(
-                        "active Web runtime generation is newer than publication"
-                    )
-                if incumbent.ref_generation < activation.ref_generation:
-                    return False
-                if (
-                    incumbent.snapshot_id != activation.snapshot_id
-                    or incumbent.ref_updated_at != activation.ref_updated_at
-                ):
-                    raise IndexJobActivationError(
-                        "active Web runtime generation conflicts with publication"
-                    )
-
-            def require_incumbent() -> None:
-                with self._generation_lock:
-                    current = self._bundles.get(instance_id)
-                    if current is not bundle:
-                        raise IndexJobActivationError(
-                            "active Web runtime changed during guarded attestation"
-                        )
-                    current_activation = current.index_job_activation
-                    if (
-                        type(current_activation) is not IndexJobRuntimeActivation
-                        or current_activation.repo_id != binding.repo_id
-                        or current_activation.repository_id != binding.repository_id
-                        or current_activation.ref_name != binding.ref_name
-                        or current_activation.ref_generation
-                        != activation.ref_generation
-                        or current_activation.snapshot_id != activation.snapshot_id
-                        or current_activation.ref_updated_at
-                        != activation.ref_updated_at
-                    ):
-                        raise IndexJobActivationError(
-                            "active Web runtime changed during guarded attestation"
-                        )
-
-            result = transfer_if_current(require_incumbent)
-            if result is not None:
-                raise RuntimeError("retained BM25 guarded transfer returned a value")
-            return True
-
-        return self._run_serialized_reload(operation)
-
-    def replace_retained_bm25_snapshot(
-        self,
-        binding: "IndexJobRepoBinding",
-        activation: "IndexJobRuntimeActivation",
-        runtime_owner: "RetainedServerContextOwner",
-        *,
-        transfer_if_current: Callable[[Callable[[], None]], None],
-    ) -> None:
-        """Publish one current retained BM25 result as a pinned generation.
-
-        Validation leaves the caller's owner untouched. Once an active owner
-        passes that boundary, the registry retains it through publication or
-        retryable cleanup. After all runtime preparation, the caller-supplied
-        durable guard invokes the complete source-checked RCU transfer while
-        retaining its ref-writer fence.
-        """
-
-        from ..mcp.retained_context import RetainedServerContextOwner
-        from .index_job_activation import IndexJobRuntimeActivation
-        from .index_jobs import IndexJobRepoBinding
-
-        if type(binding) is not IndexJobRepoBinding:
-            raise TypeError("binding must be an exact IndexJobRepoBinding")
-        if type(activation) is not IndexJobRuntimeActivation:
-            raise TypeError("activation must be an exact IndexJobRuntimeActivation")
-        if (
-            activation.repo_id != binding.repo_id
-            or activation.repository_id != binding.repository_id
-            or activation.ref_name != binding.ref_name
-        ):
-            raise ValueError("retained BM25 activation binding differs")
-        if type(runtime_owner) is not RetainedServerContextOwner:
-            raise TypeError("runtime_owner must be an exact RetainedServerContextOwner")
-        if runtime_owner.state != "active":
-            raise RuntimeError("retained BM25 runtime owner must be active")
-        if not callable(transfer_if_current):
-            raise TypeError("retained BM25 guarded transfer must be callable")
-
-        instance_id = binding.repo_id
-
-        def guard_source_checked_publish(publish: Callable[[], None]) -> None:
-            def transfer() -> None:
-                if not runtime_owner.context.verify_source_status():
-                    raise RuntimeError("retained BM25 repository source changed")
-                result = publish()
-                if result is not None:
-                    raise RuntimeError(
-                        "retained BM25 runtime transfer returned a value"
-                    )
-
-            result = transfer_if_current(transfer)
-            if result is not None:
-                raise RuntimeError("retained BM25 guarded transfer returned a value")
-
-        def operation() -> None:
-            owned = self._build_retained_bm25_snapshot(
-                binding,
-                activation,
-                runtime_owner,
-            )
-            self._prepare_and_publish_owned(
-                instance_id,
-                owned,
-                prepare_runtime=True,
-                guarded_publish=guard_source_checked_publish,
-            )
-
-        try:
-            self._run_serialized_reload(operation)
-        except BaseException as primary:  # noqa: B036 - retain accepted owner
-            try:
-                cleanup_failure = self._retain_cleanup_owner(
-                    instance_id,
-                    runtime_owner,
-                )
-            except BaseException as settlement_failure:  # noqa: B036
-                _raise_with_cleanup_failure(primary, settlement_failure)
-            if cleanup_failure is not None:
-                _raise_with_cleanup_failure(primary, cleanup_failure)
-            raise
-
-    def load_and_replace_retained_bm25_snapshot(
-        self,
-        binding: "IndexJobRepoBinding",
-        activation: "IndexJobRuntimeActivation",
-        *,
-        loader: Callable[
-            ["RetainedServerContextOwner"],
-            "RetainedServerContextResult",
-        ],
-        transfer_if_current: Callable[[Callable[[], None]], None],
-    ) -> None:
-        """Own one retained loader through its guarded runtime publication."""
-
-        from ..mcp.retained_context import (
-            RetainedServerContextOwner,
-            RetainedServerContextResult,
-        )
-        from .index_job_activation import IndexJobRuntimeActivation
-        from .index_jobs import IndexJobRepoBinding
-
-        if type(binding) is not IndexJobRepoBinding:
-            raise TypeError("binding must be an exact IndexJobRepoBinding")
-        if type(activation) is not IndexJobRuntimeActivation:
-            raise TypeError("activation must be an exact IndexJobRuntimeActivation")
-        if (
-            activation.repo_id != binding.repo_id
-            or activation.repository_id != binding.repository_id
-            or activation.ref_name != binding.ref_name
-        ):
-            raise ValueError("retained BM25 activation binding differs")
-        if not callable(loader):
-            raise TypeError("retained BM25 runtime loader must be callable")
-        if not callable(transfer_if_current):
-            raise TypeError("retained BM25 guarded transfer must be callable")
-
-        runtime_owner = RetainedServerContextOwner()
-        instance_id = binding.repo_id
-        try:
-            result = loader(runtime_owner)
-            if (
-                type(result) is not RetainedServerContextResult
-                or runtime_owner.state != "active"
-                or runtime_owner.result is not result
-            ):
-                raise RuntimeError(
-                    "retained BM25 runtime loader returned an invalid result"
-                )
-            self.replace_retained_bm25_snapshot(
-                binding,
-                activation,
-                runtime_owner,
-                transfer_if_current=transfer_if_current,
-            )
-        except BaseException as primary:  # noqa: B036 - retain acquired owner
-            try:
-                cleanup_failure = self._settle_unpublished_cleanup_owner(
-                    instance_id,
-                    runtime_owner,
-                )
-            except BaseException as settlement_failure:  # noqa: B036
-                _raise_with_cleanup_failure(primary, settlement_failure)
-            if cleanup_failure is not None:
-                _raise_with_cleanup_failure(primary, cleanup_failure)
-            raise
-
     def _raise_if_closed_after_cleanup(
         self,
         cleanup_failure: Optional[BaseException] = None,
@@ -1815,179 +1458,6 @@ class RepoRegistry:
             # swap prevents the first post-refresh request from observing a
             # partially initialized bundle.
             bundle.hierarchical_graph()
-
-    def _build_retained_bm25_snapshot(
-        self,
-        binding: "IndexJobRepoBinding",
-        activation: "IndexJobRuntimeActivation",
-        runtime_owner: "RetainedServerContextOwner",
-    ) -> _OwnedRepoBundle:
-        """Bind an exact retained snapshot to one complete sparse Web bundle."""
-
-        from ..artifacts.context import CONTEXT_ARTIFACT_SCHEMA, ContextArtifactResult
-        from ..compiler.manifest_export import RepoManifestExportReceipt
-        from ..compiler.manifest_materialization import (
-            RepoManifestMaterializationResult,
-        )
-        from ..mcp.context import ServerContext
-        from ..mcp.retained_context import (
-            RetainedServerContextOwner,
-            RetainedServerContextResult,
-        )
-        from ..source_fingerprint import lexical_repository_path
-        from .index_job_activation import IndexJobRuntimeActivation
-        from .index_jobs import IndexJobRepoBinding
-
-        if type(binding) is not IndexJobRepoBinding:
-            raise TypeError("binding must be an exact IndexJobRepoBinding")
-        if type(activation) is not IndexJobRuntimeActivation:
-            raise TypeError("activation must be an exact IndexJobRuntimeActivation")
-        if type(runtime_owner) is not RetainedServerContextOwner:
-            raise TypeError("runtime_owner must be an exact RetainedServerContextOwner")
-        if (
-            activation.repo_id != binding.repo_id
-            or activation.repository_id != binding.repository_id
-            or activation.ref_name != binding.ref_name
-        ):
-            raise ValueError("retained BM25 activation binding differs")
-        if tuple(self._config.index_types()) != ("bm25",):
-            raise ValueError("retained BM25 publication requires sparse Web mode")
-
-        instance_id = binding.repo_id
-        with self._generation_lock:
-            current = self._bundles.get(instance_id)
-        if type(current) is not RepoBundle:
-            raise ValueError(
-                f"Web repository {instance_id!r} has no active exact generation"
-            )
-        entry = current.entry
-        current_manifest = current.manifest
-        if type(entry) is not RepoEntry or type(current_manifest) is not RepoManifest:
-            raise TypeError("active Web repository metadata uses an invalid type")
-        if entry.instance_id != instance_id:
-            raise RuntimeError("active Web repository identity changed")
-        current_indexes = set(current_manifest.indexes)
-        if current_indexes and current_indexes != {"bm25"}:
-            raise ValueError(
-                "retained BM25 publication cannot replace an incompatible generation"
-            )
-
-        result = runtime_owner.result
-        context = runtime_owner.context
-        if type(result) is not RetainedServerContextResult:
-            raise TypeError("retained BM25 result uses an invalid type")
-        if type(context) is not ServerContext:
-            raise TypeError("retained BM25 context uses an invalid type")
-        materialization = result.materialization
-        if type(materialization) is not RepoManifestMaterializationResult:
-            raise TypeError("retained BM25 materialization uses an invalid type")
-        artifact = materialization.artifact
-        receipt = materialization.export_receipt
-        if type(artifact) is not ContextArtifactResult:
-            raise TypeError("retained BM25 artifact uses an invalid type")
-        if type(receipt) is not RepoManifestExportReceipt:
-            raise TypeError("retained BM25 export receipt uses an invalid type")
-        manifest = context.manifest
-        if type(manifest) is not RepoManifest:
-            raise TypeError("retained BM25 manifest uses an invalid type")
-        if _exact_manifest_source_selection(
-            current_manifest
-        ) != _exact_manifest_source_selection(manifest):
-            raise ValueError(
-                "retained BM25 source selection differs from the active Web source"
-            )
-        if _exact_manifest_chunker_languages(
-            current_manifest,
-            fallback_language=entry.language,
-        ) != _exact_manifest_chunker_languages(
-            manifest,
-            fallback_language=entry.language,
-        ):
-            raise ValueError(
-                "retained BM25 languages differ from the active Web generation"
-            )
-
-        if (
-            receipt.repository_id != binding.repository_id
-            or receipt.repository_key != artifact.repository
-            or receipt.repository_key != entry.repo
-            or receipt.snapshot_id != activation.snapshot_id
-            or receipt.ref_name is not None
-            or receipt.ref_generation is not None
-            or receipt.ref_updated_at is not None
-        ):
-            raise ValueError("retained BM25 snapshot identity is inconsistent")
-        if (
-            receipt.views != ("bm25",)
-            or receipt.skipped_items != ()
-            or artifact.views != ("bm25",)
-            or result.loaded_views != ("bm25",)
-            or result.view_error_items != ()
-            or context.loaded_views != frozenset({"bm25"})
-            or context.errors
-            or context.bm25 is None
-        ):
-            raise ValueError("retained BM25 snapshot is not a complete BM25 view")
-        if (
-            runtime_owner.context is not context
-            or runtime_owner.result is not result
-            or artifact.commit != manifest.commit
-            or set(manifest.indexes) != {"bm25"}
-            or not manifest.index_is_current("bm25")
-            or context.artifact
-            != {
-                "verified": True,
-                "schema": CONTEXT_ARTIFACT_SCHEMA,
-                "repository": artifact.repository,
-                "commit": artifact.commit,
-                "views": ["bm25"],
-            }
-        ):
-            raise ValueError("retained BM25 manifest identity is inconsistent")
-
-        entry_repo = lexical_repository_path(entry.repo_dir)
-        active_repo = lexical_repository_path(current_manifest.repo_path)
-        retained_repo = lexical_repository_path(manifest.repo_path)
-        if entry_repo != active_repo or entry_repo != retained_repo:
-            raise ValueError("retained BM25 repository path differs from Web source")
-        try:
-            physical_paths = {
-                entry_repo.resolve(strict=True),
-                active_repo.resolve(strict=True),
-                retained_repo.resolve(strict=True),
-            }
-        except (OSError, RuntimeError) as exc:
-            raise ValueError("retained BM25 repository path is unavailable") from exc
-        if len(physical_paths) != 1 or not next(iter(physical_paths)).is_dir():
-            raise ValueError("retained BM25 repository path identity changed")
-        if not context.verify_source_status():
-            raise ValueError("retained BM25 repository source changed")
-        source_reader = context.borrow_source_reader()
-        _require_authenticated_documents(
-            context.bm25.documents,
-            source_reader,
-            subject="retained BM25 view",
-        )
-
-        retained_entry = replace(
-            entry,
-            base_commit=manifest.commit,
-            manifest_path=os.fspath(artifact.manifest_path),
-        )
-        bundle = RepoBundle(
-            entry=retained_entry,
-            manifest=manifest,
-            bm25=context.bm25,
-            chat_available=current.chat_available,
-            view_loader=partial(
-                _load_retained_bm25_view,
-                runtime_owner=runtime_owner,
-            ),
-            runtime_loader=self._load_repo_runtime,
-            source_reader=source_reader,
-            index_job_activation=activation,
-        )
-        return _OwnedRepoBundle(bundle, None, runtime_owner)
 
     def _build_repo_metadata(self, entry: RepoEntry) -> _OwnedRepoBundle:
         """Authenticate an unpublished candidate and retain all cleanup owners."""
@@ -2279,15 +1749,6 @@ class RepoRegistry:
                     "repository source cleanup authority is already closed"
                 )
             previous_bundle = self._bundles.get(instance_id)
-            _require_monotonic_index_job_activation(
-                instance_id,
-                (
-                    None
-                    if previous_bundle is None
-                    else previous_bundle.index_job_activation
-                ),
-                owned.bundle.index_job_activation,
-            )
             previous_binding = self._source_bindings.get(instance_id)
             previous_owner = self._source_cleanup_owners.get(instance_id)
             previous = (
