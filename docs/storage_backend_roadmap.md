@@ -119,6 +119,10 @@ Status: in progress.
   artifact-neutral `_bounded_json` module. The retained protocol keeps a
   compatibility wrapper, while the default Web import path no longer reaches
   `codenib.storage`.
+- Removed the unreleased, zero-consumer `storage audit` command and its private
+  reachability implementation. The batch removed one command, 498 production
+  lines, and 512 dedicated test lines while retaining the shared SQLite catalog
+  validation snapshot used by surviving compatibility paths.
 - Remove zero-consumer protocols and their intersection/conformance tests in
   focused batches.
 - Separate any genuinely required compatibility adapter from experimental
