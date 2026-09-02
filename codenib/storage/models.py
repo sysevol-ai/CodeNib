@@ -13,7 +13,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from itertools import islice
 from pathlib import PurePosixPath
 from typing import Any, Mapping, Sequence
 
@@ -25,29 +24,14 @@ _CATALOG_INT64_MAX = 9_223_372_036_854_775_807
 DEFAULT_NAMESPACE_ID = "ns_default"
 DEFAULT_NAMESPACE_NAME = "default"
 INDEX_JOB_REQUEST_CONTRACT = "codenib.index-job-request.v1"
-INDEX_JOB_PUBLICATION_CONTRACT = "codenib.index-job-publication.v1"
-INDEX_JOB_SUPPORTING_VIEW_PREFIX = "codenib.internal."
 REPO_MANIFEST_PROJECTION_VIEW = "codenib.internal.repo-manifest"
 REPO_MANIFEST_PROJECTION_SCHEMA = "codenib.internal.repo-manifest.v2"
 REPO_MANIFEST_PROJECTION_PROFILE_NAME = "canonical"
-INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH = 16
-INDEX_JOB_EVENT_PAYLOAD_MAX_NODES = 1_024
-INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS = 16 * 1_024
-INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS = 128
-MAX_INDEX_JOB_EVENTS_PER_ATTEMPT = 256
 VIEW_GENERATION_MEMBERS_METADATA_KEY = "_codenib_member_object_digests"
 # One retained-import summary represents every member twice: once in canonical
 # generation metadata and once as its identity-closed object envelope. Keep
 # this producer bound comfortably below the 250k-node response capability.
 MAX_VIEW_GENERATION_MEMBERS = 32_768
-
-
-def is_index_job_supporting_view(view_type: object) -> bool:
-    """Return whether a view belongs to the reserved job-support namespace."""
-
-    return type(view_type) is str and view_type.startswith(
-        INDEX_JOB_SUPPORTING_VIEW_PREFIX
-    )
 
 
 class StorageError(RuntimeError):
@@ -287,21 +271,6 @@ def _nonnegative_integer(value: int, field: str) -> int:
     return value
 
 
-def _exact_nonnegative_integer(value: int, field: str) -> int:
-    """Validate new catalog counters without accepting ``int`` subclasses."""
-
-    if type(value) is not int or value < 0:
-        raise StorageValidationError(f"{field} must be an exact non-negative integer")
-    return value
-
-
-def _exact_nonnegative_int64(value: int, field: str) -> int:
-    normalized = _exact_nonnegative_integer(value, field)
-    if normalized > _CATALOG_INT64_MAX:
-        raise StorageValidationError(f"{field} is outside catalog range")
-    return normalized
-
-
 def _optional_nonnegative_integer(value: int | None, field: str) -> int | None:
     if value is None:
         return None
@@ -335,161 +304,6 @@ def _reject_secret_fields(value: Any, *, path: str = "request") -> None:
     assert_no_secret_fields(value, source="index job request")
 
 
-def snapshot_index_job_event_payload(value: object) -> dict[str, Any]:
-    """Detach one bounded, exact-JSON, secret-free job event payload."""
-
-    nodes = 0
-    text_size = 0
-
-    def snapshot_mapping(
-        current: Mapping[object, object], depth: int
-    ) -> dict[str, Any]:
-        nonlocal text_size
-        try:
-            before_length = len(current)
-            iterator = iter(current)
-        except Exception as exc:
-            raise StorageValidationError(
-                "index job event payload could not be snapshotted"
-            ) from exc
-        if before_length > INDEX_JOB_EVENT_PAYLOAD_MAX_NODES - nodes:
-            raise StorageValidationError(
-                "index job event payload exceeds its node limit"
-            )
-
-        result: dict[str, Any] = {}
-        observed: set[str] = set()
-        try:
-            while True:
-                try:
-                    key = next(iterator)
-                except StopIteration:
-                    break
-                if nodes >= INDEX_JOB_EVENT_PAYLOAD_MAX_NODES:
-                    raise StorageValidationError(
-                        "index job event payload exceeds its node limit"
-                    )
-                if (
-                    type(key) is not str
-                    or not key
-                    or len(key) > INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS
-                    or "\x00" in key
-                ):
-                    raise StorageValidationError(
-                        "index job event payload contains an invalid object key"
-                    )
-                if key in observed:
-                    raise StorageValidationError(
-                        "index job event payload contains a duplicate object key"
-                    )
-                observed.add(key)
-                text_size += len(key)
-                if text_size > INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS:
-                    raise StorageValidationError(
-                        "index job event payload contains invalid text"
-                    )
-                result[key] = snapshot(current[key], depth + 1)
-            after_length = len(current)
-        except StorageValidationError:
-            raise
-        except Exception as exc:
-            raise StorageValidationError(
-                "index job event payload could not be snapshotted"
-            ) from exc
-        if before_length != after_length or after_length != len(observed):
-            raise StorageValidationError(
-                "index job event payload changed while snapshotted"
-            )
-        return result
-
-    def snapshot_list(current: list[object], depth: int) -> list[Any]:
-        try:
-            before_length = len(current)
-            iterator = iter(current)
-        except Exception as exc:
-            raise StorageValidationError(
-                "index job event payload could not be snapshotted"
-            ) from exc
-        if before_length > INDEX_JOB_EVENT_PAYLOAD_MAX_NODES - nodes:
-            raise StorageValidationError(
-                "index job event payload exceeds its node limit"
-            )
-        result: list[Any] = []
-        try:
-            while True:
-                try:
-                    child = next(iterator)
-                except StopIteration:
-                    break
-                if nodes >= INDEX_JOB_EVENT_PAYLOAD_MAX_NODES:
-                    raise StorageValidationError(
-                        "index job event payload exceeds its node limit"
-                    )
-                result.append(snapshot(child, depth + 1))
-            after_length = len(current)
-        except StorageValidationError:
-            raise
-        except Exception as exc:
-            raise StorageValidationError(
-                "index job event payload could not be snapshotted"
-            ) from exc
-        if before_length != after_length or after_length != len(result):
-            raise StorageValidationError(
-                "index job event payload changed while snapshotted"
-            )
-        return result
-
-    def snapshot(current: object, depth: int) -> Any:
-        nonlocal nodes, text_size
-        nodes += 1
-        if nodes > INDEX_JOB_EVENT_PAYLOAD_MAX_NODES:
-            raise StorageValidationError(
-                "index job event payload exceeds its node limit"
-            )
-        if depth > INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH:
-            raise StorageValidationError(
-                "index job event payload exceeds its depth limit"
-            )
-        if current is None or type(current) is bool:
-            return current
-        if type(current) is str:
-            text_size += len(current)
-            if text_size > INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS or "\x00" in current:
-                raise StorageValidationError(
-                    "index job event payload contains invalid text"
-                )
-            return current
-        if type(current) is int:
-            if not -(2**63) <= current < 2**63:
-                raise StorageValidationError(
-                    "index job event payload contains an invalid integer"
-                )
-            return current
-        if type(current) is float:
-            if not math.isfinite(current):
-                raise StorageValidationError(
-                    "index job event payload contains a non-finite number"
-                )
-            return current
-        if type(current) is list:
-            return snapshot_list(current, depth)
-        if type(current) is dict:
-            return snapshot_mapping(current, depth)
-        raise StorageValidationError(
-            "index job event payload contains a non-exact JSON value"
-        )
-
-    if not isinstance(value, Mapping):
-        raise StorageValidationError("index job event payload must be an exact object")
-    nodes = 1
-    payload = snapshot_mapping(value, 1)
-    encoded = canonical_json(payload)
-    if len(encoded) > INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS:
-        raise StorageValidationError("index job event payload exceeds 16384 bytes")
-    assert_no_secret_fields(payload, source="index job event payload")
-    return payload
-
-
 class IndexJobStatus(str, Enum):
     """Persisted lifecycle states for an index job."""
 
@@ -506,30 +320,6 @@ class IndexJobCompletion(str, Enum):
     REQUEUE = "requeue"
     FAILED = "failed"
     CANCELLED = "cancelled"
-
-
-class IndexJobEventKind(str, Enum):
-    """Bounded execution event shapes accepted by the control plane."""
-
-    PROGRESS = "progress"
-    VIEW_RESULT = "view_result"
-
-
-class IndexJobEffectiveMode(str, Enum):
-    """Effective builder behavior reported after capability resolution."""
-
-    FULL = "full"
-    INCREMENTAL = "incremental"
-    REBUILD_FALLBACK = "rebuild_fallback"
-    UNAVAILABLE = "unavailable"
-
-
-class IndexJobViewOutcome(str, Enum):
-    """One requested view's terminal attempt-local execution result."""
-
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    SKIPPED = "skipped"
 
 
 @dataclass(frozen=True, slots=True)
@@ -762,182 +552,6 @@ class ObjectRecord:
         object.__setattr__(
             self, "media_type", _required_text(self.media_type, "media type")
         )
-
-
-def _exact_job_output_object(record: object, *, label: str) -> ObjectRecord:
-    """Detach one exact catalog object record for a job output."""
-
-    if type(record) is not ObjectRecord:
-        raise StorageValidationError(f"{label} must be an exact ObjectRecord")
-    values = (record.digest, record.byte_size, record.storage_key, record.media_type)
-    if tuple(type(value) for value in values) != (str, int, str, str):
-        raise StorageValidationError(f"{label} fields must use exact str/int types")
-    detached = ObjectRecord(
-        digest=values[0],
-        byte_size=values[1],
-        storage_key=values[2],
-        media_type=values[3],
-    )
-    if detached.byte_size > _CATALOG_INT64_MAX:
-        raise StorageValidationError(f"{label} byte size exceeds catalog int64 range")
-    _bounded_text(detached.storage_key, f"{label} storage key", max_length=4_096)
-    _bounded_text(detached.media_type, f"{label} media type", max_length=256)
-    if detached != record:
-        raise StorageValidationError(f"{label} is not canonical")
-    return detached
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobViewOutput:
-    """One exact, receipt-verified output offered for a requested job view.
-
-    The explicit profile binding lets the catalog reject a mismatch with the
-    persisted job request. ``metadata_json`` contains caller metadata only;
-    :attr:`generation_metadata` injects the canonical, identity-bearing
-    compound-member digest list.
-    """
-
-    view_type: str
-    profile_id: str
-    object_record: ObjectRecord
-    schema_version: str
-    metadata_json: str = "{}"
-    member_object_records: tuple[ObjectRecord, ...] = ()
-
-    def __post_init__(self) -> None:
-        if tuple(
-            type(value)
-            for value in (
-                self.view_type,
-                self.profile_id,
-                self.schema_version,
-                self.metadata_json,
-            )
-        ) != (str, str, str, str):
-            raise StorageValidationError(
-                "index job output text fields must use exact str values"
-            )
-        view_type = _bounded_text(self.view_type, "view type", max_length=128)
-        profile_id = _bounded_text(self.profile_id, "profile ID", max_length=96)
-        schema_version = _bounded_text(
-            self.schema_version, "view schema version", max_length=128
-        )
-        primary = _exact_job_output_object(
-            self.object_record,
-            label="index job output object",
-        )
-        metadata_json, metadata = _canonical_json_object(
-            self.metadata_json,
-            "index job output metadata",
-        )
-        if len(metadata_json) > 65_536:
-            raise StorageValidationError(
-                "index job output metadata must not exceed 65536 characters"
-            )
-        assert_no_secret_fields(metadata, source="index job output metadata")
-
-        if type(self.member_object_records) is not tuple:
-            raise StorageValidationError(
-                "index job output member objects must be an exact tuple"
-            )
-        if len(self.member_object_records) > MAX_VIEW_GENERATION_MEMBERS:
-            raise StorageValidationError("view generation has too many member objects")
-        members = tuple(
-            _exact_job_output_object(
-                member,
-                label="index job output member object",
-            )
-            for member in self.member_object_records
-        )
-        ordered = tuple(sorted(members, key=lambda member: member.digest))
-        member_digests = tuple(member.digest for member in ordered)
-        # This shared normalizer rejects the reserved metadata key, duplicate
-        # members, and a primary digest repeated as a member.
-        normalize_view_generation_metadata(
-            primary.digest,
-            metadata,
-            member_object_digests=member_digests,
-        )
-
-        object.__setattr__(self, "view_type", view_type)
-        object.__setattr__(self, "profile_id", profile_id)
-        object.__setattr__(self, "object_record", primary)
-        object.__setattr__(self, "schema_version", schema_version)
-        object.__setattr__(self, "metadata_json", metadata_json)
-        object.__setattr__(self, "member_object_records", ordered)
-
-    @classmethod
-    def create(
-        cls,
-        view_type: str,
-        profile_id: str,
-        object_record: ObjectRecord,
-        *,
-        schema_version: str,
-        metadata: Mapping[str, Any] | None = None,
-        member_object_records: Sequence[ObjectRecord] = (),
-    ) -> IndexJobViewOutput:
-        if isinstance(member_object_records, (str, bytes, bytearray)):
-            raise StorageValidationError(
-                "index job output member objects must be a sequence"
-            )
-        try:
-            members = tuple(
-                islice(
-                    iter(member_object_records),
-                    MAX_VIEW_GENERATION_MEMBERS + 1,
-                )
-            )
-        except TypeError as exc:
-            raise StorageValidationError(
-                "index job output member objects must be a sequence"
-            ) from exc
-        if len(members) > MAX_VIEW_GENERATION_MEMBERS:
-            raise StorageValidationError("view generation has too many member objects")
-        return cls(
-            view_type=view_type,
-            profile_id=profile_id,
-            object_record=object_record,
-            schema_version=schema_version,
-            metadata_json=canonical_json({} if metadata is None else metadata),
-            member_object_records=members,
-        )
-
-    @property
-    def metadata(self) -> dict[str, Any]:
-        return json.loads(self.metadata_json)
-
-    @property
-    def generation_metadata(self) -> dict[str, Any]:
-        normalized, _members = normalize_view_generation_metadata(
-            self.object_record.digest,
-            self.metadata,
-            member_object_digests=tuple(
-                member.digest for member in self.member_object_records
-            ),
-        )
-        return normalized
-
-    @property
-    def identity(self) -> dict[str, Any]:
-        def object_identity(record: ObjectRecord) -> dict[str, Any]:
-            return {
-                "digest": record.digest,
-                "storage_key": record.storage_key,
-                "byte_size": record.byte_size,
-                "media_type": record.media_type,
-            }
-
-        return {
-            "view_type": self.view_type,
-            "profile_id": self.profile_id,
-            "schema_version": self.schema_version,
-            "metadata": self.generation_metadata,
-            "object": object_identity(self.object_record),
-            "member_objects": [
-                object_identity(record) for record in self.member_object_records
-            ],
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1273,7 +887,7 @@ class IndexJobRequest:
         expected_ref_generation: int = 0,
         max_attempts: int = 3,
     ) -> IndexJobRequest:
-        created = cls(
+        return cls(
             repository_id=repository_id,
             source_revision_id=source_revision_id,
             ref_name=ref_name,
@@ -1282,20 +896,6 @@ class IndexJobRequest:
             max_attempts=max_attempts,
             request_json=canonical_json(request),
         )
-        # Schema-v7 catalogs could persist requests under this prefix. The
-        # low-level constructor remains able to rehydrate those durable rows;
-        # admission for every new request stays closed at this factory.
-        reserved = tuple(
-            view.view_type
-            for view in created.view_requests
-            if is_index_job_supporting_view(view.view_type)
-        )
-        if reserved:
-            raise StorageValidationError(
-                "index job requests cannot include reserved supporting views: "
-                + ", ".join(reserved)
-            )
-        return created
 
     @property
     def request(self) -> dict[str, Any]:
@@ -1425,7 +1025,7 @@ class IndexJobRecord:
             raise StorageValidationError("running index jobs require a start time")
         if status is IndexJobStatus.CANCELLED and not self.cancel_requested:
             raise StorageValidationError("cancelled index jobs require cancellation")
-        if type(self.cancel_requested) is not bool:
+        if not isinstance(self.cancel_requested, bool):
             raise StorageValidationError("cancel requested must be boolean")
 
         object.__setattr__(self, "job_id", request.job_id)
@@ -1446,28 +1046,10 @@ class IndexJobRecord:
         object.__setattr__(
             self,
             "attempt_count",
-            _exact_nonnegative_integer(self.attempt_count, "job attempt count"),
+            _nonnegative_integer(self.attempt_count, "job attempt count"),
         )
         if self.attempt_count > self.max_attempts:
             raise StorageValidationError("job attempts exceed the configured maximum")
-        if status is IndexJobStatus.QUEUED and (
-            self.cancel_requested or self.attempt_count >= self.max_attempts
-        ):
-            raise StorageValidationError(
-                "queued index jobs must remain uncancelled and retryable"
-            )
-        if (
-            status
-            in {
-                IndexJobStatus.RUNNING,
-                IndexJobStatus.SUCCEEDED,
-                IndexJobStatus.FAILED,
-            }
-            and self.attempt_count < 1
-        ):
-            raise StorageValidationError(
-                f"{status.value} index jobs require at least one attempt"
-            )
         for field in ("created_at_ms", "updated_at_ms"):
             object.__setattr__(
                 self, field, _nonnegative_integer(getattr(self, field), field)
@@ -1499,68 +1081,6 @@ class IndexJobRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class IndexJobCurrentResult:
-    """One successful job whose publication is the exact current ref state."""
-
-    job: IndexJobRecord
-    ref_generation: int
-    ref_updated_at: str
-
-    def __post_init__(self) -> None:
-        if type(self) is not IndexJobCurrentResult:
-            raise StorageValidationError("current job result must use the exact model")
-        if type(self.job) is not IndexJobRecord:
-            raise StorageValidationError(
-                "current job result requires an exact job record"
-            )
-        job = self.job
-        if (
-            job.status is not IndexJobStatus.SUCCEEDED
-            or job.cancel_requested
-            or job.result_snapshot_id is None
-            or job.started_at_ms is None
-            or job.finished_at_ms is None
-            or job.updated_at_ms != job.finished_at_ms
-        ):
-            raise StorageValidationError(
-                "current job result requires an exact successful publication"
-            )
-        generation = _exact_nonnegative_integer(
-            self.ref_generation,
-            "current job result ref generation",
-        )
-        if generation < 1 or generation > _CATALOG_INT64_MAX:
-            raise StorageValidationError(
-                "current job result ref generation is outside catalog range"
-            )
-        expected_generations = {job.expected_ref_generation + 1}
-        if job.expected_ref_generation > 0:
-            expected_generations.add(job.expected_ref_generation)
-        if generation not in expected_generations:
-            raise StorageValidationError(
-                "current job result generation differs from its publication fence"
-            )
-        object.__setattr__(self, "ref_generation", generation)
-        object.__setattr__(
-            self,
-            "ref_updated_at",
-            canonical_utc_timestamp(
-                self.ref_updated_at,
-                "current job result ref updated_at",
-            ),
-        )
-
-    @property
-    def snapshot_id(self) -> str:
-        """Return the successful snapshot authenticated by ``job``."""
-
-        snapshot_id = self.job.result_snapshot_id
-        if snapshot_id is None:  # pragma: no cover - constructor proves success
-            raise AssertionError("current job result has no snapshot")
-        return snapshot_id
-
-
-@dataclass(frozen=True, slots=True)
 class RefJobLease:
     """Active, fenced ownership of the single publisher slot for a ref."""
 
@@ -1574,9 +1094,9 @@ class RefJobLease:
     lease_expires_at_ms: int
 
     def __post_init__(self) -> None:
-        token = _exact_nonnegative_integer(self.fencing_token, "lease fencing token")
-        if token < 1 or token > _CATALOG_INT64_MAX:
-            raise StorageValidationError("lease fencing token is outside catalog range")
+        token = _nonnegative_integer(self.fencing_token, "lease fencing token")
+        if token < 1:
+            raise StorageValidationError("lease fencing token must be positive")
         object.__setattr__(
             self,
             "repository_id",
@@ -1598,341 +1118,6 @@ class RefJobLease:
             )
         if not self.acquired_at_ms <= self.heartbeat_at_ms < self.lease_expires_at_ms:
             raise StorageValidationError("lease timestamps are not ordered")
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobAttemptRecord:
-    """Immutable authority captured when one fenced attempt starts."""
-
-    job_id: str
-    attempt_count: int
-    repository_id: str
-    ref_name: str
-    request_digest: str
-    owner_id: str
-    fencing_token: int
-    started_at_ms: int
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "job_id", _bounded_text(self.job_id, "job ID", max_length=80)
-        )
-        object.__setattr__(
-            self,
-            "repository_id",
-            _bounded_text(self.repository_id, "repository ID", max_length=96),
-        )
-        object.__setattr__(
-            self, "ref_name", _bounded_text(self.ref_name, "ref name", max_length=512)
-        )
-        object.__setattr__(
-            self,
-            "request_digest",
-            _bounded_text(self.request_digest, "request digest", max_length=96),
-        )
-        object.__setattr__(
-            self, "owner_id", _bounded_text(self.owner_id, "owner ID", max_length=256)
-        )
-        attempt = _exact_nonnegative_integer(self.attempt_count, "job attempt count")
-        token = _exact_nonnegative_integer(self.fencing_token, "fencing token")
-        if attempt < 1 or attempt > 1_000:
-            raise StorageValidationError("job attempt count must be between 1 and 1000")
-        if token < 1 or token > _CATALOG_INT64_MAX:
-            raise StorageValidationError("fencing token is outside catalog range")
-        object.__setattr__(self, "attempt_count", attempt)
-        object.__setattr__(self, "fencing_token", token)
-        object.__setattr__(
-            self,
-            "started_at_ms",
-            _exact_nonnegative_int64(self.started_at_ms, "attempt start time"),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobAttemptCompletionRecord:
-    """Immutable non-success closure for one fenced attempt."""
-
-    job_id: str
-    attempt_count: int
-    owner_id: str
-    fencing_token: int
-    outcome: IndexJobCompletion
-    error_code: str
-    error_message: str | None
-    completed_at_ms: int
-
-    def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "job_id", _bounded_text(self.job_id, "job ID", max_length=80)
-        )
-        object.__setattr__(
-            self, "owner_id", _bounded_text(self.owner_id, "owner ID", max_length=256)
-        )
-        attempt = _exact_nonnegative_integer(self.attempt_count, "job attempt count")
-        token = _exact_nonnegative_integer(self.fencing_token, "fencing token")
-        if attempt < 1 or attempt > 1_000:
-            raise StorageValidationError("job attempt count must be between 1 and 1000")
-        if token < 1 or token > _CATALOG_INT64_MAX:
-            raise StorageValidationError("fencing token is outside catalog range")
-        try:
-            outcome = IndexJobCompletion(self.outcome)
-        except ValueError as exc:
-            raise StorageValidationError(
-                f"invalid job attempt completion: {self.outcome}"
-            ) from exc
-        object.__setattr__(self, "attempt_count", attempt)
-        object.__setattr__(self, "fencing_token", token)
-        object.__setattr__(self, "outcome", outcome)
-        object.__setattr__(
-            self,
-            "error_code",
-            _bounded_text(self.error_code, "job error code", max_length=128),
-        )
-        object.__setattr__(
-            self,
-            "error_message",
-            _optional_bounded_text(
-                self.error_message, "job error message", max_length=4_096
-            ),
-        )
-        object.__setattr__(
-            self,
-            "completed_at_ms",
-            _exact_nonnegative_int64(self.completed_at_ms, "attempt completion time"),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobAttemptHeartbeat:
-    """Atomic lease renewal plus cooperative-cancellation observation."""
-
-    job_id: str
-    attempt_count: int
-    cancel_requested: bool
-    lease: RefJobLease
-
-    def __post_init__(self) -> None:
-        job_id = _bounded_text(self.job_id, "job ID", max_length=80)
-        attempt = _exact_nonnegative_integer(self.attempt_count, "job attempt count")
-        if attempt < 1 or attempt > 1_000:
-            raise StorageValidationError("job attempt count must be between 1 and 1000")
-        if type(self.cancel_requested) is not bool:
-            raise StorageValidationError("cancel requested must be boolean")
-        if type(self.lease) is not RefJobLease:
-            raise StorageValidationError("attempt heartbeat requires an exact lease")
-        if self.lease.job_id != job_id:
-            raise StorageValidationError(
-                "attempt heartbeat lease belongs to another job"
-            )
-        object.__setattr__(self, "job_id", job_id)
-        object.__setattr__(self, "attempt_count", attempt)
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobEventRecord:
-    """One bounded, immutable attempt-local progress or view-result event."""
-
-    sequence: int
-    job_id: str
-    attempt_count: int
-    event_key: str
-    kind: IndexJobEventKind
-    owner_id: str
-    fencing_token: int
-    view_type: str | None
-    effective_mode: IndexJobEffectiveMode | None
-    outcome: IndexJobViewOutcome | None
-    payload_json: str
-    created_at_ms: int
-
-    def __post_init__(self) -> None:
-        sequence = _exact_nonnegative_integer(self.sequence, "job event sequence")
-        attempt = _exact_nonnegative_integer(self.attempt_count, "job attempt count")
-        token = _exact_nonnegative_integer(self.fencing_token, "fencing token")
-        if sequence < 1 or sequence > _CATALOG_INT64_MAX:
-            raise StorageValidationError("job event sequence is outside catalog range")
-        if attempt < 1 or attempt > 1_000:
-            raise StorageValidationError("job attempt count must be between 1 and 1000")
-        if token < 1 or token > _CATALOG_INT64_MAX:
-            raise StorageValidationError("fencing token is outside catalog range")
-        try:
-            kind = IndexJobEventKind(self.kind)
-        except ValueError as exc:
-            raise StorageValidationError(
-                f"invalid job event kind: {self.kind}"
-            ) from exc
-        view_type = _optional_bounded_text(
-            self.view_type, "job event view type", max_length=128
-        )
-        try:
-            mode = (
-                None
-                if self.effective_mode is None
-                else IndexJobEffectiveMode(self.effective_mode)
-            )
-        except ValueError as exc:
-            raise StorageValidationError(
-                f"invalid effective index mode: {self.effective_mode}"
-            ) from exc
-        try:
-            outcome = (
-                None if self.outcome is None else IndexJobViewOutcome(self.outcome)
-            )
-        except ValueError as exc:
-            raise StorageValidationError(
-                f"invalid index job view outcome: {self.outcome}"
-            ) from exc
-        if kind is IndexJobEventKind.PROGRESS:
-            if mode is not None or outcome is not None:
-                raise StorageValidationError(
-                    "progress events cannot carry a mode or view outcome"
-                )
-        elif view_type is None or mode is None or outcome is None:
-            raise StorageValidationError(
-                "view-result events require view, mode, and outcome"
-            )
-        if type(self.payload_json) is not str:
-            raise StorageValidationError(
-                "index job event payload JSON must be exact text"
-            )
-        if (
-            not self.payload_json
-            or len(self.payload_json) > INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS
-            or "\x00" in self.payload_json
-        ):
-            raise StorageValidationError(
-                "index job event payload JSON is out of bounds"
-            )
-        try:
-            parsed = json.loads(self.payload_json)
-        except (TypeError, json.JSONDecodeError, RecursionError) as exc:
-            raise StorageValidationError(
-                "index job event payload must be valid JSON"
-            ) from exc
-        payload = snapshot_index_job_event_payload(parsed)
-        payload_json = canonical_json(payload)
-
-        object.__setattr__(self, "sequence", sequence)
-        object.__setattr__(
-            self, "job_id", _bounded_text(self.job_id, "job ID", max_length=80)
-        )
-        object.__setattr__(self, "attempt_count", attempt)
-        object.__setattr__(
-            self,
-            "event_key",
-            _bounded_text(self.event_key, "job event key", max_length=128),
-        )
-        object.__setattr__(self, "kind", kind)
-        object.__setattr__(
-            self, "owner_id", _bounded_text(self.owner_id, "owner ID", max_length=256)
-        )
-        object.__setattr__(self, "fencing_token", token)
-        object.__setattr__(self, "view_type", view_type)
-        object.__setattr__(self, "effective_mode", mode)
-        object.__setattr__(self, "outcome", outcome)
-        object.__setattr__(self, "payload_json", payload_json)
-        object.__setattr__(
-            self,
-            "created_at_ms",
-            _exact_nonnegative_int64(self.created_at_ms, "job event time"),
-        )
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        sequence: int,
-        job_id: str,
-        attempt_count: int,
-        event_key: str,
-        kind: IndexJobEventKind,
-        owner_id: str,
-        fencing_token: int,
-        payload: Mapping[str, Any] | None = None,
-        view_type: str | None = None,
-        effective_mode: IndexJobEffectiveMode | None = None,
-        outcome: IndexJobViewOutcome | None = None,
-        created_at_ms: int,
-    ) -> IndexJobEventRecord:
-        frozen = snapshot_index_job_event_payload({} if payload is None else payload)
-        return cls(
-            sequence=sequence,
-            job_id=job_id,
-            attempt_count=attempt_count,
-            event_key=event_key,
-            kind=kind,
-            owner_id=owner_id,
-            fencing_token=fencing_token,
-            view_type=view_type,
-            effective_mode=effective_mode,
-            outcome=outcome,
-            payload_json=canonical_json(frozen),
-            created_at_ms=created_at_ms,
-        )
-
-    @property
-    def payload(self) -> dict[str, Any]:
-        return json.loads(self.payload_json)
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobRunnableCursor:
-    """Stable keyset cursor for the advisory runnable-job scan."""
-
-    created_at_ms: int
-    job_id: str
-
-    def __post_init__(self) -> None:
-        created_at_ms = _exact_nonnegative_int64(
-            self.created_at_ms, "runnable cursor time"
-        )
-        object.__setattr__(self, "created_at_ms", created_at_ms)
-        object.__setattr__(
-            self, "job_id", _bounded_text(self.job_id, "job ID", max_length=80)
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobRunnableCycle:
-    """Frozen catalog insertion watermark for one bounded runnable scan cycle."""
-
-    max_job_sequence: int
-
-    def __post_init__(self) -> None:
-        if type(self) is not IndexJobRunnableCycle:
-            raise StorageValidationError("runnable cycle must use the exact model")
-        object.__setattr__(
-            self,
-            "max_job_sequence",
-            _exact_nonnegative_int64(
-                self.max_job_sequence,
-                "runnable cycle job sequence",
-            ),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class IndexJobRunnablePage:
-    """One deterministic, advisory page of jobs that may be claimable."""
-
-    jobs: tuple[IndexJobRecord, ...]
-    next_cursor: IndexJobRunnableCursor | None
-
-    def __post_init__(self) -> None:
-        if type(self.jobs) is not tuple or any(
-            type(job) is not IndexJobRecord for job in self.jobs
-        ):
-            raise StorageValidationError(
-                "runnable job page requires an exact tuple of job records"
-            )
-        ordering = tuple((job.created_at_ms, job.job_id) for job in self.jobs)
-        if ordering != tuple(sorted(ordering)) or len(ordering) != len(set(ordering)):
-            raise StorageValidationError("runnable job page ordering is not canonical")
-        if (
-            self.next_cursor is not None
-            and type(self.next_cursor) is not IndexJobRunnableCursor
-        ):
-            raise StorageValidationError("runnable job page cursor is not canonical")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1963,34 +1148,15 @@ __all__ = [
     "DEFAULT_NAMESPACE_ID",
     "DEFAULT_NAMESPACE_NAME",
     "INDEX_JOB_REQUEST_CONTRACT",
-    "INDEX_JOB_PUBLICATION_CONTRACT",
-    "INDEX_JOB_SUPPORTING_VIEW_PREFIX",
     "REPO_MANIFEST_PROJECTION_PROFILE_NAME",
     "REPO_MANIFEST_PROJECTION_SCHEMA",
     "REPO_MANIFEST_PROJECTION_VIEW",
-    "INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH",
-    "INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS",
-    "INDEX_JOB_EVENT_PAYLOAD_MAX_NODES",
-    "INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS",
-    "MAX_INDEX_JOB_EVENTS_PER_ATTEMPT",
     "MAX_VIEW_GENERATION_MEMBERS",
-    "IndexJobAttemptCompletionRecord",
-    "IndexJobAttemptHeartbeat",
-    "IndexJobAttemptRecord",
     "IndexJobCompletion",
-    "IndexJobCurrentResult",
-    "IndexJobEffectiveMode",
-    "IndexJobEventKind",
-    "IndexJobEventRecord",
     "IndexJobRecord",
     "IndexJobRequest",
     "IndexJobRequestedMode",
-    "IndexJobRunnableCycle",
-    "IndexJobRunnableCursor",
-    "IndexJobRunnablePage",
     "IndexJobStatus",
-    "IndexJobViewOutcome",
-    "IndexJobViewOutput",
     "IndexJobViewRecord",
     "NamespaceIdentity",
     "ObjectRecord",
@@ -2012,10 +1178,8 @@ __all__ = [
     "canonical_utc_timestamp",
     "canonical_json",
     "content_id",
-    "is_index_job_supporting_view",
     "normalize_digest",
     "normalize_view_generation_metadata",
     "repo_manifest_projection_profile",
-    "snapshot_index_job_event_payload",
     "view_generation_member_digests",
 ]

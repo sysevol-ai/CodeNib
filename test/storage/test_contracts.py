@@ -8,7 +8,6 @@ import hashlib
 
 import pytest
 
-import codenib.storage as storage_module
 import codenib.storage.protocols as storage_protocols
 from codenib.storage import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
@@ -16,8 +15,6 @@ from codenib.storage import (
     RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS,
     RETAINED_IMPORT_RESPONSE_MAX_NODES,
     RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
-    InterruptibleReceiptVerifyingObjectStore,
-    InterruptibleStreamingObjectStore,
     ReceiptRetainingObjectStore,
     RetainedImportCatalog,
     RetainedImportObjectStore,
@@ -37,17 +34,7 @@ from codenib.storage.models import (
 )
 from codenib.storage.protocols import (
     IndexCatalog,
-    IndexJobPlanningCatalog,
     JobCatalog,
-    JobCreationCatalog,
-    JobCreationReplayCatalog,
-    JobCycleWorkerCatalog,
-    JobExecutionCatalog,
-    JobPublicationCatalog,
-    JobQueryCatalog,
-    JobResultActivationCatalog,
-    JobResultCatalog,
-    JobWorkerCatalog,
     ObjectStore,
     ReceiptVerifyingObjectStore,
 )
@@ -60,211 +47,15 @@ def test_embedded_backends_implement_storage_protocols(tmp_path) -> None:
     try:
         assert isinstance(object_store, ObjectStore)
         assert isinstance(object_store, ReceiptVerifyingObjectStore)
-        assert isinstance(object_store, InterruptibleReceiptVerifyingObjectStore)
-        assert isinstance(object_store, InterruptibleStreamingObjectStore)
         assert isinstance(object_store, ReceiptRetainingObjectStore)
         assert isinstance(object_store, StreamingObjectStore)
         assert isinstance(object_store, RetainedImportObjectStore)
         assert isinstance(catalog, IndexCatalog)
-        assert isinstance(catalog, IndexJobPlanningCatalog)
         assert isinstance(catalog, RetainedImportCatalog)
         assert catalog.retained_import_contract() == RETAINED_IMPORT_CATALOG_CONTRACT
         assert isinstance(catalog, JobCatalog)
-        assert isinstance(catalog, JobCreationCatalog)
-        assert isinstance(catalog, JobCreationReplayCatalog)
-        assert isinstance(catalog, JobQueryCatalog)
-        assert isinstance(catalog, JobResultCatalog)
-        assert isinstance(catalog, JobResultActivationCatalog)
-        assert isinstance(catalog, JobExecutionCatalog)
-        assert isinstance(catalog, JobWorkerCatalog)
-        assert isinstance(catalog, JobCycleWorkerCatalog)
     finally:
         catalog.close()
-
-
-def test_execution_contract_models_are_public_storage_exports() -> None:
-    names = {
-        "INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH",
-        "INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS",
-        "INDEX_JOB_EVENT_PAYLOAD_MAX_NODES",
-        "INDEX_JOB_EVENT_PAYLOAD_MAX_TEXT_CHARS",
-        "MAX_INDEX_JOB_EVENTS_PER_ATTEMPT",
-        "IndexJobAttemptCompletionRecord",
-        "IndexJobAttemptHeartbeat",
-        "IndexJobAttemptRecord",
-        "IndexJobCatalogSessionFactory",
-        "IndexJobCurrentResult",
-        "IndexJobEffectiveMode",
-        "IndexJobExecutionContext",
-        "IndexJobExecutionControl",
-        "IndexJobExecutionResult",
-        "IndexJobExecutor",
-        "IndexJobExecutorResolver",
-        "IndexJobObjectStoreBoundResolver",
-        "IndexJobPlanningCatalog",
-        "IndexJobEventKind",
-        "IndexJobEventRecord",
-        "IndexJobRunnableCycle",
-        "IndexJobRunnableCursor",
-        "IndexJobRunnablePage",
-        "IndexJobStopReason",
-        "IndexJobStopToken",
-        "IndexJobViewExecutionResult",
-        "IndexJobViewOutcome",
-        "IndexJobWorker",
-        "IndexJobWorkerDisposition",
-        "IndexJobWorkerRunResult",
-        "InterruptibleReceiptVerifyingObjectStore",
-        "InterruptibleStreamingObjectStore",
-        "JobCycleWorkerCatalog",
-        "JobExecutionCatalog",
-        "JobCreationCatalog",
-        "JobCreationReplayCatalog",
-        "JobQueryCatalog",
-        "JobResultActivationCatalog",
-        "JobResultCatalog",
-        "JobWorkerCatalog",
-    }
-
-    assert names <= set(storage_module.__all__)
-    assert all(hasattr(storage_module, name) for name in names)
-
-
-def test_execution_catalog_is_additive_to_publication_only_adapters() -> None:
-    class PublicationOnlyCatalog:
-        def create_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def get_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def get_job_views(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def acquire_job_lease(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def renew_job_lease(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def request_job_cancel(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def finish_job_attempt(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def publish_job_outputs(self, *args, **kwargs):
-            raise NotImplementedError
-
-    adapter = PublicationOnlyCatalog()
-
-    assert isinstance(adapter, JobCatalog)
-    assert isinstance(adapter, JobPublicationCatalog)
-    assert not isinstance(adapter, JobQueryCatalog)
-    assert not isinstance(adapter, JobExecutionCatalog)
-    assert not isinstance(adapter, JobWorkerCatalog)
-    assert not isinstance(adapter, JobCycleWorkerCatalog)
-
-
-def test_job_query_catalog_does_not_require_mutation_authority() -> None:
-    class QueryOnlyCatalog:
-        def get_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def get_job_views(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def find_active_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def list_job_events(self, *args, **kwargs):
-            raise NotImplementedError
-
-    adapter = QueryOnlyCatalog()
-
-    assert isinstance(adapter, JobQueryCatalog)
-    assert not isinstance(adapter, JobCatalog)
-
-
-def test_job_result_catalog_grants_only_exact_and_current_success_reads() -> None:
-    class ResultOnlyCatalog:
-        def get_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def find_current_successful_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-    adapter = ResultOnlyCatalog()
-
-    assert isinstance(adapter, JobResultCatalog)
-    assert not isinstance(adapter, JobResultActivationCatalog)
-    assert not isinstance(adapter, JobQueryCatalog)
-    assert not isinstance(adapter, JobCatalog)
-
-
-def test_job_result_activation_catalog_adds_only_guarded_transfer() -> None:
-    class ActivationOnlyCatalog:
-        def get_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def find_current_successful_job(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def run_current_successful_job_guarded(self, *args, **kwargs):
-            raise NotImplementedError
-
-    adapter = ActivationOnlyCatalog()
-
-    assert isinstance(adapter, JobResultActivationCatalog)
-    assert not isinstance(adapter, JobQueryCatalog)
-    assert not isinstance(adapter, JobCatalog)
-
-
-def test_job_creation_catalog_requires_only_atomic_enqueue_authority() -> None:
-    class CreationOnlyCatalog:
-        def create_job_if_idle(self, *args, **kwargs):
-            raise NotImplementedError
-
-    adapter = CreationOnlyCatalog()
-
-    assert isinstance(adapter, JobCreationCatalog)
-    assert not isinstance(adapter, JobCatalog)
-    assert not isinstance(adapter, JobQueryCatalog)
-
-
-def test_job_planning_catalog_has_no_job_or_snapshot_read_authority() -> None:
-    class PlanningOnlyCatalog:
-        def create_source_revision(self, repository_id, **kwargs):
-            raise NotImplementedError
-
-        def create_view_profile(self, view_type, config=None, *, name="default"):
-            raise NotImplementedError
-
-        def read_ref_generation(self, repository_id, ref_name="main"):
-            raise NotImplementedError
-
-    adapter = PlanningOnlyCatalog()
-
-    assert isinstance(adapter, IndexJobPlanningCatalog)
-    assert not isinstance(adapter, IndexCatalog)
-    assert not isinstance(adapter, JobCatalog)
-    assert not isinstance(adapter, JobQueryCatalog)
-
-
-def test_job_creation_replay_catalog_adds_only_exact_lookup_authority() -> None:
-    class CreationReplayCatalog:
-        def create_job_if_idle(self, *args, **kwargs):
-            raise NotImplementedError
-
-        def find_job_by_idempotency(self, *args, **kwargs):
-            raise NotImplementedError
-
-    adapter = CreationReplayCatalog()
-
-    assert isinstance(adapter, JobCreationCatalog)
-    assert isinstance(adapter, JobCreationReplayCatalog)
-    assert not isinstance(adapter, JobCatalog)
-    assert not isinstance(adapter, JobQueryCatalog)
 
 
 def test_retained_import_response_budgets_are_public_capability_contracts() -> None:
@@ -368,8 +159,6 @@ def test_receipt_verification_is_an_additive_object_store_capability() -> None:
 
     assert isinstance(legacy, ObjectStore)
     assert not isinstance(legacy, ReceiptVerifyingObjectStore)
-    assert not isinstance(legacy, InterruptibleReceiptVerifyingObjectStore)
-    assert not isinstance(legacy, InterruptibleStreamingObjectStore)
     assert not isinstance(legacy, StreamingObjectStore)
 
 
@@ -403,8 +192,6 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
 
     assert isinstance(receipt_only, ObjectStore)
     assert isinstance(receipt_only, ReceiptVerifyingObjectStore)
-    assert not isinstance(receipt_only, InterruptibleReceiptVerifyingObjectStore)
-    assert not isinstance(receipt_only, InterruptibleStreamingObjectStore)
     assert not isinstance(receipt_only, ReceiptRetainingObjectStore)
     assert not isinstance(receipt_only, StreamingObjectStore)
     assert not isinstance(receipt_only, RetainedImportObjectStore)
@@ -417,8 +204,6 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
 
     assert isinstance(retaining, ObjectStore)
     assert isinstance(retaining, ReceiptVerifyingObjectStore)
-    assert not isinstance(retaining, InterruptibleReceiptVerifyingObjectStore)
-    assert not isinstance(retaining, InterruptibleStreamingObjectStore)
     assert isinstance(retaining, ReceiptRetainingObjectStore)
     assert not isinstance(retaining, StreamingObjectStore)
     assert not isinstance(retaining, RetainedImportObjectStore)
@@ -431,11 +216,6 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
 
     assert isinstance(streaming_verifying, StreamingObjectStore)
     assert isinstance(streaming_verifying, ReceiptVerifyingObjectStore)
-    assert not isinstance(
-        streaming_verifying,
-        InterruptibleReceiptVerifyingObjectStore,
-    )
-    assert not isinstance(streaming_verifying, InterruptibleStreamingObjectStore)
     assert not isinstance(streaming_verifying, ReceiptRetainingObjectStore)
     assert not isinstance(streaming_verifying, RetainedImportObjectStore)
 
@@ -448,44 +228,6 @@ def test_receipt_retention_is_narrower_than_retained_import_capability() -> None
     assert isinstance(retained_import, ReceiptRetainingObjectStore)
     assert isinstance(retained_import, StreamingObjectStore)
     assert isinstance(retained_import, RetainedImportObjectStore)
-    assert not isinstance(
-        retained_import,
-        InterruptibleReceiptVerifyingObjectStore,
-    )
-    assert not isinstance(retained_import, InterruptibleStreamingObjectStore)
-
-    class InterruptibleImportObjectStore(ImportObjectStore):
-        def verify_receipt_interruptibly(
-            self,
-            expected,
-            *,
-            check_cancelled,
-        ):
-            raise NotImplementedError(expected, check_cancelled)
-
-        def put_chunks_interruptibly(
-            self,
-            chunks,
-            expected_digest,
-            expected_size,
-            *,
-            check_cancelled,
-        ):
-            raise NotImplementedError(
-                chunks,
-                expected_digest,
-                expected_size,
-                check_cancelled,
-            )
-
-    interruptible_import = InterruptibleImportObjectStore()
-
-    assert isinstance(interruptible_import, RetainedImportObjectStore)
-    assert isinstance(
-        interruptible_import,
-        InterruptibleReceiptVerifyingObjectStore,
-    )
-    assert isinstance(interruptible_import, InterruptibleStreamingObjectStore)
 
 
 def test_retained_import_capability_requires_streaming_and_receipt_checks() -> None:
@@ -518,7 +260,6 @@ def test_retained_import_capability_requires_streaming_and_receipt_checks() -> N
 
     assert isinstance(streaming_only, ObjectStore)
     assert isinstance(streaming_only, StreamingObjectStore)
-    assert not isinstance(streaming_only, InterruptibleStreamingObjectStore)
     assert not isinstance(streaming_only, ReceiptVerifyingObjectStore)
     assert not isinstance(streaming_only, ReceiptRetainingObjectStore)
     assert not isinstance(streaming_only, RetainedImportObjectStore)

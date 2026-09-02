@@ -1026,14 +1026,14 @@ Median end-to-end time improved from 9.9169s for the clean generation to
 
 This is durable publication and incremental-reuse evidence over existing
 clangd shards, not a claim that clangd index generation is faster. The legacy
-materialized graph remains the public graph-query authority until the M4 parity
-and cutover gates in `docs/storage_backend_roadmap.md` pass. The broader storage
-RFC #199 also remains open for generic generation publication, jobs, leases,
-retention/GC, remaining adapters, overlays, and server backends. With foundation
-issues #554/#555 and production gates #546 through #553 merged, parent tracker
-[#545](https://github.com/sysevol-ai/CodeNib/issues/545) closed on 2026-08-11.
-That closure records completion of the query-acceleration program without
-implying that storage RFC #199 or its dependent programs are complete.
+materialized graph remains the public graph-query authority; no generic storage
+cutover is planned. The expansion proposed by storage RFC #199—generic
+generation publication, jobs, leases, retention/GC, remaining adapters,
+overlays, and server backends—is retired, and the issue should close. With
+foundation issues #554/#555 and production gates #546 through #553 merged,
+parent tracker [#545](https://github.com/sysevol-ai/CodeNib/issues/545) closed on
+2026-08-11. That closure and the measured FactBatch decision remain valid
+independently of the retired generic-storage program.
 
 Native core CI enforcement status
 ([#547](https://github.com/sysevol-ai/CodeNib/issues/547)): the trusted
@@ -1234,7 +1234,9 @@ unfinished integration work. At that M2 decision, the ordered next issue was
 repository-level chunk successor gate without adding a C++ batch
 implementation or production route; #600 was the subsequent bounded
 repository-native implementation experiment. Storage RFC #199 and Guardian
-#309 remain independent programs.
+#309 were independent programs; the RFC #199 generic-storage expansion is now
+retired and its issue should close. Neither decision changes this measured
+negative SCIP result.
 
 M3 gate record
 ([#599](https://github.com/sysevol-ai/CodeNib/issues/599)): this issue is the
@@ -1402,7 +1404,8 @@ Current issue triage notes through August 12, 2026:
 - #198 is closed. It no longer has open roadmap action for the multi-language
   SCIP cold-start and acceleration program.
 - #252, the Repository Guardian RFC, is closed (July 7, 2026).
-- #199 is an enterprise index-storage RFC and remains open.
+- #199 proposed enterprise index-storage expansion; that generic-storage plan
+  is retired under `docs/storage_backend_roadmap.md`, and the issue should close.
 - #545 is closed; its native query-acceleration foundation and production
   gates are complete.
 - #565 is closed with FactBatchBuffer retained only as a default-off negative

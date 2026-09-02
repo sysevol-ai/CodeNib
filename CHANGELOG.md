@@ -13,9 +13,6 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Added
 
-- Repository-bound BM25 source-attempt shards with cooperative shared writer
-  and exclusive reaper leases, plus a default-off post-operation-return cleanup
-  pass that retains legacy workspace cleanup as an explicit compatibility step.
 - A domain-local `WikiStore` harness and SQLite WAL implementation with
   versioned schema initialization, bounded canonical JSON, integrity checks,
   atomic publication, and cross-process generation guards.
@@ -49,14 +46,14 @@ All notable user-facing changes are recorded here. CodeNib follows
   CI workflow caller and could never report `promotion_eligible=true`; removing
   it deleted a 4,913-line harness, 3,468 test lines, 367 evidence lines, 148
   documentation lines, eight Make variables, and one manual target.
-
-### Security
-
-- Native directory descriptors are committed to opaque owners before returning
-  to Python, and writer/reaper leases remain coupled to retryable cleanup and
-  exact repository, workspace, and shard identities. Attempt-pool bootstrap
-  rejects nested or independently selected mount views before shard creation
-  within its documented controlled, quiescent path-and-mount contract.
+- The unreleased `codenib jobs` execution stack and catalog schema v5 through
+  v8. This removed eight production modules (9,615 lines), twelve dedicated
+  test modules (22,170 lines), 73 lazy exports, two interruptible CAS methods,
+  one command with two execution paths, and four schema migrations; changes
+  inside retained files bring the batch total to 21,214 production and 29,352
+  test lines removed. The published v0.2.2 schema-v4 job catalog remains
+  compatible; catalogs written only by unreleased `main` at newer versions are
+  rejected as newer.
 
 ## [0.2.2] - 2026-08-21
 

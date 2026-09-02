@@ -16,7 +16,6 @@ from typing import Any, TypeVar
 
 import pytest
 
-import codenib._atomic_directory as atomic_module
 import codenib.compiler as compiler_module
 import codenib.compiler.manifest_import as manifest_import_module
 from codenib._captured_directory import (
@@ -263,7 +262,6 @@ def _vector_files(
     source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
     *,
     manifest_version: str = MANIFEST_VERSION,
-    index_payload: bytes | None = None,
 ) -> dict[str, bytes]:
     documents_name = "documents_test__model.json"
     index_name = "index_test__model.faiss"
@@ -276,11 +274,7 @@ def _vector_files(
         ]
     )
     # Import authenticates this native artifact as inert bytes; it never loads FAISS.
-    index = (
-        b"not-loaded-as-native-faiss\x00\x01"
-        if index_payload is None
-        else index_payload
-    )
+    index = b"not-loaded-as-native-faiss\x00\x01"
     config = _json_bytes(
         {
             "embedding_model": "test/model",
@@ -384,7 +378,6 @@ def _context_fixture(
     source_text: str = "VALUE = 1\n",
     source_selection: RepositorySourceSelection = _DEFAULT_SOURCE_SELECTION,
     manifest_version: str = MANIFEST_VERSION,
-    vector_index_payload: bytes | None = None,
 ) -> _ContextFixture:
     repository = root / "repo"
     repository.mkdir(parents=True)
@@ -412,7 +405,6 @@ def _context_fixture(
                     source_text,
                     source_selection,
                     manifest_version=manifest_version,
-                    index_payload=vector_index_payload,
                 )
             )
             owners[view] = _publish_generation(root / "state" / view, files)
@@ -481,62 +473,28 @@ class _InstrumentedCAS(LocalCAS):
         self.receipt_counts: Counter[str] = Counter()
         self.fail_after_catalog = False
 
-    def _record_put(self, expected_digest: str) -> None:
-        if self.put_chunks_count == 0:
-            check = self.state.get("before_first_put")
-            if check is not None:
-                check()
-        self.put_chunks_count += 1
-        self.state.setdefault("events", []).append(("put_chunks", expected_digest))
-
     def put_chunks(
         self,
         chunks: Iterable[bytes],
         expected_digest: str,
         expected_size: int,
     ) -> BlobInfo:
-        self._record_put(expected_digest)
+        if self.put_chunks_count == 0:
+            check = self.state.get("before_first_put")
+            if check is not None:
+                check()
+        self.put_chunks_count += 1
+        self.state.setdefault("events", []).append(("put_chunks", expected_digest))
         return super().put_chunks(chunks, expected_digest, expected_size)
 
-    def put_chunks_interruptibly(
-        self,
-        chunks: Iterable[bytes],
-        expected_digest: str,
-        expected_size: int,
-        *,
-        check_cancelled: Callable[[], None],
-    ) -> BlobInfo:
-        self._record_put(expected_digest)
-        return super().put_chunks_interruptibly(
-            chunks,
-            expected_digest,
-            expected_size,
-            check_cancelled=check_cancelled,
-        )
-
-    def _record_receipt_verification(self, expected: BlobInfo) -> None:
+    def verify_receipt(self, expected: BlobInfo) -> BlobInfo:
         self.receipt_counts[expected.digest] += 1
         self.state.setdefault("events", []).append(
             ("verify_receipt", expected.digest, self.receipt_counts[expected.digest])
         )
         if self.fail_after_catalog and self.state.get("catalog_started", False):
             raise StorageIntegrityError("injected final receipt failure")
-
-    def verify_receipt(self, expected: BlobInfo) -> BlobInfo:
-        self._record_receipt_verification(expected)
         return super().verify_receipt(expected)
-
-    def verify_receipt_interruptibly(
-        self,
-        expected: BlobInfo,
-        *,
-        check_cancelled: Callable[[], None],
-    ) -> BlobInfo:
-        self._record_receipt_verification(expected)
-        return super().verify_receipt_interruptibly(
-            expected,
-            check_cancelled=check_cancelled,
-        )
 
     def retain_receipts(
         self,
@@ -548,10 +506,7 @@ class _InstrumentedCAS(LocalCAS):
         def retained() -> _Result:
             assert not self.state.get("retention_active", False)
             assert self.receipt_counts
-            # Raw view puts are point-in-time attested before cancellation can
-            # win. The projection is first attested by the retaining store,
-            # which then independently reattests every raw-view receipt.
-            assert set(self.receipt_counts.values()) == {1, 2}
+            assert set(self.receipt_counts.values()) == {1}
             self.state["retention_active"] = True
             self.state.setdefault("events", []).append(("retention", "enter"))
             try:
@@ -606,9 +561,7 @@ class _InstrumentedCatalog(SQLiteCatalog):
     def publish_snapshot(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         self._record("publish_snapshot")
         assert self.state["cas"].receipt_counts
-        # The final catalog boundary reattests every retained object. Raw view
-        # receipts have the additional point-in-time post-put attestation.
-        assert set(self.state["cas"].receipt_counts.values()) == {2, 3}
+        assert set(self.state["cas"].receipt_counts.values()) == {2}
         self.publish_count += 1
         return super().publish_snapshot(*args, **kwargs)
 
@@ -704,14 +657,8 @@ class _BackendTripwire:
     def put_chunks(self, *args: Any, **kwargs: Any) -> Any:
         return self._called("put_chunks")
 
-    def put_chunks_interruptibly(self, *args: Any, **kwargs: Any) -> Any:
-        return self._called("put_chunks_interruptibly")
-
     def verify_receipt(self, *args: Any, **kwargs: Any) -> Any:
         return self._called("verify_receipt")
-
-    def verify_receipt_interruptibly(self, *args: Any, **kwargs: Any) -> Any:
-        return self._called("verify_receipt_interruptibly")
 
     def retain_receipts(self, *args: Any, **kwargs: Any) -> Any:
         return self._called("retain_receipts")
@@ -742,318 +689,6 @@ class _BackendTripwire:
 
     def get_manifest_summary(self, *args: Any, **kwargs: Any) -> Any:
         return self._called("get_manifest_summary")
-
-
-class _MemberPhaseCAS(LocalCAS):
-    """Expose when bundle ingestion has finished and raw members begin."""
-
-    def __init__(self, root: Path) -> None:
-        self.member_ingestion = False
-        super().__init__(root)
-
-    def put_chunks(
-        self,
-        chunks: Iterable[bytes],
-        expected_digest: str,
-        expected_size: int,
-    ) -> BlobInfo:
-        receipt = super().put_chunks(chunks, expected_digest, expected_size)
-        self.member_ingestion = True
-        return receipt
-
-    def put_chunks_interruptibly(
-        self,
-        chunks: Iterable[bytes],
-        expected_digest: str,
-        expected_size: int,
-        *,
-        check_cancelled: Callable[[], None],
-    ) -> BlobInfo:
-        receipt = super().put_chunks_interruptibly(
-            chunks,
-            expected_digest,
-            expected_size,
-            check_cancelled=check_cancelled,
-        )
-        self.member_ingestion = True
-        return receipt
-
-
-class _WithTracebackPoisonStopIteration(StopIteration):
-    def with_traceback(self, _traceback):
-        raise AssertionError("manifest exact stop invoked hostile with_traceback")
-
-
-def test_none_receipt_check_preserves_legacy_single_argument_shape(
-    tmp_path: Path,
-) -> None:
-    store = LocalCAS(tmp_path / "objects")
-    receipt = store.put_bytes(b"legacy manifest receipt call shape")
-    stored = manifest_import_module._StoredObject(
-        receipt=receipt,
-        record=ObjectRecord(
-            digest=receipt.digest,
-            byte_size=receipt.byte_size,
-            storage_key=receipt.storage_key,
-            media_type="application/x-test-object",
-        ),
-    )
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-
-    class LegacyReceiptStore:
-        def verify_receipt(self, *args: object, **kwargs: object) -> BlobInfo:
-            calls.append((args, kwargs))
-            return receipt
-
-    manifest_import_module._verify_exact_receipt(
-        LegacyReceiptStore(),  # type: ignore[arg-type]
-        stored,
-        check_cancelled=None,
-    )
-
-    assert calls == [((receipt,), {})]
-
-
-def test_none_chunk_put_preserves_legacy_three_argument_shape(
-    tmp_path: Path,
-) -> None:
-    payload = b"legacy manifest put call shape"
-    receipt = LocalCAS(tmp_path / "objects").put_bytes(payload)
-    calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
-
-    class LegacyStreamingStore:
-        def put_chunks(self, *args: object, **kwargs: object) -> BlobInfo:
-            calls.append((args, kwargs))
-            return receipt
-
-    observed = manifest_import_module._put_exact_chunks(
-        LegacyStreamingStore(),  # type: ignore[arg-type]
-        (payload,),
-        receipt.digest,
-        receipt.byte_size,
-        check_cancelled=None,
-    )
-
-    assert observed == receipt
-    assert calls == [(((payload,), receipt.digest, receipt.byte_size), {})]
-
-
-@pytest.mark.parametrize("phase", ["before-iter", "after-iter"])
-def test_expected_chunk_drain_preserves_exact_stop_before_future_source(
-    phase: str,
-) -> None:
-    stop = _WithTracebackPoisonStopIteration(f"exact manifest {phase} cancellation")
-    armed = phase == "before-iter"
-    cancellation_calls = 0
-    iter_calls = 0
-    next_calls = 0
-
-    class ArmingProducer:
-        def __iter__(self):
-            nonlocal armed, iter_calls
-            iter_calls += 1
-            if phase == "after-iter":
-                armed = True
-            return self
-
-        def __next__(self) -> bytes:
-            nonlocal next_calls
-            next_calls += 1
-            raise AssertionError("cancelled drain requested a future source item")
-
-    def check_cancelled() -> None:
-        nonlocal cancellation_calls
-        cancellation_calls += 1
-        if armed:
-            raise stop
-
-    wrapped = manifest_import_module._interruptible_expected_chunks(
-        ArmingProducer(),
-        1,
-        check_cancelled,
-    )
-    with pytest.raises(StopIteration) as caught:
-        manifest_import_module._drain(wrapped)
-
-    assert caught.value is stop
-    assert iter_calls == (phase == "after-iter")
-    assert next_calls == 0
-    assert cancellation_calls == (1 if phase == "before-iter" else 2)
-
-
-@pytest.mark.parametrize(
-    "blocks",
-    [(), (b"",), (b"trailing",)],
-    ids=("empty", "empty-item", "trailing"),
-)
-def test_zero_size_expected_chunks_attest_terminal_source_without_poll(
-    blocks: tuple[bytes, ...],
-) -> None:
-    stop = ValueError("zero-size terminal source must precede cancellation")
-    cancellation_calls = 0
-
-    def check_cancelled() -> None:
-        nonlocal cancellation_calls
-        cancellation_calls += 1
-        raise stop
-
-    wrapped = manifest_import_module._interruptible_expected_chunks(
-        blocks,
-        0,
-        check_cancelled,
-    )
-    if any(blocks):
-        with pytest.raises(StorageIntegrityError, match="exceeds its expected size"):
-            manifest_import_module._drain(wrapped)
-    elif blocks:
-        with pytest.raises(ValueError) as caught:
-            manifest_import_module._drain(wrapped)
-        assert caught.value is stop
-    else:
-        manifest_import_module._drain(wrapped)
-
-    assert cancellation_calls == (1 if blocks == (b"",) else 0)
-
-
-def test_expected_chunks_infinite_empty_tail_stops_cooperatively() -> None:
-    stop = SystemExit("exact manifest infinite-empty stop")
-    next_calls = 0
-    cancellation_calls = 0
-
-    class InfiniteEmptySource:
-        def __iter__(self):
-            return self
-
-        def __next__(self) -> bytes:
-            nonlocal next_calls
-            next_calls += 1
-            return b""
-
-    def check_cancelled() -> None:
-        nonlocal cancellation_calls
-        cancellation_calls += 1
-        if cancellation_calls == 3:
-            raise stop
-
-    wrapped = manifest_import_module._interruptible_expected_chunks(
-        InfiniteEmptySource(),
-        0,
-        check_cancelled,
-    )
-    with pytest.raises(SystemExit) as caught:
-        manifest_import_module._drain(wrapped)
-
-    assert caught.value is stop
-    assert next_calls == 3
-    assert cancellation_calls == 3
-
-
-def test_projection_measurement_polls_cancellation_between_chunks() -> None:
-    stop = SystemExit("projection measurement cancelled")
-    cancellation_calls = 0
-
-    def check_cancelled() -> None:
-        nonlocal cancellation_calls
-        cancellation_calls += 1
-        if cancellation_calls == 3:
-            raise stop
-
-    with pytest.raises(SystemExit) as caught:
-        manifest_import_module._measure_canonical_json(
-            {"items": [{"value": value} for value in range(1_000)]},
-            max_bytes=1024 * 1024,
-            check_cancelled=check_cancelled,
-        )
-
-    assert caught.value is stop
-    assert cancellation_calls == 3
-
-
-def _prepare_vector_job_artifacts(
-    fixture: _ContextFixture,
-    object_store: LocalCAS,
-    check_cancelled: Callable[[], None],
-) -> tuple[Any, ...]:
-    plan = fixture.plan(("vector",))
-    namespace_id = NamespaceIdentity(DEFAULT_NAMESPACE_NAME).namespace_id
-    repository = RepositoryIdentity(namespace_id, _REPOSITORY_KEY)
-    source = SourceRevision.dirty(
-        repository.repository_id,
-        source_fingerprint=plan.source.fingerprint,
-    )
-    return fixture.context_owner.consume(
-        lambda receipt, publication: (
-            manifest_import_module._prepare_job_view_artifacts_inside_authority(
-                receipt,
-                publication,
-                plan=plan,
-                repository_source=fixture.repository_source,
-                repository_key=_REPOSITORY_KEY,
-                source_identity=source,
-                object_store=object_store,
-                environment={},
-                forbidden_paths=(),
-                max_context_files=DEFAULT_MAX_CONTEXT_FILES,
-                max_context_bytes=DEFAULT_MAX_CONTEXT_BYTES,
-                max_bundle_files=manifest_import_module.DEFAULT_MAX_BUNDLE_FILES,
-                max_bundle_bytes=manifest_import_module.DEFAULT_MAX_BUNDLE_BYTES,
-                max_bundle_metadata_bytes=(
-                    manifest_import_module.DEFAULT_MAX_BUNDLE_METADATA_BYTES
-                ),
-                check_cancelled=check_cancelled,
-            )
-        )
-    )
-
-
-def test_cancellable_job_uses_interruptible_put_for_bundle_and_members(
-    tmp_path: Path,
-) -> None:
-    fixture = _context_fixture(tmp_path / "fixture", ("vector",))
-
-    class InterruptiblePutTrackingCAS(LocalCAS):
-        def __init__(self, root: Path) -> None:
-            self.interruptible_puts: list[str] = []
-            super().__init__(root)
-
-        def put_chunks(
-            self,
-            chunks: Iterable[bytes],
-            expected_digest: str,
-            expected_size: int,
-        ) -> BlobInfo:
-            raise AssertionError(
-                "cancellable bundle/member ingestion used legacy put_chunks"
-            )
-
-        def put_chunks_interruptibly(
-            self,
-            chunks: Iterable[bytes],
-            expected_digest: str,
-            expected_size: int,
-            *,
-            check_cancelled: Callable[[], None],
-        ) -> BlobInfo:
-            self.interruptible_puts.append(expected_digest)
-            return super().put_chunks_interruptibly(
-                chunks,
-                expected_digest,
-                expected_size,
-                check_cancelled=check_cancelled,
-            )
-
-    try:
-        with InterruptiblePutTrackingCAS(tmp_path / "cas") as cas:
-            (artifact,) = _prepare_vector_job_artifacts(fixture, cas, lambda: None)
-
-            expected_digests = {
-                artifact.object_artifact.receipt.digest,
-                *(member.receipt.digest for member in artifact.member_artifacts),
-            }
-            assert set(cas.interruptible_puts) == expected_digests
-            assert len(cas.interruptible_puts) == len(expected_digests)
-    finally:
-        fixture.close()
 
 
 def test_public_api_is_lazy_and_has_stable_signature_and_constants() -> None:
@@ -1306,7 +941,7 @@ def test_all_selected_views_finish_validation_and_planning_before_cas_and_catalo
     state["cas"] = cas
     catalog = _InstrumentedCatalog(tmp_path / "catalog.sqlite", state)
     real_validate = (
-        manifest_import_module._validate_content_bound_portable_query_view_reader_with_identity
+        manifest_import_module.validate_content_bound_portable_query_view_reader
     )
     real_plan = manifest_import_module.plan_view_bundle_reader
     real_consume = PublishedWorkspaceReceiptOwner.consume
@@ -1337,7 +972,7 @@ def test_all_selected_views_finish_validation_and_planning_before_cas_and_catalo
     state["before_first_put"] = before_first_put
     monkeypatch.setattr(
         manifest_import_module,
-        "_validate_content_bound_portable_query_view_reader_with_identity",
+        "validate_content_bound_portable_query_view_reader",
         validating,
     )
     monkeypatch.setattr(manifest_import_module, "plan_view_bundle_reader", planning)
@@ -1371,389 +1006,6 @@ def test_all_selected_views_finish_validation_and_planning_before_cas_and_catalo
         assert fixture.repository_source.usable
     finally:
         catalog.close()
-        fixture.close()
-
-
-@pytest.mark.parametrize(
-    "stop",
-    [
-        KeyboardInterrupt("exact reused member keyboard cancellation"),
-        StopIteration("exact reused member iterator cancellation"),
-    ],
-    ids=("keyboard-interrupt", "stop-iteration"),
-)
-def test_reused_large_member_stop_precedes_poisoned_future_source_read(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    stop: BaseException,
-) -> None:
-    payload = b"r" * (atomic_module._OWNERSHIP_COPY_BYTES + 1)
-    fixture = _context_fixture(
-        tmp_path / "fixture",
-        ("vector",),
-        vector_index_payload=payload,
-    )
-    target_path = "l2/index_test__model.faiss"
-    real_init = atomic_module.PublicationAuthenticatedFile.__init__
-    provider_reads = 0
-    armed = False
-    touched_future = False
-    try:
-        with _MemberPhaseCAS(tmp_path / "cas") as cas:
-            reused_receipt = cas.put_bytes(payload)
-            assert reused_receipt.digest == hashlib.sha256(payload).hexdigest()
-
-            def intercept_authenticated_file(
-                authenticated: atomic_module.PublicationAuthenticatedFile,
-                *,
-                path: str,
-                mode: int,
-                size: int,
-                read_callback: Callable[[int], bytes],
-                verify_callback: Callable[[], None],
-            ) -> None:
-                if cas.member_ingestion and path.endswith(target_path):
-                    backend_read = read_callback
-
-                    def poison_future_read(requested: int) -> bytes:
-                        nonlocal armed, provider_reads, touched_future
-                        provider_reads += 1
-                        if provider_reads > 1:
-                            touched_future = True
-                            raise AssertionError(
-                                "cancelled reused member read future source bytes"
-                            )
-                        block = backend_read(requested)
-                        armed = True
-                        return block
-
-                    read_callback = poison_future_read
-                real_init(
-                    authenticated,
-                    path=path,
-                    mode=mode,
-                    size=size,
-                    read_callback=read_callback,
-                    verify_callback=verify_callback,
-                )
-
-            def check_cancelled() -> None:
-                if armed:
-                    raise stop
-
-            monkeypatch.setattr(
-                atomic_module.PublicationAuthenticatedFile,
-                "__init__",
-                intercept_authenticated_file,
-            )
-
-            with pytest.raises(type(stop)) as caught:
-                _prepare_vector_job_artifacts(fixture, cas, check_cancelled)
-
-            assert caught.value is stop
-            assert provider_reads == 1
-            assert not touched_future
-            assert cas.verify_receipt(reused_receipt) == reused_receipt
-            assert fixture.context_owner.active
-            assert fixture.repository_source.usable
-
-            monkeypatch.undo()
-            retried = _prepare_vector_job_artifacts(fixture, cas, lambda: None)
-            assert len(retried) == 1
-            assert fixture.context_owner.active
-            assert fixture.repository_source.usable
-    finally:
-        fixture.close()
-
-
-def test_duplicate_large_member_drain_preserves_exact_stop_and_future_source(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source_text = "x" * (atomic_module._OWNERSHIP_COPY_BYTES + 1)
-    duplicate_payload = _vector_files(source_text)["l2/documents_test__model.json"]
-    fixture = _context_fixture(
-        tmp_path / "fixture",
-        ("vector",),
-        source_text=source_text,
-        vector_index_payload=duplicate_payload,
-    )
-    target_path = "l2/index_test__model.faiss"
-    target_digest = hashlib.sha256(duplicate_payload).hexdigest()
-    real_init = atomic_module.PublicationAuthenticatedFile.__init__
-    provider_reads = 0
-    armed = False
-    touched_future = False
-    stop = StopIteration("exact duplicate-member drain cancellation")
-    try:
-        with _MemberPhaseCAS(tmp_path / "cas") as cas:
-
-            def intercept_authenticated_file(
-                authenticated: atomic_module.PublicationAuthenticatedFile,
-                *,
-                path: str,
-                mode: int,
-                size: int,
-                read_callback: Callable[[int], bytes],
-                verify_callback: Callable[[], None],
-            ) -> None:
-                if cas.member_ingestion and path.endswith(target_path):
-                    backend_read = read_callback
-
-                    def poison_future_read(requested: int) -> bytes:
-                        nonlocal armed, provider_reads, touched_future
-                        provider_reads += 1
-                        if provider_reads > 1:
-                            touched_future = True
-                            raise AssertionError(
-                                "cancelled duplicate drain read future source bytes"
-                            )
-                        block = backend_read(requested)
-                        armed = True
-                        return block
-
-                    read_callback = poison_future_read
-                real_init(
-                    authenticated,
-                    path=path,
-                    mode=mode,
-                    size=size,
-                    read_callback=read_callback,
-                    verify_callback=verify_callback,
-                )
-
-            def check_cancelled() -> None:
-                if armed:
-                    raise stop
-
-            monkeypatch.setattr(
-                atomic_module.PublicationAuthenticatedFile,
-                "__init__",
-                intercept_authenticated_file,
-            )
-
-            with pytest.raises(StopIteration) as caught:
-                _prepare_vector_job_artifacts(fixture, cas, check_cancelled)
-
-            assert caught.value is stop
-            assert provider_reads == 1
-            assert not touched_future
-            stored = cas.verify(target_digest)
-            assert stored.byte_size == len(duplicate_payload)
-            assert fixture.context_owner.active
-            assert fixture.repository_source.usable
-
-            monkeypatch.undo()
-            retried = _prepare_vector_job_artifacts(fixture, cas, lambda: None)
-            assert len(retried) == 1
-            assert fixture.context_owner.active
-            assert fixture.repository_source.usable
-    finally:
-        fixture.close()
-
-
-@pytest.mark.parametrize("corrupt_current_chunk", [False, True])
-def test_new_large_member_attests_final_chunk_before_armed_stop(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    corrupt_current_chunk: bool,
-) -> None:
-    payload = b"n" * (atomic_module._OWNERSHIP_COPY_BYTES + 1)
-    fixture = _context_fixture(
-        tmp_path / "fixture",
-        ("vector",),
-        vector_index_payload=payload,
-    )
-    target_path = "l2/index_test__model.faiss"
-    real_init = atomic_module.PublicationAuthenticatedFile.__init__
-    provider_blocks = 0
-    delivered = 0
-    armed = False
-    armed_polls = 0
-    current_verified = False
-    stop = RuntimeError("exact post-member cancellation")
-    try:
-        with _MemberPhaseCAS(tmp_path / "cas") as cas:
-
-            def intercept_authenticated_file(
-                authenticated: atomic_module.PublicationAuthenticatedFile,
-                *,
-                path: str,
-                mode: int,
-                size: int,
-                read_callback: Callable[[int], bytes],
-                verify_callback: Callable[[], None],
-            ) -> None:
-                if cas.member_ingestion and path.endswith(target_path):
-                    backend_read = read_callback
-                    backend_verify = verify_callback
-
-                    def arm_after_final_read(requested: int) -> bytes:
-                        nonlocal armed, delivered, provider_blocks
-                        block = backend_read(requested)
-                        if block:
-                            provider_blocks += 1
-                            delivered += len(block)
-                            if delivered == size:
-                                armed = True
-                                if corrupt_current_chunk:
-                                    block = bytes((block[0] ^ 1,)) + block[1:]
-                        return block
-
-                    def record_verification() -> None:
-                        nonlocal current_verified
-                        backend_verify()
-                        current_verified = True
-
-                    read_callback = arm_after_final_read
-                    verify_callback = record_verification
-                real_init(
-                    authenticated,
-                    path=path,
-                    mode=mode,
-                    size=size,
-                    read_callback=read_callback,
-                    verify_callback=verify_callback,
-                )
-
-            def check_cancelled() -> None:
-                nonlocal armed_polls
-                if armed:
-                    armed_polls += 1
-                    raise stop
-
-            monkeypatch.setattr(
-                atomic_module.PublicationAuthenticatedFile,
-                "__init__",
-                intercept_authenticated_file,
-            )
-
-            if corrupt_current_chunk:
-                with pytest.raises(StorageIntegrityError) as caught:
-                    _prepare_vector_job_artifacts(fixture, cas, check_cancelled)
-                assert caught.value is not stop
-                assert not current_verified
-                assert armed_polls == 0
-            else:
-                with pytest.raises(RuntimeError) as caught:
-                    _prepare_vector_job_artifacts(fixture, cas, check_cancelled)
-                assert caught.value is stop
-                assert current_verified
-                assert armed_polls == 1
-            assert armed
-            assert provider_blocks == 2
-    finally:
-        fixture.close()
-
-
-def test_malformed_current_member_receipt_precedes_stop_and_future_source(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    payload = b"m" * (atomic_module._OWNERSHIP_COPY_BYTES + 1)
-    target_digest = hashlib.sha256(payload).hexdigest()
-    fixture = _context_fixture(
-        tmp_path / "fixture",
-        ("vector",),
-        vector_index_payload=payload,
-    )
-    target_path = "l2/index_test__model.faiss"
-    real_init = atomic_module.PublicationAuthenticatedFile.__init__
-    armed = False
-    touched_future = False
-    stop = KeyboardInterrupt("must not mask the returned member receipt")
-
-    class MalformedReceiptCAS(_MemberPhaseCAS):
-        def put_chunks(
-            self,
-            chunks: Iterable[bytes],
-            expected_digest: str,
-            expected_size: int,
-        ) -> BlobInfo:
-            nonlocal armed
-            if self.member_ingestion and expected_digest == target_digest:
-                armed = True
-                return BlobInfo(
-                    expected_digest,
-                    expected_size + 1,
-                    f"sha256/{expected_digest[:2]}/{expected_digest[2:]}",
-                )
-            return super().put_chunks(chunks, expected_digest, expected_size)
-
-        def put_chunks_interruptibly(
-            self,
-            chunks: Iterable[bytes],
-            expected_digest: str,
-            expected_size: int,
-            *,
-            check_cancelled: Callable[[], None],
-        ) -> BlobInfo:
-            nonlocal armed
-            if self.member_ingestion and expected_digest == target_digest:
-                armed = True
-                return BlobInfo(
-                    expected_digest,
-                    expected_size + 1,
-                    f"sha256/{expected_digest[:2]}/{expected_digest[2:]}",
-                )
-            return super().put_chunks_interruptibly(
-                chunks,
-                expected_digest,
-                expected_size,
-                check_cancelled=check_cancelled,
-            )
-
-    try:
-        with MalformedReceiptCAS(tmp_path / "cas") as cas:
-
-            def intercept_authenticated_file(
-                authenticated: atomic_module.PublicationAuthenticatedFile,
-                *,
-                path: str,
-                mode: int,
-                size: int,
-                read_callback: Callable[[int], bytes],
-                verify_callback: Callable[[], None],
-            ) -> None:
-                if cas.member_ingestion and path.endswith(target_path):
-
-                    def poison_future_read(_requested: int) -> bytes:
-                        nonlocal touched_future
-                        touched_future = True
-                        raise AssertionError(
-                            "malformed member receipt consumed future source bytes"
-                        )
-
-                    read_callback = poison_future_read
-                real_init(
-                    authenticated,
-                    path=path,
-                    mode=mode,
-                    size=size,
-                    read_callback=read_callback,
-                    verify_callback=verify_callback,
-                )
-
-            def check_cancelled() -> None:
-                if armed:
-                    raise stop
-
-            monkeypatch.setattr(
-                atomic_module.PublicationAuthenticatedFile,
-                "__init__",
-                intercept_authenticated_file,
-            )
-
-            with pytest.raises(
-                StorageIntegrityError,
-                match="receipt identity is inconsistent",
-            ) as caught:
-                _prepare_vector_job_artifacts(fixture, cas, check_cancelled)
-
-            assert caught.value is not stop
-            assert armed
-            assert not touched_future
-    finally:
         fixture.close()
 
 

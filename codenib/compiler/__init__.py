@@ -29,37 +29,13 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
     from codenib.compiler.cache_import import (
         CompilerCacheBm25RecaptureResult,
         CompilerCacheImportResult,
-        CompilerCacheJobExecutor,
-        CompilerCacheJobPreparationResult,
-        CompilerCacheJobPublicationResult,
         CompilerCacheMultiViewImportResult,
-        CompilerCacheVectorJobPublicationResult,
         CompilerCacheViewRecaptureResult,
         import_compiler_cache,
         import_compiler_cache_bm25,
-        prepare_compiler_cache_job_view,
-        prepare_compiler_cache_job_view_from_generation,
-        publish_compiler_cache_bm25_job,
-        publish_compiler_cache_vector_job,
     )
     from codenib.compiler.index_builders import IndexBuilderRegistry
     from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
-    from codenib.compiler.job_resolver import (
-        BM25SourceJobResolver,
-        BM25SourceJobResourceFactory,
-        BM25SourceJobResourceScope,
-        CompilerCacheJobResolver,
-        CompilerCacheJobResourceFactory,
-        CompilerCacheJobResourceScope,
-    )
-    from codenib.compiler.job_resources import (
-        BM25AttemptPoolReclamation,
-        LocalBM25AttemptPoolCoordinator,
-        LocalBM25SourceJobResourceFactory,
-        LocalBM25SourceJobTarget,
-        LocalCompilerCacheJobResourceFactory,
-        LocalCompilerCacheJobTarget,
-    )
     from codenib.compiler.manifest import ManifestIndexStateStore, RepoManifest
     from codenib.compiler.manifest_export import (
         RepoManifestExportReceipt,
@@ -98,28 +74,8 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         load_contexts_from_manifest,
         required_index_types,
     )
-    from codenib.compiler.source_job import (
-        BM25SourceJobExecutor,
-        bm25_source_job_profile,
-    )
 
 _EXPORTS = {
-    "BM25AttemptPoolReclamation": (
-        "codenib.compiler.job_resources",
-        "BM25AttemptPoolReclamation",
-    ),
-    "BM25SourceJobResolver": (
-        "codenib.compiler.job_resolver",
-        "BM25SourceJobResolver",
-    ),
-    "BM25SourceJobResourceFactory": (
-        "codenib.compiler.job_resolver",
-        "BM25SourceJobResourceFactory",
-    ),
-    "BM25SourceJobResourceScope": (
-        "codenib.compiler.job_resolver",
-        "BM25SourceJobResourceScope",
-    ),
     "CompilerCacheBm25RecaptureResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheBm25RecaptureResult",
@@ -128,25 +84,9 @@ _EXPORTS = {
         "codenib.compiler.cache_import",
         "CompilerCacheImportResult",
     ),
-    "CompilerCacheJobExecutor": (
-        "codenib.compiler.cache_import",
-        "CompilerCacheJobExecutor",
-    ),
-    "CompilerCacheJobPreparationResult": (
-        "codenib.compiler.cache_import",
-        "CompilerCacheJobPreparationResult",
-    ),
-    "CompilerCacheJobPublicationResult": (
-        "codenib.compiler.cache_import",
-        "CompilerCacheJobPublicationResult",
-    ),
     "CompilerCacheMultiViewImportResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheMultiViewImportResult",
-    ),
-    "CompilerCacheVectorJobPublicationResult": (
-        "codenib.compiler.cache_import",
-        "CompilerCacheVectorJobPublicationResult",
     ),
     "CompilerCacheViewRecaptureResult": (
         "codenib.compiler.cache_import",
@@ -159,54 +99,6 @@ _EXPORTS = {
     "import_compiler_cache_bm25": (
         "codenib.compiler.cache_import",
         "import_compiler_cache_bm25",
-    ),
-    "prepare_compiler_cache_job_view": (
-        "codenib.compiler.cache_import",
-        "prepare_compiler_cache_job_view",
-    ),
-    "prepare_compiler_cache_job_view_from_generation": (
-        "codenib.compiler.cache_import",
-        "prepare_compiler_cache_job_view_from_generation",
-    ),
-    "publish_compiler_cache_bm25_job": (
-        "codenib.compiler.cache_import",
-        "publish_compiler_cache_bm25_job",
-    ),
-    "publish_compiler_cache_vector_job": (
-        "codenib.compiler.cache_import",
-        "publish_compiler_cache_vector_job",
-    ),
-    "CompilerCacheJobResolver": (
-        "codenib.compiler.job_resolver",
-        "CompilerCacheJobResolver",
-    ),
-    "CompilerCacheJobResourceFactory": (
-        "codenib.compiler.job_resolver",
-        "CompilerCacheJobResourceFactory",
-    ),
-    "CompilerCacheJobResourceScope": (
-        "codenib.compiler.job_resolver",
-        "CompilerCacheJobResourceScope",
-    ),
-    "LocalCompilerCacheJobResourceFactory": (
-        "codenib.compiler.job_resources",
-        "LocalCompilerCacheJobResourceFactory",
-    ),
-    "LocalCompilerCacheJobTarget": (
-        "codenib.compiler.job_resources",
-        "LocalCompilerCacheJobTarget",
-    ),
-    "LocalBM25AttemptPoolCoordinator": (
-        "codenib.compiler.job_resources",
-        "LocalBM25AttemptPoolCoordinator",
-    ),
-    "LocalBM25SourceJobResourceFactory": (
-        "codenib.compiler.job_resources",
-        "LocalBM25SourceJobResourceFactory",
-    ),
-    "LocalBM25SourceJobTarget": (
-        "codenib.compiler.job_resources",
-        "LocalBM25SourceJobTarget",
     ),
     "IndexCompiler": ("codenib.compiler.index_compiler", "IndexCompiler"),
     "IndexCompilerConfig": (
@@ -303,49 +195,19 @@ _EXPORTS = {
         "codenib.compiler.skill_context",
         "required_index_types",
     ),
-    "BM25SourceJobExecutor": (
-        "codenib.compiler.source_job",
-        "BM25SourceJobExecutor",
-    ),
-    "bm25_source_job_profile": (
-        "codenib.compiler.source_job",
-        "bm25_source_job_profile",
-    ),
 }
 
 __all__ = [
-    "BM25AttemptPoolReclamation",
-    "BM25SourceJobResolver",
-    "BM25SourceJobResourceFactory",
-    "BM25SourceJobResourceScope",
     # Index compilation
     "CompilerCacheBm25RecaptureResult",
     "CompilerCacheImportResult",
-    "CompilerCacheJobExecutor",
-    "CompilerCacheJobPreparationResult",
-    "CompilerCacheJobPublicationResult",
-    "CompilerCacheJobResolver",
-    "CompilerCacheJobResourceFactory",
-    "CompilerCacheJobResourceScope",
-    "LocalCompilerCacheJobResourceFactory",
-    "LocalCompilerCacheJobTarget",
-    "LocalBM25AttemptPoolCoordinator",
-    "LocalBM25SourceJobResourceFactory",
-    "LocalBM25SourceJobTarget",
     "CompilerCacheMultiViewImportResult",
-    "CompilerCacheVectorJobPublicationResult",
     "CompilerCacheViewRecaptureResult",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
-    "prepare_compiler_cache_job_view",
-    "prepare_compiler_cache_job_view_from_generation",
-    "publish_compiler_cache_bm25_job",
-    "publish_compiler_cache_vector_job",
     "IndexCompiler",
     "IndexCompilerConfig",
     "IndexBuilderRegistry",
-    "BM25SourceJobExecutor",
-    "bm25_source_job_profile",
     # Manifest
     "RepoManifest",
     "ManifestIndexStateStore",
