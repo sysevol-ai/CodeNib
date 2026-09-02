@@ -133,8 +133,11 @@ Status: in progress.
       experimental/compatibility surfaces without adding PostgreSQL, S3,
       generic GC, or backend discovery.
 - [x] Remove the unreleased audit, direct MCP, index dual-write, benchmark-gate,
-      and durable-execution slices. The frozen CLI surface now contains only
-      the two published `artifact import-cache` and `artifact materialize`
+      durable-execution slices, and the two unreachable retained BM25
+      generation plan/replay helpers left by that execution stack. The orphan
+      closure removed 231 production lines, zero test lines, zero scripts, and
+      zero public entry points. The frozen CLI surface now contains only the
+      two published `artifact import-cache` and `artifact materialize`
       compatibility bridges.
 - [ ] Remove the frozen surface in consumer-proven, release-aware batches.
 - [x] Move portable-artifact validation contracts into the artifact-neutral
