@@ -18,11 +18,10 @@ import copy
 import hashlib
 import inspect
 import re
-import stat
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from .._atomic_directory import (
     PublicationDirectoryReader,
@@ -102,7 +101,6 @@ from ..storage.view_bundle import (
     VIEW_BUNDLE_SCHEMA,
 )
 from .cache_lock import COMPILER_CACHE_LOCK_FILENAME, compiler_cache_lock
-from .index_compiler import IndexCompiler
 from .manifest import MANIFEST_FILENAME, MANIFEST_VERSION, IndexEntry, RepoManifest
 from .manifest_import import (
     _CATALOG_METHODS,
@@ -190,16 +188,6 @@ def _interruptible_chunks(
         except StopIteration:
             return
         yield chunk
-
-
-class CompilerCacheTopologyGuard(Protocol):
-    """Trusted application-level checks around one compiler-cache mutation."""
-
-    def capture(self, cache: Path) -> None:
-        """Capture topology after the cache lease binds its directory."""
-
-    def verify(self, cache: Path) -> None:
-        """Reject topology drift while the same cache lease remains held."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,48 +598,6 @@ class CompilerCacheMultiViewImportResult:
 
 
 @dataclass(frozen=True, slots=True)
-class CompilerRetainedPublicationResult:
-    """Result of updating compiler views and atomically retaining them."""
-
-    manifest: RepoManifest
-    retained_import: CompilerCacheMultiViewImportResult
-
-    def __post_init__(self) -> None:
-        if type(self) is not CompilerRetainedPublicationResult:
-            raise TypeError("compiler retained publication must use the exact type")
-        if type(self.manifest) is not RepoManifest:
-            raise TypeError("compiler retained publication manifest is invalid")
-        if type(self.retained_import) is not CompilerCacheMultiViewImportResult:
-            raise TypeError("compiler retained publication import result is invalid")
-        views = self.retained_import.views
-        for view in views:
-            _require_current_view(self.manifest, view=view)
-        portable = self.retained_import.import_plan.manifest
-        if (
-            portable.commit != self.manifest.commit
-            or portable.source_fingerprint != self.manifest.source_fingerprint
-            or portable.file_count != self.manifest.file_count
-            or portable.source_selection != self.manifest.source_selection
-            or portable.last_indexed_commit != self.manifest.last_indexed_commit
-            or portable.last_indexed_source_fingerprint
-            != self.manifest.last_indexed_source_fingerprint
-            or portable.last_indexed_source_selection_digest
-            != self.manifest.last_indexed_source_selection_digest
-        ):
-            raise StorageIntegrityError(
-                "compiler retained publication identities are inconsistent"
-            )
-
-    @property
-    def views(self) -> tuple[str, ...]:
-        return self.retained_import.views
-
-    @property
-    def import_result(self) -> RepoManifestImportResult:
-        return self.retained_import.import_result
-
-
-@dataclass(frozen=True, slots=True)
 class _ImportPreflight:
     repository_key: str
     namespace_name: str
@@ -792,46 +738,6 @@ def _preflight_workspace_provider(
         if not callable(candidate):
             raise TypeError("compiler cache workspace provider has an invalid contract")
     workspace_provider.require_support()
-
-
-def _preflight_cache_topology_guard(
-    guard: CompilerCacheTopologyGuard | None,
-) -> None:
-    if guard is None:
-        return
-    for member in ("capture", "verify"):
-        try:
-            candidate = inspect.getattr_static(guard, member)
-        except AttributeError as exc:
-            raise TypeError(
-                "compiler cache topology guard has an invalid contract"
-            ) from exc
-        if isinstance(candidate, (classmethod, staticmethod)):
-            candidate = candidate.__func__
-        if not callable(candidate):
-            raise TypeError("compiler cache topology guard has an invalid contract")
-
-
-def _cache_directory_identity(cache: Path) -> tuple[int, int]:
-    try:
-        metadata = cache.lstat()
-    except OSError as exc:
-        raise RuntimeError("compiler cache directory cannot be authenticated") from exc
-    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
-        raise RuntimeError("compiler cache path is not a real directory")
-    return (metadata.st_dev, metadata.st_ino)
-
-
-def _run_cache_topology_guard(
-    guard: CompilerCacheTopologyGuard | None,
-    member: str,
-    cache: Path,
-) -> None:
-    if guard is None:
-        return
-    result = getattr(guard, member)(cache)
-    if result is not None:
-        raise TypeError(f"compiler cache topology guard {member} must return None")
 
 
 def _preflight_import_inputs(
@@ -3264,151 +3170,6 @@ def publish_compiler_cache_vector_job(
     )
 
 
-def compile_and_import_repo(
-    compiler: IndexCompiler,
-    repo_path: str | Path,
-    *,
-    cache_dir: str | Path,
-    views: tuple[str, ...],
-    repository_source: RepositorySourceBinding,
-    view_output_owners: dict[str, PublishedWorkspaceReceiptOwner],
-    context_output_owner: PublishedWorkspaceReceiptOwner,
-    view_destinations: dict[str, Path],
-    context_destination: Path,
-    workspace_provider: StrictWorkspaceProvider,
-    repository_key: str,
-    catalog: RetainedImportCatalog,
-    object_store: RetainedImportObjectStore,
-    namespace_name: str = DEFAULT_NAMESPACE_NAME,
-    ref_name: str = DEFAULT_REF_NAME,
-    expected_generation: int = 0,
-    max_manifest_bytes: int = DEFAULT_MAX_MANIFEST_BYTES,
-    max_context_files: int = DEFAULT_MAX_CONTEXT_FILES,
-    max_context_bytes: int = DEFAULT_MAX_CONTEXT_BYTES,
-    max_bundle_files: int = DEFAULT_MAX_BUNDLE_FILES,
-    max_bundle_bytes: int = DEFAULT_MAX_BUNDLE_BYTES,
-    max_bundle_metadata_bytes: int = DEFAULT_MAX_BUNDLE_METADATA_BYTES,
-    max_projection_bytes: int = DEFAULT_MAX_PROJECTION_BYTES,
-    forbidden_paths: Iterable[Path] = (),
-    environ: Mapping[str, str] | None = None,
-    cache_topology_guard: CompilerCacheTopologyGuard | None = None,
-) -> CompilerRetainedPublicationResult:
-    """Update-or-create selected compiler views and retain one snapshot.
-
-    The mutable compiler update and strict immutable recapture share one cache
-    lease.  The lease is released before the retained importer invokes any
-    CAS or catalog data-plane method; static contract probes may run earlier.
-    ``cache_topology_guard`` is a trusted application-level denial check for
-    topology that needs the newly created, lease-bound cache directory.  It is
-    not an authority token: ``capture`` runs before compiler mutation and
-    ``verify`` runs before retained workspace mutation and again before lease
-    release.
-
-    All source and receipt authorities are borrowed.  The caller owns their
-    cleanup, including immutable evidence left by a later storage failure.
-    There is intentionally no force-rebuild option: this route only performs
-    the compiler's ordinary update-or-create policy.
-    """
-
-    if type(compiler) is not IndexCompiler:
-        raise TypeError("compiler retained publication requires an IndexCompiler")
-    _preflight_cache_topology_guard(cache_topology_guard)
-    repository = lexical_directory_path(Path(repo_path))
-    operation = _preflight_cache_import_operation(
-        cache_dir,
-        views=views,
-        repository_source=repository_source,
-        view_output_owners=view_output_owners,
-        context_output_owner=context_output_owner,
-        view_destinations=view_destinations,
-        context_destination=context_destination,
-        workspace_provider=workspace_provider,
-        repository_key=repository_key,
-        catalog=catalog,
-        object_store=object_store,
-        namespace_name=namespace_name,
-        ref_name=ref_name,
-        expected_generation=expected_generation,
-        max_manifest_bytes=max_manifest_bytes,
-        max_context_files=max_context_files,
-        max_context_bytes=max_context_bytes,
-        max_bundle_files=max_bundle_files,
-        max_bundle_bytes=max_bundle_bytes,
-        max_bundle_metadata_bytes=max_bundle_metadata_bytes,
-        max_projection_bytes=max_projection_bytes,
-        forbidden_paths=forbidden_paths,
-        environ=environ,
-    )
-
-    with compiler_cache_lock(operation.cache):
-        cache_identity = _cache_directory_identity(operation.cache)
-        identity = repository_source.authenticated_identity_snapshot()
-        if type(identity) is not RepositorySourceIdentitySnapshot:
-            raise TypeError("compiler cache repository identity has an invalid type")
-        if lexical_directory_path(identity.root) != repository:
-            raise StorageIntegrityError(
-                "compiler retained publication source belongs to another repository"
-            )
-        _cache_topology(operation.cache, identity)
-        _run_cache_topology_guard(
-            cache_topology_guard,
-            "capture",
-            operation.cache,
-        )
-        if _cache_directory_identity(operation.cache) != cache_identity:
-            raise RuntimeError(
-                "compiler cache directory changed during topology capture"
-            )
-        compiled_manifest = compiler._update_repo_locked(
-            str(repository),
-            index_types=list(views),
-            cache=str(operation.cache),
-        )
-        if _cache_directory_identity(operation.cache) != cache_identity:
-            raise RuntimeError("compiler cache directory changed during compilation")
-        _run_cache_topology_guard(
-            cache_topology_guard,
-            "verify",
-            operation.cache,
-        )
-        if _cache_directory_identity(operation.cache) != cache_identity:
-            raise RuntimeError(
-                "compiler cache directory changed during topology verify"
-            )
-        preparation = _prepare_compiler_cache_import_locked(
-            operation,
-            views=views,
-            repository_source=repository_source,
-            context_output_owner=context_output_owner,
-            workspace_provider=workspace_provider,
-            expected_manifest=compiled_manifest,
-        )
-        if _cache_directory_identity(operation.cache) != cache_identity:
-            raise RuntimeError("compiler cache directory changed during recapture")
-        _run_cache_topology_guard(
-            cache_topology_guard,
-            "verify",
-            operation.cache,
-        )
-        if _cache_directory_identity(operation.cache) != cache_identity:
-            raise RuntimeError(
-                "compiler cache directory changed during topology verify"
-            )
-
-    retained_import = _commit_prepared_compiler_cache_import(
-        preparation,
-        operation,
-        repository_source=repository_source,
-        context_output_owner=context_output_owner,
-        catalog=catalog,
-        object_store=object_store,
-    )
-    return CompilerRetainedPublicationResult(
-        manifest=compiled_manifest,
-        retained_import=retained_import,
-    )
-
-
 def import_compiler_cache_bm25(
     cache_dir: str | Path,
     *,
@@ -3491,11 +3252,8 @@ __all__ = [
     "CompilerCacheJobPreparationResult",
     "CompilerCacheJobPublicationResult",
     "CompilerCacheMultiViewImportResult",
-    "CompilerCacheTopologyGuard",
     "CompilerCacheVectorJobPublicationResult",
     "CompilerCacheViewRecaptureResult",
-    "CompilerRetainedPublicationResult",
-    "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
     "prepare_compiler_cache_job_view",

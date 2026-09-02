@@ -33,11 +33,8 @@ if TYPE_CHECKING:  # pragma: no cover - imported only by static analyzers
         CompilerCacheJobPreparationResult,
         CompilerCacheJobPublicationResult,
         CompilerCacheMultiViewImportResult,
-        CompilerCacheTopologyGuard,
         CompilerCacheVectorJobPublicationResult,
         CompilerCacheViewRecaptureResult,
-        CompilerRetainedPublicationResult,
-        compile_and_import_repo,
         import_compiler_cache,
         import_compiler_cache_bm25,
         prepare_compiler_cache_job_view,
@@ -147,10 +144,6 @@ _EXPORTS = {
         "codenib.compiler.cache_import",
         "CompilerCacheMultiViewImportResult",
     ),
-    "CompilerCacheTopologyGuard": (
-        "codenib.compiler.cache_import",
-        "CompilerCacheTopologyGuard",
-    ),
     "CompilerCacheVectorJobPublicationResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheVectorJobPublicationResult",
@@ -158,14 +151,6 @@ _EXPORTS = {
     "CompilerCacheViewRecaptureResult": (
         "codenib.compiler.cache_import",
         "CompilerCacheViewRecaptureResult",
-    ),
-    "CompilerRetainedPublicationResult": (
-        "codenib.compiler.cache_import",
-        "CompilerRetainedPublicationResult",
-    ),
-    "compile_and_import_repo": (
-        "codenib.compiler.cache_import",
-        "compile_and_import_repo",
     ),
     "import_compiler_cache": (
         "codenib.compiler.cache_import",
@@ -348,11 +333,8 @@ __all__ = [
     "LocalBM25SourceJobResourceFactory",
     "LocalBM25SourceJobTarget",
     "CompilerCacheMultiViewImportResult",
-    "CompilerCacheTopologyGuard",
     "CompilerCacheVectorJobPublicationResult",
     "CompilerCacheViewRecaptureResult",
-    "CompilerRetainedPublicationResult",
-    "compile_and_import_repo",
     "import_compiler_cache",
     "import_compiler_cache_bm25",
     "prepare_compiler_cache_job_view",

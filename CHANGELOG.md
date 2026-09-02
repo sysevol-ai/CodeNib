@@ -40,6 +40,10 @@ All notable user-facing changes are recorded here. CodeNib follows
 - The unreleased catalog-selected `codenib mcp` cold-start mode. Existing
   retained data can still be materialized with `codenib artifact materialize` and
   served through the supported `codenib mcp --artifact [--repo]` path.
+- The unreleased `storage audit` command and `index --publish-retained` path.
+  Those two batches removed 1,407 production lines and 1,742 dedicated test
+  lines, including the audit execution path, eight index-only options, and
+  three compiler exports; ordinary indexing and artifact bridges remain.
 
 ### Security
 
