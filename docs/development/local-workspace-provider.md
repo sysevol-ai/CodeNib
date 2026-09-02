@@ -10,25 +10,17 @@ SPDX-License-Identifier: Apache-2.0
 
 # Local Workspace Provider
 
-`LocalWorkspaceProvider` is the Linux implementation retained by CodeNib's
-frozen generic-storage compatibility surface. It publishes one fully validated
-directory into a missing destination or replaces the exact generation named by
-an active receipt, then transfers the new generation to a caller-owned
-`PublishedWorkspaceReceiptOwner`. The protocol and recovery details below
-remain normative for commands that can still open existing retained data; they
-are not a product-database roadmap.
+`LocalWorkspaceProvider` is the Linux implementation for strict directory
+publication. It publishes one fully validated directory into a missing
+destination or replaces the exact generation named by an active receipt, then
+transfers the new generation to a caller-owned
+`PublishedWorkspaceReceiptOwner`.
 
-The provider is not enabled by CodeNib's default compiler or runtime path. Two
-explicit routes use it: `codenib artifact import-cache` recaptures an already
-existing selected cache, and `codenib artifact materialize` publishes a
-retained catalog ref or immutable snapshot to a missing portable-artifact
-directory.
-The only product database is `codenib.wiki.store.WikiStore` with its supported
-SQLite WAL implementation. The catalog, local SHA-256 CAS, and routes listed
-above are frozen experimental/compatibility code while existing data receives
-an explicit withdrawal path. PostgreSQL, S3-compatible storage, generic
-garbage collection, and retained-route promotion are closed plans. See
-`docs/storage_backend_roadmap.md` for the current scope decision.
+This is a filesystem publication boundary, not a database or generic storage
+backend. The only product database is `codenib.wiki.store.WikiStore` with its
+supported SQLite WAL implementation. Repository search state remains in
+manifest-bound file artifacts. See `docs/storage_backend_roadmap.md` for the
+current scope decision.
 
 Protocol v4 introduced an internal existing-destination replacement primitive:
 it captures the incumbent, provisions and authenticates one hidden same-parent
@@ -124,197 +116,6 @@ and the session publishes only through `publish_replacement_into(...)`. This
 completes the historical Gate C implementation. Automatic orphan GC, a crash
 journal, protection from hostile same-UID mutation, and route promotion are
 outside this frozen compatibility seam.
-
-## Import compiler query views
-
-`codenib artifact import-cache` imports an exact current BM25 view, vector view,
-or both from an existing `IndexCompiler` cache as one ready retained snapshot.
-Omitting `--view` preserves the BM25-only default. Repeat `--view`, or pass a
-comma-separated value such as `--view bm25,vector`, to select views explicitly;
-the CLI canonicalizes the result to BM25 then vector. This remains an offline
-bootstrap for an already existing cache: the normal `codenib index` command
-only writes that local cache, while retained publication requires this separate
-explicit import. It does not import graph or Zoekt views or hot-switch a
-runtime.
-
-Prepare these authorities before running it:
-
-- The positional repository must be the source used to build the cache. The
-  retained source-fingerprint-v2 identity must match the manifest, whose commit
-  must be a full lowercase 40-character Git SHA. The manifest must contain an
-  exact current entry for every selected view. BM25 must have exact
-  fingerprints for `bm25/documents.json` and `bm25/bm25_metadata.json`.
-  Vector ingress requires raw builder schema 8 and the exact schema-8
-  persistence inventory described below. Schema-8 vector documents name
-  regular lexical repository-relative POSIX files; source symlink aliases are
-  rejected instead of being rewritten to a different path identity.
-- `--cache-dir` must be an existing cache produced by the current compiler. It
-  must already contain `repo_manifest.json`, every selected fixed view tree,
-  and the single-link regular `.index-compiler.lock`. Run or update the cache
-  with the current `IndexCompiler`; do not add a lock file by hand. Import opens
-  the lease existing-only and never creates the cache or lock. The importer
-  owns that lease, so a library caller must not wrap it in another lock for the
-  same cache; same-thread re-entry fails fast. The lock serializes cooperating
-  CodeNib compiler and importer processes in a private cache namespace. It is
-  not a sandbox against an actor actively replacing cache paths while the lock
-  is held.
-- `--catalog`, `--cas-root`, and `--workspace-root` have the same strict
-  requirements documented for materialization below: an existing initialized
-  SQLite catalog, a fully preprovisioned strict `LocalCAS`, and an existing
-  private Linux workspace root owned by the current effective UID with exact
-  mode `0700`. Repository and cache paths must neither overlap nor physically
-  alias those storage authorities; the cache must not contain the repository.
-
-`codenib index` prints its `repo_manifest.json` location; use that file's
-parent as `--cache-dir`. For example, import the first generation of `main`:
-
-```bash
-codenib artifact import-cache /srv/src/repository \
-  --cache-dir /var/lib/codenib/compiler-cache/repository \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository \
-  --ref main \
-  --expected-generation 0
-```
-
-That command imports only BM25. To import one combined view set into the same
-snapshot, add the explicit selection:
-
-```bash
-codenib artifact import-cache /srv/src/repository \
-  --cache-dir /var/lib/codenib/compiler-cache/repository \
-  --view bm25,vector \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository \
-  --ref main \
-  --expected-generation 0
-```
-
-Under the cooperative cache lease, the command authenticates the source,
-manifest, and every selected raw view. Before the first workspace mutation it
-completes all selected recapture plans, the canonical selected-view portable
-manifest, and the retained import plan. Under that same existing-only lease it
-publishes a fresh missing-only generation for each selected view, then plans
-and publishes one context containing exactly those views. It revalidates the
-source, manifest, and published bytes before releasing the lease; retained CAS
-ingestion and the single atomic snapshot/ref publication happen only afterward.
-
-Current vector producers use builder schema 8. Each non-empty level stores a
-canonical ordered `documents_*.json` array beside its FAISS index, and the root
-config commits both files plus
-`row_mapping = "codenib.vector-documents-array-index.v1"`. Array position is
-the FAISS row. Before publishing a current compiler-cache generation, the
-trusted producer reopens each generated FAISS file and verifies its dimension,
-row count, metric, index type, training state, and canonical row IDs together
-with the exact root, level, and document contract. The later recapture can then
-validate document counts, configuration, and content fingerprints without
-deserializing legacy pickle or parsing FAISS. A raw schema-7 compiler cache must
-be rebuilt before import; already-retained portable schema-7 vector generations
-remain readable for compatibility. FAISS also remains inert during import,
-export, and materialization. Loading it for a native query is a separate,
-explicitly authorized local operation.
-
-The lease and content receipts establish self-consistency, not signed
-provenance. Use a cache namespace private to one trusted OS account and keep
-the source/cache namespace quiescent except for CodeNib processes honoring the
-same lock. An actor that can replace both raw view bytes and the manifest can
-compute matching hashes; neither the cooperative lock nor schema 8 claims to
-sandbox that actor or attest who produced the FAISS bytes.
-
-Every invocation allocates a random
-`.codenib-cache-import-<nonce>-<view>` directory for each selected view and one
-`.codenib-cache-import-<nonce>-context` directory below the workspace root.
-They remain immutable generation evidence after their receipt owners close,
-including when a later stage fails; the command warns instead of deleting
-them. Their future ownership-aware reclamation belongs to M5. On success, the
-CLI prints the selected view set, snapshot, ref generation, every evidence
-path, and a copyable `codenib artifact materialize --snapshot ...` command. Its
-suggested `.codenib-cache-import-<nonce>-materialized` output is not created or
-reserved.
-
-Strict ownership capture, semantic validation, workspace replay, bundle/CAS
-ingestion, and receipt revalidation make multiple bounded reads of selected
-payloads. Large FAISS indexes can therefore be read more than once. Treat this
-as an offline maintenance operation and measure representative repositories,
-payload sizes, and storage media before scheduling it at scale. Default or
-latency-sensitive service use requires an end-to-end benchmark gate; do not
-remove an authentication pass merely to improve an unmeasured result.
-
-Use the current ref generation for a changed cache. If a call might have
-committed before its result was observed, retry the exact same source, cache,
-repository, namespace, and ref with the original `--expected-generation`.
-The retry gets fresh missing evidence destinations but resolves the same
-snapshot and generation without advancing the ref again.
-
-## Materialize a retained artifact
-
-This command is for a control plane that has already been populated. It does
-not initialize a catalog, provision a CAS, import an existing cache, build a
-view, or advance a ref. Prepare all three authorities before running it:
-
-- `--catalog` names an existing, initialized CodeNib SQLite catalog. Existing-
-  only means that a missing, empty, foreign, or corrupt database is rejected;
-  it does **not** mean read-only. CodeNib opens a recognized catalog read-write,
-  enables WAL, and may apply forward migrations before reading the selection.
-  The database file must be a single-linked regular file. The CLI binds its
-  captured `(st_dev, st_ino, st_nlink=1)` identity into the existing-only open;
-  SQLite rechecks it immediately before and after `sqlite3.connect`, before
-  complete claimed-version schema authentication, WAL activation, or
-  migration. Its resolved ancestor chain and WAL/SHM sidecar namespace must
-  remain trusted and quiescent for the entire invocation. These identity checks
-  are not a filesystem sandbox against an actor racing arbitrary renames.
-- `--cas-root` names a fully preprovisioned strict `LocalCAS` layout. The
-  command will not create the root, `sha256` directory, or 256 digest shards.
-  Provision the layout once, while its namespace is trusted and quiescent, with
-  `LocalCAS.provision(...)`, then close the returned store before invoking the
-  CLI.
-- `--workspace-root` names an existing Linux directory owned by the current
-  effective UID with exact mode `0700`. The catalog path, CAS root, and
-  workspace root must not overlap or resolve through distinct directory names
-  to the same filesystem identity. `--output` must be a missing child below the
-  workspace root, and every existing output-parent component must be a real
-  directory on the workspace root filesystem without a nested mount point. An
-  existing file, directory, or symlink is never replaced.
-
-For example, materialize the current generation of the `main` ref:
-
-```bash
-install -d -m 0700 /var/lib/codenib/workspaces
-
-codenib artifact materialize \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository \
-  --ref main \
-  --expected-generation 7 \
-  --output /var/lib/codenib/workspaces/repository-context-v1
-```
-
-Omit `--ref` to use `main`, or replace it with `--snapshot <snapshot-id>` to
-select one immutable snapshot. `--expected-generation` is valid only for ref
-selection. `--namespace` defaults to `default`.
-
-The CLI creates the caller-owned publication receipt for this invocation. It
-closes that receipt, the strict CAS anchors, and the catalog connection before
-printing success and returning. Closing the receipt releases its native
-handles; it does not delete the published artifact. The success output includes
-the separate query-only handoff:
-
-```bash
-codenib mcp \
-  --artifact /var/lib/codenib/workspaces/repository-context-v1 \
-  --repository owner/repository
-```
-
-A failure can occur after the no-replace publication has committed. If the CLI
-warns that the output now exists, do not assume that the path is disposable or
-retry over it; verify the retained artifact before reuse or reclaim it through
-an ownership-aware workflow.
 
 ## Lifecycle
 

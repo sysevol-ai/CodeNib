@@ -92,6 +92,7 @@ def _write_test_sdist(
     *,
     include_native_source: bool = True,
     binary_member: str | None = None,
+    extra_member: str | None = None,
 ) -> None:
     root = "codenib-0.2.1"
     members = {
@@ -106,6 +107,8 @@ def _write_test_sdist(
         members[f"{root}/native/workspace_owner.c"] = "/* source */\n"
     if binary_member is not None:
         members[f"{root}/{binary_member}"] = "native"
+    if extra_member is not None:
+        members[f"{root}/{extra_member}"] = "retired"
     with tarfile.open(path, mode="w:gz") as archive:
         for member, contents in members.items():
             payload = contents.encode("utf-8")
@@ -121,6 +124,7 @@ def _write_test_release(
     arm_native: str = "codenib/_workspace_owner_impl.abi3.so",
     include_native_source: bool = True,
     sdist_binary: str | None = None,
+    sdist_extra_member: str | None = None,
 ) -> tuple[Path, Path]:
     project = _write_project_release_contract(root)
     dist = root / "dist"
@@ -137,6 +141,7 @@ def _write_test_release(
         dist / "codenib-0.2.1.tar.gz",
         include_native_source=include_native_source,
         binary_member=sdist_binary,
+        extra_member=sdist_extra_member,
     )
     return project, dist
 
@@ -300,6 +305,26 @@ def test_release_wheel_requires_exact_native_extension_name(tmp_path: Path) -> N
         with zipfile.ZipFile(x86_wheel, mode="a") as archive:
             archive.writestr("codenib/_workspace_owner_impl.abi3.so", "duplicate")
     with pytest.raises(ReleaseValidationError, match="must contain exactly one"):
+        validate_release(dist, project_file=project)
+
+
+def test_release_wheel_rejects_retired_storage_runtime(tmp_path: Path) -> None:
+    project, dist = _write_test_release(tmp_path)
+    wheel = dist / "codenib-0.2.1-cp310-abi3-manylinux_2_28_x86_64.whl"
+    with zipfile.ZipFile(wheel, mode="a") as archive:
+        archive.writestr("codenib/storage/models.py", "retired")
+
+    with pytest.raises(ReleaseValidationError, match="retired storage runtime"):
+        validate_release(dist, project_file=project)
+
+
+def test_release_sdist_rejects_retired_compiler_bridge(tmp_path: Path) -> None:
+    project, dist = _write_test_release(
+        tmp_path,
+        sdist_extra_member="codenib/compiler/cache_import.py",
+    )
+
+    with pytest.raises(ReleaseValidationError, match="retired storage runtime"):
         validate_release(dist, project_file=project)
 
 
@@ -1027,7 +1052,7 @@ def test_protocol_v6_workspace_replacement_limits_are_documented() -> None:
     assert "has no remaining promotion gate" in provider_prose
 
 
-def test_product_storage_scope_and_compatibility_policy_are_documented() -> None:
+def test_product_storage_scope_and_removal_policy_are_documented() -> None:
     root = Path(__file__).resolve().parents[1]
     provider = (root / "docs/development/local-workspace-provider.md").read_text(
         encoding="utf-8"
@@ -1042,12 +1067,12 @@ def test_product_storage_scope_and_compatibility_policy_are_documented() -> None
         "BM25, FAISS, igraph, and portable context payloads remain file artifacts"
     ) in roadmap_prose
     assert (
-        "experimental/compatibility code, not as the canonical product "
-        "persistence layer"
+        "No generic catalog, CAS, or database compatibility layer remains"
     ) in roadmap_prose
     assert "## Closed Plans" in roadmap
     assert "CodeNib no longer plans PostgreSQL, S3-compatible object storage" in (
         roadmap_prose
     )
-    assert "frozen generic-storage compatibility surface" in provider
-    assert "they are not a product-database roadmap" in " ".join(provider.split())
+    provider_prose = " ".join(provider.split())
+    assert "a filesystem publication boundary, not a database" in provider_prose
+    assert "v0.2.2 environment before upgrading" in roadmap_prose

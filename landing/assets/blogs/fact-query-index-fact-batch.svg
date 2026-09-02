@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 SPDX-License-Identifier: Apache-2.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
-  <title id="title">CodeGraph architecture: native query paths and durable facts</title>
-  <desc id="description">Analyzer artifacts pass through provider-specific normalization governed by shared semantic contracts. Capability-scoped native queries, durable semantic publication, and the complete CodeGraph are distinct representations.</desc>
+  <title id="title">CodeGraph architecture: native query paths and semantic contracts</title>
+  <desc id="description">Analyzer artifacts pass through provider-specific normalization governed by shared semantic contracts. Capability-scoped native queries, provider-neutral facts, and the complete CodeGraph are distinct representations.</desc>
   <defs>
     <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
       <path d="M32 0H0V32" fill="none" stroke="#dbe5f1" stroke-width="1" opacity=".42"/>
@@ -118,9 +118,9 @@ SPDX-License-Identifier: Apache-2.0
       <rect width="515" height="150" rx="17" fill="#fff" stroke="#99c9c0" stroke-width="1.35"/>
       <rect x="18" y="18" width="36" height="36" rx="10" fill="#ecfdf5"/>
       <path d="M28 28h16v17H28zM31 24h10v4H31m0 7h10m-10 5h7" fill="none" stroke="#0f766e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-      <text x="67" y="31" fill="#0f766e" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing="1">CLANGD / C++ WRITE PATH</text>
+      <text x="67" y="31" fill="#0f766e" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5" font-weight="680" letter-spacing="1">PROVIDER-NEUTRAL MODEL</text>
       <text x="67" y="51" fill="#0f172a" font-size="17" font-weight="650">FactBatch v1 · one file</text>
-      <text x="18" y="82" fill="#475569" font-size="12">Python adapter → per-file facts → generation manifest → CAS</text>
+      <text x="18" y="82" fill="#475569" font-size="12">Validated per-file facts with no database lifecycle</text>
 
       <g transform="translate(18 99)" font-family="Geist Mono, ui-monospace, monospace" font-size="10.5">
         <rect width="104" height="29" rx="8" fill="#f0fdfa" stroke="#99f6e4"/>
@@ -131,7 +131,7 @@ SPDX-License-Identifier: Apache-2.0
         <text x="267" y="19" text-anchor="middle" fill="#0f766e">provenance</text>
         <rect x="316" width="163" height="29" rx="14.5" fill="#ecfdf5" stroke="#a7f3d0"/>
         <circle cx="331" cy="14.5" r="3.5" fill="#16a34a"/>
-        <text x="342" y="19" fill="#166534" font-size="10">fmt unchanged · 51/51</text>
+        <text x="342" y="19" fill="#166534" font-size="10">native buffer · no DB</text>
       </g>
     </g>
 

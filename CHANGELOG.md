@@ -24,8 +24,13 @@ All notable user-facing changes are recorded here. CodeNib follows
   deleted.
 - The supported product database boundary is now the domain-local `WikiStore`
   with its SQLite WAL implementation. `RepoManifest`, BM25, FAISS, igraph, and
-  portable context payloads remain file artifacts; generic retained storage and
-  its explicit CLI commands are frozen as experimental/compatibility surfaces.
+  portable context payloads remain file artifacts. Existing compiler caches use
+  `artifact pack`; portable artifacts continue through `artifact verify` and
+  `mcp --artifact`.
+- The next release is a breaking storage-boundary release. Users who still need
+  data from a v0.2.2 SQLite catalog must run `artifact materialize` with a pinned
+  v0.2.2 environment before upgrading; the resulting portable artifact remains
+  supported.
 
 ### Removed
 
@@ -34,13 +39,12 @@ All notable user-facing changes are recorded here. CodeNib follows
   orchestration, `/api/index-jobs` write/read routes, and index-status job or
   update-capability fields. Index status remains available as a read-only
   `RepoManifest` projection.
-- The unreleased catalog-selected `codenib mcp` cold-start mode. Existing
-  retained data can still be materialized with `codenib artifact materialize` and
-  served through the supported `codenib mcp --artifact [--repo]` path.
+- The unreleased catalog-selected `codenib mcp` cold-start mode. Portable
+  artifacts remain served through `codenib mcp --artifact [--repo]`.
 - The unreleased `storage audit` command and `index --publish-retained` path.
   Those two batches removed 1,407 production lines and 1,742 dedicated test
   lines, including the audit execution path, eight index-only options, and
-  three compiler exports; ordinary indexing and artifact bridges remain.
+  three compiler exports; ordinary indexing remained unchanged in that batch.
 - The post-v0.2.2 retained-storage benchmark gate, its manual Make target, and
   noncanonical readiness receipt. The report-only experiment had no product or
   CI workflow caller and could never report `promotion_eligible=true`; removing
@@ -51,9 +55,14 @@ All notable user-facing changes are recorded here. CodeNib follows
   test modules (22,170 lines), 73 lazy exports, two interruptible CAS methods,
   one command with two execution paths, and four schema migrations; changes
   inside retained files bring the batch total to 21,214 production and 29,352
-  test lines removed. The published v0.2.2 schema-v4 job catalog remains
-  compatible; catalogs written only by unreleased `main` at newer versions are
-  rejected as newer.
+  test lines removed.
+- The complete v0.2.2 generic retained-storage compatibility surface:
+  `codenib.storage`, its schema-v4 SQLite catalog and local CAS, `artifact
+  import-cache`, `artifact materialize`, and the retained compiler bridge.
+  Normal index, Wiki, portable-artifact, publish, and MCP paths are unchanged.
+- The catalog-backed clangd FactBatch publication/reuse experiment and its
+  profiling target. Provider-neutral FactBatch models, resolvers, native buffer
+  transport, and the promoted clangd query index remain independent of storage.
 
 ## [0.2.2] - 2026-08-21
 

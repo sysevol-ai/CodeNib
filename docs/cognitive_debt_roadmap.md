@@ -129,26 +129,29 @@ Status: in progress.
       as manifest-bound file artifacts rather than catalog records.
 - [x] Remove the optional Web `index_storage` configuration, retained job
       orchestration, reconciliation, and runtime-activation path.
-- [x] Freeze `codenib.storage` and explicit retained-storage CLI commands as
-      experimental/compatibility surfaces without adding PostgreSQL, S3,
-      generic GC, or backend discovery.
+- [x] Freeze `codenib.storage` and explicit retained-storage CLI commands while
+      their v0.2.2 consumers and release boundary are audited; add no
+      PostgreSQL, S3, generic GC, or backend discovery.
 - [x] Remove the unreleased audit, direct MCP, index dual-write, benchmark-gate,
       durable-execution slices, and the two unreachable retained BM25
       generation plan/replay helpers left by that execution stack. The orphan
       closure removed 231 production lines, zero test lines, zero scripts, and
-      zero public entry points. The frozen CLI surface now contains only the
-      two published `artifact import-cache` and `artifact materialize`
+      zero public entry points. At that stage, the frozen CLI surface contained
+      only the two published `artifact import-cache` and `artifact materialize`
       compatibility bridges.
-- [ ] Remove the frozen surface in consumer-proven, release-aware batches.
+- [x] Use the next breaking release as the removal boundary for the complete
+      frozen surface: delete `codenib.storage`, the two retained artifact
+      commands, retained compiler bridges, and the catalog-backed FactBatch
+      publication experiment. Existing catalogs must be materialized with a
+      pinned v0.2.2 environment before upgrade.
 - [x] Move portable-artifact validation contracts into the artifact-neutral
-      `_bounded_json` module so default Web imports no longer cross the generic
-      storage namespace; retain only the protocol compatibility wrapper.
+      `_bounded_json` module so default Web imports no longer cross a generic
+      storage namespace.
 - [ ] Bound Wiki generation-lock waiting and make maintenance inspection
       physically read-only without broadening the Wiki protocol.
 
 Exit condition: protected product journeys use only the Wiki domain database
-and manifest-bound artifacts; every remaining generic storage surface has a
-named compatibility consumer and removal decision.
+and manifest-bound artifacts; no generic storage surface remains.
 
 ### S2: Stable versus labs packaging
 
@@ -229,6 +232,7 @@ Status: pending.
 | 2026-08-24 | Retire three unowned retrieval evaluation scripts | RFC #133 remains closed and canonical retrieval metrics remain covered in `codenib.eval.retrieval_eval` | Remove the transitional comparator, manual smoke, and duplicate metric recomputation |
 | 2026-08-24 | Start runtime convergence at manifest freshness | `RepoManifest.index_is_current` already owns commit, fingerprint, and source-selection identity; authenticated graph loading requires a `symbol_graph` entry | Delete the weaker Web-only freshness rule and the unusable vector-sidecar discovery path; add rejection regressions |
 | 2026-09-01 | Make WikiStore the only product database and stop the generic backend program | Storage audit counts, protected-journey consumer tracing, and the one-table Wiki conformance results are summarized in `storage_backend_roadmap.md` | Remove the Web retained-storage vertical; freeze generic storage/CLI compatibility code and delete it by proven consumer; close PostgreSQL, S3, generic GC, and dynamic-registry plans |
+| 2026-09-02 | Use the next release as the generic-storage removal boundary | The consumer audit found only the two retained artifact bridges and one catalog-backed FactBatch profile; ordinary product routes were independent | Delete the complete package and callers; keep v0.2.2 only as the pre-upgrade materialization tool |
 
 ## Completion Gate
 

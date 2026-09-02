@@ -49,6 +49,21 @@ _COMPILED_BINARY_SUFFIXES = (
     ".pyd",
     ".so",
 )
+_RETIRED_RUNTIME_PREFIXES = ("codenib/storage/",)
+_RETIRED_RUNTIME_MEMBERS = frozenset(
+    {
+        "codenib/compiler/cache_import.py",
+        "codenib/compiler/manifest_export.py",
+        "codenib/compiler/manifest_import.py",
+        "codenib/compiler/manifest_materialization.py",
+        "codenib/compiler/manifest_storage.py",
+        "codenib/compiler/retained_manifest_contract.py",
+        "codenib/compiler/retained_snapshot.py",
+        "codenib/facts/clangd.py",
+        "codenib/facts/generation.py",
+        "codenib/facts/storage.py",
+    }
+)
 
 
 def validate_readme_citation(readme: str) -> None:
@@ -140,6 +155,25 @@ def _is_compiled_binary(member: str) -> bool:
     return filename.endswith(_COMPILED_BINARY_SUFFIXES) or ".so." in filename
 
 
+def _retired_runtime_members(
+    members: set[str],
+    *,
+    archive_root: str | None = None,
+) -> list[str]:
+    prefix = f"{archive_root}/" if archive_root else ""
+    retired = []
+    for member in members:
+        if prefix and not member.startswith(prefix):
+            continue
+        relative = member[len(prefix) :]
+        if relative in _RETIRED_RUNTIME_MEMBERS or any(
+            relative.startswith(retired_prefix)
+            for retired_prefix in _RETIRED_RUNTIME_PREFIXES
+        ):
+            retired.append(member)
+    return sorted(retired)
+
+
 def select_compatible_wheel(
     dist_dir: Path,
     *,
@@ -187,6 +221,12 @@ def _validate_wheel(wheel: Path, name: str, version: str) -> None:
         if missing:
             raise ReleaseValidationError(
                 f"{wheel.name} is missing packaged runtime files: {', '.join(missing)}"
+            )
+        retired = _retired_runtime_members(members)
+        if retired:
+            raise ReleaseValidationError(
+                f"{wheel.name} contains retired storage runtime files: "
+                + ", ".join(retired)
             )
         if not any(
             member.startswith("codenib/web/frontend/assets/") and member.endswith(".js")
@@ -262,6 +302,12 @@ def _validate_sdist(sdist: Path, name: str, version: str) -> None:
         if missing:
             raise ReleaseValidationError(
                 f"{sdist.name} is missing source-release files: {', '.join(missing)}"
+            )
+        retired = _retired_runtime_members(members, archive_root=root)
+        if retired:
+            raise ReleaseValidationError(
+                f"{sdist.name} contains retired storage runtime files: "
+                + ", ".join(retired)
             )
         binary_members = sorted(
             member.name

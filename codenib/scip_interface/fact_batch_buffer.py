@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Mapping
 
-from ..facts import (
+from ..facts.model import (
     CAPABILITY_DEFINITIONS,
     CAPABILITY_DIAGNOSTICS,
     CAPABILITY_EDGES,

@@ -976,7 +976,6 @@ class ClangdGraphDecoder:
         self._graph_materialized = False
         self._range_indexes_built = False
         self._records_collected = False
-        self._record_collection_errors: List[str] = []
         self._records_snapshot_id: Optional[str] = None
         self.query_index = None
         self.position_query_index = None
@@ -1008,20 +1007,10 @@ class ClangdGraphDecoder:
 
         return self.code_graph
 
-    def collect_records(self, *, strict: bool = False) -> "ClangdGraphDecoder":
-        """Collect normalized clangd records without materializing a graph.
-
-        This is the provider-neutral boundary used by durable FactBatch
-        publication.  ``strict=True`` rejects missing or malformed shards so
-        a partially decoded index cannot be published as a ready generation.
-        """
+    def collect_records(self) -> "ClangdGraphDecoder":
+        """Collect normalized clangd records before graph materialization."""
 
         if self._records_collected:
-            if strict and self._record_collection_errors:
-                raise RuntimeError(
-                    "clangd record collection was incomplete: "
-                    + "; ".join(self._record_collection_errors)
-                )
             if self.query_snapshot_id:
                 if self._records_snapshot_id != self.query_snapshot_id:
                     raise RuntimeError(
@@ -1033,11 +1022,7 @@ class ClangdGraphDecoder:
 
         if self.query_snapshot_id:
             self._verify_native_snapshot("before legacy record collection")
-        self._record_collection_errors = []
-        if strict:
-            self._collect_all_idx(strict=True)
-        else:
-            self._collect_all_idx()
+        self._collect_all_idx()
         if self.query_snapshot_id:
             self._verify_native_snapshot("after legacy record collection")
         self._build_id_to_display()
@@ -1327,19 +1312,14 @@ class ClangdGraphDecoder:
     # Pass 1: Collect
     # ------------------------------------------------------------------
 
-    def _collect_all_idx(self, *, strict: bool = False):
+    def _collect_all_idx(self):
         """Parse all .idx files and merge symbols/refs/relations."""
         idx_files = sorted(self.idx_directory.glob("*.idx"))
         if not idx_files:
-            diagnostic = f"No .idx files found in {self.idx_directory}"
-            self._record_collection_errors.append(diagnostic)
-            if strict:
-                raise RuntimeError(diagnostic)
-            logger.warning(diagnostic)
+            logger.warning(f"No .idx files found in {self.idx_directory}")
             return
 
-        # Merge into temporary accumulators so strict collection is atomic
-        # without retaining every parsed shard until the final merge.
+        # Merge into temporary accumulators before replacing decoder state.
         symbols = dict(self._symbols)
         refs = {symbol_id: list(values) for symbol_id, values in self._refs.items()}
         relations = list(self._relations)
@@ -1347,12 +1327,6 @@ class ClangdGraphDecoder:
             try:
                 parsed = parse_idx_file(str(idx_file))
             except Exception as e:
-                diagnostic = f"{idx_file.name}: {e}"
-                self._record_collection_errors.append(diagnostic)
-                if strict:
-                    raise RuntimeError(
-                        f"Failed to parse clangd index {diagnostic}"
-                    ) from e
                 logger.warning(f"Failed to parse {idx_file.name}: {e}")
                 continue
 

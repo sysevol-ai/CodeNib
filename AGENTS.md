@@ -51,11 +51,9 @@ completed.
 - Keep `RepoManifest`, BM25, FAISS, igraph, and portable context payloads as
   manifest-bound file artifacts. Do not move their refs, snapshots, jobs,
   leases, or lifecycle into a generic database or object-store abstraction.
-- Treat `codenib.storage` and explicit retained-storage CLI commands as frozen
-  experimental/compatibility surfaces. Changes are limited to high-severity
-  correctness/security fixes, compatibility needed for planned removal, and
-  subtraction. Do not add schema state, protocol methods, backends, re-exports,
-  or product routes to them.
+- `codenib.storage` and the retained-storage CLI commands were removed at the
+  next-release boundary after v0.2.2. Do not reintroduce a generic catalog,
+  CAS, schema state, storage protocol, backend, re-export, or product route.
 - PostgreSQL, S3-compatible storage, generic garbage collection, shared ANN,
   distributed coordination, and backend discovery are closed plans. Reopening
   one requires a current non-test product route, a deployment constraint the
@@ -65,7 +63,7 @@ completed.
 - Put any future persistence protocol at a real domain I/O boundary. Name the
   current production call site, use one domain protocol and one implementation
   first, and remove the old path in the same program. Sharing SQLite does not
-  justify extending `IndexCatalog` or `ObjectStore`.
+  justify recreating a generic catalog or object-store protocol.
 - For a non-trivial cross-thread/process lock, retained owner, or multi-phase
   lifecycle, state the invariant and linearization point in the PR or adjacent
   docstring. Also state lock order when multiple locks exist and recovery
