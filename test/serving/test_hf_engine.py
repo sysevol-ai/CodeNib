@@ -16,9 +16,6 @@ from typing import List, Tuple
 
 import pytest
 
-torch = pytest.importorskip("torch")
-pytest.importorskip("transformers")
-
 # Needs the model runtime from the ``serving`` extra, so it is not part of the
 # default unit tier.
 pytestmark = pytest.mark.slow
@@ -39,6 +36,8 @@ def _tiny_model():
     Built from config (no download). Eager attention is required so a custom 4D
     attention mask is honored rather than ignored by a fused kernel.
     """
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("transformers")
     from transformers import LlamaConfig, LlamaForCausalLM
 
     torch.manual_seed(0)
@@ -71,6 +70,8 @@ def _branches(tree: DraftTree) -> List[Tuple[DraftNode, List[int]]]:
 
 def _flat_argmax_after(model, seq: List[int]) -> int:
     """Greedy next-token id the model predicts after the flat sequence ``seq``."""
+    import torch
+
     with torch.no_grad():
         logits = model(torch.tensor([seq], dtype=torch.long)).logits[0]
     return int(logits[len(seq) - 1].argmax())

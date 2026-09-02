@@ -30,28 +30,30 @@ import pytest
 from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 
-
-def _cuda_available() -> bool:
-    try:
-        import torch
-    except Exception:
-        return False
-    return bool(torch.cuda.is_available())
-
-
-pytestmark = [
-    pytest.mark.slow,
-    pytest.mark.skipif(
-        not _cuda_available(),
-        reason="embedding_search e2e requires a CUDA-capable torch install",
-    ),
-]
+pytestmark = pytest.mark.slow
 
 DEFAULT_EMBEDDING_MODEL = "nomic-ai/CodeRankEmbed"
 DEFAULT_EMBEDDING_DIM = 768
 DEFAULT_EMBEDDING_PROVIDER = "huggingface"
 
 EMBEDDING_INDEX_PATH = "/tmp/embedding_e2e_index"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _require_embedding_runtime():
+    """Probe optional ML dependencies only when this slow module is selected."""
+
+    torch = pytest.importorskip(
+        "torch",
+        reason="embedding_search e2e requires torch",
+    )
+    cuda = getattr(torch, "cuda", None)
+    try:
+        cuda_available = cuda is not None and bool(cuda.is_available())
+    except Exception:
+        cuda_available = False
+    if not cuda_available:
+        pytest.skip("embedding_search e2e requires a CUDA-capable torch install")
 
 
 def _load_test_owned_vector(store, path):
