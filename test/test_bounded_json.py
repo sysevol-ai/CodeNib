@@ -17,6 +17,7 @@ import pytest
 from codenib._bounded_json import (
     canonical_json_array_chunks,
     iter_bounded_json_array,
+    snapshot_bounded_exact_json,
     validate_bounded_json_stream,
 )
 
@@ -31,6 +32,79 @@ class _ChunkReader:
         block = self.payload[self.offset : self.offset + self.chunk_size]
         self.offset += len(block)
         return block
+
+
+def test_bounded_exact_json_snapshot_detaches_containers() -> None:
+    source = {"items": [{"value": "original"}], "enabled": True}
+
+    snapshot = snapshot_bounded_exact_json(source, label="response")
+
+    assert snapshot == source
+    assert snapshot is not source
+    assert snapshot["items"] is not source["items"]
+    source["items"][0]["value"] = "changed"
+    assert snapshot["items"] == [{"value": "original"}]
+
+
+class _TrapDict(dict[str, object]):
+    calls = 0
+
+    def items(self):  # type: ignore[no-untyped-def]
+        type(self).calls += 1
+        raise AssertionError("dict subclass was traversed")
+
+
+class _TrapList(list[object]):
+    calls = 0
+
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        type(self).calls += 1
+        raise AssertionError("list subclass was traversed")
+
+
+def test_bounded_exact_json_snapshot_rejects_container_subclasses_without_traversal() -> (
+    None
+):
+    for value, trap_type in ((_TrapDict(), _TrapDict), (_TrapList(), _TrapList)):
+        trap_type.calls = 0
+        with pytest.raises(ValueError, match="non-exact JSON value"):
+            snapshot_bounded_exact_json(value, label="response")
+        assert trap_type.calls == 0
+
+
+@pytest.mark.parametrize(
+    ("value", "limits", "message"),
+    [
+        ([None], {"max_nodes": 1}, "node limit"),
+        ([[None]], {"max_depth": 2}, "depth limit"),
+        ({"ab": None}, {"max_key_chars": 1}, "invalid object key"),
+        ({"a": "b"}, {"max_text_chars": 1}, "invalid text"),
+        ({"": None}, {}, "invalid object key"),
+        ({"value": "nul\x00text"}, {}, "invalid text"),
+        (2**63, {}, "invalid integer"),
+        (float("nan"), {}, "non-finite number"),
+        (object(), {}, "non-exact JSON value"),
+    ],
+)
+def test_bounded_exact_json_snapshot_enforces_exact_values_and_budgets(
+    value: object,
+    limits: dict[str, int],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        snapshot_bounded_exact_json(value, label="response", **limits)
+
+
+def test_bounded_exact_json_snapshot_supports_domain_error_types() -> None:
+    class DomainIntegrityError(RuntimeError):
+        pass
+
+    with pytest.raises(DomainIntegrityError, match="non-exact JSON value"):
+        snapshot_bounded_exact_json(
+            object(),
+            label="response",
+            error_type=DomainIntegrityError,
+        )
 
 
 @pytest.mark.parametrize(
@@ -455,8 +529,7 @@ def test_canonical_array_chunks_match_the_existing_json_contract() -> None:
 
 
 def _pipeline_rss(path: Path) -> dict[str, int]:
-    script = textwrap.dedent(
-        """
+    script = textwrap.dedent("""
         import hashlib
         import json
         import os
@@ -503,8 +576,7 @@ def _pipeline_rss(path: Path) -> dict[str, int]:
                 }
             )
         )
-        """
-    )
+        """)
     result = subprocess.run(
         [sys.executable, "-c", script, str(path)],
         check=True,

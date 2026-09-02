@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Incremental, complexity-bounded framing for UTF-8 JSON documents."""
+"""Complexity-bounded helpers for exact JSON values and UTF-8 documents."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import json
 import math
 import re
 from collections.abc import Iterable, Iterator
-from typing import Any, BinaryIO, Protocol
+from typing import Any, BinaryIO, NoReturn, Protocol
 
 _READ_BYTES = 1024 * 1024
 DEFAULT_MAX_ARRAY_ITEMS = 1_000_000
@@ -21,10 +21,82 @@ DEFAULT_MAX_DEPTH = 64
 DEFAULT_MAX_KEY_BYTES = 4_096
 DEFAULT_MAX_ATOM_BYTES = 1_024
 DEFAULT_MAX_STRING_BYTES = 64 * 1024 * 1024
+_DEFAULT_EXACT_JSON_MAX_DEPTH = 64
+_DEFAULT_EXACT_JSON_MAX_NODES = 250_000
+_DEFAULT_EXACT_JSON_MAX_TEXT_CHARS = 64 * 1024 * 1024
+_DEFAULT_EXACT_JSON_MAX_KEY_CHARS = 4_096
 
 
 class BinaryReader(Protocol):
     def read(self, size: int = -1) -> bytes: ...
+
+
+def snapshot_bounded_exact_json(
+    value: object,
+    *,
+    label: str,
+    max_depth: int = _DEFAULT_EXACT_JSON_MAX_DEPTH,
+    max_nodes: int = _DEFAULT_EXACT_JSON_MAX_NODES,
+    max_text_chars: int = _DEFAULT_EXACT_JSON_MAX_TEXT_CHARS,
+    max_key_chars: int = _DEFAULT_EXACT_JSON_MAX_KEY_CHARS,
+    error_type: type[Exception] = ValueError,
+) -> Any:
+    """Detach an exact built-in JSON value within aggregate resource bounds."""
+
+    nodes = 0
+    text_size = 0
+
+    def fail(message: str) -> NoReturn:
+        raise error_type(message)
+
+    def snapshot(current: object, depth: int) -> Any:
+        nonlocal nodes, text_size
+        nodes += 1
+        if nodes > max_nodes:
+            fail(f"{label} exceeds its node limit")
+        if depth > max_depth:
+            fail(f"{label} exceeds its depth limit")
+        if current is None or type(current) is bool:
+            return current
+        if type(current) is str:
+            text_size += len(current)
+            if text_size > max_text_chars or "\x00" in current:
+                fail(f"{label} contains invalid text")
+            return current
+        if type(current) is int:
+            if not -(2**63) <= current < 2**63:
+                fail(f"{label} contains an invalid integer")
+            return current
+        if type(current) is float:
+            if not math.isfinite(current):
+                fail(f"{label} contains a non-finite number")
+            return current
+        if type(current) is list:
+            if len(current) > max_nodes - nodes:
+                fail(f"{label} exceeds its node limit")
+            return [snapshot(child, depth + 1) for child in current]
+        if type(current) is dict:
+            if len(current) > max_nodes - nodes:
+                fail(f"{label} exceeds its node limit")
+            result: dict[str, Any] = {}
+            try:
+                for key, child in current.items():
+                    if type(key) is not str or not key or len(key) > max_key_chars:
+                        fail(f"{label} contains an invalid object key")
+                    text_size += len(key)
+                    if text_size > max_text_chars or "\x00" in key:
+                        fail(f"{label} contains an invalid object key")
+                    result[key] = snapshot(child, depth + 1)
+            except error_type:
+                raise
+            except Exception as exc:
+                raise error_type(f"{label} could not be snapshotted") from exc
+            if len(result) != len(current):
+                fail(f"{label} changed while snapshotted")
+            return result
+        fail(f"{label} contains a non-exact JSON value")
+
+    return snapshot(value, 1)
 
 
 def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -785,6 +857,7 @@ __all__ = [
     "canonical_json_bytes",
     "canonical_json_value_chunks",
     "iter_bounded_json_array",
+    "snapshot_bounded_exact_json",
     "validate_bounded_json_stream",
     "validate_json_complexity",
     "write_chunks",

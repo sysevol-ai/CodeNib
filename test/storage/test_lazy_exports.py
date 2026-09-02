@@ -12,6 +12,16 @@ def test_storage_exports_stay_compatible_without_eager_runtime_imports() -> None
     script = """
 import sys
 
+import codenib.web.app
+
+loaded_storage = {
+    name
+    for name in sys.modules
+    if name == "codenib.storage" or name.startswith("codenib.storage.")
+}
+if loaded_storage:
+    raise SystemExit(f"web app imported retained storage: {loaded_storage}")
+
 import codenib.storage as storage
 
 storage_modules = {
@@ -26,21 +36,6 @@ if missing or extra:
     raise SystemExit(f"lazy export mismatch: missing={missing}, extra={extra}")
 if not set(storage.__all__) <= set(dir(storage)):
     raise SystemExit("dir(codenib.storage) omitted public lazy exports")
-
-import codenib.web.app
-
-allowed_modules = {
-    "codenib.storage.models",
-    "codenib.storage.protocols",
-}
-loaded = {
-    name for name in sys.modules if name.startswith("codenib.storage.")
-}
-unexpected = loaded - allowed_modules
-if unexpected:
-    raise SystemExit(
-        f"web app imported storage modules outside the portable allowlist: {unexpected}"
-    )
 
 for name in storage.__all__:
     getattr(storage, name)
