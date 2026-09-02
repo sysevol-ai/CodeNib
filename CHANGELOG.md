@@ -44,6 +44,11 @@ All notable user-facing changes are recorded here. CodeNib follows
   Those two batches removed 1,407 production lines and 1,742 dedicated test
   lines, including the audit execution path, eight index-only options, and
   three compiler exports; ordinary indexing and artifact bridges remain.
+- The post-v0.2.2 retained-storage benchmark gate, its manual Make target, and
+  noncanonical readiness receipt. The report-only experiment had no product or
+  CI workflow caller and could never report `promotion_eligible=true`; removing
+  it deleted a 4,913-line harness, 3,468 test lines, 367 evidence lines, 148
+  documentation lines, eight Make variables, and one manual target.
 
 ### Security
 
