@@ -38,6 +38,7 @@ from .._bounded_json import (
     DEFAULT_MAX_NODES_PER_ELEMENT,
     canonical_json_value_chunks,
     iter_bounded_json_array,
+    snapshot_bounded_exact_json,
     validate_bounded_json_stream,
     validate_json_complexity,
 )
@@ -66,8 +67,6 @@ from ..source_fingerprint import (
     RepositorySourceIdentitySnapshot,
     is_secure_source_fingerprint_v2,
 )
-from ..storage.models import StorageIntegrityError
-from ..storage.protocols import snapshot_retained_import_response
 from .security import (
     _contains_pattern,
     _interitem_cancellation,
@@ -3267,15 +3266,15 @@ def validate_portable_vector_persistence_semantics(
     """
 
     try:
-        config_value = snapshot_retained_import_response(
+        config_value = snapshot_bounded_exact_json(
             config,
             label="portable vector persistence config",
         )
-        view_config_value = snapshot_retained_import_response(
+        view_config_value = snapshot_bounded_exact_json(
             view_config,
             label="portable vector view config",
         )
-    except StorageIntegrityError as exc:
+    except ValueError as exc:
         raise ValueError(
             "portable vector persistence inputs must be bounded exact JSON objects"
         ) from exc

@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import math
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -21,6 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
+from .._bounded_json import snapshot_bounded_exact_json
 from .models import (
     INDEX_JOB_EVENT_PAYLOAD_MAX_DEPTH,
     INDEX_JOB_EVENT_PAYLOAD_MAX_KEY_CHARS,
@@ -59,70 +59,15 @@ _RetainedResult = TypeVar("_RetainedResult")
 def snapshot_retained_import_response(value: object, *, label: str) -> Any:
     """Detach and enforce the public exact-JSON retained response budget."""
 
-    nodes = 0
-    text_size = 0
-
-    def snapshot(current: object, depth: int) -> Any:
-        nonlocal nodes, text_size
-        nodes += 1
-        if nodes > RETAINED_IMPORT_RESPONSE_MAX_NODES:
-            raise StorageIntegrityError(f"{label} exceeds its node limit")
-        if depth > RETAINED_IMPORT_RESPONSE_MAX_DEPTH:
-            raise StorageIntegrityError(f"{label} exceeds its depth limit")
-        if current is None or type(current) is bool:
-            return current
-        if type(current) is str:
-            text_size += len(current)
-            if text_size > RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS or "\x00" in current:
-                raise StorageIntegrityError(f"{label} contains invalid text")
-            return current
-        if type(current) is int:
-            if not -(2**63) <= current < 2**63:
-                raise StorageIntegrityError(f"{label} contains an invalid integer")
-            return current
-        if type(current) is float:
-            if not math.isfinite(current):
-                raise StorageIntegrityError(f"{label} contains a non-finite number")
-            return current
-        if type(current) is list:
-            if len(current) > RETAINED_IMPORT_RESPONSE_MAX_NODES - nodes:
-                raise StorageIntegrityError(f"{label} exceeds its node limit")
-            return [snapshot(child, depth + 1) for child in current]
-        if type(current) is dict:
-            if len(current) > RETAINED_IMPORT_RESPONSE_MAX_NODES - nodes:
-                raise StorageIntegrityError(f"{label} exceeds its node limit")
-            result: dict[str, Any] = {}
-            try:
-                for key, child in current.items():
-                    if (
-                        type(key) is not str
-                        or not key
-                        or len(key) > RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS
-                    ):
-                        raise StorageIntegrityError(
-                            f"{label} contains an invalid object key"
-                        )
-                    text_size += len(key)
-                    if (
-                        text_size > RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS
-                        or "\x00" in key
-                    ):
-                        raise StorageIntegrityError(
-                            f"{label} contains an invalid object key"
-                        )
-                    result[key] = snapshot(child, depth + 1)
-            except StorageIntegrityError:
-                raise
-            except Exception as exc:
-                raise StorageIntegrityError(
-                    f"{label} could not be snapshotted"
-                ) from exc
-            if len(result) != len(current):
-                raise StorageIntegrityError(f"{label} changed while snapshotted")
-            return result
-        raise StorageIntegrityError(f"{label} contains a non-exact JSON value")
-
-    return snapshot(value, 1)
+    return snapshot_bounded_exact_json(
+        value,
+        label=label,
+        max_depth=RETAINED_IMPORT_RESPONSE_MAX_DEPTH,
+        max_nodes=RETAINED_IMPORT_RESPONSE_MAX_NODES,
+        max_text_chars=RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS,
+        max_key_chars=RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS,
+        error_type=StorageIntegrityError,
+    )
 
 
 @runtime_checkable

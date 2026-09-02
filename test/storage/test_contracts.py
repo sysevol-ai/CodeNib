@@ -9,6 +9,7 @@ import hashlib
 import pytest
 
 import codenib.storage as storage_module
+import codenib.storage.protocols as storage_protocols
 from codenib.storage import (
     RETAINED_IMPORT_CATALOG_CONTRACT,
     RETAINED_IMPORT_RESPONSE_MAX_DEPTH,
@@ -271,6 +272,38 @@ def test_retained_import_response_budgets_are_public_capability_contracts() -> N
     assert RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS == 4_096
     assert RETAINED_IMPORT_RESPONSE_MAX_NODES == 250_000
     assert RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS == 64 * 1024 * 1024
+
+
+@pytest.mark.parametrize(
+    ("constant", "limit", "value", "message"),
+    [
+        ("RETAINED_IMPORT_RESPONSE_MAX_DEPTH", 1, [None], "depth limit"),
+        ("RETAINED_IMPORT_RESPONSE_MAX_NODES", 1, [None], "node limit"),
+        (
+            "RETAINED_IMPORT_RESPONSE_MAX_TEXT_CHARS",
+            1,
+            {"a": "b"},
+            "invalid text",
+        ),
+        (
+            "RETAINED_IMPORT_RESPONSE_MAX_KEY_CHARS",
+            1,
+            {"ab": None},
+            "invalid object key",
+        ),
+    ],
+)
+def test_retained_import_response_wrapper_reads_dynamic_public_budgets(
+    monkeypatch: pytest.MonkeyPatch,
+    constant: str,
+    limit: int,
+    value: object,
+    message: str,
+) -> None:
+    monkeypatch.setattr(storage_protocols, constant, limit)
+
+    with pytest.raises(StorageIntegrityError, match=message):
+        storage_protocols.snapshot_retained_import_response(value, label="response")
 
 
 def test_retained_import_catalog_requires_explicit_contract_opt_in() -> None:

@@ -102,7 +102,7 @@ product core.
 
 ### W1: Remove the Web retained-storage route
 
-Status: complete in the current subtraction branch.
+Status: complete.
 
 - `index_storage` configuration and Web lifespan composition are gone.
 - Retained index-job read/write routes, scheduling, reconciliation, runtime
@@ -115,10 +115,10 @@ Status: in progress.
 
 - Inventory every `codenib.storage` export and CLI command against non-test
   callers.
-- Move the portable-artifact validation response and error types that Web still
-  reaches through `storage.models` and `storage.protocols` to an
-  artifact-neutral owner; this residual import opens no catalog or runtime, but
-  it keeps the package boundary wider than the target architecture.
+- Portable-artifact validation now owns its bounded exact-JSON snapshot in the
+  artifact-neutral `_bounded_json` module. The retained protocol keeps a
+  compatibility wrapper, while the default Web import path no longer reaches
+  `codenib.storage`.
 - Remove zero-consumer protocols and their intersection/conformance tests in
   focused batches.
 - Separate any genuinely required compatibility adapter from experimental
