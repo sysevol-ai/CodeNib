@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -23,6 +24,8 @@ forbidden = {
     "litellm",
     "matplotlib",
     "sentence_transformers",
+    "torch",
+    "transformers",
 }
 loaded = sorted(forbidden.intersection(sys.modules))
 if loaded:
@@ -36,6 +39,64 @@ if loaded:
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_non_slow_collection_does_not_probe_ml_runtimes() -> None:
+    root = Path(__file__).resolve().parents[1]
+    script = """
+import importlib.abc
+import sys
+
+import pytest
+
+watched = {"sentence_transformers", "torch", "transformers"}
+attempts = set()
+
+class RuntimeProbe(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname.partition(".")[0] in watched:
+            attempts.add(fullname)
+            raise ModuleNotFoundError(
+                f"blocked ML runtime probe: {fullname}",
+                name=fullname,
+            )
+        return None
+
+probe = RuntimeProbe()
+sys.meta_path.insert(0, probe)
+try:
+    exit_code = pytest.main(
+        [
+            "--collect-only",
+            "-q",
+            "-m",
+            "not slow",
+            "test/agent/test_embedding_search_e2e.py",
+            "test/serving/test_hf_engine.py",
+        ]
+    )
+finally:
+    sys.meta_path.remove(probe)
+
+allowed_exit_codes = {pytest.ExitCode.OK, pytest.ExitCode.NO_TESTS_COLLECTED}
+if exit_code not in allowed_exit_codes:
+    raise SystemExit(f"pytest collection failed with exit code {exit_code}")
+if attempts:
+    raise SystemExit(f"ML runtimes probed during collection: {sorted(attempts)}")
+"""
+
+    env = dict(os.environ)
+    env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop("PYTEST_PLUGINS", None)
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_sparse_ask_runtime_does_not_require_semantic_or_graph_extras() -> None:
