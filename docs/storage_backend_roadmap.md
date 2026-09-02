@@ -113,29 +113,27 @@ Status: complete.
 
 Status: in progress.
 
-- Inventory every `codenib.storage` export and CLI command against non-test
-  callers.
-- Portable-artifact validation now owns its bounded exact-JSON snapshot in the
-  artifact-neutral `_bounded_json` module. The retained protocol keeps a
-  compatibility wrapper, while the default Web import path no longer reaches
-  `codenib.storage`.
-- Removed the unreleased, zero-consumer `storage audit` command and its private
-  reachability implementation. The batch removed one command, 498 production
-  lines, and 512 dedicated test lines while retaining the shared SQLite catalog
-  validation snapshot used by surviving compatibility paths.
-- The unreleased catalog-selected MCP cold-start mode is gone. Existing retained
-  data now follows the published bridge: `artifact materialize`, then ordinary
-  `mcp --artifact [--repo]`; the profiling candidate arms use the same route.
-  This batch removed 1,322 production lines and 3,004 test lines, one CLI mode,
-  eight mode-only options, four retained-context exports, and the direct CLI
-  and server execution paths.
-- Remove zero-consumer protocols and their intersection/conformance tests in
-  focused batches.
-- Separate any genuinely required compatibility adapter from experimental
-  publication, job, lease, snapshot, and ref machinery before deleting the
-  latter.
-- Report production lines, test lines, commands, exports, and execution paths
-  removed in each batch.
+Current outcome:
+
+- Default Web and portable-artifact validation no longer import
+  `codenib.storage`; bounded exact-JSON validation lives in the
+  artifact-neutral `_bounded_json` module.
+- The unreleased reachability audit, catalog-selected MCP cold start, and
+  `index --publish-retained` routes are gone. Ordinary `index`, `publish`, and
+  `mcp --artifact [--repo]` behavior is unchanged.
+- The published compatibility bridge remains explicit: `artifact import-cache`
+  captures an existing compiler cache and `artifact materialize` produces a
+  portable artifact. The released schema-v4 `JobCatalog` API remains readable
+  pending an explicit compatibility decision.
+
+Remaining gates:
+
+- Remove the report-only retained benchmark and the unreleased durable jobs,
+  worker, scheduler, publication, and schema-v5-v8 expansion.
+- Inventory every remaining `codenib.storage` export against a non-test caller;
+  delete zero-consumer protocols and intersection tests in focused batches.
+- Give every surviving compatibility surface a release/removal decision without
+  expanding it into a product storage layer.
 
 ### W3: Close the small Wiki operational gaps
 

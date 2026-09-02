@@ -18,14 +18,13 @@ an active receipt, then transfers the new generation to a caller-owned
 remain normative for commands that can still open existing retained data; they
 are not a product-database roadmap.
 
-The provider is not enabled by CodeNib's default compiler or runtime path. Five
-explicit routes use it: `codenib index --publish-retained` builds and publishes
-current BM25/vector views in one compiler-cache lease, `codenib artifact
-import-cache` recaptures an already existing selected cache, `codenib jobs
-run-once` prepares and publishes at most one eligible durable cache-import or
-retained-source BM25 job, `codenib jobs run` continuously schedules the same
-explicitly scoped jobs, and `codenib artifact materialize` publishes a retained
-catalog ref or immutable snapshot to a missing portable-artifact directory.
+The provider is not enabled by CodeNib's default compiler or runtime path. Four
+explicit routes use it: `codenib artifact import-cache` recaptures an already
+existing selected cache, `codenib jobs run-once` prepares and publishes at most
+one eligible durable cache-import or retained-source BM25 job, `codenib jobs
+run` continuously schedules the same explicitly scoped jobs, and `codenib
+artifact materialize` publishes a retained catalog ref or immutable snapshot to
+a missing portable-artifact directory.
 The only product database is `codenib.wiki.store.WikiStore` with its supported
 SQLite WAL implementation. The catalog, local SHA-256 CAS, and routes listed
 above are frozen experimental/compatibility code while existing data receives
@@ -128,66 +127,6 @@ completes the historical Gate C implementation. Automatic orphan GC, a crash
 journal, protection from hostile same-UID mutation, and route promotion are
 outside this frozen compatibility seam.
 
-## Publish a normal index build
-
-Use `--publish-retained` on the normal `codenib index` command to build or
-update BM25, vector, or both and publish the exact compiler result as one ready
-snapshot. This experimental compiler-to-retained route is scheduled for
-removal; without the flag, `codenib index` keeps its existing local-cache
-behavior and output.
-
-The route requires the same existing initialized SQLite catalog, fully
-preprovisioned strict `LocalCAS`, and private owner-only Linux workspace root
-described below. It never provisions those authorities. It uses CodeNib's
-canonical per-repository compiler cache; a first invocation may create that
-cache, but the cache's nearest existing real ancestor and physical storage
-topology are checked before creation. Inside the single compiler lease, the
-route freezes the newly created cache identity before the build, verifies it
-before publication and again after recapture, and rejects a changed or aliased
-cache instead of importing a different generation.
-
-All retained options are opt-in as one group. `--rebuild` is intentionally
-incompatible because a post-commit retry must reuse the current compiler
-generation rather than force new bytes. Selected views must be exactly BM25,
-vector, or BM25 plus vector; graph and Zoekt publication remain later
-milestones. For a first BM25-only publication:
-
-```bash
-codenib index /srv/src/repository \
-  --preset fast \
-  --publish-retained \
-  --catalog /var/lib/codenib/catalog.sqlite3 \
-  --cas-root /var/lib/codenib/cas \
-  --workspace-root /var/lib/codenib/workspaces \
-  --repository owner/repository \
-  --ref main \
-  --expected-generation 0
-```
-
-Use `--preset semantic` or `--view bm25,vector` with a configured embedding
-route for the combined portable view set. The command captures the retained
-source before compilation, then performs update-or-create, exact serialized
-manifest binding, all selected view plans and publications, and one context
-publication under the same cache lease. The retained importer performs no CAS
-or catalog data-plane operation until that lease is released; support,
-existing-storage open, and static contract probes may run earlier. A failed or
-stale selected view stops before retained publication.
-
-Each invocation uses fresh missing-only evidence destinations. Published
-evidence is warned about rather than deleted if a later step fails. On success,
-the normal index summary is followed by the snapshot, ref generation, evidence
-paths, and an immutable-snapshot `artifact materialize` command. If a result
-might have committed before it was observed, retry without `--rebuild`, with
-the original `--expected-generation`; unchanged source and compiler
-configuration resolve to the same snapshot with `changed=False` rather than
-advancing the ref again.
-
-This remains explicit offline dual-write. Keep the source/cache and storage
-namespaces trusted and quiescent, and apply the payload-size and storage-media
-benchmark gate described below before enabling it by default or treating it as
-a latency-sensitive worker path. MCP reuse goes through `artifact materialize`
-and the ordinary `mcp --artifact` path; runtime hot switching is not supported.
-
 ## Import compiler query views
 
 `codenib artifact import-cache` imports an exact current BM25 view, vector view,
@@ -195,9 +134,10 @@ or both from an existing `IndexCompiler` cache as one ready retained snapshot.
 Omitting `--view` preserves the BM25-only default. Repeat `--view`, or pass a
 comma-separated value such as `--view bm25,vector`, to select views explicitly;
 the CLI canonicalizes the result to BM25 then vector. This remains an offline
-bootstrap for an already existing cache: it does not enable retained
-publication for an `index` invocation that lacks `--publish-retained`, import
-graph or Zoekt views, run an M2 fenced job, or hot-switch a runtime.
+bootstrap for an already existing cache: the normal `codenib index` command
+only writes that local cache, while retained publication requires this separate
+explicit import. It does not import graph or Zoekt views, run an M2 fenced job,
+or hot-switch a runtime.
 
 Prepare these authorities before running it:
 
@@ -596,10 +536,12 @@ from the timed inner route.
 The v4 harness compares five pairs and alternates AB/BA order for every pair:
 
 - Compiler cold: A runs ordinary `codenib index --preset fast` from an empty
-  cache; B runs the same command with retained publication.
+  cache; B runs that command and then explicitly imports the completed cache
+  with `codenib artifact import-cache`.
 - Compiler current: both arms receive equivalent verified current caches. A
-  measures an ordinary update; B performs the retained exact retry with the
-  original expected ref generation and verifies that the ref does not advance.
+  measures an ordinary update; B performs the same update followed by an exact
+  `artifact import-cache` retry with the original expected ref generation and
+  verifies that the ref does not advance.
 - Runtime cold compatibility: A loads the ordinary source-bound manifest MCP
   context; B loads a source-disabled artifact materialized from one catalog ref
   before the stopwatch. This sentinel measures the existing behavior gap

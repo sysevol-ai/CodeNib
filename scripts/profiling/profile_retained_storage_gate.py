@@ -2967,9 +2967,6 @@ def _provision_storage(paths: Mapping[str, str]) -> None:
 
 def _index_arguments(
     request: Mapping[str, Any],
-    paths: Mapping[str, str],
-    *,
-    candidate: bool,
 ) -> list[str]:
     subject = request["subject"]
     arguments = ["index", request["subject_root"], *request["view_set"]["index_args"]]
@@ -2978,25 +2975,32 @@ def _index_arguments(
     exclusions = subject["source_selection"]["exclude_subtrees"]
     for exclusion in exclusions:
         arguments.extend(("--exclude-dir", exclusion))
-    if candidate:
-        arguments.extend(
-            (
-                "--publish-retained",
-                "--catalog",
-                paths["catalog"],
-                "--cas-root",
-                paths["cas_root"],
-                "--workspace-root",
-                paths["workspace_root"],
-                "--repository",
-                subject["repository_key"],
-                "--ref",
-                "main",
-                "--expected-generation",
-                "0",
-            )
-        )
     return arguments
+
+
+def _import_cache_arguments(
+    request: Mapping[str, Any],
+    paths: Mapping[str, str],
+) -> list[str]:
+    return [
+        "artifact",
+        "import-cache",
+        request["subject_root"],
+        "--cache-dir",
+        os.fspath(_cache_manifest_path(Path(request["subject_root"])).parent),
+        "--catalog",
+        paths["catalog"],
+        "--cas-root",
+        paths["cas_root"],
+        "--workspace-root",
+        paths["workspace_root"],
+        "--repository",
+        request["subject"]["repository_key"],
+        "--ref",
+        "main",
+        "--expected-generation",
+        "0",
+    ]
 
 
 def _invoke_cli(arguments: Sequence[str]) -> tuple[int, str, str]:
@@ -3077,14 +3081,17 @@ def _prepare_sample(request: Mapping[str, Any], paths: Mapping[str, str]) -> Non
     if needs_storage:
         _provision_storage(paths)
     if cell == "compiler-current":
-        _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
+        _invoke_cli(_index_arguments(request))
+        if needs_storage:
+            _invoke_cli(_import_cache_arguments(request, paths))
     elif cell in {
         "runtime-cold",
         "runtime-cold-query-only",
         "runtime-cold-source-bound",
     }:
-        _invoke_cli(_index_arguments(request, paths, candidate=arm == "candidate"))
-        if arm == "candidate":
+        _invoke_cli(_index_arguments(request))
+        if needs_storage:
+            _invoke_cli(_import_cache_arguments(request, paths))
             _invoke_cli(_materialize_arguments(request, paths, generation=1))
         elif cell == "runtime-cold-query-only":
             _invoke_cli(
@@ -4231,13 +4238,9 @@ def _route_worker(value: object) -> dict[str, Any]:
     metrics: dict[str, float | int] | None = None
     with _sample_environment(paths):
         if request["cell"] in {"compiler-cold", "compiler-current"}:
-            _invoke_cli(
-                _index_arguments(
-                    request,
-                    paths,
-                    candidate=request["arm"] == "candidate",
-                )
-            )
+            _invoke_cli(_index_arguments(request))
+            if request["arm"] == "candidate":
+                _invoke_cli(_import_cache_arguments(request, paths))
             metrics = _freeze_route_measurement(
                 wall_started=wall_started,
                 cpu_started=cpu_started,

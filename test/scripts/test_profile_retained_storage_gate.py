@@ -2357,34 +2357,38 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
         ("compiler-current", "legacy"): [
             (
                 "cli",
-                profiler._index_arguments(
-                    request("compiler-current", "legacy"), paths, candidate=False
-                ),
+                profiler._index_arguments(request("compiler-current", "legacy")),
             )
         ],
         ("compiler-current", "candidate"): [
             ("provision", paths),
             (
                 "cli",
-                profiler._index_arguments(
-                    request("compiler-current", "candidate"), paths, candidate=True
+                profiler._index_arguments(request("compiler-current", "candidate")),
+            ),
+            (
+                "cli",
+                profiler._import_cache_arguments(
+                    request("compiler-current", "candidate"), paths
                 ),
             ),
         ],
         ("runtime-cold", "legacy"): [
             (
                 "cli",
-                profiler._index_arguments(
-                    request("runtime-cold", "legacy"), paths, candidate=False
-                ),
+                profiler._index_arguments(request("runtime-cold", "legacy")),
             )
         ],
         ("runtime-cold", "candidate"): [
             ("provision", paths),
             (
                 "cli",
-                profiler._index_arguments(
-                    request("runtime-cold", "candidate"), paths, candidate=True
+                profiler._index_arguments(request("runtime-cold", "candidate")),
+            ),
+            (
+                "cli",
+                profiler._import_cache_arguments(
+                    request("runtime-cold", "candidate"), paths
                 ),
             ),
             (
@@ -2397,11 +2401,7 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
         ("runtime-cold-query-only", "legacy"): [
             (
                 "cli",
-                profiler._index_arguments(
-                    request("runtime-cold-query-only", "legacy"),
-                    paths,
-                    candidate=False,
-                ),
+                profiler._index_arguments(request("runtime-cold-query-only", "legacy")),
             ),
             (
                 "cli",
@@ -2423,9 +2423,13 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
             (
                 "cli",
                 profiler._index_arguments(
-                    request("runtime-cold-query-only", "candidate"),
-                    paths,
-                    candidate=True,
+                    request("runtime-cold-query-only", "candidate")
+                ),
+            ),
+            (
+                "cli",
+                profiler._import_cache_arguments(
+                    request("runtime-cold-query-only", "candidate"), paths
                 ),
             ),
             (
@@ -2441,9 +2445,7 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
             (
                 "cli",
                 profiler._index_arguments(
-                    request("runtime-cold-source-bound", "legacy"),
-                    paths,
-                    candidate=False,
+                    request("runtime-cold-source-bound", "legacy")
                 ),
             )
         ],
@@ -2452,9 +2454,13 @@ def test_each_cell_uses_its_exact_prep_and_runtime_cli_contract(
             (
                 "cli",
                 profiler._index_arguments(
-                    request("runtime-cold-source-bound", "candidate"),
-                    paths,
-                    candidate=True,
+                    request("runtime-cold-source-bound", "candidate")
+                ),
+            ),
+            (
+                "cli",
+                profiler._import_cache_arguments(
+                    request("runtime-cold-source-bound", "candidate"), paths
                 ),
             ),
             (
