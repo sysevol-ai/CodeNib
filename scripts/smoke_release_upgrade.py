@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Exercise the supported CodeNib 0.2.2 to next-release upgrade boundary."""
+"""Exercise the supported CodeNib 0.2.2 to v0.2.3 upgrade boundary."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def _candidate_install_command(
 ) -> tuple[object, ...]:
     command: list[object] = [pip, "install", "--upgrade"]
     if expected_version == BASELINE_VERSION:
-        # Main can carry next-release changes before its dedicated version bump.
+        # Main can carry v0.2.3 changes before its dedicated version bump.
         # Reinstall the same-version candidate so the push gate still exercises
         # package-file removal instead of letting pip retain the baseline wheel.
         command.append("--force-reinstall")
@@ -131,7 +131,7 @@ def _assert_builder_contract(
         raise RuntimeError(f"unexpected BM25 builder contract: {mismatches!r}")
 
 
-def _assert_removed_storage_surface(
+def _assert_storage_surface(
     python: Path,
     *,
     root: Path,
@@ -143,9 +143,26 @@ def _assert_removed_storage_surface(
             "-c",
             (
                 "import argparse\n"
-                "import importlib.util\n"
                 "import json\n"
+                "from pathlib import Path\n"
+                "import tempfile\n"
+                "import codenib.storage as storage\n"
                 "from codenib.cli import build_parser\n"
+                "exports_resolved = all(\n"
+                "    getattr(storage, name) is not None for name in storage.__all__\n"
+                ")\n"
+                "with tempfile.TemporaryDirectory(\n"
+                "    prefix='codenib-storage-smoke-'\n"
+                ") as temporary_directory:\n"
+                "    wiki_store = storage.SQLiteWikiStore(\n"
+                "        Path(temporary_directory) / 'wiki.sqlite3'\n"
+                "    )\n"
+                "    published = wiki_store.publish(\n"
+                "        entry_id='page:release-smoke',\n"
+                "        repository_id='release/upgrade-smoke',\n"
+                "        envelope={'data': {'body': 'ok'}},\n"
+                "    )\n"
+                "    wiki_roundtrip = wiki_store.read(published.entry_id) == published\n"
                 "parser = build_parser()\n"
                 "top = next(action for action in parser._actions "
                 "if isinstance(action, argparse._SubParsersAction))\n"
@@ -153,8 +170,14 @@ def _assert_removed_storage_surface(
                 "commands = next(action for action in artifact._actions "
                 "if isinstance(action, argparse._SubParsersAction))\n"
                 "print(json.dumps({\n"
-                "    'storage_present': "
-                "importlib.util.find_spec('codenib.storage') is not None,\n"
+                "    'storage_kind': "
+                "'package' if hasattr(storage, '__path__') else 'module',\n"
+                "    'storage_exports': sorted(storage.__all__),\n"
+                "    'exports_resolved': exports_resolved,\n"
+                "    'wiki_roundtrip': wiki_roundtrip,\n"
+                "    'retired_exports': sorted(name for name in "
+                "('LocalCAS', 'SQLiteCatalog', 'StorageError') "
+                "if hasattr(storage, name)),\n"
                 "    'artifact_commands': sorted(commands.choices),\n"
                 "}))\n"
             ),
@@ -164,10 +187,23 @@ def _assert_removed_storage_surface(
     )
     surface = json.loads(result.stdout)
     if surface != {
-        "storage_present": False,
+        "storage_kind": "module",
+        "exports_resolved": True,
+        "wiki_roundtrip": True,
+        "storage_exports": [
+            "SQLiteWikiStore",
+            "WIKI_ENVELOPE_MAX_BYTES",
+            "WikiStore",
+            "WikiStoreCorruptionError",
+            "WikiStoreError",
+            "WikiStoreSchemaError",
+            "WikiStoreValidationError",
+            "WikiStoredEntry",
+        ],
+        "retired_exports": [],
         "artifact_commands": ["fetch", "mcp-config", "pack", "verify"],
     }:
-        raise RuntimeError(f"unexpected next-release storage surface: {surface!r}")
+        raise RuntimeError(f"unexpected candidate storage surface: {surface!r}")
 
 
 def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
@@ -317,7 +353,7 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         root=root,
         env=environment,
     )
-    _assert_removed_storage_surface(python, root=root, env=environment)
+    _assert_storage_surface(python, root=root, env=environment)
     _assert_builder_contract(baseline.get("config"), expected_bm25_identity)
     _run(
         [
@@ -341,7 +377,7 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
     )
     upgraded = _load_bm25(manifest_path)
     if upgraded.get("built_at") != baseline.get("built_at"):
-        raise RuntimeError("the next release rebuilt the compatible 0.2.2 BM25 view")
+        raise RuntimeError("the candidate rebuilt the compatible 0.2.2 BM25 view")
     _assert_builder_contract(upgraded.get("config"), expected_bm25_identity)
 
     _run(
@@ -361,7 +397,7 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         raise RuntimeError(f"upgrade modified the target repository: {status!r}")
     print(
         f"Upgrade smoke passed: {BASELINE_VERSION} -> {expected_version}; "
-        "BM25 and portable artifact reused; generic storage removed"
+        "BM25 and portable artifact reused; storage is Wiki-only"
     )
 
 

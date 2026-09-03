@@ -13,24 +13,26 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Added
 
-- A domain-local `WikiStore` harness and SQLite WAL implementation with
-  versioned schema initialization, bounded canonical JSON, integrity checks,
-  atomic publication, and cross-process generation guards.
+- A Wiki-only `codenib.storage` facade exposing the domain-local `WikiStore`
+  harness and SQLite WAL implementation, with versioned schema initialization,
+  bounded canonical JSON, integrity checks, atomic publication, and
+  cross-process generation guards.
+
 ### Changed
 
 - AgentWiki, the web service, cache audit, prewarming, and Wiki benchmarking
   now use `wiki_cache/wiki.sqlite3`. Eligible source-compatible JSON entries
   remain available through read-through compatibility and are not rewritten or
   deleted.
-- The supported product database boundary is now the domain-local `WikiStore`
-  with its SQLite WAL implementation. `RepoManifest`, BM25, FAISS, igraph, and
-  portable context payloads remain file artifacts. Existing compiler caches use
-  `artifact pack`; portable artifacts continue through `artifact verify` and
-  `mcp --artifact`.
-- The next release is a breaking storage-boundary release. Users who still need
-  data from a v0.2.2 SQLite catalog must run `artifact materialize` with a pinned
-  v0.2.2 environment before upgrading; the resulting portable artifact remains
-  supported.
+- The supported product database boundary is now
+  `codenib.storage.WikiStore`, with `SQLiteWikiStore` as its supported adapter.
+  `RepoManifest`, BM25, FAISS, igraph, and portable context payloads remain file
+  artifacts. Existing compiler caches use `artifact pack`; portable artifacts
+  continue through `artifact verify` and `mcp --artifact`.
+- The v0.2.3 release intentionally narrows the former storage API and CLI.
+  Users who still need data from a v0.2.2 SQLite catalog must run `artifact
+  materialize` with a pinned v0.2.2 environment before upgrading; the resulting
+  portable artifact remains supported.
 
 ### Removed
 
@@ -56,10 +58,11 @@ All notable user-facing changes are recorded here. CodeNib follows
   one command with two execution paths, and four schema migrations; changes
   inside retained files bring the batch total to 21,214 production and 29,352
   test lines removed.
-- The complete v0.2.2 generic retained-storage compatibility surface:
-  `codenib.storage`, its schema-v4 SQLite catalog and local CAS, `artifact
-  import-cache`, `artifact materialize`, and the retained compiler bridge.
-  Normal index, Wiki, portable-artifact, publish, and MCP paths are unchanged.
+- The generic retained-storage surface formerly published by v0.2.2 through
+  `codenib.storage`: its schema-v4 SQLite catalog and local CAS, `artifact
+  import-cache`, `artifact materialize`, and the retained compiler bridge. The
+  name `codenib.storage` now resolves only to the Wiki database facade. Normal
+  index, Wiki, portable-artifact, publish, and MCP paths are unchanged.
 - The catalog-backed clangd FactBatch publication/reuse experiment and its
   profiling target. Provider-neutral FactBatch models, resolvers, native buffer
   transport, and the promoted clangd query index remain independent of storage.

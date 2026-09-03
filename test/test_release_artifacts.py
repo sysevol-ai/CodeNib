@@ -71,6 +71,7 @@ Description-Content-Type: text/markdown
         "codenib/sandbox/docker.py": "",
         "codenib/sandbox/protocol.py": "",
         "codenib/sandbox/types.py": "",
+        "codenib/storage.py": "",
         "codenib/toolchains.py": "",
         "codenib/web/frontend/index.html": "",
         "codenib/web/frontend/codenib-icon.svg": "",
@@ -99,6 +100,7 @@ def _write_test_sdist(
         f"{root}/CHANGELOG.md": "",
         f"{root}/LICENSE": "",
         f"{root}/README.md": _PACKAGED_README,
+        f"{root}/codenib/storage.py": "",
         f"{root}/server.json": "{}",
         f"{root}/pyproject.toml": "[project]\n",
         f"{root}/web/package-lock.json": "{}",
@@ -1061,7 +1063,8 @@ def test_product_storage_scope_and_removal_policy_are_documented() -> None:
     roadmap_prose = " ".join(roadmap.split())
 
     assert (
-        "CodeNib has one product database boundary: " "`codenib.wiki.store.WikiStore`"
+        "CodeNib has one public product database boundary: "
+        "`codenib.storage.WikiStore`"
     ) in roadmap_prose
     assert (
         "BM25, FAISS, igraph, and portable context payloads remain file artifacts"

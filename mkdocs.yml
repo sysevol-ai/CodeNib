@@ -107,6 +107,7 @@ plugins:
               | sandbox
               | scip_interface
               | search
+              | storage
               | types
               | web\.local
               | wiki

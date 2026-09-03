@@ -123,14 +123,15 @@ Status: in progress.
 
 Status: in progress.
 
-- [x] Declare `codenib.wiki.store.WikiStore` and its SQLite WAL adapter as the
-      only product database boundary.
+- [x] Declare the Wiki-only `codenib.storage.WikiStore` facade and its SQLite
+      WAL adapter as the only product database boundary.
 - [x] Keep `RepoManifest`, BM25, FAISS, igraph, and portable context payloads
       as manifest-bound file artifacts rather than catalog records.
 - [x] Remove the optional Web `index_storage` configuration, retained job
       orchestration, reconciliation, and runtime-activation path.
-- [x] Freeze `codenib.storage` and explicit retained-storage CLI commands while
-      their v0.2.2 consumers and release boundary are audited; add no
+- [x] Freeze the generic v0.2.2 `codenib.storage` contents and explicit
+      retained-storage CLI commands while their consumers and release boundary
+      are audited; add no
       PostgreSQL, S3, generic GC, or backend discovery.
 - [x] Remove the unreleased audit, direct MCP, index dual-write, benchmark-gate,
       durable-execution slices, and the two unreachable retained BM25
@@ -139,18 +140,19 @@ Status: in progress.
       zero public entry points. At that stage, the frozen CLI surface contained
       only the two published `artifact import-cache` and `artifact materialize`
       compatibility bridges.
-- [x] Use the next breaking release as the removal boundary for the complete
-      frozen surface: delete `codenib.storage`, the two retained artifact
-      commands, retained compiler bridges, and the catalog-backed FactBatch
-      publication experiment. Existing catalogs must be materialized with a
-      pinned v0.2.2 environment before upgrade.
+- [x] Use v0.2.3 as the removal boundary for the complete frozen generic
+      surface: replace the package with a single Wiki-only
+      `codenib.storage` facade, and delete the two retained artifact commands,
+      retained compiler bridges, and catalog-backed FactBatch publication
+      experiment. Existing catalogs must be materialized with a pinned v0.2.2
+      environment before upgrade.
 - [x] Move portable-artifact validation contracts into the artifact-neutral
       `_bounded_json` module so default Web imports no longer cross a generic
       storage namespace.
 - [ ] Bound Wiki generation-lock waiting and make maintenance inspection
       physically read-only without broadening the Wiki protocol.
 
-Exit condition: protected product journeys use only the Wiki domain database
+Exit condition: protected product journeys use only the Wiki database facade
 and manifest-bound artifacts; no generic storage surface remains.
 
 ### S2: Stable versus labs packaging
@@ -232,7 +234,8 @@ Status: pending.
 | 2026-08-24 | Retire three unowned retrieval evaluation scripts | RFC #133 remains closed and canonical retrieval metrics remain covered in `codenib.eval.retrieval_eval` | Remove the transitional comparator, manual smoke, and duplicate metric recomputation |
 | 2026-08-24 | Start runtime convergence at manifest freshness | `RepoManifest.index_is_current` already owns commit, fingerprint, and source-selection identity; authenticated graph loading requires a `symbol_graph` entry | Delete the weaker Web-only freshness rule and the unusable vector-sidecar discovery path; add rejection regressions |
 | 2026-09-01 | Make WikiStore the only product database and stop the generic backend program | Storage audit counts, protected-journey consumer tracing, and the one-table Wiki conformance results are summarized in `storage_backend_roadmap.md` | Remove the Web retained-storage vertical; freeze generic storage/CLI compatibility code and delete it by proven consumer; close PostgreSQL, S3, generic GC, and dynamic-registry plans |
-| 2026-09-02 | Use the next release as the generic-storage removal boundary | The consumer audit found only the two retained artifact bridges and one catalog-backed FactBatch profile; ordinary product routes were independent | Delete the complete package and callers; keep v0.2.2 only as the pre-upgrade materialization tool |
+| 2026-09-02 | Use the next release as the generic-storage removal boundary | The consumer audit found only the two retained artifact bridges and one catalog-backed FactBatch profile; ordinary product routes were independent | Delete the complete generic package and callers; keep v0.2.2 only as the pre-upgrade materialization tool |
+| 2026-09-03 | Publish the subtraction as v0.2.3 and reserve `codenib.storage` for the Wiki database | `WikiStore` is the only product database contract, while the old package name remains the clearest public entry point | Add one lazy Wiki-only module with an exact export list; keep all generic submodules, protocols, catalogs, and CAS implementations retired |
 
 ## Completion Gate
 

@@ -10,7 +10,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from codenib.wiki.store import WikiStore, WikiStoredEntry, WikiStoreValidationError
+from codenib.storage import WikiStore, WikiStoredEntry, WikiStoreValidationError
 
 
 class WikiStoreContract:

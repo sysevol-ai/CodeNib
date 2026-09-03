@@ -87,6 +87,7 @@ PUBLIC_API_MODULES = frozenset(
         "codenib.sandbox",
         "codenib.scip_interface",
         "codenib.search",
+        "codenib.storage",
         "codenib.types",
         "codenib.web.local",
         "codenib.wiki",

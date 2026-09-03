@@ -8,11 +8,12 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Current Decision
 
-CodeNib has one product database boundary: `codenib.wiki.store.WikiStore`. Its
-supported implementation is the domain-local `SQLiteWikiStore`, using SQLite
-WAL and a deliberately small schema. Constructor injection and the Wiki store
-conformance suite are the pluggable harness; a backend registry or generic
-catalog is not part of the product design.
+CodeNib has one public product database boundary: `codenib.storage.WikiStore`.
+The single-file facade points to the domain-local contract and its supported
+`SQLiteWikiStore` implementation, which uses SQLite WAL and a deliberately
+small schema. Constructor injection and the Wiki store conformance suite are
+the pluggable harness; a backend registry or generic catalog is not part of the
+product design.
 
 Repository search state remains in the formats that already serve it:
 
@@ -25,14 +26,18 @@ The optional Web `index_storage` vertical, including retained index jobs and
 runtime activation, has been removed. It was not required by the protected
 CodeGraph, Wiki, MCP, or `RepositoryContextExplorer` journeys.
 
-The generic `codenib.storage` package and its retained-storage CLI commands are
-removed at the next breaking release boundary. No generic catalog, CAS, or
-database compatibility layer remains in the product. A v0.2.2 catalog must be
-materialized with a pinned v0.2.2 environment before upgrading; the resulting
-portable context artifact remains supported by the ordinary artifact and MCP
-routes.
+At the v0.2.3 boundary, the generic `codenib.storage` package is replaced by a
+single Wiki-only `codenib.storage` module and its retained-storage CLI commands
+are removed. No generic catalog, CAS, or database compatibility layer remains
+in the product. A v0.2.2 catalog must be materialized with a pinned v0.2.2
+environment before upgrading; the resulting portable context artifact remains
+supported by the ordinary artifact and MCP routes.
 
 ## Product Boundary
+
+```python
+from codenib.storage import SQLiteWikiStore, WikiStore
+```
 
 `WikiStore` owns only complete Wiki cache envelopes and the minimum operations
 the Wiki consumer uses:
@@ -81,8 +86,7 @@ needed.
 
 ## Release Boundary for Retired Generic Storage
 
-The breaking release decision closes the temporary v0.2.2 compatibility
-period:
+The v0.2.3 release decision closes the temporary v0.2.2 compatibility period:
 
 1. Existing compiler caches use `artifact pack`; no database import is needed.
 2. Existing v0.2.2 catalogs are converted before upgrade with the v0.2.2
@@ -124,8 +128,9 @@ Outcome:
 - The catalog-backed clangd FactBatch generation experiment is removed with its
   profiler. Provider-neutral facts and promoted native query paths remain.
 - The release upgrade gate starts from v0.2.2, proves compatible BM25 and
-  portable-artifact reuse, and verifies that the generic package and two
-  retired commands are absent.
+  portable-artifact reuse, and verifies that the Wiki-only facade is present
+  while the generic package exports, submodules, and two retired commands are
+  absent.
 
 ### W3: Close the small Wiki operational gaps
 
@@ -169,5 +174,6 @@ The completed boundary has these properties:
   with SQLite WAL as the supported implementation;
 - manifest-bound BM25, FAISS, igraph, and context artifacts remain compatible;
 - no generic storage package, protocol, catalog, CAS, or product route remains;
+  the single `codenib.storage` module exposes only the Wiki database boundary;
 - documentation and the changelog describe the current boundary rather than a
   speculative backend program.

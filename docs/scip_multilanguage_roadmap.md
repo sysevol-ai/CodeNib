@@ -1025,7 +1025,7 @@ Median end-to-end time improved from 9.9169s for the clean generation to
 
 This was durable publication and incremental-reuse evidence over existing
 clangd shards, not evidence that clangd index generation was faster and not a
-product consumer. On 2026-09-02 the next-release storage boundary retired the
+product consumer. On 2026-09-02 the v0.2.3 storage boundary retired the
 adapter, generation coordinator, profile, catalog, and CAS together. The
 promoted native clangd query index remains independent and the materialized
 graph remains the public compatibility authority. With foundation issues

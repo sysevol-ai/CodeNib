@@ -17,8 +17,8 @@ transfers the new generation to a caller-owned
 `PublishedWorkspaceReceiptOwner`.
 
 This is a filesystem publication boundary, not a database or generic storage
-backend. The only product database is `codenib.wiki.store.WikiStore` with its
-supported SQLite WAL implementation. Repository search state remains in
+backend. The only product database is `codenib.storage.WikiStore` with its
+supported `SQLiteWikiStore` implementation. Repository search state remains in
 manifest-bound file artifacts. See `docs/storage_backend_roadmap.md` for the
 current scope decision.
 
