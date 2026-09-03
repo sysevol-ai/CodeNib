@@ -254,7 +254,7 @@ before proposing an edit.</code></pre>
 
         <p>A <code>FactBatch</code> represents the semantic facts for exactly one canonical repository-relative file. Its identity fields bind schema, path, language, source content digest, analyzer profile digest, and provider. The batch digest additionally covers completeness, position encoding, capabilities, and the deterministically sorted definitions, occurrences, edges, provenance, resolver decisions, and bounded diagnostics.</p>
 
-        <p>The former durable generation coordinator was restricted to clangd/C++. It applied whole-file upserts and deletes, immutable object receipts, and catalog compare-and-swap. That experiment had no product consumer and was removed at the next-release storage boundary; the measurements below remain historical evidence.</p>
+        <p>The former durable generation coordinator was restricted to clangd/C++. It applied whole-file upserts and deletes, immutable object receipts, and catalog compare-and-swap. That experiment had no product consumer and was removed at the v0.2.3 storage boundary; the measurements below remain historical evidence.</p>
 
         <h3>Measured reuse, not a generic speed claim</h3>
 

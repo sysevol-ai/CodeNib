@@ -30,8 +30,9 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
 6. Builds a real BM25 index through the installed `codenib` command.
 7. Installs the public 0.2.2 package, materializes its catalog into a portable
    context artifact, upgrades to the candidate wheel, verifies that the BM25
-   view and materialized artifact remain reusable, and proves the retired
-   generic-storage package and CLI commands are absent.
+   view and materialized artifact remain reusable, and proves that the
+   Wiki-only `codenib.storage` facade replaced the retired generic package and
+   CLI commands.
 8. Exercises the installed Wiki and MCP services end to end.
 9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing

@@ -44,16 +44,18 @@ completed.
 
 ## Storage Scope Guard
 
-- The only product database boundary is `codenib.wiki.store.WikiStore`; its
-  supported implementation is the domain-local SQLite WAL store. Keep
-  pluggability to constructor injection plus the Wiki conformance harness. Do
-  not add a backend registry, capability matrix, or dynamic discovery system.
+- The only product database boundary is the Wiki-only
+  `codenib.storage.WikiStore` facade; its supported implementation is
+  `SQLiteWikiStore`, owned by the Wiki domain. Keep pluggability to constructor
+  injection plus the Wiki conformance harness. Do not add a backend registry,
+  capability matrix, or dynamic discovery system.
 - Keep `RepoManifest`, BM25, FAISS, igraph, and portable context payloads as
   manifest-bound file artifacts. Do not move their refs, snapshots, jobs,
   leases, or lifecycle into a generic database or object-store abstraction.
-- `codenib.storage` and the retained-storage CLI commands were removed at the
-  next-release boundary after v0.2.2. Do not reintroduce a generic catalog,
-  CAS, schema state, storage protocol, backend, re-export, or product route.
+- At the v0.2.3 boundary, `codenib.storage` became a single-file Wiki-only
+  facade and the retained-storage CLI commands were removed. Do not turn that
+  module back into a package or reintroduce a generic catalog, CAS, schema
+  state, storage protocol, backend registry, or product route.
 - PostgreSQL, S3-compatible storage, generic garbage collection, shared ANN,
   distributed coordination, and backend discovery are closed plans. Reopening
   one requires a current non-test product route, a deployment constraint the
