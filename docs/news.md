@@ -11,6 +11,15 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
+## 2026-09-03 — Wiki-only storage boundary
+
+CodeNib 0.2.3 makes `codenib.storage` a single-file Wiki-only facade for
+`WikiStore` and `SQLiteWikiStore`. Repository indexes remain manifest-bound
+file artifacts, while the former generic catalog, CAS, and retained-storage
+CLI commands are removed.
+
+[Read the 0.2.3 release notes](releases/0.2.3.md)
+
 ## 2026-08-21 — Repository source authority
 
 CodeNib 0.2.2 admits absolute symlinks through authenticated indexing only

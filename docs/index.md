@@ -34,11 +34,11 @@ core decoder parity.
 
 ## Quick Start
 
-CodeNib 0.2.2 can prepare a local, model-free CodeGraph and register it with
+CodeNib 0.2.3 can prepare a local, model-free CodeGraph and register it with
 installed Codex and Claude Code clients in one command:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]==0.2.3"
 codenib codegraph init /path/to/repository
 ```
 
@@ -49,7 +49,7 @@ the clients' own CLIs. The target checkout remains unchanged. Read the
 tool examples.
 
 ```bash
-python -m pip install "codenib[semantic]==0.2.2"
+python -m pip install "codenib[semantic]==0.2.3"
 codenib wiki /path/to/repository
 ```
 
