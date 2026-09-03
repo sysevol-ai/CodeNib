@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Exercise the supported CodeNib 0.1 to 0.2 package upgrade boundary."""
+"""Exercise the supported CodeNib 0.2.2 to next-release upgrade boundary."""
 
 from __future__ import annotations
 
@@ -17,11 +17,11 @@ import venv
 from pathlib import Path
 from typing import Sequence
 
-BASELINE_VERSION = "0.1.0"
+BASELINE_VERSION = "0.2.2"
 
 
 def _run(
-    command: Sequence[str],
+    command: Sequence[object],
     *,
     cwd: Path,
     env: dict[str, str],
@@ -35,6 +35,22 @@ def _run(
         text=True,
         capture_output=True,
     )
+
+
+def _candidate_install_command(
+    pip: Path,
+    wheel: Path,
+    *,
+    expected_version: str,
+) -> tuple[object, ...]:
+    command: list[object] = [pip, "install", "--upgrade"]
+    if expected_version == BASELINE_VERSION:
+        # Main can carry next-release changes before its dedicated version bump.
+        # Reinstall the same-version candidate so the push gate still exercises
+        # package-file removal instead of letting pip retain the baseline wheel.
+        command.append("--force-reinstall")
+    command.append(wheel)
+    return tuple(command)
 
 
 def _venv_command(root: Path, name: str) -> Path:
@@ -115,6 +131,45 @@ def _assert_builder_contract(
         raise RuntimeError(f"unexpected BM25 builder contract: {mismatches!r}")
 
 
+def _assert_removed_storage_surface(
+    python: Path,
+    *,
+    root: Path,
+    env: dict[str, str],
+) -> None:
+    result = _run(
+        [
+            python,
+            "-c",
+            (
+                "import argparse\n"
+                "import importlib.util\n"
+                "import json\n"
+                "from codenib.cli import build_parser\n"
+                "parser = build_parser()\n"
+                "top = next(action for action in parser._actions "
+                "if isinstance(action, argparse._SubParsersAction))\n"
+                "artifact = top.choices['artifact']\n"
+                "commands = next(action for action in artifact._actions "
+                "if isinstance(action, argparse._SubParsersAction))\n"
+                "print(json.dumps({\n"
+                "    'storage_present': "
+                "importlib.util.find_spec('codenib.storage') is not None,\n"
+                "    'artifact_commands': sorted(commands.choices),\n"
+                "}))\n"
+            ),
+        ],
+        cwd=root,
+        env=env,
+    )
+    surface = json.loads(result.stdout)
+    if surface != {
+        "storage_present": False,
+        "artifact_commands": ["fetch", "mcp-config", "pack", "verify"],
+    }:
+        raise RuntimeError(f"unexpected next-release storage surface: {surface!r}")
+
+
 def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
     repository = root / "upgrade-repository"
     repository.mkdir(parents=True)
@@ -170,14 +225,112 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         env=environment,
     )
     baseline = _load_bm25(manifest_path)
+    catalog = root / "v0.2.2-catalog.sqlite3"
+    cas_parent = root / "v0.2.2-cas-parent"
+    cas_parent.mkdir()
+    cas_root = cas_parent / "cas"
+    workspace_root = root / "v0.2.2-workspaces"
+    workspace_root.mkdir(mode=0o700)
+    portable_artifact = workspace_root / "materialized-context"
+    _run(
+        [
+            python,
+            "-c",
+            (
+                "import sys\n"
+                "from codenib.storage import LocalCAS, SQLiteCatalog\n"
+                "LocalCAS.provision(sys.argv[1]).close()\n"
+                "SQLiteCatalog(sys.argv[2]).close()\n"
+            ),
+            cas_root,
+            catalog,
+        ],
+        cwd=root,
+        env=environment,
+    )
+    _run(
+        [
+            codenib,
+            "artifact",
+            "import-cache",
+            repository,
+            "--cache-dir",
+            manifest_path.parent,
+            "--catalog",
+            catalog,
+            "--cas-root",
+            cas_root,
+            "--workspace-root",
+            workspace_root,
+            "--repository",
+            "release/upgrade-smoke",
+            "--namespace",
+            "default",
+            "--ref",
+            "main",
+            "--expected-generation",
+            "0",
+        ],
+        cwd=root,
+        env=environment,
+    )
+    _run(
+        [
+            codenib,
+            "artifact",
+            "materialize",
+            "--catalog",
+            catalog,
+            "--cas-root",
+            cas_root,
+            "--workspace-root",
+            workspace_root,
+            "--repository",
+            "release/upgrade-smoke",
+            "--namespace",
+            "default",
+            "--ref",
+            "main",
+            "--expected-generation",
+            "1",
+            "--output",
+            portable_artifact,
+        ],
+        cwd=root,
+        env=environment,
+    )
 
-    _run([pip, "install", "--upgrade", wheel], cwd=root, env=environment)
+    _run(
+        _candidate_install_command(
+            pip,
+            wheel,
+            expected_version=expected_version,
+        ),
+        cwd=root,
+        env=environment,
+    )
     version = _run([codenib, "--version"], cwd=root, env=environment).stdout.strip()
     if version != f"codenib {expected_version}":
         raise RuntimeError(f"unexpected upgraded version: {version!r}")
     expected_bm25_identity = _installed_bm25_identity(
         python,
         root=root,
+        env=environment,
+    )
+    _assert_removed_storage_surface(python, root=root, env=environment)
+    _assert_builder_contract(baseline.get("config"), expected_bm25_identity)
+    _run(
+        [
+            codenib,
+            "artifact",
+            "verify",
+            portable_artifact,
+            "--repository",
+            "release/upgrade-smoke",
+            "--repo",
+            repository,
+        ],
+        cwd=root,
         env=environment,
     )
 
@@ -187,8 +340,8 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         env=environment,
     )
     upgraded = _load_bm25(manifest_path)
-    if upgraded.get("built_at") == baseline.get("built_at"):
-        raise RuntimeError("0.2 reused the incompatible 0.1 BM25 view")
+    if upgraded.get("built_at") != baseline.get("built_at"):
+        raise RuntimeError("the next release rebuilt the compatible 0.2.2 BM25 view")
     _assert_builder_contract(upgraded.get("config"), expected_bm25_identity)
 
     _run(
@@ -197,8 +350,8 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         env=environment,
     )
     reused = _load_bm25(manifest_path)
-    if reused.get("built_at") != upgraded.get("built_at"):
-        raise RuntimeError("the compatible 0.2 BM25 view was rebuilt again")
+    if reused.get("built_at") != baseline.get("built_at"):
+        raise RuntimeError("the compatible 0.2.2 BM25 view was rebuilt again")
     status = _run(
         ["git", "status", "--porcelain"],
         cwd=repository,
@@ -208,7 +361,7 @@ def smoke(wheel: Path, *, expected_version: str, root: Path) -> None:
         raise RuntimeError(f"upgrade modified the target repository: {status!r}")
     print(
         f"Upgrade smoke passed: {BASELINE_VERSION} -> {expected_version}; "
-        "incompatible BM25 rebuilt once and then reused"
+        "BM25 and portable artifact reused; generic storage removed"
     )
 
 

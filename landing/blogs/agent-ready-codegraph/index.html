@@ -7,28 +7,28 @@ SPDX-License-Identifier: Apache-2.0
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CodeGraph Architecture: Native Query Paths and Durable Facts — CodeNib</title>
-  <meta name="description" content="How to connect CodeGraph to Codex or Claude Code, and how its native query and durable semantic paths avoid unnecessary full-graph materialization.">
+  <title>CodeGraph Architecture: Native Query Paths and Semantic Contracts — CodeNib</title>
+  <meta name="description" content="How to connect CodeGraph to Codex or Claude Code, and how native query paths avoid unnecessary full-graph materialization while FactBatch remains provider-neutral.">
   <meta name="author" content="CodeNib Team">
-  <meta property="og:title" content="CodeGraph Architecture: Native Query Paths and Durable Facts">
-  <meta property="og:description" content="How to connect CodeGraph to Codex or Claude Code, and how its native query and durable semantic paths avoid unnecessary full-graph materialization.">
+  <meta property="og:title" content="CodeGraph Architecture: Native Query Paths and Semantic Contracts">
+  <meta property="og:description" content="How to connect CodeGraph to Codex or Claude Code, and how native query paths avoid unnecessary full-graph materialization while FactBatch remains provider-neutral.">
   <meta property="og:image" content="https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="A CodeGraph architecture diagram showing analyzer artifacts, shared semantic contracts, native query and durable publication paths, and complete-graph compatibility.">
+  <meta property="og:image:alt" content="A CodeGraph architecture diagram showing analyzer artifacts, shared semantic contracts, native query paths, provider-neutral facts, and complete-graph compatibility.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://codenib.ai/blogs/agent-ready-codegraph/">
   <meta property="article:published_time" content="2026-08-14T00:00:00-07:00">
-  <meta property="article:modified_time" content="2026-08-14T00:00:00-07:00">
+  <meta property="article:modified_time" content="2026-09-02T00:00:00-07:00">
   <meta property="article:section" content="Engineering">
   <meta property="article:tag" content="CodeGraph">
   <meta property="article:tag" content="Architecture">
   <meta property="article:tag" content="Performance">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="CodeGraph Architecture: Native Query Paths and Durable Facts">
-  <meta name="twitter:description" content="Use CodeGraph with Codex or Claude Code, then inspect its measured native query paths, durable facts, and full-graph boundaries.">
+  <meta name="twitter:title" content="CodeGraph Architecture: Native Query Paths and Semantic Contracts">
+  <meta name="twitter:description" content="Use CodeGraph with Codex or Claude Code, then inspect its measured native query paths, provider-neutral facts, and full-graph boundaries.">
   <meta name="twitter:image" content="https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png">
-  <meta name="twitter:image:alt" content="A CodeGraph architecture diagram showing analyzer artifacts, shared semantic contracts, native query and durable publication paths, and complete-graph compatibility.">
+  <meta name="twitter:image:alt" content="A CodeGraph architecture diagram showing analyzer artifacts, shared semantic contracts, native query paths, provider-neutral facts, and complete-graph compatibility.">
   <link rel="canonical" href="https://codenib.ai/blogs/agent-ready-codegraph/">
   <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/assets/blogs.css">
@@ -36,11 +36,11 @@ SPDX-License-Identifier: Apache-2.0
   {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
-    "headline": "CodeGraph Architecture: Native Query Paths and Durable Facts",
-    "description": "How to connect CodeGraph to Codex or Claude Code, and how its native query and durable semantic paths avoid unnecessary full-graph materialization.",
+    "headline": "CodeGraph Architecture: Native Query Paths and Semantic Contracts",
+    "description": "How to connect CodeGraph to Codex or Claude Code, and how native query paths avoid unnecessary full-graph materialization while FactBatch remains provider-neutral.",
     "image": "https://codenib.ai/assets/blogs/fact-query-index-fact-batch.png",
     "datePublished": "2026-08-14T00:00:00-07:00",
-    "dateModified": "2026-08-14T00:00:00-07:00",
+    "dateModified": "2026-09-02T00:00:00-07:00",
     "mainEntityOfPage": "https://codenib.ai/blogs/agent-ready-codegraph/",
     "author": {
       "@type": "Organization",
@@ -83,8 +83,8 @@ SPDX-License-Identifier: Apache-2.0
           <time datetime="2026-08-14">August 14, 2026</time>
           <span>10 min read</span>
         </div>
-        <h1 class="technical-title" id="article-title">CodeGraph Architecture: Native Query Paths and Durable Facts</h1>
-        <p class="deck">How to use CodeGraph with a coding agent, how capability-scoped query paths differ from durable semantic publication, and where complete graph materialization remains authoritative.</p>
+        <h1 class="technical-title" id="article-title">CodeGraph Architecture: Native Query Paths and Semantic Contracts</h1>
+        <p class="deck">How to use CodeGraph with a coding agent, how capability-scoped query paths differ from provider-neutral semantic contracts, and where complete graph materialization remains authoritative.</p>
       </header>
 
       <div class="article-body article-lead">
@@ -173,19 +173,19 @@ before proposing an edit.</code></pre>
       </div>
 
       <figure class="hero-figure">
-        <img src="/assets/blogs/fact-query-index-fact-batch.svg" width="1200" height="630" alt="Analyzer artifacts pass through provider-specific normalization into CodeGraph's native query, durable semantic publication, or complete-graph compatibility paths.">
+        <img src="/assets/blogs/fact-query-index-fact-batch.svg" width="1200" height="630" alt="Analyzer artifacts pass through provider-specific normalization into native query, provider-neutral semantic contracts, or complete-graph compatibility paths.">
         <figcaption>The paths share semantic contracts, not one cached decode object. Representation and fallback are selected at a specific consumer boundary.</figcaption>
         <a class="diagram-open" href="/assets/blogs/fact-query-index-fact-batch.svg">Open the full-size diagram <span aria-hidden="true">↗</span></a>
       </figure>
 
       <div class="article-body">
-        <p>The commands above exercise the source-preview onboarding workflow. As of August 14, 2026, it is on <code>main</code> but not in the latest 0.2.0 wheel. The onboarding path prepares the public CodeGraph and MCP surface; it does not force every capability-gated native path described below, and durable FactBatch publication remains opt-in.</p>
+        <p>The commands above exercise the source-preview onboarding workflow. As of August 14, 2026, it is on <code>main</code> but not in the latest 0.2.0 wheel. The onboarding path prepares the public CodeGraph and MCP surface; it does not force every capability-gated native path described below.</p>
 
         <p>Internally, CodeNib traditionally materializes semantic records into a complete <code>CodeGraph</code> before serving definitions, references, positions, and routes. The complete graph remains the compatibility authority, but it is more machinery than a narrow query needs. The implementation described below adds a capability-scoped <code>FactQueryIndex v1</code> read model and a separate <code>FactBatch v1</code> per-file semantic contract.</p>
 
         <h2>Shared semantics, separate runtime paths</h2>
 
-        <p>SCIP <code>index.decoded</code> files and clangd <code>.idx</code> shards start with different schemas. Both paths normalize definitions, references, occurrences, traversal order, and capability state against shared semantic contracts, but they do not reuse one runtime decode object. The native clangd query path builds compact C++ records directly; the current clangd FactBatch adapter validates the shards, collects normalized Python records, and then constructs per-file batches.</p>
+        <p>SCIP <code>index.decoded</code> files and clangd <code>.idx</code> shards start with different schemas. Both paths normalize definitions, references, occurrences, traversal order, and capability state against shared semantic contracts, but they do not reuse one runtime decode object. The native clangd query path builds compact C++ records directly. A separate clangd FactBatch adapter once evaluated durable per-file publication and was later retired with generic storage.</p>
 
         <div class="contract-grid" aria-label="FactQueryIndex and FactBatch responsibilities">
           <section class="contract">
@@ -194,9 +194,9 @@ before proposing an edit.</code></pre>
             <p>Retains decoded records in native memory and builds integer postings for supported symbols and references, plus provider-specific occurrence and adjacency capabilities. It is ephemeral and does not publish graph state.</p>
           </section>
           <section class="contract">
-            <span class="number">WRITE MODEL</span>
+            <span class="number">SEMANTIC CONTRACT</span>
             <h3><code>FactBatch v1</code></h3>
-            <p>Packages one file's semantic facts with content and analyzer identity. The current durable generation coordinator publishes clangd/C++ units with compare-and-swap.</p>
+            <p>Packages one file's semantic facts with content and analyzer identity. It remains independent of the retired catalog-backed generation experiment.</p>
           </section>
         </div>
 
@@ -250,11 +250,11 @@ before proposing an edit.</code></pre>
 
         <p>That result did <strong>not</strong> promote the production SCIP MCP route. A later end-to-end MCP consumer gate missed the threshold, so its promoted language set remains empty and production agent requests continue to use the persisted CodeGraph. This is why promotion is attached to a specific consumer boundary rather than to the data structure in general.</p>
 
-        <h2>FactBatch v1: deterministic per-file state</h2>
+        <h2>FactBatch v1 and the retired durability experiment</h2>
 
-        <p>A <code>FactBatch</code> represents the semantic facts for exactly one canonical repository-relative file. Its reuse key binds schema, path, language, source content digest, analyzer profile digest, and provider. The immutable batch digest additionally covers completeness, position encoding, capabilities, and the deterministically sorted definitions, occurrences, edges, provenance, resolver decisions, and bounded diagnostics.</p>
+        <p>A <code>FactBatch</code> represents the semantic facts for exactly one canonical repository-relative file. Its identity fields bind schema, path, language, source content digest, analyzer profile digest, and provider. The batch digest additionally covers completeness, position encoding, capabilities, and the deterministically sorted definitions, occurrences, edges, provenance, resolver decisions, and bounded diagnostics.</p>
 
-        <p>The current durable generation coordinator is restricted to clangd/C++. It applies whole-file upserts and deletes: an unchanged unit keeps its immutable object receipt, a changed unit is republished, and a manifest binds the complete sorted membership and source identity. The named reference moves only after every member verifies and a catalog compare-and-swap succeeds. A failed publication cannot expose a half-written generation.</p>
+        <p>The former durable generation coordinator was restricted to clangd/C++. It applied whole-file upserts and deletes, immutable object receipts, and catalog compare-and-swap. That experiment had no product consumer and was removed at the next-release storage boundary; the measurements below remain historical evidence.</p>
 
         <h3>Measured reuse, not a generic speed claim</h3>
 
@@ -273,7 +273,7 @@ before proposing an edit.</code></pre>
           </table>
         </div>
 
-        <p class="scope-note">The recorded difference between these profiling arms is 47.2%. The first arm includes clangd-record-to-FactBatch adaptation and initial publication; the second loads and validates the prior generation, supplies no upserts, and publishes a new manifest while reusing 51/51 units. It does not rerun the adapter, detect changes, or generate clangd shards, so this is not an end-to-end incremental rebuild claim. The semantic-facts view is opt-in; the legacy materialized graph remains the public graph authority.</p>
+        <p class="scope-note">The recorded difference between these profiling arms is 47.2%. The first arm included clangd-record-to-FactBatch adaptation and initial publication; the second loaded and validated the prior generation, supplied no upserts, and published a new manifest while reusing 51/51 units. It did not rerun the adapter, detect changes, or generate clangd shards, so this was not an end-to-end incremental rebuild claim. The semantic-facts view and its profiler are retired; the legacy materialized graph remains the public graph authority.</p>
 
         <h2>The negative result: transport was not enough</h2>
 
@@ -309,7 +309,7 @@ before proposing an edit.</code></pre>
           </div>
           <div class="tool-row" role="listitem">
             <code>clangd FactBatch generation</code>
-            <p>Available as an opt-in C/C++ semantic-facts publication boundary with immutable per-file reuse. It does not replace public graph persistence or queries.</p>
+            <p>Retired with the generic catalog because it had no product consumer. The independent native clangd query provider remains production-promoted.</p>
           </div>
           <div class="tool-row" role="listitem">
             <code>FactBatchBuffer</code>
@@ -331,17 +331,9 @@ make fact-query-profile \
 make clangd-workload-gate \
   CLANGD_WORKLOAD_GATE_INDEX_DIR=/path/to/.cache/clangd/index \
   CLANGD_WORKLOAD_GATE_PROJECT_ROOT=/path/to/repository \
-  CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0
+  CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0</code></pre>
 
-# clangd: clean publication versus unchanged FactBatch reuse
-make clangd-fact-generation-profile \
-  CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/.cache/clangd/index \
-  CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT=/path/to/repository \
-  CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS=/path/to/compile_commands.json \
-  CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE=x86_64-unknown-linux-gnu \
-  CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST=sha256:&lt;digest&gt;</code></pre>
-
-        <p>Implementation and contract details live in <a href="https://docs.codenib.ai/core_cpp/">C++ core acceleration</a>, <a href="https://docs.codenib.ai/semantic_fact_batches/">Semantic FactBatch v1</a>, and the source for <a href="https://github.com/sysevol-ai/CodeNib/blob/main/core/fact_query_index.h"><code>FactQueryIndex</code></a>, <a href="https://github.com/sysevol-ai/CodeNib/blob/main/codenib/facts/model.py"><code>FactBatch</code></a>, and <a href="https://github.com/sysevol-ai/CodeNib/blob/main/codenib/facts/generation.py">generation publication</a>.</p>
+        <p>Implementation and contract details live in <a href="https://docs.codenib.ai/core_cpp/">C++ core acceleration</a>, <a href="https://docs.codenib.ai/semantic_fact_batches/">Semantic FactBatch v1</a>, and the source for <a href="https://github.com/sysevol-ai/CodeNib/blob/main/core/fact_query_index.h"><code>FactQueryIndex</code></a> and <a href="https://github.com/sysevol-ai/CodeNib/blob/main/codenib/facts/model.py"><code>FactBatch</code></a>.</p>
 
         <p>The design goal is narrower than “remove the graph”: materialize only the representation a proven consumer needs, preserve source and snapshot identity across that choice, and keep the complete graph as an explicit compatibility boundary.</p>
       </div>

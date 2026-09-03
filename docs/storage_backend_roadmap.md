@@ -25,11 +25,12 @@ The optional Web `index_storage` vertical, including retained index jobs and
 runtime activation, has been removed. It was not required by the protected
 CodeGraph, Wiki, MCP, or `RepositoryContextExplorer` journeys.
 
-`codenib.storage` and the explicitly selected retained-storage CLI commands
-temporarily remain for compatibility and investigation. They are classified as
-experimental/compatibility code, not as the canonical product persistence
-layer. Their surface is frozen while production consumers are enumerated and
-unused slices are removed in reviewable batches.
+The generic `codenib.storage` package and its retained-storage CLI commands are
+removed at the next breaking release boundary. No generic catalog, CAS, or
+database compatibility layer remains in the product. A v0.2.2 catalog must be
+materialized with a pinned v0.2.2 environment before upgrading; the resulting
+portable context artifact remains supported by the ordinary artifact and MCP
+routes.
 
 ## Product Boundary
 
@@ -78,25 +79,19 @@ experiment on a product route. Historical implementation chronology was
 removed from this roadmap; Git history and focused tests retain it where still
 needed.
 
-## Lifecycle Policy for Retained Generic Storage
+## Release Boundary for Retired Generic Storage
 
-Until removed, `codenib.storage` and explicit retained-storage commands follow
-these rules:
+The breaking release decision closes the temporary v0.2.2 compatibility
+period:
 
-1. No new generic protocol method, schema state, backend adapter, public
-   re-export, or default product route is added.
-2. Allowed changes are limited to high-severity correctness/security fixes,
-   compatibility needed for a planned removal, and subtraction itself.
-3. Tests and roadmap entries do not count as consumers. Every retained public
-   capability must name a current non-test call site.
-4. A slice with no current consumer is removed together with its implementation,
-   exports, dedicated tests, and active documentation.
-5. Compatibility-sensitive CLI or Python surfaces receive an explicit release
-   decision before removal; compatibility is not an indefinite lifecycle.
+1. Existing compiler caches use `artifact pack`; no database import is needed.
+2. Existing v0.2.2 catalogs are converted before upgrade with the v0.2.2
+   `artifact materialize` command.
+3. New releases continue to verify and serve the resulting portable artifacts,
+   but do not open the old catalog or carry a compatibility shim.
 
-This classification does not lower validation on data that the compatibility
-surface still opens. It prevents that validation model from expanding the
-product core.
+No catalog data is migrated into `WikiStore`. Wiki entries and repository
+artifacts have different ownership and lifecycle contracts.
 
 ## Active Work
 
@@ -111,9 +106,9 @@ Status: complete.
 
 ### W2: Shrink the compatibility surface by consumer
 
-Status: in progress.
+Status: complete.
 
-Current outcome:
+Outcome:
 
 - Default Web and portable-artifact validation no longer import
   `codenib.storage`; bounded exact-JSON validation lives in the
@@ -123,22 +118,14 @@ Current outcome:
   schema-v5-v8 expansion are gone. The two private retained BM25 generation
   plan/replay helpers orphaned by the jobs removal are gone as well. Ordinary
   `index`, `publish`, and `mcp --artifact [--repo]` behavior is unchanged.
-- The published compatibility bridge remains explicit: `artifact import-cache`
-  captures an existing compiler cache and `artifact materialize` produces a
-  portable artifact. The released schema-v4 `JobCatalog` models, protocol, and
-  SQLite methods remain readable; catalogs written only by unreleased `main` as
-  v5 through v8 are rejected as newer.
-- The retained v4 schema has 14 tables, 7 indexes, and 42 triggers. Its generic
-  live-validation retry, fork-safe path coordination, cancellation-safe
-  transaction settlement, and `_catalog_validation_snapshot` hardening remain
-  shared by the surviving compatibility routes.
-
-Remaining gates:
-
-- Inventory every remaining `codenib.storage` export against a non-test caller;
-  delete zero-consumer protocols and intersection tests in focused batches.
-- Give every surviving compatibility surface a release/removal decision without
-  expanding it into a product storage layer.
+- The release decision removes `artifact import-cache`, `artifact materialize`,
+  all retained compiler import/export/materialization modules, the complete
+  schema-v4 catalog/CAS package, and their dedicated tests.
+- The catalog-backed clangd FactBatch generation experiment is removed with its
+  profiler. Provider-neutral facts and promoted native query paths remain.
+- The release upgrade gate starts from v0.2.2, proves compatible BM25 and
+  portable-artifact reuse, and verifies that the generic package and two
+  retired commands are absent.
 
 ### W3: Close the small Wiki operational gaps
 
@@ -171,14 +158,16 @@ Reopening one of these options requires all of the following:
 
 ## Completion Gate
 
-The storage subtraction is complete when:
+Status: complete for generic-storage subtraction. Wiki-specific operational
+hardening remains tracked separately in W3.
+
+The completed boundary has these properties:
 
 - the default CodeGraph, Wiki, Web, MCP, and repository-context paths do not
   import or configure `codenib.storage`;
 - Wiki persistence passes its domain contract and protected product journeys
   with SQLite WAL as the supported implementation;
 - manifest-bound BM25, FAISS, igraph, and context artifacts remain compatible;
-- every surviving generic storage surface has a named compatibility consumer
-  and removal decision, or has been deleted with its dedicated tests; and
+- no generic storage package, protocol, catalog, CAS, or product route remains;
 - documentation and the changelog describe the current boundary rather than a
   speculative backend program.

@@ -1282,7 +1282,7 @@ jobs:
           python "$GITHUB_WORKSPACE/scripts/smoke_release_install.py"
 
   upgrade-smoke:
-    name: Upgrade from CodeNib 0.1
+    name: Upgrade from CodeNib 0.2.2
     if: inputs.full
     needs: build
     runs-on: ubuntu-latest

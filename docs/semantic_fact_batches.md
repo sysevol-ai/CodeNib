@@ -6,21 +6,18 @@ SPDX-License-Identifier: Apache-2.0
 
 # Semantic Fact Batches
 
-`FactBatch v1` is CodeNib's provider-neutral boundary between semantic analysis
-and graph/storage/query materialization. It lets SCIP, clangd, generic LSP, and
-future lower-confidence syntax analyzers share one per-file contract without
-forcing their native result formats into the persisted `CodeGraph` schema.
+`FactBatch v1` is CodeNib's provider-neutral per-file semantic contract. Today
+it is produced from native SCIP buffers, SCIP occurrence sidecars, and existing
+`CodeGraph` projections for validation and convergence work. It does not sit on
+the normal MCP query path. clangd, generic LSP, and lower-confidence syntax
+adapters remain possible extension points rather than implemented routes.
 
 ```text
-SCIP / clangd / LSP / syntactic fallback
-                  |
-             FactBatch v1
-                  |
-       ordered resolver plugins
-                  |
-       graph and storage materializers
-                  |
-        ExploreService / MCP queries
+SCIP native buffer / SCIP sidecar / CodeGraph projection
+                         |
+                    FactBatch v1
+                         |
+          resolver and convergence contracts
 ```
 
 ## Contract
@@ -58,21 +55,6 @@ to zero-based half-open full-line ranges, and its resolved edges retain their
 source provenance. It does not change `graph.pkl`, `_SCHEMA_VERSION`, or the
 C++ serialization contract.
 
-`fact_batches_from_clangd_records` is the C/C++ dual-write adapter. Before it
-uses the legacy normalized Python records, it requires the bounded native RIFF
-decoder to validate and bind the complete `.idx` snapshot. It emits exact
-zero-based half-open definition and occurrence ranges, same-file resolved
-edges, and unresolved clangd SymbolID monikers for cross-file or external
-targets. Source bytes are hashed before and after construction. Optional
-caller-supplied clangd diagnostics are retained exactly; without that separate
-diagnostic stream the batch reports partial completeness and does not claim the
-diagnostics capability.
-
-`ClangdFactProfile` fails closed unless analyzer version, target triple,
-toolchain bytes, compilation database, build context, position encoding,
-native RIFF contract, normalization, adapter schema, and FactBatch schema all
-participate in its digest. A change to any axis requires a complete rebuild.
-
 `FactResolverPipeline` runs deterministic plugins in order. The default exact
 pass resolves a moniker only when the snapshot has one definition; ambiguous
 targets remain unresolved. `FrameworkRuleResolver` accepts explicit rules from
@@ -80,7 +62,7 @@ framework-specific discovery code and emits labeled, confidence-bounded edges.
 The registry deliberately contains no global bag of language heuristics.
 `SnapshotDefinitionResolver` is the non-mutating query-time counterpart: it
 resolves a moniker only against one pinned batch set and uses a bounded,
-thread-safe LRU whose key includes the complete catalog snapshot ID. Negative
+thread-safe LRU whose key includes the caller's complete snapshot ID. Negative
 and ambiguous results are cached without leaking a target across snapshots.
 
 ## Incremental Convergence
@@ -94,50 +76,8 @@ rebuild:
   definitions, occurrences, ranges, edges, provenance, confidence, and resolver;
 - strict mode also requires the provider and profile digests to match.
 
-This remains the semantic M4/M5 parity gate. Durable generations use the same
-comparison after incremental upsert/delete replay; they still do not replace
-eager graph edge materialization for public graph queries.
-
-## Receipt-Based Object Reuse
-
-`codenib.fact-batch-artifact.v1` is the deterministic object form used by the
-current incremental-reuse slice. `FactBatchReuseKey` binds the FactBatch schema,
-canonical repository path, language, content digest, profile digest, and
-provider. `FactBatchReuseCache` stores bytes through the replaceable
-`ObjectStore` protocol and keeps the key-to-object receipt mapping in a
-caller-owned mutable mapping.
-
-Every hit revalidates receipt metadata, object SHA-256 and size, storage key,
-artifact schema, canonical JSON, embedded batch digest, and the complete reuse
-key. A second output for an existing reuse key is rejected as analyzer
-nondeterminism or an incomplete profile. Changed path, source content, profile,
-or provider is a miss.
-
-`FactBatchReuseCache` itself is intentionally not catalog publication: its
-mutable receipt mapping is still caller-owned and never becomes durable state.
-
-## Catalog Generations
-
-`codenib.fact-batch-generation.v1` is the durable composition boundary. Its
-primary manifest binds repository/source identity, clangd profile digest,
-provider, sorted per-file reuse keys and receipts, a semantic batch-set digest,
-and a snapshot-local definition index. Every per-file artifact is registered
-as an immutable member object of the view generation. Catalog schema v4 stores
-those membership edges explicitly, includes the canonical digest list in the
-generation identity, exposes them in a pinned manifest summary, and prevents a
-ready member or its CAS object from being replaced or reclaimed.
-
-`publish_fact_batch_generation` starts from the caller-pinned previous ready
-generation, carries forward unchanged units, applies whole-file upserts and
-deletes, verifies every reused or newly published receipt, stages the manifest
-and members, and only then advances the named ref with compare-and-swap. A
-failed CAS may leave unreachable immutable objects for later GC, but it cannot
-move the ref or make the previous generation unreadable. A profile/provider
-change requires `replace_all=True`.
-
-This is an opt-in semantic-facts view on the `semantic-facts` ref by default.
-Raw `.idx` directories, native pybind objects, and caller receipt maps are not
-catalog state. Public graph serving remains on the legacy materialized graph.
+This remains the semantic parity gate. It does not replace eager graph edge
+materialization for public graph queries.
 
 ## Native-Core Gate
 
@@ -167,10 +107,9 @@ supported exact-position queries skip `CodeGraph`. The v3 normalization also
 emits complete containment/reference adjacency plus legacy traversal order;
 the hybrid route view reuses the existing tree-sitter span rules only for
 touched symbols, so supported direct and query-only routes skip igraph as well.
-The query index remains an ephemeral read model. The separate clangd FactBatch
-adapter can now publish durable per-file units, but only through the explicit
-generation coordinator above; this does not change graph persistence or the
-public query authority.
+The query index remains an ephemeral read model. The unconsumed catalog-backed
+clangd FactBatch publication experiment was removed with generic storage; this
+does not change graph persistence or the public query authority.
 
 Runtime selection is explicit:
 
@@ -192,10 +131,9 @@ export CODENIB_NATIVE_CLANGD_FACT_QUERY_INDEX=auto
 ```
 
 The clangd variable remains available to the direct experiment and profiling
-surface. CodeNib 0.2.2 does not admit mutable project-local `.idx` files in a
+surface. Mutable project-local `.idx` files are not admitted in a
 manifest-bound MCP or agent runtime; those contexts use the verified persisted
-graph until clangd generations carry an authenticated receipt and allowed-file
-proof.
+graph.
 
 Run the alternating-arm parity and performance gate with:
 
@@ -218,13 +156,6 @@ make clangd-workload-gate \
   CLANGD_WORKLOAD_GATE_INDEX_DIR=/path/to/repository/.cache/clangd/index \
   CLANGD_WORKLOAD_GATE_PROJECT_ROOT=/path/to/repository \
   CLANGD_WORKLOAD_GATE_SUBJECT_ID=fmt-11.2.0
-
-make clangd-fact-generation-profile \
-  CLANGD_FACT_GENERATION_PROFILE_INDEX_DIR=/path/to/repository/.cache/clangd/index \
-  CLANGD_FACT_GENERATION_PROFILE_PROJECT_ROOT=/path/to/repository \
-  CLANGD_FACT_GENERATION_PROFILE_COMPILE_COMMANDS=/path/to/compile_commands.json \
-  CLANGD_FACT_GENERATION_PROFILE_TARGET_TRIPLE=x86_64-unknown-linux-gnu \
-  CLANGD_FACT_GENERATION_PROFILE_BUILD_CONTEXT_DIGEST=sha256:<digest>
 ```
 
 Promotion still requires exact semantic parity and at least 20% end-to-end
@@ -243,15 +174,3 @@ applies explicit wall-time and peak-RSS budgets. Position-first and route-first
 each require at least 20% acceleration and zero graph materializations. The
 route arm includes direct symbols and bounded query-only fallback. clangd
 generation remains a separately labeled preparation measurement.
-
-The generation profile is a storage/reuse gate rather than a public query
-promotion gate. It requires a non-empty batch set, a complete first
-publication, exact batch equality, all unchanged units reused, zero new unit
-publications, complete manifest-plus-unit catalog reachability, and zero graph
-materializations. On fmt 11.2.0 commit
-`40626af88bd7df9a5fb80be7b25ac85b122d6c21`, 492 input shards emitted 51 file
-units containing 9,783 definitions, 98,552 occurrences, and 85,903 edges
-(64,668 unresolved cross-file targets). The manifest was 996,430 bytes. The
-clean adapter-plus-publication path took 9.917 seconds; unchanged publication
-took 5.235 seconds (47.2% faster), reused 51/51 units, published zero, retained
-52 reachable manifest-plus-unit objects, and never materialized `CodeGraph`.

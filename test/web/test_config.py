@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -24,28 +22,6 @@ def test_minimal_config_uses_concrete_dataclass_defaults(tmp_path: Path) -> None
     assert config.embedding_dimension == 384
     assert config.max_turns == 8
     assert config.wiki_agent is False
-
-
-def test_default_config_does_not_import_durable_storage() -> None:
-    root = Path(__file__).resolve().parents[2]
-    script = """
-import sys
-
-from codenib.web.config import QAConfig
-
-QAConfig()
-if "codenib.storage" in sys.modules:
-    raise SystemExit("durable storage imported without explicit configuration")
-"""
-
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
 
 
 def test_config_rejects_removed_index_storage(tmp_path: Path) -> None:

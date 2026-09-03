@@ -28,9 +28,10 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
 5. Installs the native wheel on Python 3.10 through 3.14 and publishes, retains,
    and closes one real `LocalWorkspaceProvider` generation.
 6. Builds a real BM25 index through the installed `codenib` command.
-7. Installs the public 0.1.0 package, upgrades it to the candidate wheel,
-   verifies that an incompatible BM25 view rebuilds once, and then verifies
-   that the rebuilt view is reused.
+7. Installs the public 0.2.2 package, materializes its catalog into a portable
+   context artifact, upgrades to the candidate wheel, verifies that the BM25
+   view and materialized artifact remain reusable, and proves the retired
+   generic-storage package and CLI commands are absent.
 8. Exercises the installed Wiki and MCP services end to end.
 9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
