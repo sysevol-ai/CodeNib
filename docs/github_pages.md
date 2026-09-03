@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.2
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
 ```
 
 The version tag keeps the compiler, frontend, Action, and artifact schema on
@@ -54,7 +54,7 @@ than natural-language retrieval quality:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.2
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
     with:
       preset: fast
 ```
@@ -71,7 +71,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.2
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
     with:
       preset: semantic
       embedding-provider: openai
@@ -141,7 +141,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.2
+- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.3
   id: codenib
   with:
     preset: fast

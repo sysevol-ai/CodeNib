@@ -14,10 +14,10 @@ bounded source reads.
 
 ## One-command setup
 
-Install CodeNib 0.2.2 with the graph runtime and official MCP SDK:
+Install CodeNib 0.2.3 with the graph runtime and official MCP SDK:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]==0.2.3"
 codenib codegraph init /absolute/path/to/repository
 ```
 

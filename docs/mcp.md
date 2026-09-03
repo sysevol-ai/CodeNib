@@ -13,11 +13,11 @@ then reuse that manifest across agent sessions.
 
 ## Install And Index
 
-For Codex or Claude Code, the recommended 0.2.2 path prepares the graph index
+For Codex or Claude Code, the recommended 0.2.3 path prepares the graph index
 and native client configuration together:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]==0.2.3"
 codenib codegraph init /path/to/repository
 ```
 
@@ -31,14 +31,14 @@ For a custom MCP client or a retrieval-only setup, build and launch the server
 manually. The smaller no-model fallback is:
 
 ```bash
-python -m pip install "codenib[mcp]==0.2.2"
+python -m pip install "codenib[mcp]==0.2.3"
 codenib index /path/to/repository --preset fast
 ```
 
 Add static navigation and dependency tools without an embedding download:
 
 ```bash
-python -m pip install "codenib[graph,mcp]==0.2.2"
+python -m pip install "codenib[graph,mcp]==0.2.3"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset graph
 ```
@@ -120,8 +120,8 @@ absolute path to a repository previously indexed with `codenib index`. The
 declared launch is equivalent to:
 
 ```bash
-uvx --with "codenib[mcp]==0.2.2" \
-  "codenib==0.2.2" mcp /absolute/path/to/repository
+uvx --with "codenib[mcp]==0.2.3" \
+  "codenib==0.2.3" mcp /absolute/path/to/repository
 ```
 
 The Registry path is intentionally query-only and model-free. It can always
@@ -211,7 +211,7 @@ Parameter and return schemas live in
 The `full` preset requests BM25, vectors, a symbol graph, and Zoekt:
 
 ```bash
-python -m pip install "codenib[full]==0.2.2"
+python -m pip install "codenib[full]==0.2.3"
 codenib toolchain install /path/to/repository --scope graph
 codenib index /path/to/repository --preset full
 ```

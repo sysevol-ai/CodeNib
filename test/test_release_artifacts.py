@@ -192,8 +192,8 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
     name, version = project_identity(root / "pyproject.toml")
 
     assert name == "codenib"
-    assert expected_tag(version) == "v0.2.2"
-    validate_tag("v0.2.2", version)
+    assert expected_tag(version) == "v0.2.3"
+    validate_tag("v0.2.3", version)
 
 
 def test_release_tag_must_match_project_version() -> None:
@@ -378,16 +378,20 @@ def test_select_compatible_wheel_rejects_unsupported_platform(tmp_path: Path) ->
         select_compatible_wheel(dist, system="linux", machine="ppc64le")
 
 
-def test_stable_release_notes_describe_the_repository_source_contract() -> None:
+def test_stable_release_notes_describe_the_wiki_storage_boundary() -> None:
     root = Path(__file__).resolve().parents[1]
-    notes = (root / "docs" / "releases" / "0.2.2.md").read_text(encoding="utf-8")
+    notes = (root / "docs" / "releases" / "0.2.3.md").read_text(encoding="utf-8")
 
-    assert '"codenib[graph,mcp]==0.2.2"' in notes
-    assert "codenib codegraph init" in notes
-    assert "--exclude-dir" in notes
-    assert "contained absolute symlinks" in notes.lower()
-    assert "Manifest 1.2" in notes
-    assert "Zoekt" in notes
+    assert '"codenib[graph,mcp]==0.2.3"' in notes
+    assert "single-file" in notes
+    assert "`codenib.storage`" in notes
+    assert "`WikiStore`" in notes
+    assert "`SQLiteWikiStore`" in notes
+    assert "manifest-bound file artifacts" in notes
+    assert "`artifact materialize`" in notes
+    assert "pinned CodeNib 0.2.2" in notes
+    assert "`SQLiteCatalog`" in notes
+    assert "`LocalCAS`" in notes
     assert "test-files.pythonhosted.org" not in notes
     assert "--extra-index-url" not in notes
     assert "--index-url" not in notes
@@ -431,7 +435,7 @@ def test_public_install_commands_select_the_current_stable_release(
 
     assert install_lines
     assert "CODENIB_ALPHA_WHEEL=" not in text
-    assert all("==0.2.2" in line for line in install_lines)
+    assert all("==0.2.3" in line for line in install_lines)
 
 
 def test_readme_install_commands_remain_unpinned() -> None:
