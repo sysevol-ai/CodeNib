@@ -88,6 +88,8 @@ pins the ref and its complete snapshot closure in one SQLite read transaction.
 Object bytes are durable before catalog publication begins, so a failure may
 leave an unreachable CAS object but cannot publish a ref to an incomplete
 transaction. H1 deliberately has no deletion or orphan-reclamation path.
+Export verifies the CAS digest, size, metadata digest, payload file count, and
+payload byte count before the ordinary extractor prepares its destination.
 
 For a new ref, `expected_revision=0` creates revision 1. A different snapshot
 requires the exact current revision and advances it by one. Retrying the exact
@@ -101,7 +103,7 @@ command pass at the same revision.
 | Boundary | Required observable result | Status |
 | --- | --- | --- |
 | Unrelated, identified, or drifted SQLite file | Fail closed without adopting or rewriting it | Verified at `247b1dc5` |
-| Concurrent first catalog open | One canonical four-table CNIX/WAL database | Verified at `247b1dc5` |
+| Concurrent first catalog open | One canonical four-table CNIX/WAL database | Verified at `178c3a35`; 100 repeated 16-thread and 30 repeated eight-process review runs |
 | Invalid or non-BM25 portable input | No ref or catalog publication | Verified at `247b1dc5` |
 | Artifact changes while archived | Publication fails; no ref becomes visible | Verified at `247b1dc5` |
 | CAS temporary write or publish failure | No corrupt canonical object; temporary state is cleaned | Verified at `247b1dc5` |
@@ -112,9 +114,12 @@ command pass at the same revision.
 | Exact publication retry | Same snapshot and revision are returned | Verified at `247b1dc5` |
 | Reader overlaps a publisher | Reader observes one complete old or new snapshot closure | Verified at `247b1dc5` |
 | Missing, replaced, or corrupt CAS object on export | Fail before a verified destination is published | Verified at `0bf6e752` |
+| Catalog generation counts or archive identity drift | Fail before creating the export destination or an extraction stage | Verified at `178c3a35` |
+| Symlinked store root or catalog file | Fail without writing through the final symlink | Verified at `178c3a35` |
 | Symlinked destination ancestor or interrupted extraction | No path escape, foreign write, or leaked stage | Verified at `247b1dc5`, including the existing archive stage-swap test |
 | Store is removed after successful export | Exported artifact still verifies and serves through ordinary BM25/MCP | Verified at `247b1dc5` |
-| Wheel and stable command inspection | No `codenib` experimental module, export, command, or default import | Verified at `247b1dc5` |
+| SQLite failure through the developer command | Exit 1 with one concise error and no traceback | Verified at `178c3a35` |
+| Wheel and stable command inspection | No `codenib` experimental module, export, command, or default import | Verified at `86fbe2cb`, including the actual source-only script paths |
 
 The catalog's `_before_ref_update` hook exists only for the named transaction
 failure test. New arbitrary line-by-line fault seams require a reproduced bug.
@@ -147,7 +152,7 @@ codenib mcp --artifact /tmp/codenib-bm25-export \
   --repository owner/repository
 ```
 
-The focused H1 command passed at `0bf6e752`: **36 passed**. The repository unit
+The focused H1 command passed at `178c3a35`: **40 passed**. The repository unit
 tier additionally reached **6,919 passed, 34 skipped**; its only unavailable
 cases were two pre-existing tests that resolve `/usr/bin/docker`, which is not
 installed on the benchmark host. The other 38 Docker tests passed when those
@@ -186,6 +191,15 @@ Ten identical republishes kept exactly one object, one row in each table, ref
 revision 1, and zero retained-byte growth. The archive held three files and
 10,941,994 uncompressed bytes; store overhead was 49,152 bytes. The benchmark
 query returned 20 identical projected results before and after persistence.
+
+The export-integrity fix was rechecked from clean `86fbe2cb` on the same host
+and workload class: 573 Python files and 8,684 chunks. Initial publish was
+1,788.1 ms; ten exact republishes had p50/p95 1,782.1/1,788.4 ms; 20 ref
+resolves had p50/p95 0.417/0.476 ms; and ten exports had p50/p95
+1,175.9/1,180.4 ms. The 10,947,167-byte archive digest was
+`38154aef6212bdd89a82ecc66b0d2275046349fd3648f2d867b12ebcf4d54b4a`.
+The changed export path therefore remains below the pre-fixed 2-second p95
+threshold without a second extraction pass.
 
 ## Decision
 
