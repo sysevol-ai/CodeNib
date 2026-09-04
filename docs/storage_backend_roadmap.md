@@ -181,10 +181,10 @@ or speculative authorization system.
 ## Tracking
 
 Issue #765 owns the bounded H1 evidence and its 2026-10-04
-promote-or-delete decision. It references historical #199, foundation #535,
-and subtraction #753-#762; it does not reopen those scopes. Record the H1 PR
-here when opened. Do not use the stale `feat/storage-catalog-foundation` branch
-as a base.
+promote-or-delete decision; PR #766 carries the source-only implementation and
+evidence. The tracker references historical #199, foundation #535, and
+subtraction #753-#762 without reopening those scopes. Do not use the stale
+`feat/storage-catalog-foundation` branch as a base.
 
 The detailed H1 schema, linearization points, failure matrix, commands, and
 benchmark receipt live in
