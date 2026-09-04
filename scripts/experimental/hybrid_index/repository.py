@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import tempfile
@@ -28,7 +29,13 @@ from codenib.artifacts.runtime import VerifiedContextArtifact, verify_context_ar
 
 from .cas import BlobInfo, LocalCAS
 from .catalog import SQLiteCatalog
-from .contracts import Generation, ResolvedSnapshot, Snapshot, StorageIntegrityError
+from .contracts import (
+    Generation,
+    ResolvedSnapshot,
+    Snapshot,
+    StorageIntegrityError,
+    StorageValidationError,
+)
 
 _COPY_BYTES = 1024 * 1024
 _ZIP_TIME = (1980, 1, 1, 0, 0, 0)
@@ -130,6 +137,41 @@ def _write_deterministic_archive(
         )
 
 
+def _archive_identity(path: Path) -> tuple[str, int, int]:
+    """Read the identity fields committed by one H1 deterministic archive."""
+
+    try:
+        with zipfile.ZipFile(path) as archive:
+            members = archive.infolist()
+            metadata = [
+                member
+                for member in members
+                if member.filename == CONTEXT_ARTIFACT_MANIFEST and not member.is_dir()
+            ]
+            if len(metadata) != 1 or any(member.is_dir() for member in members):
+                raise StorageIntegrityError(
+                    "CAS archive does not have the deterministic H1 shape"
+                )
+            digest = hashlib.sha256()
+            observed_size = 0
+            with archive.open(metadata[0], "r") as source:
+                while block := source.read(_COPY_BYTES):
+                    digest.update(block)
+                    observed_size += len(block)
+            if observed_size != metadata[0].file_size:
+                raise StorageIntegrityError("CAS archive metadata size changed")
+            payload = [member for member in members if member is not metadata[0]]
+            return (
+                digest.hexdigest(),
+                len(payload),
+                sum(member.file_size for member in payload),
+            )
+    except StorageIntegrityError:
+        raise
+    except (OSError, RuntimeError, zipfile.BadZipFile) as exc:
+        raise StorageIntegrityError("CAS archive identity cannot be read") from exc
+
+
 def _paths_overlap(first: Path, second: Path) -> bool:
     return first == second or first in second.parents or second in first.parents
 
@@ -154,13 +196,21 @@ class IndexRepository:
 
     @classmethod
     def open(cls, root: str | os.PathLike[str]) -> "IndexRepository":
-        candidate = Path(root).expanduser().resolve(strict=False)
+        requested = Path(root).expanduser()
+        if requested.exists() or requested.is_symlink():
+            metadata = requested.lstat()
+            if not stat.S_ISDIR(metadata.st_mode):
+                raise StorageValidationError(
+                    f"H1 repository root is not a real directory: {requested}"
+                )
+        candidate = requested.resolve(strict=False)
         candidate.mkdir(parents=True, exist_ok=True)
-        if not candidate.is_dir():
-            raise ValueError("H1 repository root must be a directory")
+        catalog_path = candidate / "catalog.sqlite3"
+        if catalog_path.is_symlink():
+            raise StorageValidationError("catalog database path is not a regular file")
         # Validate/provision the data plane before creating catalog state.
         objects = LocalCAS(candidate / "objects")
-        catalog = SQLiteCatalog(candidate / "catalog.sqlite3")
+        catalog = SQLiteCatalog(catalog_path)
         return cls(root=candidate, catalog=catalog, objects=objects)
 
     def _preflight_archive(
@@ -262,24 +312,21 @@ class IndexRepository:
             generation.archive_digest,
             expected_size=generation.archive_size,
         )
-        artifact = extract_context_artifact_archive(
+        if _archive_identity(archive) != (
+            generation.metadata_digest,
+            generation.file_count,
+            generation.byte_count,
+        ):
+            raise StorageIntegrityError(
+                "CAS archive differs from its generation identity"
+            )
+        return extract_context_artifact_archive(
             archive,
             output,
             expected_repository=closure.snapshot.repository,
             expected_commit=closure.snapshot.commit,
             max_archive_bytes=DEFAULT_MAX_ARCHIVE_BYTES,
         )
-        if (
-            artifact.source_fingerprint != closure.snapshot.source_fingerprint
-            or artifact.views != (generation.view_type,)
-            or _metadata_digest(artifact) != generation.metadata_digest
-            or artifact.file_count != generation.file_count
-            or artifact.byte_count != generation.byte_count
-        ):
-            raise StorageIntegrityError(
-                "materialized artifact differs from its generation identity"
-            )
-        return artifact
 
 
 __all__ = [

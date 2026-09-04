@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -132,3 +133,29 @@ def test_command_reports_repository_failures(
         == 1
     )
     assert "error: catalog is unavailable" in capsys.readouterr().err
+
+
+def test_command_reports_sqlite_failures_without_a_traceback(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    def fail(_root):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(index_persistence.IndexRepository, "open", fail)
+
+    assert (
+        index_persistence.main(
+            [
+                "publish-bm25",
+                str(tmp_path / "artifact"),
+                "--store",
+                str(tmp_path / "store"),
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "error: database is locked\n"
