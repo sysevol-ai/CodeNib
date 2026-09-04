@@ -87,6 +87,7 @@ def test_upgrade_smoke_accepts_wiki_only_storage_surface(monkeypatch):
         ],
         "retired_exports": [],
         "artifact_commands": ["fetch", "mcp-config", "pack", "verify"],
+        "index_persistence_importable": False,
     }
     monkeypatch.setattr(
         upgrade_smoke,

@@ -143,6 +143,7 @@ def _assert_storage_surface(
             "-c",
             (
                 "import argparse\n"
+                "import importlib.util\n"
                 "import json\n"
                 "from pathlib import Path\n"
                 "import tempfile\n"
@@ -179,6 +180,8 @@ def _assert_storage_surface(
                 "('LocalCAS', 'SQLiteCatalog', 'StorageError') "
                 "if hasattr(storage, name)),\n"
                 "    'artifact_commands': sorted(commands.choices),\n"
+                "    'index_persistence_importable': "
+                "importlib.util.find_spec('codenib.index.persistence') is not None,\n"
                 "}))\n"
             ),
         ],
@@ -202,6 +205,7 @@ def _assert_storage_surface(
         ],
         "retired_exports": [],
         "artifact_commands": ["fetch", "mcp-config", "pack", "verify"],
+        "index_persistence_importable": False,
     }:
         raise RuntimeError(f"unexpected candidate storage surface: {surface!r}")
 

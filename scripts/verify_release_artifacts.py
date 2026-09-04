@@ -49,7 +49,10 @@ _COMPILED_BINARY_SUFFIXES = (
     ".pyd",
     ".so",
 )
-_RETIRED_RUNTIME_PREFIXES = ("codenib/storage/",)
+_RETIRED_RUNTIME_PREFIXES = (
+    "codenib/index/persistence/",
+    "codenib/storage/",
+)
 _RETIRED_RUNTIME_MEMBERS = frozenset(
     {
         "codenib/compiler/cache_import.py",
