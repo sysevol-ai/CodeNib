@@ -162,22 +162,26 @@ def test_catalog_creates_exact_four_table_cnix_wal_schema(tmp_path: Path) -> Non
 
 
 def test_concurrent_first_open_initializes_one_catalog(tmp_path: Path) -> None:
-    path = tmp_path / "catalog.sqlite3"
-    worker_count = 8
-    start = threading.Barrier(worker_count)
+    worker_count = 16
 
-    def open_catalog() -> SQLiteCatalog:
-        start.wait(timeout=10)
-        return SQLiteCatalog(path, timeout=10)
+    def open_concurrently(path: Path) -> tuple[SQLiteCatalog, ...]:
+        start = threading.Barrier(worker_count)
 
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        catalogs = tuple(
-            executor.map(lambda _index: open_catalog(), range(worker_count))
-        )
+        def open_catalog() -> SQLiteCatalog:
+            start.wait(timeout=10)
+            return SQLiteCatalog(path, timeout=10)
 
-    assert {catalog.path for catalog in catalogs} == {path.resolve()}
-    assert {catalog.journal_mode for catalog in catalogs} == {"wal"}
-    assert _table_counts(path) == {table: 0 for table in _TABLES}
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            return tuple(
+                executor.map(lambda _index: open_catalog(), range(worker_count))
+            )
+
+    for iteration in range(25):
+        path = tmp_path / f"catalog-{iteration}.sqlite3"
+        catalogs = open_concurrently(path)
+        assert {catalog.path for catalog in catalogs} == {path.resolve()}
+        assert {catalog.journal_mode for catalog in catalogs} == {"wal"}
+        assert _table_counts(path) == {table: 0 for table in _TABLES}
 
 
 def test_unrelated_sqlite_database_fails_closed_without_mutation(

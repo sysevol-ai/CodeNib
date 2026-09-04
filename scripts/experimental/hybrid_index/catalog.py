@@ -27,6 +27,8 @@ from .contracts import (
 
 _APPLICATION_ID = 0x434E4958  # ``CNIX``
 _SCHEMA_VERSION = 1
+_SQLITE_BUSY = 5
+_SQLITE_LOCKED = 6
 
 _SCHEMA = (
     """
@@ -157,13 +159,24 @@ def _snapshot_fields(snapshot: Snapshot) -> tuple[object, ...]:
     )
 
 
+def _is_sqlite_busy_or_locked(exc: sqlite3.OperationalError) -> bool:
+    code = getattr(exc, "sqlite_errorcode", None)
+    if type(code) is int:
+        return code & 0xFF in {_SQLITE_BUSY, _SQLITE_LOCKED}
+    message = str(exc).casefold()
+    return message.startswith(
+        ("database is locked", "database table is locked", "database schema is locked")
+    )
+
+
 class SQLiteCatalog:
     """Short-connection catalog whose only mutable rows are named refs.
 
     Object bytes are made durable before :meth:`publish_snapshot` starts.
-    The ref INSERT/UPDATE inside ``BEGIN IMMEDIATE`` is the publication
-    linearization point.  A failed transaction may leave an unreachable CAS
-    object, but cannot expose an incomplete snapshot.
+    The ref INSERT/UPDATE inside ``BEGIN IMMEDIATE`` decides the winning value;
+    ``COMMIT`` is the publication linearization point visible to readers. A
+    failed transaction may leave an unreachable CAS object, but cannot expose
+    an incomplete snapshot.
     """
 
     def __init__(self, path: str | os.PathLike[str], *, timeout: float = 30.0) -> None:
@@ -256,9 +269,18 @@ class SQLiteCatalog:
                     if connection.in_transaction:
                         connection.rollback()
                     raise
-            mode = str(
-                connection.execute("PRAGMA journal_mode = WAL").fetchone()[0]
-            ).lower()
+            deadline = time.monotonic() + self.timeout
+            while True:
+                try:
+                    mode = str(
+                        connection.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+                    ).lower()
+                    break
+                except sqlite3.OperationalError as exc:
+                    remaining = deadline - time.monotonic()
+                    if not _is_sqlite_busy_or_locked(exc) or remaining <= 0:
+                        raise
+                    time.sleep(min(0.01, remaining))
             if mode != "wal":
                 raise StorageIntegrityError("index experiment catalog requires WAL")
         finally:

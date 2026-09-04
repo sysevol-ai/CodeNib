@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import sqlite3
 import stat
 import subprocess
 import zipfile
@@ -29,6 +30,7 @@ from scripts.experimental.hybrid_index.contracts import (
     PublishConflict,
     StorageIntegrityError,
     StorageNotFound,
+    StorageValidationError,
 )
 from scripts.experimental.hybrid_index.repository import (
     IndexRepository,
@@ -404,6 +406,52 @@ def test_corrupt_cas_archive_cannot_materialize_a_published_snapshot(
     with pytest.raises(StorageIntegrityError, match="not a regular file"):
         store.materialize_snapshot(publication.snapshot_id, replaced_destination)
     assert not replaced_destination.exists()
+
+
+def test_catalog_identity_mismatch_does_not_publish_materialization(
+    tmp_path: Path,
+) -> None:
+    repository = _initialize_repository(tmp_path, _initial_source())
+    built = _build_portable_bm25(
+        tmp_path,
+        repository,
+        generation="catalog-mismatch",
+    )
+    store = IndexRepository.open(tmp_path / "h1-store")
+    publication = store.publish_bm25(built.root)
+    with sqlite3.connect(store.catalog.path) as connection:
+        connection.execute("UPDATE generations SET file_count = file_count + 1")
+    destination = tmp_path / "must-not-publish-catalog-mismatch"
+
+    with pytest.raises(StorageIntegrityError, match="generation identity"):
+        store.materialize_snapshot(publication.snapshot_id, destination)
+
+    assert not destination.exists()
+    assert not list(tmp_path.glob(f".{destination.name}*"))
+
+
+def test_repository_open_rejects_a_symlinked_root(tmp_path: Path) -> None:
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    final_alias = tmp_path / "store-alias"
+    final_alias.symlink_to(victim, target_is_directory=True)
+
+    with pytest.raises(StorageValidationError, match="real directory"):
+        IndexRepository.open(final_alias)
+
+    assert tuple(victim.iterdir()) == ()
+
+
+def test_repository_open_rejects_a_symlinked_catalog(tmp_path: Path) -> None:
+    store_root = tmp_path / "h1-store"
+    store_root.mkdir()
+    outside = tmp_path / "outside.sqlite3"
+    (store_root / "catalog.sqlite3").symlink_to(outside)
+
+    with pytest.raises(StorageValidationError, match="regular file"):
+        IndexRepository.open(store_root)
+
+    assert not outside.exists()
 
 
 def test_materialize_rejects_a_symlinked_destination_ancestor(
