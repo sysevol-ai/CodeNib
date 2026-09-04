@@ -15,6 +15,7 @@ SPDX-License-Identifier: Apache-2.0
 | Decision date | 2026-09-03 |
 | Promote-or-delete deadline | 2026-10-04 |
 | Tracker | #765 |
+| Implementation PR | #766 |
 | Stable API or CLI | none |
 | Current non-test consumer | none; promotion blocker |
 | Package location | none; source checkout only |
