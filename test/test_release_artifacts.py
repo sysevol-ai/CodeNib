@@ -320,6 +320,18 @@ def test_release_wheel_rejects_retired_storage_runtime(tmp_path: Path) -> None:
         validate_release(dist, project_file=project)
 
 
+def test_release_wheel_rejects_experimental_index_persistence(
+    tmp_path: Path,
+) -> None:
+    project, dist = _write_test_release(tmp_path)
+    wheel = dist / "codenib-0.2.1-cp310-abi3-manylinux_2_28_x86_64.whl"
+    with zipfile.ZipFile(wheel, mode="a") as archive:
+        archive.writestr("codenib/index/persistence/catalog.py", "experimental")
+
+    with pytest.raises(ReleaseValidationError, match="retired storage runtime"):
+        validate_release(dist, project_file=project)
+
+
 def test_release_sdist_rejects_retired_compiler_bridge(tmp_path: Path) -> None:
     project, dist = _write_test_release(
         tmp_path,
@@ -1083,3 +1095,7 @@ def test_product_storage_scope_and_removal_policy_are_documented() -> None:
     provider_prose = " ".join(provider.split())
     assert "a filesystem publication boundary, not a database" in provider_prose
     assert "v0.2.2 environment before upgrading" in roadmap_prose
+    project = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'include = ["codenib*"]' in project
+    assert (root / "scripts/experimental/hybrid_index").is_dir()
+    assert not (root / "codenib/index/persistence").exists()
