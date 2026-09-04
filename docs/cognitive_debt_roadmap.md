@@ -88,13 +88,15 @@ source and manifest contracts
 
 Wiki consumer -> WikiStore -> SQLiteWikiStore
 manifest-bound views -> BM25 / FAISS / igraph / portable file artifacts
+source-only H1 experiment -> published artifact contracts
 labs and experiments -> published contracts only
 ```
 
 `web` must not own Wiki domain behavior, MCP must not own the reusable
 repository runtime, and `compiler` and `artifacts` must not import each other.
 Generic catalog, snapshot, job, lease, and object-store machinery is not on a
-protected product path.
+protected product path. The bounded H1 experiment is evidence-gathering outside
+the installed package, not another product runtime.
 
 ## Workstreams
 
@@ -154,6 +156,29 @@ Status: in progress.
 
 Exit condition: protected product journeys use only the Wiki database facade
 and manifest-bound artifacts; no generic storage surface remains.
+
+### S1E: Time-bounded hybrid-index evidence
+
+Status: experimental through 2026-10-04.
+
+Owner: index/artifact maintainers.
+
+- Keep the candidate under `scripts/experimental/hybrid_index/`, outside the
+  installed `codenib` namespace and every default product import.
+- Accept exactly one verified BM25-only portable artifact and use exactly one
+  SQLite WAL catalog plus local SHA-256 CAS implementation.
+- Add no stable export, official CLI/configuration, Web/MCP route, backend
+  registry, additional view, job, lease, GC, overlay, or remote adapter.
+- Treat a real non-test consumer, a representative benchmark, portable
+  round-trip compatibility, and the recorded failure matrix as promotion
+  prerequisites rather than follow-up work.
+- By 2026-10-04, make an explicit promotion decision or delete the
+  implementation, executable script, and dedicated tests while retaining the
+  evidence record.
+
+Exit condition: H1 is either promoted by a new scope decision that names the
+old path it replaces, or fully removed. Source-only and default-off code does
+not receive an indefinite exception.
 
 ### S2: Stable versus labs packaging
 
@@ -236,6 +261,7 @@ Status: pending.
 | 2026-09-01 | Make WikiStore the only product database and stop the generic backend program | Storage audit counts, protected-journey consumer tracing, and the one-table Wiki conformance results are summarized in `storage_backend_roadmap.md` | Remove the Web retained-storage vertical; freeze generic storage/CLI compatibility code and delete it by proven consumer; close PostgreSQL, S3, generic GC, and dynamic-registry plans |
 | 2026-09-02 | Use the next release as the generic-storage removal boundary | The consumer audit found only the two retained artifact bridges and one catalog-backed FactBatch profile; ordinary product routes were independent | Delete the complete generic package and callers; keep v0.2.2 only as the pre-upgrade materialization tool |
 | 2026-09-03 | Publish the subtraction as v0.2.3 and reserve `codenib.storage` for the Wiki database | `WikiStore` is the only product database contract, while the old package name remains the clearest public entry point | Add one lazy Wiki-only module with an exact export list; keep all generic submodules, protocols, catalogs, and CAS implementations retired |
+| 2026-09-03 | Authorize one source-only BM25 H1 evidence experiment without reopening the stable storage boundary | `docs/experiments/hybrid_index_h1.md` records its schema, linearization points, verified failure matrix, commands, and diagnostic benchmark | Keep it outside the wheel and product routes; promote through an explicit demand-backed decision or delete code, script, and tests by 2026-10-04 |
 
 ## Completion Gate
 
