@@ -332,6 +332,23 @@ def test_release_wheel_rejects_experimental_index_persistence(
         validate_release(dist, project_file=project)
 
 
+def test_release_wheel_rejects_source_only_h1_experiment(tmp_path: Path) -> None:
+    project, dist = _write_test_release(tmp_path)
+    wheel = dist / "codenib-0.2.1-cp310-abi3-manylinux_2_28_x86_64.whl"
+    with zipfile.ZipFile(wheel, mode="a") as archive:
+        archive.writestr(
+            "scripts/experimental/hybrid_index/catalog.py",
+            "source only",
+        )
+        archive.writestr(
+            "scripts/experimental/index_persistence.py",
+            "source only",
+        )
+
+    with pytest.raises(ReleaseValidationError, match="source-only experimental"):
+        validate_release(dist, project_file=project)
+
+
 def test_release_sdist_rejects_retired_compiler_bridge(tmp_path: Path) -> None:
     project, dist = _write_test_release(
         tmp_path,
