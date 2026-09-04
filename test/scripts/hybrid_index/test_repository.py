@@ -393,6 +393,18 @@ def test_corrupt_cas_archive_cannot_materialize_a_published_snapshot(
     )
     assert (built.root / CONTEXT_ARTIFACT_MANIFEST).is_file()
 
+    archive.unlink()
+    missing_destination = tmp_path / "missing-must-not-publish"
+    with pytest.raises(FileNotFoundError):
+        store.materialize_snapshot(publication.snapshot_id, missing_destination)
+    assert not missing_destination.exists()
+
+    archive.symlink_to(built.root / CONTEXT_ARTIFACT_MANIFEST)
+    replaced_destination = tmp_path / "replaced-must-not-publish"
+    with pytest.raises(StorageIntegrityError, match="not a regular file"):
+        store.materialize_snapshot(publication.snapshot_id, replaced_destination)
+    assert not replaced_destination.exists()
+
 
 def test_materialize_rejects_a_symlinked_destination_ancestor(
     tmp_path: Path,
