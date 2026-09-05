@@ -6,9 +6,7 @@
 
 from __future__ import annotations
 
-import glob
 import math
-import os
 from collections import Counter
 from typing import Any, Callable, Iterable, Optional
 
@@ -43,15 +41,6 @@ def _coverage(cached: int, total: int) -> dict[str, Any]:
     }
 
 
-def _cache_paths(cache_root: str, wiki: AgentWiki, suffix: str) -> tuple[str, ...]:
-    """Resolve stable and legacy cache files without creating a directory."""
-
-    paths = wiki._cache_candidate_paths(suffix)
-    if paths:
-        return paths
-    return (os.path.join(cache_root, f"agentwiki_{wiki._key(suffix)}.json"),)
-
-
 def _stored_entry_bytes(entry: WikiStoredEntry) -> int:
     """Return the domain-canonical byte size of one stored envelope."""
 
@@ -62,7 +51,6 @@ def audit_wiki_cache(
     registry: Any,
     *,
     model: str,
-    cache_dir: str | os.PathLike[str],
     repo_ids: Optional[Iterable[str]] = None,
     wiki_factory: Callable[..., AgentWiki] = AgentWiki,
     store: Optional[WikiStore] = None,
@@ -73,7 +61,6 @@ def audit_wiki_cache(
     invokes a model. Missing outlines are reported instead of generated.
     """
 
-    cache_root = os.path.abspath(os.fspath(cache_dir))
     selected = {str(repo_id) for repo_id in repo_ids or ()}
     totals = Counter()
     modes = Counter()
@@ -84,7 +71,6 @@ def audit_wiki_cache(
     fallback_pages: list[dict[str, Any]] = []
     retry_scheduled_pages: list[dict[str, Any]] = []
     retry_exhausted_pages: list[dict[str, Any]] = []
-    current_cache_paths: set[str] = set()
     current_entry_ids: set[str] = set()
     metric_samples: dict[str, list[float]] = {
         "total_ms": [],
@@ -111,15 +97,12 @@ def audit_wiki_cache(
         bundle = registry.get(repo_id)
         if bundle is None:
             continue
-        wiki_kwargs: dict[str, Any] = {"model": model, "cache_dir": cache_root}
+        wiki_kwargs: dict[str, Any] = {"model": model}
         if store is not None:
             wiki_kwargs["store"] = store
         wiki = wiki_factory(bundle, **wiki_kwargs)
-        outline_paths = _cache_paths(cache_root, wiki, "outline")
-        current_cache_paths.update(os.path.abspath(path) for path in outline_paths)
-        if store is not None:
-            current_entry_ids.add(wiki._store_entry_id("outline"))
-        outline = wiki._read_cache_read_only("outline")
+        current_entry_ids.add(wiki._store_entry_id("outline"))
+        outline = wiki._read_cache("outline")
         if not isinstance(outline, dict) or not outline.get("pages"):
             missing_outlines.append(repo_id)
             repo_reports.append(
@@ -162,18 +145,9 @@ def audit_wiki_cache(
                 meta = raw_meta
 
             suffix = wiki._page_cache_suffix(meta)
-            paths = _cache_paths(cache_root, wiki, suffix)
-            current_cache_paths.update(os.path.abspath(path) for path in paths)
-            evidence_paths = _cache_paths(
-                cache_root,
-                wiki,
-                f"evidence_{suffix}",
-            )
-            current_cache_paths.update(os.path.abspath(path) for path in evidence_paths)
-            if store is not None:
-                current_entry_ids.add(wiki._store_entry_id(suffix))
-                current_entry_ids.add(wiki._store_entry_id(f"evidence_{suffix}"))
-            page = wiki._read_cache_read_only(suffix)
+            current_entry_ids.add(wiki._store_entry_id(suffix))
+            current_entry_ids.add(wiki._store_entry_id(f"evidence_{suffix}"))
+            page = wiki._read_cache(suffix)
             if isinstance(page, dict):
                 totals["cached_pages"] += 1
                 repo_counts["cached_pages"] += 1
@@ -243,25 +217,6 @@ def audit_wiki_cache(
             }
         )
 
-    if selected:
-        # Cache keys are hashed, so an arbitrary file cannot be attributed to a
-        # selected repository without resolving that repository's outline.
-        # Keep subset accounting scoped to the selected repositories instead
-        # of calling every unselected repository's valid cache orphaned.
-        all_cache_paths = {path for path in current_cache_paths if os.path.isfile(path)}
-    else:
-        all_cache_paths = {
-            os.path.abspath(path)
-            for path in glob.glob(os.path.join(cache_root, "agentwiki_*.json"))
-        }
-    orphan_paths = all_cache_paths - current_cache_paths
-    legacy_bytes = sum(
-        os.path.getsize(path) for path in all_cache_paths if os.path.isfile(path)
-    )
-    orphan_legacy_bytes = sum(
-        os.path.getsize(path) for path in orphan_paths if os.path.isfile(path)
-    )
-
     if store is not None:
         entries = store.scan(repository_ids=selected or None)
         orphan_entries = tuple(
@@ -277,23 +232,17 @@ def audit_wiki_cache(
             "database_payload_bytes": database_payload_bytes,
             "orphan_entries": len(orphan_entries),
             "orphan_database_payload_bytes": orphan_database_payload_bytes,
-            "files": len(all_cache_paths),
-            "legacy_bytes": legacy_bytes,
-            "orphan_files": len(orphan_paths),
-            "orphan_legacy_bytes": orphan_legacy_bytes,
-            # Preserve the v1 file-counter meanings for existing report readers.
-            "bytes": legacy_bytes,
-            "orphan_bytes": orphan_legacy_bytes,
         }
     else:
         storage_report = {
-            "files": len(all_cache_paths),
-            "bytes": legacy_bytes,
-            "orphan_files": len(orphan_paths),
-            "orphan_bytes": orphan_legacy_bytes,
+            "backend": None,
+            "entries": 0,
+            "database_payload_bytes": 0,
+            "orphan_entries": 0,
+            "orphan_database_payload_bytes": 0,
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "repositories": len(repo_reports),
         "coverage": {
             "all": _coverage(totals["cached_pages"], totals["pages"]),

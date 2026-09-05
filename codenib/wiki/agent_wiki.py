@@ -20,23 +20,14 @@ import copy
 import dataclasses
 import hashlib
 import html
-import io
 import json
 import os
 import re
-import tempfile
 import threading
 from contextlib import nullcontext
 from time import perf_counter, time
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from filelock import FileLock
-
-from .._bounded_json import (
-    _bounded_parse_float,
-    validate_bounded_json_stream,
-    validate_json_complexity,
-)
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
 from .builder import WikiBuilder
@@ -74,59 +65,9 @@ from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
-from .store import (
-    _WIKI_CACHE_PROVENANCE_FIELD,
-    WIKI_ENVELOPE_MAX_BYTES,
-    WikiStore,
-    WikiStoreCorruptionError,
-    WikiStoredEntry,
-    WikiStoreError,
-)
+from .store import WikiStore, WikiStoreCorruptionError, WikiStoredEntry, WikiStoreError
 
 logger = get_logger(__name__)
-
-
-def _reject_duplicate_cache_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    value: dict[str, Any] = {}
-    for key, item in pairs:
-        if key in value:
-            raise ValueError(f"duplicate JSON object key: {key}")
-        value[key] = item
-    return value
-
-
-def _reject_nonfinite_cache_number(value: str) -> None:
-    raise ValueError(f"non-finite JSON number: {value}")
-
-
-def _read_legacy_cache_envelope(path: str) -> dict[str, Any] | None:
-    """Read one legacy cache only after bounding its bytes and JSON shape."""
-
-    try:
-        with open(path, "rb") as handle:
-            payload = handle.read(WIKI_ENVELOPE_MAX_BYTES + 1)
-        if len(payload) > WIKI_ENVELOPE_MAX_BYTES:
-            return None
-        validate_bounded_json_stream(
-            io.BytesIO(payload),
-            label="legacy Wiki cache",
-            max_bytes=WIKI_ENVELOPE_MAX_BYTES,
-        )
-        envelope = json.loads(
-            payload.decode("utf-8", errors="strict"),
-            object_pairs_hook=_reject_duplicate_cache_object,
-            parse_constant=_reject_nonfinite_cache_number,
-            parse_float=_bounded_parse_float,
-        )
-        validate_json_complexity(envelope, label="legacy Wiki cache")
-    except MemoryError:
-        raise
-    except (OSError, ValueError, RecursionError):
-        return None
-    if not isinstance(envelope, dict) or "data" not in envelope:
-        return None
-    return envelope
-
 
 _EXT_LANG = {
     "py": "python",
@@ -3218,7 +3159,6 @@ class AgentWiki:
         self,
         bundle: Any,
         model: str,
-        cache_dir: Optional[str] = None,
         *,
         store: Optional[WikiStore] = None,
         llm: Any = None,
@@ -3231,7 +3171,6 @@ class AgentWiki:
         self._cache_llm_identity = getattr(llm, "cache_identity", "")
         self._api_base = api_base
         self._api_key = api_key
-        self._cache_dir = cache_dir
         self._store = store
         self._wb = WikiBuilder(bundle)  # reuse source() + symbol/citation helpers
         self._outline: Optional[Dict[str, Any]] = None
@@ -3269,7 +3208,7 @@ class AgentWiki:
         return digest if isinstance(digest, str) else ""
 
     def _cache_identity(self, suffix: str) -> str:
-        """Return the unhashed identity shared by legacy and database caches."""
+        """Return the unhashed identity used by the Wiki store."""
 
         entry = self._bundle.entry
         commit = getattr(entry, "commit_short", "") or getattr(entry, "base_commit", "")
@@ -3341,11 +3280,6 @@ class AgentWiki:
         )
         return raw
 
-    def _key(self, suffix: str) -> str:
-        """Return the legacy filename key for equivalent repository views."""
-
-        return hashlib.sha1(self._cache_identity(suffix).encode()).hexdigest()[:16]
-
     def _store_entry_id(self, suffix: str) -> str:
         """Return the collision-resistant primary key used by Wiki stores."""
 
@@ -3360,38 +3294,6 @@ class AgentWiki:
             raise ValueError("Wiki store requires a stable repository identity")
         return repository_id
 
-    def _legacy_key(self, suffix: str) -> str:
-        """Return the timestamp-bound key used before stable cache identity."""
-
-        entry = self._bundle.entry
-        commit = getattr(entry, "commit_short", "") or getattr(entry, "base_commit", "")
-        indexes = getattr(getattr(self._bundle, "manifest", None), "indexes", {})
-        view_parts = []
-        for name, view in sorted(indexes.items()):
-            config = getattr(view, "config", {}) or {}
-            config_hash = hashlib.sha1(
-                json.dumps(
-                    config,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                    default=str,
-                ).encode("utf-8")
-            ).hexdigest()[:10]
-            view_parts.append(
-                f"{name}:{getattr(view, 'status', '')}:"
-                f"{getattr(view, 'commit', '')}:"
-                f"{getattr(view, 'source_fingerprint', '')}:"
-                f"{getattr(view, 'built_at_epoch', '')}:{config_hash}"
-            )
-        prompt_version = (
-            _OUTLINE_PROMPT_VERSION if suffix == "outline" else _PAGE_PROMPT_VERSION
-        )
-        raw = (
-            f"{prompt_version}/{getattr(entry, 'instance_id', 'repo')}@{commit}/"
-            f"{','.join(view_parts)}/{suffix}"
-        )
-        return hashlib.sha1(raw.encode()).hexdigest()[:16]
-
     def _client(self):
         if self._llm is None:
             from ..llm.litellm_chat import LiteLLMChat
@@ -3404,28 +3306,6 @@ class AgentWiki:
                 api_key=self._api_key,
             )
         return self._llm
-
-    def _cache_path(self, suffix: str) -> Optional[str]:
-        if not self._cache_dir:
-            return None
-        os.makedirs(self._cache_dir, exist_ok=True)
-        return self._cache_candidate_paths(suffix)[0]
-
-    def _cache_candidate_paths(self, suffix: str) -> tuple[str, ...]:
-        """Return stable then legacy cache paths without touching the disk."""
-
-        if not self._cache_dir:
-            return ()
-        keys = [self._key(suffix)]
-        # Pre-selection caches cannot prove which source inventory produced
-        # their prompts. Keep migration only for legacy manifests that have no
-        # persisted selection identity at all.
-        if not self._source_selection_identity():
-            keys.append(self._legacy_key(suffix))
-        return tuple(
-            os.path.join(self._cache_dir, f"agentwiki_{key}.json")
-            for key in dict.fromkeys(keys)
-        )
 
     @staticmethod
     def _page_cache_suffix(meta: Dict[str, Any]) -> str:
@@ -3442,57 +3322,10 @@ class AgentWiki:
         return f"page_{meta.get('id', 'page')}_{identity}"
 
     def _read_cache(self, suffix: str) -> Optional[Any]:
-        if self._store is not None:
-            stored = self._store.read(self._store_entry_id(suffix))
-            if stored is not None:
-                return self._stored_data(stored)
-
-        paths = self._cache_candidate_paths(suffix)
-        for index, path in enumerate(paths):
-            if not os.path.isfile(path):
-                continue
-            envelope = _read_legacy_cache_envelope(path)
-            if envelope is None:
-                continue
-            if self._store is not None:
-                try:
-                    stored = self._publish_store_cache(
-                        suffix,
-                        envelope,
-                        if_absent=True,
-                    )
-                except WikiStoreCorruptionError:
-                    raise
-                except (WikiStoreError, TypeError, ValueError) as exc:
-                    logger.warning("Could not adopt legacy Wiki cache: %s", exc)
-                else:
-                    return self._stored_data(stored)
-            elif index > 0 and paths:
-                # Adopt the current timestamp-bound entry into the stable key
-                # before a future equivalent index rebuild changes its legacy
-                # identity. Preserve the original model provenance envelope.
-                try:
-                    self._atomic_write_cache(paths[0], envelope, if_absent=True)
-                except (OSError, TypeError):
-                    pass
-            return envelope.get("data")
-        return None
-
-    def _read_cache_read_only(self, suffix: str) -> Optional[Any]:
-        """Read one cache entry without migrating or publishing cache data."""
-
-        if self._store is not None:
-            stored = self._store.read(self._store_entry_id(suffix))
-            if stored is not None:
-                return self._stored_data(stored)
-
-        for path in self._cache_candidate_paths(suffix):
-            if not os.path.isfile(path):
-                continue
-            envelope = _read_legacy_cache_envelope(path)
-            if envelope is not None:
-                return envelope.get("data")
-        return None
+        if self._store is None:
+            return None
+        stored = self._store.read(self._store_entry_id(suffix))
+        return self._stored_data(stored) if stored is not None else None
 
     @staticmethod
     def _stored_data(entry: WikiStoredEntry) -> Any:
@@ -3503,87 +3336,10 @@ class AgentWiki:
             )
         return envelope["data"]
 
-    def _publish_store_cache(
-        self,
-        suffix: str,
-        envelope: dict[str, Any],
-        *,
-        if_absent: bool = False,
-    ) -> WikiStoredEntry:
-        if self._store is None:
-            raise RuntimeError("Wiki store is not configured")
-        entry_id = self._store_entry_id(suffix)
-        repository_id = self._repository_id()
-        cache_files = [
-            os.path.basename(path) for path in self._cache_candidate_paths(suffix)
-        ]
-        if cache_files:
-            # Legacy files remain readable for one release. Bind their names to
-            # the canonical record so audits can ignore stale adopted copies.
-            envelope = {
-                **envelope,
-                _WIKI_CACHE_PROVENANCE_FIELD: {
-                    "schema": 1,
-                    "entry_id": entry_id,
-                    "repository_id": repository_id,
-                    "legacy_filenames": cache_files,
-                },
-            }
-        return self._store.publish(
-            entry_id=entry_id,
-            repository_id=repository_id,
-            envelope=envelope,
-            if_absent=if_absent,
-        )
-
-    @staticmethod
-    def _atomic_write_cache(
-        path: str,
-        envelope: dict[str, Any],
-        *,
-        if_absent: bool = False,
-    ) -> None:
-        """Publish one complete JSON envelope under an inter-process lock."""
-
-        parent = os.path.dirname(path)
-        os.makedirs(parent, exist_ok=True)
-        with FileLock(f"{path}.lock"):
-            if if_absent and os.path.isfile(path):
-                return
-            descriptor, temporary_path = tempfile.mkstemp(
-                prefix=f".{os.path.basename(path)}.",
-                suffix=".tmp",
-                dir=parent,
-            )
-            try:
-                with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                    json.dump(envelope, handle)
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                os.replace(temporary_path, path)
-                temporary_path = ""
-                try:
-                    directory_descriptor = os.open(parent, os.O_RDONLY)
-                    try:
-                        os.fsync(directory_descriptor)
-                    finally:
-                        os.close(directory_descriptor)
-                except OSError:
-                    pass
-            finally:
-                if temporary_path:
-                    try:
-                        os.unlink(temporary_path)
-                    except OSError:
-                        pass
-
     def _cache_generation_lock(self, suffix: str) -> Any:
         if self._store is not None:
             return self._store.generation_guard(self._store_entry_id(suffix))
-        path = self._cache_path(suffix)
-        if not path:
-            return nullcontext()
-        return FileLock(f"{path}.generate.lock")
+        return nullcontext()
 
     @staticmethod
     def _cached_page_is_degraded(page: Any) -> bool:
@@ -3689,21 +3445,18 @@ class AgentWiki:
             "llm_identity": self._cache_llm_identity,
             "data": data,
         }
-        if self._store is not None:
-            try:
-                self._publish_store_cache(suffix, envelope)
-            except WikiStoreCorruptionError:
-                raise
-            except (WikiStoreError, TypeError, ValueError) as exc:
-                logger.warning("Could not publish Wiki cache: %s", exc)
-            return
-        path = self._cache_path(suffix)
-        if not path:
+        if self._store is None:
             return
         try:
-            self._atomic_write_cache(path, envelope)
-        except (OSError, TypeError):
-            pass
+            self._store.publish(
+                entry_id=self._store_entry_id(suffix),
+                repository_id=self._repository_id(),
+                envelope=envelope,
+            )
+        except WikiStoreCorruptionError:
+            raise
+        except (WikiStoreError, TypeError, ValueError) as exc:
+            logger.warning("Could not publish Wiki cache: %s", exc)
 
     # -- outline + nav -----------------------------------------------------
 
@@ -3742,8 +3495,6 @@ class AgentWiki:
     def _page_tree_refs(
         self,
         outline_pages: List[Dict[str, Any]],
-        *,
-        read_only: bool = False,
     ) -> List[dict]:
         def refs(pages: List[Dict[str, Any]], *, top_level: bool = False) -> List[dict]:
             return [
@@ -3755,8 +3506,7 @@ class AgentWiki:
                             self._overview_page_meta(p, outline_pages[1:])
                             if top_level and p.get("id") == "overview"
                             else p
-                        ),
-                        read_only=read_only,
+                        )
                     ),
                     "children": refs(p.get("children", []) or []),
                 }
@@ -3774,24 +3524,18 @@ class AgentWiki:
 
         outline = self._outline
         if outline is None:
-            outline = self._read_cache_read_only("outline")
+            outline = self._read_cache("outline")
         if not isinstance(outline, dict) or not isinstance(outline.get("pages"), list):
             return None
-        return self._page_tree_refs(outline["pages"], read_only=True)
+        return self._page_tree_refs(outline["pages"])
 
-    def _page_cache_state(
-        self,
-        meta: Dict[str, Any],
-        *,
-        read_only: bool = False,
-    ) -> str:
+    def _page_cache_state(self, meta: Dict[str, Any]) -> str:
         """Return a reader-facing cache state without generating the page."""
 
         page_id = str(meta.get("id") or "")
         page = self._pages.get(page_id)
         if page is None:
-            reader = self._read_cache_read_only if read_only else self._read_cache
-            page = reader(self._page_cache_suffix(meta))
+            page = self._read_cache(self._page_cache_suffix(meta))
         if not isinstance(page, dict):
             return "cold"
         invalid = self._cached_page_is_degraded(page)

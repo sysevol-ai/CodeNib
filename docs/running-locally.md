@@ -192,11 +192,10 @@ Opens at **http://localhost:3000**.
 
 Wiki pages are stored in `<data_dir>/wiki_cache/wiki.sqlite3` (by default under
 `.codenib_qa/wiki_cache`) so subsequent loads avoid another model call. The
-database uses SQLite WAL and validates each persisted JSON envelope. Existing
-source-compatible `agentwiki_*.json` entries remain a read-through
-compatibility source and are adopted lazily; pre-selection entries are not
-eligible once a manifest records its source-selection identity. The web and
-maintenance entry points write new data only to the database.
+database uses SQLite WAL and validates each persisted JSON envelope. It is the
+only persistent Wiki cache; legacy `agentwiki_*.json` files are left untouched
+but ignored. The web and maintenance entry points use the database through the
+WikiStore boundary.
 
 **Refresh this wiki** only re-fetches the current tree and page; it does not
 invalidate that cache or force generation. After repairing a model or index,

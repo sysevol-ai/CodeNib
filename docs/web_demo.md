@@ -330,8 +330,8 @@ make wiki-cache-audit \
 
 Its JSON report separates Overview, root-page, and child-page coverage; lists
 degraded, fallback, and quality-invalid pages; and reports stale/orphaned Wiki
-database entries and legacy cache files separately during migration. Newly
-generated pages also contribute retrieval, planning,
+database entries and payload bytes. Newly generated pages also contribute
+retrieval, planning,
 model-call, repair-count, and total-latency summaries. Existing cache entries
 created before those metrics were introduced remain readable and are simply
 excluded from the latency sample. Add `--fail-on-fallback` and

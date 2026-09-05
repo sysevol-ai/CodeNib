@@ -385,7 +385,6 @@ def _wiki(repo_id: str, bundle=None):
             return AgentWiki(
                 bundle,
                 config.wiki_generation_model,
-                cache_dir=wiki_cache,
                 store=store,
                 llm=_wiki_llm(config),
                 api_base=config.wiki_generation_api_base,

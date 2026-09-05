@@ -11,6 +11,15 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Removed
+
+- Retired the one-release `agentwiki_*.json` compatibility path tracked by
+  #749. AgentWiki no longer discovers, reads, writes, adopts, locks, or audits
+  JSON cache files; persistence requires an injected `WikiStore`, while
+  store-less callers remain in memory. Existing `wiki.sqlite3` entries and
+  legacy files are not deleted. The Wiki cache audit report is now schema v2
+  and reports only database entry and payload-byte accounting.
+
 ## [0.2.3] - 2026-09-03
 
 ### Added

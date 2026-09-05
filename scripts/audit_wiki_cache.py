@@ -73,7 +73,6 @@ def main(argv: list[str] | None = None) -> int:
     report = audit_wiki_cache(
         registry,
         model=config.wiki_generation_model,
-        cache_dir=cache_dir,
         repo_ids=args.repos,
         store=store,
     )

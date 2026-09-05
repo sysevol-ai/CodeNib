@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -34,8 +33,8 @@ def test_cache_audit_is_read_only_and_reports_current_page_quality(tmp_path):
         def get(self, repo_id):
             return bundle if repo_id == info.id else None
 
-    cache_dir = tmp_path / "wiki-cache"
-    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    store = SQLiteWikiStore(tmp_path / "wiki-cache" / "wiki.sqlite3")
+    wiki = AgentWiki(bundle, model="fake-model", store=store)
     outline = {
         "pages": [
             {
@@ -82,9 +81,10 @@ def test_cache_audit_is_read_only_and_reports_current_page_quality(tmp_path):
     report = audit_wiki_cache(
         Registry(),
         model="fake-model",
-        cache_dir=cache_dir,
+        store=store,
     )
 
+    assert report["schema_version"] == 2
     assert report["coverage"]["all"] == {
         "cached": 1,
         "total": 2,
@@ -102,6 +102,13 @@ def test_cache_audit_is_read_only_and_reports_current_page_quality(tmp_path):
     assert report["missing_overviews"] == []
     assert report["fallback_pages"] == []
     assert report["quality_invalid_pages"] == []
+    assert set(report["storage"]) == {
+        "backend",
+        "entries",
+        "database_payload_bytes",
+        "orphan_entries",
+        "orphan_database_payload_bytes",
+    }
 
 
 def test_cache_audit_does_not_create_a_missing_cache_directory(tmp_path):
@@ -130,53 +137,17 @@ def test_cache_audit_does_not_create_a_missing_cache_directory(tmp_path):
     report = audit_wiki_cache(
         Registry(),
         model="fake-model",
-        cache_dir=cache_dir,
     )
 
     assert report["missing_outlines"] == ["owner__repo"]
+    assert report["storage"] == {
+        "backend": None,
+        "entries": 0,
+        "database_payload_bytes": 0,
+        "orphan_entries": 0,
+        "orphan_database_payload_bytes": 0,
+    }
     assert not cache_dir.exists()
-
-
-def test_cache_audit_applies_runtime_validation_to_legacy_json(tmp_path):
-    bundle = SimpleNamespace(
-        entry=SimpleNamespace(
-            repo="owner/repo",
-            repo_dir=str(tmp_path / "repo"),
-            instance_id="owner__repo",
-            commit_short="abc123",
-            language="python",
-        ),
-        manifest=SimpleNamespace(languages=["python"], indexes={}),
-        vector_store=None,
-        bm25=None,
-    )
-
-    class Registry:
-        def list_infos(self):
-            return [SimpleNamespace(id="owner__repo")]
-
-        def get(self, repo_id):
-            return bundle if repo_id == "owner__repo" else None
-
-    cache_dir = tmp_path / "wiki-cache"
-    cache_dir.mkdir()
-    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
-    outline_path = wiki._cache_candidate_paths("outline")[0]
-    outline_path = Path(outline_path)
-    outline_path.write_text(
-        '{"data":{"pages":[]},"data":{"pages":['
-        '{"id":"overview","title":"Overview","children":[]}]}}',
-        encoding="utf-8",
-    )
-
-    report = audit_wiki_cache(
-        Registry(),
-        model="fake-model",
-        cache_dir=cache_dir,
-    )
-
-    assert report["missing_outlines"] == ["owner__repo"]
-    assert report["repositories"] == 1
 
 
 def test_cache_audit_rejects_unknown_repository_selectors(tmp_path):
@@ -191,13 +162,13 @@ def test_cache_audit_rejects_unknown_repository_selectors(tmp_path):
         audit_wiki_cache(
             Registry(),
             model="fake-model",
-            cache_dir=tmp_path / "wiki-cache",
             repo_ids=["typo"],
         )
 
 
 def test_cache_audit_subset_does_not_count_other_repo_as_orphan(tmp_path):
     cache_dir = tmp_path / "wiki-cache"
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
     bundles = {}
     for repo_id in ("owner__selected", "owner__other"):
         bundle = SimpleNamespace(
@@ -213,7 +184,7 @@ def test_cache_audit_subset_does_not_count_other_repo_as_orphan(tmp_path):
             bm25=None,
         )
         bundles[repo_id] = bundle
-        wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+        wiki = AgentWiki(bundle, model="fake-model", store=store)
         wiki._write_cache(
             "outline",
             {
@@ -239,13 +210,13 @@ def test_cache_audit_subset_does_not_count_other_repo_as_orphan(tmp_path):
     report = audit_wiki_cache(
         Registry(),
         model="fake-model",
-        cache_dir=cache_dir,
         repo_ids=["owner__selected"],
+        store=store,
     )
 
     assert report["repositories"] == 1
-    assert report["storage"]["files"] == 1
-    assert report["storage"]["orphan_files"] == 0
+    assert report["storage"]["entries"] == 1
+    assert report["storage"]["orphan_entries"] == 0
 
 
 def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path):
@@ -281,7 +252,7 @@ def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path
             }
         ]
     }
-    seed_wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(tmp_path))
+    seed_wiki = AgentWiki(bundle, model="fake-model")
     overview_meta = seed_wiki._overview_page_meta(outline["pages"][0], [])
     page_suffix = seed_wiki._page_cache_suffix(overview_meta)
 
@@ -344,17 +315,11 @@ def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path
         def generation_guard(self, entry_id):
             raise AssertionError("read-only audit must not take generation guards")
 
-    class ReadOnlyAuditWiki(AgentWiki):
-        def _read_cache(self, suffix):
-            raise AssertionError("audit must use the read-only cache path")
-
     store = MemoryWikiStore()
     report = audit_wiki_cache(
         Registry(),
         model="fake-model",
-        cache_dir=tmp_path / "missing-cache",
         repo_ids=["owner__repo"],
-        wiki_factory=ReadOnlyAuditWiki,
         store=store,
     )
 
@@ -362,8 +327,8 @@ def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path
     assert report["storage"]["backend"] == "MemoryWikiStore"
     assert report["storage"]["entries"] == 3
     assert report["storage"]["orphan_entries"] == 1
-    assert report["storage"]["files"] == 0
-    assert report["storage"]["orphan_files"] == 0
+    assert report["storage"]["database_payload_bytes"] > 0
+    assert report["storage"]["orphan_database_payload_bytes"] > 0
     assert store.scan_filters == [{"owner__repo"}]
     assert store.read_calls == [
         seed_wiki._store_entry_id("outline"),
@@ -372,7 +337,7 @@ def test_cache_audit_reads_store_without_publishing_and_reports_orphans(tmp_path
     assert not (tmp_path / "missing-cache").exists()
 
 
-def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path):
+def test_cache_audit_reports_database_orphan_storage(tmp_path):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -394,7 +359,8 @@ def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path
             return bundle if repo_id == "owner__repo" else None
 
     cache_dir = tmp_path / "wiki-cache"
-    legacy = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    wiki = AgentWiki(bundle, model="fake-model", store=store)
     outline = {
         "pages": [
             {
@@ -406,10 +372,10 @@ def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path
             }
         ]
     }
-    legacy._write_cache("outline", outline)
-    overview_meta = legacy._overview_page_meta(outline["pages"][0], [])
-    legacy._write_cache(
-        legacy._page_cache_suffix(overview_meta),
+    wiki._write_cache("outline", outline)
+    overview_meta = wiki._overview_page_meta(outline["pages"][0], [])
+    wiki._write_cache(
+        wiki._page_cache_suffix(overview_meta),
         {
             "id": "overview",
             "title": "Overview",
@@ -417,12 +383,6 @@ def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path
             "quality": {"valid": True},
         },
     )
-    (cache_dir / "agentwiki_orphan.json").write_text(
-        '{"data":{"id":"removed"}}',
-        encoding="utf-8",
-    )
-
-    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
     store.publish(
         entry_id="orphan",
         repository_id="owner__repo",
@@ -432,18 +392,12 @@ def test_cache_audit_reports_database_and_legacy_storage_in_mixed_state(tmp_path
     report = audit_wiki_cache(
         Registry(),
         model="fake-model",
-        cache_dir=cache_dir,
         store=store,
     )
 
     storage = report["storage"]
     assert report["coverage"]["all"]["percent"] == 100.0
-    assert storage["entries"] == 1
+    assert storage["entries"] == 3
     assert storage["orphan_entries"] == 1
-    assert storage["files"] == 3
-    assert storage["orphan_files"] == 1
     assert storage["database_payload_bytes"] > 0
-    assert storage["legacy_bytes"] > 0
-    assert storage["bytes"] == storage["legacy_bytes"]
-    assert storage["orphan_bytes"] == storage["orphan_legacy_bytes"]
     assert storage["orphan_database_payload_bytes"] > 0

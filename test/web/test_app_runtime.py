@@ -1227,7 +1227,7 @@ def test_agent_wiki_receives_the_shared_wiki_store(tmp_path, monkeypatch):
     assert web_app.app.state.wiki_builders["repo"] == ("repo", bundle, created)
     assert captured["args"] == (bundle, "wiki-model")
     assert captured["kwargs"]["store"] is store
-    assert captured["kwargs"]["cache_dir"] == str(tmp_path / "wiki_cache")
+    assert "cache_dir" not in captured["kwargs"]
     assert captured["kwargs"]["llm"] == "llm"
 
 
