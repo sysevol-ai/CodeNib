@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -69,13 +70,18 @@ def main(argv: list[str] | None = None) -> int:
     registry.load_all()
     cache_dir = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
     database_path = Path(cache_dir) / "wiki.sqlite3"
-    store = SQLiteWikiStore(database_path) if database_path.exists() else None
-    report = audit_wiki_cache(
-        registry,
-        model=config.wiki_generation_model,
-        repo_ids=args.repos,
-        store=store,
+    store_context = (
+        SQLiteWikiStore._read_only_snapshot(database_path)
+        if database_path.exists()
+        else nullcontext(None)
     )
+    with store_context as store:
+        report = audit_wiki_cache(
+            registry,
+            model=config.wiki_generation_model,
+            repo_ids=args.repos,
+            store=store,
+        )
     print(
         json.dumps(
             report,

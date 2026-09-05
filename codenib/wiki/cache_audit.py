@@ -58,7 +58,9 @@ def audit_wiki_cache(
     """Inspect only cache entries reachable from each current Wiki outline.
 
     The function never calls ``outline()`` or ``page()`` and therefore never
-    invokes a model. Missing outlines are reported instead of generated.
+    invokes a model. Missing outlines are reported instead of generated. The
+    composition root remains responsible for opening an injected store in a
+    physically read-only mode when its implementation supports one.
     """
 
     selected = {str(repo_id) for repo_id in repo_ids or ()}

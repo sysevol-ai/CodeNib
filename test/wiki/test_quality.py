@@ -1167,9 +1167,27 @@ def test_cache_audit_reads_each_repository_and_ignores_retired_json(tmp_path):
         repository_id="repo-b",
         envelope={"model": "test", "data": page},
     )
+    before = {
+        str(candidate.relative_to(tmp_path)): (
+            candidate.stat().st_mtime_ns,
+            candidate.stat().st_ctime_ns,
+            candidate.read_bytes(),
+        )
+        for candidate in tmp_path.rglob("*")
+        if candidate.is_file()
+    }
 
     report = audit_cache(tmp_path)
 
+    assert {
+        str(candidate.relative_to(tmp_path)): (
+            candidate.stat().st_mtime_ns,
+            candidate.stat().st_ctime_ns,
+            candidate.read_bytes(),
+        )
+        for candidate in tmp_path.rglob("*")
+        if candidate.is_file()
+    } == before
     assert retired_path.read_text(encoding="utf-8") == retired_payload
     assert report == summarize_page_audits([page, page])
     assert report["pages"] == 2

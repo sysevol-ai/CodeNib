@@ -60,6 +60,9 @@ completed.
   `agentwiki_*.json` caches. Do not restore JSON discovery, read-through,
   adoption, writes, file locking, provenance markers, or audit accounting;
   Wiki persistence requires an injected `WikiStore`.
+- Keep built-in Wiki generation waiting bounded without stealing an owner's
+  lock or starting duplicate work. Maintenance audits and dry runs must not
+  mutate the source database or broaden the public storage facade.
 - One exception is authorized through 2026-10-04: the source-checkout-only H1
   experiment under `scripts/experimental/hybrid_index/`, its developer script,
   and focused tests. H1 accepts exactly one verified BM25-only portable

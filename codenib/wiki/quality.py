@@ -1119,13 +1119,15 @@ def audit_cache(
         # path-only audit API. Callers with another backend inject its WikiStore.
         from .sqlite_store import SQLiteWikiStore
 
-        store = SQLiteWikiStore(database_path)
-    if store is not None:
-        for entry in store.scan():
-            payload = entry.envelope
-            data = payload.get("data") if isinstance(payload, Mapping) else None
-            if isinstance(data, dict) and data.get("id") and data.get("markdown"):
-                pages.append(data)
+        with SQLiteWikiStore._read_only_snapshot(database_path) as snapshot:
+            entries = snapshot.scan()
+    else:
+        entries = () if store is None else store.scan()
+    for entry in entries:
+        payload = entry.envelope
+        data = payload.get("data") if isinstance(payload, Mapping) else None
+        if isinstance(data, dict) and data.get("id") and data.get("markdown"):
+            pages.append(data)
     return summarize_page_audits(pages)
 
 

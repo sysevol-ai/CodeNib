@@ -24,7 +24,7 @@ import json
 import os
 import re
 import threading
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from time import perf_counter, time
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
@@ -98,6 +98,10 @@ _MAX_COMPOSITION_PLAN_REPAIRS = 1
 _MAX_STYLE_REPAIRS = 2
 _MAX_DEGRADED_PAGE_RETRIES = 2
 _DEGRADED_PAGE_RETRY_COOLDOWN_SECONDS = 6 * 60 * 60
+# Waiting requests must not occupy a Web worker forever when the request that
+# owns a generation lock is stuck in retrieval or a provider call.  This is a
+# waiter budget only: timing out never steals the lock or interrupts its owner.
+_GENERATION_LOCK_TIMEOUT_SECONDS = 30.0
 # The overview is asked for a section per outline area, and a repository
 # outline runs to 9-17 of them. Twelve symbols could not ground that many,
 # so the coverage guard fired on pages that simply had nothing to say about
@@ -129,6 +133,8 @@ _COMPOSITION_PLAN_WARNING_MARKERS = (
     "needs at least two supported facts",
     "names a source file as a subsystem",
 )
+
+
 _NARRATIVE_CALLABLE_KINDS = frozenset({"function", "method"})
 _NARRATIVE_TYPE_KINDS = frozenset(
     {
@@ -179,6 +185,25 @@ _OVERVIEW_SYMBOL_ROLE_WEIGHTS = {
     "create": 7,
     "load": 7,
 }
+
+
+@contextmanager
+def _bounded_generation_lock(lock: Any):
+    """Acquire one process-local generation lock with a bounded wait.
+
+    A successful acquire is the ownership linearization point; timeout leaves
+    the current owner untouched. Nested acquisition order is outline/page-local
+    before store, then page-evidence before global retrieval. Citation-only work
+    starts at store, then follows page-evidence before retrieval. No caller
+    acquires these locks in reverse order.
+    """
+
+    if not lock.acquire(timeout=_GENERATION_LOCK_TIMEOUT_SECONDS):
+        raise WikiStoreError("Wiki generation lock wait timed out")
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def _narrative_relation_endpoint(
@@ -3463,7 +3488,7 @@ class AgentWiki:
     def outline(self) -> Dict[str, Any]:
         if self._outline is not None:
             return self._outline
-        with self._outline_generation_lock:
+        with _bounded_generation_lock(self._outline_generation_lock):
             if self._outline is not None:
                 return self._outline
             with self._cache_generation_lock("outline"):
@@ -3550,14 +3575,19 @@ class AgentWiki:
     def page_needs_operator_retry(self, page_id: str) -> bool:
         """Inspect one cache entry for maintenance without changing UI state."""
 
-        meta = self._find(page_id)
+        outline = self._outline
+        if outline is None:
+            outline = self._read_cache("outline")
+        pages = (
+            outline.get("pages", [])
+            if isinstance(outline, dict) and isinstance(outline.get("pages"), list)
+            else []
+        )
+        meta = self._find(page_id, pages)
         if meta is None:
             return False
         if page_id == "overview":
-            meta = self._overview_page_meta(
-                meta,
-                self.outline().get("pages", [])[1:],
-            )
+            meta = self._overview_page_meta(meta, pages[1:])
         page = self._pages.get(page_id)
         if page is None:
             page = self._read_cache(self._page_cache_suffix(meta))
@@ -3593,11 +3623,11 @@ class AgentWiki:
         cached = self._page_evidence.get(cache_suffix)
         if cached is not None:
             return cached
-        with self._page_evidence_lock(cache_suffix):
+        with _bounded_generation_lock(self._page_evidence_lock(cache_suffix)):
             cached = self._page_evidence.get(cache_suffix)
             if cached is not None:
                 return cached
-            with self._evidence_retrieval_lock:
+            with _bounded_generation_lock(self._evidence_retrieval_lock):
                 nodes = self._retrieve(
                     meta,
                     top_k=(
@@ -3687,7 +3717,7 @@ class AgentWiki:
                 self.outline().get("pages", [])[1:],
             )
         cache_suffix = self._page_cache_suffix(meta)
-        with self._page_generation_lock(page_id):
+        with _bounded_generation_lock(self._page_generation_lock(page_id)):
             in_memory_page = self._pages.get(page_id)
             if in_memory_page is not None and not (
                 (

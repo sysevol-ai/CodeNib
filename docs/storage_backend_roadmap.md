@@ -60,6 +60,20 @@ distributed leases, a shared ANN database, or backend discovery as approved
 product work. H2-H7 are only gates for reconsidering a narrowly evidenced need;
 their presence in this roadmap is not approval to implement them.
 
+## Post-v0.2.3 Wiki Hardening
+
+Status: complete.
+
+Each built-in generation-lock acquisition has a 30-second waiter budget;
+timing out never steals the lock or starts duplicate work. Cache audits and
+prewarm dry runs copy a quiescent `wiki.sqlite3` into a private temporary
+snapshot after checking the source on both sides of the copy, then inspect only
+that snapshot through SQLite's immutable read-only mode. They reject WAL, SHM,
+rollback-journal, or source changes during capture and never initialize or
+mutate the source database, its sidecars, or its lock directory. This private
+maintenance entry does not change the public `SQLiteWikiStore(path)`
+constructor or `WikiStore` protocol.
+
 ## Promotion Rule
 
 Each later milestone is demand-gated. A design document, test fixture, or
