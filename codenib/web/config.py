@@ -364,6 +364,8 @@ class QAConfig:
         provider = str((self.wiki_media_options or {}).get("provider") or "").lower()
         if model in {"local/svg", "local-svg"} or provider in {"local", "local-svg"}:
             return True
+        if provider in {"gemini", "gemini-interactions", "google-gemini"}:
+            return bool(self.wiki_media_model and self.wiki_media_api_key)
         return bool(self.wiki_media_model and self.wiki_media_api_base)
 
     @property

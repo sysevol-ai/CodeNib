@@ -102,3 +102,29 @@ reuse the validated local manifest. Provider responses, decoded images, prompt
 size, slot count, timeout, and image dimensions are bounded. Hosted asset URLs
 must use HTTP(S), and generated local files are written atomically and served
 with restrictive content headers.
+
+## Gemini native image generation
+
+CodeNib can also materialize the same source-grounded slots through Gemini's
+native Interactions image API. This is a separate generation backend; it does
+not replace the visual embedding model used by the multimodal vector view.
+
+```bash
+export CODENIB_WIKI_MEDIA_MODEL=gemini-3.1-flash-image
+export CODENIB_WIKI_MEDIA_API_KEY=<gemini-api-key>
+export CODENIB_WIKI_MEDIA_OPTIONS='{
+  "provider": "gemini",
+  "aspect_ratio": "16:9",
+  "image_size": "1K",
+  "mime_type": "image/jpeg"
+}'
+codenib wiki /path/to/repository
+```
+
+The official Gemini endpoint is selected when `CODENIB_WIKI_MEDIA_API_BASE` is
+unset. The adapter sends the slot prompt and server-side source evidence as one
+typed text input, requests one inline image, and sets `store: false`. It accepts
+only bounded JPEG output matching the configured MIME type. The local
+asset manifest records the model, provider, generation options, prompt/render
+digests, content digest, source citations, and the fact that provider-side
+interaction storage was disabled.

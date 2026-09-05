@@ -10,6 +10,7 @@ import json
 import math
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,7 +18,9 @@ import codenib.wiki.media_generation as media_generation
 from codenib.wiki.media_evidence import build_media_evidence_pack
 from codenib.wiki.media_generation import (
     DeterministicSvgMediaGenerator,
+    GeminiInteractionsImageGenerator,
     OpenAICompatibleImageGenerator,
+    image_generator_from_config,
     materialize_media_slots,
 )
 
@@ -38,6 +41,27 @@ class _Response:
 
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"test-image"
+_JPEG = b"\xff\xd8\xff" + b"test-image"
+
+
+def _gemini_image_response(data: bytes = _JPEG, mime_type: str = "image/jpeg"):
+    return {
+        "id": "interaction-test",
+        "status": "completed",
+        "steps": [
+            {
+                "type": "model_output",
+                "status": "done",
+                "content": [
+                    {
+                        "type": "image",
+                        "mime_type": mime_type,
+                        "data": base64.b64encode(data).decode("ascii"),
+                    }
+                ],
+            }
+        ],
+    }
 
 
 def test_openai_compatible_image_generator_writes_asset(tmp_path):
@@ -80,6 +104,215 @@ def test_openai_compatible_image_generator_writes_asset(tmp_path):
     assert body["model"] == "openai/gpt-image-1"
     assert body["size"] == "512x512"
     assert "src/app.py" in body["prompt"]
+
+
+def test_gemini_interactions_generator_writes_grounded_asset(tmp_path):
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append((request, timeout))
+        return _Response(_gemini_image_response())
+
+    generator = GeminiInteractionsImageGenerator(
+        model="gemini-3.1-flash-image",
+        api_key="secret",
+        aspect_ratio="16:9",
+        image_size="1K",
+        timeout=15,
+        urlopen=fake_urlopen,
+    )
+    asset = generator.generate(
+        {
+            "id": "overview-architecture",
+            "kind": "diagram",
+            "purpose": "Explain the Wiki request path.",
+            "prompt": "Create a compact technical architecture illustration.",
+            "source_citations": ["codenib/web/app.py"],
+        },
+        output_dir=tmp_path,
+    )
+
+    assert asset["uri"] == "assets/wiki-media/overview-architecture.jpg"
+    assert asset["provider"] == "google-gemini"
+    assert asset["model"] == "gemini-3.1-flash-image"
+    assert asset["mime_type"] == "image/jpeg"
+    assert asset["source_citations"] == ["codenib/web/app.py"]
+    assert asset["metadata"] == {
+        "aspect_ratio": "16:9",
+        "image_size": "1K",
+        "delivery": "inline",
+        "stored_by_provider": False,
+    }
+    assert (tmp_path / "overview-architecture.jpg").read_bytes() == _JPEG
+
+    request, timeout = requests[0]
+    assert request.full_url == (
+        "https://generativelanguage.googleapis.com/v1beta/interactions"
+    )
+    assert request.get_header("X-goog-api-key") == "secret"
+    assert request.get_header("Authorization") is None
+    assert timeout == 15
+    body = json.loads(request.data.decode("utf-8"))
+    assert body["model"] == "gemini-3.1-flash-image"
+    assert body["store"] is False
+    assert body["response_format"] == {
+        "type": "image",
+        "mime_type": "image/jpeg",
+        "aspect_ratio": "16:9",
+        "image_size": "1K",
+        "delivery": "inline",
+    }
+    assert "codenib/web/app.py" in body["input"][0]["text"]
+
+
+def test_gemini_generator_reuses_verified_local_asset(tmp_path):
+    calls = []
+
+    def fake_urlopen(_request, timeout):
+        calls.append(timeout)
+        return _Response(_gemini_image_response())
+
+    generator = GeminiInteractionsImageGenerator(
+        model="gemini-3.1-flash-image",
+        api_key="secret",
+        urlopen=fake_urlopen,
+    )
+    slot = {"id": "overview-image", "kind": "image", "prompt": "Draw it."}
+
+    first = generator.generate(slot, output_dir=tmp_path)
+    second = generator.generate(slot, output_dir=tmp_path)
+    changed_format = GeminiInteractionsImageGenerator(
+        model="gemini-3.1-flash-image",
+        api_key="secret",
+        aspect_ratio="4:3",
+        urlopen=fake_urlopen,
+    ).generate(slot, output_dir=tmp_path)
+
+    assert first == second
+    assert changed_format["metadata"]["aspect_ratio"] == "4:3"
+    assert calls == [120.0, 120.0]
+    manifest = json.loads(
+        (tmp_path / "overview-image.jpg.json").read_text(encoding="utf-8")
+    )
+    assert len(manifest["generation_sha256"]) == 64
+    assert len(manifest["content_sha256"]) == 64
+
+
+def test_gemini_generator_uses_last_model_image(tmp_path):
+    response = _gemini_image_response()
+    response["steps"].insert(
+        0,
+        {
+            "type": "model_output",
+            "content": [
+                {
+                    "type": "image",
+                    "mime_type": "image/jpeg",
+                    "data": base64.b64encode(_JPEG + b"first").decode("ascii"),
+                }
+            ],
+        },
+    )
+    generator = GeminiInteractionsImageGenerator(
+        model="gemini-3.1-flash-image",
+        api_key="secret",
+        urlopen=lambda _request, timeout: _Response(response),
+    )
+
+    generator.generate(
+        {"id": "overview-image", "kind": "image", "prompt": "Draw it."},
+        output_dir=tmp_path,
+    )
+
+    assert (tmp_path / "overview-image.jpg").read_bytes() == _JPEG
+
+
+@pytest.mark.parametrize(
+    ("response", "message"),
+    [
+        ({"steps": []}, "no model image output"),
+        (
+            _gemini_image_response(mime_type="image/png"),
+            "MIME type does not match",
+        ),
+        (
+            _gemini_image_response(data=b"not-a-jpeg"),
+            "not a valid image/jpeg",
+        ),
+    ],
+)
+def test_gemini_generator_rejects_invalid_image_output(tmp_path, response, message):
+    generator = GeminiInteractionsImageGenerator(
+        model="gemini-3.1-flash-image",
+        api_key="secret",
+        urlopen=lambda _request, timeout: _Response(response),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        generator.generate(
+            {"id": "overview-image", "kind": "image", "prompt": "Draw it."},
+            output_dir=tmp_path,
+        )
+
+
+def test_gemini_generator_rejects_invalid_base64(tmp_path):
+    response = _gemini_image_response()
+    response["steps"][0]["content"][0]["data"] = "not+valid=base64!"
+    generator = GeminiInteractionsImageGenerator(
+        model="gemini-3.1-flash-image",
+        api_key="secret",
+        urlopen=lambda _request, timeout: _Response(response),
+    )
+
+    with pytest.raises(ValueError, match="invalid base64"):
+        generator.generate(
+            {"id": "overview-image", "kind": "image", "prompt": "Draw it."},
+            output_dir=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"api_key": ""}, "API key is required"),
+        ({"api_base": "http://example.test/v1beta"}, "must use HTTPS"),
+        ({"aspect_ratio": "7:5"}, "aspect_ratio must be one of"),
+        ({"image_size": "8K"}, "image_size must be one of"),
+        ({"mime_type": "image/webp"}, "mime_type must be one of"),
+    ],
+)
+def test_gemini_generator_rejects_unsafe_configuration(overrides, message):
+    arguments = {
+        "model": "gemini-3.1-flash-image",
+        "api_key": "secret",
+    }
+    arguments.update(overrides)
+
+    with pytest.raises(ValueError, match=message):
+        GeminiInteractionsImageGenerator(**arguments)
+
+
+def test_image_generator_factory_routes_gemini_provider():
+    config = SimpleNamespace(
+        wiki_media_generation_enabled=True,
+        wiki_media_model="gemini-3.1-flash-image",
+        wiki_media_api_base=None,
+        wiki_media_api_key="secret",
+        wiki_media_options={
+            "provider": "gemini",
+            "aspect_ratio": "4:3",
+            "image_size": "2K",
+            "mime_type": "image/jpeg",
+            "timeout": 30,
+        },
+    )
+
+    generator = image_generator_from_config(config)
+
+    assert isinstance(generator, GeminiInteractionsImageGenerator)
+    assert generator.endpoint.endswith("/v1beta/interactions")
+    assert generator.aspect_ratio == "4:3"
+    assert generator.image_size == "2K"
 
 
 def test_materialize_media_slots_skips_unsupported_video_slots(tmp_path):

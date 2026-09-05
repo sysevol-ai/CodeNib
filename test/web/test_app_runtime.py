@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -891,6 +893,103 @@ def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
     assert asset_response.media_type == "image/svg+xml"
     assert asset_response.headers["x-content-type-options"] == "nosniff"
     assert "sandbox" in asset_response.headers["content-security-policy"]
+
+
+def test_wiki_page_materializes_gemini_media_through_runtime(tmp_path, monkeypatch):
+    requests = []
+    jpeg = b"\xff\xd8\xfftest-image"
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc):
+            return None
+
+        def read(self, size=-1):
+            payload = json.dumps(
+                {
+                    "status": "completed",
+                    "steps": [
+                        {
+                            "type": "model_output",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "mime_type": "image/jpeg",
+                                    "data": base64.b64encode(jpeg).decode("ascii"),
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ).encode("utf-8")
+            return payload if size < 0 else payload[:size]
+
+    def fake_urlopen(request, timeout):
+        requests.append((request, timeout))
+        return Response()
+
+    class Builder:
+        def page(self, page_id):
+            return {
+                "id": page_id,
+                "title": "Overview",
+                "markdown": "# Overview",
+                "citations": [],
+                "diagram": "",
+                "media_slots": [
+                    {
+                        "id": "overview-architecture",
+                        "kind": "diagram",
+                        "title": "Overview architecture",
+                        "purpose": "Explain the source-grounded request path.",
+                        "source_citations": ["codenib/web/app.py"],
+                        "prompt": "Draw the Wiki runtime architecture.",
+                    }
+                ],
+            }
+
+    config = SimpleNamespace(
+        data_dir=str(tmp_path),
+        wiki_media_generation_enabled=True,
+        wiki_media_model="gemini-3.1-flash-image",
+        wiki_media_api_base=None,
+        wiki_media_api_key="secret",
+        wiki_media_options={"provider": "gemini"},
+    )
+    monkeypatch.setattr(media_generation.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(web_app, "load_config", lambda: config)
+    monkeypatch.setattr(
+        web_app,
+        "_bundle",
+        lambda _repo_id: SimpleNamespace(
+            entry=SimpleNamespace(repo="org/repo"), source_reader=None
+        ),
+    )
+
+    page = asyncio.run(web_app.wiki_page("demo", "overview"))
+
+    asset = page["media_slots"][0]["asset"]
+    assert asset["provider"] == "google-gemini"
+    assert asset["uri"].endswith(
+        "/api/repos/demo/wiki-media/overview/overview-architecture.jpg"
+    ) or asset["uri"].endswith(
+        "api/repos/demo/wiki-media/overview/overview-architecture.jpg"
+    )
+    request, timeout = requests[0]
+    body = json.loads(request.data.decode("utf-8"))
+    assert body["store"] is False
+    assert "codenib/web/app.py" in body["input"][0]["text"]
+    assert timeout == 120.0
+
+    asset_response = asyncio.run(
+        web_app.wiki_media_asset("demo", "overview", "overview-architecture.jpg")
+    )
+    assert asset_response.body == jpeg
+    assert asset_response.media_type == "image/jpeg"
+    assert asset_response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_wiki_media_materialization_builds_page_evidence(tmp_path, monkeypatch):
