@@ -46,6 +46,13 @@ into `WikiStore`.
 No generic catalog, CAS, or database compatibility layer remains in the
 v0.2.3 product.
 
+The v0.2.3 release was the sole read-through migration window for legacy
+`agentwiki_*.json` caches. After #749, AgentWiki no longer discovers, reads,
+writes, adopts, locks, or audits those files. Without an injected `WikiStore`,
+an AgentWiki instance is memory-only. Existing JSON files are left untouched
+but ignored; existing `wiki.sqlite3` data, its schema, and the
+`codenib.storage` API remain unchanged.
+
 ## Closed Plans
 
 CodeNib no longer plans PostgreSQL, S3-compatible object storage, generic GC,
@@ -185,6 +192,10 @@ promote-or-delete decision; PR #766 carries the source-only implementation and
 evidence. The tracker references historical #199, foundation #535, and
 subtraction #753-#762 without reopening those scopes. Do not use the stale
 `feat/storage-catalog-foundation` branch as a base.
+
+Issue #749 owns the post-v0.2.3 retirement of the legacy Wiki JSON cache path;
+PR #767 carries that subtraction. It does not authorize changes to H1 or any
+H2-H7 work.
 
 The detailed H1 schema, linearization points, failure matrix, commands, and
 benchmark receipt live in

@@ -4,10 +4,6 @@
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
 from codenib.wiki.evidence import EvidenceItem, RelationItem
 from codenib.wiki.quality import (
     audit_cache,
@@ -25,7 +21,6 @@ from codenib.wiki.quality import (
     summarize_page_audits,
 )
 from codenib.wiki.sqlite_store import SQLiteWikiStore
-from codenib.wiki.store import _WIKI_CACHE_PROVENANCE_FIELD
 
 
 def _page(*, repeated_prose: bool) -> dict:
@@ -1151,27 +1146,11 @@ def test_plan_narrative_rejects_relation_only_non_flow_claims():
     assert report["plan_role_integrity_valid"] is False
 
 
-def test_cache_audit_ignores_outline_records_and_summarizes_pages(tmp_path):
-    pages = [_page(repeated_prose=True), _page(repeated_prose=False)]
-    for index, page in enumerate(pages):
-        (tmp_path / f"agentwiki_page_{index}.json").write_text(
-            json.dumps({"model": "test", "data": page})
-        )
-    (tmp_path / "agentwiki_outline.json").write_text(
-        json.dumps({"model": "test", "data": {"pages": []}})
-    )
-    (tmp_path / "agentwiki_broken.json").write_text("{")
-
-    report = audit_cache(tmp_path)
-
-    assert report == summarize_page_audits(pages)
-    assert report["pages"] == 2
-    assert report["publishable"] == 1
-    assert report["narrative_valid"] == 1
-
-
-def test_cache_audit_reads_the_canonical_sqlite_store(tmp_path):
+def test_cache_audit_reads_each_repository_and_ignores_retired_json(tmp_path):
     page = _page(repeated_prose=False)
+    retired_path = tmp_path / "agentwiki_retired.json"
+    retired_payload = '{"data":{"id":"legacy","markdown":"Legacy page."}}'
+    retired_path.write_text(retired_payload, encoding="utf-8")
     store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
     store.publish(
         entry_id="page:repo-a:overview",
@@ -1183,73 +1162,15 @@ def test_cache_audit_reads_the_canonical_sqlite_store(tmp_path):
         repository_id="repo-a",
         envelope={"model": "test", "data": {"pages": []}},
     )
-
-    report = audit_cache(tmp_path)
-
-    assert list(tmp_path.glob("agentwiki_*.json")) == []
-    assert report == summarize_page_audits([page])
-    assert report["pages"] == 1
-
-
-@pytest.mark.parametrize("migrate_first_page", [False, True])
-def test_cache_audit_includes_unmigrated_legacy_pages(
-    tmp_path,
-    migrate_first_page,
-):
-    pages = [_page(repeated_prose=True), _page(repeated_prose=False)]
-    envelopes = [{"model": "test", "data": page} for page in pages]
-    legacy_paths = [
-        tmp_path / f"agentwiki_page_{index}.json" for index in range(len(pages))
-    ]
-    for path, envelope in zip(legacy_paths, envelopes, strict=True):
-        path.write_text(json.dumps(envelope))
-
-    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
-    expected_pages = pages
-    if migrate_first_page:
-        entry_id = "page:repo-a:overview"
-        repository_id = "repo-a"
-        canonical_page = {
-            **pages[0],
-            "markdown": pages[0]["markdown"] + "\n\nCanonical refresh. [E1]",
-        }
-        store.publish(
-            entry_id=entry_id,
-            repository_id=repository_id,
-            envelope={
-                "model": "test",
-                "data": canonical_page,
-                _WIKI_CACHE_PROVENANCE_FIELD: {
-                    "schema": 1,
-                    "entry_id": entry_id,
-                    "repository_id": repository_id,
-                    "legacy_filenames": [legacy_paths[0].name],
-                },
-            },
-        )
-        expected_pages = [canonical_page, pages[1]]
-
-    report = audit_cache(tmp_path)
-
-    assert report == summarize_page_audits(expected_pages)
-    assert report["pages"] == 2
-
-
-def test_cache_audit_does_not_dedupe_marker_free_rows_across_repositories(
-    tmp_path,
-):
-    page = _page(repeated_prose=False)
-    envelope = {"model": "test", "data": page}
-    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
     store.publish(
-        entry_id="page:repo-a:overview",
-        repository_id="repo-a",
-        envelope=envelope,
+        entry_id="page:repo-b:overview",
+        repository_id="repo-b",
+        envelope={"model": "test", "data": page},
     )
-    (tmp_path / "agentwiki_repo-b_overview.json").write_text(json.dumps(envelope))
 
     report = audit_cache(tmp_path)
 
+    assert retired_path.read_text(encoding="utf-8") == retired_payload
     assert report == summarize_page_audits([page, page])
     assert report["pages"] == 2
 

@@ -10,8 +10,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
-import pytest
-
 from codenib.graph.code_graph import CodeGraph
 from codenib.wiki.agent_wiki import (
     AgentWiki,
@@ -42,7 +40,6 @@ from codenib.wiki.builder import Symbol
 from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
 from codenib.wiki.quality import prose_integrity_report
 from codenib.wiki.sqlite_store import SQLiteWikiStore
-from codenib.wiki.store import _WIKI_CACHE_PROVENANCE_FIELD
 
 
 class _FakeVectorStore:
@@ -6507,7 +6504,7 @@ def test_page_reports_model_unavailable_when_fact_planning_falls_back(tmp_path):
     assert llm.calls == 1
 
 
-def test_agent_wiki_cache_key_tracks_view_rebuild_identity(tmp_path):
+def test_agent_wiki_store_entry_id_tracks_view_rebuild_identity(tmp_path):
     view = SimpleNamespace(
         status="fresh",
         commit="abc123",
@@ -6527,14 +6524,14 @@ def test_agent_wiki_cache_key_tracks_view_rebuild_identity(tmp_path):
         manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
     )
     wiki = AgentWiki(bundle, model="fake-model")
-    before = wiki._key("outline")
+    before = wiki._store_entry_id("outline")
     view.built_at_epoch = 2.0
     view.config = {"builder_schema": 2}
 
-    assert wiki._key("outline") != before
+    assert wiki._store_entry_id("outline") != before
 
 
-def test_agent_wiki_cache_key_ignores_equivalent_rebuild_timestamp(tmp_path):
+def test_agent_wiki_store_entry_id_ignores_equivalent_rebuild_timestamp(tmp_path):
     view = SimpleNamespace(
         status="fresh",
         commit="abc123",
@@ -6560,14 +6557,14 @@ def test_agent_wiki_cache_key_ignores_equivalent_rebuild_timestamp(tmp_path):
         ),
     )
     wiki = AgentWiki(bundle, model="fake-model")
-    before = wiki._key("outline")
+    before = wiki._store_entry_id("outline")
 
     view.built_at_epoch = 2.0
 
-    assert wiki._key("outline") == before
+    assert wiki._store_entry_id("outline") == before
 
 
-def test_agent_wiki_cache_key_tracks_artifact_receipt(tmp_path):
+def test_agent_wiki_store_entry_id_tracks_artifact_receipt(tmp_path):
     view = SimpleNamespace(
         status="fresh",
         commit="abc123",
@@ -6593,14 +6590,14 @@ def test_agent_wiki_cache_key_tracks_artifact_receipt(tmp_path):
         ),
     )
     wiki = AgentWiki(bundle, model="fake-model")
-    before = wiki._key("outline")
+    before = wiki._store_entry_id("outline")
 
     view.metadata["artifact_digest"] = "sha256:second"
 
-    assert wiki._key("outline") != before
+    assert wiki._store_entry_id("outline") != before
 
 
-def test_agent_wiki_cache_key_tracks_view_source_identity(tmp_path):
+def test_agent_wiki_store_entry_id_tracks_view_source_identity(tmp_path):
     view = SimpleNamespace(
         status="fresh",
         commit="abc123",
@@ -6621,13 +6618,13 @@ def test_agent_wiki_cache_key_tracks_view_source_identity(tmp_path):
         manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
     )
     wiki = AgentWiki(bundle, model="fake-model")
-    before = wiki._key("outline")
+    before = wiki._store_entry_id("outline")
     view.source_fingerprint = "sha256:second"
 
-    assert wiki._key("outline") != before
+    assert wiki._store_entry_id("outline") != before
 
 
-def test_agent_wiki_cache_key_tracks_source_selection_identity(tmp_path):
+def test_agent_wiki_store_entry_id_tracks_source_selection_identity(tmp_path):
     manifest = SimpleNamespace(
         languages=["python"],
         indexes={},
@@ -6646,21 +6643,15 @@ def test_agent_wiki_cache_key_tracks_source_selection_identity(tmp_path):
         bm25=None,
         manifest=manifest,
     )
-    wiki = AgentWiki(
-        bundle,
-        model="fake-model",
-        cache_dir=str(tmp_path / "wiki-cache"),
-    )
-    before = wiki._key("outline")
+    wiki = AgentWiki(bundle, model="fake-model")
+    before = wiki._store_entry_id("outline")
 
-    assert len(wiki._cache_candidate_paths("outline")) == 1
     manifest.source_selection_digest = "sha256:second-selection"
 
-    assert wiki._key("outline") != before
-    assert len(wiki._cache_candidate_paths("outline")) == 1
+    assert wiki._store_entry_id("outline") != before
 
 
-def test_agent_wiki_cache_key_is_stable_across_lazy_client_creation(tmp_path):
+def test_agent_wiki_store_entry_id_is_stable_across_lazy_client_creation(tmp_path):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -6674,47 +6665,10 @@ def test_agent_wiki_cache_key_is_stable_across_lazy_client_creation(tmp_path):
         manifest=SimpleNamespace(languages=["python"], indexes={}),
     )
     wiki = AgentWiki(bundle, model="fake-model")
-    before = wiki._key("outline")
+    before = wiki._store_entry_id("outline")
     wiki._llm = SimpleNamespace(cache_identity="created-lazily")
 
-    assert wiki._key("outline") == before
-
-
-def test_agent_wiki_adopts_legacy_timestamp_cache_into_stable_key(tmp_path):
-    view = SimpleNamespace(
-        status="fresh",
-        commit="abc123",
-        source_fingerprint="",
-        built_at_epoch=1.0,
-        config={"builder_schema": 1},
-        metadata={},
-    )
-    bundle = SimpleNamespace(
-        entry=SimpleNamespace(
-            repo="owner/repo",
-            repo_dir=str(tmp_path),
-            instance_id="owner__repo-1",
-            commit_short="abc123",
-            language="python",
-        ),
-        vector_store=None,
-        bm25=None,
-        manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
-    )
-    cache_dir = tmp_path / "wiki-cache"
-    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
-    stable, legacy = wiki._cache_candidate_paths("outline")
-    payload = {"pages": [{"id": "overview", "title": "Overview"}]}
-    wiki._atomic_write_cache(
-        legacy,
-        {"model": "old-model", "data": payload},
-    )
-
-    assert not os.path.exists(stable)
-    assert wiki._read_cache("outline") == payload
-    assert os.path.isfile(stable)
-    with open(stable, encoding="utf-8") as handle:
-        assert json.load(handle)["model"] == "old-model"
+    assert wiki._store_entry_id("outline") == before
 
 
 def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path):
@@ -6735,7 +6689,6 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
     original = AgentWiki(
         bundle,
         model="first-model",
-        cache_dir=str(cache_dir),
         store=store,
     )
     payload = {"pages": [{"id": "overview", "title": "Overview"}]}
@@ -6753,7 +6706,6 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
     reloaded = AgentWiki(
         bundle,
         model="different-model",
-        cache_dir=str(cache_dir),
         store=SQLiteWikiStore(cache_dir / "wiki.sqlite3"),
         llm=UnexpectedLLM(),
     )
@@ -6761,19 +6713,15 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
     stored = store.read(original._store_entry_id("outline"))
     assert stored is not None
     assert stored.repository_id == "owner__repo-1"
-    assert stored.envelope["model"] == "first-model"
-    assert stored.envelope[_WIKI_CACHE_PROVENANCE_FIELD] == {
-        "schema": 1,
-        "entry_id": original._store_entry_id("outline"),
-        "repository_id": "owner__repo-1",
-        "legacy_filenames": [
-            os.path.basename(path)
-            for path in original._cache_candidate_paths("outline")
-        ],
+    assert stored.envelope == {
+        "model": "first-model",
+        "api_base": "",
+        "llm_identity": "",
+        "data": payload,
     }
 
 
-def test_agent_wiki_lazily_adopts_json_into_store_but_read_only_does_not(tmp_path):
+def test_agent_wiki_reads_store_envelope_with_retired_provenance_field(tmp_path):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -6786,34 +6734,28 @@ def test_agent_wiki_lazily_adopts_json_into_store_but_read_only_does_not(tmp_pat
         bm25=None,
         manifest=SimpleNamespace(languages=["python"], indexes={}),
     )
-    cache_dir = tmp_path / "wiki-cache"
-    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
-    wiki = AgentWiki(
-        bundle,
-        model="fake-model",
-        cache_dir=str(cache_dir),
-        store=store,
-    )
-    stable = wiki._cache_candidate_paths("outline")[0]
+    store = SQLiteWikiStore(tmp_path / "wiki-cache" / "wiki.sqlite3")
+    wiki = AgentWiki(bundle, model="fake-model", store=store)
     payload = {"pages": [{"id": "overview", "title": "Overview"}]}
-    wiki._atomic_write_cache(stable, {"model": "old-model", "data": payload})
     entry_id = wiki._store_entry_id("outline")
-
-    assert wiki._read_cache_read_only("outline") == payload
-    assert store.read(entry_id) is None
+    store.publish(
+        entry_id=entry_id,
+        repository_id="owner__repo-1",
+        envelope={
+            "model": "old-model",
+            "data": payload,
+            "_codenib_cache_provenance": {
+                "schema": 1,
+                "legacy_filenames": ["agentwiki_retired.json"],
+            },
+        },
+    )
 
     assert wiki._read_cache("outline") == payload
-    adopted = store.read(entry_id)
-    assert adopted is not None
-    assert adopted.envelope["model"] == "old-model"
-    assert adopted.envelope[_WIKI_CACHE_PROVENANCE_FIELD]["legacy_filenames"] == [
-        os.path.basename(path) for path in wiki._cache_candidate_paths("outline")
-    ]
+    assert wiki.outline() == payload
 
 
-def test_agent_wiki_rejects_unbounded_legacy_json_before_serving_or_adoption(
-    tmp_path,
-):
+def test_agent_wiki_without_store_does_not_persist_across_instances(tmp_path):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -6826,56 +6768,17 @@ def test_agent_wiki_rejects_unbounded_legacy_json_before_serving_or_adoption(
         bm25=None,
         manifest=SimpleNamespace(languages=["python"], indexes={}),
     )
-    cache_dir = tmp_path / "wiki-cache"
-    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
-    wiki = AgentWiki(
-        bundle,
-        model="fake-model",
-        cache_dir=str(cache_dir),
-        store=store,
-    )
-    nested = {}
-    for _ in range(70):
-        nested = {"child": nested}
-    stable = wiki._cache_candidate_paths("outline")[0]
-    wiki._atomic_write_cache(stable, {"data": nested})
+    payload = {"pages": [{"id": "overview", "title": "Overview"}]}
+    first = AgentWiki(bundle, model="fake-model")
+    second = AgentWiki(bundle, model="fake-model")
 
-    assert wiki._read_cache_read_only("outline") is None
-    assert wiki._read_cache("outline") is None
-    assert store.read(wiki._store_entry_id("outline")) is None
+    first._write_cache("outline", payload)
+
+    assert first._read_cache("outline") is None
+    assert second._read_cache("outline") is None
 
 
-def test_agent_wiki_rejects_overflowed_legacy_json_number(tmp_path):
-    bundle = SimpleNamespace(
-        entry=SimpleNamespace(
-            repo="owner/repo",
-            repo_dir=str(tmp_path),
-            instance_id="owner__repo-1",
-            commit_short="abc123",
-            language="python",
-        ),
-        vector_store=None,
-        bm25=None,
-        manifest=SimpleNamespace(languages=["python"], indexes={}),
-    )
-    cache_dir = tmp_path / "wiki-cache"
-    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
-    wiki = AgentWiki(
-        bundle,
-        model="fake-model",
-        cache_dir=str(cache_dir),
-        store=store,
-    )
-    stable = wiki._cache_candidate_paths("outline")[0]
-    with open(stable, "w", encoding="utf-8") as handle:
-        handle.write('{"data":{"score":1e9999}}')
-
-    assert wiki._read_cache_read_only("outline") is None
-    assert wiki._read_cache("outline") is None
-    assert store.read(wiki._store_entry_id("outline")) is None
-
-
-def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(
+def test_agent_wiki_cached_page_tree_reads_store_without_generating(
     tmp_path, monkeypatch
 ):
     view = SimpleNamespace(
@@ -6899,15 +6802,13 @@ def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(
         manifest=SimpleNamespace(languages=["python"], indexes={"bm25": view}),
     )
     cache_dir = tmp_path / "wiki-cache"
-    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
-    stable, legacy = wiki._cache_candidate_paths("outline")
-    wiki._atomic_write_cache(
-        legacy,
-        {
-            "model": "old-model",
-            "data": {"pages": [{"id": "runtime", "title": "Runtime", "children": []}]},
-        },
+    store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    original = AgentWiki(bundle, model="old-model", store=store)
+    original._write_cache(
+        "outline",
+        {"pages": [{"id": "runtime", "title": "Runtime", "children": []}]},
     )
+    wiki = AgentWiki(bundle, model="fake-model", store=store)
     monkeypatch.setattr(
         wiki,
         "outline",
@@ -6924,37 +6825,6 @@ def test_agent_wiki_cached_page_tree_reads_without_generating_or_migrating(
             "children": [],
         }
     ]
-    assert not os.path.exists(stable)
-
-
-def test_agent_wiki_atomic_cache_write_preserves_previous_entry_on_failure(
-    tmp_path, monkeypatch
-):
-    bundle = SimpleNamespace(
-        entry=SimpleNamespace(
-            repo="owner/repo",
-            repo_dir=str(tmp_path),
-            instance_id="owner__repo-1",
-            commit_short="abc123",
-            language="python",
-        ),
-        vector_store=None,
-        bm25=None,
-        manifest=SimpleNamespace(languages=["python"], indexes={}),
-    )
-    cache_dir = tmp_path / "wiki-cache"
-    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
-    wiki._write_cache("outline", {"pages": [{"id": "original"}]})
-
-    with monkeypatch.context() as patch:
-        patch.setattr(
-            "codenib.wiki.agent_wiki.json.dump",
-            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
-        )
-        wiki._write_cache("outline", {"pages": [{"id": "replacement"}]})
-
-    assert wiki._read_cache("outline") == {"pages": [{"id": "original"}]}
-    assert not list(cache_dir.glob("*.tmp"))
 
 
 def test_agent_wiki_page_cache_key_tracks_outline_metadata():
@@ -7031,7 +6901,7 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
         "end_line": 2,
         "content": "def run(request):\n    return dispatch(request)",
     }
-    store = _FakeVectorStore([node])
+    vector_store = _FakeVectorStore([node])
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -7040,7 +6910,7 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
             commit_short="abc123",
             language="python",
         ),
-        vector_store=store,
+        vector_store=vector_store,
         bm25=None,
         manifest=SimpleNamespace(languages=["python"], indexes={}),
     )
@@ -7056,7 +6926,8 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
         ]
     }
     cache_dir = tmp_path / "wiki-cache"
-    wiki = AgentWiki(bundle, model="fake-model", cache_dir=str(cache_dir))
+    wiki_store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
+    wiki = AgentWiki(bundle, model="fake-model", store=wiki_store)
     wiki._outline = outline
     wiki._generate_page = lambda _meta: (_ for _ in ()).throw(
         AssertionError("graph evidence must not generate prose")
@@ -7075,14 +6946,18 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
             "content": None,
         }
     ]
-    assert len(store.calls) == 1
+    assert len(vector_store.calls) == 1
     assert wiki._pages == {}
 
-    store.calls.clear()
-    reloaded = AgentWiki(bundle, model="other-model", cache_dir=str(cache_dir))
+    vector_store.calls.clear()
+    reloaded = AgentWiki(
+        bundle,
+        model="other-model",
+        store=SQLiteWikiStore(cache_dir / "wiki.sqlite3"),
+    )
     reloaded._outline = outline
     assert reloaded.page_citations("runtime") == citations
-    assert store.calls == []
+    assert vector_store.calls == []
 
 
 def test_agent_wiki_regenerates_cached_diagnostic_fallback(tmp_path):
@@ -7302,8 +7177,7 @@ def test_agent_wiki_coalesces_concurrent_page_generation(tmp_path):
     assert generation_calls == 1
 
 
-@pytest.mark.parametrize("use_store", [False, True])
-def test_agent_wiki_coalesces_generation_across_builder_instances(tmp_path, use_store):
+def test_agent_wiki_coalesces_generation_across_store_instances(tmp_path):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
             repo="owner/repo",
@@ -7319,19 +7193,14 @@ def test_agent_wiki_coalesces_generation_across_builder_instances(tmp_path, use_
     meta = {"id": "runtime", "title": "Runtime", "children": []}
     outline = {"pages": [meta]}
     cache_dir = tmp_path / "wiki-cache"
-    builders = []
-    for _ in range(2):
-        kwargs = {}
-        if use_store:
-            kwargs["store"] = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
-        builders.append(
-            AgentWiki(
-                bundle,
-                model="fake-model",
-                cache_dir=str(cache_dir),
-                **kwargs,
-            )
+    builders = [
+        AgentWiki(
+            bundle,
+            model="fake-model",
+            store=SQLiteWikiStore(cache_dir / "wiki.sqlite3"),
         )
+        for _ in range(2)
+    ]
     for wiki in builders:
         wiki._outline = outline
     generation_started = threading.Event()

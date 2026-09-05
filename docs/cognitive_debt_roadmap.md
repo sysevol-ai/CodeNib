@@ -151,6 +151,12 @@ Status: in progress.
 - [x] Move portable-artifact validation contracts into the artifact-neutral
       `_bounded_json` module so default Web imports no longer cross a generic
       storage namespace.
+- [x] End the v0.2.3 Wiki JSON migration window by removing legacy cache
+      lookup, parsing, writes, adoption, file locks, provenance bookkeeping,
+      and file-based audit accounting. Keep existing SQLite rows readable and
+      make a missing `WikiStore` explicitly memory-only. The closure removes
+      354 net production lines and 256 net test lines while deleting zero
+      scripts and zero public entry points.
 - [ ] Bound Wiki generation-lock waiting and make maintenance inspection
       physically read-only without broadening the Wiki protocol.
 
@@ -262,6 +268,7 @@ Status: pending.
 | 2026-09-02 | Use the next release as the generic-storage removal boundary | The consumer audit found only the two retained artifact bridges and one catalog-backed FactBatch profile; ordinary product routes were independent | Delete the complete generic package and callers; keep v0.2.2 only as the pre-upgrade materialization tool |
 | 2026-09-03 | Publish the subtraction as v0.2.3 and reserve `codenib.storage` for the Wiki database | `WikiStore` is the only product database contract, while the old package name remains the clearest public entry point | Add one lazy Wiki-only module with an exact export list; keep all generic submodules, protocols, catalogs, and CAS implementations retired |
 | 2026-09-03 | Authorize one source-only BM25 H1 evidence experiment without reopening the stable storage boundary | `docs/experiments/hybrid_index_h1.md` records its schema, linearization points, verified failure matrix, commands, and diagnostic benchmark | Keep it outside the wheel and product routes; promote through an explicit demand-backed decision or delete code, script, and tests by 2026-10-04 |
+| 2026-09-05 | End the one-release Wiki JSON compatibility window | The v0.2.3 release notes and #749 record the migration window; production compositions already inject the Wiki store | Delete the legacy implementation and compatibility tests; preserve SQLite data and the `WikiStore` API |
 
 ## Completion Gate
 

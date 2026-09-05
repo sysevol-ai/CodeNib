@@ -1225,7 +1225,6 @@ def _audit_local_wiki(local) -> dict[str, object]:
     builder = AgentWiki(
         bundle,
         model,
-        cache_dir=str(local.data_dir / "wiki_cache"),
         store=SQLiteWikiStore(local.data_dir / "wiki_cache" / "wiki.sqlite3"),
         llm=client,
         api_base=config.wiki_generation_api_base,

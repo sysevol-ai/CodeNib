@@ -57,9 +57,9 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
 
 ## Performance & caching (why a page can feel slow)
 
-- **Wiki prose is LLM-generated and disk-cached** under `<data_dir>/wiki_cache/`
-  (i.e. `.codenib_qa/wiki_cache/agentwiki_<sha1(instance@commit/suffix)[:16]>.json`)
-  — NOT under `${CODENIB_PREBUILT_DIR}` (that holds the prebuilt graph + vectors).
+- **Wiki prose is LLM-generated and stored** in
+  `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
+  (that holds the prebuilt graph + vectors).
   The **first** visit to an un-narrated page runs the model (~8–20s); after that
   it's ~2ms. The codemap / wiki-page subgraph is computed **dynamically** per
   request but is fast (~50–115ms), so it isn't cached.
@@ -75,8 +75,9 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
     for p in $(ids "$r"); do curl -s -o /dev/null --max-time 120 "$B/api/repos/$r/wiki/$p"; done
   done
   ```
-  To force re-narration after a prompt change, delete the matching
-  `agentwiki_*.json` (outline key = `sha1("<instance>@<commit_short>/outline")[:16]`).
+  Prompt or index identity changes select a fresh entry automatically. To
+  retry degraded entries without discarding healthy pages, use
+  `wiki-cache-prewarm --retry-degraded-now`.
 - **Frontend weight**: Mermaid (~1MB) and the Cytoscape graph are `next/dynamic`
   lazy-loaded, so the narrative paints first. Remember `next dev` is unminified —
   a production `next build && next start` is markedly faster than the dev server.

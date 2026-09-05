@@ -149,7 +149,6 @@ def main(argv: list[str] | None = None) -> int:
         reference = AgentWiki(
             bundle,
             model=config.wiki_generation_model,
-            cache_dir=production_cache,
             store=production_store,
         )
         outline = reference._read_cache("outline")
@@ -182,7 +181,6 @@ def main(argv: list[str] | None = None) -> int:
                 wiki = AgentWiki(
                     bundles[repo_id],
                     model=model,
-                    cache_dir=run_cache,
                     store=SQLiteWikiStore(Path(run_cache) / "wiki.sqlite3"),
                     llm=llm,
                     api_base=api_base,

@@ -56,6 +56,10 @@ completed.
   facade and the retained-storage CLI commands were removed. Do not turn that
   module back into a package or reintroduce a generic catalog, CAS, schema
   state, storage protocol, backend registry, or product route.
+- The v0.2.3 release was the complete migration window for legacy
+  `agentwiki_*.json` caches. Do not restore JSON discovery, read-through,
+  adoption, writes, file locking, provenance markers, or audit accounting;
+  Wiki persistence requires an injected `WikiStore`.
 - One exception is authorized through 2026-10-04: the source-checkout-only H1
   experiment under `scripts/experimental/hybrid_index/`, its developer script,
   and focused tests. H1 accepts exactly one verified BM25-only portable

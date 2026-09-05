@@ -93,7 +93,7 @@ class Narrator:
     def _cache_file(self, key: str) -> Optional[str]:
         if not self.cache_dir:
             return None
-        # Model-independent by design (same rationale as AgentWiki._key): the
+        # Model-independent by design (same rationale as AgentWiki): the
         # prose is keyed by prompt version + call key, so pointing the narrator
         # at a different backend reuses what was already generated. The
         # producing model is recorded in the entry by ``_write_cache``.

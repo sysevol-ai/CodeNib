@@ -97,7 +97,6 @@ def main(argv: list[str] | None = None) -> int:
         return AgentWiki(
             bundle,
             model=config.wiki_generation_model,
-            cache_dir=cache_dir,
             store=store,
             llm=llm,
             api_base=config.wiki_generation_api_base,

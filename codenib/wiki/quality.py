@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -23,7 +22,7 @@ from .evidence import (
     relation_endpoints_named,
     relation_matches_claim,
 )
-from .store import _WIKI_CACHE_PROVENANCE_FIELD, WikiStore
+from .store import WikiStore
 
 _EVIDENCE_MARKER = re.compile(r"\[((?:E|R)\d+)\](?:\([^)]*\))?")
 _CATALOG_SENTENCE = re.compile(
@@ -1110,10 +1109,9 @@ def audit_cache(
     *,
     store: WikiStore | None = None,
 ) -> dict[str, Any]:
-    """Load and summarize pages from the canonical database or legacy files."""
+    """Load and summarize pages from the canonical Wiki store."""
 
     pages = []
-    stored_cache_files: set[str] = set()
     cache_root = Path(cache_dir)
     database_path = cache_root / "wiki.sqlite3"
     if store is None and database_path.exists():
@@ -1125,47 +1123,9 @@ def audit_cache(
     if store is not None:
         for entry in store.scan():
             payload = entry.envelope
-            # Only an identity-bound marker may claim a retained legacy file;
-            # page IDs such as ``overview`` routinely collide across repos.
-            provenance = (
-                payload.get(_WIKI_CACHE_PROVENANCE_FIELD)
-                if isinstance(payload, Mapping)
-                else None
-            )
-            cache_files = (
-                provenance.get("legacy_filenames")
-                if isinstance(provenance, Mapping)
-                and type(provenance.get("schema")) is int
-                and provenance.get("schema") == 1
-                and provenance.get("entry_id") == entry.entry_id
-                and provenance.get("repository_id") == entry.repository_id
-                else None
-            )
-            if isinstance(cache_files, list):
-                stored_cache_files.update(
-                    cache_file
-                    for cache_file in cache_files
-                    if type(cache_file) is str
-                    and cache_file == Path(cache_file).name
-                    and cache_file.startswith("agentwiki_")
-                    and cache_file.endswith(".json")
-                )
             data = payload.get("data") if isinstance(payload, Mapping) else None
             if isinstance(data, dict) and data.get("id") and data.get("markdown"):
                 pages.append(data)
-
-    # A marker-free database row cannot prove which repository owns an
-    # identical legacy envelope, so retain both rather than cross-repo dedupe.
-    for path in sorted(cache_root.glob("agentwiki_*.json")):
-        if path.name in stored_cache_files:
-            continue
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        data = payload.get("data") if isinstance(payload, dict) else None
-        if isinstance(data, dict) and data.get("id") and data.get("markdown"):
-            pages.append(data)
     return summarize_page_audits(pages)
 
 
