@@ -11,6 +11,18 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Changed
+
+- Bound each built-in Wiki generation-lock acquisition to a 30-second wait. A
+  timed-out waiter does not interrupt the owner or start duplicate generation,
+  and a later request can reuse the owner's published result.
+- Wiki cache audits and prewarm dry runs now copy an existing, quiescent
+  `wiki.sqlite3` into a private temporary snapshot and inspect that snapshot in
+  immutable read-only mode. They create no lock or SQLite sidecar beside the
+  source database, do not initialize or change its schema or lock directory,
+  and reject existing transaction sidecars or a source change while the
+  snapshot is captured.
+
 ### Removed
 
 - Retired the one-release `agentwiki_*.json` compatibility path tracked by

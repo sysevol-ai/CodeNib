@@ -15,13 +15,17 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import sqlite3
+import stat
+import tempfile
 from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 from filelock import FileLock
+from filelock import Timeout as FileLockTimeout
 
 from .._bounded_json import (
     _bounded_parse_float,
@@ -41,7 +45,9 @@ from .store import (
 _APPLICATION_ID = 0x434E574B  # ``CNWK``
 _SCHEMA_VERSION = 1
 _MAX_IDENTIFIER_BYTES = 4_096
+_GENERATION_LOCK_TIMEOUT_SECONDS = 30.0
 _RECORD_DIGEST_DOMAIN = b"codenib-wiki-record-v1\0"
+_READ_ONLY_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 # Stable SQLite primary result codes. Python 3.10 does not expose the matching
 # ``sqlite3.SQLITE_*`` module constants even though exceptions carry the code.
 _SQLITE_CORRUPT = 11
@@ -227,18 +233,13 @@ class SQLiteWikiStore:
     """A short-connection, transactional SQLite store for Wiki envelopes."""
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
-        if str(path) == ":memory:":
-            raise WikiStoreValidationError(
-                "short-connection Wiki stores require a filesystem path"
-            )
-        try:
-            resolved = Path(path).expanduser().resolve()
-            resolved.parent.mkdir(parents=True, exist_ok=True)
-        except (OSError, RuntimeError, TypeError, ValueError) as exc:
-            raise WikiStoreValidationError("invalid Wiki database path") from exc
+        resolved = self._resolve_path(path)
         self.path = resolved
+        self._connection_path = resolved
         self._lock_directory = Path(f"{resolved}.locks")
+        self._read_only = False
         try:
+            resolved.parent.mkdir(parents=True, exist_ok=True)
             self._lock_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             # Lock acquisition linearizes schema identity and the WAL transition
             # for this database. Initialization takes no entry lock, retains no
@@ -250,6 +251,113 @@ class SQLiteWikiStore:
             raise
         except OSError as exc:
             raise WikiStoreError("Wiki database initialization lock failed") from exc
+
+    @staticmethod
+    def _resolve_path(path: str | os.PathLike[str]) -> Path:
+        if str(path) == ":memory:":
+            raise WikiStoreValidationError(
+                "short-connection Wiki stores require a filesystem path"
+            )
+        try:
+            return Path(path).expanduser().resolve()
+        except (OSError, RuntimeError, TypeError, ValueError) as exc:
+            raise WikiStoreValidationError("invalid Wiki database path") from exc
+
+    @classmethod
+    @contextmanager
+    def _read_only_snapshot(
+        cls,
+        path: str | os.PathLike[str],
+    ) -> Iterator["SQLiteWikiStore"]:
+        """Copy one quiescent source database for physical read-only inspection.
+
+        The source fingerprint and absence of SQLite transaction sidecars are
+        checked on both sides of the copy. Once accepted, all short connections
+        target only the private immutable snapshot, so later writers cannot race
+        an inspection. This is an internal maintenance entry point, not part of
+        the public ``SQLiteWikiStore(path)`` adapter API.
+        """
+
+        store = cls.__new__(cls)
+        store.path = cls._resolve_path(path)
+        store._read_only = True
+        try:
+            snapshot_directory = tempfile.TemporaryDirectory(
+                prefix="codenib-wiki-inspection-"
+            )
+        except OSError as exc:
+            raise WikiStoreError("read-only Wiki snapshot capture failed") from exc
+        with snapshot_directory as directory:
+            try:
+                before = store._capture_read_only_fingerprint()
+                snapshot_path = Path(directory) / "wiki.sqlite3"
+                open_flags = (
+                    os.O_RDONLY
+                    | getattr(os, "O_CLOEXEC", 0)
+                    | getattr(os, "O_NOFOLLOW", 0)
+                )
+                with os.fdopen(os.open(store.path, open_flags), "rb") as source:
+                    opened = store._fingerprint(os.fstat(source.fileno()))
+                    if opened != before:
+                        raise WikiStoreError(
+                            "Wiki database changed while capturing read-only snapshot"
+                        )
+                    with snapshot_path.open("xb") as destination:
+                        shutil.copyfileobj(source, destination)
+                    copied_from = store._fingerprint(os.fstat(source.fileno()))
+                try:
+                    after = store._capture_read_only_fingerprint()
+                except WikiStoreError as exc:
+                    raise WikiStoreError(
+                        "Wiki database changed while capturing read-only snapshot"
+                    ) from exc
+                if copied_from != before or after != before:
+                    raise WikiStoreError(
+                        "Wiki database changed while capturing read-only snapshot"
+                    )
+                if snapshot_path.stat().st_size != before[2]:
+                    raise WikiStoreError(
+                        "read-only Wiki snapshot capture was incomplete"
+                    )
+                store._connection_path = snapshot_path
+                with store._connection():
+                    pass
+            except OSError as exc:
+                raise WikiStoreError("read-only Wiki snapshot capture failed") from exc
+            yield store
+
+    @staticmethod
+    def _fingerprint(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+        return (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+        )
+
+    def _capture_read_only_fingerprint(self) -> tuple[int, int, int, int, int]:
+        """Identify one quiescent database without creating SQLite sidecars."""
+
+        try:
+            metadata = self.path.stat()
+            if not stat.S_ISREG(metadata.st_mode):
+                raise WikiStoreValidationError(
+                    "read-only Wiki database path must be a regular file"
+                )
+            for suffix in _READ_ONLY_SIDECAR_SUFFIXES:
+                sidecar = Path(f"{self.path}{suffix}")
+                if sidecar.exists() or sidecar.is_symlink():
+                    raise WikiStoreError(
+                        "read-only Wiki inspection requires a quiescent database"
+                    )
+        except FileNotFoundError as exc:
+            raise WikiStoreValidationError(
+                "read-only Wiki database does not exist"
+            ) from exc
+        except OSError as exc:
+            raise WikiStoreError("read-only Wiki database inspection failed") from exc
+        return self._fingerprint(metadata)
 
     def _create_database_file_if_missing(self) -> None:
         """Create a new cache privately before SQLite can create WAL sidecars."""
@@ -270,8 +378,9 @@ class SQLiteWikiStore:
             raise WikiStoreError("Wiki database file creation failed") from exc
 
     def _open_raw(self) -> sqlite3.Connection:
+        query = "mode=ro&immutable=1" if self._read_only else "mode=rw"
         connection = sqlite3.connect(
-            f"{self.path.as_uri()}?mode=rw",
+            f"{self._connection_path.as_uri()}?{query}",
             isolation_level=None,
             uri=True,
         )
@@ -390,7 +499,10 @@ class SQLiteWikiStore:
         try:
             connection = self._open_raw()
             self._require_schema(connection)
-            self._configure_connection(connection)
+            if self._read_only:
+                connection.execute("PRAGMA query_only = ON")
+            else:
+                self._configure_connection(connection)
             yield connection
         except WikiStoreError:
             raise
@@ -439,6 +551,8 @@ class SQLiteWikiStore:
         envelope: Mapping[str, Any],
         if_absent: bool = False,
     ) -> WikiStoredEntry:
+        if self._read_only:
+            raise WikiStoreError("read-only Wiki store cannot publish")
         entry_id = _validate_identifier(entry_id, field="entry_id")
         repository_id = _validate_identifier(repository_id, field="repository_id")
         if type(if_absent) is not bool:
@@ -537,12 +651,23 @@ class SQLiteWikiStore:
 
     @contextmanager
     def generation_guard(self, entry_id: str) -> Iterator[None]:
+        """Own one entry generation after a bounded file-lock acquisition.
+
+        Successful ``FileLock.acquire`` is the cross-process linearization
+        point. A timeout leaves the existing owner untouched, and this process
+        releases only a lock it acquired successfully.
+        """
+
+        if self._read_only:
+            raise WikiStoreError("read-only Wiki store cannot guard generation")
         entry_id = _validate_identifier(entry_id, field="entry_id")
         lock_name = hashlib.sha256(entry_id.encode("utf-8")).hexdigest() + ".lock"
         try:
             self._lock_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             lock = FileLock(str(self._lock_directory / lock_name))
-            lock.acquire()
+            lock.acquire(timeout=_GENERATION_LOCK_TIMEOUT_SECONDS)
+        except FileLockTimeout as exc:
+            raise WikiStoreError("Wiki generation lock wait timed out") from exc
         except OSError as exc:
             raise WikiStoreError("Wiki generation lock failed") from exc
         try:

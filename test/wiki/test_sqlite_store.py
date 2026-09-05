@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import multiprocessing
 import os
 import queue
@@ -17,7 +18,10 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from filelock import FileLock
+from filelock import Timeout as FileLockTimeout
 
+import codenib.wiki.sqlite_store as sqlite_store_module
 from codenib.wiki.sqlite_store import (
     _APPLICATION_ID,
     _SCHEMA_VERSION,
@@ -29,6 +33,7 @@ from codenib.wiki.store import (
     WikiStoreCorruptionError,
     WikiStoreError,
     WikiStoreSchemaError,
+    WikiStoreValidationError,
 )
 
 from .test_store_contract import WikiStoreContract
@@ -118,6 +123,175 @@ def test_existing_only_uri_preserves_reserved_path_characters(tmp_path: Path) ->
     )
 
     assert store.read(expected.entry_id) == expected
+
+
+def test_read_only_store_inspects_without_filesystem_mutation(tmp_path: Path) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    writable = SQLiteWikiStore(path)
+    expected = writable.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "persisted"}},
+    )
+
+    def snapshot() -> tuple[tuple[int, int], dict[str, tuple[int, int, bytes]]]:
+        directory = tmp_path.stat()
+        files = {
+            str(candidate.relative_to(tmp_path)): (
+                candidate.stat().st_mtime_ns,
+                candidate.stat().st_ctime_ns,
+                candidate.read_bytes(),
+            )
+            for candidate in tmp_path.rglob("*")
+            if candidate.is_file()
+        }
+        return (directory.st_mtime_ns, directory.st_ctime_ns), files
+
+    before = snapshot()
+    with SQLiteWikiStore._read_only_snapshot(path) as inspected:
+        snapshot_directory = inspected._connection_path.parent
+        assert inspected.read(expected.entry_id) == expected
+        assert inspected.scan() == (expected,)
+        with pytest.raises(WikiStoreError, match="read-only Wiki store cannot publish"):
+            inspected.publish(
+                entry_id="other",
+                repository_id="repo-a",
+                envelope={"data": {}},
+            )
+        with pytest.raises(WikiStoreError, match="cannot guard generation"):
+            with inspected.generation_guard(expected.entry_id):
+                raise AssertionError("read-only generation guard must not enter")
+        assert snapshot_directory.is_dir()
+    assert not snapshot_directory.exists()
+    assert snapshot() == before
+    assert not Path(f"{path}-wal").exists()
+    assert not Path(f"{path}-shm").exists()
+
+
+def test_read_only_store_does_not_create_a_missing_database(tmp_path: Path) -> None:
+    path = tmp_path / "missing" / "wiki.sqlite3"
+
+    with pytest.raises(WikiStoreValidationError, match="does not exist"):
+        with SQLiteWikiStore._read_only_snapshot(path):
+            raise AssertionError("missing database snapshot must not open")
+
+    assert not path.parent.exists()
+
+
+def test_public_constructor_has_no_read_only_mode(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="read_only"):
+        SQLiteWikiStore(tmp_path / "wiki.sqlite3", read_only=True)  # type: ignore[call-arg]
+
+
+def test_read_only_store_rejects_a_live_wal_without_mutating_it(tmp_path: Path) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    store = SQLiteWikiStore(path)
+    entry = store.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "before"}},
+    )
+
+    with sqlite3.connect(path) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        writer.execute(
+            "UPDATE wiki_entries SET envelope_json = envelope_json WHERE entry_id = ?",
+            (entry.entry_id,),
+        )
+        writer.commit()
+        sidecars = (Path(f"{path}-wal"), Path(f"{path}-shm"))
+        assert all(candidate.exists() for candidate in sidecars)
+        before = tuple(
+            (candidate.stat().st_mtime_ns, candidate.read_bytes())
+            for candidate in sidecars
+        )
+
+        with pytest.raises(WikiStoreError, match="requires a quiescent database"):
+            with SQLiteWikiStore._read_only_snapshot(path):
+                raise AssertionError("live database snapshot must not open")
+
+        assert (
+            tuple(
+                (candidate.stat().st_mtime_ns, candidate.read_bytes())
+                for candidate in sidecars
+            )
+            == before
+        )
+
+
+def test_read_only_store_rejects_a_live_rollback_journal(tmp_path: Path) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    store = SQLiteWikiStore(path)
+    entry = store.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "before"}},
+    )
+
+    with sqlite3.connect(path) as writer:
+        assert writer.execute("PRAGMA journal_mode = DELETE").fetchone()[0] == "delete"
+        writer.execute("BEGIN IMMEDIATE")
+        writer.execute(
+            "UPDATE wiki_entries SET repository_id = ? WHERE entry_id = ?",
+            ("repo-b", entry.entry_id),
+        )
+        journal = Path(f"{path}-journal")
+        assert journal.exists()
+        before = (journal.stat().st_mtime_ns, journal.read_bytes())
+
+        with pytest.raises(WikiStoreError, match="requires a quiescent database"):
+            with SQLiteWikiStore._read_only_snapshot(path):
+                raise AssertionError("active transaction snapshot must not open")
+
+        assert (journal.stat().st_mtime_ns, journal.read_bytes()) == before
+
+
+def test_read_only_store_pins_the_captured_snapshot(tmp_path: Path) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    writable = SQLiteWikiStore(path)
+    entry = writable.publish(
+        entry_id="page:repo-a:overview",
+        repository_id="repo-a",
+        envelope={"data": {"body": "before"}},
+    )
+    with SQLiteWikiStore._read_only_snapshot(path) as inspected:
+        writable.publish(
+            entry_id=entry.entry_id,
+            repository_id=entry.repository_id,
+            envelope={"data": {"body": "after"}},
+        )
+
+        assert inspected.read(entry.entry_id) == entry
+    assert writable.read(entry.entry_id).envelope["data"]["body"] == "after"
+
+
+@pytest.mark.parametrize("mutation", ("source", "wal"))
+def test_read_only_store_rejects_source_change_while_copying(
+    tmp_path: Path,
+    monkeypatch,
+    mutation: str,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    SQLiteWikiStore(path)
+    original_copyfileobj = sqlite_store_module.shutil.copyfileobj
+
+    def copy_then_touch(source, destination, *args, **kwargs):
+        result = original_copyfileobj(source, destination, *args, **kwargs)
+        if mutation == "source":
+            metadata = path.stat()
+            os.utime(
+                path,
+                ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1_000_000),
+            )
+        else:
+            Path(f"{path}-wal").touch()
+        return result
+
+    monkeypatch.setattr(sqlite_store_module.shutil, "copyfileobj", copy_then_touch)
+
+    with pytest.raises(WikiStoreError, match="changed while capturing"):
+        with SQLiteWikiStore._read_only_snapshot(path):
+            raise AssertionError("changed database snapshot must not open")
 
 
 def test_new_database_and_wal_sidecars_are_private_under_common_umask(
@@ -608,6 +782,33 @@ def test_generation_guard_serializes_the_same_entry(tmp_path: Path) -> None:
         second_result.result(timeout=5)
 
     assert second_entered.is_set()
+
+
+def test_generation_guard_bounds_waiting_without_stealing_the_lock(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "wiki.sqlite3"
+    store = SQLiteWikiStore(path)
+    entry_id = "page:repo-a:overview"
+    lock_name = hashlib.sha256(entry_id.encode("utf-8")).hexdigest() + ".lock"
+    owner = FileLock(str(Path(f"{path}.locks") / lock_name))
+    owner.acquire()
+    monkeypatch.setattr(
+        sqlite_store_module,
+        "_GENERATION_LOCK_TIMEOUT_SECONDS",
+        0.01,
+    )
+    try:
+        with pytest.raises(WikiStoreError, match="lock wait timed out") as caught:
+            with store.generation_guard(entry_id):
+                raise AssertionError("a waiter must not steal the generation lock")
+        assert isinstance(caught.value.__cause__, FileLockTimeout)
+    finally:
+        owner.release()
+
+    with store.generation_guard(entry_id):
+        pass
 
 
 def test_generation_guard_serializes_across_processes(tmp_path: Path) -> None:

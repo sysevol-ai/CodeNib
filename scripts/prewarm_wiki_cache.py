@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
@@ -79,41 +80,46 @@ def main(argv: list[str] | None = None) -> int:
     registry.load_all()
     cache_dir = os.path.join(os.path.abspath(config.data_dir), "wiki_cache")
     database_path = Path(cache_dir) / "wiki.sqlite3"
-    store = (
-        None
-        if args.dry_run and not database_path.exists()
-        else SQLiteWikiStore(database_path)
-    )
-
-    def wiki_factory(bundle):
-        llm = LiteLLMChat(
-            model=config.wiki_generation_model,
-            temperature=0.2,
-            max_tokens=4096,
-            api_base=config.wiki_generation_api_base,
-            api_key=config.wiki_generation_api_key,
-            extra_kwargs=config.wiki_generation_options,
+    if args.dry_run:
+        store_context = (
+            SQLiteWikiStore._read_only_snapshot(database_path)
+            if database_path.exists()
+            else nullcontext(None)
         )
-        return AgentWiki(
-            bundle,
-            model=config.wiki_generation_model,
-            store=store,
-            llm=llm,
-            api_base=config.wiki_generation_api_base,
-            api_key=config.wiki_generation_api_key,
-        )
+    else:
+        store_context = nullcontext(SQLiteWikiStore(database_path))
 
-    report = prewarm_wiki_cache(
-        registry,
-        wiki_factory=wiki_factory,
-        repo_ids=args.repos,
-        scope=args.scope,
-        workers=args.workers,
-        max_pages=args.max_pages,
-        dry_run=args.dry_run,
-        retry_degraded_now=args.retry_degraded_now,
-        release_views=not args.keep_views,
-    )
+    with store_context as store:
+
+        def wiki_factory(bundle):
+            llm = LiteLLMChat(
+                model=config.wiki_generation_model,
+                temperature=0.2,
+                max_tokens=4096,
+                api_base=config.wiki_generation_api_base,
+                api_key=config.wiki_generation_api_key,
+                extra_kwargs=config.wiki_generation_options,
+            )
+            return AgentWiki(
+                bundle,
+                model=config.wiki_generation_model,
+                store=store,
+                llm=llm,
+                api_base=config.wiki_generation_api_base,
+                api_key=config.wiki_generation_api_key,
+            )
+
+        report = prewarm_wiki_cache(
+            registry,
+            wiki_factory=wiki_factory,
+            repo_ids=args.repos,
+            scope=args.scope,
+            workers=args.workers,
+            max_pages=args.max_pages,
+            dry_run=args.dry_run,
+            retry_degraded_now=args.retry_degraded_now,
+            release_views=not args.keep_views,
+        )
     print(
         json.dumps(
             report,

@@ -10,6 +10,9 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
+import pytest
+
+import codenib.wiki.agent_wiki as agent_wiki_module
 from codenib.graph.code_graph import CodeGraph
 from codenib.wiki.agent_wiki import (
     AgentWiki,
@@ -40,6 +43,7 @@ from codenib.wiki.builder import Symbol
 from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
 from codenib.wiki.quality import prose_integrity_report
 from codenib.wiki.sqlite_store import SQLiteWikiStore
+from codenib.wiki.store import WikiStoreError
 
 
 class _FakeVectorStore:
@@ -7175,6 +7179,88 @@ def test_agent_wiki_coalesces_concurrent_page_generation(tmp_path):
         assert first.result(timeout=2) == second.result(timeout=2)
 
     assert generation_calls == 1
+
+
+def test_agent_wiki_bounds_process_local_generation_wait(tmp_path, monkeypatch):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    wiki._outline = {"pages": [{"id": "runtime", "title": "Runtime", "children": []}]}
+    owner = wiki._page_generation_lock("runtime")
+    owner.acquire()
+    monkeypatch.setattr(
+        agent_wiki_module,
+        "_GENERATION_LOCK_TIMEOUT_SECONDS",
+        0.01,
+    )
+    try:
+        with pytest.raises(WikiStoreError, match="lock wait timed out"):
+            wiki.page("runtime")
+    finally:
+        owner.release()
+
+    wiki._generate_page = lambda _meta: {
+        "id": "runtime",
+        "markdown": "generated after the owner released the lock",
+    }
+    wiki._read_cache = lambda _suffix: None
+    wiki._write_cache = lambda _suffix, _page: None
+    assert wiki.page("runtime")["markdown"] == (
+        "generated after the owner released the lock"
+    )
+
+
+def test_agent_wiki_bounds_evidence_generation_wait(tmp_path, monkeypatch):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    meta = {"id": "runtime", "title": "Runtime", "children": []}
+    wiki._outline = {"pages": [meta]}
+    cache_suffix = wiki._page_cache_suffix(meta)
+    monkeypatch.setattr(
+        agent_wiki_module,
+        "_GENERATION_LOCK_TIMEOUT_SECONDS",
+        0.01,
+    )
+
+    evidence_owner = wiki._page_evidence_lock(cache_suffix)
+    evidence_owner.acquire()
+    try:
+        with pytest.raises(WikiStoreError, match="lock wait timed out"):
+            wiki.page_citations("runtime")
+    finally:
+        evidence_owner.release()
+
+    wiki._retrieve = lambda *_args, **_kwargs: []
+    retrieval_owner = wiki._evidence_retrieval_lock
+    retrieval_owner.acquire()
+    try:
+        with pytest.raises(WikiStoreError, match="lock wait timed out"):
+            wiki.page_citations("runtime")
+    finally:
+        retrieval_owner.release()
+
+    assert wiki.page_citations("runtime") == []
 
 
 def test_agent_wiki_coalesces_generation_across_store_instances(tmp_path):

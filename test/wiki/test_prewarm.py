@@ -6,7 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from codenib.wiki.agent_wiki import AgentWiki
 from codenib.wiki.prewarm import prewarm_wiki_cache
+from codenib.wiki.sqlite_store import SQLiteWikiStore
 
 
 class _Wiki:
@@ -322,6 +324,52 @@ def test_prewarm_can_retry_a_reader_ready_page_needing_operator_review():
 
     assert wiki.calls == [("overview", True)]
     assert report["counts"] == {"warmed": 1}
+
+
+def test_prewarm_read_only_dry_run_reuses_cached_outline_for_operator_retry(
+    tmp_path,
+):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    path = tmp_path / "wiki.sqlite3"
+    writable = SQLiteWikiStore(path)
+    seed = AgentWiki(bundle, model="fake-model", store=writable)
+    meta = {"id": "overview", "title": "Overview", "children": []}
+    seed._write_cache("outline", {"pages": [meta]})
+    page_meta = seed._overview_page_meta(meta, [])
+    seed._write_cache(
+        seed._page_cache_suffix(page_meta),
+        {
+            "id": "overview",
+            "generation": {"mode": "degraded", "fallback": None},
+            "grounding": {"valid": True},
+            "quality": {"valid": True},
+        },
+    )
+
+    with SQLiteWikiStore._read_only_snapshot(path) as snapshot:
+        wiki = AgentWiki(bundle, model="fake-model", store=snapshot)
+        report = prewarm_wiki_cache(
+            _registry(wiki),
+            wiki_factory=lambda selected: selected.wiki,
+            dry_run=True,
+            retry_degraded_now=True,
+        )
+
+    assert report["counts"] == {"planned": 1}
+    assert report["pages"][0]["before"] == "ready"
+    assert report["pages"][0]["status"] == "planned"
+    assert wiki._outline is None
 
 
 def test_prewarm_releases_each_repo_after_its_pages_finish():

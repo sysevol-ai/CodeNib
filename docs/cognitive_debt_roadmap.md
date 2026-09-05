@@ -123,7 +123,7 @@ Status: in progress.
 
 ### S1: Wiki-only database boundary
 
-Status: in progress.
+Status: complete.
 
 - [x] Declare the Wiki-only `codenib.storage.WikiStore` facade and its SQLite
       WAL adapter as the only product database boundary.
@@ -157,8 +157,12 @@ Status: in progress.
       make a missing `WikiStore` explicitly memory-only. The closure removes
       354 net production lines and 256 net test lines while deleting zero
       scripts and zero public entry points.
-- [ ] Bound Wiki generation-lock waiting and make maintenance inspection
-      physically read-only without broadening the Wiki protocol.
+- [x] Bound each built-in Wiki generation-lock wait to 30 seconds without
+      stealing the owner's lock or duplicating generation. Copy a checked,
+      quiescent SQLite database into a private immutable snapshot for cache
+      audits and prewarm dry runs; reject WAL, SHM, rollback-journal, or source
+      changes during capture without adding a public constructor option or
+      another Wiki protocol method.
 
 Exit condition: protected product journeys use only the Wiki database facade
 and manifest-bound artifacts; no generic storage surface remains.
