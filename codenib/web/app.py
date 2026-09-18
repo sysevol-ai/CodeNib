@@ -46,6 +46,7 @@ from ..wiki.media_generation import (
     read_generated_media_asset,
     redact_media_evidence_packs,
 )
+from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.sqlite_store import SQLiteWikiStore
 from .config import load_config
@@ -403,6 +404,125 @@ def _wiki_media_dir(config, repo_id: str, page_id: str) -> Path:
     return root / repo_key / page_key
 
 
+def _wiki_visual_evidence_path(bundle) -> Path | None:
+    """Return the repository-owned visual-evidence bundle location.
+
+    The bundle is a derived artifact, so it stays beside the checkout rather
+    than in the Web cache. This gives the build command and Wiki runtime one
+    explicit hand-off point.
+    """
+
+    repo_dir = str(getattr(getattr(bundle, "entry", None), "repo_dir", "") or "")
+    if not repo_dir:
+        return None
+    try:
+        root = Path(repo_dir).expanduser().resolve(strict=True)
+    except OSError:
+        return None
+    if not root.is_dir():
+        return None
+    return root / ".codenib" / "multimodal-knowledge.json"
+
+
+def _load_wiki_visual_evidence(bundle) -> dict | None:
+    """Load one validated, repository-owned visual-evidence bundle."""
+
+    path = _wiki_visual_evidence_path(bundle)
+    if path is None or not os.path.lexists(path):
+        return None
+    try:
+        return load_multimodal_knowledge_bundle(path)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "Invalid Wiki visual evidence bundle at %s: %s",
+            path,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The repository visual-evidence bundle is invalid",
+        ) from exc
+
+
+def _same_commit(left: object, right: object) -> bool:
+    """Accept equal full commits or an unambiguous full/short commit pair."""
+
+    first = str(left or "").strip().lower()
+    second = str(right or "").strip().lower()
+    if not first or not second or min(len(first), len(second)) < 7:
+        return False
+    return first == second or first.startswith(second) or second.startswith(first)
+
+
+def _summarize_wiki_visual_evidence(persisted: Mapping, bundle) -> dict:
+    """Return a reader-safe projection and withhold stale source bindings."""
+
+    media = persisted["media_manifest"]
+    facts = persisted["visual_facts_manifest"]
+    grounding = persisted["grounding_manifest"]
+    source_commit = str(media["commit"])
+    indexed_commit = str(
+        getattr(getattr(bundle, "entry", None), "base_commit", "") or ""
+    )
+    state = "ready" if _same_commit(source_commit, indexed_commit) else "stale"
+    visible_facts = facts["facts"][:12] if state == "ready" else []
+    visible_paths = {str(fact["artifact_path"]) for fact in visible_facts}
+    binding_counts: dict[str, int] = {}
+    bindings = []
+    for binding in grounding["bindings"]:
+        path = str(binding["artifact_path"])
+        if path not in visible_paths or binding_counts.get(path, 0) >= 3:
+            continue
+        binding_counts[path] = binding_counts.get(path, 0) + 1
+        bindings.append(
+            {
+                "artifact_path": path,
+                "entity_name": binding["entity_name"],
+                "source_path": binding["source_path"],
+                "symbol": binding["symbol"],
+                "line": binding["line"],
+                "score": binding["score"],
+                "evidence": binding["evidence"],
+            }
+        )
+    return {
+        "state": state,
+        "source_commit": source_commit,
+        "indexed_commit": indexed_commit,
+        "artifact_count": media["artifact_count"],
+        "fact_count": facts["fact_count"],
+        "binding_count": grounding["binding_count"],
+        "facts": [
+            {
+                "artifact_path": fact["artifact_path"],
+                "extractor": fact["extractor"],
+                "entities": [
+                    {
+                        "name": entity["name"],
+                        "type": entity["type"],
+                        "confidence": entity["confidence"],
+                    }
+                    for entity in fact["entities"][:12]
+                ],
+                "relations": [
+                    {
+                        "source": relation["source"],
+                        "target": relation["target"],
+                        "relation": relation["relation"],
+                    }
+                    for relation in fact["relations"][:8]
+                ],
+                "claims": [
+                    {"text": claim["text"], "confidence": claim["confidence"]}
+                    for claim in fact["claims"][:4]
+                ],
+            }
+            for fact in visible_facts
+        ],
+        "bindings": bindings,
+    }
+
+
 def _wiki_media_source_snippet(source_reader, citation: Mapping) -> str | None:
     source = bound_source_slice(
         source_reader,
@@ -650,6 +770,20 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
             bundle,
             **kwargs,
         )
+
+
+@app.get("/api/repos/{repo_id}/visual-evidence")
+async def wiki_visual_evidence(repo_id: str) -> dict:
+    """Serve validated visual facts for the current repository snapshot only."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        persisted = await _run_pinned_thread(_load_wiki_visual_evidence, bundle)
+        if persisted is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No repository visual-evidence bundle is available",
+            )
+        return _summarize_wiki_visual_evidence(persisted, bundle)
 
 
 @app.get("/api/repos/{repo_id}/wiki")

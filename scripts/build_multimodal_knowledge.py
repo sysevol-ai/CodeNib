@@ -85,6 +85,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=120.0,
         help="Timeout in seconds for each visual-fact VLM request",
     )
+    parser.add_argument(
+        "--publish-to-wiki",
+        action="store_true",
+        help=(
+            "Also publish the validated bundle to "
+            "<repo>/.codenib/multimodal-knowledge.json for the local Wiki"
+        ),
+    )
     return parser
 
 
@@ -109,6 +117,10 @@ def main(argv: list[str] | None = None) -> int:
         max_source_candidates=args.max_source_candidates,
     )
     save_multimodal_knowledge_bundle(bundle, args.output)
+    wiki_bundle_path = None
+    if args.publish_to_wiki:
+        wiki_bundle_path = repo.resolve() / ".codenib" / "multimodal-knowledge.json"
+        save_multimodal_knowledge_bundle(bundle, wiki_bundle_path)
     counts = {
         "media_artifacts": bundle["media_manifest"]["artifact_count"],
         "visual_fact_packs": bundle["visual_facts_manifest"]["fact_count"],
@@ -116,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
         "visual_code_bindings": bundle["grounding_manifest"]["binding_count"],
         "knowledge_entries": bundle["knowledge_view"]["entry_count"],
     }
+    if wiki_bundle_path is not None:
+        counts["wiki_bundle_path"] = str(wiki_bundle_path)
     print(json.dumps(counts, sort_keys=True))
     return 0
 

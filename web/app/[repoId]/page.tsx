@@ -9,6 +9,7 @@ import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import {
   fetchCommits,
   fetchRepos,
+  fetchWikiVisualEvidence,
   fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
@@ -21,6 +22,7 @@ import {
   type CommitRef,
   type RepoInfo,
   type WikiMediaSlot,
+  type WikiVisualEvidence,
   type WikiPage,
   type WikiPageRef,
 } from "@/lib/api";
@@ -305,6 +307,131 @@ function MultimodalMedia({
   );
 }
 
+function confidenceLabel(value: number): string {
+  return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
+}
+
+function RepositoryVisualEvidence({
+  evidence,
+  repo,
+}: {
+  evidence: WikiVisualEvidence;
+  repo: RepoInfo | null;
+}) {
+  if (evidence.state === "stale") {
+    return (
+      <section className="repository-visual-evidence" aria-live="polite">
+        <h2>Repository visual evidence</h2>
+        <p className="repository-visual-evidence-note">
+          Visual facts belong to {evidence.source_commit.slice(0, 8)}, while this
+          Wiki is indexed at {evidence.indexed_commit.slice(0, 8)}. Rebuild before
+          showing source bindings.
+        </p>
+      </section>
+    );
+  }
+  if (!evidence.facts.length) return null;
+  return (
+    <section className="repository-visual-evidence" aria-labelledby="visual-evidence-title">
+      <header className="repository-visual-evidence-head">
+        <div>
+          <p className="repository-visual-evidence-kicker">Visual understanding · source-bound</p>
+          <h2 id="visual-evidence-title">Repository visual evidence</h2>
+          <p>
+            Facts extracted from repository-owned visuals. A source link appears only
+            when the binding score passes the verification threshold.
+          </p>
+        </div>
+        <span className="repository-visual-evidence-count">
+          {evidence.fact_count} fact{evidence.fact_count === 1 ? "" : "s"}
+        </span>
+      </header>
+      {evidence.facts.map((fact) => {
+        const bindings = evidence.bindings.filter(
+          (binding) => binding.artifact_path === fact.artifact_path,
+        );
+        const artifactUrl = ghFileUrl(
+          repo?.repo,
+          repo?.source_url,
+          evidence.source_commit,
+          fact.artifact_path,
+        );
+        return (
+          <article className="repository-visual-evidence-item" key={fact.artifact_path}>
+            <div className="repository-visual-evidence-item-head">
+              <div>
+                {artifactUrl ? (
+                  <a href={artifactUrl} target="_blank" rel="noreferrer" className="mono">
+                    {fact.artifact_path} ↗
+                  </a>
+                ) : (
+                  <code>{fact.artifact_path}</code>
+                )}
+                <span>{fact.extractor}</span>
+              </div>
+              <span>{fact.entities.length} entities</span>
+            </div>
+            {fact.entities.length > 0 && (
+              <ul className="repository-visual-evidence-entities">
+                {fact.entities.map((entity) => (
+                  <li key={`${entity.name}:${entity.type}`}>
+                    <strong>{entity.name}</strong>
+                    <span>{entity.type}</span>
+                    <small>{confidenceLabel(entity.confidence)}</small>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {fact.relations.length > 0 && (
+              <ul className="repository-visual-evidence-relations">
+                {fact.relations.map((relation, index) => (
+                  <li key={`${relation.source}:${relation.target}:${index}`}>
+                    <span>{relation.source}</span>
+                    <em>{relation.relation}</em>
+                    <span>{relation.target}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {fact.claims.map((claim) => (
+              <p className="repository-visual-evidence-claim" key={claim.text}>
+                {claim.text} <small>{confidenceLabel(claim.confidence)}</small>
+              </p>
+            ))}
+            {bindings.length > 0 && (
+              <div className="repository-visual-evidence-bindings">
+                <span>Code bindings</span>
+                {bindings.map((binding) => {
+                  const verified = Number.isFinite(binding.score) && binding.score >= 0.8;
+                  const sourceUrl = verified
+                    ? ghFileUrl(
+                        repo?.repo,
+                        repo?.source_url,
+                        evidence.indexed_commit,
+                        binding.source_path,
+                        binding.line || undefined,
+                      )
+                    : null;
+                  const label = `${binding.entity_name} → ${binding.symbol || binding.source_path}`;
+                  return sourceUrl ? (
+                    <a href={sourceUrl} target="_blank" rel="noreferrer" key={label}>
+                      {label} ↗
+                    </a>
+                  ) : (
+                    <span className="candidate" key={label} title={binding.evidence}>
+                      {label} · candidate {confidenceLabel(binding.score)}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
 export default function WikiPageView({
   repoId,
   initialPageId = "overview",
@@ -339,6 +466,7 @@ export default function WikiPageView({
   // case the rail keeps its static "Last indexed" label.
   const [commits, setCommits] = useState<CommitRef[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
+  const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -346,6 +474,7 @@ export default function WikiPageView({
     let cancelled = false;
     setCommits([]);
     setSelectedCommit(undefined);
+    setVisualEvidence(null);
 
     fetchRepos()
       .then((rs) => {
@@ -361,6 +490,13 @@ export default function WikiPageView({
         setSelectedCommit(w.selected ?? undefined);
       })
       .catch(() => {});
+    fetchWikiVisualEvidence(repoId)
+      .then((evidence) => {
+        if (!cancelled) setVisualEvidence(evidence);
+      })
+      .catch(() => {
+        if (!cancelled) setVisualEvidence(null);
+      });
     setTocLoading(true);
     setError(null);
     fetchWikiTree(repoId)
@@ -882,6 +1018,9 @@ export default function WikiPageView({
                     </div>
                   )}
                 </div>
+              )}
+              {activeId === "overview" && visualEvidence && (
+                <RepositoryVisualEvidence evidence={visualEvidence} repo={repo} />
               )}
           </div>
         </main>

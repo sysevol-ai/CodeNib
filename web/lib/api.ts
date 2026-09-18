@@ -193,6 +193,35 @@ export interface WikiMediaAsset {
   metadata?: Record<string, unknown>;
 }
 
+export interface WikiVisualEvidenceFact {
+  artifact_path: string;
+  extractor: string;
+  entities: Array<{ name: string; type: string; confidence: number }>;
+  relations: Array<{ source: string; target: string; relation: string }>;
+  claims: Array<{ text: string; confidence: number }>;
+}
+
+export interface WikiVisualEvidenceBinding {
+  artifact_path: string;
+  entity_name: string;
+  source_path: string;
+  symbol: string;
+  line: number;
+  score: number;
+  evidence: string;
+}
+
+export interface WikiVisualEvidence {
+  state: "ready" | "stale";
+  source_commit: string;
+  indexed_commit: string;
+  artifact_count: number;
+  fact_count: number;
+  binding_count: number;
+  facts: WikiVisualEvidenceFact[];
+  bindings: WikiVisualEvidenceBinding[];
+}
+
 /**
  * Planned media slots are internal generation metadata, not reader content.
  * Only expose slots that actually have a materialized asset in the Wiki UI.
@@ -307,6 +336,22 @@ export async function fetchWikiPage(
     }
     throw error;
   }
+}
+
+export async function fetchWikiVisualEvidence(
+  repoId: string,
+  opts: { signal?: AbortSignal } = {},
+): Promise<WikiVisualEvidence | null> {
+  if (isStaticRuntime()) return null;
+  const response = await fetch(
+    `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/visual-evidence`,
+    { signal: opts.signal },
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw await responseError(response, "Failed to load repository visual evidence");
+  }
+  return response.json();
 }
 
 export async function fetchSource(
