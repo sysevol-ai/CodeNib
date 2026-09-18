@@ -45,6 +45,7 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
             "abc123",
             "--exclude-root",
             str(generated),
+            "--publish-to-wiki",
         ],
         check=True,
         stdout=subprocess.PIPE,
@@ -59,6 +60,9 @@ def test_build_multimodal_knowledge_script_writes_bundle(tmp_path):
     assert len(bundle["bundle_sha256"]) == 64
     assert bundle["media_manifest"]["commit"] == "abc123"
     assert bundle["knowledge_view"]["entry_count"] == 1
+    published = repo / ".codenib" / "multimodal-knowledge.json"
+    assert json.loads(published.read_text(encoding="utf-8")) == bundle
+    assert counts["wiki_bundle_path"] == str(published)
 
 
 def test_build_multimodal_knowledge_script_rejects_missing_repository(tmp_path):
