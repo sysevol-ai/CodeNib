@@ -135,6 +135,83 @@ def test_visual_evidence_endpoint_reads_a_pinned_repository_generation(monkeypat
     assert response["source_commit"] == "a" * 40
 
 
+def test_visual_evidence_media_serves_only_current_manifest_artifacts(monkeypatch):
+    class SourceReader:
+        def captured_relative_path(self, path):
+            return path
+
+        def read_prefix(self, relative, *, max_bytes):
+            assert relative == "docs/architecture.png"
+            assert max_bytes == 32 * 1024 * 1024 + 1
+            return b"current-image"
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="a" * 40),
+        source_reader=SourceReader(),
+    )
+    persisted = {
+        "media_manifest": {"commit": "a" * 40, "artifact_count": 1},
+        "visual_facts_manifest": {
+            "fact_count": 1,
+            "facts": [
+                {
+                    "artifact_path": "docs/architecture.png",
+                    "extractor": "gemini",
+                    "entities": [],
+                    "relations": [],
+                    "claims": [],
+                }
+            ],
+        },
+        "grounding_manifest": {"binding_count": 0, "bindings": []},
+    }
+
+    @contextmanager
+    def pinned(_repo_id):
+        yield bundle
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "_pinned_bundle", pinned)
+    monkeypatch.setattr(web_app, "_run_pinned_thread", run_inline)
+    monkeypatch.setattr(
+        web_app, "_load_wiki_visual_evidence", lambda _bundle: persisted
+    )
+
+    response = asyncio.run(
+        web_app.wiki_visual_evidence_media(
+            "repository",
+            file="docs/architecture.png",
+            commit="a" * 40,
+        )
+    )
+
+    assert response.body == b"current-image"
+    assert response.media_type == "image/png"
+    assert response.headers["cache-control"] == "private, max-age=3600, immutable"
+
+    with pytest.raises(web_app.HTTPException) as stale:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file="docs/architecture.png",
+                commit="b" * 40,
+            )
+        )
+    assert stale.value.status_code == 409
+
+    with pytest.raises(web_app.HTTPException) as unknown:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file="docs/not-in-manifest.png",
+                commit="a" * 40,
+            )
+        )
+    assert unknown.value.status_code == 404
+
+
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
     captured = {}
     config = SimpleNamespace(

@@ -70,6 +70,14 @@ _WIKI_MEDIA_TYPES = {
     ".png": "image/png",
     ".svg": "image/svg+xml",
 }
+_VISUAL_EVIDENCE_MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+}
+_MAX_VISUAL_EVIDENCE_MEDIA_BYTES = 32 * 1024 * 1024
 
 logger = get_logger(__name__)
 
@@ -784,6 +792,64 @@ async def wiki_visual_evidence(repo_id: str) -> dict:
                 detail="No repository visual-evidence bundle is available",
             )
         return _summarize_wiki_visual_evidence(persisted, bundle)
+
+
+@app.get("/api/repos/{repo_id}/visual-evidence/media")
+async def wiki_visual_evidence_media(
+    repo_id: str,
+    file: str,
+    commit: str,
+) -> Response:
+    """Serve one current visual-evidence artifact from the pinned source."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        persisted = await _run_pinned_thread(_load_wiki_visual_evidence, bundle)
+        if persisted is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No repository visual-evidence bundle is available",
+            )
+        summary = _summarize_wiki_visual_evidence(persisted, bundle)
+        if summary["state"] != "ready" or not _same_commit(
+            commit, summary["indexed_commit"]
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The repository visual-evidence bundle is stale",
+            )
+        visible_paths = {fact["artifact_path"] for fact in summary["facts"]}
+        if file not in visible_paths:
+            raise HTTPException(status_code=404, detail="Visual artifact not found")
+        media_type = _VISUAL_EVIDENCE_MEDIA_TYPES.get(
+            PurePosixPath(file).suffix.lower()
+        )
+        source_reader = getattr(bundle, "source_reader", None)
+        if media_type is None or source_reader is None:
+            raise HTTPException(status_code=404, detail="Visual artifact not found")
+        relative = source_reader.captured_relative_path(file)
+        if relative != file:
+            raise HTTPException(status_code=404, detail="Visual artifact not found")
+        try:
+            payload = await _run_pinned_thread(
+                source_reader.read_prefix,
+                relative,
+                max_bytes=_MAX_VISUAL_EVIDENCE_MEDIA_BYTES + 1,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Visual artifact not found",
+            ) from exc
+        if len(payload) > _MAX_VISUAL_EVIDENCE_MEDIA_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Visual artifact exceeds the byte limit",
+            )
+        return Response(
+            content=payload,
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=3600, immutable"},
+        )
 
 
 @app.get("/api/repos/{repo_id}/wiki")

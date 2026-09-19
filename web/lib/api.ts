@@ -354,6 +354,15 @@ export async function fetchWikiVisualEvidence(
   return response.json();
 }
 
+export function wikiVisualEvidenceMediaUrl(
+  repoId: string,
+  commit: string,
+  file: string,
+): string {
+  const params = new URLSearchParams({ commit, file });
+  return `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/visual-evidence/media?${params}`;
+}
+
 export async function fetchSource(
   repoId: string,
   file: string,

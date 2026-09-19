@@ -3528,7 +3528,7 @@ a.evidence-row:hover {
 .repository-visual-evidence-bindings > span:first-child {
   font-weight: 700;
 }
-.repository-visual-evidence-bindings a,
+.repository-visual-evidence-bindings button,
 .repository-visual-evidence-bindings .candidate {
   padding: 4px 7px;
   border: 1px solid var(--border);
@@ -3536,11 +3536,13 @@ a.evidence-row:hover {
   color: var(--text-secondary);
   background: var(--bg-subtle);
 }
-.repository-visual-evidence-bindings a {
+.repository-visual-evidence-bindings button {
+  font: inherit;
   color: var(--accent);
+  cursor: pointer;
   text-decoration: none;
 }
-.repository-visual-evidence-bindings a:hover {
+.repository-visual-evidence-bindings button:hover {
   border-color: var(--accent-border);
 }
 @media (max-width: 620px) {
