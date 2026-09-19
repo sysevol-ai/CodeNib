@@ -1772,6 +1772,118 @@ def test_wiki_generate_resolves_openai_route(
     assert "runtime-secret" not in str(captured)
 
 
+def test_wiki_visual_facts_publish_current_indexed_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The Wiki command owns visual-fact publication, not a demo script."""
+
+    from codenib.compiler.manifest import IndexEntry
+
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    (tmp_path / "architecture.png").write_bytes(b"not-decoded-by-this-unit-test")
+    manifest_path = tmp_path / "repo_manifest.json"
+    _current_manifest_with_fresh_index(
+        tmp_path,
+        IndexEntry(
+            index_type="bm25",
+            path=str(tmp_path / "bm25"),
+            built_at="2026-09-19T00:00:00+00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+        ),
+    ).save(manifest_path)
+    captured: dict[str, object] = {}
+    published: list[tuple[object, Path]] = []
+    monkeypatch.setenv("VISUAL_FACTS_TOKEN", "runtime-secret")
+    monkeypatch.setattr(cli, "resolve_manifest_path", lambda _value: manifest_path)
+    monkeypatch.setattr(
+        "codenib.wiki.media_pipeline.build_multimodal_repository_knowledge",
+        lambda root, **kwargs: (
+            captured.update({"root": root, **kwargs})
+            or {
+                "visual_facts_manifest": {
+                    "facts": [{"artifact_path": "architecture.png"}]
+                }
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        "codenib.wiki.media_storage.save_multimodal_knowledge_bundle",
+        lambda bundle, path: published.append((bundle, Path(path))),
+    )
+    monkeypatch.setattr(
+        "codenib.web.local.prepare_local_wiki",
+        lambda *_args, **_kwargs: SimpleNamespace(runtime_env={}),
+    )
+    monkeypatch.setattr(
+        "codenib.web.launcher.launch_local_wiki", lambda *_args, **_kwargs: 0
+    )
+
+    result = cli.run(
+        [
+            "wiki",
+            str(tmp_path),
+            "--no-index",
+            "--visual-facts-model",
+            "models/example-vlm",
+            "--visual-facts-api-base",
+            "https://vlm.example.test/v1",
+            "--visual-facts-api-key-env",
+            "VISUAL_FACTS_TOKEN",
+            "--visual-facts-provider",
+            "example-vlm",
+            "--visual-facts-max-artifacts",
+            "7",
+            "--no-open",
+        ]
+    )
+
+    assert result == 0
+    assert captured["root"] == tmp_path
+    assert captured["commit"] == _TEST_COMMIT
+    assert captured["max_artifacts"] == 7
+    extractor = captured["extractor"]
+    assert extractor.model == "models/example-vlm"
+    assert extractor.provider == "example-vlm"
+    assert extractor.repo_path == tmp_path.resolve()
+    assert published == [
+        (
+            {
+                "visual_facts_manifest": {
+                    "facts": [{"artifact_path": "architecture.png"}]
+                }
+            },
+            tmp_path / ".codenib" / "multimodal-knowledge.json",
+        )
+    ]
+    output = capsys.readouterr().out
+    assert "Published Wiki visual evidence: 1 artifact(s)" in output
+    assert "runtime-secret" not in output
+
+
+def test_wiki_visual_facts_rejects_partial_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "sample.py").write_text("def sample():\n    return 1\n")
+    monkeypatch.setattr(cli, "resolve_repo_path", lambda _value: tmp_path)
+
+    result = cli.run(
+        [
+            "wiki",
+            str(tmp_path),
+            "--visual-facts-model",
+            "models/example-vlm",
+        ]
+    )
+
+    assert result == 2
+    assert "--visual-facts-api-base is required" in capsys.readouterr().err
+
+
 def test_wiki_rejects_embedding_route_that_disagrees_with_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
