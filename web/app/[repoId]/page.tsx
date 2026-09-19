@@ -39,6 +39,7 @@ import {
   materializedWikiMediaSlots,
   repoRelative,
   shouldWithholdWikiPage,
+  wikiVisualEvidenceMediaUrl,
   type CodemapResponse,
   type PageBoundary,
   type WikiAreaMap,
@@ -466,10 +467,12 @@ function confidenceLabel(value: number): string {
 
 function RepositoryVisualEvidence({
   evidence,
-  repo,
+  repoId,
+  onOpenBinding,
 }: {
   evidence: WikiVisualEvidence;
-  repo: RepoInfo | null;
+  repoId: string;
+  onOpenBinding: (binding: WikiVisualEvidence["bindings"][number]) => void;
 }) {
   if (evidence.state === "stale") {
     return (
@@ -503,9 +506,8 @@ function RepositoryVisualEvidence({
         const bindings = evidence.bindings.filter(
           (binding) => binding.artifact_path === fact.artifact_path,
         );
-        const artifactUrl = ghFileUrl(
-          repo?.repo,
-          repo?.source_url,
+        const artifactUrl = wikiVisualEvidenceMediaUrl(
+          repoId,
           evidence.source_commit,
           fact.artifact_path,
         );
@@ -556,22 +558,22 @@ function RepositoryVisualEvidence({
                 <span>Code bindings</span>
                 {bindings.map((binding) => {
                   const verified = Number.isFinite(binding.score) && binding.score >= 0.8;
-                  const sourceUrl = verified
-                    ? ghFileUrl(
-                        repo?.repo,
-                        repo?.source_url,
-                        evidence.indexed_commit,
-                        binding.source_path,
-                        binding.line || undefined,
-                      )
-                    : null;
                   const label = `${binding.entity_name} → ${binding.symbol || binding.source_path}`;
-                  return sourceUrl ? (
-                    <a href={sourceUrl} target="_blank" rel="noreferrer" key={label}>
-                      {label} ↗
-                    </a>
+                  return verified ? (
+                    <button
+                      type="button"
+                      key={`${label}:${binding.source_path}:${binding.line}`}
+                      title={binding.evidence}
+                      onClick={() => onOpenBinding(binding)}
+                    >
+                      {label}
+                    </button>
                   ) : (
-                    <span className="candidate" key={label} title={binding.evidence}>
+                    <span
+                      className="candidate"
+                      key={`${label}:${binding.source_path}:${binding.line}`}
+                      title={binding.evidence}
+                    >
                       {label} · candidate {confidenceLabel(binding.score)}
                     </span>
                   );
@@ -626,6 +628,7 @@ export default function WikiPageView({
   const [commits, setCommits] = useState<CommitRef[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
   const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
+  const [visualEvidenceFailed, setVisualEvidenceFailed] = useState(false);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
   // Publish the reading surface once its leading visual has resolved, including
@@ -641,6 +644,7 @@ export default function WikiPageView({
     setCommits([]);
     setSelectedCommit(undefined);
     setVisualEvidence(null);
+    setVisualEvidenceFailed(false);
 
     fetchRepos()
       .then((rs) => {
@@ -661,7 +665,10 @@ export default function WikiPageView({
         if (!cancelled) setVisualEvidence(evidence);
       })
       .catch(() => {
-        if (!cancelled) setVisualEvidence(null);
+        if (!cancelled) {
+          setVisualEvidence(null);
+          setVisualEvidenceFailed(true);
+        }
       });
     setTocLoading(true);
     setError(null);
@@ -1476,8 +1483,30 @@ export default function WikiPageView({
                   )}
                 </div>
               )}
+              {activeId === "overview" && visualEvidenceFailed && (
+                <section className="repository-visual-evidence" role="status">
+                  <h2>Repository visual evidence</h2>
+                  <p className="repository-visual-evidence-note">
+                    Visual evidence could not be loaded. Reload the page to retry.
+                  </p>
+                </section>
+              )}
               {activeId === "overview" && visualEvidence && (
-                <RepositoryVisualEvidence evidence={visualEvidence} repo={repo} />
+                <RepositoryVisualEvidence
+                  evidence={visualEvidence}
+                  repoId={repoId}
+                  onOpenBinding={(binding) =>
+                    setSourceCitation({
+                      file: binding.source_path,
+                      start_line: binding.line || null,
+                      end_line: binding.line || null,
+                      node_name: binding.symbol || binding.entity_name,
+                      type: "visual_binding",
+                      score: binding.score,
+                      content: null,
+                    })
+                  }
+                />
               )}
           </div>
         </main>

@@ -4,10 +4,12 @@ import {
   fetchWikiAreaMap,
   fetchWikiBoundary,
   fetchWikiTree,
+  fetchWikiVisualEvidence,
   fetchWikiPage,
   isSourceCheckedWikiPage,
   materializedWikiMediaSlots,
   shouldWithholdWikiPage,
+  wikiVisualEvidenceMediaUrl,
   type WikiMediaSlot,
 } from "./api";
 
@@ -414,5 +416,36 @@ describe("materializedWikiMediaSlots", () => {
 
     expect(materializedWikiMediaSlots([planned, generated])).toEqual([generated]);
     expect(materializedWikiMediaSlots(undefined)).toEqual([]);
+  });
+});
+
+describe("fetchWikiVisualEvidence", () => {
+  it("treats a missing bundle as an optional feature", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 404 }));
+    await expect(fetchWikiVisualEvidence("repo")).resolves.toBeNull();
+  });
+
+  it("distinguishes a broken bundle from an absent bundle", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      status: 500,
+      ok: false,
+      text: async () => JSON.stringify({ detail: "Invalid visual-evidence bundle" }),
+    }));
+    await expect(fetchWikiVisualEvidence("repo")).rejects.toThrow(
+      "Failed to load repository visual evidence (500): Invalid visual-evidence bundle",
+    );
+  });
+
+  it("propagates a network failure instead of claiming no bundle exists", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    await expect(fetchWikiVisualEvidence("repo")).rejects.toThrow("Failed to fetch");
+  });
+
+  it("builds a same-origin URL for a repository artifact", () => {
+    expect(
+      wikiVisualEvidenceMediaUrl("repo/id", "abc1234", "docs/a b.png"),
+    ).toBe(
+      "/api/repos/repo%2Fid/visual-evidence/media?commit=abc1234&file=docs%2Fa+b.png",
+    );
   });
 });
