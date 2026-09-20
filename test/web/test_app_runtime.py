@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -170,6 +171,7 @@ def test_visual_evidence_media_serves_only_current_manifest_artifacts(
             "facts": [
                 {
                     "artifact_path": artifact_path,
+                    "artifact_sha256": hashlib.sha256(b"current-image").hexdigest(),
                     "extractor": "gemini",
                     "entities": [],
                     "relations": [],
@@ -203,7 +205,7 @@ def test_visual_evidence_media_serves_only_current_manifest_artifacts(
 
     assert response.body == b"current-image"
     assert response.media_type == media_type
-    assert response.headers["cache-control"] == "private, max-age=3600, immutable"
+    assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     if media_type == "image/svg+xml":
         assert (
@@ -229,6 +231,33 @@ def test_visual_evidence_media_serves_only_current_manifest_artifacts(
             )
         )
     assert unknown.value.status_code == 404
+
+    with pytest.raises(web_app.HTTPException) as old_page:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file=artifact_path,
+                commit="a" * 40,
+                sha256="b" * 64,
+            )
+        )
+    assert old_page.value.status_code == 409
+
+    # A fresh reader may capture new bytes at the same commit after reindexing.
+    # The old fact pack must not be paired with that new image.
+    monkeypatch.setattr(
+        bundle.source_reader, "read_prefix", lambda *args, **kwargs: b"new-image"
+    )
+    with pytest.raises(web_app.HTTPException) as changed:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file=artifact_path,
+                commit="a" * 40,
+            )
+        )
+    assert changed.value.status_code == 409
+    assert "regenerate" in changed.value.detail
 
 
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):

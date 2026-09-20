@@ -370,5 +370,7 @@ describe("fetchWikiVisualEvidence", () => {
     ).toBe(
       "/api/repos/repo%2Fid/visual-evidence/media?commit=abc1234&file=docs%2Fa+b.png",
     );
+    expect(wikiVisualEvidenceMediaUrl("repo", "abc1234", "a.png", "b".repeat(64)))
+      .toContain(`&sha256=${"b".repeat(64)}`);
   });
 });

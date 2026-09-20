@@ -1991,3 +1991,51 @@ def test_node_runtime_status_matches_vite_requirement(
         assert detail == version
     else:
         assert detail == f"{version} (requires ^20.19.0 or >=22.12.0)"
+
+
+def test_visual_failure_preserves_existing_bundle_and_explains_recovery(
+    tmp_path,
+    monkeypatch,
+):
+    from codenib.repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
+
+    manifest_path = tmp_path / "repo_manifest.json"
+    from codenib.compiler.manifest import IndexEntry
+
+    _current_manifest_with_fresh_index(
+        tmp_path,
+        IndexEntry(
+            index_type="bm25",
+            path=str(tmp_path / "bm25"),
+            built_at="2026-09-20T00:00:00+00:00",
+            built_at_epoch=0.0,
+            status="fresh",
+        ),
+    ).save(manifest_path)
+    destination = tmp_path / ".codenib" / "multimodal-knowledge.json"
+    destination.parent.mkdir()
+    destination.write_text("previous evidence")
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(
+        "codenib.wiki.media_pipeline.build_multimodal_repository_knowledge", fail
+    )
+    monkeypatch.setenv("VISUAL_TEST_TOKEN", "test-secret")
+    backend = cli._visual_facts_backend_for_args(
+        SimpleNamespace(
+            visual_facts_model="vision",
+            visual_facts_api_base="https://example.test/v1",
+            visual_facts_api_key_env="VISUAL_TEST_TOKEN",
+        )
+    )
+    assert backend.max_artifacts == 16
+    with pytest.raises(cli.CLIError, match="without all --visual-facts"):
+        cli._publish_wiki_visual_evidence(
+            tmp_path,
+            manifest_path,
+            source_selection=DEFAULT_REPOSITORY_SOURCE_SELECTION,
+            backend=backend,
+        )
+    assert destination.read_text() == "previous evidence"

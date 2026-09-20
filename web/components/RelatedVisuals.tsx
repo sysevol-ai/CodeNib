@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { wikiVisualEvidenceMediaUrl, type Citation, type WikiPage, type WikiVisualEvidence } from "@/lib/api";
 import { relatedVisuals } from "@/lib/related-visuals";
 
@@ -7,6 +8,7 @@ export default function RelatedVisuals({ evidence, page, repoId, onOpenCitation 
   repoId: string;
   onOpenCitation: (citation: Citation) => void;
 }) {
+  const [failedImages, setFailedImages] = useState<Set<string>>(() => new Set());
   const visuals = relatedVisuals(evidence, page);
   if (!visuals.length) return null;
   return (
@@ -17,20 +19,23 @@ export default function RelatedVisuals({ evidence, page, repoId, onOpenCitation 
       </summary>
       <div className="related-visuals-content">
         {visuals.map(({ fact, topics, citations, reason, document }) => {
-          const url = wikiVisualEvidenceMediaUrl(repoId, evidence.source_commit, fact.artifact_path);
+          const url = wikiVisualEvidenceMediaUrl(repoId, evidence.source_commit, fact.artifact_path, fact.artifact_sha256);
           const title = topics.join(" · ");
+          const failed = failedImages.has(url);
           return (
             <article key={fact.artifact_path} className="related-visual">
-              <a href={url} target="_blank" rel="noreferrer" className="related-visual-image" aria-label={`Open diagram: ${title}`}>
-                <img src={url} alt={`Repository diagram mentioning ${title}`} loading="lazy" />
-              </a>
+              {!failed && <a href={url} target="_blank" rel="noreferrer" className="related-visual-image" aria-label={`Open diagram: ${title}`}>
+                <img src={url} alt={`Repository diagram mentioning ${title}`} loading="lazy" onError={() => setFailedImages((previous) => new Set([...previous, url]))} />
+              </a>}
               <div className="related-visual-copy">
                 <h3>{title}</h3>
                 <p className="related-visual-reason">{reason}</p>
-                <p className="related-visual-caption">{fact.claims.find((claim) => claim.text.trim())?.text}</p>
-                <small>Image summary · compare with the source</small>
+                {failed ? <p role="status">Diagram unavailable. Browse the related sources below.</p> : <>
+                  <p className="related-visual-caption">{fact.claims.find((claim) => claim.text.trim())?.text}</p>
+                  <small>Image summary · compare with the source</small>
+                </>}
                 <div className="related-visual-actions">
-                  <a href={url} target="_blank" rel="noreferrer">View original ↗</a>
+                  {!failed && <a href={url} target="_blank" rel="noreferrer">View original ↗</a>}
                   {document && (
                     <button type="button" onClick={() => onOpenCitation({
                       file: document.file, start_line: Math.max(1, document.line - 6),

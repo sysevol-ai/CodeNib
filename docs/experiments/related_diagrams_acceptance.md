@@ -14,10 +14,10 @@ it does not claim remote CI, a GitHub deployment, or VLM accuracy certification.
 
 | Check | Result |
 | --- | --- |
-| Focused backend suites listed below | 420 passed |
+| Focused backend suites listed below | 427 passed |
 | `npm test` | 63 passed |
 | `npm run build` | Passed; existing bundle-size warning remains |
-| `CODENIB_TEST_BROWSER=chrome npm run test:visual-evidence` | Six scenarios passed |
+| `CODENIB_TEST_BROWSER=chrome npm run test:visual-evidence` | Seven scenarios passed |
 | Screenshot / recording / personal browser profile | Not used |
 | Actual local Wiki API smoke | Overview, navigation, Architecture, source, SVG and evidence returned HTTP 200 |
 | Document enrichment smoke | Document context returned HTTP 200; the live payload selected both the FactBatch diagram and the multimodal Wiki preview |
@@ -28,7 +28,12 @@ expansion, image loading, original-image navigation, code and document dialogs,
 and page overflow. Desktop navigation additionally checks that changing the
 section resets the disclosure, changes the recommendation, and hides the
 section on an unrelated page. Four other scenarios cover missing, stale, empty
-and failed optional evidence while the Wiki prose remains readable.
+and failed optional evidence while the Wiki prose remains readable. A seventh
+scenario rejects the image request while evidence succeeds: the failed image,
+summary and original links disappear, but document navigation remains usable.
+Backend regression tests reject mismatched image bytes at the same commit and
+an old page requesting a different image hash. CLI tests cover preservation of
+existing evidence on extraction failure and the recovery message.
 
 The live API smoke and the fixture browser suite are separate evidence. No new
 paid VLM extraction was performed for this acceptance run, and image-summary
@@ -38,6 +43,7 @@ correctness was not manually certified.
 python -m pytest \
   test/wiki/test_builder.py test/wiki/test_media_context.py \
   test/wiki/test_media_grounding.py test/wiki/test_media_vlm.py \
+  test/wiki/test_media_pipeline.py \
   test/web/test_app_runtime.py test/web/test_repo_registry.py \
   test/scripts/test_build_multimodal_knowledge.py test/test_cli.py \
   -m 'not slow and not integration and not integration_serial and not integration_serial_consumer' \

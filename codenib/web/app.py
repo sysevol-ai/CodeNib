@@ -504,6 +504,7 @@ def _summarize_wiki_visual_evidence(persisted: Mapping, bundle) -> dict:
         "facts": [
             {
                 "artifact_path": fact["artifact_path"],
+                "artifact_sha256": fact.get("artifact_sha256"),
                 "extractor": fact["extractor"],
                 "entities": [
                     {
@@ -807,6 +808,7 @@ async def wiki_visual_evidence_media(
     repo_id: str,
     file: str,
     commit: str,
+    sha256: str | None = None,
 ) -> Response:
     """Serve one current visual-evidence artifact from the pinned source."""
 
@@ -853,8 +855,23 @@ async def wiki_visual_evidence_media(
                 status_code=413,
                 detail="Visual artifact exceeds the byte limit",
             )
+        fact = next(
+            item
+            for item in persisted["visual_facts_manifest"]["facts"]
+            if item["artifact_path"] == file
+        )
+        expected_hash = fact.get("artifact_sha256")
+        if hashlib.sha256(payload).hexdigest() != expected_hash or (
+            sha256 is not None and sha256 != expected_hash
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Visual artifact changed; regenerate visual evidence",
+            )
         headers = {
-            "Cache-Control": "private, max-age=3600, immutable",
+            # A checkout may be reindexed without a new Git commit. The URL
+            # alone cannot identify immutable bytes across those generations.
+            "Cache-Control": "no-store",
             "X-Content-Type-Options": "nosniff",
         }
         if media_type == "image/svg+xml":

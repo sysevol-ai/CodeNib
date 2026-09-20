@@ -252,7 +252,7 @@ def _visual_facts_backend_for_args(
         getattr(args, "visual_facts_provider", None) or "openai-compatible"
     ).strip()
     timeout = getattr(args, "visual_facts_timeout", 120.0)
-    max_artifacts = getattr(args, "visual_facts_max_artifacts", 4096)
+    max_artifacts = getattr(args, "visual_facts_max_artifacts", 16)
     configured = any((model, api_base, key_env))
     if not configured:
         return None
@@ -323,9 +323,16 @@ def _publish_wiki_visual_evidence(
             selection=source_selection,
             extractor=extractor,
             max_artifacts=backend.max_artifacts,
+            progress=lambda index, total, path: print(
+                f"Inspecting visual {index}/{total}: {path}", flush=True
+            ),
         )
     except (OSError, RuntimeError, ValueError) as exc:
-        raise CLIError(f"failed to build Wiki visual evidence: {exc}") from exc
+        raise CLIError(
+            f"failed to build Wiki visual evidence: {exc}. "
+            "No new evidence was published. To open the Wiki without generating "
+            "diagrams, rerun this command without all --visual-facts-* options."
+        ) from exc
     destination = repo_path / ".codenib" / "multimodal-knowledge.json"
     try:
         save_multimodal_knowledge_bundle(bundle, destination)
@@ -3053,7 +3060,7 @@ def build_parser() -> argparse.ArgumentParser:
     wiki_parser.add_argument(
         "--visual-facts-max-artifacts",
         type=int,
-        default=4096,
+        default=16,
         help=(
             "maximum repository-owned visual artifacts to inspect in one Wiki "
             "run; lower this to bound hosted VLM usage"

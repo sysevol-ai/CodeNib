@@ -195,6 +195,7 @@ export interface WikiMediaAsset {
 
 export interface WikiVisualEvidenceFact {
   artifact_path: string;
+  artifact_sha256?: string;
   extractor: string;
   entities: Array<{ name: string; type: string; confidence: number }>;
   relations: Array<{ source: string; target: string; relation: string }>;
@@ -363,8 +364,10 @@ export function wikiVisualEvidenceMediaUrl(
   repoId: string,
   commit: string,
   file: string,
+  sha256?: string,
 ): string {
   const params = new URLSearchParams({ commit, file });
+  if (sha256) params.set("sha256", sha256);
   return `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/visual-evidence/media?${params}`;
 }
 
