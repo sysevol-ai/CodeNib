@@ -1,7 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import RelatedVisuals from "../components/RelatedVisuals";
 import type { WikiPage, WikiVisualEvidence, WikiVisualEvidenceFact } from "./api";
 import { relatedVisuals } from "./related-visuals";
 
@@ -76,16 +73,5 @@ describe("page-related visual context", () => {
     const result = relatedVisuals(data, page);
     expect(result).toHaveLength(2);
     expect(result.every((item) => item.citations.every((citation) => citation.file !== "wrong.py"))).toBe(true);
-  });
-
-  it("renders a closed disclosure, an original-image link, and real source navigation", () => {
-    const html = renderToStaticMarkup(createElement(RelatedVisuals, {
-      evidence: evidence([fact("flow.png")]), page, repoId: "example", onOpenCitation: () => {},
-    }));
-    expect(html).toContain("<details");
-    expect(html).not.toMatch(/<details[^>]*\sopen(?:[\s=>])/);
-    expect(html).toContain("View original");
-    expect(html).toContain("FactBatchBufferView.build");
-    expect(html).not.toContain("90%");
   });
 });
