@@ -131,7 +131,7 @@ def test_ground_visual_facts_to_sources_binds_entities_to_symbols():
         "kind": "symbol",
         "line": 42,
         "score": 1.0,
-        "evidence": "exact symbol match",
+        "evidence": "unique exact symbol match",
     } in bindings
     assert any(binding["entity_name"] == "Vector Store" for binding in bindings)
     assert manifest["manifest_sha256"]
@@ -167,6 +167,50 @@ def test_ground_visual_facts_to_sources_prefers_exact_symbol_match():
 
     assert manifest["bindings"][0]["symbol"] == "WikiService"
     assert manifest["bindings"][0]["score"] == 1.0
+
+
+def test_grounding_does_not_verify_auxiliary_or_ambiguous_symbol_matches():
+    visual_facts = {
+        "manifest_sha256": "visual-facts-hash",
+        "facts": [
+            {
+                "artifact_path": "docs/architecture.svg",
+                "entities": [
+                    {"name": "Asset", "grounding_candidates": ["Wiki"]},
+                    {"name": "main"},
+                ],
+            }
+        ],
+    }
+    candidates = [
+        {"path": "src/wiki.py", "symbol": "Wiki", "kind": "symbol", "line": 1},
+        {"path": "src/a.py", "symbol": "main", "kind": "symbol", "line": 2},
+        {"path": "src/b.py", "symbol": "main", "kind": "symbol", "line": 3},
+    ]
+
+    manifest = ground_visual_facts_to_sources(visual_facts, candidates)
+
+    assert manifest["bindings"]
+    assert all(binding["score"] < 0.8 for binding in manifest["bindings"])
+    assert {binding["evidence"] for binding in manifest["bindings"]} == {
+        "grounding hint symbol match",
+        "ambiguous exact symbol match",
+    }
+
+
+def test_symbol_inventory_ignores_camel_case_mentions_in_comments(tmp_path):
+    (tmp_path / "sample.py").write_text(
+        "# CodeNib Wiki and SCIP are mentioned here\nclass RealService: pass\n",
+        encoding="utf-8",
+    )
+
+    candidates = discover_source_symbol_candidates(tmp_path)
+    symbols = {candidate["symbol"] for candidate in candidates}
+
+    assert "RealService" in symbols
+    assert "CodeNib" not in symbols
+    assert "Wiki" not in symbols
+    assert "SCIP" not in symbols
 
 
 def test_ground_visual_facts_to_sources_deduplicates_bindings():
