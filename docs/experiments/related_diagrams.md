@@ -49,7 +49,12 @@ codenib wiki /path/to/repository --preset fast \
 
 This makes provider requests and publishes a validated bundle to
 `<repository>/.codenib/multimodal-knowledge.json`. The artifact limit bounds how
-many images the provider inspects. Wiki prose generation is configured
+many images the provider inspects (default: 16). Before each request, the CLI
+prints the current image number, total, and path. Retries can make more than
+one request per image. If extraction fails, no replacement bundle is published;
+the command exits with a recovery hint. To open the Wiki without generation,
+rerun the original command after removing all `--visual-facts-*` options and
+their values. Wiki prose generation is configured
 separately with `--generate` and the Wiki model options.
 
 For an offline pipeline smoke check from a source checkout:
@@ -70,6 +75,10 @@ produce any recommendations for a given page.
 
 Visual evidence and the Wiki index must refer to the same commit. Stale
 evidence is withheld, and its media endpoint rejects stale requests. The
+media response also verifies the image hash against its fact pack. Image URLs
+carry that hash, and responses use `no-store` so reindexing at the same commit
+cannot reuse an immutable cached image. A rejected or failed image hides its
+summary and original-image links while retaining source navigation. The
 source reader also checks the captured checkout, so edits made after indexing
 can invalidate source reads even if the Git commit has not changed.
 
@@ -118,7 +127,7 @@ Alternatively, use an already-installed Chrome with
 The script starts a temporary Vite server and an isolated headless browser
 with fixture API responses. It checks keyboard expansion, original images,
 source and document navigation, section changes, mobile overflow, and absent,
-stale, empty or failed optional evidence. It creates no screenshots or
+stale, empty or failed optional evidence, plus failed image loading. It creates no screenshots or
 recordings and does not use the user's browser profile or call a model.
 This verifies frontend interactions; backend route tests and a real local
 repository smoke check remain separate evidence.

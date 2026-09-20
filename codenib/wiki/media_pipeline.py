@@ -7,14 +7,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from ..repository_source_selection import (
     DEFAULT_REPOSITORY_SOURCE_SELECTION,
     RepositorySourceSelection,
 )
 from .media_artifacts import discover_media_manifest
-from .media_facts import VisualFactExtractor, build_visual_facts_manifest
+from .media_facts import (
+    VisualFactExtractor,
+    build_visual_facts_manifest,
+    deterministic_visual_facts,
+)
 from .media_grounding import (
     VisualGroundingScorer,
     discover_source_symbol_candidates,
@@ -34,6 +38,7 @@ def build_multimodal_repository_knowledge(
     scorer: VisualGroundingScorer | None = None,
     max_artifacts: int = 4096,
     max_source_candidates: int = 8192,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> dict[str, Any]:
     """Build the deterministic multimodal repository knowledge bundle."""
 
@@ -47,7 +52,18 @@ def build_multimodal_repository_knowledge(
         max_artifacts=max_artifacts,
     )
     facts_kwargs: dict[str, Any] = {}
-    if extractor is not None:
+    if progress is not None:
+        extract = extractor or deterministic_visual_facts
+        started = 0
+
+        def report_and_extract(artifact):
+            nonlocal started
+            started += 1
+            progress(started, media_manifest["artifact_count"], artifact["path"])
+            return extract(artifact)
+
+        facts_kwargs["extractor"] = report_and_extract
+    elif extractor is not None:
         facts_kwargs["extractor"] = extractor
     visual_facts_manifest = build_visual_facts_manifest(media_manifest, **facts_kwargs)
     source_candidates = discover_source_symbol_candidates(

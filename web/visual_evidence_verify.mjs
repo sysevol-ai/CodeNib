@@ -46,6 +46,7 @@ async function scenario(mode, width = 1280) {
     const url = new URL(route.request().url());
     const path = url.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    if (path.endsWith("/visual-evidence/media") && mode === "image-failed") return json({ detail: "Image changed" }, 409);
     if (path.endsWith("/visual-evidence/media")) return route.fulfill({
       contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="80"><rect width="160" height="80" fill="#457"/></svg>',
       headers: { "Content-Security-Policy": "default-src 'none'; sandbox", "X-Content-Type-Options": "nosniff" },
@@ -67,7 +68,20 @@ async function scenario(mode, width = 1280) {
     await page.getByRole("heading", { name: "Overview", exact: true }).waitFor();
     assert.equal(await page.locator(".page-load-error").count(), 0);
     const details = page.locator(".related-visuals");
-    if (mode !== "ready") {
+    if (mode === "image-failed") {
+      await details.waitFor();
+      await details.locator("summary").click();
+      await details.getByRole("status").waitFor();
+      assert.equal(await details.locator("img").count(), 0);
+      assert.equal(await details.getByRole("link", { name: "View original" }).count(), 0);
+      assert.equal(await details.locator(".related-visual-caption").count(), 0);
+      await details.getByRole("button", { name: "Read in context" }).click();
+      const dialog = page.getByRole("dialog", { name: "Source definition" });
+      await dialog.locator(".hl-code").waitFor();
+      assert.ok((await dialog.innerText()).includes("ACCEPTANCE_SOURCE_CONTENT"));
+      await page.keyboard.press("Escape");
+      assert.equal(await page.locator(".page-load-error").count(), 0);
+    } else if (mode !== "ready") {
       assert.equal(await details.count(), 0, `${mode} evidence must not add a section`);
     } else {
       await details.waitFor();
@@ -127,7 +141,7 @@ try {
   browser = await chromium.launch({ headless: true, channel: process.env.CODENIB_TEST_BROWSER || undefined });
   await scenario("ready");
   await scenario("ready", 390);
-  for (const mode of ["missing", "stale", "empty", "failed"]) await scenario(mode);
+  for (const mode of ["missing", "stale", "empty", "failed", "image-failed"]) await scenario(mode);
   console.log(JSON.stringify({ passed: results.length, screenshots: false, recordings: false, results }));
 } finally {
   await browser?.close();
