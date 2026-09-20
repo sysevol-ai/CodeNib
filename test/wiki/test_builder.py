@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -107,6 +108,29 @@ def test_readme_summary_prefers_tagline():
     out = readme_summary(md)
     assert "fast, friendly library" in out
     assert "install" not in out.lower()
+
+
+def test_symbol_batch_validates_before_publishing_cache(repo_dir):
+    bundle = _make_bundle(repo_dir)
+    events = []
+
+    def load_views():
+        events.append("views")
+
+    @contextmanager
+    def changed_source():
+        events.append("enter")
+        yield
+        events.append("exit")
+        raise ValueError("repository changed")
+
+    bundle.ensure_views = load_views
+    bundle.source_read_session = changed_source
+    builder = WikiBuilder(bundle)
+    with pytest.raises(ValueError, match="repository changed"):
+        builder._symbols()
+    assert events == ["views", "enter", "exit"]
+    assert builder._symbols_cache is None
 
 
 def test_manifest_selected_wiki_requires_authenticated_source_reader(repo_dir):
