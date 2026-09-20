@@ -4,6 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
+import RelatedVisuals from "@/components/RelatedVisuals";
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import {
@@ -17,7 +18,6 @@ import {
   materializedWikiMediaSlots,
   repoRelative,
   shouldWithholdWikiPage,
-  wikiVisualEvidenceMediaUrl,
   type CodemapResponse,
   type Citation,
   type CommitRef,
@@ -308,132 +308,6 @@ function MultimodalMedia({
   );
 }
 
-function confidenceLabel(value: number): string {
-  return Number.isFinite(value) ? `${Math.round(value * 100)}%` : "—";
-}
-
-function RepositoryVisualEvidence({
-  evidence,
-  repoId,
-  onOpenBinding,
-}: {
-  evidence: WikiVisualEvidence;
-  repoId: string;
-  onOpenBinding: (binding: WikiVisualEvidence["bindings"][number]) => void;
-}) {
-  if (evidence.state === "stale") {
-    return (
-      <section className="repository-visual-evidence" aria-live="polite">
-        <h2>Repository visual evidence</h2>
-        <p className="repository-visual-evidence-note">
-          Visual facts belong to {evidence.source_commit.slice(0, 8)}, while this
-          Wiki is indexed at {evidence.indexed_commit.slice(0, 8)}. Rebuild before
-          showing source bindings.
-        </p>
-      </section>
-    );
-  }
-  if (!evidence.facts.length) return null;
-  return (
-    <section className="repository-visual-evidence" aria-labelledby="visual-evidence-title">
-      <header className="repository-visual-evidence-head">
-        <div>
-          <p className="repository-visual-evidence-kicker">Visual understanding · source-bound</p>
-          <h2 id="visual-evidence-title">Repository visual evidence</h2>
-          <p>
-            Facts extracted from repository-owned visuals. A source link appears only
-            when the binding score passes the verification threshold.
-          </p>
-        </div>
-        <span className="repository-visual-evidence-count">
-          {evidence.fact_count} fact{evidence.fact_count === 1 ? "" : "s"}
-        </span>
-      </header>
-      {evidence.facts.map((fact) => {
-        const bindings = evidence.bindings.filter(
-          (binding) => binding.artifact_path === fact.artifact_path,
-        );
-        const artifactUrl = wikiVisualEvidenceMediaUrl(
-          repoId,
-          evidence.source_commit,
-          fact.artifact_path,
-        );
-        return (
-          <article className="repository-visual-evidence-item" key={fact.artifact_path}>
-            <div className="repository-visual-evidence-item-head">
-              <div>
-                {artifactUrl ? (
-                  <a href={artifactUrl} target="_blank" rel="noreferrer" className="mono">
-                    {fact.artifact_path} ↗
-                  </a>
-                ) : (
-                  <code>{fact.artifact_path}</code>
-                )}
-                <span>{fact.extractor}</span>
-              </div>
-              <span>{fact.entities.length} entities</span>
-            </div>
-            {fact.entities.length > 0 && (
-              <ul className="repository-visual-evidence-entities">
-                {fact.entities.map((entity) => (
-                  <li key={`${entity.name}:${entity.type}`}>
-                    <strong>{entity.name}</strong>
-                    <span>{entity.type}</span>
-                    <small>{confidenceLabel(entity.confidence)}</small>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {fact.relations.length > 0 && (
-              <ul className="repository-visual-evidence-relations">
-                {fact.relations.map((relation, index) => (
-                  <li key={`${relation.source}:${relation.target}:${index}`}>
-                    <span>{relation.source}</span>
-                    <em>{relation.relation}</em>
-                    <span>{relation.target}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {fact.claims.map((claim) => (
-              <p className="repository-visual-evidence-claim" key={claim.text}>
-                {claim.text} <small>{confidenceLabel(claim.confidence)}</small>
-              </p>
-            ))}
-            {bindings.length > 0 && (
-              <div className="repository-visual-evidence-bindings">
-                <span>Code bindings</span>
-                {bindings.map((binding) => {
-                  const verified = Number.isFinite(binding.score) && binding.score >= 0.8;
-                  const label = `${binding.entity_name} → ${binding.symbol || binding.source_path}`;
-                  return verified ? (
-                    <button
-                      type="button"
-                      key={`${label}:${binding.source_path}:${binding.line}`}
-                      title={binding.evidence}
-                      onClick={() => onOpenBinding(binding)}
-                    >
-                      {label}
-                    </button>
-                  ) : (
-                    <span
-                      className="candidate"
-                      key={`${label}:${binding.source_path}:${binding.line}`}
-                      title={binding.evidence}
-                    >
-                      {label} · candidate {confidenceLabel(binding.score)}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
-          </article>
-        );
-      })}
-    </section>
-  );
-}
-
 export default function WikiPageView({
   repoId,
   initialPageId = "overview",
@@ -469,7 +343,6 @@ export default function WikiPageView({
   const [commits, setCommits] = useState<CommitRef[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
   const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
-  const [visualEvidenceFailed, setVisualEvidenceFailed] = useState(false);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -478,7 +351,6 @@ export default function WikiPageView({
     setCommits([]);
     setSelectedCommit(undefined);
     setVisualEvidence(null);
-    setVisualEvidenceFailed(false);
 
     fetchRepos()
       .then((rs) => {
@@ -501,7 +373,6 @@ export default function WikiPageView({
       .catch(() => {
         if (!cancelled) {
           setVisualEvidence(null);
-          setVisualEvidenceFailed(true);
         }
       });
     setTocLoading(true);
@@ -1026,29 +897,13 @@ export default function WikiPageView({
                   )}
                 </div>
               )}
-              {activeId === "overview" && visualEvidenceFailed && (
-                <section className="repository-visual-evidence" role="status">
-                  <h2>Repository visual evidence</h2>
-                  <p className="repository-visual-evidence-note">
-                    Visual evidence could not be loaded. Reload the page to retry.
-                  </p>
-                </section>
-              )}
-              {activeId === "overview" && visualEvidence && (
-                <RepositoryVisualEvidence
+              {!pageError && !error && page && page.id === activeId && !shouldWithholdWikiPage(page) && visualEvidence && (
+                <RelatedVisuals
+                  key={`${repoId}:${activeId}`}
                   evidence={visualEvidence}
+                  page={page}
                   repoId={repoId}
-                  onOpenBinding={(binding) =>
-                    setSourceCitation({
-                      file: binding.source_path,
-                      start_line: binding.line || null,
-                      end_line: binding.line || null,
-                      node_name: binding.symbol || binding.entity_name,
-                      type: "visual_binding",
-                      score: binding.score,
-                      content: null,
-                    })
-                  }
+                  onOpenCitation={setSourceCitation}
                 />
               )}
           </div>

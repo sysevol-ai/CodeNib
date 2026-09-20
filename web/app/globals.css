@@ -3403,153 +3403,77 @@ a.evidence-row:hover {
   color: var(--text);
 }
 
-/* Repository-owned VLM facts. These are evidence records, not generated art:
-   weak lexical matches deliberately remain unlinked candidates. */
-.repository-visual-evidence {
-  margin: 28px 0 0;
-  padding: 18px;
+/* Optional diagrams appear only when their topics match the current page. */
+.related-visuals {
+  margin-top: 24px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--bg-surface);
 }
-.repository-visual-evidence-head,
-.repository-visual-evidence-item-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-.repository-visual-evidence-kicker {
-  margin: 0 0 5px;
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-.repository-visual-evidence h2 {
-  margin: 0;
-  font-size: 18px;
-}
-.repository-visual-evidence-head > div > p:last-child,
-.repository-visual-evidence-note {
-  max-width: 680px;
-  margin: 6px 0 0;
-  color: var(--muted);
+.related-visuals > summary {
+  padding: 14px 16px;
+  cursor: pointer;
   font-size: 13px;
-  line-height: 1.5;
+  color: var(--text);
 }
-.repository-visual-evidence-count {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+.related-visuals > summary span {
+  margin-left: 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
-.repository-visual-evidence-item {
-  margin-top: 15px;
-  padding-top: 15px;
+.related-visuals > summary:focus-visible,
+.related-visual-actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.related-visuals-content { padding: 0 16px 16px; }
+.related-visual {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--border);
 }
-.repository-visual-evidence-item-head > div {
+.related-visual + .related-visual { margin-top: 16px; }
+.related-visual-image {
   display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.repository-visual-evidence-item-head a,
-.repository-visual-evidence-item-head code {
+  place-items: center;
+  align-self: start;
+  border: 1px solid var(--border);
+  border-radius: 8px;
   overflow: hidden;
-  color: var(--text);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  background: var(--bg-subtle);
 }
-.repository-visual-evidence-item-head > div > span,
-.repository-visual-evidence-item-head > span {
-  color: var(--muted);
-  font-size: 11px;
+.related-visual-image img { width: 100%; height: 120px; object-fit: contain; }
+.related-visual-copy { min-width: 0; }
+.related-visual-copy h3 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.related-visual-caption {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
-.repository-visual-evidence-entities,
-.repository-visual-evidence-relations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  margin: 12px 0 0;
+.related-visual-copy small { color: var(--muted); font-size: 11px; }
+.related-visual-reason { margin: 5px 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.related-visual-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
+.related-visual-actions a,
+.related-visual-actions button {
   padding: 0;
-  list-style: none;
-}
-.repository-visual-evidence-entities li {
-  display: grid;
-  gap: 2px;
-  min-width: 110px;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--bg-subtle);
-}
-.repository-visual-evidence-entities strong {
-  font-size: 12px;
-}
-.repository-visual-evidence-entities span,
-.repository-visual-evidence-entities small,
-.repository-visual-evidence-claim small {
-  color: var(--muted);
-  font-size: 10px;
-}
-.repository-visual-evidence-relations li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 11px;
-}
-.repository-visual-evidence-relations em {
+  border: 0;
+  background: none;
   color: var(--accent);
-  font-style: normal;
-}
-.repository-visual-evidence-claim {
-  margin: 9px 0 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.repository-visual-evidence-bindings {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 11px;
-}
-.repository-visual-evidence-bindings > span:first-child {
-  font-weight: 700;
-}
-.repository-visual-evidence-bindings button,
-.repository-visual-evidence-bindings .candidate {
-  padding: 4px 7px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  color: var(--text-secondary);
-  background: var(--bg-subtle);
-}
-.repository-visual-evidence-bindings button {
   font: inherit;
-  color: var(--accent);
+  font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
   cursor: pointer;
-  text-decoration: none;
-}
-.repository-visual-evidence-bindings button:hover {
-  border-color: var(--accent-border);
 }
 @media (max-width: 620px) {
-  .repository-visual-evidence-head,
-  .repository-visual-evidence-item-head {
-    display: grid;
-  }
+  .related-visuals > summary span { display: block; margin: 5px 0 0 16px; }
+  .related-visual { grid-template-columns: minmax(0, 1fr); }
+  .related-visual-image img { height: 160px; }
 }
 
 .wiki-media {

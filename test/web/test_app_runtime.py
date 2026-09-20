@@ -26,6 +26,11 @@ from codenib.web.schemas import ChatRequest, ChatResponse
 def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
     ticks = iter((10.0, 12.5))
     monkeypatch.setattr(web_app, "perf_counter", lambda: next(ticks))
+    # Managed CodeNib loggers intentionally do not propagate to pytest's root
+    # handler. Attach capture directly without changing production logging.
+    monkeypatch.setattr(
+        web_app.logger, "handlers", [*web_app.logger.handlers, caplog.handler]
+    )
 
     with caplog.at_level(logging.INFO, logger=web_app.logger.name):
         response = TestClient(web_app.app).get("/api/health?secret=query")
@@ -135,13 +140,22 @@ def test_visual_evidence_endpoint_reads_a_pinned_repository_generation(monkeypat
     assert response["source_commit"] == "a" * 40
 
 
-def test_visual_evidence_media_serves_only_current_manifest_artifacts(monkeypatch):
+@pytest.mark.parametrize(
+    ("artifact_path", "media_type"),
+    [
+        ("docs/architecture.png", "image/png"),
+        ("docs/architecture.svg", "image/svg+xml"),
+    ],
+)
+def test_visual_evidence_media_serves_only_current_manifest_artifacts(
+    monkeypatch, artifact_path, media_type
+):
     class SourceReader:
         def captured_relative_path(self, path):
             return path
 
         def read_prefix(self, relative, *, max_bytes):
-            assert relative == "docs/architecture.png"
+            assert relative == artifact_path
             assert max_bytes == 32 * 1024 * 1024 + 1
             return b"current-image"
 
@@ -155,7 +169,7 @@ def test_visual_evidence_media_serves_only_current_manifest_artifacts(monkeypatc
             "fact_count": 1,
             "facts": [
                 {
-                    "artifact_path": "docs/architecture.png",
+                    "artifact_path": artifact_path,
                     "extractor": "gemini",
                     "entities": [],
                     "relations": [],
@@ -182,20 +196,25 @@ def test_visual_evidence_media_serves_only_current_manifest_artifacts(monkeypatc
     response = asyncio.run(
         web_app.wiki_visual_evidence_media(
             "repository",
-            file="docs/architecture.png",
+            file=artifact_path,
             commit="a" * 40,
         )
     )
 
     assert response.body == b"current-image"
-    assert response.media_type == "image/png"
+    assert response.media_type == media_type
     assert response.headers["cache-control"] == "private, max-age=3600, immutable"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    if media_type == "image/svg+xml":
+        assert (
+            response.headers["content-security-policy"] == "default-src 'none'; sandbox"
+        )
 
     with pytest.raises(web_app.HTTPException) as stale:
         asyncio.run(
             web_app.wiki_visual_evidence_media(
                 "repository",
-                file="docs/architecture.png",
+                file=artifact_path,
                 commit="b" * 40,
             )
         )

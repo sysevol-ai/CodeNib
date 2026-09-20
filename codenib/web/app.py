@@ -39,6 +39,7 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
+from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
 from ..wiki.media_generation import (
     image_generator_from_config,
@@ -473,11 +474,11 @@ def _summarize_wiki_visual_evidence(persisted: Mapping, bundle) -> dict:
         getattr(getattr(bundle, "entry", None), "base_commit", "") or ""
     )
     state = "ready" if _same_commit(source_commit, indexed_commit) else "stale"
-    visible_facts = facts["facts"][:12] if state == "ready" else []
+    visible_facts = facts["facts"][:64] if state == "ready" else []
     visible_paths = {str(fact["artifact_path"]) for fact in visible_facts}
     binding_counts: dict[str, int] = {}
     bindings = []
-    for binding in grounding["bindings"]:
+    for binding in sorted(grounding["bindings"], key=lambda item: -item["score"]):
         path = str(binding["artifact_path"])
         if path not in visible_paths or binding_counts.get(path, 0) >= 3:
             continue
@@ -791,7 +792,14 @@ async def wiki_visual_evidence(repo_id: str) -> dict:
                 status_code=404,
                 detail="No repository visual-evidence bundle is available",
             )
-        return _summarize_wiki_visual_evidence(persisted, bundle)
+        summary = _summarize_wiki_visual_evidence(persisted, bundle)
+        if summary["facts"]:
+            contexts = await _run_pinned_thread(
+                visual_document_contexts, persisted, summary["facts"], bundle
+            )
+            for fact in summary["facts"]:
+                fact["context"] = contexts.get(fact["artifact_path"])
+        return summary
 
 
 @app.get("/api/repos/{repo_id}/visual-evidence/media")
@@ -845,10 +853,16 @@ async def wiki_visual_evidence_media(
                 status_code=413,
                 detail="Visual artifact exceeds the byte limit",
             )
+        headers = {
+            "Cache-Control": "private, max-age=3600, immutable",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if media_type == "image/svg+xml":
+            headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
         return Response(
             content=payload,
             media_type=media_type,
-            headers={"Cache-Control": "private, max-age=3600, immutable"},
+            headers=headers,
         )
 
 

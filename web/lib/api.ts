@@ -199,6 +199,11 @@ export interface WikiVisualEvidenceFact {
   entities: Array<{ name: string; type: string; confidence: number }>;
   relations: Array<{ source: string; target: string; relation: string }>;
   claims: Array<{ text: string; confidence: number }>;
+  context?: {
+    caption: string;
+    references: Array<{ file: string; line: number; title: string; section: string; excerpt: string }>;
+    source_paths: string[];
+  };
 }
 
 export interface WikiVisualEvidenceBinding {
