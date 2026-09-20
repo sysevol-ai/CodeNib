@@ -8,6 +8,10 @@ SPDX-License-Identifier: Apache-2.0
 
 This note shows how to preview CodeNib's source-grounded editorial Wiki layer.
 
+For images already present in a repository, see
+[Related diagrams](related_diagrams.md) for ingestion, contextual selection,
+source navigation, and browser acceptance instructions.
+
 The media contract is provider-neutral, but the first choice is now the
 repository's own visual language. On an Overview page, CodeNib looks for a
 meaningful image already referenced by the repository README, validates it,
