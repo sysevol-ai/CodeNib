@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
@@ -257,7 +258,18 @@ class WikiBuilder:
     def _symbols(self) -> tuple:
         """Memoized symbol enumeration (one builder lives per repo)."""
         if self._symbols_cache is None:
-            self._symbols_cache = self._compute_symbols()
+            # Load views before entering the source authentication lock. This
+            # preserves view-lock -> source-lock ordering for concurrent reads.
+            ensure_views = getattr(self._bundle, "ensure_views", None)
+            if callable(ensure_views):
+                ensure_views()
+            session = getattr(self._bundle, "source_read_session", None)
+            # The registry's generation pin retains the owner throughout this
+            # batch. Publish the cache only after the exit inventory check has
+            # succeeded; a changed checkout must never cache partial results.
+            with session() if callable(session) else nullcontext():
+                symbols = self._compute_symbols(views_loaded=callable(ensure_views))
+            self._symbols_cache = symbols
         return self._symbols_cache
 
     def _source_excerpt(
@@ -333,11 +345,11 @@ class WikiBuilder:
         excerpt = "\n".join(lines[start_line:stop][:_MAX_SNIPPET_LINES])
         return excerpt if excerpt.strip() else fallback
 
-    def _compute_symbols(self) -> tuple:
+    def _compute_symbols(self, *, views_loaded: bool = False) -> tuple:
         ensure_views = getattr(self._bundle, "ensure_views", None)
-        if callable(ensure_views):
+        if not views_loaded and callable(ensure_views):
             ensure_views()
-        else:
+        elif not views_loaded:
             ensure_runtime = getattr(self._bundle, "ensure_runtime", None)
             if callable(ensure_runtime):
                 ensure_runtime()

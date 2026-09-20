@@ -455,6 +455,8 @@ class RepoBundle:
     # Borrowed exact source reader. Its creator retains and closes the owning
     # binding; escaped readers become unusable when that owner closes it.
     source_reader: Optional["RepositorySourceReader"] = None
+    # Borrowed batch scope; generation pinning retains the owning binding.
+    source_read_session: Optional[Callable] = None
 
     def __post_init__(self) -> None:
         self._views_lock = Lock()
@@ -1503,6 +1505,7 @@ class RepoRegistry:
                 ),
                 runtime_loader=self._load_repo_runtime,
                 source_reader=source_binding.borrow_reader(),
+                source_read_session=source_binding.read_session,
             )
             return _OwnedRepoBundle(bundle, source_binding, cleanup_owner)
         except BaseException as primary:  # noqa: B036 - preserve + clean owner
