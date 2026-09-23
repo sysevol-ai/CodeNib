@@ -75,6 +75,7 @@ codenib-serve = "codenib._optional_entrypoints:serving_main"
 agent = [
     "litellm>=1.93.0",
     "openai>=1.0.0",
+    "requests>=2.25.0",
 ]
 datasets = [
     "datasets>=4.0.0",
