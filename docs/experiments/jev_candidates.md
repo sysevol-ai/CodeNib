@@ -12,6 +12,11 @@ dataset revision `4eb84e2e8918474969ce68c5b06facf14d6be604`, and source at each
 instance's `base_commit`. The code base is main
 `61a9ab2fd2cc8f656fa541d6891289f30531f2e7` plus the local Jev integration.
 
+The [matched embedding controls](jev_dense.md) extend this comparison with dense
+and BM25+dense retrieval on the same 100 issues. Use that report to compare
+complete embedding-plus-reranker paths against the embedding-free routes; the
+BM25/grep comparison on this page alone cannot establish that replacement.
+
 The requested candidate budget is **100**. BM25 recall is also audited at
 50, 200, 500, and 1000 without making model calls at those larger budgets.
 The second retrieval route lets Sonnet 4.6 plan grep actions and passes the
