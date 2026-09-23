@@ -1,0 +1,168 @@
+[
+  {
+    "id": "stale_semantic_lifecycle",
+    "source": "existing Ask retrieval gate",
+    "query": "How does CodeNib prevent a semantic index built for stale source code from being served at build time and runtime?",
+    "required_path_groups": [
+      [
+        "codenib/compiler/index_compiler.py"
+      ],
+      [
+        "codenib/web/repo_registry.py",
+        "codenib/mcp/context.py"
+      ]
+    ]
+  },
+  {
+    "id": "model_configuration",
+    "source": "existing Ask retrieval gate",
+    "query": "How does CodeNib configure LiteLLM models, endpoints, credentials, and provider-specific options for Ask and Wiki?",
+    "required_path_groups": [
+      [
+        "codenib/web/config.py"
+      ],
+      [
+        "codenib/llm/options.py",
+        "codenib/llm/litellm_chat.py"
+      ],
+      [
+        "codenib/web/app.py",
+        "codenib/wiki/agent_wiki.py",
+        "codenib/wiki/narrator.py"
+      ]
+    ]
+  },
+  {
+    "id": "wiki_grounding",
+    "source": "existing Ask retrieval gate",
+    "query": "How does Wiki generation keep pages source-grounded and reject unsupported claims?",
+    "required_path_groups": [
+      [
+        "codenib/wiki/agent_wiki.py"
+      ],
+      [
+        "codenib/wiki/quality.py"
+      ]
+    ]
+  },
+  {
+    "id": "bounded_history",
+    "source": "exploratory authored question",
+    "query": "How are older conversation entries removed once an agent's memory limit is reached?",
+    "required_path_groups": [
+      [
+        "codenib/agent/history.py"
+      ]
+    ]
+  },
+  {
+    "id": "provider_retry",
+    "source": "exploratory authored question",
+    "query": "What happens when a model provider is temporarily unavailable or tells the client to slow down?",
+    "required_path_groups": [
+      [
+        "codenib/llm/litellm_chat.py"
+      ]
+    ]
+  },
+  {
+    "id": "prompt_cache",
+    "source": "exploratory authored question",
+    "query": "How is already-sent conversation text reused by Anthropic to avoid paying for it again?",
+    "required_path_groups": [
+      [
+        "codenib/llm/litellm_chat.py"
+      ]
+    ]
+  },
+  {
+    "id": "vector_integrity",
+    "source": "exploratory authored question",
+    "query": "Which checks stop tampered on-disk vector files from reaching the native loader?",
+    "required_path_groups": [
+      [
+        "codenib/index/embedding/artifact_integrity.py"
+      ]
+    ]
+  },
+  {
+    "id": "graph_expansion",
+    "source": "exploratory authored question",
+    "query": "How are search hits expanded with neighboring callers and callees to supply more repository context?",
+    "required_path_groups": [
+      [
+        "codenib/ops/expand.py"
+      ]
+    ]
+  },
+  {
+    "id": "rank_fusion",
+    "source": "exploratory authored question",
+    "query": "Where are lexical and semantic search rankings combined using reciprocal rank fusion?",
+    "required_path_groups": [
+      [
+        "codenib/ops/retrieve.py"
+      ]
+    ]
+  },
+  {
+    "id": "keyword_extraction",
+    "source": "exploratory authored question",
+    "query": "How are useful search terms extracted from a natural-language programming question?",
+    "required_path_groups": [
+      [
+        "codenib/agent/extract_agent.py"
+      ]
+    ]
+  },
+  {
+    "id": "line_conversion",
+    "source": "exploratory authored question",
+    "query": "Where are parser source ranges starting at line zero converted into user-facing locations starting at line one?",
+    "required_path_groups": [
+      [
+        "codenib/dataset/gt_locate.py"
+      ]
+    ]
+  },
+  {
+    "id": "embedding_trust",
+    "source": "exploratory authored question",
+    "query": "What stops a downloaded embedding model from executing changing Python code from the Internet?",
+    "required_path_groups": [
+      [
+        "codenib/index/embedding/model_policy.py"
+      ]
+    ]
+  },
+  {
+    "id": "repository_exclusions",
+    "source": "exploratory authored question",
+    "query": "How does the source scanner skip ignored directories and excluded files while walking a repository?",
+    "required_path_groups": [
+      [
+        "codenib/code_chunker.py"
+      ]
+    ]
+  },
+  {
+    "id": "wiki_transactions",
+    "source": "exploratory authored question",
+    "query": "How are generated Wiki pages published transactionally into the SQLite cache?",
+    "required_path_groups": [
+      [
+        "codenib/wiki/sqlite_store.py"
+      ]
+    ]
+  },
+  {
+    "id": "rerank_fallback",
+    "source": "exploratory authored question",
+    "query": "What keeps the initial search results available when relevance scoring fails or returns malformed output?",
+    "required_path_groups": [
+      [
+        "codenib/agent/rerank_agent.py"
+      ]
+    ]
+  }
+]
