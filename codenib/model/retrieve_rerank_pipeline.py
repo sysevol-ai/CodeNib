@@ -47,6 +47,8 @@ if TYPE_CHECKING:
 
 SUPPORTED_ENGINES = {"dense", "sparse"}
 RETRIEVAL_TOP_K = 100
+DEFAULT_LLM_RERANK_MODEL = "openai/Qwen/Qwen2.5-Coder-7B"
+DEFAULT_DECISIONS_RERANK_MODEL = "~typesafe/jev-latest"
 
 
 @dataclass(frozen=True)
@@ -291,7 +293,7 @@ class RetrieveRerankPipeline:
         self.cross_encoder = None
         if strategy == "llm":
             rerank_llm = LiteLLMChat(
-                model=rerank_model or "openai/Qwen/Qwen2.5-Coder-7B",
+                model=rerank_model or DEFAULT_LLM_RERANK_MODEL,
                 max_tokens=rerank_max_tokens,
                 temperature=rerank_temperature,
             )
@@ -301,7 +303,7 @@ class RetrieveRerankPipeline:
                     "rerank_listwise_format applies only to chat rerankers"
                 )
             rerank_decisions = OpenRouterDecisions(
-                model=rerank_model or "~typesafe/jev-latest"
+                model=rerank_model or DEFAULT_DECISIONS_RERANK_MODEL
             )
         elif strategy == "crossencoder":
             self.cross_encoder = build_reranker(

@@ -3714,7 +3714,7 @@
     "repositories": 25
   },
   "case_csv": "docs/experiments/jev_candidates_cases.csv",
-  "script_sha256": "ff22f2075b0b268a69d2808a50c20ee3db9d3d2597dfdca0ae918ce9b5b6ec31",
+  "script_sha256": "017c87cb97370f80dfe523f4f15843aa0f99b9f6ceb0c16037134e8c555d3689",
   "base_aligned_sensitivity": {
     "note": "Offline rescore only; resolve published symbols in base_commit with the GTLocator chunker defaults and last-wins collision policy. Queries, candidates, model outputs, and rankings are unchanged. This repairs coordinates, not semantic label correctness.",
     "script_sha256": "1f7b3eae2ec8408899aceb6f26b9cc9be4b4e3f92c5f3350b0cb4a6e1432d01c",

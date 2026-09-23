@@ -2,12 +2,48 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import shutil
+import sys
 
 import pytest
 import requests
 
 from codenib.types import NodeInfo
 from scripts.benchmark_model_grep import Planner, execute, interleave, validate_plan
+
+
+@pytest.mark.parametrize("cost", ["nan", "inf", "-inf", "0", "-1"])
+def test_nonfinite_or_nonpositive_cost_is_rejected_before_preparation(
+    monkeypatch, capsys, tmp_path, cost
+):
+    from scripts import benchmark_model_grep as benchmark
+
+    output = tmp_path / "output"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "benchmark_model_grep.py",
+            "--prepared",
+            str(tmp_path / "prepared"),
+            "--prebuilt-root",
+            str(tmp_path / "repos"),
+            "--output",
+            str(output),
+            f"--max-cost-usd={cost}",
+            "--live",
+        ],
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "prepare",
+        lambda _args: pytest.fail("Invalid cost must not reach preparation"),
+    )
+    with pytest.raises(SystemExit) as error:
+        benchmark.main()
+
+    assert error.value.code == 2
+    assert "positive and finite" in capsys.readouterr().err
+    assert not output.exists()
 
 
 def test_grep_selects_smallest_visible_chunk_and_interleaves_actions(tmp_path):

@@ -164,6 +164,8 @@ def test_missing_or_unknown_question_ids_fail_without_retry(http, answers):
         {"probabilities": {"0": 0.2, "1": 0.2}},
         {"probabilities": {"0": 0.2, "2": 0.8}},
         {"legend": {"0": "no", "2": "yes"}},
+        {"legend": {"0": "yes", "1": "no"}},
+        {"legend": {"0": "no", "1": "different criterion"}},
     ],
 )
 def test_score_is_validated_against_requested_scale(http, changes):

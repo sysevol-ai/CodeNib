@@ -57,7 +57,11 @@ from codenib.eval.retrieval_eval import (
 )
 from codenib.log_utils import get_logger
 from codenib.model import RetrieveRerankPipeline, build_retrieve_plan
-from codenib.model.retrieve_rerank_pipeline import RETRIEVAL_TOP_K
+from codenib.model.retrieve_rerank_pipeline import (
+    DEFAULT_DECISIONS_RERANK_MODEL,
+    DEFAULT_LLM_RERANK_MODEL,
+    RETRIEVAL_TOP_K,
+)
 from codenib.paths import prebuilt_data_dir, user_state_dir
 from codenib.profiler import Profiler
 
@@ -375,7 +379,13 @@ def parse_args():
         ),
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.rerank_model:
+        if args.rerank_strategy == "llm":
+            args.rerank_model = DEFAULT_LLM_RERANK_MODEL
+        elif args.rerank_strategy == "decisions":
+            args.rerank_model = DEFAULT_DECISIONS_RERANK_MODEL
+    return args
 
 
 _LANG_FALLBACK = "python"

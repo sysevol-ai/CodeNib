@@ -301,8 +301,9 @@ The Jev reranker consumes ordinary `NodeInfo` candidates from either retrieval
 method. The production BM25 example in [Jev configuration](../jev.md) explicitly
 sets both the retrieval stage and rerank candidate cap to 100.
 
-Validation: 18 focused experiment tests pass, including immutable snapshot
+Validation: 25 focused experiment tests pass, including immutable snapshot
 reads, candidate-prefix integrity, truncated-span credit, grep action handling,
-rate-limit trace retention, and base-commit label alignment. Formatting,
+rate-limit trace retention, finite cost caps, resumed-attempt accounting, and
+base-commit label alignment. Formatting,
 lint, namespace, and artifact integrity checks also pass. The existing Jev
 integration's 179 targeted checks passed in the preceding implementation phase.

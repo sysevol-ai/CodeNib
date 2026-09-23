@@ -54,6 +54,16 @@ def coverage_summary(values) -> dict:
     }
 
 
+def planner_attempts(plan: dict) -> list[dict]:
+    """Expand every resumed run without counting its summary as another request."""
+    attempts = []
+    prior = plan.get("prior_run_attempt")
+    if prior is not None:
+        attempts.extend(planner_attempts(prior))
+    attempts.extend(plan.get("attempts", [plan]))
+    return attempts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bm25-prepared", type=Path, required=True)
@@ -122,9 +132,7 @@ def main() -> None:
         plans.append(json.loads(path.read_text()))
     attempts = []
     for plan in plans:
-        attempts.extend(plan.get("attempts", [plan]))
-        if "prior_run_attempt" in plan:
-            attempts.append(plan["prior_run_attempt"])
+        attempts.extend(planner_attempts(plan))
     result["planner"] = {
         "requests": len(attempts),
         "statuses": dict(

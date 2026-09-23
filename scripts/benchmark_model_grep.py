@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import math
 import os
 import subprocess
 import sys
@@ -476,8 +477,10 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
-    if args.candidates < 1 or args.workers < 1 or args.max_cost_usd <= 0:
-        parser.error("candidates, workers, and max-cost-usd must be positive")
+    if args.candidates < 1 or args.workers < 1:
+        parser.error("candidates and workers must be positive")
+    if not math.isfinite(args.max_cost_usd) or args.max_cost_usd <= 0:
+        parser.error("max-cost-usd must be positive and finite")
     prepare(args)
 
 

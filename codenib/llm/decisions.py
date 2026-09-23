@@ -114,7 +114,10 @@ class DecisionResult(BaseModel):
                 expected = {str(i) for i in range(len(question.criteria))}
                 if answer.score > len(question.criteria) - 1:
                     raise ValueError(f"Score outside the scale for question {name!r}")
-                if set(answer.legend) != expected:
+                expected_legend = {
+                    str(i): criterion for i, criterion in enumerate(question.criteria)
+                }
+                if answer.legend != expected_legend:
                     raise ValueError(f"Score legend does not match question {name!r}")
             # Jev rounds each probability to two decimal places on the wire.
             # Allow half a rounding unit per entry; retain the original values
