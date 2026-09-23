@@ -4675,6 +4675,88 @@ class AgentWiki:
             self._page_evidence[cache_suffix] = evidence
             return evidence
 
+    @staticmethod
+    def _is_stub_body(content: str) -> bool:
+        """True when a callable's body only declares itself unimplemented.
+
+        ``BaseAdapter.send`` is a signature, a docstring and ``raise
+        NotImplementedError``; a journey that stops there ends on a method
+        that does no work.
+        """
+
+        lines = [line.strip() for line in (content or "").splitlines()]
+        # A signature can span several lines; the body starts after the line
+        # that opens it (``) -> Response:`` in Python, ``{`` elsewhere).
+        opener = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if line.endswith(":") or line.endswith("{")
+            ),
+            0,
+        )
+        body: List[str] = []
+        in_doc = False
+        for line in lines[opener + 1 :]:
+            if not line or line.startswith(("#", "//", "@")):
+                continue
+            quotes = line.count('"""') + line.count("'''")
+            if in_doc or line.startswith(('"""', "'''")):
+                if quotes % 2 == 1:
+                    in_doc = not in_doc
+                continue
+            body.append(line)
+        if not body:
+            return False
+        stub = re.compile(
+            r"^(?:pass|\.\.\.|raise\s+NotImplementedError\b.*"
+            r"|throw\s+new\s+Error\(.*not\s+implemented.*"
+            r"|unimplemented!\(.*|todo!\(.*|[{}])$",
+            re.IGNORECASE,
+        )
+        return all(stub.match(line) for line in body)
+
+    @staticmethod
+    def _concrete_override(
+        raw_graph: Any, method_vid: int
+    ) -> Optional[tuple[int, int]]:
+        """The one subclass method overriding an unimplemented base method.
+
+        The index has no inheritance edge, but a subclass header
+        (``class HTTPAdapter(BaseAdapter):``) records a reference to its base
+        anchored on the subclass's own first line. Returns ``(override_vid,
+        subclass_vid)`` when exactly one such subclass defines a method of the
+        same name, else None.
+        """
+
+        def contained_in(vid: int) -> Optional[int]:
+            for edge in raw_graph.es.select(_target=vid):
+                if edge["type"] == "contain":
+                    return edge.source
+            return None
+
+        def leaf(vid: int) -> str:
+            name = str(raw_graph.vs[vid]["unified_name"] or "")
+            return re.sub(r"\([^)]*\)$", "", name.rsplit(":", 1)[-1]).rsplit(".", 1)[-1]
+
+        base = contained_in(method_vid)
+        if base is None or str(raw_graph.vs[base]["type"] or "").lower() != "class":
+            return None
+        wanted = leaf(method_vid)
+        found: List[tuple[int, int]] = []
+        for edge in raw_graph.es.select(_target=base):
+            if edge["type"] != "reference":
+                continue
+            sub = raw_graph.vs[edge.source]
+            if str(sub["type"] or "").lower() != "class":
+                continue
+            if edge["anchor_line"] != sub["start_line"]:
+                continue
+            for child in raw_graph.es.select(_source=sub.index):
+                if child["type"] == "contain" and leaf(child.target) == wanted:
+                    found.append((child.target, sub.index))
+        return found[0] if len(found) == 1 else None
+
     def _entry_path(
         self,
         evidence: Sequence[EvidenceItem],
@@ -4748,7 +4830,46 @@ class AgentWiki:
         new_items: List[EvidenceItem] = []
         new_relations: List[RelationItem] = []
         visited = {_canonical_symbol(current.symbol)}
+        vid_of: dict[str, int] = {}
         for _hop in range(max_hops):
+            best = None
+            # A call resolved to an unimplemented base method continues into
+            # the one subclass that implements it; the hop's anchor is the
+            # subclass header that records the inheritance.
+            if self._is_stub_body(current.content):
+                if not vid_of:
+                    vid_of = {
+                        str(v["unified_name"]): v.index
+                        for v in raw_graph.vs
+                        if v["unified_name"]
+                    }
+                base_vid = vid_of.get(current.symbol)
+                override = (
+                    self._concrete_override(raw_graph, base_vid)
+                    if base_vid is not None
+                    else None
+                )
+                if override is not None:
+                    override_vid, sub_vid = override
+                    vertex = raw_graph.vs[override_vid]
+                    target = self._graph_endpoint(vertex)
+                    target_file = self._rel(target["file"]) or ""
+                    attrs = vertex.attributes()
+                    span = (attrs.get("start_line"), attrs.get("end_line"))
+                    sub = raw_graph.vs[sub_vid]
+                    header = sub["start_line"]
+                    if (
+                        target_file
+                        and not is_test_file(target_file)
+                        and _canonical_symbol(target["label"]) not in visited
+                        and all(
+                            isinstance(value, int) and not isinstance(value, bool)
+                            for value in span
+                        )
+                        and isinstance(header, int)
+                    ):
+                        anchor = f"{self._rel(sub['file'])}:{header + 1}"
+                        best = ((0,), target, target_file, span, anchor)
             try:
                 result = graph.query_range(
                     current.file,
@@ -4756,9 +4877,10 @@ class AgentWiki:
                     current.end_line - 1,
                 )
             except Exception:  # noqa: BLE001 - stop at the last resolvable hop
-                break
-            best = None
-            for edge in result.outgoing:
+                if best is None:
+                    break
+                result = None
+            for edge in result.outgoing if result is not None and best is None else ():
                 if edge.anchor_file is None or edge.anchor_line is None:
                     continue
                 vertex = raw_graph.vs[edge.target_vid]

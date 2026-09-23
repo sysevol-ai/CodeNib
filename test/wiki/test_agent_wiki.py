@@ -8785,3 +8785,76 @@ def test_agent_wiki_in_memory_degraded_page_retries_once_its_cooldown_passes(
     assert wiki.page("runtime") is generated
     assert calls == [meta]
     assert wiki._pages["runtime"] is generated
+
+
+def test_stub_bodies_are_recognised_but_real_ones_are_not():
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    stub = (
+        "def send(self, request):\n"
+        '    """Sends PreparedRequest object.\n\n    :param request: the request.\n    """\n'
+        "    raise NotImplementedError\n"
+    )
+    assert AgentWiki._is_stub_body(stub) is True
+    assert AgentWiki._is_stub_body("def close(self):\n    pass\n") is True
+    wrapped = (
+        "self,\n        request: PreparedRequest,\n        stream: bool = False,\n"
+        "    ) -> Response:\n"
+        '        """Sends PreparedRequest object.\n\n        :param stream: flag.\n'
+        '        """\n        raise NotImplementedError\n'
+    )
+    assert AgentWiki._is_stub_body(wrapped) is True
+    real = (
+        "def send(self, request):\n"
+        "    conn = self.get_connection(request)\n"
+        "    return conn\n"
+    )
+    assert AgentWiki._is_stub_body(real) is False
+    assert AgentWiki._is_stub_body("def only_signature(self): ...") is False
+
+
+def test_concrete_override_follows_the_subclass_header_reference():
+    from codenib.graph.code_graph import CodeGraph
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    graph = CodeGraph()
+    for name, kind, line in [
+        ("a.py:Base", "class", 0),
+        ("a.py:Base.send()", "method", 2),
+        ("a.py:HTTP", "class", 10),
+        ("a.py:HTTP.send()", "method", 12),
+        ("a.py:Other", "class", 20),
+        ("a.py:Other.close()", "method", 22),
+    ]:
+        graph._add_vertex(
+            name,
+            {
+                "type": kind,
+                "file": "a.py",
+                "start_line": line,
+                "end_line": line + 3,
+                "unified_name": name,
+            },
+        )
+    for parent, child in [
+        ("a.py:Base", "a.py:Base.send()"),
+        ("a.py:HTTP", "a.py:HTTP.send()"),
+        ("a.py:Other", "a.py:Other.close()"),
+    ]:
+        graph._add_edge(parent, child, "contain")
+    # `class HTTP(Base):` references Base on HTTP's own first line; Other only
+    # mentions Base inside a body, which is not inheritance.
+    graph._add_edge(
+        "a.py:HTTP", "a.py:Base", "reference", anchor_file="a.py", anchor_line=10
+    )
+    graph._add_edge(
+        "a.py:Other", "a.py:Base", "reference", anchor_file="a.py", anchor_line=23
+    )
+
+    raw = graph.get_graph()
+    vid = {v["unified_name"]: v.index for v in raw.vs}
+    assert AgentWiki._concrete_override(raw, vid["a.py:Base.send()"]) == (
+        vid["a.py:HTTP.send()"],
+        vid["a.py:HTTP"],
+    )
+    assert AgentWiki._concrete_override(raw, vid["a.py:HTTP.send()"]) is None
