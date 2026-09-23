@@ -335,6 +335,34 @@ class _RegistryThreadContext:
         return result
 
 
+_EMBEDDING_ENDPOINT_ERRORS = frozenset(
+    {
+        "APIConnectionError",
+        "APITimeoutError",
+        "ConnectError",
+        "ConnectTimeout",
+        "PoolTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+    }
+)
+
+
+def _embedding_endpoint_unavailable(error: BaseException) -> bool:
+    """Recognize transport outages without hiding auth or integrity errors."""
+
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (ConnectionError, TimeoutError)):
+            return True
+        if type(current).__name__ in _EMBEDDING_ENDPOINT_ERRORS:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 _SKILLS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "agent",
@@ -2548,10 +2576,24 @@ class RepoRegistry:
                         "authorization for a required hybrid vector view"
                     )
             else:
-                vector_store = self._load_vector_store(
-                    vec_entry,
-                    native_index_authorization=authorization,
-                )
+                try:
+                    vector_store = self._load_vector_store(
+                        vec_entry,
+                        native_index_authorization=authorization,
+                    )
+                except Exception as exc:
+                    if not (
+                        self._allow_missing_native_index_authorization
+                        and _embedding_endpoint_unavailable(exc)
+                    ):
+                        raise
+                    logger.warning(
+                        "Skipping optional vector view at %s because its "
+                        "embedding endpoint is unavailable; BM25 remains "
+                        "available: %s",
+                        vec_entry.path,
+                        exc,
+                    )
 
         if source_reader is not None and vector_store is not None:
             try:

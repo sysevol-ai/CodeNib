@@ -43,7 +43,17 @@ function installSanitizedSvg(container: HTMLElement, svg: string): boolean {
     }
   });
 
-  container.replaceChildren(document.importNode(root, true));
+  const installed = document.importNode(root, true);
+  // Mermaid emits width="100%" with a viewBox, so a wide left-to-right flow
+  // is scaled down to fit and its labels become unreadable. Keep the
+  // diagram at its natural size and let the container scroll instead.
+  const viewBox = (installed.getAttribute("viewBox") || "").split(/\s+/);
+  const naturalWidth = Number.parseFloat(viewBox[2] || "");
+  if (Number.isFinite(naturalWidth) && naturalWidth > 0) {
+    installed.setAttribute("width", String(Math.ceil(naturalWidth)));
+    installed.style.maxWidth = "none";
+  }
+  container.replaceChildren(installed);
   return true;
 }
 

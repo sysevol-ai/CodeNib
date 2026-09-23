@@ -21,6 +21,7 @@ from codenib.wiki.quality import (
     summarize_page_audits,
 )
 from codenib.wiki.sqlite_store import SQLiteWikiStore
+from codenib.wiki.visual_ir import page_visual_contract_report
 
 
 def _page(*, repeated_prose: bool) -> dict:
@@ -223,6 +224,115 @@ def test_page_audit_adds_narrative_validity_to_legacy_quality():
     assert improved["publishable"] is True
 
 
+def test_page_quality_can_enforce_the_editorial_story_contract():
+    markdown = (
+        "The runtime accepts a request and stores its result. [E1]\n\n"
+        "> **Reader question:** How does the runtime store a request result? [E1]\n\n"
+        "## Runtime\n\n"
+        "The runtime stores the request result in its repository cache. [E1]"
+    )
+    plan = {
+        "sections": [
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The runtime stores a request result",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+        "story": {
+            "version": 1,
+            "origin": "planned",
+            "reader_question": {
+                "statement": "How does the runtime store a request result?",
+                "evidence": ["E1"],
+            },
+            "beats": [
+                {
+                    "section": "Runtime",
+                    "role": "mechanism",
+                    "evidence": ["E1"],
+                }
+            ],
+            "evidence_budget": {},
+        },
+    }
+
+    admitted = page_quality_report(markdown, plan, require_story=True)
+    assert admitted["valid"] is True
+    assert admitted["story_valid"] is True
+    assert admitted["reader_question_rendered"] is True
+
+    omitted = page_quality_report(
+        markdown.replace(
+            "> **Reader question:** How does the runtime store a request result? [E1]\n\n",
+            "",
+        ),
+        plan,
+        require_story=True,
+    )
+    assert omitted["valid"] is False
+    assert omitted["story_valid"] is True
+    assert omitted["reader_question_rendered"] is False
+
+    # A story without a question is not a defect: no question beats a
+    # template one, so the gate only insists a planned question be rendered.
+    del plan["story"]["reader_question"]
+    unquestioned = page_quality_report(markdown, plan, require_story=True)
+    assert unquestioned["valid"] is True
+    assert unquestioned["story_question_present"] is False
+    assert "reader question is missing, uncited, or not one question" in (
+        unquestioned["story_advisories"]
+    )
+    assert unquestioned["story_valid"] is True
+    assert unquestioned["reader_question_valid"] is False
+
+
+def test_page_quality_report_enforces_editorial_maximums():
+    plan = {
+        "sections": [
+            {
+                "title": f"Stage {index}",
+                "claims": [
+                    {
+                        "role": "component",
+                        "statement": f"Stage {index} records detail {claim}",
+                        "evidence": [f"E{index}"],
+                    }
+                    for claim in range(3)
+                ],
+            }
+            for index in range(5)
+        ]
+    }
+    markdown = "\n\n".join(
+        f"## Stage {index}\n\nStage {index} records enough implementation "
+        f"detail for this quality fixture. [E{index}]"
+        for index in range(5)
+    )
+    markdown += "\n\n```python\npass\n```"
+
+    report = page_quality_report(
+        markdown,
+        plan,
+        maximum_planned_sections=4,
+        maximum_planned_claims=6,
+        maximum_claims_per_section=2,
+        maximum_code_fences=0,
+    )
+
+    assert report["valid"] is False
+    assert report["editorial_budget_valid"] is False
+    assert report["planned_sections"] == 5
+    assert report["planned_claims"] == 15
+    assert report["overfull_sections"] == [f"Stage {index}" for index in range(5)]
+    assert report["code_fence_count"] == 1
+
+
 def test_page_audit_never_publishes_flagged_promotional_prose():
     page = _page(repeated_prose=False)
     page["markdown"] += (
@@ -234,7 +344,7 @@ def test_page_audit_never_publishes_flagged_promotional_prose():
 
     assert report["grounding_valid"] is True
     assert report["style_valid"] is False
-    assert report["promotional_phrases"] == ["efficient", "improves"]
+    assert report["promotional_phrases"] == ["efficient"]
     assert report["publishable"] is False
 
 
@@ -246,6 +356,34 @@ def test_page_audit_respects_an_explicit_failed_quality_gate():
 
     assert report["structural_valid"] is False
     assert report["publishable"] is False
+
+
+def test_page_audit_requires_a_materialized_grounded_overview_visual_when_declared():
+    page = _page(repeated_prose=False)
+    page["media_slots"] = []
+    page["visual_quality"] = page_visual_contract_report(page)
+
+    missing = audit_page(page)
+
+    assert missing["visual_required"] is True
+    assert missing["visual_contract_valid"] is True
+    assert missing["visual_ready"] is False
+    assert missing["publishable"] is False
+
+    page["media_slots"] = [
+        {
+            "id": "overview-repository-visual",
+            "asset": {
+                "uri": "assets/architecture.png",
+                "provider": "repository",
+            },
+        }
+    ]
+    page["visual_quality"] = page_visual_contract_report(page)
+    ready = audit_page(page)
+
+    assert ready["visual_ready"] is True
+    assert ready["publishable"] is True
 
 
 def test_narrative_density_rejects_a_source_grounded_symbol_catalog():
@@ -583,7 +721,7 @@ def test_prose_integrity_allows_private_work_in_a_mixed_entry_section():
     assert report["prose_integrity_valid"] is True
 
 
-def test_page_audit_requires_a_flow_when_static_relations_are_available():
+def test_page_audit_reports_missing_static_flow_without_blocking_publication():
     page = {
         "id": "agent-runtime",
         "title": "Agent Runtime",
@@ -609,7 +747,8 @@ def test_page_audit_requires_a_flow_when_static_relations_are_available():
 
     assert report["require_interaction"] is True
     assert report["interaction_valid"] is False
-    assert report["publishable"] is False
+    assert report["narrative_advisory"] is True
+    assert report["publishable"] is True
 
 
 def test_page_audit_respects_an_explicit_non_architectural_page_contract():
@@ -1254,3 +1393,53 @@ def test_wiki_audit_reports_missing_and_failed_pages_without_stopping():
             "error": "RuntimeError: backend unavailable",
         },
     ]
+
+
+def test_parse_story_review_clamps_scores_and_rejects_garbage():
+    from codenib.wiki.quality import parse_story_review
+
+    assert parse_story_review("not json") is None
+    assert parse_story_review("[1, 2]") is None
+    review = parse_story_review(
+        '```json\n{"problem": {"score": 7, "quote": "x"}, '
+        '"path": 2, "decision": {"score": "1"}, '
+        '"jargon": true, "notes": "n"}\n```'
+    )
+    assert review["answers"]["problem"]["score"] == 2
+    assert review["answers"]["path"] == {"score": 2, "quote": ""}
+    assert review["answers"]["decision"]["score"] == 1
+    assert review["answers"]["failure"]["score"] == 0
+    assert review["score"] == 5
+    assert review["jargon"] is True
+    assert review["passed"] is False
+
+
+def test_narrative_heuristics_advise_instead_of_gating():
+    sentences = (
+        "`Runtime.build()` builds the outgoing request from the user arguments",
+        "`Runtime.load()` loads the cookie jar from the configured directory",
+        "`Runtime.save()` saves the session snapshot after every response",
+        "`Runtime.format()` formats the header block for the transport",
+    )
+    catalog = "\n\n".join(
+        [
+            "`Runtime` stores a request result. [E1]",
+            "## Runtime",
+            *(f"{sentence}. [E1]" for sentence in sentences),
+        ]
+    )
+    plan = {
+        "sections": [
+            {
+                "title": "Runtime",
+                "claims": [
+                    {"role": "component", "statement": s, "evidence": ["E1"]}
+                    for s in sentences
+                ],
+            }
+        ]
+    }
+    report = page_quality_report(catalog, plan, require_narrative_density=True)
+    assert report["narrative_density_valid"] is False
+    assert "prose reads as a symbol catalog" in report["narrative_advisories"]
+    assert report["valid"] is True

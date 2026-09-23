@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -15,14 +16,20 @@ from .evidence import (
     describes_private_entry,
     evidence_matches_claim,
     infer_claim_role,
+    interaction_rows,
     is_entry_only_section_title,
     is_interaction_claim,
+    is_interaction_list,
     is_internal_wiki_navigation,
+    is_journey_list,
     promotional_phrases,
     relation_endpoints_named,
     relation_matches_claim,
 )
+from .fences import count_code_fences, strip_code_fences
 from .store import WikiStore
+from .story import story_quality_report
+from .visual_ir import page_visual_contract_report
 
 _EVIDENCE_MARKER = re.compile(r"\[((?:E|R)\d+)\](?:\([^)]*\))?")
 _CATALOG_SENTENCE = re.compile(
@@ -77,8 +84,17 @@ def sentence_boundary_count(text: str) -> int:
     return len(re.findall(r"[.!?](?=\s|$)", scrubbed))
 
 
-def _without_internal_wiki_navigation(markdown: str) -> str:
-    """Remove navigation-only blocks before measuring explanatory prose."""
+def _without_internal_wiki_navigation(
+    markdown: str,
+    *,
+    keep_structure: bool = False,
+) -> str:
+    """Remove navigation-only blocks before measuring explanatory prose.
+
+    ``keep_structure`` retains relation rows and the journey list: they are
+    not sentences, but they are content, so section and block counts include
+    them while sentence-level measurements do not.
+    """
 
     blocks = re.split(r"\n\s*\n", markdown)
 
@@ -88,6 +104,12 @@ def _without_internal_wiki_navigation(markdown: str) -> str:
     explanatory_blocks: list[str] = []
     for index, block in enumerate(blocks):
         if is_internal_wiki_navigation(block.strip()):
+            continue
+        # Relation rows are graph structure rendered as a list; measuring
+        # them as sentences would count every edge as a "catalog" line.
+        if not keep_structure and (
+            is_interaction_list(block.strip()) or is_journey_list(block.strip())
+        ):
             continue
         if is_section_heading(block):
             section_body: list[str] = []
@@ -101,6 +123,13 @@ def _without_internal_wiki_navigation(markdown: str) -> str:
             # cannot accidentally erase that prose's heading.
             if section_body and all(
                 is_internal_wiki_navigation(candidate.strip())
+                or (
+                    not keep_structure
+                    and (
+                        is_interaction_list(candidate.strip())
+                        or is_journey_list(candidate.strip())
+                    )
+                )
                 for candidate in section_body
             ):
                 continue
@@ -109,11 +138,7 @@ def _without_internal_wiki_navigation(markdown: str) -> str:
 
 
 def _prose_sentences(markdown: str) -> list[str]:
-    without_fences = re.sub(
-        r"```[\s\S]*?```",
-        "",
-        _without_internal_wiki_navigation(markdown),
-    )
+    without_fences = strip_code_fences(_without_internal_wiki_navigation(markdown))
     without_headings = re.sub(
         r"^#{1,6}\s+.*$",
         "",
@@ -220,11 +245,7 @@ def leading_condition_terms(text: str) -> set[str]:
 def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
     """Find paragraph pairs where one largely restates the other."""
 
-    without_fences = re.sub(
-        r"```[\s\S]*?```",
-        "",
-        _without_internal_wiki_navigation(markdown),
-    )
+    without_fences = strip_code_fences(_without_internal_wiki_navigation(markdown))
     terms = []
     subjects = []
     identifiers = []
@@ -275,7 +296,7 @@ def duplicate_prose_blocks(markdown: str) -> List[List[int]]:
 def section_evidence_report(markdown: str) -> dict[str, Any]:
     """Measure whether sections contribute evidence beyond the page intro."""
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = strip_code_fences(markdown)
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
@@ -320,11 +341,7 @@ def section_evidence_report(markdown: str) -> dict[str, Any]:
 def section_narrative_report(markdown: str) -> dict[str, Any]:
     """Find sections that substantially restate the intro or an earlier section."""
 
-    without_fences = re.sub(
-        r"```[\s\S]*?```",
-        "",
-        _without_internal_wiki_navigation(markdown),
-    )
+    without_fences = strip_code_fences(_without_internal_wiki_navigation(markdown))
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
@@ -405,11 +422,7 @@ def narrative_density_report(markdown: str) -> dict[str, Any]:
 def section_synthesis_report(markdown: str) -> dict[str, Any]:
     """Find pages dominated by sections that only inventory local operations."""
 
-    without_fences = re.sub(
-        r"```[\s\S]*?```",
-        "",
-        _without_internal_wiki_navigation(markdown),
-    )
+    without_fences = strip_code_fences(_without_internal_wiki_navigation(markdown))
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
@@ -449,7 +462,7 @@ def section_synthesis_report(markdown: str) -> dict[str, Any]:
 def section_sentence_redundancy_report(markdown: str) -> dict[str, Any]:
     """Find near-duplicate explanatory sentences inside one section."""
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = strip_code_fences(markdown)
     section_matches = list(
         re.finditer(r"^##\s+(.+?)\s*$", without_fences, flags=re.MULTILINE)
     )
@@ -580,7 +593,9 @@ def prose_integrity_report(markdown: str) -> dict[str, Any]:
         plain = re.sub(r"[`*_[\]()#>-]", " ", plain)
         if not re.sub(r"\s+", " ", plain).strip():
             citation_only_blocks.append(raw.strip())
-    narrated_ids = sorted(set(_RAW_EVIDENCE_ID.findall(without_citations)))
+    narrated_ids = sorted(
+        set(_RAW_EVIDENCE_ID.findall(strip_code_fences(without_citations)))
+    )
     private_entries = [
         sentence
         for sentence in _prose_sentences(without_citations)
@@ -760,17 +775,20 @@ def page_quality_report(
     require_narrative_density: bool = False,
     require_interaction: bool = False,
     require_grounded_thesis: bool = False,
+    require_story: bool = False,
     minimum_source_evidence: int = 0,
+    maximum_planned_sections: int | None = None,
+    maximum_planned_claims: int | None = None,
+    maximum_claims_per_section: int | None = None,
+    maximum_code_fences: int | None = None,
     required_claim_roles: Iterable[str] = (),
     relations: Iterable[Any] = (),
     evidence_items: Iterable[Any] = (),
 ) -> dict[str, Any]:
     """Measure whether a page represents its supported fact plan."""
 
-    without_fences = re.sub(
-        r"```[\s\S]*?```",
-        "",
-        _without_internal_wiki_navigation(markdown),
+    without_fences = strip_code_fences(
+        _without_internal_wiki_navigation(markdown, keep_structure=True)
     )
     rendered_sections = len(
         re.findall(r"^#{2,6}\s+\S", without_fences, flags=re.MULTILINE)
@@ -784,17 +802,37 @@ def page_quality_report(
                 substantive_blocks += 1
 
     sections = plan.get("sections") or []
+    section_claim_counts = [
+        len([claim for claim in section.get("claims") or [] if claim.get("evidence")])
+        for section in sections
+    ]
     claims = [
         claim
         for section in sections
         for claim in section.get("claims") or []
         if claim.get("evidence")
     ]
-    cited = set(_EVIDENCE_MARKER.findall(without_fences))
+    # Markers inside relation rows count: a flow claim whose edge is rendered
+    # as a row is represented on the page even though it is not a sentence.
+    cited = set(_EVIDENCE_MARKER.findall(strip_code_fences(markdown)))
     covered_claims = sum(
         1 for claim in claims if cited.intersection(claim.get("evidence") or [])
     )
     claim_coverage = covered_claims / len(claims) if claims else 0.0
+    # How many sections say *why*: reported, not gated, because the evidence
+    # may genuinely state no reason.
+    rationale_claim_count = sum(
+        1 for claim in claims if str(claim.get("role") or "") == "rationale"
+    )
+    sections_with_rationale = sum(
+        1
+        for section in sections
+        if any(
+            str(claim.get("role") or "") == "rationale"
+            for claim in section.get("claims") or []
+            if claim.get("evidence")
+        )
+    )
     duplicate_blocks = duplicate_prose_blocks(markdown)
     evidence_report = section_evidence_report(markdown)
     narrative_report = section_narrative_report(markdown)
@@ -808,6 +846,21 @@ def page_quality_report(
         relations=relations,
         evidence_items=evidence_items,
     )
+    story_report = story_quality_report(plan)
+    # Relation rows are the rendered form of graph edges; a page that shows
+    # its handoffs as rows has explained an interaction as surely as one that
+    # narrates it.
+    interaction_row_count = len(interaction_rows(markdown))
+    reader_question_match = re.search(
+        r"^>\s*\*\*Reader question:\*\*[^\n]+$",
+        without_fences,
+        flags=re.MULTILINE,
+    )
+    reader_question_rendered = bool(
+        reader_question_match
+        and reader_question_match.group(0).count("?") == 1
+        and _EVIDENCE_MARKER.search(reader_question_match.group(0))
+    )
     first_section = re.search(r"^##\s+\S", without_fences, flags=re.MULTILINE)
     intro_body = without_fences[: first_section.start()] if first_section else ""
     intro_plain = re.sub(r"^#\s+.*$", "", intro_body, flags=re.MULTILINE)
@@ -820,6 +873,18 @@ def page_quality_report(
     missing_claim_roles = [
         role for role in required_roles if not plan_report["claim_roles"].get(role)
     ]
+    code_fence_count = count_code_fences(markdown)
+    overfull_sections = [
+        str(section.get("title") or "untitled")
+        for section, count in zip(sections, section_claim_counts, strict=True)
+        if maximum_claims_per_section is not None and count > maximum_claims_per_section
+    ]
+    editorial_budget_valid = bool(
+        (maximum_planned_sections is None or len(sections) <= maximum_planned_sections)
+        and (maximum_planned_claims is None or len(claims) <= maximum_planned_claims)
+        and not overfull_sections
+        and (maximum_code_fences is None or code_fence_count <= maximum_code_fences)
+    )
     thin_sections = []
     if require_dense_sections:
         section_matches = list(
@@ -837,7 +902,7 @@ def page_quality_report(
             plain = re.sub(r"\s+", " ", plain).strip()
             if len(plain) < 60:
                 thin_sections.append(match.group(1).strip())
-    required_sections = 3 if require_dense_sections else min(3, len(sections))
+    required_sections = 2 if require_dense_sections else min(3, len(sections))
     required_blocks = required_sections + int(require_cited_intro)
     valid = (
         bool(sections)
@@ -847,30 +912,56 @@ def page_quality_report(
         and not duplicate_blocks
         and not thin_sections
         and (not require_cited_intro or cited_intro)
-        and (
-            not require_narrative_novelty or not narrative_report["redundant_sections"]
-        )
-        and (not require_narrative_density or density_report["narrative_density_valid"])
-        and (
-            not require_narrative_density or synthesis_report["section_synthesis_valid"]
-        )
         and integrity_report["prose_integrity_valid"]
         and sentence_report["sentence_redundancy_valid"]
         and plan_report["plan_role_integrity_valid"]
-        and (not require_dense_sections or not plan_report["component_dominated"])
         and (not require_grounded_thesis or plan_report["thesis_grounded"])
+        and (
+            not require_story
+            or (
+                story_report["story_valid"]
+                and (
+                    reader_question_rendered
+                    or not story_report["story_question_present"]
+                )
+            )
+        )
         and source_evidence_count >= minimum_source_evidence
         and not missing_claim_roles
+        and editorial_budget_valid
         and (
             not require_interaction
             or (
                 plan_report["supported_interaction_claims"] >= 1
-                and density_report["interaction_sentence_count"] >= 1
+                and (
+                    density_report["interaction_sentence_count"] >= 1
+                    or interaction_row_count >= 1
+                )
             )
         )
     )
+    # Whether a page *reads* as an explanation rather than a catalog is a
+    # judgement. The regex heuristics that used to gate on it are kept as
+    # advice for operators and for the model-judged story review; they no
+    # longer decide whether a grounded page is published.
+    narrative_advisories = []
+    if require_narrative_novelty and narrative_report["redundant_sections"]:
+        narrative_advisories.append(
+            "sections restate the intro or an earlier section: "
+            + ", ".join(narrative_report["redundant_sections"])
+        )
+    if require_narrative_density and not density_report["narrative_density_valid"]:
+        narrative_advisories.append("prose reads as a symbol catalog")
+    if require_narrative_density and not synthesis_report["section_synthesis_valid"]:
+        narrative_advisories.append("most sections list facts without an interaction")
+    if require_dense_sections and plan_report["component_dominated"]:
+        narrative_advisories.append("plan is dominated by component claims")
     return {
         "valid": valid,
+        "narrative_advisories": narrative_advisories,
+        "interaction_row_count": interaction_row_count,
+        "rationale_claim_count": rationale_claim_count,
+        "sections_with_rationale": sections_with_rationale,
         "planned_sections": len(sections),
         "required_sections": required_sections,
         "rendered_sections": rendered_sections,
@@ -887,8 +978,18 @@ def page_quality_report(
         "require_narrative_density": require_narrative_density,
         "require_interaction": require_interaction,
         "require_grounded_thesis": require_grounded_thesis,
+        "require_story": require_story,
+        "reader_question_rendered": reader_question_rendered,
         "minimum_source_evidence": minimum_source_evidence,
         "source_evidence_count": source_evidence_count,
+        "maximum_planned_sections": maximum_planned_sections,
+        "maximum_planned_claims": maximum_planned_claims,
+        "maximum_claims_per_section": maximum_claims_per_section,
+        "maximum_code_fences": maximum_code_fences,
+        "section_claim_counts": section_claim_counts,
+        "overfull_sections": overfull_sections,
+        "code_fence_count": code_fence_count,
+        "editorial_budget_valid": editorial_budget_valid,
         "required_claim_roles": list(required_roles),
         "missing_claim_roles": missing_claim_roles,
         **evidence_report,
@@ -898,6 +999,7 @@ def page_quality_report(
         **sentence_report,
         **integrity_report,
         **plan_report,
+        **story_report,
     }
 
 
@@ -908,6 +1010,18 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
     grounding = page.get("grounding") or {}
     quality = page.get("quality") or {}
     generation = page.get("generation") or {}
+    computed_visual = page_visual_contract_report(page)
+    serialized_visual = page.get("visual_quality") or {}
+    visual_contract_valid = bool(computed_visual["valid"]) and bool(
+        serialized_visual.get("valid", True)
+    )
+    visual_required = bool(serialized_visual.get("required"))
+    visual_ready = bool(
+        not visual_required
+        and visual_contract_valid
+        or visual_contract_valid
+        and serialized_visual.get("publication_ready") is True
+    )
     serialized_evidence = page.get("evidence") or {}
     relation_count = len(serialized_evidence.get("relations") or [])
     evidence_count = len(serialized_evidence.get("items") or [])
@@ -921,8 +1035,32 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
     grounding_valid = bool(grounding.get("valid"))
     current_promotional_phrases = promotional_phrases(markdown)
     style_valid = not current_promotional_phrases
+    reader_question_match = re.search(
+        r"^>\s*\*\*Reader question:\*\*[^\n]+$",
+        markdown,
+        flags=re.MULTILINE,
+    )
+    reader_question_rendered = bool(
+        reader_question_match
+        and reader_question_match.group(0).count("?") == 1
+        and _EVIDENCE_MARKER.search(reader_question_match.group(0))
+    )
+    require_story = bool(quality.get("require_story"))
+    story_payload = page.get("story") if isinstance(page.get("story"), dict) else {}
+    story_question = (story_payload or {}).get("reader_question") or {}
+    story_question_present = bool(
+        isinstance(story_question, dict)
+        and str(story_question.get("statement") or "").strip()
+    )
     if "valid" in quality:
-        structural_valid = bool(quality.get("valid"))
+        structural_valid = bool(
+            quality.get("valid")
+            and (
+                not require_story
+                or reader_question_rendered
+                or not story_question_present
+            )
+        )
     else:
         structural_valid = bool(
             int(quality.get("rendered_sections") or 0)
@@ -942,32 +1080,43 @@ def audit_page(page: dict[str, Any]) -> dict[str, Any]:
     interaction_valid = (
         not require_interaction or density["interaction_sentence_count"] >= 1
     )
+    # Prose integrity and intra-section repetition are defects; density,
+    # synthesis, novelty, and interaction counts are advice (see
+    # ``page_quality_report``), reported but not gating.
     narrative_valid = (
+        sentences["sentence_redundancy_valid"]
+        and integrity["prose_integrity_valid"]
+        and not duplicate_blocks
+    )
+    narrative_advisory = not (
         density["narrative_density_valid"]
         and synthesis["section_synthesis_valid"]
-        and sentences["sentence_redundancy_valid"]
-        and integrity["prose_integrity_valid"]
         and interaction_valid
-        and (
-            not require_novelty
-            or (
-                bool(evidence["intro_evidence"])
-                and not narrative["redundant_sections"]
-                and not duplicate_blocks
-            )
-        )
+        and (not require_novelty or not narrative["redundant_sections"])
     )
     return {
         "id": page.get("id"),
         "title": page.get("title"),
         "publishable": (
-            grounding_valid and style_valid and structural_valid and narrative_valid
+            grounding_valid
+            and style_valid
+            and structural_valid
+            and narrative_valid
+            and visual_contract_valid
+            and visual_ready
         ),
         "grounding_valid": grounding_valid,
         "style_valid": style_valid,
         "promotional_phrases": current_promotional_phrases,
         "structural_valid": structural_valid,
+        "reader_question_rendered": reader_question_rendered,
+        "require_story": require_story,
         "narrative_valid": narrative_valid,
+        "narrative_advisory": narrative_advisory,
+        "visual_contract_valid": visual_contract_valid,
+        "visual_required": visual_required,
+        "visual_ready": visual_ready,
+        "visual_errors": list(serialized_visual.get("errors") or ()),
         "interaction_valid": interaction_valid,
         "require_interaction": require_interaction,
         "citation_coverage": float(grounding.get("citation_coverage") or 0.0),
@@ -997,6 +1146,10 @@ def summarize_page_audits(pages: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "grounding_valid": sum(bool(item["grounding_valid"]) for item in details),
         "structural_valid": sum(bool(item["structural_valid"]) for item in details),
         "narrative_valid": sum(bool(item["narrative_valid"]) for item in details),
+        "visual_contract_valid": sum(
+            bool(item["visual_contract_valid"]) for item in details
+        ),
+        "visual_ready": sum(bool(item["visual_ready"]) for item in details),
         "repaired": sum(bool(item["repaired"]) for item in details),
         "fallbacks": sum(bool(item["fallback"]) for item in details),
         "details": details,
@@ -1035,6 +1188,10 @@ def _readiness_failures(detail: dict[str, Any]) -> list[str]:
         failures.append("structure")
     if not detail.get("narrative_valid"):
         failures.append("narrative")
+    if not detail.get("visual_contract_valid"):
+        failures.append("visual-contract")
+    if not detail.get("visual_ready"):
+        failures.append("visual-readiness")
     mode = str(detail.get("generation_mode") or "")
     if mode != "generated":
         failures.append(f"generation:{mode or 'missing'}")
@@ -1150,3 +1307,59 @@ __all__ = [
     "sentence_boundary_count",
     "summarize_page_audits",
 ]
+
+
+STORY_REVIEW_QUESTIONS = ("problem", "path", "decision", "failure")
+STORY_REVIEW_MAX_SCORE = 2 * len(STORY_REVIEW_QUESTIONS)
+
+
+def parse_story_review(text: str) -> dict[str, Any] | None:
+    """Parse the reader-rubric JSON a model returned; ``None`` when unusable.
+
+    Scores are clamped to 0-2 and summed into ``score`` out of
+    ``STORY_REVIEW_MAX_SCORE``; ``passed`` is true when every question scored
+    at least 1 and the page neither leaks pipeline jargon nor repeats itself.
+    """
+
+    cleaned = (text or "").strip()
+    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+    if not match:
+        return None
+    try:
+        raw = json.loads(match.group(0))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    answers: dict[str, dict[str, Any]] = {}
+    for question in STORY_REVIEW_QUESTIONS:
+        value = raw.get(question)
+        score = 0
+        quote = ""
+        if isinstance(value, dict):
+            try:
+                score = int(value.get("score") or 0)
+            except (TypeError, ValueError):
+                score = 0
+            quote = str(value.get("quote") or "").strip()[:300]
+        elif isinstance(value, (int, float)):
+            score = int(value)
+        score = max(0, min(2, score))
+        answers[question] = {"score": score, "quote": quote}
+    total = sum(item["score"] for item in answers.values())
+    jargon = bool(raw.get("jargon"))
+    repetition = bool(raw.get("repetition"))
+    return {
+        "version": 1,
+        "score": total,
+        "max_score": STORY_REVIEW_MAX_SCORE,
+        "answers": answers,
+        "jargon": jargon,
+        "repetition": repetition,
+        "notes": str(raw.get("notes") or "").strip()[:300],
+        "passed": bool(
+            all(item["score"] >= 1 for item in answers.values())
+            and not jargon
+            and not repetition
+        ),
+    }

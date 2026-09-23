@@ -262,6 +262,7 @@ function AskAnswer({ repoId, query }: { repoId: string; query: string }) {
                       <Markdown
                         citations={turnRefs[i]}
                         onCite={(j) => selectCitation(i, j)}
+                        repoId={repoId}
                       >
                         {t.resp.answer || "(no answer)"}
                       </Markdown>

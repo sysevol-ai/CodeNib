@@ -30,8 +30,15 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
+from ..utils import is_test_file
 from .builder import WikiBuilder
+from .context_evidence import (
+    covering_test_blocks,
+    find_test_references,
+    history_evidence_blocks,
+)
 from .evidence import (
+    INTERACTION_LIST_LABEL,
     EvidenceItem,
     RelationItem,
     candidate_key,
@@ -50,7 +57,8 @@ from .evidence import (
     relation_matches_claim,
     remove_promotional_sentences,
 )
-from .multimodal import plan_media_slots
+from .fences import fence_marker as _fence_marker
+from .multimodal import MEDIA_PLAN_VERSION, plan_media_slots
 from .outline import (
     _is_supporting_file,
     _overview_file_score,
@@ -61,11 +69,24 @@ from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
 from .quality import leading_code_subject as _leading_code_subject
 from .quality import narrative_density_report as _narrative_density_report
 from .quality import page_quality_report as _page_quality_report
+from .quality import (
+    parse_story_review,
+)
 from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
+from .quality import (
+    section_sentence_redundancy_report as _section_sentence_redundancy_report,
+)
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
 from .store import WikiStore, WikiStoreCorruptionError, WikiStoredEntry, WikiStoreError
+from .story import (
+    STORY_BEAT_ROLES,
+    STORY_SCHEMA_VERSION,
+    finalize_story_ir,
+    story_quality_report,
+)
+from .visual_ir import architecture_contract_from_plan
 
 logger = get_logger(__name__)
 
@@ -88,10 +109,12 @@ _EXT_LANG = {
     "kts": "kotlin",
 }
 _MAX_CONTEXT_CHARS = 14000
+# Test names and commit subjects ride along after the source budget is spent.
+_MAX_CONTEXT_EVIDENCE_CHARS = 2400
 # A quoted body should carry an idea, not reproduce a file.
 _MAX_EXCERPT_LINES = 14
 _OUTLINE_PROMPT_VERSION = "13"
-_PAGE_PROMPT_VERSION = "106"
+_PAGE_PROMPT_VERSION = "128"
 _MAX_PLAN_REPAIRS = 3
 _MAX_FACT_PLAN_MODEL_CALLS = 3
 _MAX_COMPOSITION_PLAN_REPAIRS = 1
@@ -102,11 +125,14 @@ _DEGRADED_PAGE_RETRY_COOLDOWN_SECONDS = 6 * 60 * 60
 # owns a generation lock is stuck in retrieval or a provider call.  This is a
 # waiter budget only: timing out never steals the lock or interrupts its owner.
 _GENERATION_LOCK_TIMEOUT_SECONDS = 30.0
-# The overview is asked for a section per outline area, and a repository
-# outline runs to 9-17 of them. Twelve symbols could not ground that many,
-# so the coverage guard fired on pages that simply had nothing to say about
-# an area -- feed it enough to answer instead of relaxing what it asks.
+# Retrieval stays broad so the editor can choose a representative path. The
+# publication budget below deliberately prevents that evidence inventory from
+# leaking into the Overview body.
 _OVERVIEW_RETRIEVAL_LIMIT = 24
+_OVERVIEW_MIN_SECTIONS = 2
+_OVERVIEW_MAX_SECTIONS = 4
+_OVERVIEW_MAX_CLAIMS = 4
+_OVERVIEW_MAX_CLAIMS_PER_SECTION = 2
 _SOFT_PLAN_WARNING_PREFIXES = ("page thesis must contain exactly one sentence",)
 # Plan diagnostics come in three tiers. Soft ones are noise. *Composition* ones
 # say the page could be organised better -- a section leans on helpers, an area
@@ -119,9 +145,11 @@ _SOFT_PLAN_WARNING_PREFIXES = ("page thesis must contain exactly one sentence",)
 # surface for them to fire on -- was marked degraded even with a clean grounding
 # report, which made the flag fire on everything and mean nothing.
 _COMPOSITION_PLAN_WARNING_MARKERS = (
+    # A missing or malformed architecture card costs the Overview its visual,
+    # not its prose: the page is grounded without it.
+    "needs one valid semantic architecture plan",
     "elevates incidental helpers",
     "is not an explicit component handoff",
-    "no supported component handoff",
     "dominated by isolated",
     "reads as a callable catalog",
     "grounded in its allocated evidence",
@@ -132,6 +160,9 @@ _COMPOSITION_PLAN_WARNING_MARKERS = (
     "needs one publishable, non-redundant claim",
     "needs at least two supported facts",
     "names a source file as a subsystem",
+    "exceeds the editorial section budget",
+    "exceeds the editorial claim budget",
+    "exceeds the per-section claim budget",
 )
 
 
@@ -397,6 +428,25 @@ def _format_supported_literals(text: str) -> str:
         return match.group(0)
 
     return literal_re.sub(replace, text)
+
+
+def _compact_overview_identifiers(text: str) -> str:
+    """Hide source-path qualification that citations already communicate."""
+
+    def replace(match: re.Match[str]) -> str:
+        value = match.group("value")
+        source, separator, symbol = value.rpartition(":")
+        if not separator or not symbol:
+            return match.group(0)
+        if "/" not in source and not re.search(
+            r"\.(?:py|go|rs|ts|tsx|js|jsx|c|h|cc|cpp|java|rb|php|cs|kt|kts)$",
+            source,
+            flags=re.IGNORECASE,
+        ):
+            return match.group(0)
+        return f"`{symbol}`"
+
+    return re.sub(r"`(?P<value>[^`\n]+)`", replace, text)
 
 
 _CLAIM_SUPPORT_STOPWORDS = frozenset(
@@ -714,6 +764,157 @@ def _supported_framing_statements(
     return admitted, ids
 
 
+def _supported_story_question(
+    question: Any,
+    evidence: Sequence[EvidenceItem],
+    relations: Sequence[RelationItem],
+) -> tuple[str, list[str]] | None:
+    """Admit one concrete, cited question without treating it as a claim."""
+
+    if not isinstance(question, dict):
+        return None
+    statement = re.sub(r"\s+", " ", str(question.get("statement") or "")).strip()
+    if (
+        not statement.endswith("?")
+        or statement.count("?") != 1
+        or _sentence_boundary_count(statement) != 1
+    ):
+        return None
+
+    evidence_by_id = {item.id: item for item in evidence}
+    relations_by_id = {item.id: item for item in relations}
+    ids = [
+        str(item)
+        for item in question.get("evidence") or []
+        if str(item) in evidence_by_id or str(item) in relations_by_id
+    ]
+    cited_evidence = [evidence_by_id[item] for item in ids if item in evidence_by_id]
+    cited_relations = [relations_by_id[item] for item in ids if item in relations_by_id]
+    if not cited_evidence:
+        return None
+
+    statement = _normalize_callable_command_labels(statement, cited_evidence)
+    support_probe = re.sub(
+        r"^(?:how|why|what|where|when|which)\s+" r"(?:(?:does|do|is|are|can|will)\s+)?",
+        "",
+        statement.rstrip("?"),
+        flags=re.IGNORECASE,
+    )
+    if not _claim_has_local_support(
+        support_probe, cited_evidence
+    ) or _method_owner_generalizations(statement, cited_evidence):
+        return None
+    candidate = statement + "".join(f" [{item}]" for item in ids)
+    report = grounding_report(candidate, cited_evidence, cited_relations)
+    if any(
+        report[key]
+        for key in (
+            "unknown_citations",
+            "unknown_files",
+            "unsupported_identifiers",
+            "promotional_phrases",
+        )
+    ):
+        return None
+    return statement, ids
+
+
+def _admit_story(
+    rendered: dict[str, Any],
+    sections: Sequence[dict[str, Any]],
+    evidence: Sequence[EvidenceItem],
+    relations: Sequence[RelationItem],
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Validate story framing and order surviving sections by its beats."""
+
+    raw_story = rendered.get("story")
+    if not isinstance(raw_story, dict):
+        return list(sections), None
+
+    def title_key(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+
+    sections_by_title = {
+        title_key(section.get("title")): section for section in sections
+    }
+    ordered_sections: list[dict[str, Any]] = []
+    admitted_beats: list[dict[str, Any]] = []
+    used: set[str] = set()
+    for raw_beat in raw_story.get("beats") or []:
+        if not isinstance(raw_beat, dict):
+            continue
+        key = title_key(raw_beat.get("section"))
+        section = sections_by_title.get(key)
+        if section is None or key in used:
+            continue
+        used.add(key)
+        ordered_sections.append(section)
+        role = str(raw_beat.get("role") or "").strip().casefold()
+        if role not in STORY_BEAT_ROLES:
+            role = "mechanism"
+        beat: dict[str, Any] = {
+            "section": str(section.get("title") or "").strip(),
+            "role": role,
+        }
+
+        # The first beat opens the story; later beats need a supported bridge
+        # from what the reader just learned.  A malformed bridge is omitted and
+        # made visible by the story quality report rather than rendered.
+        transition = raw_beat.get("transition")
+        if admitted_beats and isinstance(transition, dict):
+            statements, ids = _supported_framing_statements(
+                [transition.get("statement")],
+                transition.get("evidence") or [],
+                evidence,
+                relations,
+            )
+            statement = statements[0] if statements else ""
+            if statement and is_interaction_claim(statement):
+                cited = {str(item) for item in ids}
+                flow_supported = any(
+                    item.id in cited and relation_matches_claim(statement, item)
+                    for item in relations
+                ) or any(
+                    item.id in cited and evidence_matches_claim(statement, item)
+                    for item in evidence
+                )
+                if not flow_supported:
+                    statement = ""
+            if statement and _sentence_boundary_count(statement) <= 1:
+                section_statements = [
+                    str(item)
+                    for item in (section.get("lead") or {}).get("statements") or []
+                ] + [
+                    str(claim.get("statement") or "")
+                    for claim in section.get("claims") or []
+                ]
+                if not any(
+                    _substantially_repeats(statement, existing)
+                    for existing in section_statements
+                ):
+                    beat["transition"] = {
+                        "statement": statement,
+                        "evidence": ids,
+                    }
+        admitted_beats.append(beat)
+
+    ordered_sections.extend(
+        section for section in sections if title_key(section.get("title")) not in used
+    )
+    story: dict[str, Any] = {
+        "version": STORY_SCHEMA_VERSION,
+        "origin": str(raw_story.get("origin") or "planned"),
+        "beats": admitted_beats,
+    }
+    question = _supported_story_question(
+        raw_story.get("reader_question"), evidence, relations
+    )
+    if question is not None:
+        statement, ids = question
+        story["reader_question"] = {"statement": statement, "evidence": ids}
+    return ordered_sections, story
+
+
 def _substantially_repeats(candidate: str, existing: str) -> bool:
     """Mirror the published-page redundancy rule before rendering prose."""
 
@@ -727,6 +928,90 @@ def _substantially_repeats(candidate: str, existing: str) -> bool:
     if candidate_subject and existing_subject and candidate_subject != existing_subject:
         return False
     return len(candidate_terms & existing_terms) / smaller >= 0.7
+
+
+def _section_markdown(title: str, parts: Sequence[str]) -> str:
+    return "\n\n".join([f"## {title}", *parts])
+
+
+def _drop_duplicate_framing(
+    title: str,
+    parts: Sequence[str],
+    framing_parts: Sequence[str],
+) -> List[str]:
+    """Remove framing paragraphs that the duplicate-block gate would reject.
+
+    A part is dropped only when its presence adds a duplicate pair, judged
+    by the same ``duplicate_prose_blocks`` rule the quality report applies,
+    so the renderer and the gate cannot disagree about what repeats.
+    """
+
+    kept = list(parts)
+    for framing in framing_parts:
+        if framing not in kept:
+            continue
+        without = [part for part in kept if part != framing]
+        with_pairs = len(_duplicate_prose_blocks(_section_markdown(title, kept)))
+        without_pairs = len(_duplicate_prose_blocks(_section_markdown(title, without)))
+        if with_pairs > without_pairs:
+            kept = without
+    return kept
+
+
+def _admissible_excerpt_caption(
+    title: str,
+    parts: Sequence[str],
+    captions: Sequence[str],
+) -> str:
+    """Pick the first excerpt caption that does not restate the section's prose.
+
+    The ``why`` a plan gives for an excerpt is often the claim above it said
+    again, and even ``Source excerpt from `a_b_c`.`` shares its identifier's
+    words with a claim about that symbol. The sentence-redundancy and
+    duplicate-block gates measure exactly that, so they decide here: a caption
+    that would add a redundant pair or a duplicate block yields to the next,
+    plainer candidate.
+    """
+
+    if not captions:
+        return ""
+    baseline = _section_markdown(title, parts)
+    redundant_before = len(
+        _section_sentence_redundancy_report(baseline)["redundant_sentence_pairs"]
+    )
+    duplicates_before = len(_duplicate_prose_blocks(baseline))
+    for caption in captions:
+        candidate = _section_markdown(title, [*parts, caption])
+        redundant_after = len(
+            _section_sentence_redundancy_report(candidate)["redundant_sentence_pairs"]
+        )
+        if redundant_after > redundant_before:
+            continue
+        if len(_duplicate_prose_blocks(candidate)) > duplicates_before:
+            continue
+        return caption
+    return captions[-1]
+
+
+def _framing_repeats_claim(framing: str, claim: str) -> bool:
+    """Detect a transition that merely previews the claim below it."""
+
+    if _substantially_repeats(framing, claim):
+        return True
+    framing_identifiers = {
+        re.sub(r"\(.*\)$", "", item).casefold()
+        for item in re.findall(r"`([^`\n]+)`", framing)
+    }
+    claim_identifiers = {
+        re.sub(r"\(.*\)$", "", item).casefold()
+        for item in re.findall(r"`([^`\n]+)`", claim)
+    }
+    if not framing_identifiers.intersection(claim_identifiers):
+        return False
+    framing_terms = _redundancy_terms(framing)
+    claim_terms = _redundancy_terms(claim)
+    smaller = min(len(framing_terms), len(claim_terms))
+    return smaller >= 4 and len(framing_terms & claim_terms) / smaller >= 0.5
 
 
 def _hard_plan_warnings(warnings: Sequence[str]) -> List[str]:
@@ -780,7 +1065,7 @@ def _plan_repair_score(
     plan: dict[str, Any],
     warnings: Sequence[str],
 ) -> tuple[int, int, int, int, int, int, int]:
-    """Rank admitted plans while preserving grounding warnings as hard priority."""
+    """Rank admitted plans without rewarding an overfilled Overview."""
 
     sections = plan.get("sections") or []
     claims = [claim for section in sections for claim in section.get("claims") or []]
@@ -788,22 +1073,36 @@ def _plan_repair_score(
         str(claim.get("role") or infer_claim_role(str(claim.get("statement") or "")))
         for claim in claims
     }
-    coverage_gaps = sum(
-        (
-            warning.startswith("Overview needs a ")
-            and " section grounded in its allocated evidence" in warning
+    overview_feedback = any(warning.startswith("Overview") for warning in warnings)
+    editorial_excess = 0
+    if overview_feedback:
+        editorial_excess = (
+            max(0, len(sections) - _OVERVIEW_MAX_SECTIONS)
+            + max(0, len(claims) - _OVERVIEW_MAX_CLAIMS)
+            + sum(
+                max(
+                    0,
+                    len(section.get("claims") or []) - _OVERVIEW_MAX_CLAIMS_PER_SECTION,
+                )
+                for section in sections
+            )
         )
-        or warning.startswith("parent page needs a section-level ")
-        for warning in warnings
-    )
     return (
         int(not bool(sections)),
-        coverage_gaps,
-        len(_hard_plan_warnings(warnings)),
+        len(_blocking_plan_warnings(warnings)),
+        editorial_excess,
         len(warnings),
         -min(len(roles), 6),
-        -min(len(sections), 5),
-        -min(len(claims), 12),
+        (
+            abs(min(len(sections), _OVERVIEW_MAX_SECTIONS) - _OVERVIEW_MIN_SECTIONS)
+            if overview_feedback
+            else -min(len(sections), 5)
+        ),
+        (
+            -min(len(claims), _OVERVIEW_MAX_CLAIMS)
+            if overview_feedback
+            else -min(len(claims), 12)
+        ),
     )
 
 
@@ -842,6 +1141,141 @@ def _condense_relation_free_overview(
     return condensed
 
 
+def _apply_overview_editorial_budget(plan: dict[str, Any]) -> dict[str, Any]:
+    """Compile an Overview down to one readable, source-backed argument.
+
+    Planning may inspect broad evidence, but publication is deliberately
+    selective.  This deterministic pass is the last line of defence against a
+    model turning the repository outline into a symbol inventory.
+    """
+
+    concise = copy.deepcopy(plan)
+    concise.pop("purpose", None)
+    concise.pop("map", None)
+    if concise.get("see_also"):
+        concise["see_also"] = list(concise["see_also"])[:2]
+
+    raw_sections = [
+        section
+        for section in concise.get("sections") or []
+        if isinstance(section, dict) and section.get("claims")
+    ]
+    story = concise.get("story") or {}
+    beats = {
+        re.sub(r"\s+", " ", str(beat.get("section") or "")).strip().casefold(): beat
+        for beat in story.get("beats") or []
+        if isinstance(beat, dict)
+    }
+    story_role_priority = {
+        "entry": 0,
+        "mechanism": 1,
+        "handoff": 1,
+        "decision": 2,
+        "outcome": 2,
+        "boundary": 3,
+        "orientation": 4,
+    }
+    claim_role_priority = {
+        "flow": 0,
+        "rationale": 1,
+        "responsibility": 2,
+        "contract": 3,
+        "entry": 4,
+        "purpose": 5,
+        "component": 6,
+    }
+
+    def claim_rank(claim: dict[str, Any]) -> tuple[int, int, int]:
+        statement = str(claim.get("statement") or "")
+        role = str(claim.get("role") or infer_claim_role(statement))
+        return (
+            claim_role_priority.get(role, 7),
+            int(not is_interaction_claim(statement)),
+            -len(_redundancy_terms(statement)),
+        )
+
+    if len(raw_sections) > _OVERVIEW_MAX_SECTIONS:
+        keep = {0, len(raw_sections) - 1}
+
+        def section_rank(index: int) -> tuple[int, int, int, int]:
+            section = raw_sections[index]
+            title = re.sub(r"\s+", " ", str(section.get("title") or "")).strip()
+            beat = beats.get(title.casefold()) or {}
+            claims = list(section.get("claims") or [])
+            best_claim = min(
+                (claim_rank(claim) for claim in claims),
+                default=(7, 1, 0),
+            )
+            return (
+                story_role_priority.get(str(beat.get("role") or ""), 5),
+                best_claim[0],
+                best_claim[1],
+                index,
+            )
+
+        candidates = sorted(
+            (index for index in range(1, len(raw_sections) - 1)),
+            key=section_rank,
+        )
+        keep.update(candidates[: max(0, _OVERVIEW_MAX_SECTIONS - len(keep))])
+        raw_sections = [
+            section for index, section in enumerate(raw_sections) if index in keep
+        ]
+
+    prepared_sections: list[dict[str, Any]] = []
+    ranked_claims: list[list[tuple[int, dict[str, Any]]]] = []
+    for section in raw_sections:
+        prepared = copy.deepcopy(section)
+        prepared.pop("excerpt", None)
+        # The thesis and reader question already orient the landing page, while
+        # transitions connect later beats. A separate lead sentence in every
+        # section repeats the claim that follows and makes concise plans feel
+        # longer than they are.
+        prepared.pop("lead", None)
+        claims = list(prepared.get("claims") or [])
+        ranked_claims.append(
+            sorted(enumerate(claims), key=lambda item: claim_rank(item[1]))
+        )
+        prepared_sections.append(prepared)
+
+    selected: list[set[int]] = [set() for _ in prepared_sections]
+    for section_index, candidates in enumerate(ranked_claims):
+        if candidates:
+            selected[section_index].add(candidates[0][0])
+    remaining_budget = max(
+        0,
+        _OVERVIEW_MAX_CLAIMS - sum(len(items) for items in selected),
+    )
+    optional_claims = sorted(
+        (
+            (*claim_rank(claim), section_index, claim_index)
+            for section_index, claims in enumerate(ranked_claims)
+            for claim_index, claim in claims
+            if claim_index not in selected[section_index]
+        )
+    )
+    for *_rank, section_index, claim_index in optional_claims:
+        if remaining_budget <= 0:
+            break
+        if len(selected[section_index]) >= _OVERVIEW_MAX_CLAIMS_PER_SECTION:
+            continue
+        selected[section_index].add(claim_index)
+        remaining_budget -= 1
+
+    final_sections = []
+    for section_index, section in enumerate(prepared_sections):
+        claims = list(section.get("claims") or [])
+        section["claims"] = [
+            claim
+            for index, claim in enumerate(claims)
+            if index in selected[section_index]
+        ]
+        if section["claims"]:
+            final_sections.append(section)
+    concise["sections"] = final_sections
+    return concise
+
+
 def _merge_fact_plans(
     base: dict[str, Any],
     candidate: dict[str, Any],
@@ -853,7 +1287,15 @@ def _merge_fact_plans(
         merged["thesis"] = copy.deepcopy(candidate["thesis"])
     # A repair pass may be the first attempt that produced usable framing or a
     # scan table; keep it rather than losing it to the earlier plan.
-    for key in ("purpose", "map", "flow", "see_also"):
+    for key in (
+        "story",
+        "purpose",
+        "map",
+        "flow",
+        "journey",
+        "architecture",
+        "see_also",
+    ):
         if not merged.get(key) and candidate.get(key):
             merged[key] = copy.deepcopy(candidate[key])
 
@@ -943,13 +1385,27 @@ def _supplement_topic_relation_flows(
     relations: Sequence[RelationItem],
     evidence: Sequence[EvidenceItem] = (),
 ) -> dict[str, Any]:
-    """Align or materialize callable edges omitted by the model plan."""
+    """Align callable evidence on detail pages without polluting Overview."""
 
     if not relations:
         return plan
 
     supplemented = copy.deepcopy(plan)
     sections = supplemented.setdefault("sections", [])
+
+    # The Overview owns a semantic architecture model. Raw callable handoffs
+    # are inputs to that synthesis, not a second path visualization or an
+    # interaction inventory alongside it.
+    if meta.get("id") == "overview":
+        for section in sections:
+            section["claims"] = [
+                claim
+                for claim in section.get("claims") or []
+                if str(claim.get("role") or "") != "flow"
+            ]
+        supplemented.pop("flow", None)
+        supplemented.pop("journey", None)
+        return supplemented
 
     def endpoint_symbol(endpoint: str) -> str:
         return endpoint.rsplit(":", 1)[-1].strip()
@@ -1088,99 +1544,6 @@ def _supplement_topic_relation_flows(
                 claims[replaceable] = flow
         return supplemented
 
-    for topic in meta.get("major_topics") or []:
-        if not isinstance(topic, dict):
-            continue
-        topic_title = str(topic.get("title") or "").strip()
-        title_terms = _prose_terms(topic_title)
-        topic_files = {
-            AgentWiki._norm_hint_path(str(file))
-            for file in topic.get("files") or []
-            if str(file).strip()
-        }
-        topic_relations = sorted(
-            (
-                item
-                for item in relations
-                if any(
-                    AgentWiki._norm_hint_path(endpoint.split(":", 1)[0]) in topic_files
-                    for endpoint in (item.source, item.target)
-                )
-                and item.source.rsplit(":", 1)[-1].endswith("()")
-                and item.target.rsplit(":", 1)[-1].endswith("()")
-            ),
-            key=lambda item: (
-                sum(
-                    AgentWiki._norm_hint_path(endpoint.split(":", 1)[0]) in topic_files
-                    for endpoint in (item.source, item.target)
-                ),
-                AgentWiki._norm_hint_path(item.source.split(":", 1)[0]) in topic_files,
-            ),
-            reverse=True,
-        )
-        section = next(
-            (
-                item
-                for item in sections
-                if title_terms
-                and title_terms & _prose_terms(str(item.get("title") or ""))
-            ),
-            None,
-        )
-        if not topic_relations:
-            continue
-        created = section is None
-        if created:
-            if not topic_title or len(sections) >= 5:
-                continue
-            section = {"title": topic_title, "claims": []}
-            sections.append(section)
-        covered = {
-            str(evidence_id)
-            for claim in section.get("claims") or []
-            for evidence_id in claim.get("evidence") or []
-        }
-        claims = section.setdefault("claims", [])
-        has_topic_relation = any(item.id in covered for item in topic_relations)
-        target_count = max(
-            int(not has_topic_relation),
-            max(0, 2 - len(claims)),
-        )
-        target_count = min(
-            target_count,
-            sum(item.id not in covered for item in topic_relations),
-        )
-        if target_count == 0:
-            continue
-        added = 0
-        for relation in topic_relations:
-            if relation.id in covered:
-                continue
-            source = relation.source.rsplit(":", 1)[-1]
-            target = relation.target.rsplit(":", 1)[-1]
-            claim = {
-                "role": "flow",
-                "statement": f"`{source}` calls `{target}`",
-                "evidence": [relation.id],
-            }
-            if len(claims) < 3:
-                claims.append(claim)
-            else:
-                replaceable = next(
-                    (
-                        index
-                        for index, existing in enumerate(claims)
-                        if str(existing.get("role") or "") == "component"
-                    ),
-                    None,
-                )
-                if replaceable is None:
-                    break
-                claims[replaceable] = claim
-            covered.add(relation.id)
-            added += 1
-            if added >= target_count:
-                break
     return supplemented
 
 
@@ -1392,6 +1755,64 @@ def _renderable_plan(
         else:
             rendered.pop("flow", None)
 
+    # A journey stage is admitted like a claim: the named entity must be a
+    # supported identifier and the sentence must be borne out by its citation.
+    journey = rendered.get("journey") or {}
+    if journey:
+        admitted_stages = []
+        seen_entities: set[str] = set()
+        for stage in journey.get("stages") or []:
+            entity = str(stage.get("stage") or "").strip().strip("`").strip()
+            statement = re.sub(r"\s+", " ", str(stage.get("statement") or "")).strip()
+            ids = [
+                str(item)
+                for item in stage.get("evidence") or []
+                if str(item) in allowed
+            ]
+            cited_evidence = [item for item in evidence if item.id in ids]
+            if (
+                not entity
+                or not statement
+                or not ids
+                or entity.casefold() in seen_entities
+            ):
+                continue
+            if describes_private_entry(f"`{entity}`", role="entry"):
+                continue
+            candidate = (
+                f"`{entity}`: "
+                + _format_supported_literals(statement).rstrip(".")
+                + "."
+                + "".join(f" [{item}]" for item in ids)
+            )
+            report = grounding_report(candidate, evidence, relations)
+            if any(
+                report[key]
+                for key in (
+                    "unknown_citations",
+                    "unknown_files",
+                    "unsupported_identifiers",
+                    "promotional_phrases",
+                )
+            ):
+                continue
+            if cited_evidence and not _claim_has_local_support(
+                statement,
+                cited_evidence,
+            ):
+                continue
+            seen_entities.add(entity.casefold())
+            admitted_stages.append(
+                {"stage": entity, "statement": statement, "evidence": ids}
+            )
+        if len(admitted_stages) >= 3:
+            rendered["journey"] = {
+                "title": str(journey.get("title") or "").strip(),
+                "stages": admitted_stages[:6],
+            }
+        else:
+            rendered.pop("journey", None)
+
     rendered_sections = []
     for section in rendered.get("sections") or []:
         rendered_claims = []
@@ -1473,19 +1894,20 @@ def _renderable_plan(
             existing_terms = _redundancy_terms(str(existing.get("statement") or ""))
             role_priority = {
                 "flow": 0,
-                "contract": 1,
-                "responsibility": 2,
-                "entry": 3,
-                "purpose": 4,
-                "component": 5,
+                "rationale": 1,
+                "contract": 2,
+                "responsibility": 3,
+                "entry": 4,
+                "purpose": 5,
+                "component": 6,
             }
             candidate_score = (
                 len(terms),
-                -role_priority.get(str(claim.get("role") or ""), 6),
+                -role_priority.get(str(claim.get("role") or ""), 7),
             )
             existing_score = (
                 len(existing_terms),
-                -role_priority.get(str(existing.get("role") or ""), 6),
+                -role_priority.get(str(existing.get("role") or ""), 7),
             )
             if candidate_score > existing_score:
                 deduplicated_claims[duplicate_index] = claim
@@ -1614,18 +2036,370 @@ def _renderable_plan(
         admitted_claims.extend(claim_statements)
         if section_terms:
             prior_sections.append((section_terms, section_subjects))
+    distinct_sections, story = _admit_story(
+        rendered,
+        distinct_sections,
+        evidence,
+        relations,
+    )
     rendered["sections"] = distinct_sections
+    if story is not None:
+        rendered["story"] = story
+    else:
+        rendered.pop("story", None)
     return rendered
+
+
+_HANDOFF_LABEL_LEAD_RE = re.compile(
+    r"^(?:,?\s*(?:to|so that|in order to|which|that|and then|then|before|after|"
+    r"when|once|so)\s+)",
+    re.IGNORECASE,
+)
+
+
+def _handoff_label(statement: str) -> str:
+    """Pull the "what moves or why" clause out of a relation-backed claim.
+
+    ``A() calls B() to adjust the method for the redirect`` keeps ``adjust the
+    method for the redirect``; a bare ``A() calls B()`` keeps nothing. The
+    clause was admitted with the claim, so it adds no fact.
+    """
+
+    match = re.match(r"^\s*`[^`\n]+`[^`\n]*`[^`\n]+`\s*(.*)$", statement or "")
+    if not match:
+        return ""
+    clause = _HANDOFF_LABEL_LEAD_RE.sub("", match.group(1).strip())
+    clause = clause.rstrip(".").strip()
+    if not clause or len(clause) > 96 or "`" in clause:
+        return ""
+    return clause[0].lower() + clause[1:]
+
+
+def _interaction_row(relation: RelationItem, label: str = "") -> str:
+    """Render one graph edge as ``- src → tgt: label [R#]`` with code spans."""
+
+    def leaf(endpoint: str) -> str:
+        return endpoint.rsplit(":", 1)[-1].strip()
+
+    row = f"- `{leaf(relation.source)}` → `{leaf(relation.target)}`"
+    if label:
+        row += f": {label}"
+    return f"{row} [{relation.id}]"
+
+
+def _excerpt_focus_terms(section: dict[str, Any], why: str = "") -> set[str]:
+    """Identifier leaves and content words a section's claims mention."""
+
+    texts = [why]
+    for claim in section.get("claims") or []:
+        texts.append(str(claim.get("statement") or ""))
+    lead = section.get("lead") or {}
+    texts.extend(str(item) for item in lead.get("statements") or [])
+    terms: set[str] = set()
+    for text in texts:
+        for span in re.findall(r"`([^`\n]+)`", text):
+            leaf = re.sub(r"\([^)]*\)$", "", span.strip()).rsplit(":", 1)[-1]
+            leaf = re.split(r"::|\.", leaf)[-1].strip()
+            if len(leaf) >= 3:
+                terms.add(leaf.casefold())
+        prose = re.sub(r"`[^`\n]+`", " ", text)
+        for word in re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", prose):
+            lowered = word.casefold()
+            if lowered not in _EXCERPT_STOPWORDS:
+                terms.add(lowered)
+    return terms
+
+
+_EXCERPT_STOPWORDS = frozenset(
+    {
+        "that",
+        "this",
+        "with",
+        "from",
+        "when",
+        "then",
+        "into",
+        "each",
+        "which",
+        "their",
+        "there",
+        "these",
+        "those",
+        "also",
+        "only",
+        "before",
+        "after",
+        "returns",
+        "return",
+        "calls",
+        "call",
+        "uses",
+        "used",
+        "value",
+        "values",
+        "object",
+        "method",
+        "function",
+        "class",
+        "true",
+        "false",
+        "none",
+        "self",
+        "will",
+        "than",
+        "them",
+        "over",
+        "through",
+        "where",
+        "while",
+        "because",
+        "otherwise",
+        "whether",
+        "would",
+        "should",
+        "could",
+    }
+)
+
+
+def _excerpt_window(
+    content: str,
+    focus_terms: set[str],
+    *,
+    max_lines: int = _MAX_EXCERPT_LINES,
+) -> tuple[list[str], list[int]]:
+    """Pick the lines that carry a section's idea, not the top of the body.
+
+    The window with the most lines mentioning a focus term wins; ties prefer
+    the earliest window so a signature stays visible when nothing is named.
+    The returned line numbers (1-based within the window) are the lines that
+    mention a focus term, for the renderer to mark.
+    """
+
+    lines = [
+        line.rstrip()
+        for line in (content or "").splitlines()
+        if line.strip() and not line.strip().startswith("…")
+    ]
+    if not lines:
+        return [], []
+
+    def hits(line: str) -> bool:
+        lowered = line.casefold()
+        return any(term in lowered for term in focus_terms)
+
+    scores = [1 if focus_terms and hits(line) else 0 for line in lines]
+    if len(lines) <= max_lines:
+        window = lines
+        offset = 0
+    else:
+        best_offset = 0
+        best_score = -1
+        for offset in range(0, len(lines) - max_lines + 1):
+            score = sum(scores[offset : offset + max_lines])
+            # Keep the definition line in view when the best window is close.
+            if offset <= 2:
+                score += 0.5
+            if score > best_score:
+                best_offset, best_score = offset, score
+        offset = best_offset
+        window = lines[offset : offset + max_lines]
+    marked = [index + 1 for index, line in enumerate(window) if scores[offset + index]][
+        :6
+    ]
+    return window, marked
+
+
+def _journey_flow(journey: Any) -> dict[str, Any] | None:
+    """Express the recorded journey as flow steps for the visual fallback.
+
+    Each hop is cited by the relation that reached the next stage, so the
+    flow contract validates against the page's own evidence.
+    """
+
+    if not isinstance(journey, dict):
+        return None
+    stages = [
+        stage
+        for stage in journey.get("stages") or []
+        if isinstance(stage, dict) and str(stage.get("stage") or "").strip()
+    ]
+    steps = []
+    for previous, current in zip(stages, stages[1:], strict=False):
+        if current.get("relation"):
+            evidence = [str(current["relation"])]
+        else:
+            evidence = [str(item) for item in current.get("evidence") or []]
+        if not evidence:
+            continue
+        steps.append(
+            {
+                "from": f"`{previous['stage']}`",
+                "to": f"`{current['stage']}`",
+                "label": "",
+                "evidence": evidence,
+            }
+        )
+    if len(steps) < 2:
+        return None
+    return {"title": str(journey.get("title") or "").strip(), "steps": steps}
+
+
+def _journey_from_path(
+    entry_path: Sequence[dict[str, Any]],
+    narration: Mapping[str, str],
+    evidence: Sequence[EvidenceItem],
+    relations: Sequence[RelationItem],
+) -> dict[str, Any] | None:
+    """Admit one sentence per recorded stage; fall back to its call site."""
+
+    by_id = {item.id: item for item in evidence}
+    relation_ids = {item.id for item in relations}
+    stages: list[dict[str, Any]] = []
+    for index, step in enumerate(entry_path):
+        item = by_id.get(str(step.get("evidence") or ""))
+        if item is None:
+            continue
+        leaf = item.symbol.rsplit(":", 1)[-1].strip()
+        # The hop that reached this stage, kept so the visual fallback can
+        # cite each arrow by its recorded call site.
+        incoming = str(step.get("relation") or "")
+        reached_by = {"relation": incoming} if incoming in relation_ids else {}
+        statement = re.sub(r"\s+", " ", str(narration.get(item.id) or "")).strip()
+        statement = statement.rstrip(".")
+        admitted = False
+        if statement and _claim_has_local_support(statement, [item]):
+            candidate = (
+                f"`{leaf}`: " + _format_supported_literals(statement) + f". [{item.id}]"
+            )
+            report = grounding_report(candidate, evidence, relations)
+            admitted = not any(
+                report[key]
+                for key in (
+                    "unknown_citations",
+                    "unknown_files",
+                    "unsupported_identifiers",
+                    "promotional_phrases",
+                )
+            )
+        if admitted:
+            stages.append(
+                {
+                    "stage": leaf,
+                    "statement": statement,
+                    "evidence": [item.id],
+                    **reached_by,
+                }
+            )
+            continue
+        following = entry_path[index + 1] if index + 1 < len(entry_path) else None
+        relation_id = str((following or {}).get("relation") or "")
+        if following is not None and relation_id in relation_ids:
+            next_leaf = str(following.get("symbol") or "").rsplit(":", 1)[-1]
+            stages.append(
+                {
+                    "stage": leaf,
+                    "statement": f"hands off to `{next_leaf}`",
+                    "evidence": [relation_id],
+                    **reached_by,
+                }
+            )
+        else:
+            # The last stage has no outgoing hop; the hop that reached it is
+            # the recorded fact to cite.
+            previous = entry_path[index - 1] if index > 0 else None
+            if previous is not None and incoming in relation_ids:
+                prev_leaf = str(previous.get("symbol") or "").rsplit(":", 1)[-1]
+                stages.append(
+                    {
+                        "stage": leaf,
+                        "statement": f"receives the work from `{prev_leaf}`",
+                        "evidence": [incoming],
+                        "relation": incoming,
+                    }
+                )
+    if len(stages) < 3:
+        return None
+    first = stages[0]["stage"]
+    last = stages[-1]["stage"]
+    return {"title": f"From `{first}` to `{last}`", "stages": stages[:6]}
+
+
+def _owning_topic(
+    files: Sequence[str],
+    topics: Sequence[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return the outline area whose files include one of ``files``."""
+
+    normalized = [file.replace("\\", "/").lstrip("./") for file in files if file]
+    for topic in topics:
+        topic_files = {
+            str(item).replace("\\", "/").lstrip("./")
+            for item in topic.get("files") or []
+        }
+        if any(file in topic_files for file in normalized):
+            return topic
+    return None
+
+
+def _subsystem_table(overview_context: dict[str, Any]) -> str:
+    """Render top-level areas as compact navigation, never a second architecture."""
+
+    def cell(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).replace("|", "\\|").strip()
+
+    links = []
+    for topic in overview_context.get("topics") or []:
+        page_id = str(topic.get("id") or "").strip()
+        title = cell(topic.get("title"))
+        if not page_id or not title:
+            continue
+        links.append(f"- [{title}](?p={page_id})")
+    if not links:
+        return ""
+    return "\n".join(links[:8])
 
 
 def _fact_plan_markdown(
     plan: dict[str, Any],
     evidence: List[EvidenceItem],
     relations: List[RelationItem],
+    *,
+    concise_overview: bool = False,
+    overview_context: dict[str, Any] | None = None,
 ) -> str:
-    """Render an admitted fact plan as citation-stable Markdown."""
+    """Render an admitted fact plan as citation-stable Markdown.
 
+    ``overview_context`` carries the deterministic skeleton of a landing page:
+    the outline's top-level areas (with their files) and the manifest entry
+    points. The journey links each stage to the area that owns its source.
+    """
+
+    finalized_story = copy.deepcopy(plan.get("story") or {})
     plan = _renderable_plan(plan, evidence, relations)
+    if concise_overview:
+        plan = _apply_overview_editorial_budget(plan)
+        current_story = plan.setdefault("story", {})
+        prior_question = finalized_story.get("reader_question") or {}
+        prior_ids = [str(item) for item in prior_question.get("evidence") or []]
+        allowed_ids = {item.id for item in (*evidence, *relations)}
+        if (
+            finalized_story.get("version") == STORY_SCHEMA_VERSION
+            and finalized_story.get("origin") in {"planned", "mixed"}
+            and not current_story.get("reader_question")
+            and str(prior_question.get("statement") or "").strip().endswith("?")
+            and prior_ids
+            and set(prior_ids) <= allowed_ids
+        ):
+            # The runtime plan has already admitted this question once. Keep it
+            # when a second renderer-normalization pass cannot re-prove a
+            # repository-level synthesis from any one evidence body.
+            current_story["reader_question"] = copy.deepcopy(prior_question)
+
+    def display_statement(value: Any) -> str:
+        rendered = _format_supported_literals(str(value or ""))
+        return _compact_overview_identifiers(rendered) if concise_overview else rendered
+
     intro: tuple[str, list[str]] | None = None
     admitted_thesis = _supported_thesis(
         plan.get("thesis"),
@@ -1634,22 +2408,31 @@ def _fact_plan_markdown(
     )
     if admitted_thesis is not None:
         statement, ids = admitted_thesis
-        intro = (_format_supported_literals(statement).rstrip(".") + ".", ids)
+        intro = (display_statement(statement).rstrip(".") + ".", ids)
     if intro is None:
         readme_intro = _readme_intro(evidence)
         if readme_intro is not None:
             intro = (readme_intro[0], [readme_intro[1]])
+    question_block = ""
+    story = plan.get("story") or {}
+    reader_question = story.get("reader_question") or {}
+    question = str(reader_question.get("statement") or "").strip()
+    question_ids = [str(item) for item in reader_question.get("evidence") or []]
+    if question and question_ids:
+        question = display_statement(question).rstrip("?") + "?"
+        question_block = f"> **Reader question:** {question} " + " ".join(
+            f"[{item}]" for item in question_ids
+        )
     # Framing first, then the scan table, then the detail -- a reader who has
     # not seen the codebase needs to know what this area is for before being
     # handed symbol-level handoffs.
     purpose_block = ""
-    purpose = plan.get("purpose") or {}
+    purpose = {} if concise_overview else plan.get("purpose") or {}
     purpose_statements = [str(item).strip() for item in purpose.get("statements") or []]
     purpose_statements = [item for item in purpose_statements if item]
     if purpose_statements:
         sentences = [
-            _format_supported_literals(item).rstrip(".") + "."
-            for item in purpose_statements
+            display_statement(item).rstrip(".") + "." for item in purpose_statements
         ]
         purpose_block = " ".join(sentences)
         ids = [str(item) for item in purpose.get("evidence") or []]
@@ -1657,7 +2440,7 @@ def _fact_plan_markdown(
             purpose_block += " " + " ".join(f"[{item}]" for item in ids)
 
     map_block = ""
-    rows = plan.get("map") or []
+    rows = [] if concise_overview else plan.get("map") or []
     if rows:
         lines = ["| Capability | Implemented by | Source |", "|---|---|---|"]
         for row in rows:
@@ -1670,7 +2453,7 @@ def _fact_plan_markdown(
     # Mermaid node ids must be opaque; the labels carry the real names.
     flow_block = ""
     flow_title = "How it fits together"
-    flow = plan.get("flow") or {}
+    flow = {} if concise_overview else plan.get("flow") or {}
     if flow.get("steps"):
         node_ids: dict[str, str] = {}
 
@@ -1708,16 +2491,49 @@ def _fact_plan_markdown(
             # The fence is stripped before the prose checks run, so the caption
             # is where this block states its sources.
             lines.append("")
+            # Reader-facing words only: "admitted" and "handoff" are names
+            # from this pipeline, not from the repository.
             lines.append(
                 flow_title.rstrip(".")
-                + ". The diagram traces the admitted source-to-target handoffs "
-                "between the named components. "
+                + ". Each arrow is a call site recorded in the index. "
                 + " ".join(f"[{item}]" for item in caption_ids)
             )
             flow_block = "\n".join(lines)
 
+    journey_block = ""
+    journey_title = ""
+    journey = (plan.get("journey") or {}) if concise_overview else {}
+    subsystem_block = ""
+    if journey.get("stages"):
+        journey_title = str(journey.get("title") or "").strip() or "How a request moves"
+        evidence_files = {item.id: item.file for item in evidence}
+        topics = list((overview_context or {}).get("topics") or [])
+        lines = []
+        for index, stage in enumerate(journey["stages"], start=1):
+            entity = str(stage.get("stage") or "").strip().strip("`")
+            statement = display_statement(str(stage.get("statement") or "")).rstrip(".")
+            ids = [str(item) for item in stage.get("evidence") or []]
+            owner = _owning_topic(
+                [evidence_files.get(item, "") for item in ids],
+                topics,
+            )
+            # The owning area sits with the entity, so every line still ends
+            # in its citations and the block counts as cited.
+            head = f"{index}. **`{entity}`**"
+            if owner is not None:
+                head += f" · [{owner['title']}](?p={owner['id']})"
+            lines.append(
+                f"{head}: {statement}. " + " ".join(f"[{item}]" for item in ids)
+            )
+        journey_block = "\n".join(lines)
+    journey_statements = [
+        str(stage.get("statement") or "") for stage in journey.get("stages") or []
+    ]
+    if concise_overview and overview_context:
+        subsystem_block = _subsystem_table(overview_context)
+
     see_also_block = ""
-    refs = plan.get("see_also") or []
+    refs = [] if subsystem_block else plan.get("see_also") or []
     if refs:
         parts = []
         for ref in refs:
@@ -1732,48 +2548,121 @@ def _fact_plan_markdown(
 
     evidence_by_id = {item.id: item for item in evidence}
 
-    def excerpt_block(section: dict[str, Any]) -> str:
-        """Render a cited body verbatim from the evidence we hold."""
+    def excerpt_block(section: dict[str, Any]) -> tuple[str, List[str]]:
+        """Render the cited lines a section talks about, with those lines marked.
 
+        Returns the fenced excerpt and caption candidates in preference
+        order: the model's ``why`` note when it is admissible, the caption
+        naming the excerpted symbol, then a bare label.  The section assembly
+        picks the first one that does not restate the section's prose.
+        """
+
+        if concise_overview:
+            return "", []
         spec = section.get("excerpt") or {}
         item = evidence_by_id.get(str(spec.get("evidence") or ""))
         if item is None or not (item.content or "").strip():
-            return ""
-        lines = [
-            line
-            for line in item.content.splitlines()
-            if line.strip() and not line.strip().startswith("…")
-        ][:_MAX_EXCERPT_LINES]
-        if len(lines) < 2:
-            return ""
+            return "", []
+        focus_terms = _excerpt_focus_terms(section, str(spec.get("why") or ""))
+        window, marked = _excerpt_window(item.content, focus_terms)
+        if len(window) < 2:
+            return "", []
         language = _lang(item.file)
-        # The evidence ledger already owns the file and line span.  Repeating
-        # it as prose made every deterministic excerpt violate the page's own
-        # reference-narration rule; the model-authored ``why`` was also an
-        # unadmitted factual path.  A neutral linked caption preserves source
-        # access without making another claim.
-        return "\n".join(
-            [f"```{language}", *lines, "```", "", f"Source excerpt. [{item.id}]"]
-        )
+        info = language
+        if marked:
+            info = f"{language or 'text'} hl={','.join(str(n) for n in marked)}"
+        why = re.sub(r"\s+", " ", str(spec.get("why") or "")).strip()
+        caption = ""
+        if why and _claim_has_local_support(why, [item]):
+            candidate = _format_supported_literals(why).rstrip(".") + "."
+            report = grounding_report(f"{candidate} [{item.id}]", evidence, relations)
+            if not any(
+                report[key]
+                for key in (
+                    "unknown_citations",
+                    "unknown_files",
+                    "unsupported_identifiers",
+                    "promotional_phrases",
+                )
+            ):
+                caption = f"*What to notice:* {candidate} [{item.id}]"
+        leaf = item.symbol.rsplit(":", 1)[-1].strip()
+        captions = [caption] if caption else []
+        if leaf and leaf != item.file:
+            captions.append(f"Source excerpt from `{leaf}`. [{item.id}]")
+        captions.append(f"Source excerpt. [{item.id}]")
+        # Source that itself contains ``` (a doc comment showing Markdown)
+        # would close a plain fence early and spill code into the prose.
+        marker = _fence_marker(window)
+        return "\n".join([f"{marker}{info}", *window, marker]), captions
 
+    story_beats = {
+        re.sub(r"\s+", " ", str(beat.get("section") or "")).strip().casefold(): beat
+        for beat in story.get("beats") or []
+        if isinstance(beat, dict)
+    }
+    relation_by_id = {item.id: item for item in relations}
+    # A flow step already says what moves along an edge; reuse that label
+    # when the same relation appears in a section's list.
+    flow_labels: dict[str, str] = {}
+    for step in (plan.get("flow") or {}).get("steps") or []:
+        label = re.sub(r"\s+", " ", str(step.get("label") or "")).strip()
+        for item in step.get("evidence") or []:
+            if label and str(item).startswith("R") and str(item) not in flow_labels:
+                flow_labels[str(item)] = label
+    listed_relations: set[str] = set()
     rendered_sections: List[tuple[str, List[str]]] = []
     for section in plan.get("sections") or []:
-        sentences = []
-        section_ids: list[str] = []
+        claim_rows: list[tuple[str, str, list[str]]] = []
+        interaction_lines: list[str] = []
         for claim in section.get("claims") or []:
             statement = re.sub(r"\s+", " ", str(claim.get("statement") or "")).strip()
             ids = [str(item) for item in claim.get("evidence") or []]
-            rendered_statement = _format_supported_literals(statement)
+            relation_ids = [item for item in ids if item in relation_by_id]
+            # The journey already told this step; a section that retells it
+            # is the repetition a reader notices first.
+            if journey_statements and any(
+                _substantially_repeats(statement, told) for told in journey_statements
+            ):
+                continue
+            if str(claim.get("role") or "") == "flow" and relation_ids:
+                # A relation is graph structure. It is rendered as a row with
+                # its call site, never as a sentence that restates the edge.
+                for relation_id in relation_ids:
+                    if relation_id in listed_relations:
+                        continue
+                    listed_relations.add(relation_id)
+                    interaction_lines.append(
+                        _interaction_row(
+                            relation_by_id[relation_id],
+                            flow_labels.get(relation_id) or _handoff_label(statement),
+                        )
+                    )
+                continue
+            rendered_statement = display_statement(statement)
             rendered_claim = rendered_statement.rstrip(".") + "."
-            sentences.append(rendered_claim)
-            section_ids.extend(item for item in ids if item not in section_ids)
+            claim_rows.append((statement, rendered_claim, ids))
         title = re.sub(r"\s+", " ", str(section.get("title") or "")).strip()
-        if not title or not sentences:
+        if not title or not (claim_rows or interaction_lines):
             continue
         parts: List[str] = []
+        framing_parts: List[str] = []
+        beat = story_beats.get(title.casefold()) or {}
+        transition = beat.get("transition") or {}
+        transition_statement = str(transition.get("statement") or "").strip()
+        transition_ids = [str(item) for item in transition.get("evidence") or []]
+        if transition_statement and transition_ids:
+            transition_statement = (
+                display_statement(transition_statement).rstrip(".") + "."
+            )
+            parts.append(
+                f"*{transition_statement}* "
+                + " ".join(f"[{item}]" for item in transition_ids)
+            )
+            framing_parts.append(parts[-1])
         lead = section.get("lead") or {}
         lead_sentences = [
-            _format_supported_literals(str(item).strip()).rstrip(".") + "."
+            display_statement(str(item).strip()).rstrip(".") + "."
             for item in lead.get("statements") or []
             if str(item or "").strip()
         ]
@@ -1784,22 +2673,57 @@ def _fact_plan_markdown(
                 + " "
                 + " ".join(f"[{item}]" for item in lead_ids)
             )
-        paragraph = " ".join(sentences)
-        if section_ids:
-            paragraph += " " + " ".join(f"[{item}]" for item in section_ids)
-        parts.append(paragraph)
-        block = excerpt_block(section)
-        if block:
-            parts.append(block)
+            framing_parts.append(parts[-1])
+        visible_claims = [
+            row
+            for row in claim_rows
+            if not (
+                transition_statement
+                and _framing_repeats_claim(transition_statement, row[0])
+            )
+        ]
+        if visible_claims:
+            section_ids: list[str] = []
+            for _statement, _rendered, ids in visible_claims:
+                section_ids.extend(item for item in ids if item not in section_ids)
+            paragraph = " ".join(row[1] for row in visible_claims)
+            if section_ids:
+                paragraph += " " + " ".join(f"[{item}]" for item in section_ids)
+            parts.append(paragraph)
+        if interaction_lines:
+            parts.append("\n".join([INTERACTION_LIST_LABEL, *interaction_lines]))
+        # Framing (a story transition or section lead) is editorial glue
+        # written separately from the claims it introduces, so the model can
+        # restate a claim there almost verbatim. The renderer owns that
+        # layout, so it drops the restatement rather than publishing a page
+        # the duplicate-block gate will reject.
+        parts = _drop_duplicate_framing(title, parts, framing_parts)
+        fence, captions = excerpt_block(section)
+        if fence:
+            parts.append(
+                "\n".join(
+                    [fence, "", _admissible_excerpt_caption(title, parts, captions)]
+                )
+            )
         rendered_sections.append((title, parts))
 
-    if not rendered_sections:
+    if not rendered_sections and not journey_block:
         if intro is None:
             return ""
         return intro[0] + " " + " ".join(f"[{item}]" for item in intro[1])
     blocks = []
     if intro is not None:
         blocks.append(intro[0] + " " + " ".join(f"[{item}]" for item in intro[1]))
+    if question_block:
+        blocks.append(question_block)
+    if journey_block:
+        blocks.extend((f"## {journey_title}", journey_block))
+    if purpose_block and intro is not None:
+        # "Purpose and scope" restating the thesis is the page-level twin of
+        # a transition restating its claim; the duplicate-block gate rejects
+        # the page for it, so the renderer keeps only the thesis.
+        if _duplicate_prose_blocks("\n\n".join([blocks[0], purpose_block])):
+            purpose_block = ""
     if purpose_block:
         blocks.extend(("## Purpose and scope", purpose_block))
     if map_block:
@@ -1809,6 +2733,8 @@ def _fact_plan_markdown(
     for title, parts in rendered_sections:
         blocks.append(f"## {title}")
         blocks.extend(parts)
+    if subsystem_block:
+        blocks.extend(("## Explore the system", subsystem_block))
     if see_also_block:
         blocks.extend(("## Related pages", see_also_block))
     return "\n\n".join(blocks)
@@ -1835,10 +2761,10 @@ def _compact_dense_plan(
         for section in compacted.get("sections") or []
         if str(section.get("title") or "") not in rejected
     ]
-    # Overview still needs three complementary areas. If pruning would erase
+    # Overview still needs two complementary areas. If pruning would erase
     # that floor, retain the auditable degraded candidate instead of making a
     # superficially green but empty landing page.
-    if len(compacted["sections"]) < 3:
+    if len(compacted["sections"]) < _OVERVIEW_MIN_SECTIONS:
         return plan
     return compacted
 
@@ -1961,6 +2887,15 @@ def _ensure_cited_intro(
     """Prepend the README synopsis when a model starts directly with a section."""
 
     first_section = re.search(r"^##\s+\S", markdown, flags=re.MULTILINE)
+    original_intro = markdown[: first_section.start()] if first_section else markdown
+    reader_question = next(
+        (
+            block.strip()
+            for block in re.split(r"\n\s*\n", original_intro)
+            if re.match(r"^>\s*\*\*Reader question:\*\*", block.strip())
+        ),
+        "",
+    )
     intro = _readme_intro(evidence)
     if canonical_readme and intro is not None:
         text, evidence_id = intro
@@ -1971,10 +2906,19 @@ def _ensure_cited_intro(
         # fragment (for example, ``jq is a lightweight.``).  Such a fragment
         # must not replace the longer source-supported thesis already rendered
         # by the fact plan.
-        if canonical and len(canonical_plain) >= 40:
+        # A sentence that starts in lower case is a wrapped fragment, not a
+        # synopsis; keep the fact plan's thesis instead.
+        if (
+            canonical
+            and len(canonical_plain) >= 40
+            and not canonical_plain[:1].islower()
+        ):
             sections = markdown[first_section.start() :] if first_section else ""
             sections = _drop_redundant_purpose_section(sections, canonical)
-            return f"{canonical} [{evidence_id}]\n\n{sections.lstrip()}".rstrip()
+            opening = f"{canonical} [{evidence_id}]"
+            if reader_question:
+                opening += f"\n\n{reader_question}"
+            return f"{opening}\n\n{sections.lstrip()}".rstrip()
         intro = None
 
     intro_body = markdown[: first_section.start()] if first_section else markdown
@@ -2029,12 +2973,22 @@ Other pages of this wiki (do not restate what they own):
 
 Return ONLY JSON with this shape:
 {{"thesis":{{"statement":"one concise supported thesis","evidence":["E1"]}},
+"story":{{"reader_question":{{
+"statement":"How does `Entry.start()` turn the input into the final result?",
+"evidence":["E1","E2"]}},
+"beats":[{{"section":"exact Section title","role":"entry"}},
+{{"section":"exact Later section title","role":"handoff",
+"transition":{{
+"statement":"Once the entry has prepared the input, `Worker.run()` consumes it",
+"evidence":["E1","E2"]}}}}]}},
 "purpose":{{"statements":["what this area is responsible for",
 "what a reader can do with it"],"evidence":["E1","E2"]}},
 "map":[{{"concern":"Short capability name","entity":"`Class.method()`",
 "evidence":["E1"]}}],
 "flow":{{"title":"What the diagram shows","steps":[{{"from":"`Class.method()`",
 "to":"`Other.call()`","label":"what moves","evidence":["R1"]}}]}},
+"architecture":{{"title":"","components":[],"connections":[],
+"primary_path":[],"boundaries":[]}},
 "see_also":[{{"page":"page-id-from-the-list","why":"what that page covers"}}],
 "sections":[{{"title":"Section title",
 "lead":{{"statements":["what problem this part solves",
@@ -2043,9 +2997,27 @@ Return ONLY JSON with this shape:
 "claims":[{{"role":"flow",
 "statement":"one concrete claim","evidence":["E1","E2","R1"]}}]}}]}}
 
-Use 3-6 sections and 2-4 claims per section. Every thesis, purpose, and claim
-statement must be exactly one sentence, and every claim must cite one or more
-provided evidence IDs.
+Use the smallest number of sections and claims that answers the reader question.
+Unless the page-specific planning guidance sets a tighter budget, use 2-5
+sections and 1-3 claims per section. Never add a section or claim merely to use
+available evidence. Every thesis, purpose, and claim statement must be exactly
+one sentence, and every claim must cite one or more provided evidence IDs.
+
+Plan the page's reading path in `story` before filling its sections. Ask one
+concrete `reader_question` that this page's supplied evidence can answer. It
+must end in one question mark, name the relevant code component or operation,
+and cite the E# evidence that makes the question relevant.
+
+Give every section exactly one story beat, using the exact section title and
+the same order as `sections`. Assign each beat one editorial role from
+`orientation`, `entry`, `mechanism`, `decision`, `handoff`, `boundary`, or
+`outcome`. Vary the roles so the page progresses instead of repeating the same
+kind of section. Every beat after the first must include one source-grounded
+`transition`: a single sentence connecting what the reader just learned to
+the next mechanism. Cite the evidence for that bridge. Do not restate either
+section title or copy a section claim as the transition. The compiler derives
+each beat's evidence budget from its final claims, leads, excerpt, and
+transition; do not add a beat-level evidence field.
 
 Write `purpose` for a reader who has not seen this codebase: two or three
 sentences saying what this area is responsible for and what it does for the
@@ -2053,11 +3025,46 @@ caller, in plain language, before any symbol-by-symbol detail. Name concrete
 components, but explain the responsibility rather than reciting a call. It is
 still grounded -- cite the evidence the responsibility rests on.
 
-The no-benefit-language rule below applies to `purpose` and `map` exactly as it
-does to claims: describe what the code does, never how good it is. Do not write
-that something is fast, flexible, easy, powerful, efficient, or that it allows,
-enables, ensures, facilitates or optimizes anything -- not even when the
-project's own README says so. Say what it does instead.
+For an Overview, omit `purpose`, `map`, `flow`, `journey`, every section `lead`,
+and every section `excerpt`. Write exactly one `architecture` object for the
+Overview. Its semantic primary path is the only Overview path visualization;
+do not also produce a code-entity sequence or call path. Sections add only
+what that architectural model cannot say, such as a boundary, a failure case,
+or a source-stated reason. For every non-Overview page, omit `architecture`
+entirely.
+
+The Overview `architecture` is a repository-level explanation, not a call
+graph and not a renamed subsystem map. Use 5-8 semantic roles that tell a new
+reader what owns each architectural responsibility. Do not use method names,
+file names, paths, or raw source symbols as component labels. Place each role
+in one of `external`, `interface`, `coordination`, `execution`, or `data`, and
+assign one kind from `external`, `frontend`, `backend`, `security`,
+`messagebus`, `database`, or `cloud`. Use at least three layers. Every
+component needs a plain-language responsibility and E# source evidence.
+Populate every empty architecture collection in the JSON shape. Each component
+object has `id`, `label`, `responsibility`, `layer`, `kind`, and `evidence`;
+each connection has `source`, `target`, `label`, and `evidence`; each boundary
+has `id`, `label`, `detail`, `members`, and `evidence`. Name roles for this
+repository's actual domain and mechanisms; never return generic template roles
+such as `Entry surfaces`, `Coordination core`, `Execution engine`, or `Result
+store` unless those are literal concepts proven by the supplied source.
+
+Choose one 3-7 component `primary_path` that explains how the system turns an
+external input into its principal result. Connect every adjacent pair with an
+authored semantic connection: say what control, data, ownership, or artifact
+crosses the boundary. Never label a connection `calls`, `depends on`,
+`imports`, or `references`; raw call pairs belong only to source evidence.
+Connections must cite the E# body or R# relation that supports the handoff.
+Add only genuinely supported external dependencies and at most three explicit
+trust, process, persistence, or execution boundaries. Every boundary needs
+members and E# evidence. Supporting detail belongs in component
+responsibilities, not in more nodes or edges.
+
+The no-evaluation rule below applies to `purpose` and `map` exactly as it
+does to claims: describe what the code does and why, never how good it is. Do
+not write that something is fast, flexible, easy, powerful, or efficient --
+not even when the project's own README says so. Say what it does and what it
+is for instead.
 
 Write `map` as 3-6 rows pairing a capability a reader would look for with the
 concrete code entity that implements it, so the page can be scanned before it
@@ -2071,7 +3078,7 @@ not have to name two endpoints; it must still cite the evidence it rests on.
 Write it for someone meeting this codebase for the first time. Do not restate
 the section title, and do not simply name the callables the claims will cover.
 
-Give a section an `excerpt` when one cited body is worth reading directly,
+Give a non-Overview section an `excerpt` when one cited body is worth reading directly,
 naming the E# whose source shows it and one sentence on what to notice. Choose
 the passage that carries the idea, not the longest one. At most two sections on
 a page should carry an excerpt; a page of code excerpts is no better than
@@ -2098,10 +3105,13 @@ clause and move on instead of re-explaining it; spend this page's evidence on
 what this page owns. Never invent a page that is not listed.
 
 Do not invent files, symbols, APIs, relationships, or
-behavior. State implementation facts, not expected benefits or marketing
-judgments. Write direct subject-verb-object claims. Avoid benefit language such
-as allows, enables, facilitates, efficient, optimize, quick, flexible, easy, or
-powerful. Put commands, paths, and code identifiers in backticks. Use the word
+behavior. State implementation facts and the reasons the evidence gives for
+them, never a verdict on their quality. Write direct subject-verb-object
+claims. A cause is welcome ("because", "so that", "to avoid", "otherwise");
+an evaluation is not: do not call anything powerful, efficient, fast,
+flexible, easy, robust, elegant, seamless, or user-friendly, and do not say a
+component enables or allows something unless you then state what happens.
+Put commands, paths, and code identifiers in backticks. Use the word
 command only for literal CLI syntax shown in source evidence; a method or
 function is a callable, not a command. When evidence is a method body, attribute
 its behavior to the full method name, not to the owner class, unless separate
@@ -2118,25 +3128,44 @@ Assign each claim exactly one role:
 - flow: an explicit handoff between at least two named components. A flow claim
   must cite either the matching source-to-target R# relation or, when no static
   relation exists for that endpoint pair, one E# source body that contains both
-  endpoints and the handoff;
+  endpoints and the handoff. A relation-backed flow claim is rendered as a
+  relation row (`source → target: what moves`) with its call site, never as a
+  sentence, so write it as "`Source()` calls `Target()` to <what moves or why,
+  at most twelve words>" and put any further explanation of that step into a
+  separate responsibility, contract, or rationale claim that cites E# source;
 - responsibility: state or work owned by one component;
 - contract: an input, output, invariant, failure, or compatibility boundary;
+- rationale: the reason the code exists -- the problem it solves, the failure
+  it prevents, or the case it must handle -- as stated by a docstring, a
+  comment, a test name, or a commit subject in the evidence. Cite the E# that
+  states the reason. Write it as a cause, not a compliment: "strips the header
+  because a redirect to another host would forward the credentials", never
+  "so that the library is secure";
 - component: a supporting implementation fact that fits none of the above.
+
+A page is a story only when it says why. Give every section one rationale
+claim whenever its evidence states a reason; when no evidence states one,
+omit it rather than inventing motivation. Evidence items of kind `test` list
+the tests that pin a behaviour and evidence of kind `history` lists the
+commits that last changed it: name the case a test covers or the change a
+commit made when it explains the code, and cite that item.
 
 Write a system explanation, not a symbol catalog. Organize sections around a
 request path, lifecycle stage, state transition, decision boundary, or shared
 contract; do not mirror one method per section. When several operations access
 the same object or state, explain that shared lifecycle instead of listing the
 operations independently. Every section must combine facts into one
-responsibility or flow. When static relations are provided, include
-relation-backed flow claims that name the source before the target and say how
-work or data moves between them. Only when no static relation exists for that
+responsibility or flow. On a non-Overview page, a flow claim should use a
+static relation that names the source before the target and says how work or
+data moves between them. On the Overview, static relations ground semantic
+architecture connections; do not turn them into prose call rows merely because
+they are available. Only when no static relation exists for a non-Overview
 endpoint pair may a flow instead cite one source body that contains both named
 endpoints and the handoff. Every claim labeled flow must satisfy one of those
-rules. Every cross-component call, transfer, read, or interaction must be a
-flow claim and must put both concrete code endpoints in backticks; do not hide
-an unsupported handoff behind generic subsystem names. Do not label an
-isolated "X does Y" sentence as flow. Use
+rules. Every cross-component call, transfer, read, or interaction that is
+stated in prose must be a flow claim and must put both concrete code endpoints
+in backticks; do not hide an unsupported handoff behind generic subsystem
+names. Do not label an isolated "X does Y" sentence as flow. Use
 responsibility or contract for a local behavior when neither a relation nor one
 source body supports a handoff; never attach an unrelated R# relation. Never
 create a workflow or integration section by combining separate source bodies
@@ -2157,37 +3186,40 @@ def _page_planning_guidance(meta: Dict[str, Any]) -> str:
             if isinstance(topic, dict) and str(topic.get("title") or "").strip()
         ]
         topic_guidance = (
-            " Use the source-anchored outline areas as the breadth check for this "
-            "mental model: "
+            " Treat these source-anchored outline areas as candidates, not a "
+            "coverage checklist: "
             + ", ".join(major_topics)
-            + ". Give every named area its own recognizable section unless one "
-            "provided relation or source body explicitly supports merging two "
-            "areas. Do not spend multiple sections on one area while omitting "
-            "the others."
+            + ". Select only the areas needed for the chosen through-line; leave "
+            "the rest to their child pages. Unused evidence is evidence of "
+            "editorial restraint, not a coverage failure."
             if major_topics
             else ""
         )
         return (
-            "Build a repository mental model around at least three complementary "
-            "concerns: "
-            "(1) the concrete public workflow from a user entry point to its "
-            "result, (2) the main execution or data-flow handoffs, and (3) the "
-            "responsibilities of at least two major subsystems. The intro thesis "
-            "already states the repository purpose, so do not repeat its channel "
-            "list. README evidence may support a distinct public command, while "
-            "implementation claims should use source evidence. Use at least "
-            "four distinct evidence IDs across the plan when available, and "
-            "prefer concrete actions and handoffs over generic 'provides' or "
-            "'includes' claims. Give every topic section at least two "
-            "complementary facts: pair its responsibility with an entry point, "
-            "handoff, mechanism, or contract from the same evidence. Describe "
-            "the public workflow with an actual "
-            "command, route, or API from the evidence; never say that users call "
-            "a private underscore-prefixed helper. Name major components by "
-            "their class, service, or responsibility, never as a filename "
-            "subsystem. Treat single-language backends, decoders, "
-            "patchers, and private helpers as implementation details unless they "
-            "define the repository." + topic_guidance
+            "Build one repository-level mental model in two to four "
+            "sections, with one or two claims per section and no more than four "
+            "claims total. Synthesize one architecture plan that names the "
+            "system's semantic roles, layers, primary runtime path, external "
+            "dependencies, and meaningful boundaries. That architecture is a "
+            "higher-level explanation of ownership and control, not a static "
+            "call graph or a list of source subsystems. Choose a single path "
+            "from a real user-visible entry or input, through the central "
+            "mechanism, to the observable result or boundary. The reader "
+            "question must ask about that whole path; "
+            "do not frame it as an arbitrary pair of internal methods. The intro "
+            "thesis already states the repository purpose, so omit purpose, map, "
+            "flow, section leads, and code excerpts. Use relations only as "
+            "evidence beneath the architecture; do not expose them as the "
+            "architecture itself or add prose call rows just to consume them. "
+            "Anchor the semantic path to a real user-visible input and result "
+            "from the evidence; never present a private underscore-prefixed "
+            "helper as a user entry. Name major components by "
+            "their architectural responsibility in the visual plan, never as a "
+            "filename subsystem or callable. Treat backends, decoders, patchers, "
+            "private helpers, and "
+            "secondary capabilities as details for child pages unless one is "
+            "essential to the selected path. Point to those pages instead of "
+            "summarizing them." + topic_guidance
         )
     guidance = (
         "Start from the page's source-supported purpose, then explain the path "
@@ -2303,13 +3335,13 @@ def _plan_evidence_constraints(
                 )
             topic_allocations.append(f"{title}={allocation_items}")
     allocation = (
-        " Major-topic evidence allocation: "
+        " Candidate topic evidence (select only what serves the through-line): "
         + "; ".join(topic_allocations)
-        + ". Each topic section must cite its allocated evidence; it may add "
-        "cross-cutting entry evidence for a supported handoff. When a topic "
-        "has an allocated R# relation, use it for that topic's concrete flow "
-        "claim. Use the listed "
-        "symbol as the claim subject; do not shorten a method to its owner class."
+        + ". A selected topic must cite its own evidence, but unselected topics "
+        "must not receive placeholder sections. R# relations may ground semantic "
+        "architecture connections, but they do not require prose call claims. "
+        "Use the listed symbol only when a prose claim genuinely needs it; do "
+        "not shorten a method to its owner class."
         if topic_allocations
         else ""
     )
@@ -2318,20 +3350,21 @@ def _plan_evidence_constraints(
         if relations
         else (
             " No static relation facts are available. Do not fabricate a "
-            "workflow between separate source items. For each major topic, "
-            "prefer one substantial source-supported mechanism, contract, or "
-            "responsibility over multiple sentences that only say what "
-            "individual callables do; leave callable inventories to child "
-            "pages."
+            "workflow between separate source items. Prefer a substantial "
+            "source-supported mechanism, contract, or responsibility over "
+            "sentences that only say what individual callables do; leave "
+            "callable inventories to child pages."
         )
     )
     reserved = f"{intro_id} supplies the intro; " if intro_id else ""
     return (
         f"{reserved}a section may reuse an evidence item only for a different "
-        "supported fact. Use at least four source evidence IDs across the page "
-        "when four are available. Sections may reuse a core implementation "
-        "source when they make distinct claims about it. Keep sections semantically "
-        "distinct and assign sources by their actual responsibility. "
+        "supported fact. Choose evidence for explanatory value, not quota: "
+        "two or three well-chosen source items are enough for a normal Overview, and "
+        "unallocated evidence should stay out of the prose. Sections may reuse "
+        "a core implementation source when they make distinct claims about it. "
+        "Keep sections semantically distinct and assign sources by their actual "
+        "responsibility. "
         f"Implementation source catalog: "
         f"{catalog or '(none)'}.{allocation}{relation_guidance}"
     )
@@ -2481,6 +3514,23 @@ def _plan_quality_warnings(
 
     sections = plan.get("sections") or []
     warnings = []
+    if (
+        meta.get("id") == "overview"
+        and architecture_contract_from_plan(plan.get("architecture")) is None
+    ):
+        warnings.append(
+            "Overview needs one valid semantic architecture plan with 4-10 "
+            "evidence-backed roles, at least three layers, one connected "
+            "primary path, and only supported boundaries"
+        )
+    story_origin = str((plan.get("story") or {}).get("origin") or "")
+    if story_origin in {"planned", "mixed"}:
+        finalized = finalize_story_ir(
+            plan,
+            available_ids=[item.id for item in (*evidence, *relations)],
+        )
+        for error in story_quality_report(finalized)["story_errors"]:
+            warnings.append(f"story plan: {error}")
     page_title = str(meta.get("title") or "")
     page_is_about_helpers = bool(
         re.search(r"\b(?:helpers?|utilit(?:y|ies))\b", page_title, re.IGNORECASE)
@@ -2708,19 +3758,6 @@ def _plan_quality_warnings(
             f"{len(multi_sentence_claims)} claim statement(s) contain multiple "
             "sentences; keep each claim to one sentence"
         )
-    if (
-        meta.get("id") == "overview"
-        and relations
-        and len(evidence) >= 2
-        and not supported_flows
-    ):
-        examples = "; ".join(
-            f"{item.id}: `{item.source}` -> `{item.target}`" for item in relations[:3]
-        )
-        warnings.append(
-            "page has static relations but no supported component handoff"
-            + (f"; use a real pair such as {examples}" if examples else "")
-        )
     if invalid_flows:
         for statement, ids in invalid_flows:
             cited_relations = [
@@ -2854,18 +3891,10 @@ def _plan_quality_warnings(
             )
         return warnings
 
-    major_topics = [
-        topic
-        for topic in meta.get("major_topics") or []
-        if isinstance(topic, dict) and str(topic.get("title") or "").strip()
-    ]
-    required_facts = max(4, len(sections) + 1, len(major_topics) + 1)
     narrative_facts = len(claims) + int(supported_thesis is not None)
-    if narrative_facts < required_facts:
+    if narrative_facts < _OVERVIEW_MIN_SECTIONS + 1:
         warnings.append(
-            f"Overview needs at least {required_facts} supported narrative "
-            "facts: one thesis and one concrete fact for every planned or "
-            "allocated topic"
+            "Overview needs one thesis and at least two supported narrative claims"
         )
     density = _narrative_density_report(plan_markdown)
     if not density["narrative_density_valid"]:
@@ -2873,85 +3902,28 @@ def _plan_quality_warnings(
             "Overview reads as a callable catalog; explain responsibilities, "
             "mechanisms, or handoffs instead of listing one operation per topic"
         )
-    if len(sections) < 3:
-        warnings.append("Overview needs at least three complementary sections")
-    for topic in meta.get("major_topics") or []:
-        if not isinstance(topic, dict):
-            continue
-        topic_title = str(topic.get("title") or "").strip()
-        topic_terms = _prose_terms(topic_title)
-        topic_files = {
-            AgentWiki._norm_hint_path(str(file))
-            for file in topic.get("files") or []
-            if str(file).strip()
-        }
-        topic_ids = {
-            item.id
-            for item in evidence
-            if AgentWiki._norm_hint_path(item.file) in topic_files
-        }
-        topic_relation_ids = {
-            item.id
-            for item in relations
-            if any(
-                AgentWiki._norm_hint_path(endpoint.split(":", 1)[0]) in topic_files
-                for endpoint in (item.source, item.target)
-            )
-        }
-        matching_sections = [
-            section
-            for section in sections
-            if topic_terms
-            and topic_terms & _prose_terms(str(section.get("title") or ""))
-        ]
-        covered_ids = {
-            str(item)
-            for section in matching_sections
-            for claim in section.get("claims") or []
-            for item in claim.get("evidence") or []
-        }
-        allocated_ids = topic_ids | topic_relation_ids
-        if topic_title and (
-            not matching_sections or (allocated_ids and not allocated_ids & covered_ids)
-        ):
-            warnings.append(
-                f"Overview needs a {topic_title!r} section grounded in its "
-                "allocated evidence"
-            )
-        elif topic_relation_ids and not topic_relation_ids & covered_ids:
-            warnings.append(
-                f"Overview {topic_title!r} must use an allocated relation "
-                f"({', '.join(sorted(topic_relation_ids))}) for its concrete "
-                "flow claim"
-            )
-        topic_claims = [
-            claim
-            for section in matching_sections
-            for claim in section.get("claims") or []
-        ]
-        topic_body = " ".join(
-            str(claim.get("statement") or "") for claim in topic_claims
+    if len(sections) < _OVERVIEW_MIN_SECTIONS:
+        warnings.append("Overview needs at least two complementary sections")
+    if len(sections) > _OVERVIEW_MAX_SECTIONS:
+        warnings.append(
+            "Overview exceeds the editorial section budget of four; remove "
+            "the least essential branch"
         )
-        topic_plain = re.sub(r"[`*_[\]()#>-]", " ", topic_body)
-        topic_plain = re.sub(r"\s+", " ", topic_plain).strip()
-        if (
-            matching_sections
-            and len(allocated_ids) >= 2
-            and len(topic_claims) < 2
-            and len(topic_plain) < 60
-        ):
+    if len(claims) > _OVERVIEW_MAX_CLAIMS:
+        warnings.append(
+            "Overview exceeds the editorial claim budget of four; keep only "
+            "claims required to answer the reader question"
+        )
+    for section in sections:
+        section_claims = list(section.get("claims") or [])
+        if len(section_claims) > _OVERVIEW_MAX_CLAIMS_PER_SECTION:
             warnings.append(
-                f"Overview {topic_title!r} needs two complementary supported "
-                "facts when multiple source items are allocated"
+                f"Overview section {str(section.get('title') or 'untitled')!r} "
+                "exceeds the per-section claim budget of two"
             )
-    required_roles = ["flow"] if relations else []
-    for role in required_roles:
-        if role_counts.get(role, 0) == 0:
-            warnings.append(f"Overview needs at least one {role} claim")
-
     intro = _readme_intro(evidence)
     intro_terms = _prose_terms(intro[0]) if intro is not None else set()
-    require_source_diversity = sum(item.id.startswith("E") for item in evidence) >= 4
+    require_source_diversity = sum(item.id.startswith("E") for item in evidence) >= 2
     page_sources = (
         {item for item in supported_thesis[1] if str(item).startswith("E")}
         if supported_thesis is not None
@@ -3030,8 +4002,8 @@ def _plan_quality_warnings(
                 )
                 break
         prior_section_terms.append((title, section_terms))
-    if require_source_diversity and len(page_sources) < 4:
-        warnings.append("Overview must use at least four source evidence IDs")
+    if require_source_diversity and len(page_sources) < 2:
+        warnings.append("Overview must use at least two source evidence IDs")
     return warnings
 
 
@@ -3054,17 +4026,17 @@ Source evidence:
 Static reference relations:
 {relations}
 
-Return ONLY JSON with the same grounded thesis and
+Return ONLY JSON with the same grounded thesis, story, architecture, and
 sections/claims/role/evidence shape. Resolve every listed problem without
-inventing files, symbols, APIs, relationships, or behavior. Keep every claim
-already admitted by the current plan unless a listed problem identifies that
-claim or its section as repetitive, catalog-like, or component-dominated. For
-missing breadth, roles, evidence, or relation use, add complementary claims
-instead of deleting valid claims. For repetition or catalog-density problems,
-consolidate related claims into a richer sentence while preserving their
-supported facts and evidence IDs. Count the claims in the returned JSON before
-responding. Keep every claim concrete, use exactly one sentence per thesis or
-claim statement, and cite only provided evidence IDs. A flow claim must
+inventing files, symbols, APIs, relationships, or behavior. Respect the
+page-specific editorial budget as a hard ceiling. A supported claim is eligible
+for publication, not automatically entitled to space: delete lower-priority
+detail when it does not answer the reader question. For missing roles or
+relation use, replace a weaker claim before adding one. For repetition or
+catalog-density problems, consolidate or delete claims instead of preserving an
+inventory. Count the claims in the returned JSON before responding. Keep every
+remaining claim concrete, use exactly one sentence per thesis or claim
+statement, and cite only provided evidence IDs. A flow claim must
 explicitly name at least two components,
 describe their handoff in the listed source-to-target direction, and cite its
 matching R# relation. Only when no static relation exists for that endpoint
@@ -3078,6 +4050,17 @@ explanation rather than an inventory of isolated symbols. Never mention E# or
 R# IDs, relation anchors, source line numbers, or phrases such as "as indicated
 by the reference" inside a statement; record evidence only in the evidence
 array.
+When this is an Overview, preserve or repair its `architecture`: use 4-10
+plain-language architectural roles across at least three layers, a connected
+3-7 role primary path, semantic connection labels, and only evidence-backed
+boundaries. Components name responsibilities, never files, callables, or
+source subsystems. Do not label connections calls, depends on, imports, or
+references. When this is not an Overview, omit `architecture`.
+Keep one cited reader question and one ordered story beat for every returned
+section. Use the exact section titles. Every beat after the first needs a
+single cited transition that connects the prior beat to the next mechanism
+without copying a claim. Use only the editorial roles orientation, entry,
+mechanism, decision, handoff, boundary, and outcome.
 When a problem reports isolated operation sections or component-dominated
 facts, reorganize related calls around the state or lifecycle they implement.
 Prefer one richer supported claim that connects sequential operations over
@@ -3110,8 +4093,9 @@ Write the page as GitHub-flavored Markdown:
 - Follow the approved fact plan. Explain the subsystem, its key pieces, and
   their interactions in clear prose with ## / ### subheadings.
 - Render every planned claim exactly once as one concrete sentence. Use one
-  paragraph per section and do not add transition, implication, justification,
-  or benefit sentences that are not themselves planned claims.
+  paragraph per section and do not add sentences that are not themselves
+  planned claims; a planned rationale claim is rendered as the reason it
+  states, not softened into a benefit.
 - Put an evidence marker such as [E1] or [R1] in every substantive paragraph.
 - End each intro or section paragraph with its combined evidence markers; do
   not place citations only in the middle of a paragraph.
@@ -3160,6 +4144,52 @@ after a citation.
 Do not wrap the response in a Markdown code fence. Return only Markdown.
 """
 
+_JOURNEY_PROMPT = """\
+You are narrating how one call moves through the {repo} codebase, for a
+reader who has never seen it. The index recorded this call path, in order:
+
+{path}
+
+Source for each stage:
+{evidence}
+
+For every stage write ONE sentence (at most 25 words) saying what happens to
+the work at that stage, in plain words, using only what its source shows.
+Name the stage's own callable in backticks; do not evaluate, do not add
+facts the source does not show, and do not describe the next stage.
+
+Return ONLY JSON: {{"stages":[{{"evidence":"E1","statement":"..."}}]}}"""
+
+
+_STORY_REVIEW_PROMPT = """\
+You are reviewing one page of a developer wiki as a newcomer to the {repo}
+codebase would read it. Judge only what the page says; do not add facts.
+
+Page:
+{markdown}
+
+Answer each question with a score from 0 to 2 (0 = the page does not say,
+1 = partly or vaguely, 2 = clearly) and quote the page's words that support
+your score, or "" when the score is 0:
+- problem: what problem does this part of the code solve, or what would go
+  wrong without it?
+- path: where does work or data enter this part, and where does it leave?
+- decision: what is the key decision, rule, or invariant the code enforces?
+- failure: what breaks, or which case is handled, when the rule is violated?
+Also report:
+- jargon: true when the page uses words that belong to a documentation
+  pipeline rather than to the repository (for example "admitted", "evidence
+  pack", "grounded", "handoff", "beat"); otherwise false.
+- repetition: true when two sentences say the same thing about the same
+  symbol; otherwise false.
+- notes: one sentence naming the single change that would most help a reader.
+
+Return ONLY JSON:
+{{"problem":{{"score":0,"quote":""}},"path":{{"score":0,"quote":""}},
+"decision":{{"score":0,"quote":""}},"failure":{{"score":0,"quote":""}},
+"jargon":false,"repetition":false,"notes":""}}"""
+
+
 _STYLE_REPAIR_PROMPT = """\
 Make a minimal style edit to the Markdown below.
 
@@ -3189,10 +4219,15 @@ class AgentWiki:
         llm: Any = None,
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
+        story_review: bool = False,
     ) -> None:
         self._bundle = bundle
         self._model = model
         self._llm = llm
+        # One extra model call per generated page that grades the rendered
+        # page as a reader would. Off by default so unit fixtures that count
+        # model calls are unaffected; the web app turns it on.
+        self._story_review_enabled = bool(story_review)
         self._cache_llm_identity = getattr(llm, "cache_identity", "")
         self._api_base = api_base
         self._api_key = api_key
@@ -3640,6 +4675,291 @@ class AgentWiki:
             self._page_evidence[cache_suffix] = evidence
             return evidence
 
+    def _entry_path(
+        self,
+        evidence: Sequence[EvidenceItem],
+        relations: Sequence[RelationItem],
+        *,
+        max_hops: int = 5,
+    ) -> tuple[List[EvidenceItem], List[RelationItem], List[dict[str, Any]]]:
+        """Follow recorded call sites from the public entry inward.
+
+        Starting at the most entry-like cited callable, each hop takes the
+        outgoing call whose target reaches furthest (largest fan-out), which
+        is the mainline in most libraries: ``get() -> request() ->
+        Session.request() -> Session.send() -> HTTPAdapter.send()``. Every
+        hop yields the callee's body as evidence and the call site as a
+        relation, so the journey the model narrates is one the index proves.
+        """
+
+        try:
+            graph = self._bundle.code_graph()
+            raw_graph = graph.get_graph() if graph is not None else None
+        except Exception:  # noqa: BLE001 - the path is optional enrichment
+            return [], [], []
+        if raw_graph is None or not hasattr(graph, "query_range"):
+            return [], [], []
+        repo_dir = os.path.realpath(
+            str(getattr(self._bundle.entry, "repo_dir", "") or "")
+        )
+        entry_files: set[str] = set()
+        try:
+            from ..web.entrypoints import entry_point_files
+
+            entry_files = {
+                file.replace("\\", "/") for file in entry_point_files(repo_dir or None)
+            }
+        except Exception:  # noqa: BLE001 - manifests are optional
+            entry_files = set()
+
+        def leaf_name(symbol: str) -> str:
+            name = re.sub(r"\([^)]*\)$", "", symbol.rsplit(":", 1)[-1])
+            return name.rsplit(".", 1)[-1]
+
+        def is_public(symbol: str) -> bool:
+            leaf = leaf_name(symbol)
+            return not leaf.startswith("_") or leaf.startswith("__")
+
+        starts = [
+            item
+            for item in evidence
+            if item.kind in _NARRATIVE_CALLABLE_KINDS
+            and item.start_line is not None
+            and item.end_line is not None
+            and is_public(item.symbol)
+            and not is_test_file(item.file)
+        ]
+        if not starts:
+            return [], [], []
+        starts.sort(
+            key=lambda item: (
+                -int(item.file.replace("\\", "/") in entry_files),
+                -_overview_file_score(item.file),
+                -int(item.kind == "function"),
+                len(item.symbol),
+            )
+        )
+        by_symbol = {_canonical_symbol(item.symbol): item for item in evidence}
+        existing_pairs = {(item.source, item.target) for item in relations}
+        current = starts[0]
+        path: List[dict[str, Any]] = [
+            {"evidence": current.id, "symbol": current.symbol, "relation": None}
+        ]
+        new_items: List[EvidenceItem] = []
+        new_relations: List[RelationItem] = []
+        visited = {_canonical_symbol(current.symbol)}
+        for _hop in range(max_hops):
+            try:
+                result = graph.query_range(
+                    current.file,
+                    current.start_line - 1,
+                    current.end_line - 1,
+                )
+            except Exception:  # noqa: BLE001 - stop at the last resolvable hop
+                break
+            best = None
+            for edge in result.outgoing:
+                if edge.anchor_file is None or edge.anchor_line is None:
+                    continue
+                vertex = raw_graph.vs[edge.target_vid]
+                target = self._graph_endpoint(vertex)
+                if target["kind"].lower() not in _NARRATIVE_CALLABLE_KINDS:
+                    continue
+                if not target["label"] or not is_public(target["label"]):
+                    continue
+                target_file = self._rel(target["file"]) or ""
+                if not target_file or is_test_file(target_file):
+                    continue
+                if os.path.isabs(target["file"]) and repo_dir:
+                    try:
+                        if (
+                            os.path.commonpath(
+                                (repo_dir, os.path.realpath(target["file"]))
+                            )
+                            != repo_dir
+                        ):
+                            continue
+                    except ValueError:
+                        continue
+                canonical = _canonical_symbol(target["label"])
+                if canonical in visited:
+                    continue
+                attrs = vertex.attributes()
+                span = (attrs.get("start_line"), attrs.get("end_line"))
+                if not all(
+                    isinstance(value, int) and not isinstance(value, bool)
+                    for value in span
+                ):
+                    continue
+                # Crossing into another file is the handoff a reader wants to
+                # see; among same-file callees the one that reaches furthest
+                # (largest fan-out) is the mainline.
+                # How much of the system lies beyond this callee (two hops
+                # out) is what separates the mainline from a leaf helper; a
+                # cross-file hop is preferred only among callees that reach
+                # comparably far.
+                try:
+                    reach = (
+                        len(
+                            raw_graph.neighborhood(edge.target_vid, order=2, mode="out")
+                        )
+                        - 1
+                    )
+                except Exception:  # noqa: BLE001 - degree is a fair fallback
+                    reach = raw_graph.degree(edge.target_vid, mode="out")
+                score = (
+                    min(reach, 40),
+                    int(target_file != current.file),
+                    reach,
+                    -len(target["label"]),
+                )
+                anchor = f"{self._rel(edge.anchor_file)}:{edge.anchor_line + 1}"
+                if best is None or score > best[0]:
+                    best = (score, target, target_file, span, anchor)
+            if best is None:
+                break
+            _score, target, target_file, span, anchor = best
+            canonical = _canonical_symbol(target["label"])
+            visited.add(canonical)
+            item = by_symbol.get(canonical)
+            if item is None:
+                start_line, end_line = span[0] + 1, span[1] + 1
+                source = self._wb.source(target_file, start_line, end_line)
+                content = _prepare_evidence_content(
+                    target_file,
+                    (source or {}).get("content", "") if source else "",
+                )
+                if not content:
+                    break
+                item = EvidenceItem(
+                    id=f"E{len(evidence) + len(new_items) + 1}",
+                    file=target_file,
+                    start_line=start_line,
+                    end_line=end_line,
+                    symbol=target["label"],
+                    kind=target["kind"].lower(),
+                    content=content,
+                    routes=("entry path",),
+                )
+                new_items.append(item)
+                by_symbol[canonical] = item
+            pair = (current.symbol, target["label"])
+            known = next(
+                (
+                    rel
+                    for rel in (*relations, *new_relations)
+                    if (rel.source, rel.target) == pair
+                ),
+                None,
+            )
+            if known is not None:
+                relation_id: Optional[str] = known.id
+            elif pair not in existing_pairs:
+                relation = RelationItem(
+                    id=f"R{len(relations) + len(new_relations) + 1}",
+                    source=current.symbol,
+                    target=target["label"],
+                    anchors=(anchor,),
+                )
+                new_relations.append(relation)
+                existing_pairs.add(pair)
+                relation_id = relation.id
+            else:
+                relation_id = None
+            path.append(
+                {"evidence": item.id, "symbol": item.symbol, "relation": relation_id}
+            )
+            current = item
+        if len(path) < 3:
+            return [], [], []
+        return new_items, new_relations, path
+
+    def _overview_context(self, repo_dir: str) -> dict[str, Any]:
+        """Deterministic landing-page skeleton: outline areas and entry points."""
+
+        topics = []
+        for page in self.outline().get("pages", [])[1:]:
+            if not isinstance(page, dict) or not page.get("id"):
+                continue
+            files = [str(item) for item in page.get("files") or [] if item]
+            for child in page.get("children") or []:
+                if isinstance(child, dict):
+                    files.extend(str(item) for item in child.get("files") or [] if item)
+            topics.append(
+                {
+                    "id": str(page["id"]),
+                    "title": str(page.get("title") or page["id"]),
+                    "summary": str(page.get("summary") or ""),
+                    "files": list(dict.fromkeys(files)),
+                }
+            )
+        entry_points: list[dict[str, Any]] = []
+        try:
+            from ..web.entrypoints import discover_entry_points
+
+            entry_points = [
+                entry.to_dict() for entry in discover_entry_points(repo_dir or None)
+            ]
+        except Exception as exc:  # noqa: BLE001 - manifest reading is optional
+            logger.debug("wiki entry points unavailable: %s", exc)
+        return {"topics": topics, "entry_points": entry_points}
+
+    def _context_evidence(
+        self,
+        evidence: Sequence[EvidenceItem],
+    ) -> List[EvidenceItem]:
+        """Add test-name and commit-subject items for the cited symbols."""
+
+        if not evidence:
+            return []
+        repo_dir = str(getattr(self._bundle.entry, "repo_dir", "") or "")
+        if not repo_dir:
+            return []
+        symbols = [
+            item.symbol
+            for item in evidence
+            if item.kind in _NARRATIVE_CALLABLE_KINDS or item.kind == "class"
+        ]
+        blocks: list[dict[str, Any]] = []
+        try:
+            blocks.extend(covering_test_blocks(find_test_references(repo_dir, symbols)))
+        except Exception as exc:  # noqa: BLE001 - optional evidence
+            logger.debug("wiki test evidence unavailable: %s", exc)
+        try:
+            spans = [
+                (item.file, item.start_line, item.end_line, item.symbol)
+                for item in evidence
+                if item.start_line is not None
+                and item.end_line is not None
+                and item.kind != "code"
+                and not os.path.basename(item.file).lower().startswith("readme")
+            ]
+            blocks.extend(history_evidence_blocks(repo_dir, spans))
+        except Exception as exc:  # noqa: BLE001 - optional evidence
+            logger.debug("wiki history evidence unavailable: %s", exc)
+        items: List[EvidenceItem] = []
+        total = 0
+        for block in blocks:
+            content = str(block.get("content") or "").strip()
+            if not content:
+                continue
+            item = EvidenceItem(
+                id=f"E{len(evidence) + len(items) + 1}",
+                file=str(block["file"]),
+                start_line=block.get("start_line"),
+                end_line=block.get("end_line"),
+                symbol=str(block["symbol"]),
+                kind=str(block["kind"]),
+                content=content,
+                routes=("repository",),
+            )
+            block_size = len(item.prompt_block())
+            if total + block_size > _MAX_CONTEXT_EVIDENCE_CHARS:
+                continue
+            items.append(item)
+            total += block_size
+        return items
+
     @staticmethod
     def _citation_payload(evidence: Sequence[EvidenceItem]) -> List[dict[str, Any]]:
         return [
@@ -3699,15 +5019,10 @@ class AgentWiki:
         observes the persisted cooldown and retry ceiling.
         """
 
-        in_memory_page = self._pages.get(page_id)
-        if in_memory_page is not None and not (
-            (
-                retry_degraded_now
-                and self._cached_page_needs_operator_retry(in_memory_page)
-            )
-            or self._cached_page_needs_regeneration(in_memory_page)
-        ):
-            return in_memory_page
+        if self._serve_from_memory(page_id, retry_degraded_now):
+            page = self._refresh_media_plan(self._pages[page_id])
+            self._pages[page_id] = page
+            return page
         meta = self._find(page_id)
         if meta is None:
             return None
@@ -3718,15 +5033,10 @@ class AgentWiki:
             )
         cache_suffix = self._page_cache_suffix(meta)
         with _bounded_generation_lock(self._page_generation_lock(page_id)):
-            in_memory_page = self._pages.get(page_id)
-            if in_memory_page is not None and not (
-                (
-                    retry_degraded_now
-                    and self._cached_page_needs_operator_retry(in_memory_page)
-                )
-                or self._cached_page_needs_regeneration(in_memory_page)
-            ):
-                return in_memory_page
+            if self._serve_from_memory(page_id, retry_degraded_now):
+                page = self._refresh_media_plan(self._pages[page_id], meta)
+                self._pages[page_id] = page
+                return page
             with self._cache_generation_lock(cache_suffix):
                 cached = self._read_cache(cache_suffix)
                 force_retry = bool(
@@ -3738,20 +5048,9 @@ class AgentWiki:
                     and not force_retry
                     and not self._cached_page_needs_regeneration(cached)
                 ):
-                    if "media_slots" not in cached:
-                        evidence_meta = cached.get("evidence") or {}
-                        cached = {
-                            **cached,
-                            "media_slots": plan_media_slots(
-                                page_id=str(cached.get("id") or meta.get("id") or ""),
-                                title=str(
-                                    cached.get("title") or meta.get("title") or ""
-                                ),
-                                citations=cached.get("citations") or (),
-                                diagram=str(cached.get("diagram") or ""),
-                                relations=evidence_meta.get("relations") or (),
-                            ),
-                        }
+                    refreshed = self._refresh_media_plan(cached, meta)
+                    if refreshed is not cached:
+                        cached = refreshed
                         self._write_cache(cache_suffix, cached)
                     self._pages[page_id] = cached
                     return cached
@@ -3762,18 +5061,63 @@ class AgentWiki:
                     )
                 page = self._generate_page(meta)
                 if "media_slots" not in page:
-                    evidence_meta = page.get("evidence") or {}
                     page["media_slots"] = plan_media_slots(
                         page_id=str(page.get("id") or meta.get("id") or ""),
                         title=str(page.get("title") or meta.get("title") or ""),
                         citations=page.get("citations") or (),
-                        diagram=str(page.get("diagram") or ""),
-                        relations=evidence_meta.get("relations") or (),
+                        architecture=page.get("architecture"),
+                        flow=_journey_flow(page.get("journey")),
+                        relations=(page.get("evidence") or {}).get("relations") or (),
                     )
+                page["media_plan_version"] = MEDIA_PLAN_VERSION
                 self._record_page_retry(page, previous=cached)
                 self._pages[page_id] = page
                 self._write_cache(cache_suffix, page)
                 return page
+
+    def _serve_from_memory(self, page_id: str, retry_degraded_now: bool) -> bool:
+        """Return whether the in-process copy of a page is still the answer.
+
+        A degraded page is held in memory like any other, but it must not
+        outlive its retry window: the persisted cooldown is what promises a
+        reader that a bad page gets another bounded chance, and the page
+        tree reports ``retryable`` from that same rule.  Without this check
+        the first read inside the cooldown pinned the diagnostic page for
+        the life of the process.
+        """
+
+        page = self._pages.get(page_id)
+        if page is None:
+            return False
+        if retry_degraded_now and self._cached_page_needs_operator_retry(page):
+            return False
+        return not self._cached_page_needs_regeneration(page)
+
+    @staticmethod
+    def _refresh_media_plan(
+        page: Dict[str, Any],
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Refresh derived visual planning without regenerating page prose."""
+
+        if (
+            page.get("media_plan_version") == MEDIA_PLAN_VERSION
+            and "media_slots" in page
+        ):
+            return page
+        fallback = meta or {}
+        return {
+            **page,
+            "media_slots": plan_media_slots(
+                page_id=str(page.get("id") or fallback.get("id") or ""),
+                title=str(page.get("title") or fallback.get("title") or ""),
+                citations=page.get("citations") or (),
+                architecture=page.get("architecture"),
+                flow=_journey_flow(page.get("journey")),
+                relations=(page.get("evidence") or {}).get("relations") or (),
+            ),
+            "media_plan_version": MEDIA_PLAN_VERSION,
+        }
 
     def _retrieve(self, meta: Dict[str, Any], top_k: int = 12) -> List[Any]:
         ensure_views = getattr(self._bundle, "ensure_views", None)
@@ -4877,10 +6221,10 @@ class AgentWiki:
             text = complete_plan(
                 prompt,
                 phase="initial",
-                # A plan now carries framing, a scan table and up to six
-                # sections; 1200 truncated the JSON mid-object, which parsed as
-                # "no supported sections" and sent every page through repair.
-                max_tokens=3000,
+                # Non-Overview plans can still carry framing, a scan table, and
+                # several sections; 1200 previously truncated the JSON
+                # mid-object and sent pages through unnecessary repair.
+                max_tokens=3800,
             )
             plan, errors = parse_fact_plan(text, allowed)
             # Framing and the scan table are validated on their own evidence and
@@ -4889,7 +6233,13 @@ class AgentWiki:
             # it back on whichever plan finally wins.
             sticky_blocks = {
                 key: copy.deepcopy(plan[key])
-                for key in ("purpose", "map", "flow", "see_also")
+                for key in (
+                    "purpose",
+                    "map",
+                    "flow",
+                    "architecture",
+                    "see_also",
+                )
                 if plan.get(key)
             }
             plan = _normalize_plan_support(plan, evidence, relations)
@@ -4998,7 +6348,7 @@ class AgentWiki:
                 replanned_text = complete_plan(
                     prompt,
                     phase="fresh_replan",
-                    max_tokens=3000,
+                    max_tokens=3800,
                 )
                 replanned_plan, replanned_errors = parse_fact_plan(
                     replanned_text,
@@ -5006,7 +6356,13 @@ class AgentWiki:
                 )
                 replanned_sticky_blocks = {
                     key: copy.deepcopy(replanned_plan[key])
-                    for key in ("purpose", "map", "flow", "see_also")
+                    for key in (
+                        "purpose",
+                        "map",
+                        "flow",
+                        "architecture",
+                        "see_also",
+                    )
                     if replanned_plan.get(key)
                 }
                 replanned_plan = _normalize_plan_support(
@@ -5088,7 +6444,7 @@ class AgentWiki:
                 repaired_text = complete_plan(
                     repair_prompt,
                     phase="repair",
-                    max_tokens=2600,
+                    max_tokens=3400,
                 )
                 repaired_plan, repaired_errors = parse_fact_plan(repaired_text, allowed)
                 repaired_plan = _normalize_plan_support(
@@ -5157,10 +6513,14 @@ class AgentWiki:
             finish_metrics()
             return best_plan, best_warnings
 
-        relation_recovery = _relation_backed_recovery_plan(
-            meta,
-            evidence,
-            relations,
+        relation_recovery = (
+            _relation_backed_recovery_plan(
+                meta,
+                evidence,
+                relations,
+            )
+            if meta.get("id") != "overview"
+            else {}
         )
         relation_recovery_warnings = (
             _plan_quality_warnings(
@@ -5334,6 +6694,82 @@ class AgentWiki:
             logger.warning("wiki grounding repair failed: %s", exc)
             return draft
 
+    def _narrated_journey(
+        self,
+        entry_path: Sequence[dict[str, Any]],
+        evidence: Sequence[EvidenceItem],
+        relations: Sequence[RelationItem],
+    ) -> dict[str, Any] | None:
+        """Turn the recorded entry path into the Overview journey.
+
+        The stages are the index's, not the model's. One small call asks for
+        a sentence per stage; each sentence is admitted against that stage's
+        own source, and a stage whose sentence fails falls back to the call
+        site the index holds for it.
+        """
+
+        by_id = {item.id: item for item in evidence}
+        stages = [
+            step
+            for step in entry_path
+            if isinstance(step, dict) and step.get("evidence") in by_id
+        ]
+        if len(stages) < 3:
+            return None
+        narration: dict[str, str] = {}
+        try:
+            prompt = _JOURNEY_PROMPT.format(
+                repo=str(getattr(self._bundle.entry, "repo", "") or ""),
+                path=" -> ".join(
+                    f"{step['evidence']} `{str(step['symbol']).rsplit(':', 1)[-1]}`"
+                    for step in stages
+                ),
+                evidence="\n\n".join(
+                    by_id[step["evidence"]].prompt_block() for step in stages
+                ),
+            )
+            text = self._client().complete(
+                [{"role": "user", "content": prompt}],
+                max_tokens=900,
+                temperature=0.0,
+            )
+            match = re.search(r"\{.*\}", text or "", re.DOTALL)
+            raw = json.loads(match.group(0)) if match else {}
+            for stage in raw.get("stages") or []:
+                if isinstance(stage, dict):
+                    narration[str(stage.get("evidence") or "")] = str(
+                        stage.get("statement") or ""
+                    ).strip()
+        except Exception as exc:  # noqa: BLE001 - the path renders without it
+            logger.debug("wiki journey narration unavailable: %s", exc)
+        return _journey_from_path(stages, narration, evidence, relations)
+
+    def _review_story(self, markdown: str) -> dict[str, Any] | None:
+        """Grade the rendered page with the reader rubric; never raises.
+
+        The result is diagnostic: it is stored with the page and shown in the
+        provenance line, and it feeds the operator audit. Grounding stays a
+        deterministic gate; this is the judgement the regex heuristics could
+        not make.
+        """
+
+        if not self._story_review_enabled or not markdown.strip():
+            return None
+        prompt = _STORY_REVIEW_PROMPT.format(
+            repo=str(getattr(self._bundle.entry, "repo", "") or ""),
+            markdown=markdown[:12000],
+        )
+        try:
+            text = self._client().complete(
+                [{"role": "user", "content": prompt}],
+                max_tokens=600,
+                temperature=0.0,
+            )
+        except Exception as exc:  # noqa: BLE001 - review is optional
+            logger.debug("wiki story review unavailable: %s", exc)
+            return None
+        return parse_story_review(text)
+
     def _repair_style(
         self,
         draft: str,
@@ -5359,9 +6795,14 @@ class AgentWiki:
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
         generation_started = perf_counter()
         repo_dir = str(getattr(self._bundle.entry, "repo_dir", "") or "").rstrip(os.sep)
+        # The project's own name is the last segment of ``owner/name``; a
+        # checkout directory such as ``axios_axios`` is not what a README
+        # sentence should be rewritten around.
         repository_name = (
-            os.path.basename(repo_dir)
-            or str(getattr(self._bundle.entry, "repo", "") or "")
+            str(getattr(self._bundle.entry, "repo", "") or "")
+            .rstrip("/")
+            .rsplit("/", 1)[-1]
+            or os.path.basename(repo_dir)
             or str(getattr(self._bundle.entry, "instance_id", "") or "")
         )
         retrieval_started = perf_counter()
@@ -5379,6 +6820,7 @@ class AgentWiki:
                 "citations": [],
                 "diagram": "",
                 "media_slots": [],
+                "story": finalize_story_ir({"sections": []})["story"],
                 "generation": {
                     "mode": "degraded",
                     "model": self._model,
@@ -5407,8 +6849,39 @@ class AgentWiki:
         relation_started = perf_counter()
         relations = self._relation_items(evidence, meta)
         relation_ms = (perf_counter() - relation_started) * 1000
+        # Tests and commit subjects are where a repository states *why* its
+        # code exists. They join the pack after graph relations are resolved
+        # so a test file never seeds a relation query.
+        overview_context = None
+        plan_meta = meta
+        if meta.get("id") == "overview":
+            # The landing page's spine is the call path the index records from
+            # the public entry inward. The model writes one sentence per stage;
+            # it does not choose the stages.
+            path_items, path_relations, entry_path = self._entry_path(
+                evidence,
+                relations,
+            )
+            evidence = [*evidence, *path_items]
+            relations = [*relations, *path_relations]
+            overview_context = {
+                **self._overview_context(repo_dir),
+                "path": entry_path,
+            }
+            plan_meta = {**meta, "entry_path": entry_path}
+        evidence = [*evidence, *self._context_evidence(evidence)]
         self._fact_plan_observations.latest = {}
-        plan, plan_warnings = self._fact_plan(meta, evidence, relations)
+        plan, plan_warnings = self._fact_plan(plan_meta, evidence, relations)
+        if overview_context and len(overview_context.get("path") or []) >= 3:
+            journey = self._narrated_journey(
+                overview_context["path"],
+                evidence,
+                relations,
+            )
+            if journey:
+                plan["journey"] = journey
+            else:
+                plan.pop("journey", None)
         planning_metrics: Dict[str, Any] = {
             "planning_ms": 0.0,
             "model_call_ms": 0.0,
@@ -5426,29 +6899,63 @@ class AgentWiki:
         # the quality report evaluates exactly what readers will see.
         plan = _normalize_plan_support(plan, evidence, relations)
         plan = _renderable_plan(plan, evidence, relations)
-        model_planning_failed = "model planning unavailable" in plan_warnings
         dense_sections = meta.get("id") == "overview"
+        if dense_sections:
+            plan = _apply_overview_editorial_budget(plan)
+            # ``journey`` here is the call path the index recorded from the
+            # public entry inward (``_entry_path``), narrated one admitted
+            # sentence per stage. It is deterministic structure, not the
+            # model-planned code-entity sequence the plan prompt forbids, and
+            # it complements the semantic ``architecture`` visual.
+        plan = finalize_story_ir(
+            plan,
+            available_ids=[item.id for item in (*evidence, *relations)],
+        )
+        if not dense_sections:
+            plan.pop("architecture", None)
+        model_planning_failed = "model planning unavailable" in plan_warnings
+        story_origin = str((plan.get("story") or {}).get("origin") or "")
         quality_requirements = {
             "require_dense_sections": dense_sections,
             "require_cited_intro": True,
             "require_narrative_novelty": dense_sections,
             "require_narrative_density": True,
-            # Overview promises an architectural through-line. A regular topic
-            # page may legitimately compare sibling formats or contracts even
-            # when the graph contains incidental relations; forcing a handoff
-            # there creates repair calls without improving the explanation.
-            "require_interaction": bool(
-                dense_sections and relations and len(evidence) >= 2
-            ),
+            # The Overview's semantic architecture primary path owns the
+            # through-line. Static calls may support that model, but they do not
+            # require a duplicate prose interaction row. Detail pages may also
+            # legitimately explain a local contract without a call inventory.
+            "require_interaction": False,
             "require_grounded_thesis": True,
-            "minimum_source_evidence": (min(4, len(evidence)) if dense_sections else 0),
-            "required_claim_roles": (("flow",) if dense_sections and relations else ()),
+            # A newly authored story is a publication contract. Older model
+            # fixtures and deterministic pages receive an inferred IR in
+            # shadow mode so the schema can roll out without hiding them.
+            "require_story": bool(
+                dense_sections and story_origin in {"planned", "mixed"}
+            ),
+            "minimum_source_evidence": (min(2, len(evidence)) if dense_sections else 0),
+            "maximum_planned_sections": (
+                _OVERVIEW_MAX_SECTIONS if dense_sections else None
+            ),
+            "maximum_planned_claims": (
+                _OVERVIEW_MAX_CLAIMS if dense_sections else None
+            ),
+            "maximum_claims_per_section": (
+                _OVERVIEW_MAX_CLAIMS_PER_SECTION if dense_sections else None
+            ),
+            "maximum_code_fences": (0 if dense_sections else None),
+            "required_claim_roles": (),
             "relations": relations,
             "evidence_items": evidence,
         }
         structured_render = True
         if structured_render:
-            markdown = _fact_plan_markdown(plan, evidence, relations)
+            markdown = _fact_plan_markdown(
+                plan,
+                evidence,
+                relations,
+                overview_context=overview_context,
+                concise_overview=dense_sections,
+            )
             model_failed = not bool(markdown)
             if model_failed and not model_planning_failed:
                 markdown, model_failed = self._narrate(
@@ -5481,10 +6988,21 @@ class AgentWiki:
         if structured_render and dense_sections and not quality["valid"]:
             compacted_plan = _compact_dense_plan(plan, quality)
             if compacted_plan is not plan:
+                compacted_plan = _renderable_plan(
+                    compacted_plan,
+                    evidence,
+                    relations,
+                )
+                compacted_plan = finalize_story_ir(
+                    compacted_plan,
+                    available_ids=[item.id for item in (*evidence, *relations)],
+                )
                 compacted_markdown = _fact_plan_markdown(
                     compacted_plan,
                     evidence,
                     relations,
+                    overview_context=overview_context,
+                    concise_overview=True,
                 )
                 compacted_markdown = _ensure_cited_intro(
                     compacted_markdown,
@@ -5603,7 +7121,13 @@ class AgentWiki:
             for warning in plan_warnings
         )
         if not best[1]["valid"] or not best[2]["valid"]:
-            fallback = _fact_plan_markdown(plan, evidence, relations)
+            fallback = _fact_plan_markdown(
+                plan,
+                evidence,
+                relations,
+                overview_context=overview_context,
+                concise_overview=dense_sections,
+            )
             if fallback:
                 fallback_report = grounding_report(fallback, evidence, relations)
                 fallback_quality = _page_quality_report(
@@ -5706,6 +7230,11 @@ class AgentWiki:
                     quality = candidate_quality
                     repaired = True
         markdown = _link_evidence_markers(markdown)
+        review_started = perf_counter()
+        story_review = self._review_story(markdown)
+        review_ms = (perf_counter() - review_started) * 1000
+        if story_review is not None:
+            quality = {**quality, "story_review": story_review}
         blocking_plan_warnings = _blocking_plan_warnings(plan_warnings)
         # Keep the generation label aligned with the public audit.  A readable
         # grounding floor remains useful as a diagnostic, but it must not call
@@ -5735,6 +7264,7 @@ class AgentWiki:
             "total_ms": round(total_ms, 1),
             "retrieval_ms": round(retrieval_ms, 1),
             "relation_ms": round(relation_ms, 1),
+            "review_ms": round(review_ms, 1),
             **planning_metrics,
         }
         return {
@@ -5747,8 +7277,21 @@ class AgentWiki:
                 page_id=str(meta.get("id") or ""),
                 title=str(meta.get("title") or meta.get("id") or ""),
                 citations=citations,
+                architecture=plan.get("architecture"),
+                flow=_journey_flow(plan.get("journey")),
                 relations=evidence_payload["relations"],
             ),
+            **(
+                {"journey": copy.deepcopy(plan.get("journey"))}
+                if dense_sections and plan.get("journey")
+                else {}
+            ),
+            **(
+                {"architecture": copy.deepcopy(plan.get("architecture"))}
+                if dense_sections and plan.get("architecture")
+                else {}
+            ),
+            "story": copy.deepcopy(plan.get("story") or {}),
             "evidence": evidence_payload,
             "generation": {
                 "mode": "generated" if generated else "degraded",

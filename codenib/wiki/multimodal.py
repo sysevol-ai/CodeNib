@@ -12,10 +12,18 @@ these slots and write concrete assets while preserving the same page contract.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from itertools import islice
 from typing import Any, Iterable, Literal, Mapping
 
-MediaKind = Literal["diagram", "image", "storyboard", "video"]
+from .visual_ir import (
+    architecture_contract_from_plan,
+    architecture_contract_from_relations,
+    flow_contract_from_plan,
+)
+
+MediaKind = Literal["diagram", "image", "storyboard", "chart", "video"]
 MediaPlacement = Literal["lead", "section", "aside", "appendix"]
+MEDIA_PLAN_VERSION = 11
 
 _MAX_SOURCE_CITATIONS = 6
 
@@ -31,6 +39,7 @@ class WikiMediaSlot:
     purpose: str
     source_citations: tuple[str, ...] = ()
     prompt: str = ""
+    render_contract: dict[str, Any] | None = None
     human_prior: dict[str, Any] = field(
         default_factory=lambda: {"editable": True, "notes": []}
     )
@@ -38,13 +47,19 @@ class WikiMediaSlot:
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["source_citations"] = list(self.source_citations)
+        if self.render_contract is None:
+            data.pop("render_contract")
         return data
 
 
 def _citation_files(citations: Iterable[dict[str, Any]]) -> tuple[str, ...]:
     files = []
     seen = set()
-    for citation in citations or ():
+    try:
+        values = islice(iter(citations or ()), _MAX_SOURCE_CITATIONS * 4)
+    except TypeError:
+        return ()
+    for citation in values:
         if not isinstance(citation, Mapping):
             continue
         file = str(citation.get("file") or "").strip()
@@ -57,6 +72,13 @@ def _citation_files(citations: Iterable[dict[str, Any]]) -> tuple[str, ...]:
     return tuple(files)
 
 
+def _safe_contract(factory, *args, **kwargs) -> dict[str, Any] | None:
+    try:
+        return factory(*args, **kwargs)
+    except (TypeError, ValueError):
+        return None
+
+
 def plan_media_slots(
     *,
     page_id: str,
@@ -64,6 +86,9 @@ def plan_media_slots(
     citations: Iterable[dict[str, Any]] = (),
     diagram: str = "",
     relations: Iterable[dict[str, Any]] = (),
+    story: Mapping[str, Any] | None = None,
+    flow: Mapping[str, Any] | None = None,
+    architecture: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Return deterministic media slots for a wiki page.
 
@@ -72,76 +97,110 @@ def plan_media_slots(
     adapters and human-prior configuration to fill the assets later.
     """
 
-    citation_files = _citation_files(citations)
-    relation_iterator = iter(relations or ())
-    has_relations = next(relation_iterator, None) is not None
-    if not citation_files and not diagram and not has_relations:
+    del diagram, story
+    if page_id != "overview":
         return []
+    structure_contract = _safe_contract(
+        architecture_contract_from_plan,
+        architecture,
+    )
+    if structure_contract is None:
+        # No admitted architecture: fall back to the recorded entry path, so
+        # the landing page still opens with one grounded picture of the
+        # system rather than none.
+        flow_contract = _safe_contract(flow_contract_from_plan, flow)
+        if flow_contract is None:
+            # No recorded path either: the page's own static relations are
+            # still a true, cited picture of which components touch which.
+            relation_contract = _safe_contract(
+                architecture_contract_from_relations,
+                list(relations or ()),
+            )
+            if relation_contract is None:
+                return []
+            page_slug = page_id or "page"
+            slot = WikiMediaSlot(
+                id=f"{page_slug}-relation-map",
+                kind="diagram",
+                placement="aside",
+                title=f"{title or page_slug}: recorded relations",
+                purpose=(
+                    "Show the components this page cites and the call sites "
+                    "recorded between them."
+                ),
+                source_citations=_citation_files(citations),
+                prompt=(
+                    "Render the supplied relation contract exactly; every edge "
+                    "is a recorded call site."
+                ),
+                render_contract=relation_contract,
+            )
+            return [slot.to_dict()]
+        page_slug = page_id or "page"
+        flow_title = (
+            str((flow or {}).get("title") or "").strip()
+            if isinstance(flow, Mapping)
+            else ""
+        )
+        slot = WikiMediaSlot(
+            id=f"{page_slug}-entry-path",
+            kind="diagram",
+            placement="aside",
+            title=flow_title or f"{title or page_slug}: how a call moves",
+            purpose=(
+                "Show the recorded call path from the public entry inward, one "
+                "stage per hop, as the index proves it."
+            ),
+            source_citations=_citation_files(citations),
+            prompt=(
+                "Render the supplied flow contract exactly; every arrow is a "
+                "recorded call site."
+            ),
+            render_contract=flow_contract,
+        )
+        return [slot.to_dict()]
 
+    citation_files = _citation_files(citations)
     page_slug = page_id or "page"
     page_title = title or page_slug
-    slots: list[WikiMediaSlot] = []
-
-    if diagram:
-        slots.append(
-            WikiMediaSlot(
-                id=f"{page_slug}-structure-diagram",
-                kind="diagram",
-                placement="lead",
-                title=f"{page_title} structure",
-                purpose=(
-                    "Render the page's deterministic structure diagram as a "
-                    "compact visual overview."
-                ),
-                source_citations=citation_files,
-                prompt=(
-                    "Create a compact architecture diagram grounded only in "
-                    "the cited source files and the existing wiki graph."
-                ),
-            )
+    authored_title = (
+        str(architecture.get("title") or "").strip()
+        if isinstance(architecture, Mapping)
+        else ""
+    )
+    if authored_title.casefold() in {
+        "architecture overview",
+        "how the system is organized",
+        "overview",
+        "runtime architecture",
+        "system architecture",
+    }:
+        authored_title = ""
+    if not authored_title:
+        data = structure_contract["data"]
+        nodes_by_id = {node["id"]: node for node in data["nodes"]}
+        primary_path = data["primary_path"]
+        authored_title = (
+            f"{nodes_by_id[primary_path[0]]['label']} → "
+            f"{nodes_by_id[primary_path[-1]]['label']}"
         )
-
-    if citation_files:
-        slots.append(
-            WikiMediaSlot(
-                id=f"{page_slug}-concept-illustration",
-                kind="image",
-                placement="section",
-                title=f"{page_title} concept illustration",
-                purpose=(
-                    "Illustrate the main code concept using only the page's "
-                    "source-grounded evidence."
-                ),
-                source_citations=citation_files,
-                prompt=(
-                    "Create a clean teaching-blog style illustration for this "
-                    "wiki page. Use the cited files as the only technical "
-                    "source of truth and avoid decorative or unrelated imagery."
-                ),
-            )
-        )
-
-    if has_relations:
-        slots.append(
-            WikiMediaSlot(
-                id=f"{page_slug}-flow-storyboard",
-                kind="storyboard",
-                placement="appendix",
-                title=f"{page_title} flow storyboard",
-                purpose=(
-                    "Plan a short visual sequence that explains how cited "
-                    "components hand work to each other."
-                ),
-                source_citations=citation_files,
-                prompt=(
-                    "Create a three-to-five panel storyboard grounded in the "
-                    "page citations and static relation evidence. Each panel "
-                    "should name the component it explains."
-                ),
-            )
-        )
-
-    return [slot.to_dict() for slot in slots]
+    slot = WikiMediaSlot(
+        id=f"{page_slug}-system-architecture",
+        kind="diagram",
+        placement="aside",
+        title=authored_title or f"{page_title}: runtime architecture",
+        purpose=(
+            "Show the system's architectural roles, primary path, supporting "
+            "dependencies, and explicit boundaries."
+        ),
+        source_citations=citation_files,
+        prompt=(
+            "Render the supplied semantic architecture contract exactly. Do "
+            "not replace its roles and boundaries with file or call graphs."
+        ),
+        render_contract=structure_contract,
+    )
+    return [slot.to_dict()]
 
 
-__all__ = ["WikiMediaSlot", "plan_media_slots"]
+__all__ = ["MEDIA_PLAN_VERSION", "WikiMediaSlot", "plan_media_slots"]

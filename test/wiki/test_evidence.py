@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from codenib.wiki.evidence import (
@@ -14,6 +15,8 @@ from codenib.wiki.evidence import (
     evidence_matches_claim,
     grounding_report,
     is_interaction_claim,
+    is_internal_wiki_navigation,
+    is_internal_wiki_navigation_table,
     parse_fact_plan,
     reciprocal_rank_fuse,
     relation_endpoints_named,
@@ -183,6 +186,109 @@ def test_fact_plan_drops_unknown_evidence_ids():
     assert plan["sections"][0]["claims"][0]["role"] == "flow"
     assert plan["sections"][0]["claims"][0]["evidence"] == ["E1"]
     assert errors == ["claim references unknown evidence: E99"]
+
+
+def test_fact_plan_parses_the_editorial_story_contract():
+    plan, errors = parse_fact_plan(
+        """
+        {"thesis":{"statement":"The pipeline stores payloads","evidence":["E1"]},
+         "story":{
+           "reader_question":{
+             "statement":"How does `Pipeline.run()` store a payload?",
+             "evidence":["E1","E9"]},
+           "beats":[
+             {"section":"Accept input","role":"entry"},
+             {"section":"Persist result","role":"outcome",
+              "transition":{"statement":"The normalized payload is persisted",
+                            "evidence":["E2"]}}
+           ]},
+         "sections":[
+           {"title":"Accept input","claims":[
+             {"role":"entry","statement":"`Pipeline.run()` accepts a payload",
+              "evidence":["E1"]}]},
+           {"title":"Persist result","claims":[
+             {"role":"contract","statement":"`Store.write()` persists the payload",
+              "evidence":["E2"]}]}
+         ]}
+        """,
+        {"E1", "E2"},
+    )
+
+    assert plan["story"] == {
+        "version": 1,
+        "origin": "planned",
+        "reader_question": {
+            "statement": "How does `Pipeline.run()` store a payload?",
+            "evidence": ["E1"],
+        },
+        "beats": [
+            {"section": "Accept input", "role": "entry"},
+            {
+                "section": "Persist result",
+                "role": "outcome",
+                "transition": {
+                    "statement": "The normalized payload is persisted",
+                    "evidence": ["E2"],
+                },
+            },
+        ],
+    }
+    assert errors == ["reader question references unknown evidence: E9"]
+
+
+def test_fact_plan_parses_a_grounded_architecture_synthesis():
+    raw = {
+        "thesis": {"statement": "The runtime coordinates analysis", "evidence": ["E1"]},
+        "sections": [
+            {
+                "title": "Runtime",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": "The runtime coordinates analysis work",
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+        "architecture": {
+            "title": "Runtime architecture",
+            "components": [
+                {
+                    "id": "entry",
+                    "label": "Entry surfaces",
+                    "responsibility": "Accept repository questions.",
+                    "layer": "interface",
+                    "kind": "frontend",
+                    "evidence": ["E1", "E99"],
+                }
+            ],
+            "connections": [
+                {
+                    "source": "entry",
+                    "target": "runtime",
+                    "label": "normalizes questions",
+                    "evidence": ["R1"],
+                }
+            ],
+            "primary_path": ["entry", "runtime", "result"],
+            "boundaries": [
+                {
+                    "id": "execution",
+                    "label": "Execution boundary",
+                    "members": ["runtime"],
+                    "evidence": ["E2"],
+                }
+            ],
+        },
+    }
+
+    plan, errors = parse_fact_plan(json.dumps(raw), {"E1", "E2", "R1"})
+
+    assert plan["architecture"]["components"][0]["evidence"] == ["E1"]
+    assert plan["architecture"]["connections"][0]["label"] == ("normalizes questions")
+    assert plan["architecture"]["boundaries"][0]["members"] == ["runtime"]
+    assert errors == ["architecture component 'entry' references unknown evidence: E99"]
 
 
 def test_fact_plan_normalizes_legacy_claim_roles_conservatively():
@@ -534,13 +640,9 @@ def test_grounding_report_reports_promotional_prose_without_conflating_sources()
     )
 
     assert report["valid"] is True
-    assert report["promotional_phrases"] == [
-        "allowing for",
-        "enhances productivity",
-        "optimizing",
-        "powerful",
-        "significantly",
-    ]
+    # Causal verbs ("allowing for", "optimizing") are no longer banned: a
+    # reason is a claim; only the verdict on quality is promotional.
+    assert report["promotional_phrases"] == ["powerful", "significantly"]
 
 
 def test_grounding_report_finds_generic_benefit_synonyms():
@@ -564,12 +666,7 @@ def test_grounding_report_finds_generic_benefit_synonyms():
     )
 
     assert report["valid"] is True
-    assert report["promotional_phrases"] == [
-        "adaptable",
-        "ensuring that all relevant",
-        "provides easy",
-        "responsive",
-    ]
+    assert report["promotional_phrases"] == ["provides easy", "responsive"]
 
 
 def test_grounding_report_flags_unmeasured_clarity_and_speed_claims():
@@ -592,14 +689,9 @@ def test_grounding_report_flags_unmeasured_clarity_and_speed_claims():
         [],
     )
 
-    assert set(report["promotional_phrases"]) >= {
-        "accurate",
-        "ensures",
-        "fast",
-        "helping developers",
-        "improving",
-        "vital",
-    }
+    assert set(report["promotional_phrases"]) >= {"accurate", "fast", "vital"}
+    assert "ensures" not in report["promotional_phrases"]
+    assert "improving" not in report["promotional_phrases"]
 
 
 def test_promotional_sentence_removal_preserves_support_marker():
@@ -1070,3 +1162,71 @@ def test_flow_drops_steps_without_admissible_evidence():
     plan, _ = parse_fact_plan(raw, {"E1"})
 
     assert "flow" not in plan
+
+
+def test_parse_fact_plan_keeps_a_journey_with_three_supported_stages():
+    plan, errors = parse_fact_plan(
+        json.dumps(
+            {
+                "thesis": {"statement": "t", "evidence": ["E1"]},
+                "sections": [
+                    {
+                        "title": "S",
+                        "claims": [{"statement": "c", "evidence": ["E1"]}],
+                    }
+                ],
+                "journey": {
+                    "title": "From `a()` to `c()`",
+                    "stages": [
+                        {"stage": "`a()`", "statement": "starts", "evidence": ["E1"]},
+                        {"stage": "`b()`", "statement": "moves", "evidence": ["E9"]},
+                        {"stage": "`c()`", "statement": "ends", "evidence": ["E2"]},
+                        {"stage": "`d()`", "statement": "extra", "evidence": ["E2"]},
+                    ],
+                },
+            }
+        ),
+        ["E1", "E2"],
+    )
+    assert [stage["stage"] for stage in plan["journey"]["stages"]] == [
+        "`a()`",
+        "`c()`",
+        "`d()`",
+    ]
+    assert any("journey stage" in error for error in errors)
+
+    short, _errors = parse_fact_plan(
+        json.dumps(
+            {
+                "sections": [
+                    {"title": "S", "claims": [{"statement": "c", "evidence": ["E1"]}]}
+                ],
+                "journey": {
+                    "stages": [
+                        {"stage": "`a()`", "statement": "starts", "evidence": ["E1"]},
+                        {"stage": "`c()`", "statement": "ends", "evidence": ["E1"]},
+                    ]
+                },
+            }
+        ),
+        ["E1"],
+    )
+    assert "journey" not in short
+
+
+def test_navigation_tables_are_chrome_not_claims():
+    table = (
+        "| Area | Covers | Start with |\n"
+        "|---|---|---|\n"
+        "| **Entry points** | Declared by the package manifest | `src/x.py` |\n"
+        "| [Sessions](?p=sessions) | Session state | `src/sessions.py` |"
+    )
+    assert is_internal_wiki_navigation_table(table) is True
+    assert is_internal_wiki_navigation(table) is True
+    factual = (
+        "| Capability | Implemented by | Source |\n"
+        "|---|---|---|\n"
+        "| Detect redirects | `get_redirect_target()` | [E7] |"
+    )
+    assert is_internal_wiki_navigation_table(factual) is False
+    assert is_internal_wiki_navigation(factual) is False

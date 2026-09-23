@@ -1009,3 +1009,113 @@ def test_seed_prefers_a_public_symbol_over_a_private_one(tmp_path):
     result = build_codemap(graph, symbol=None, depth=1, repo_dir=str(tmp_path))
 
     assert result["root"] == "pkg/__init__.py:public()"
+
+
+def _graph_with_go_symbol() -> CodeGraph:
+    graph = CodeGraph()
+    graph._add_vertex(
+        "internal/pkg/run.go:Run()",
+        {
+            "type": "function",
+            "file": "internal/pkg/run.go",
+            "start_line": 0,
+            "end_line": 10,
+            "unified_name": "internal/pkg/run.go:Run()",
+        },
+    )
+    return graph
+
+
+def test_page_subgraph_names_test_only_citations():
+    result = build_page_subgraph(
+        _graph_with_go_symbol(),
+        [
+            {"file": "internal/command/plan_test.go", "start_line": 1434},
+            {"file": "internal/command/init_test.go", "start_line": 5800},
+        ],
+    )
+
+    assert result["available"] is False
+    assert result["note"] == (
+        "This page cites 2 source locations, all in test files, which the symbol "
+        "graph does not index."
+    )
+
+
+def test_page_subgraph_names_uncovered_languages():
+    result = build_page_subgraph(
+        _graph_with_go_symbol(),
+        [{"file": "tools/mpy-tool.py", "start_line": 1781}],
+    )
+
+    assert result["note"] == (
+        "This page cites 1 source location in .py files, but the symbol graph "
+        "only indexes .go files. Index those languages to map this page."
+    )
+
+
+def test_page_subgraph_keeps_rebuild_advice_for_stale_lines():
+    result = build_page_subgraph(
+        _graph_with_go_symbol(),
+        [{"file": "internal/pkg/run.go", "start_line": 400}],
+    )
+
+    assert result["note"].startswith(
+        "This page cites 1 source location, but none match symbols in the active "
+        "graph snapshot."
+    )
+
+
+def test_page_subgraph_names_unindexed_files_by_example():
+    result = build_page_subgraph(
+        _graph_with_go_symbol(),
+        [
+            {"file": "internal/stacks/apply.go", "start_line": 10},
+            {"file": "internal/stacks/plan.go", "start_line": 20},
+            {"file": "internal/stacks/plan_test.go", "start_line": 30},
+        ],
+    )
+
+    assert result["note"] == (
+        "This page cites 3 source locations; 1 of its 3 files are test files, "
+        "which the symbol graph does not index, and the rest (e.g. "
+        "internal/stacks/apply.go, internal/stacks/plan.go) were not indexed "
+        "either."
+    )
+
+    result = build_page_subgraph(
+        _graph_with_go_symbol(),
+        [{"file": "internal/stacks/apply.go", "start_line": 10}],
+    )
+    assert result["note"] == (
+        "This page cites 1 source location in files the symbol graph did not "
+        "index (e.g. internal/stacks/apply.go)."
+    )
+
+
+def test_page_subgraph_does_not_blame_the_snapshot_for_indexed_test_files():
+    graph = _graph_with_go_symbol()
+    graph._add_vertex(
+        "internal/pkg/run_test.go:fixture",
+        {
+            "type": "field",
+            "file": "internal/pkg/run_test.go",
+            "start_line": 36,
+            "end_line": 36,
+            "unified_name": "internal/pkg/run_test.go:fixture",
+        },
+    )
+
+    result = build_page_subgraph(
+        graph,
+        [
+            {"file": "internal/pkg/run_test.go", "start_line": 5, "type": "test"},
+            {"file": "demo/app.go", "start_line": 1},
+        ],
+    )
+
+    assert result["note"] == (
+        "This page cites 2 source locations; 1 of its 2 files are test files, "
+        "which the symbol graph does not index, and the rest (e.g. demo/app.go) "
+        "were not indexed either."
+    )

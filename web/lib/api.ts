@@ -107,6 +107,8 @@ export interface WikiPage {
   citations: Citation[];
   diagram: string;
   media_slots?: WikiMediaSlot[];
+  story?: WikiStory;
+  visual_quality?: WikiVisualQuality;
   evidence?: {
     items: WikiEvidenceItem[];
     relations: WikiRelationItem[];
@@ -162,17 +164,70 @@ export interface WikiPage {
     covered_claims: number;
     planned_claims: number;
     claim_coverage: number;
+    require_story?: boolean;
+    story_valid?: boolean;
+    story_origin?: "planned" | "mixed" | "inferred" | "derived" | "none";
+    story_beat_count?: number;
+    story_transition_coverage?: number;
+    story_review?: WikiStoryReview;
+  };
+}
+
+/** A model's reading of the rendered page against the newcomer rubric. */
+export interface WikiStoryReview {
+  version: number;
+  score: number;
+  max_score: number;
+  answers: Record<string, { score: number; quote: string }>;
+  jargon: boolean;
+  repetition: boolean;
+  notes: string;
+  passed: boolean;
+}
+
+export interface WikiStory {
+  version: number;
+  origin: "planned" | "mixed" | "inferred" | "derived";
+  reader_question?: {
+    statement: string;
+    evidence: string[];
+  };
+  beats: Array<{
+    section: string;
+    role:
+      | "orientation"
+      | "entry"
+      | "mechanism"
+      | "decision"
+      | "handoff"
+      | "boundary"
+      | "outcome";
+    evidence: string[];
+    transition?: {
+      statement: string;
+      evidence: string[];
+    };
+  }>;
+  evidence_budget: {
+    available_source_evidence: number;
+    allocated_source_evidence: number;
+    allocated_relations: number;
+    beat_coverage: number;
+    max_beat_reuse: number;
+    unallocated_source_evidence: string[];
+    sections: Array<{ section: string; evidence: string[] }>;
   };
 }
 
 export interface WikiMediaSlot {
   id: string;
-  kind: "diagram" | "image" | "storyboard" | "video";
+  kind: "diagram" | "image" | "storyboard" | "chart" | "video";
   placement: "lead" | "section" | "aside" | "appendix";
   title: string;
   purpose: string;
   source_citations: string[];
   prompt: string;
+  render_contract?: WikiRenderContract;
   asset?: WikiMediaAsset;
   human_prior: {
     editable: boolean;
@@ -183,7 +238,7 @@ export interface WikiMediaSlot {
 
 export interface WikiMediaAsset {
   slot_id: string;
-  kind: "diagram" | "image" | "storyboard" | "video";
+  kind: "diagram" | "image" | "storyboard" | "chart" | "video";
   uri: string;
   mime_type: string;
   model: string;
@@ -191,6 +246,113 @@ export interface WikiMediaAsset {
   prompt: string;
   source_citations: string[];
   metadata?: Record<string, unknown>;
+}
+
+export interface WikiVisualNode {
+  id: string;
+  label: string;
+  detail: string;
+  evidence: string[];
+  kind?:
+    | "external"
+    | "frontend"
+    | "backend"
+    | "security"
+    | "messagebus"
+    | "database"
+    | "cloud";
+  layer?: "external" | "interface" | "coordination" | "execution" | "data";
+}
+
+export interface WikiVisualEdge {
+  source: string;
+  target: string;
+  label: string;
+  evidence: string[];
+}
+
+export type WikiRenderContract =
+  | {
+      schema_version: 1;
+      adapter: "architecture";
+      provenance: "architecture-plan";
+      evidence: string[];
+      data: {
+        nodes: WikiVisualNode[];
+        edges: WikiVisualEdge[];
+        primary_path: string[];
+        boundaries: Array<{
+          id: string;
+          label: string;
+          detail: string;
+          members: string[];
+          evidence: string[];
+        }>;
+      };
+    }
+  | {
+      schema_version: 1;
+      adapter: "architecture";
+      provenance: "relations" | "deterministic-index";
+      evidence: string[];
+      data: { nodes: WikiVisualNode[]; edges: WikiVisualEdge[] };
+    }
+  | {
+      schema_version: 1;
+      adapter: "flow";
+      provenance: "relations";
+      evidence: string[];
+      data: { nodes: WikiVisualNode[]; edges: WikiVisualEdge[] };
+    }
+  | {
+      schema_version: 1;
+      adapter: "storyboard";
+      provenance: "story";
+      evidence: string[];
+      data: {
+        panels: Array<{
+          id: string;
+          title: string;
+          detail: string;
+          role: string;
+          evidence: string[];
+        }>;
+      };
+    }
+  | {
+      schema_version: 1;
+      adapter: "bar-chart";
+      provenance: "metrics";
+      evidence: string[];
+      data: {
+        unit: string;
+        bars: Array<{ label: string; value: number; evidence: string[] }>;
+      };
+    };
+
+export interface WikiVisualQuality {
+  valid: boolean;
+  required: boolean;
+  publication_ready: boolean;
+  errors: string[];
+  typed_slots: number;
+  valid_typed_slots: number;
+  materialized_typed_slots: number;
+  visible_assets: number;
+  repository_assets: number;
+  grounded_visuals: number;
+  adapters: Array<WikiRenderContract["adapter"]>;
+  rejected_slots?: string[];
+  contracts: Array<{
+    valid: boolean;
+    adapter: WikiRenderContract["adapter"] | null;
+    errors: string[];
+    element_count: number;
+    evidence_count: number;
+    slot_id: string;
+    materialized: boolean;
+    rejected?: boolean;
+  }>;
 }
 
 /**

@@ -47,13 +47,16 @@ from ..wiki.media_generation import (
     redact_media_evidence_packs,
 )
 from ..wiki.narrator import Narrator
+from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
+from ..wiki.story import derive_story_from_markdown
+from ..wiki.visual_ir import page_visual_contract_report
 from .config import load_config
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
-from .repository_files import bound_source_slice
+from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
     ChatRequest,
@@ -389,6 +392,8 @@ def _wiki(repo_id: str, bundle=None):
                 llm=_wiki_llm(config),
                 api_base=config.wiki_generation_api_base,
                 api_key=config.wiki_generation_api_key,
+                story_review=os.environ.get("CODENIB_WIKI_STORY_REVIEW", "1").strip()
+                not in {"0", "false", "no", "off"},
             )
         return WikiBuilder(bundle, narrator=getattr(app.state, "narrator", None))
 
@@ -474,6 +479,46 @@ def _materialize_wiki_media(
             exc_info=True,
         )
         return public_page
+
+
+def _attach_overview_repository_visual(
+    repo_id: str,
+    page_id: str,
+    page: dict,
+    bundle,
+) -> dict:
+    """Attach the strongest repository-provided Overview visual, if present."""
+
+    if page_id != "overview":
+        return page
+    entry = getattr(bundle, "entry", None)
+    repo_dir = getattr(entry, "repo_dir", None)
+    if not repo_dir:
+        return page
+    try:
+        visual = discover_overview_visual(
+            repo_dir,
+            repository=getattr(entry, "repo", None),
+            source_reader=getattr(bundle, "source_reader", None),
+        )
+        if visual is None:
+            return page
+        uri = (
+            f"api/repos/{quote(repo_id, safe='')}/wiki-source-assets/"
+            f"{quote(visual.path, safe='/')}"
+        )
+        return attach_repository_visual(page, visual, uri=uri)
+    except MemoryError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - an optional visual fails soft
+        logger.warning(
+            "Repository visual discovery failed for %s/%s: %s",
+            repo_id,
+            page_id,
+            exc,
+            exc_info=True,
+        )
+        return page
 
 
 def _safe_media_filename(value: str) -> str:
@@ -683,8 +728,22 @@ async def wiki_page(
                 status_code=404,
                 detail=f"Unknown wiki page: {page_id!r}",
             )
+        entry = getattr(bundle, "entry", None)
+        if page_id == "overview" and getattr(entry, "repo_dir", None):
+            page = await _run_pinned_thread(
+                _attach_overview_repository_visual,
+                repo_id,
+                page_id,
+                page,
+                bundle,
+            )
         if "media_slots" not in page:
             page = {**page, "media_slots": []}
+        if "story" not in page:
+            page = {
+                **page,
+                "story": derive_story_from_markdown(str(page.get("markdown") or "")),
+            }
         if materialize_media and page.get("media_slots"):
             page = await _run_pinned_thread(
                 _materialize_wiki_media,
@@ -693,6 +752,8 @@ async def wiki_page(
                 page,
                 bundle,
             )
+        if "visual_quality" not in page:
+            page = {**page, "visual_quality": page_visual_contract_report(page)}
         if "generation" not in page:
             page = {
                 **page,
@@ -727,11 +788,56 @@ async def wiki_media_asset(repo_id: str, page_id: str, filename: str):
             "X-Content-Type-Options": "nosniff",
         }
         if suffix == ".svg":
-            headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+            # An SVG document carries its own presentation in style
+            # attributes; scripts, fetches and frames stay blocked.
+            headers["Content-Security-Policy"] = (
+                "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+            )
         return Response(
             content=payload,
             media_type=_WIKI_MEDIA_TYPES[suffix],
             headers=headers,
+        )
+
+
+@app.get("/api/repos/{repo_id}/wiki-source-assets/{filename:path}")
+async def wiki_repository_visual_asset(repo_id: str, filename: str):
+    """Serve only the repository image selected for the Overview lead."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        entry = getattr(bundle, "entry", None)
+        repo_dir = getattr(entry, "repo_dir", None)
+        if not repo_dir:
+            raise HTTPException(status_code=404, detail="repository visual not found")
+        safe_path = safe_repo_relative_path(repo_dir, filename)
+        if safe_path is None:
+            raise HTTPException(status_code=404, detail="repository visual not found")
+        try:
+            visual = await _run_pinned_thread(
+                discover_overview_visual,
+                repo_dir,
+                repository=getattr(entry, "repo", None),
+                source_reader=getattr(bundle, "source_reader", None),
+            )
+        except MemoryError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - expose no repository details
+            logger.warning(
+                "Repository visual read failed for %s: %s",
+                repo_id,
+                exc,
+                exc_info=True,
+            )
+            visual = None
+        if visual is None or visual.path != safe_path:
+            raise HTTPException(status_code=404, detail="repository visual not found")
+        return Response(
+            content=visual.payload,
+            media_type=visual.mime_type,
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
 

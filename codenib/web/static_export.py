@@ -36,12 +36,17 @@ from ..compiler.manifest import RepoManifest
 from ..compiler.manifest_source import (
     capture_repository_source_for_manifest as capture_repository_source,
 )
-from ..compiler.manifest_source import require_manifest_source_identity
+from ..compiler.manifest_source import (
+    require_manifest_source_identity,
+)
 from ..source_fingerprint import (
     RepositorySourceReader,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
+from ..wiki.media_generation import materialize_deterministic_svg_slots
+from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
+from ..wiki.story import derive_story_from_markdown
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
 
@@ -214,6 +219,10 @@ def _normalize_page(builder: Any, page: Mapping[str, Any]) -> dict[str, Any]:
                 citation["content"] = source.get("content")
         citations.append(citation)
     payload["citations"] = citations
+    if "story" not in payload:
+        payload["story"] = derive_story_from_markdown(
+            str(payload.get("markdown") or "")
+        )
 
     if "generation" not in payload:
         payload["generation"] = {
@@ -901,11 +910,14 @@ def export_static_wiki(
         repository_slug=repo_path.name or "repository",
         agent_wiki=False,
     )
+    repo_component = quote(local.repo_id, safe="")
+    repo_root = f"data/repos/{repo_component}"
 
     from ..wiki import WikiBuilder
 
     cleanup_owner = SourceBindingCleanupOwner()
     stage: OwnedDirectoryStage | None = None
+    repository_assets: dict[str, bytes] = {}
     try:
         expected_manifest = RepoManifest.load(str(manifest_path))
         if not is_secure_source_fingerprint_v2(expected_manifest.source_fingerprint):
@@ -952,6 +964,31 @@ def export_static_wiki(
                         f"Wiki page tree references a missing page: {page_id}"
                     )
                 normalized = _normalize_page(builder, page)
+                if page_id == "overview":
+                    visual = discover_overview_visual(
+                        repo_path,
+                        repository=getattr(bundle.entry, "repo", None),
+                        source_reader=source_reader,
+                    )
+                    if visual is not None:
+                        suffix = PurePosixPath(visual.path).suffix.casefold()
+                        asset_path = (
+                            f"{repo_root}/repository-assets/"
+                            f"{visual.content_sha256}{suffix}"
+                        )
+                        repository_assets.setdefault(asset_path, visual.payload)
+                        normalized = attach_repository_visual(
+                            normalized,
+                            visual,
+                            uri=asset_path,
+                        )
+                normalized, generated_assets = materialize_deterministic_svg_slots(
+                    normalized,
+                    asset_base_path=(
+                        f"{repo_root}/wiki-media/{quote(page_id, safe='')}"
+                    ),
+                )
+                repository_assets.update(generated_assets)
                 pages.append(normalized)
                 graphs[page_id] = _embed_page_graph_sources(
                     builder,
@@ -998,8 +1035,6 @@ def export_static_wiki(
         _write_bytes(stage, "404.html", _not_found_page(base_path))
         _write_json(stage, "data/repos.json", [repo_info])
 
-        repo_component = quote(local.repo_id, safe="")
-        repo_root = f"data/repos/{repo_component}"
         _write_json(
             stage,
             f"{repo_root}/wiki.json",
@@ -1010,6 +1045,8 @@ def export_static_wiki(
             f"{repo_root}/commits.json",
             {"available": False, "commits": [], "selected": None},
         )
+        for relative, payload in sorted(repository_assets.items()):
+            _write_bytes(stage, relative, payload)
         for page, page_id in zip(pages, page_ids, strict=True):
             component = quote(page_id, safe="")
             _write_json(stage, f"{repo_root}/pages/{component}.json", page)

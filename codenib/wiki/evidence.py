@@ -9,7 +9,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import asdict, dataclass
+from itertools import islice
 from typing import Any, Callable, Iterable, List, Sequence
+
+from .fences import strip_code_fences
+from .story import STORY_BEAT_ROLES, STORY_SCHEMA_VERSION
 
 FACT_CLAIM_ROLES = frozenset(
     {
@@ -18,6 +22,7 @@ FACT_CLAIM_ROLES = frozenset(
         "flow",
         "responsibility",
         "contract",
+        "rationale",
         "component",
     }
 )
@@ -41,13 +46,86 @@ _INTERNAL_WIKI_NAV_ITEM_RE = re.compile(
 )
 
 
+_INTERNAL_WIKI_NAV_CELL_RE = re.compile(
+    r"\s*(?:\[[^\]\n]+\]\(\?p=[^)\s]+\)|\*\*Entry points?\*\*)\s*"
+)
+
+
+def is_internal_wiki_navigation_table(block: str) -> bool:
+    """Whether a table only routes the reader to other pages of this wiki.
+
+    The Overview's subsystem table is built from the outline, not from source
+    evidence; like a list of page links it is chrome, not a factual claim.
+    """
+
+    rows = [line for line in block.splitlines() if line.strip().startswith("|")]
+    if len(rows) < 3 or not _TABLE_DIVIDER_RE.match(rows[1]):
+        return False
+    return all(
+        _INTERNAL_WIKI_NAV_CELL_RE.fullmatch(row.strip().strip("|").split("|", 1)[0])
+        for row in rows[2:]
+    )
+
+
 def is_internal_wiki_navigation(block: str) -> bool:
-    """Whether a block is only a list of internal Wiki page links."""
+    """Whether a block is only internal Wiki navigation (links or a table)."""
 
     lines = [line for line in block.splitlines() if line.strip()]
-    return bool(lines) and all(
-        _INTERNAL_WIKI_NAV_ITEM_RE.fullmatch(line) for line in lines
-    )
+    if not lines:
+        return False
+    if all(_INTERNAL_WIKI_NAV_ITEM_RE.fullmatch(line) for line in lines):
+        return True
+    return is_internal_wiki_navigation_table(block)
+
+
+INTERACTION_LIST_LABEL = "**Interactions**"
+_INTERACTION_ROW_RE = re.compile(
+    r"^\s*[-*]\s+`[^`\n]+`\s+→\s+`[^`\n]+`(?::\s+[^\n]*?)?\s*"
+    r"(?:\[R\d+\](?:\([^)]*\))?\s*)+$"
+)
+
+
+def is_interaction_row(line: str) -> bool:
+    """Whether a line is one rendered ``source → target`` relation row."""
+
+    return bool(_INTERACTION_ROW_RE.fullmatch(line or ""))
+
+
+def is_interaction_list(block: str) -> bool:
+    """Whether a block is the deterministic relation list of one section.
+
+    Relation rows are structure derived from graph edges, not prose: they
+    are excluded from narrative measurements and never counted as sentences.
+    """
+
+    lines = [line for line in (block or "").splitlines() if line.strip()]
+    if not lines:
+        return False
+    if lines[0].strip() == INTERACTION_LIST_LABEL:
+        lines = lines[1:]
+    return bool(lines) and all(is_interaction_row(line) for line in lines)
+
+
+_JOURNEY_ROW_RE = re.compile(r"^\s*\d+\.\s+\*\*`[^`\n]+`\*\*")
+
+
+def is_journey_list(block: str) -> bool:
+    """Whether a block is the Overview's numbered journey (structure, not prose)."""
+
+    lines = [line for line in (block or "").splitlines() if line.strip()]
+    return len(lines) >= 3 and all(_JOURNEY_ROW_RE.match(line) for line in lines)
+
+
+def interaction_rows(markdown: str) -> List[str]:
+    """Return every rendered relation row in ``markdown``."""
+
+    return [
+        line.strip()
+        for block in re.split(r"\n\s*\n", markdown or "")
+        if is_interaction_list(block.strip())
+        for line in block.splitlines()
+        if is_interaction_row(line)
+    ]
 
 
 def _markdown_code_spans(text: str) -> List[str]:
@@ -178,25 +256,20 @@ _COMMON_CODE_TERMS = frozenset(
         "void",
     }
 )
+# Evaluations only. Causal verbs (allows, enables, ensures, improves, helps)
+# were once on this list, which also banned the "why" that makes a page a
+# story; a reason is admitted like any claim, an adjective of quality is not.
 _PROMOTIONAL_RE = re.compile(
-    r"\b(accurate(?:ly)?|adapt(?:s|ing)?|adaptable|advanced|aids?|better|"
-    r"allows(?: for| the system| developers| users)|"
-    r"allowing (?:for|developers|users)|allow(?:s|ed|ing)?|"
-    r"comprehensive|crucial|dynamic(?:ally)?|"
-    r"cater(?:s|ing)?|easy access|easy to use|easier|effectively|"
-    r"efficient|efficiently|fast|"
-    r"enabl(?:e|es|ing)(?: developers| users)?|"
-    r"enhanc(?:e|es|ing)(?: productivity)?|"
-    r"ensur(?:e|es|ing) (?:that )?(?:all relevant|everything|resources?)|"
-    r"ensur(?:e|es|ing)|"
-    r"essential|flexible|"
-    r"facilitat(?:e|es|ing)|for clarity|gain insights?|"
-    r"help(?:s|ed|ing)? (?:developers|users)|improv(?:e|es|ing)|"
-    r"intuitive|invaluable|"
-    r"important (?:for|to)|key functionalit(?:y|ies)|making it|"
-    r"powerful|provid(?:e|es|ing) (?:easy|quick)|quickly|responsive|significantly|"
-    r"sensible|supports? (?:interactions?|management)|vital|"
-    r"optimiz(?:e|es|ing)|sophisticated|user-friendly|versatile)\b",
+    r"\b(accurate(?:ly)?|advanced|best-in-class|better|blazing(?:ly)?|"
+    r"comprehensive|convenient(?:ly)?|crucial|cutting-edge|"
+    r"easy access|easy to use|easy-to-use|easier|easily|effortless(?:ly)?|"
+    r"efficient(?:ly)?|elegant(?:ly)?|essential|fast|flexible|"
+    r"for clarity|gain insights?|high-performance|highly|intuitive|invaluable|"
+    r"lightning-fast|making it (?:easy|easier|simple|simpler)|"
+    r"optimal(?:ly)?|performant|powerful|"
+    r"provid(?:e|es|ing) (?:easy|quick)|quickly|responsive|robust(?:ly)?|"
+    r"seamless(?:ly)?|significantly|sophisticated|state-of-the-art|"
+    r"streamlined|user-friendly|versatile|vital)\b",
     re.IGNORECASE,
 )
 _FLOW_RE = re.compile(
@@ -749,6 +822,73 @@ def parse_fact_plan(
     if not sections:
         errors.append("plan has no supported sections")
 
+    # Story metadata controls section order and supplies the connective tissue
+    # rendered around admitted facts.  Parse it separately from claims so an
+    # invalid transition can never make an unsupported claim admissible.
+    story: dict[str, Any] = {}
+    raw_story = raw.get("story")
+    if isinstance(raw_story, dict):
+        reader_question: dict[str, Any] = {}
+        raw_question = raw_story.get("reader_question")
+        if isinstance(raw_question, dict):
+            question_statement = str(raw_question.get("statement") or "").strip()
+            question_evidence = _supported_evidence_ids(
+                raw_question.get("evidence"),
+                allowed,
+                label="reader question",
+                errors=errors,
+            )
+            if question_statement and question_evidence:
+                reader_question = {
+                    "statement": question_statement,
+                    "evidence": question_evidence,
+                }
+
+        beats: list[dict[str, Any]] = []
+        seen_sections: set[str] = set()
+        for raw_beat in raw_story.get("beats") or []:
+            if not isinstance(raw_beat, dict):
+                continue
+            section = re.sub(r"\s+", " ", str(raw_beat.get("section") or "")).strip()
+            section_key = section.casefold()
+            if not section or section_key in seen_sections:
+                continue
+            seen_sections.add(section_key)
+            role = str(raw_beat.get("role") or "").strip().casefold()
+            if role not in STORY_BEAT_ROLES:
+                if role:
+                    errors.append(
+                        f"story beat {section!r} uses unsupported role: {role}"
+                    )
+                role = "mechanism"
+            beat: dict[str, Any] = {"section": section, "role": role}
+            raw_transition = raw_beat.get("transition")
+            if isinstance(raw_transition, dict):
+                transition_statement = str(
+                    raw_transition.get("statement") or ""
+                ).strip()
+                transition_evidence = _supported_evidence_ids(
+                    raw_transition.get("evidence"),
+                    allowed,
+                    label=f"story transition for {section!r}",
+                    errors=errors,
+                )
+                if transition_statement and transition_evidence:
+                    beat["transition"] = {
+                        "statement": transition_statement,
+                        "evidence": transition_evidence,
+                    }
+            beats.append(beat)
+
+        if reader_question or beats:
+            story = {
+                "version": STORY_SCHEMA_VERSION,
+                "origin": "planned",
+                "beats": beats[:6],
+            }
+            if reader_question:
+                story["reader_question"] = reader_question
+
     # Reader-facing framing and the scan table are grounded like any claim: each
     # needs admissible evidence ids or it is dropped rather than passed through.
     purpose: dict[str, Any] = {}
@@ -836,12 +976,160 @@ def parse_fact_plan(
         },
         "sections": sections,
     }
+    if story:
+        plan["story"] = story
     if purpose:
         plan["purpose"] = purpose
     if scan_map:
         plan["map"] = scan_map
     if flow:
         plan["flow"] = flow
+    # An Overview journey: one path from a public entry to the visible result,
+    # each stage naming a code entity and saying what happens there.
+    journey: dict[str, Any] = {}
+    raw_journey = raw.get("journey")
+    if isinstance(raw_journey, dict):
+        stages = []
+        for stage in raw_journey.get("stages") or []:
+            if not isinstance(stage, dict):
+                continue
+            entity = str(stage.get("stage") or stage.get("entity") or "").strip()
+            statement = str(stage.get("statement") or "").strip()
+            stage_evidence = _supported_evidence_ids(
+                stage.get("evidence"),
+                allowed,
+                label="journey stage",
+                errors=errors,
+            )
+            if entity and statement and stage_evidence:
+                stages.append(
+                    {
+                        "stage": entity,
+                        "statement": statement,
+                        "evidence": stage_evidence,
+                    }
+                )
+        if len(stages) >= 3:
+            journey = {
+                "title": str(raw_journey.get("title") or "").strip(),
+                "stages": stages[:6],
+            }
+    if journey:
+        plan["journey"] = journey
+    architecture: dict[str, Any] = {}
+    raw_architecture = raw.get("architecture")
+    if isinstance(raw_architecture, dict):
+
+        def architecture_items(value: Any, limit: int) -> list[Any]:
+            if isinstance(value, (str, bytes, bytearray)):
+                return []
+            try:
+                return list(islice(iter(value or ()), limit))
+            except TypeError:
+                return []
+
+        components = []
+        for component in architecture_items(raw_architecture.get("components"), 10):
+            if not isinstance(component, dict):
+                continue
+            component_id = str(component.get("id") or "").strip()
+            label = str(component.get("label") or "").strip()
+            responsibility = str(component.get("responsibility") or "").strip()
+            layer = str(component.get("layer") or "").strip().casefold()
+            kind = str(component.get("kind") or "").strip().casefold()
+            component_evidence = _supported_evidence_ids(
+                component.get("evidence"),
+                allowed,
+                label=f"architecture component {component_id or label!r}",
+                errors=errors,
+            )
+            if all(
+                (
+                    component_id,
+                    label,
+                    responsibility,
+                    layer,
+                    kind,
+                    component_evidence,
+                )
+            ):
+                components.append(
+                    {
+                        "id": component_id,
+                        "label": label,
+                        "responsibility": responsibility,
+                        "layer": layer,
+                        "kind": kind,
+                        "evidence": component_evidence,
+                    }
+                )
+
+        connections = []
+        for connection in architecture_items(raw_architecture.get("connections"), 18):
+            if not isinstance(connection, dict):
+                continue
+            source = str(connection.get("source") or "").strip()
+            target = str(connection.get("target") or "").strip()
+            label = str(connection.get("label") or "").strip()
+            connection_evidence = _supported_evidence_ids(
+                connection.get("evidence"),
+                allowed,
+                label=f"architecture connection {source!r} to {target!r}",
+                errors=errors,
+            )
+            if source and target and source != target and label and connection_evidence:
+                connections.append(
+                    {
+                        "source": source,
+                        "target": target,
+                        "label": label,
+                        "evidence": connection_evidence,
+                    }
+                )
+
+        boundaries = []
+        for boundary in architecture_items(raw_architecture.get("boundaries"), 3):
+            if not isinstance(boundary, dict):
+                continue
+            boundary_id = str(boundary.get("id") or "").strip()
+            label = str(boundary.get("label") or "").strip()
+            members = [
+                str(item).strip()
+                for item in architecture_items(boundary.get("members"), 10)
+                if str(item or "").strip()
+            ]
+            boundary_evidence = _supported_evidence_ids(
+                boundary.get("evidence"),
+                allowed,
+                label=f"architecture boundary {boundary_id or label!r}",
+                errors=errors,
+            )
+            if boundary_id and label and members and boundary_evidence:
+                boundaries.append(
+                    {
+                        "id": boundary_id,
+                        "label": label,
+                        "detail": str(boundary.get("detail") or "").strip(),
+                        "members": members,
+                        "evidence": boundary_evidence,
+                    }
+                )
+
+        primary_path = [
+            str(item).strip()
+            for item in architecture_items(raw_architecture.get("primary_path"), 7)
+            if str(item or "").strip()
+        ]
+        if components and connections and primary_path:
+            architecture = {
+                "title": str(raw_architecture.get("title") or "").strip(),
+                "components": components,
+                "connections": connections,
+                "primary_path": primary_path,
+                "boundaries": boundaries,
+            }
+    if architecture:
+        plan["architecture"] = architecture
     if see_also:
         plan["see_also"] = see_also[:3]
     return plan, errors
@@ -880,7 +1168,7 @@ def grounding_report(
     cited = set(_CITATION_RE.findall(markdown))
     unknown_citations = sorted(cited - allowed_ids)
 
-    without_fences = re.sub(r"```[\s\S]*?```", "", markdown)
+    without_fences = strip_code_fences(markdown)
     prose_blocks = []
     blocks = []
     for raw in re.split(r"\n\s*\n", without_fences):
@@ -898,6 +1186,10 @@ def grounding_report(
             blocks.append(block)
     cited_blocks = sum(1 for block in blocks if _block_is_cited(block))
     coverage = cited_blocks / len(blocks) if blocks else 0.0
+    # Identifiers and paths are checked in factual prose only. Navigation
+    # chrome (page links, the subsystem table) names files the outline chose,
+    # which are not claims about the evidence.
+    scan_text = "\n\n".join(prose_blocks)
 
     evidence_corpora = [
         "\n".join((item.file, item.symbol, item.content)) for item in evidence
@@ -919,7 +1211,7 @@ def grounding_report(
 
     known_files = {item.file.lower().lstrip("./") for item in evidence}
     unsupported_identifiers = []
-    for identifier in _markdown_code_spans(without_fences):
+    for identifier in _markdown_code_spans(scan_text):
         normalized = identifier.strip()
         source_name = re.sub(r":\d+(?:-\d+)?$", "", normalized)
         call_name_match = re.fullmatch(
@@ -995,7 +1287,7 @@ def grounding_report(
     unknown_files = sorted(
         {
             path
-            for path in _PATH_RE.findall(without_fences)
+            for path in _PATH_RE.findall(scan_text)
             if path.lower().lstrip("./") not in known_files
             and not any_exact(path)
             and not any(file.endswith("/" + path.lower()) for file in known_files)

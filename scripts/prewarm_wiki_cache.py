@@ -107,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
                 llm=llm,
                 api_base=config.wiki_generation_api_base,
                 api_key=config.wiki_generation_api_key,
+                # Same switch as the web app: prewarmed pages carry the reader
+                # review so the provenance line does not differ from live pages.
+                story_review=os.environ.get("CODENIB_WIKI_STORY_REVIEW", "1").strip()
+                not in {"0", "false", "no", "off"},
             )
 
         report = prewarm_wiki_cache(

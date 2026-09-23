@@ -1006,6 +1006,76 @@ def _resolve_citation(
     return _resolve(graph, nm) if nm else None
 
 
+def _citation_file(cit: Dict[str, Any], repo_dir: Optional[str]) -> str:
+    f = cit.get("file")
+    if not isinstance(f, str) or not f:
+        return ""
+    if repo_dir and os.path.isabs(f):
+        try:
+            relative = os.path.relpath(f, repo_dir)
+            if relative != ".." and not relative.startswith("../"):
+                return relative.replace("\\", "/")
+        except ValueError:
+            pass
+    return f.replace("\\", "/")
+
+
+def _unmapped_citations_note(
+    citations: List[Dict[str, Any]],
+    by_file: Dict[str, List[Tuple[int, str]]],
+    repo_dir: Optional[str],
+) -> str:
+    """Say why none of a page's citations resolved, in terms a reader can act on.
+
+    "Rebuild the graph" is only the right advice when the cited files *are* in
+    the graph and the lines no longer line up. Pages about tests cite files the
+    graph never indexes, and a C graph cannot map a page about Python tooling;
+    telling the operator to rebuild would not change either.
+    """
+
+    from ..ops.filter import is_test_path
+
+    count = len(citations)
+    cited = f"{count} source location{'s' if count != 1 else ''}"
+    files = {f for f in (_citation_file(cit, repo_dir) for cit in citations) if f}
+    test_files = sorted(f for f in files if is_test_path(f))
+    # A test file the graph did index still resolves poorly: its citations
+    # span whole test bodies while the graph holds scattered fixtures, so a
+    # miss there says nothing about the snapshot. Only a non-test file that is
+    # in the graph and still fails to line up points at stale line numbers.
+    stale = any(f in by_file and f not in test_files for f in files)
+    if not by_file or not files or stale:
+        return (
+            f"This page cites {cited}, but none match symbols in the active "
+            "graph snapshot. Rebuild the symbol graph from the same repository "
+            "snapshot as the Wiki indexes."
+        )
+    if len(test_files) == len(files):
+        return (
+            f"This page cites {cited}, all in test files, which the symbol "
+            "graph does not index."
+        )
+    graph_exts = sorted({os.path.splitext(f)[1] for f in by_file} - {""})
+    cited_exts = sorted({os.path.splitext(f)[1] for f in files} - {""})
+    if cited_exts and graph_exts and not set(cited_exts) & set(graph_exts):
+        return (
+            f"This page cites {cited} in {', '.join(cited_exts)} files, but the "
+            f"symbol graph only indexes {', '.join(graph_exts)} files. Index "
+            "those languages to map this page."
+        )
+    examples = ", ".join(sorted(f for f in files if f not in test_files)[:2])
+    if test_files:
+        return (
+            f"This page cites {cited}; {len(test_files)} of its {len(files)} "
+            "files are test files, which the symbol graph does not index, and "
+            f"the rest (e.g. {examples}) were not indexed either."
+        )
+    return (
+        f"This page cites {cited} in files the symbol graph did not index "
+        f"(e.g. {examples})."
+    )
+
+
 def build_page_subgraph(
     graph: CodeGraph,
     citations: List[Dict[str, Any]],
@@ -1097,12 +1167,7 @@ def build_page_subgraph(
 
     if not names:
         if citations:
-            note = (
-                f"This page cites {len(citations)} source location"
-                f"{'s' if len(citations) != 1 else ''}, but none match symbols "
-                "in the active graph snapshot. Rebuild the symbol graph from "
-                "the same repository snapshot as the Wiki indexes."
-            )
+            note = _unmapped_citations_note(citations, by_file, repo_dir)
         else:
             note = "This page has no source citations to map yet."
         return {
