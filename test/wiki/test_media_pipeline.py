@@ -153,3 +153,29 @@ def test_pipeline_rejects_invalid_repository_roots(tmp_path):
     file_path.write_text("not a directory", encoding="utf-8")
     with pytest.raises(NotADirectoryError, match="not a directory"):
         build_multimodal_repository_knowledge(file_path)
+
+
+def test_pipeline_reports_progress_before_each_extraction(tmp_path):
+    from codenib.wiki.media_facts import deterministic_visual_facts
+
+    (tmp_path / "a.png").write_bytes(b"a")
+    (tmp_path / "b.png").write_bytes(b"b")
+    events = []
+
+    def extract(artifact):
+        events.append(("extract", artifact["path"]))
+        return deterministic_visual_facts(artifact)
+
+    bundle = build_multimodal_repository_knowledge(
+        tmp_path,
+        commit="abc123",
+        extractor=extract,
+        progress=lambda index, total, path: events.append((index, total, path)),
+    )
+    assert bundle["visual_facts_manifest"]["fact_count"] == 2
+    assert events == [
+        (1, 2, "a.png"),
+        ("extract", "a.png"),
+        (2, 2, "b.png"),
+        ("extract", "b.png"),
+    ]

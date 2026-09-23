@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,11 @@ from codenib.web.schemas import ChatRequest, ChatResponse
 def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
     ticks = iter((10.0, 12.5))
     monkeypatch.setattr(web_app, "perf_counter", lambda: next(ticks))
+    # Managed CodeNib loggers intentionally do not propagate to pytest's root
+    # handler. Attach capture directly without changing production logging.
+    monkeypatch.setattr(
+        web_app.logger, "handlers", [*web_app.logger.handlers, caplog.handler]
+    )
 
     with caplog.at_level(logging.INFO, logger=web_app.logger.name):
         response = TestClient(web_app.app).get("/api/health?secret=query")
@@ -45,6 +51,213 @@ def test_web_app_has_no_retained_storage_control_plane() -> None:
 
     assert not any("index-jobs" in path for path in paths)
     assert not hasattr(web_app, "_configured_local_index_runtime")
+
+
+def test_visual_evidence_summary_hides_stale_facts_and_keeps_ready_bindings():
+    persisted = {
+        "media_manifest": {"commit": "a" * 40, "artifact_count": 1},
+        "visual_facts_manifest": {
+            "fact_count": 1,
+            "facts": [
+                {
+                    "artifact_path": "docs/architecture.svg",
+                    "extractor": "gemini",
+                    "entities": [
+                        {"name": "WikiService", "type": "component", "confidence": 0.9}
+                    ],
+                    "relations": [],
+                    "claims": [
+                        {"text": "The Wiki has one service.", "confidence": 0.9}
+                    ],
+                }
+            ],
+        },
+        "grounding_manifest": {
+            "binding_count": 2,
+            "bindings": [
+                {
+                    "artifact_path": "docs/architecture.svg",
+                    "entity_name": "WikiService",
+                    "source_path": "src/wiki.py",
+                    "symbol": "WikiService",
+                    "line": 7,
+                    "score": 0.9,
+                    "evidence": "exact symbol match",
+                },
+                {
+                    "artifact_path": "docs/architecture.svg",
+                    "entity_name": "WikiService",
+                    "source_path": "src/maybe.py",
+                    "symbol": "Service",
+                    "line": 3,
+                    "score": 0.4,
+                    "evidence": "partial symbol match",
+                },
+            ],
+        },
+    }
+    current = SimpleNamespace(entry=SimpleNamespace(base_commit="a" * 40))
+
+    ready = web_app._summarize_wiki_visual_evidence(persisted, current)
+
+    assert ready["state"] == "ready"
+    assert ready["facts"][0]["entities"][0]["name"] == "WikiService"
+    assert len(ready["bindings"]) == 2
+
+    stale = web_app._summarize_wiki_visual_evidence(
+        persisted,
+        SimpleNamespace(entry=SimpleNamespace(base_commit="b" * 40)),
+    )
+
+    assert stale["state"] == "stale"
+    assert stale["facts"] == []
+    assert stale["bindings"] == []
+
+
+def test_visual_evidence_endpoint_reads_a_pinned_repository_generation(monkeypatch):
+    bundle = SimpleNamespace(entry=SimpleNamespace(base_commit="a" * 40))
+    persisted = {
+        "media_manifest": {"commit": "a" * 40, "artifact_count": 0},
+        "visual_facts_manifest": {"fact_count": 0, "facts": []},
+        "grounding_manifest": {"binding_count": 0, "bindings": []},
+    }
+
+    @contextmanager
+    def pinned(_repo_id):
+        yield bundle
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "_pinned_bundle", pinned)
+    monkeypatch.setattr(web_app, "_run_pinned_thread", run_inline)
+    monkeypatch.setattr(
+        web_app, "_load_wiki_visual_evidence", lambda _bundle: persisted
+    )
+
+    response = asyncio.run(web_app.wiki_visual_evidence("repository"))
+
+    assert response["state"] == "ready"
+    assert response["source_commit"] == "a" * 40
+
+
+@pytest.mark.parametrize(
+    ("artifact_path", "media_type"),
+    [
+        ("docs/architecture.png", "image/png"),
+        ("docs/architecture.svg", "image/svg+xml"),
+    ],
+)
+def test_visual_evidence_media_serves_only_current_manifest_artifacts(
+    monkeypatch, artifact_path, media_type
+):
+    class SourceReader:
+        def captured_relative_path(self, path):
+            return path
+
+        def read_prefix(self, relative, *, max_bytes):
+            assert relative == artifact_path
+            assert max_bytes == 32 * 1024 * 1024 + 1
+            return b"current-image"
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(base_commit="a" * 40),
+        source_reader=SourceReader(),
+    )
+    persisted = {
+        "media_manifest": {"commit": "a" * 40, "artifact_count": 1},
+        "visual_facts_manifest": {
+            "fact_count": 1,
+            "facts": [
+                {
+                    "artifact_path": artifact_path,
+                    "artifact_sha256": hashlib.sha256(b"current-image").hexdigest(),
+                    "extractor": "gemini",
+                    "entities": [],
+                    "relations": [],
+                    "claims": [],
+                }
+            ],
+        },
+        "grounding_manifest": {"binding_count": 0, "bindings": []},
+    }
+
+    @contextmanager
+    def pinned(_repo_id):
+        yield bundle
+
+    async def run_inline(function, *args, **kwargs):
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "_pinned_bundle", pinned)
+    monkeypatch.setattr(web_app, "_run_pinned_thread", run_inline)
+    monkeypatch.setattr(
+        web_app, "_load_wiki_visual_evidence", lambda _bundle: persisted
+    )
+
+    response = asyncio.run(
+        web_app.wiki_visual_evidence_media(
+            "repository",
+            file=artifact_path,
+            commit="a" * 40,
+        )
+    )
+
+    assert response.body == b"current-image"
+    assert response.media_type == media_type
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    if media_type == "image/svg+xml":
+        assert (
+            response.headers["content-security-policy"] == "default-src 'none'; sandbox"
+        )
+
+    with pytest.raises(web_app.HTTPException) as stale:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file=artifact_path,
+                commit="b" * 40,
+            )
+        )
+    assert stale.value.status_code == 409
+
+    with pytest.raises(web_app.HTTPException) as unknown:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file="docs/not-in-manifest.png",
+                commit="a" * 40,
+            )
+        )
+    assert unknown.value.status_code == 404
+
+    with pytest.raises(web_app.HTTPException) as old_page:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file=artifact_path,
+                commit="a" * 40,
+                sha256="b" * 64,
+            )
+        )
+    assert old_page.value.status_code == 409
+
+    # A fresh reader may capture new bytes at the same commit after reindexing.
+    # The old fact pack must not be paired with that new image.
+    monkeypatch.setattr(
+        bundle.source_reader, "read_prefix", lambda *args, **kwargs: b"new-image"
+    )
+    with pytest.raises(web_app.HTTPException) as changed:
+        asyncio.run(
+            web_app.wiki_visual_evidence_media(
+                "repository",
+                file=artifact_path,
+                commit="a" * 40,
+            )
+        )
+    assert changed.value.status_code == 409
+    assert "regenerate" in changed.value.detail
 
 
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):

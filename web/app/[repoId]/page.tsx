@@ -4,11 +4,13 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
+import RelatedVisuals from "@/components/RelatedVisuals";
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import {
   fetchCommits,
   fetchRepos,
+  fetchWikiVisualEvidence,
   fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
@@ -21,6 +23,7 @@ import {
   type CommitRef,
   type RepoInfo,
   type WikiMediaSlot,
+  type WikiVisualEvidence,
   type WikiPage,
   type WikiPageRef,
 } from "@/lib/api";
@@ -339,6 +342,7 @@ export default function WikiPageView({
   // case the rail keeps its static "Last indexed" label.
   const [commits, setCommits] = useState<CommitRef[]>([]);
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
+  const [visualEvidence, setVisualEvidence] = useState<WikiVisualEvidence | null>(null);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -346,6 +350,7 @@ export default function WikiPageView({
     let cancelled = false;
     setCommits([]);
     setSelectedCommit(undefined);
+    setVisualEvidence(null);
 
     fetchRepos()
       .then((rs) => {
@@ -361,6 +366,15 @@ export default function WikiPageView({
         setSelectedCommit(w.selected ?? undefined);
       })
       .catch(() => {});
+    fetchWikiVisualEvidence(repoId)
+      .then((evidence) => {
+        if (!cancelled) setVisualEvidence(evidence);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setVisualEvidence(null);
+        }
+      });
     setTocLoading(true);
     setError(null);
     fetchWikiTree(repoId)
@@ -882,6 +896,15 @@ export default function WikiPageView({
                     </div>
                   )}
                 </div>
+              )}
+              {!pageError && !error && page && page.id === activeId && !shouldWithholdWikiPage(page) && visualEvidence && (
+                <RelatedVisuals
+                  key={`${repoId}:${activeId}`}
+                  evidence={visualEvidence}
+                  page={page}
+                  repoId={repoId}
+                  onOpenCitation={setSourceCitation}
+                />
               )}
           </div>
         </main>

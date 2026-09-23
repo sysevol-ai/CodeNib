@@ -10,6 +10,7 @@ import hashlib
 import json
 import math
 import re
+from collections import Counter
 from dataclasses import asdict, dataclass
 from itertools import islice
 from pathlib import Path, PurePosixPath
@@ -39,7 +40,7 @@ _MAX_PATH_BYTES = 4096
 _SYMBOL_RE = re.compile(
     r"\b(?:class|def|function|const|let|var|interface|type|struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)"
 )
-_CAMEL_RE = re.compile(r"\b[A-Z][A-Za-z0-9_]{2,}\b")
+_ASSIGNMENT_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9_]{2,})\s*=")
 VisualGroundingScorer = Callable[
     [Mapping[str, Any], Mapping[str, Any]], Mapping[str, Any] | None
 ]
@@ -190,6 +191,11 @@ def ground_visual_facts_to_sources(
         key = (candidate.path, candidate.symbol, candidate.kind, candidate.line)
         candidates_by_key.setdefault(key, candidate)
     candidates = list(candidates_by_key.values())
+    symbol_frequencies = Counter(
+        normalized
+        for candidate in candidates
+        if (normalized := _normalize(candidate.symbol))
+    )
     candidate_payloads = (
         {candidate: candidate.to_dict() for candidate in candidates}
         if scorer is not None
@@ -235,6 +241,9 @@ def ground_visual_facts_to_sources(
                         entity_name=entity_name,
                         hints=hints,
                         candidate=candidate,
+                        symbol_frequency=symbol_frequencies.get(
+                            _normalize(candidate.symbol), 0
+                        ),
                         candidate_payload=candidate_payloads.get(candidate),
                         scorer=scorer,
                     )
@@ -289,6 +298,7 @@ def _score_with_optional_scorer(
     entity_name: str,
     hints: list[str],
     candidate: SourceSymbolCandidate,
+    symbol_frequency: int,
     candidate_payload: Mapping[str, Any] | None,
     scorer: VisualGroundingScorer | None,
 ) -> VisualCodeBinding | None:
@@ -298,6 +308,7 @@ def _score_with_optional_scorer(
             entity_name=entity_name,
             hints=hints,
             candidate=candidate,
+            exact_symbol_is_unique=symbol_frequency == 1,
         )
     scorer_entity = {
         "name": entity_name,
@@ -333,7 +344,9 @@ def _score_candidate(
     entity_name: str,
     hints: Iterable[str],
     candidate: SourceSymbolCandidate,
+    exact_symbol_is_unique: bool,
 ) -> VisualCodeBinding | None:
+    normalized_entity = _normalize(entity_name)
     normalized_hints = [_normalize(hint) for hint in hints if _normalize(hint)]
     candidate_symbol = _normalize(candidate.symbol)
     candidate_path = _normalize(Path(candidate.path).stem)
@@ -342,8 +355,16 @@ def _score_candidate(
     evidence = ""
     for hint in normalized_hints:
         if candidate_symbol and hint == candidate_symbol:
-            score = max(score, 1.0)
-            evidence = "exact symbol match"
+            if hint == normalized_entity and exact_symbol_is_unique:
+                score = max(score, 1.0)
+                evidence = "unique exact symbol match"
+            else:
+                score = max(score, 0.75)
+                evidence = (
+                    "ambiguous exact symbol match"
+                    if hint == normalized_entity
+                    else "grounding hint symbol match"
+                )
         elif candidate_symbol and (
             hint in candidate_symbol or candidate_symbol in hint
         ):
@@ -372,9 +393,9 @@ def _score_candidate(
 def _symbols(text: str) -> Iterable[tuple[str, int]]:
     seen = set()
     for line_number, line in enumerate(text.splitlines(), start=1):
-        for regex in (_SYMBOL_RE, _CAMEL_RE):
+        for regex in (_SYMBOL_RE, _ASSIGNMENT_RE):
             for match in regex.finditer(line):
-                symbol = match.group(1) if regex is _SYMBOL_RE else match.group(0)
+                symbol = match.group(1)
                 if symbol in seen:
                     continue
                 seen.add(symbol)

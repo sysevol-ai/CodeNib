@@ -39,6 +39,7 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
+from ..wiki.media_context import visual_document_contexts
 from ..wiki.media_evidence import build_media_evidence_pack
 from ..wiki.media_generation import (
     image_generator_from_config,
@@ -46,6 +47,7 @@ from ..wiki.media_generation import (
     read_generated_media_asset,
     redact_media_evidence_packs,
 )
+from ..wiki.media_storage import load_multimodal_knowledge_bundle
 from ..wiki.narrator import Narrator
 from ..wiki.sqlite_store import SQLiteWikiStore
 from .config import load_config
@@ -69,6 +71,14 @@ _WIKI_MEDIA_TYPES = {
     ".png": "image/png",
     ".svg": "image/svg+xml",
 }
+_VISUAL_EVIDENCE_MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+}
+_MAX_VISUAL_EVIDENCE_MEDIA_BYTES = 32 * 1024 * 1024
 
 logger = get_logger(__name__)
 
@@ -403,6 +413,126 @@ def _wiki_media_dir(config, repo_id: str, page_id: str) -> Path:
     return root / repo_key / page_key
 
 
+def _wiki_visual_evidence_path(bundle) -> Path | None:
+    """Return the repository-owned visual-evidence bundle location.
+
+    The bundle is a derived artifact, so it stays beside the checkout rather
+    than in the Web cache. This gives the build command and Wiki runtime one
+    explicit hand-off point.
+    """
+
+    repo_dir = str(getattr(getattr(bundle, "entry", None), "repo_dir", "") or "")
+    if not repo_dir:
+        return None
+    try:
+        root = Path(repo_dir).expanduser().resolve(strict=True)
+    except OSError:
+        return None
+    if not root.is_dir():
+        return None
+    return root / ".codenib" / "multimodal-knowledge.json"
+
+
+def _load_wiki_visual_evidence(bundle) -> dict | None:
+    """Load one validated, repository-owned visual-evidence bundle."""
+
+    path = _wiki_visual_evidence_path(bundle)
+    if path is None or not os.path.lexists(path):
+        return None
+    try:
+        return load_multimodal_knowledge_bundle(path)
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "Invalid Wiki visual evidence bundle at %s: %s",
+            path,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="The repository visual-evidence bundle is invalid",
+        ) from exc
+
+
+def _same_commit(left: object, right: object) -> bool:
+    """Accept equal full commits or an unambiguous full/short commit pair."""
+
+    first = str(left or "").strip().lower()
+    second = str(right or "").strip().lower()
+    if not first or not second or min(len(first), len(second)) < 7:
+        return False
+    return first == second or first.startswith(second) or second.startswith(first)
+
+
+def _summarize_wiki_visual_evidence(persisted: Mapping, bundle) -> dict:
+    """Return a reader-safe projection and withhold stale source bindings."""
+
+    media = persisted["media_manifest"]
+    facts = persisted["visual_facts_manifest"]
+    grounding = persisted["grounding_manifest"]
+    source_commit = str(media["commit"])
+    indexed_commit = str(
+        getattr(getattr(bundle, "entry", None), "base_commit", "") or ""
+    )
+    state = "ready" if _same_commit(source_commit, indexed_commit) else "stale"
+    visible_facts = facts["facts"][:64] if state == "ready" else []
+    visible_paths = {str(fact["artifact_path"]) for fact in visible_facts}
+    binding_counts: dict[str, int] = {}
+    bindings = []
+    for binding in sorted(grounding["bindings"], key=lambda item: -item["score"]):
+        path = str(binding["artifact_path"])
+        if path not in visible_paths or binding_counts.get(path, 0) >= 3:
+            continue
+        binding_counts[path] = binding_counts.get(path, 0) + 1
+        bindings.append(
+            {
+                "artifact_path": path,
+                "entity_name": binding["entity_name"],
+                "source_path": binding["source_path"],
+                "symbol": binding["symbol"],
+                "line": binding["line"],
+                "score": binding["score"],
+                "evidence": binding["evidence"],
+            }
+        )
+    return {
+        "state": state,
+        "source_commit": source_commit,
+        "indexed_commit": indexed_commit,
+        "artifact_count": media["artifact_count"],
+        "fact_count": facts["fact_count"],
+        "binding_count": grounding["binding_count"],
+        "facts": [
+            {
+                "artifact_path": fact["artifact_path"],
+                "artifact_sha256": fact.get("artifact_sha256"),
+                "extractor": fact["extractor"],
+                "entities": [
+                    {
+                        "name": entity["name"],
+                        "type": entity["type"],
+                        "confidence": entity["confidence"],
+                    }
+                    for entity in fact["entities"][:12]
+                ],
+                "relations": [
+                    {
+                        "source": relation["source"],
+                        "target": relation["target"],
+                        "relation": relation["relation"],
+                    }
+                    for relation in fact["relations"][:8]
+                ],
+                "claims": [
+                    {"text": claim["text"], "confidence": claim["confidence"]}
+                    for claim in fact["claims"][:4]
+                ],
+            }
+            for fact in visible_facts
+        ],
+        "bindings": bindings,
+    }
+
+
 def _wiki_media_source_snippet(source_reader, citation: Mapping) -> str | None:
     source = bound_source_slice(
         source_reader,
@@ -649,6 +779,107 @@ async def index_status(repo_id: str) -> RepoIndexStatus:
             build_repo_index_status,
             bundle,
             **kwargs,
+        )
+
+
+@app.get("/api/repos/{repo_id}/visual-evidence")
+async def wiki_visual_evidence(repo_id: str) -> dict:
+    """Serve validated visual facts for the current repository snapshot only."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        persisted = await _run_pinned_thread(_load_wiki_visual_evidence, bundle)
+        if persisted is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No repository visual-evidence bundle is available",
+            )
+        summary = _summarize_wiki_visual_evidence(persisted, bundle)
+        if summary["facts"]:
+            contexts = await _run_pinned_thread(
+                visual_document_contexts, persisted, summary["facts"], bundle
+            )
+            for fact in summary["facts"]:
+                fact["context"] = contexts.get(fact["artifact_path"])
+        return summary
+
+
+@app.get("/api/repos/{repo_id}/visual-evidence/media")
+async def wiki_visual_evidence_media(
+    repo_id: str,
+    file: str,
+    commit: str,
+    sha256: str | None = None,
+) -> Response:
+    """Serve one current visual-evidence artifact from the pinned source."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        persisted = await _run_pinned_thread(_load_wiki_visual_evidence, bundle)
+        if persisted is None:
+            raise HTTPException(
+                status_code=404,
+                detail="No repository visual-evidence bundle is available",
+            )
+        summary = _summarize_wiki_visual_evidence(persisted, bundle)
+        if summary["state"] != "ready" or not _same_commit(
+            commit, summary["indexed_commit"]
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The repository visual-evidence bundle is stale",
+            )
+        visible_paths = {fact["artifact_path"] for fact in summary["facts"]}
+        if file not in visible_paths:
+            raise HTTPException(status_code=404, detail="Visual artifact not found")
+        media_type = _VISUAL_EVIDENCE_MEDIA_TYPES.get(
+            PurePosixPath(file).suffix.lower()
+        )
+        source_reader = getattr(bundle, "source_reader", None)
+        if media_type is None or source_reader is None:
+            raise HTTPException(status_code=404, detail="Visual artifact not found")
+        relative = source_reader.captured_relative_path(file)
+        if relative != file:
+            raise HTTPException(status_code=404, detail="Visual artifact not found")
+        try:
+            payload = await _run_pinned_thread(
+                source_reader.read_prefix,
+                relative,
+                max_bytes=_MAX_VISUAL_EVIDENCE_MEDIA_BYTES + 1,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail="Visual artifact not found",
+            ) from exc
+        if len(payload) > _MAX_VISUAL_EVIDENCE_MEDIA_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="Visual artifact exceeds the byte limit",
+            )
+        fact = next(
+            item
+            for item in persisted["visual_facts_manifest"]["facts"]
+            if item["artifact_path"] == file
+        )
+        expected_hash = fact.get("artifact_sha256")
+        if hashlib.sha256(payload).hexdigest() != expected_hash or (
+            sha256 is not None and sha256 != expected_hash
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Visual artifact changed; regenerate visual evidence",
+            )
+        headers = {
+            # A checkout may be reindexed without a new Git commit. The URL
+            # alone cannot identify immutable bytes across those generations.
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        }
+        if media_type == "image/svg+xml":
+            headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+        return Response(
+            content=payload,
+            media_type=media_type,
+            headers=headers,
         )
 
 

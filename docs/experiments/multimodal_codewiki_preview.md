@@ -8,6 +8,10 @@ SPDX-License-Identifier: Apache-2.0
 
 This note shows how to preview CodeNib's source-grounded multimodal Wiki layer.
 
+For images already present in a repository, see
+[Related diagrams](related_diagrams.md) for ingestion, contextual selection,
+source navigation, and browser acceptance instructions.
+
 The change is intentionally provider-neutral: every Wiki page can expose
 planned `media_slots`, and those slots can be materialized either by the local
 deterministic SVG fallback or by an OpenAI-compatible image endpoint. The local

@@ -60,6 +60,18 @@ class _ResolvedModelBackend:
 
 
 @dataclass(frozen=True, slots=True)
+class _ResolvedVisualFactsBackend:
+    """Credential-bearing VLM route used only while building Wiki evidence."""
+
+    model: str
+    api_base: str
+    api_key: str = field(repr=False)
+    provider: str
+    timeout: float
+    max_artifacts: int
+
+
+@dataclass(frozen=True, slots=True)
 class _ResolvedRepositorySourceSelection:
     """One canonical source-selection decision for a CLI transaction."""
 
@@ -221,6 +233,113 @@ def _model_backend_for_args(
         api_key=api_key,
         auth_source=direct_key_source or route.credential_env,
     )
+
+
+def _visual_facts_backend_for_args(
+    args: argparse.Namespace,
+) -> _ResolvedVisualFactsBackend | None:
+    """Resolve an explicit VLM route for repository-owned visual evidence.
+
+    This is deliberately independent from the chat model used by ``--generate``:
+    a Wiki may generate prose without inspecting images, and a visual-evidence
+    run must never silently fall back to filename-derived placeholder facts.
+    """
+
+    model = str(getattr(args, "visual_facts_model", None) or "").strip()
+    api_base = str(getattr(args, "visual_facts_api_base", None) or "").strip()
+    key_env = str(getattr(args, "visual_facts_api_key_env", None) or "").strip()
+    provider = str(
+        getattr(args, "visual_facts_provider", None) or "openai-compatible"
+    ).strip()
+    timeout = getattr(args, "visual_facts_timeout", 120.0)
+    max_artifacts = getattr(args, "visual_facts_max_artifacts", 16)
+    configured = any((model, api_base, key_env))
+    if not configured:
+        return None
+    if not model:
+        raise CLIError("--visual-facts-model is required for VLM visual evidence")
+    if not api_base:
+        raise CLIError("--visual-facts-api-base is required for VLM visual evidence")
+    if not key_env:
+        raise CLIError("--visual-facts-api-key-env is required for VLM visual evidence")
+    api_key = os.environ.get(key_env)
+    if not api_key:
+        raise CLIError(f"{key_env} is unset or empty")
+    try:
+        timeout_value = float(timeout)
+    except (TypeError, ValueError) as exc:
+        raise CLIError("--visual-facts-timeout must be a positive number") from exc
+    if timeout_value <= 0:
+        raise CLIError("--visual-facts-timeout must be a positive number")
+    try:
+        max_artifacts_value = int(max_artifacts)
+    except (TypeError, ValueError) as exc:
+        raise CLIError(
+            "--visual-facts-max-artifacts must be a positive integer"
+        ) from exc
+    if max_artifacts_value <= 0:
+        raise CLIError("--visual-facts-max-artifacts must be a positive integer")
+    return _ResolvedVisualFactsBackend(
+        model=model,
+        api_base=api_base,
+        api_key=api_key,
+        provider=provider,
+        timeout=timeout_value,
+        max_artifacts=max_artifacts_value,
+    )
+
+
+def _publish_wiki_visual_evidence(
+    repo_path: Path,
+    manifest_path: Path,
+    *,
+    source_selection: RepositorySourceSelection,
+    backend: _ResolvedVisualFactsBackend,
+) -> tuple[Path, int]:
+    """Build and atomically publish VLM facts for the current Wiki commit."""
+
+    from .compiler.manifest import RepoManifest
+    from .wiki.media_pipeline import build_multimodal_repository_knowledge
+    from .wiki.media_storage import save_multimodal_knowledge_bundle
+    from .wiki.media_vlm import OpenAICompatibleVisualFactExtractor
+
+    manifest = RepoManifest.load(manifest_path)
+    try:
+        extractor = OpenAICompatibleVisualFactExtractor(
+            model=backend.model,
+            api_base=backend.api_base,
+            api_key=backend.api_key,
+            timeout=backend.timeout,
+            provider=backend.provider,
+            repo_path=repo_path,
+        )
+    except ValueError as exc:
+        raise CLIError(f"invalid Wiki visual evidence configuration: {exc}") from exc
+    try:
+        bundle = build_multimodal_repository_knowledge(
+            repo_path,
+            commit=manifest.commit,
+            exclude_roots=(".git", ".codenib"),
+            selection=source_selection,
+            extractor=extractor,
+            max_artifacts=backend.max_artifacts,
+            progress=lambda index, total, path: print(
+                f"Inspecting visual {index}/{total}: {path}", flush=True
+            ),
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise CLIError(
+            f"failed to build Wiki visual evidence: {exc}. "
+            "No new evidence was published. To open the Wiki without generating "
+            "diagrams, rerun this command without all --visual-facts-* options."
+        ) from exc
+    destination = repo_path / ".codenib" / "multimodal-knowledge.json"
+    try:
+        save_multimodal_knowledge_bundle(bundle, destination)
+    except (OSError, ValueError) as exc:
+        raise CLIError(f"failed to publish Wiki visual evidence: {exc}") from exc
+    facts = bundle.get("visual_facts_manifest", {}).get("facts", [])
+    return destination, len(facts) if isinstance(facts, list) else 0
 
 
 def _split_values(values: Iterable[str] | None) -> list[str]:
@@ -1310,6 +1429,7 @@ def _run_wiki(args: argparse.Namespace) -> int:
         views = _selected_views_for_args(args)
     audit = bool(args.audit or args.audit_json)
     model_options = _model_options_for_args(args)
+    visual_facts_backend = _visual_facts_backend_for_args(args)
     if (
         args.agent_wiki
         or audit
@@ -1406,6 +1526,18 @@ def _run_wiki(args: argparse.Namespace) -> int:
                 "--no-index requested a vector view, but the manifest has no "
                 "current vector artifact"
             )
+
+    if visual_facts_backend is not None:
+        destination, fact_count = _publish_wiki_visual_evidence(
+            repo_path,
+            manifest_path,
+            source_selection=resolved_selection.selection,
+            backend=visual_facts_backend,
+        )
+        print(
+            "Published Wiki visual evidence: "
+            f"{fact_count} artifact(s) -> {destination}"
+        )
 
     from .web.launcher import launch_local_wiki
     from .web.local import prepare_local_wiki
@@ -2897,6 +3029,41 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "provider-specific LiteLLM option; repeat as needed and use dotted "
             "keys for nested values"
+        ),
+    )
+    wiki_parser.add_argument(
+        "--visual-facts-model",
+        help=(
+            "VLM model for extracting facts from repository-owned images; "
+            "enables visual evidence publication"
+        ),
+    )
+    wiki_parser.add_argument(
+        "--visual-facts-api-base",
+        help="OpenAI-compatible chat-completions base URL for the visual-facts VLM",
+    )
+    wiki_parser.add_argument(
+        "--visual-facts-api-key-env",
+        help="environment variable containing the visual-facts VLM API key",
+    )
+    wiki_parser.add_argument(
+        "--visual-facts-provider",
+        default="openai-compatible",
+        help="provenance label saved with extracted visual facts",
+    )
+    wiki_parser.add_argument(
+        "--visual-facts-timeout",
+        type=float,
+        default=120.0,
+        help="per-artifact VLM request timeout in seconds",
+    )
+    wiki_parser.add_argument(
+        "--visual-facts-max-artifacts",
+        type=int,
+        default=16,
+        help=(
+            "maximum repository-owned visual artifacts to inspect in one Wiki "
+            "run; lower this to bound hosted VLM usage"
         ),
     )
     wiki_parser.add_argument("--host", default="127.0.0.1")
