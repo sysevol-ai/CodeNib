@@ -112,7 +112,7 @@ Qwen default for chat reranking.
   credit, and invalid-request errors fail immediately. `timeout` and
   `max_retries` can be set on `OpenRouterDecisions`.
 - The client checks answer IDs, primitive types, numeric ranges, choices,
-  scale levels, and probability distributions, allowing for Jev's rounding
+  scale legends, and probability distributions, allowing for Jev's rounding
   to two decimal places while preserving the provider's scores and values.
   Invalid responses raise an error instead of influencing a ranking.
   A failed rerank window contributes
@@ -124,14 +124,6 @@ Chat options such as temperature, `max_tokens`, tools, and RankGPT output
 format are not sent to the Decisions API. Actual quality and latency should
 be measured on representative code queries before changing a deployment's
 default reranker.
-
-For a measured comparison of BM25, local embeddings, and Jev, including
-candidate coverage, online latency, index-build cost, and hosted API failures,
-see the [local retrieval experiment](https://github.com/sysevol-ai/CodeNib/blob/main/docs/experiments/jev_retrieval.md).
-For a comparison with dedicated Qwen rerankers on all 100 Hugging Face CodeNib
-Base instances, see the [CodeNib Base experiment](https://github.com/sysevol-ai/CodeNib/blob/main/docs/experiments/jev_base.md).
-The [candidate-budget and model-planned grep follow-up](https://github.com/sysevol-ai/CodeNib/blob/main/docs/experiments/jev_candidates.md)
-compares BM25 top-100 with one-shot grep planning on the same instances.
 
 ## Ask other typed questions
 
