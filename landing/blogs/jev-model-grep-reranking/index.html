@@ -91,7 +91,7 @@ SPDX-License-Identifier: Apache-2.0
 
       <div class="article-body article-lead">
 <p>When we added Jev to CodeNib, we started with a practical question: if a model can judge whether code is relevant, can we skip embeddings and reduce retrieval latency? That led to more specific questions. Can BM25 feed Jev directly? Should the candidate budget be 100 or 1,000? What happens if a large model plans the grep actions, then hands the matching code to a reranker?</p>
-<p>We compared two retrieval routes and three rerankers across all 100 issues in CodeNib Base. After aligning the labels with the retrieved source revision, <strong>model-planned grep → Jev reached 71.40% code-block Recall@5, compared with 59.35% for BM25 top-100 → Jev</strong>. The grep route supplied only 17.47 candidates on average, but added a model-planning call and its latency and cost.</p>
+<p>We compared two retrieval routes and three rerankers across all 100 issues in CodeNib Base. After aligning the labels with the retrieved source revision, <strong>model-planned grep → Jev reached 71.40% code-block Recall@5, compared with 59.35% for BM25 top-100 → Jev</strong>. The grep route supplied only 17.47 candidates on average, but added a model-planning call and its latency and cost. Ranking still matters on that shorter list: <strong>on the same grep candidates, Jev raised Recall@5 by 14.75 percentage points over grep's own order</strong>.</p>
 <p>Changing the retrieval route produced a clearer improvement than changing from Qwen 4B to Jev. A label audit also made us withdraw an initial conclusion: this sample does not establish that Jev consistently outperforms Qwen 4B on Recall@5.</p>
       </div>
 
@@ -194,6 +194,42 @@ SPDX-License-Identifier: Apache-2.0
 <p>Within the same grep pool, Jev exceeded 4B by <strong>3.33 percentage points</strong>, with an interval of <strong>[−0.18, +7.59]</strong>. In the BM25 pool, the difference was <strong>1.05 percentage points</strong>, and its interval also crossed zero. Jev had the highest point estimate, but this sample does not establish a consistent advantage over 4B. It does not establish equivalence either.</p>
 <p>The models also made different mistakes. On <code>gin-gonic__gin-3820</code>, Jev ranked the target <code>setWithProperType()</code> third, while 4B's top five favored multipart helpers and tests. On <code>sympy__sympy-13031</code>, Jev moved the sparse-matrix <code>row_join()</code> into fifth place. On <code>nushell__nushell-13831</code>, however, Jev overemphasized related row-splitting code, while 4B ranked the target column-splitting function better.</p>
 <p>These differences support keeping the reranker replaceable. Latency, API cost, and deployment constraints also matter when choosing one.</p>
+<h2 id="grep-without-reranker">Does grep still need a reranker?</h2>
+<p>If model-planned grep already finds the right code, one might return its first five matches and skip reranking. We scored that option too: the same grep candidates, in the order grep produced them (round-robin across the planned actions), with no model reading the code.</p>
+<div aria-label="Does grep still need a reranker?" class="data-table" role="region" tabindex="0"><table><caption class="sr-only">Does grep still need a reranker?</caption>
+<thead>
+<tr>
+<th scope="col">Order of the grep candidates</th>
+<th scope="col">Recall@5</th>
+<th scope="col">Change from grep's own order</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">grep's own order, no reranker</th>
+<td>58.82%</td>
+<td>—</td>
+</tr>
+<tr>
+<th scope="row">Qwen3-Reranker-0.6B</th>
+<td>64.93%</td>
+<td>+6.12 pp</td>
+</tr>
+<tr>
+<th scope="row">Qwen3-Reranker-4B</th>
+<td>69.73%</td>
+<td>+10.92 pp</td>
+</tr>
+<tr>
+<th scope="row">Jev 1.13</th>
+<td><strong>73.57%</strong></td>
+<td><strong>+14.75 pp</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>Jev's gain over grep's own order has a 95% interval of <strong>[+8.63, +21.25]</strong> percentage points, from 5,000 bootstrap samples clustered by repository. Issue by issue, Jev improved 21, left 78 unchanged, and lowered one. Many of the unchanged issues could not move: 27 had five or fewer candidates, so any order returns all of them. On the other 73 issues, grep's own order reached 48.04% and Jev reached 68.24%.</p>
+<p>Reranking is also the cheap part of this route. Jev scored the grep candidates in 0.480 seconds at p50, for $0.045 across all 100 issues. The planning call that produced the candidates took 4.044 seconds at p50 and cost $1.004. Grep narrows the search; the reranker decides which of the matches come first.</p>
+<p>These figures use the published label coordinates, because the unranked grep order was scored only in that frame. The reranked rows match the earlier table after alignment, where each drops by about two points (Jev 73.57% to 71.40%). Read the comparison within this table, not across tables.</p>
 <h2 id="label-alignment">Why correcting line numbers changed our conclusion</h2>
 <p>An audit of the label producer revealed a coordinate mismatch: <strong>modified symbols were stored with post-fix line numbers, while deleted symbols used pre-fix line numbers</strong>. Retrieval operates on the pre-fix <code>base_commit</code>. Comparing retrieved spans directly with the published labels mixes coordinates from two revisions.</p>
 <p>For example, inserting code above a target function moves its line range down. In the old revision, those same line numbers may point into a different function. A line-overlap metric can then reward the wrong code or miss the correct implementation.</p>
