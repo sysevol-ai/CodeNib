@@ -207,6 +207,8 @@ nav:
           - Incremental Graph:
               - Overview: incremental_graph/index.md
               - Interactive Demo: incremental_graph/interactive.md
+      - Wiki:
+          - Story Pipeline: wiki_story_pipeline.md
       - Acceleration:
           - Core C++ Backend: core_cpp.md
   - API Reference
