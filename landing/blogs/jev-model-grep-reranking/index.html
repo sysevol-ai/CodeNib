@@ -1,0 +1,321 @@
+<!doctype html>
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Let a Model Plan grep, Then Let Jev Rank the Code — CodeNib</title>
+  <meta name="description" content="Two retrieval routes, three rerankers, and 100 CodeNib Base issues: candidate coverage, corrected labels, and the tradeoffs in quality, latency, and cost.">
+  <meta name="author" content="CodeNib Team">
+  <meta property="og:title" content="Let a Model Plan grep, Then Let Jev Rank the Code">
+  <meta property="og:description" content="Two retrieval routes, three rerankers, and 100 CodeNib Base issues: candidate coverage, corrected labels, and the tradeoffs in quality, latency, and cost.">
+  <meta property="og:image" content="https://codenib.ai/assets/blogs/jev-model-grep-candidate-coverage.png">
+  <meta property="og:image:width" content="1700">
+  <meta property="og:image:height" content="1037">
+  <meta property="og:image:alt" content="BM25 candidate coverage by budget, compared with model-planned grep on 100 CodeNib Base issues.">
+  <meta property="og:type" content="article">
+  <meta property="og:locale" content="en_US">
+  <meta property="og:url" content="https://codenib.ai/blogs/jev-model-grep-reranking/">
+  <meta property="article:published_time" content="2026-09-23T00:00:00-07:00">
+  <meta property="article:modified_time" content="2026-09-23T00:00:00-07:00">
+  <meta property="article:section" content="Retrieval">
+  <meta property="article:tag" content="Jev">
+  <meta property="article:tag" content="Reranking">
+  <meta property="article:tag" content="CodeNib Base">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Let a Model Plan grep, Then Let Jev Rank the Code">
+  <meta name="twitter:description" content="Two retrieval routes, three rerankers, and 100 CodeNib Base issues: candidate coverage, corrected labels, and the tradeoffs in quality, latency, and cost.">
+  <meta name="twitter:image" content="https://codenib.ai/assets/blogs/jev-model-grep-candidate-coverage.png">
+  <meta name="twitter:image:alt" content="BM25 candidate coverage by budget, compared with model-planned grep on 100 CodeNib Base issues.">
+  <link rel="canonical" href="https://codenib.ai/blogs/jev-model-grep-reranking/">
+  <link rel="icon" href="/assets/codenib-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/blogs.css">
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Let a Model Plan grep, Then Let Jev Rank the Code",
+  "description": "Two retrieval routes, three rerankers, and 100 CodeNib Base issues: candidate coverage, corrected labels, and the tradeoffs in quality, latency, and cost.",
+  "image": "https://codenib.ai/assets/blogs/jev-model-grep-candidate-coverage.png",
+  "datePublished": "2026-09-23T00:00:00-07:00",
+  "dateModified": "2026-09-23T00:00:00-07:00",
+  "inLanguage": "en",
+  "mainEntityOfPage": "https://codenib.ai/blogs/jev-model-grep-reranking/",
+  "author": {
+    "@type": "Organization",
+    "name": "CodeNib Team",
+    "url": "https://github.com/sysevol-ai/CodeNib"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "CodeNib",
+    "url": "https://codenib.ai/",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://codenib.ai/assets/codenib-icon.svg"
+    }
+  }
+}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap nav">
+      <a class="brand" href="/" aria-label="CodeNib home">
+        <img src="/assets/codenib-logo.svg" alt="CodeNib">
+      </a>
+      <a class="nav-link" href="/blogs/" aria-current="page">Blog</a>
+      <a class="nav-link nav-docs" href="https://docs.codenib.ai/">Docs</a>
+      <a class="nav-link nav-github" href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <a class="btn" href="https://demo.codenib.ai/">Open the demo</a>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <article aria-labelledby="article-title">
+      <header class="article-head wrap">
+        <a class="back" href="/blogs/"><span aria-hidden="true">←</span> All posts</a>
+        <div class="post-meta">
+          <span class="tag">Code retrieval</span>
+          <time datetime="2026-09-23">September 23, 2026</time>
+          <span>12 min read</span>
+        </div>
+        <h1 class="technical-title" id="article-title">Let a Model Plan grep, Then Let Jev Rank the Code</h1>
+        <p class="deck">Two retrieval routes, three rerankers, and 100 CodeNib Base issues: candidate coverage, corrected labels, and the tradeoffs in quality, latency, and cost.</p>
+      </header>
+
+      <div class="article-body article-lead">
+<p>When we added Jev to CodeNib, we started with a practical question: if a model can judge whether code is relevant, can we skip embeddings and reduce retrieval latency? That led to more specific questions. Can BM25 feed Jev directly? Should the candidate budget be 100 or 1,000? What happens if a large model plans the grep actions, then hands the matching code to a reranker?</p>
+<p>We compared two retrieval routes and three rerankers across all 100 issues in CodeNib Base. After aligning the labels with the retrieved source revision, <strong>model-planned grep → Jev reached 71.40% code-block Recall@5, compared with 59.35% for BM25 top-100 → Jev</strong>. The grep route supplied only 17.47 candidates on average, but added a model-planning call and its latency and cost.</p>
+<p>Changing the retrieval route produced a clearer improvement than changing from Qwen 4B to Jev. A label audit also made us withdraw an initial conclusion: this sample does not establish that Jev consistently outperforms Qwen 4B on Recall@5.</p>
+      </div>
+
+      <div class="article-body">
+<h2 id="recall-before-rerank">Separate retrieval from judgment</h2>
+<p>Code retrieval usually has two stages. Retrieval selects candidates from the repository; reranking reads the question and candidate code, then puts the more useful results first. A reranker can only work with the code it receives. If the target function never enters the candidate pool, better ordering cannot recover it.</p>
+<p>Jev's Decisions interface fits the second stage. We ask one relevance <code>score</code> question per candidate, using four criteria ranging from irrelevant to a direct implementation or likely fault location, then sort the scores in Python. Our code manages candidates, batching, and failure handling; the model supplies judgments.</p>
+<p>BM25 can therefore feed Jev directly, as can code found by grep. Both routes can operate without embeddings, but both still need a way to select candidates from the repository. Sending every chunk to the model moves that selection work into model calls.</p>
+<p>Our dedicated reranker baselines were <strong>Qwen3-Reranker-0.6B and 4B</strong>. They score query–code pairs; Jev returns relevance judgments through a hosted, typed-question interface. All three can sit behind the same candidate interface. We do not assume that Qwen was trained specifically for code, and we do not ask Jev to produce a ranked list of IDs as a chat completion. See the <a href="https://docs.codenib.ai/jev/">Jev integration guide</a> for configuration.</p>
+<p>Three different limits matter here:</p>
+<div aria-label="Separate retrieval from judgment" class="data-table" role="region" tabindex="0"><table><caption class="sr-only">Separate retrieval from judgment</caption>
+<thead>
+<tr>
+<th scope="col">Control</th>
+<th scope="col">Setting</th>
+<th scope="col">What it limits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Retrieval budget K</th>
+<td>At most 100</td>
+<td>Code candidates available to reranking</td>
+</tr>
+<tr>
+<th scope="row">Jev request batch size</th>
+<td>10</td>
+<td>Candidate questions in one API request</td>
+</tr>
+<tr>
+<th scope="row">Evaluation cutoff k</th>
+<td>5</td>
+<td>Final results counted in Recall@k</td>
+</tr>
+</tbody>
+</table></div>
+<p>A batch size of 10 is our integration setting, not a claim about the API's maximum number of questions. Returning five results does not reduce the number of candidates that need scoring.</p>
+<h2 id="dataset-and-method">Dataset and comparison setup</h2>
+<p>We used Hugging Face's <a href="https://huggingface.co/datasets/fishmingyu/codenib-base-dataset">CodeNib Base</a>, pinned to revision <code>4eb84e2e8918474969ce68c5b06facf14d6be604</code>. The complete test split contains <strong>100 issues, 25 repositories, and five language groups</strong>: C/C++, Go, Python, Rust, and TypeScript/JavaScript. There are 151 target code blocks.</p>
+<p>Each repository was checked out at the issue's <code>base_commit</code>, before the fix. The query was the full issue text; models received no patch, hints, or target locations. Candidates used CodeNib's production tree-sitter chunking rules. Each candidate exposed at most 3,000 characters to the model, and hits counted only within the visible line range.</p>
+<p>We froze two candidate pools and scored each with all three rerankers. Within a route, the models received identical candidates and text. The grep plans were also reused across models. This produced <strong>100 × 2 × 3 = 600 reranking observations, with one run per combination</strong>.</p>
+<p>The primary metric is macro-averaged code-block Recall@5. We remove overlapping result spans, take the first five, measure the fraction of target blocks hit for each issue, then average equally over all 100 issues. A hit requires overlapping line ranges in the same file. This measures localization, not the fraction of issues solved. All quality figures below use labels aligned to <code>base_commit</code>; we explain the correction later.</p>
+<p>Qwen ran on an H100 80GB in BF16, with batch size 8 and a 12,288-token input limit. The evaluation implementation computed output logits only at the final position, and all inputs fit within the limit. Jev requests pinned <code>typesafe/jev-1.13</code>; successful responses resolved to <code>typesafe/jev-1.13-20260917</code>. Requests ran sequentially in batches of 10 candidates. The timings describe these deployment configurations, not an intrinsic speed ranking of the models.</p>
+<h2 id="candidate-budget">What happens when K grows from 50 to 1,000?</h2>
+<p>The initial top-50 window did restrict recall. We increased BM25's candidate budget and first checked whether the target code entered the pool, without calling a reranker.</p>
+</div>
+
+<figure class="hero-figure"><img alt="BM25 candidate coverage at K=50, 100, 200, 500, and 1000 is 54.25%, 63.78%, 70.78%, 81.65%, and 90.80%. Model-planned grep reaches 75.83%, with 17.47 candidates on average and a cap of 100." height="1037" loading="lazy" src="/assets/blogs/jev-model-grep-candidate-coverage.svg" width="1700"/><figcaption>Candidate coverage counts target blocks found anywhere in the pool and bounds subsequent reranking recall. It differs from final Recall@5. The x-axis is logarithmic; the grep line is a coverage reference because its candidate count varies by issue. The figure is generated from the recorded results JSON.</figcaption><a class="diagram-open" href="/assets/blogs/jev-model-grep-candidate-coverage.svg">Open the full-size chart ↗</a></figure>
+
+<div class="article-body">
+
+<p>Increasing K from 50 to 100 raised coverage from <strong>54.25% to 63.78%</strong>. At K=1,000 it reached <strong>90.80%</strong>. Larger pools clearly have value, and top-100 still leaves a substantial gap: 32 of the 100 issues had no target block in the BM25 candidate pool.</p>
+<p>A thousand candidates need not fit into one model request. Batching bounds memory and context use, but the computation still has to happen. On one Prometheus issue with 14,854 characters of issue text, Qwen 4B took <strong>79.15 seconds</strong> to rerank just 100 BM25 candidates. Long queries are processed repeatedly during candidate scoring.</p>
+<p>We therefore kept the reranking budget at 100. <strong>K=1,000 was a BM25 coverage audit only; no model reranked 1,000 candidates in this experiment.</strong> A cap of 100 was an engineering choice for this run, not a demonstrated universal optimum.</p>
+<h2 id="model-planned-grep">Let a model plan grep, then rerank the code</h2>
+<p>An alternative is to ask a model to turn the issue into search clues likely to appear in the repository. Our pipeline was short:</p>
+<pre><code class="language-text">Full issue + repository name + source-directory overview
+    → One Sonnet 4.6 planning call, producing up to 6 regex/glob actions
+    → Run rg locally; map matches to the smallest enclosing visible chunk
+    → Round-robin across actions, deduplicate, and retain at most 100 candidates
+    → Rerank with Qwen or Jev and return the top 5 results
+</code></pre>
+<p>The planner did not see retrieved code or revise its plan after reading search results. This was a single planning call. Each action also had per-file and total matched-line limits. Empty candidate pools stayed empty: there was no BM25 refill and no answer-informed repair of the search terms.</p>
+<p>Grep produced <strong>17.47 candidates on average, with a median of 13</strong>, and reached <strong>75.83% target-block coverage</strong>. It found more target code with far fewer candidates than BM25 top-100, reducing the work passed to every reranker.</p>
+<p>It recovered 19 issues that BM25 missed completely, while missing six that BM25 had found. The routes are complementary. For 13 of those 19 recovered issues, BM25's top-100 already contained all the target files. Much of the improvement came from finding the right function inside a file that retrieval had already identified.</p>
+<p>Failures remained in the evaluation: one issue had no candidates, and one generated action contained an invalid NUL-matching regex. We scored the actual outputs rather than repairing them using the answers.</p>
+<h2 id="retrieval-versus-reranker">Changing retrieval had a clearer effect than changing rerankers</h2>
+<p>With the aligned labels, code-block Recall@5 was:</p>
+<div aria-label="Changing retrieval had a clearer effect than changing rerankers" class="data-table" role="region" tabindex="0"><table><caption class="sr-only">Changing retrieval had a clearer effect than changing rerankers</caption>
+<thead>
+<tr>
+<th scope="col">Reranker</th>
+<th scope="col">BM25 top-100</th>
+<th scope="col">Model-planned grep, at most 100</th>
+<th scope="col">Retrieval-route gain</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Qwen3-Reranker-0.6B</th>
+<td>48.40%</td>
+<td>62.48%</td>
+<td>+14.08 pp</td>
+</tr>
+<tr>
+<th scope="row">Qwen3-Reranker-4B</th>
+<td>58.30%</td>
+<td>68.07%</td>
+<td>+9.77 pp</td>
+</tr>
+<tr>
+<th scope="row">Jev 1.13</th>
+<td>59.35%</td>
+<td><strong>71.40%</strong></td>
+<td>+12.05 pp</td>
+</tr>
+</tbody>
+</table></div>
+<p>All three models benefited from the grep candidates. For Jev, the paired 95% interval for the route improvement was <strong>[+5.16, +19.40] percentage points</strong>. We used 5,000 bootstrap samples clustered by repository to preserve within-repository issue dependence. Both Qwen route-improvement intervals were also above zero. This is exploratory analysis without a multiple-comparison correction.</p>
+<p>Within the same grep pool, Jev exceeded 4B by <strong>3.33 percentage points</strong>, with an interval of <strong>[−0.18, +7.59]</strong>. In the BM25 pool, the difference was <strong>1.05 percentage points</strong>, and its interval also crossed zero. Jev had the highest point estimate, but this sample does not establish a consistent advantage over 4B. It does not establish equivalence either.</p>
+<p>The models also made different mistakes. On <code>gin-gonic__gin-3820</code>, Jev ranked the target <code>setWithProperType()</code> third, while 4B's top five favored multipart helpers and tests. On <code>sympy__sympy-13031</code>, Jev moved the sparse-matrix <code>row_join()</code> into fifth place. On <code>nushell__nushell-13831</code>, however, Jev overemphasized related row-splitting code, while 4B ranked the target column-splitting function better.</p>
+<p>These differences support keeping the reranker replaceable. Latency, API cost, and deployment constraints also matter when choosing one.</p>
+<h2 id="label-alignment">Why correcting line numbers changed our conclusion</h2>
+<p>An audit of the label producer revealed a coordinate mismatch: <strong>modified symbols were stored with post-fix line numbers, while deleted symbols used pre-fix line numbers</strong>. Retrieval operates on the pre-fix <code>base_commit</code>. Comparing retrieved spans directly with the published labels mixes coordinates from two revisions.</p>
+<p>For example, inserting code above a target function moves its line range down. In the old revision, those same line numbers may point into a different function. A line-overlap metric can then reward the wrong code or miss the correct implementation.</p>
+<p>We relocated all 151 target symbols in <code>base_commit</code> using the label producer's extraction rules. <strong>119 line ranges changed across 77 issues.</strong> One duplicated symbol name was ambiguous; we retained the producer's existing dictionary-overwrite behavior and recorded both candidate locations in the audit.</p>
+<p>No query, candidate, plan, score, or ranking changed, and we made no new model calls. We recomputed only the hit metrics.</p>
+<p>That was enough to change the interpretation. With the published coordinates, Jev's advantage over 4B on grep candidates was +3.83 percentage points, with a 95% interval of <strong>[+0.49, +7.83]</strong>. After alignment, it became +3.33, with an interval of <strong>[−0.18, +7.59]</strong>. We withdrew the initial conclusion that this run had established Jev's superiority over 4B. The improvement from changing to grep candidates remained supported after the correction.</p>
+<p>The audit fixed revision coordinates. It did not establish complete semantic labeling of every target symbol or rule out model training on these public historical issues. Both the original and corrected metrics remain in the results files.</p>
+<h2 id="latency-and-cost">Fewer candidates, but what about latency and cost?</h2>
+<p>The reranking stage became much faster: Jev's median fell from <strong>3.010 to 0.480 seconds</strong>, and 4B's from <strong>5.101 to 0.717 seconds</strong>. But grep added a planning call. Successful planning calls had a p50 of <strong>4.044 seconds</strong>, and local grep plus code extraction took about 33 milliseconds at p50.</p>
+<p>The table includes both reranking times and sums of stage times. For each route, we <strong>sum separately measured component times per issue, then take the p50</strong>. We do not add the component medians, and these are not observed production end-to-end request times.</p>
+<div aria-label="Fewer candidates, but what about latency and cost?" class="data-table" role="region" tabindex="0"><table><caption class="sr-only">Fewer candidates, but what about latency and cost?</caption>
+<thead>
+<tr>
+<th scope="col">Reranker</th>
+<th scope="col">BM25 rerank p50</th>
+<th scope="col">Grep rerank p50</th>
+<th scope="col">BM25 stage-sum p50</th>
+<th scope="col">Grep stage-sum p50</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Qwen 0.6B</th>
+<td>1.666 s</td>
+<td>0.249 s</td>
+<td>1.819 s</td>
+<td>4.356 s</td>
+</tr>
+<tr>
+<th scope="row">Qwen 4B</th>
+<td>5.101 s</td>
+<td>0.717 s</td>
+<td>5.253 s</td>
+<td>4.658 s</td>
+</tr>
+<tr>
+<th scope="row">Jev</th>
+<td>3.010 s</td>
+<td>0.480 s</td>
+<td>3.171 s</td>
+<td>4.592 s</td>
+</tr>
+</tbody>
+</table></div>
+<p>The sums exclude Git snapshot preparation, chunking, index construction, model loading, and file output. They also exclude the initial failed planning calls and offline recovery delays. At four concurrent planning requests, 38 succeeded and 62 returned HTTP 429. We retained the successful plans and reran the remaining requests serially to obtain all 100 plans. The table therefore cannot predict user waiting time under production rate limits.</p>
+<p>In this configuration, reducing 4B's candidate count saved enough computation to offset planning. For Jev and 0.6B, the BM25 route remained faster. Removing embeddings does not automatically remove latency; an additional planning call belongs in the budget too.</p>
+<p>Recorded API costs for the 100 issues were:</p>
+<div aria-label="Fewer candidates, but what about latency and cost?" class="data-table" role="region" tabindex="0"><table><caption class="sr-only">Fewer candidates, but what about latency and cost?</caption>
+<thead>
+<tr>
+<th scope="col">Stage</th>
+<th scope="col">Requests</th>
+<th scope="col">Recorded cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<th scope="row">Sonnet grep planning</th>
+<td>162 attempts, yielding 100 plans</td>
+<td>$1.003761</td>
+</tr>
+<tr>
+<th scope="row">BM25 top-100 → Jev</th>
+<td>1000</td>
+<td>$0.288725</td>
+</tr>
+<tr>
+<th scope="row">Grep → Jev</th>
+<td>221</td>
+<td>$0.045361</td>
+</tr>
+</tbody>
+</table></div>
+<p>Grep reduced Jev's scoring cost. Including planning, however, the recorded cost was about <strong>$1.049 per 100 issues</strong> for grep → Jev, versus <strong>$0.289</strong> for BM25 → Jev. We did not convert the local Qwen GPU usage into dollars.</p>
+<p>Hosted-service availability also mattered. The two Jev routes had 14 and one HTTP 403 responses, respectively, with upstream Cloudflare markers; the exact trigger is unknown. For failed batches, we preserved the candidates' original order and placed them after successfully scored candidates. Those fallback results count toward the quality metrics. Costs for failed requests without usage records are unknown, not assumed to be zero.</p>
+<h2 id="codenib-integration">Connecting it in CodeNib</h2>
+<p>In a checkout containing the Jev integration, with retrieval dependencies installed and <code>OPENROUTER_API_KEY</code> configured, BM25 top-100 can feed Jev like this:</p>
+<pre><code class="language-python">from codenib.model.retrieve_rerank_pipeline import (
+    RetrieveRerankPipeline,
+    RetrieveStageConfig,
+)
+
+pipeline = RetrieveRerankPipeline(
+    repo_path="/path/to/repository",
+    index_path="/path/to/index",
+    retrieval_mode="sparse",
+    retrieval_plan=[RetrieveStageConfig(engine="sparse", top_k=100)],
+    rerank_strategy="decisions",
+    rerank_model="typesafe/jev-1.13",
+    rerank_candidate_top_k=100,
+)
+results = pipeline.query("Where are failed payments retried?", top_k=5)
+</code></pre>
+<p>Both the retrieval-stage <code>top_k</code> and the reranking candidate cap are set explicitly. Increasing only the latter will not make retrieval find more code. We pinned the model version for the experiment; the integration also accepts <code>~typesafe/jev-latest</code>. The <a href="https://docs.codenib.ai/jev/">integration guide</a> covers installation and model configuration. Model-planned grep remains an <a href="https://github.com/sysevol-ai/CodeNib/blob/06f905411f24959ed7956986d642a10811307798/scripts/benchmark_model_grep.py">experiment script</a>, rather than a default retrieval route.</p>
+<p>A combined candidate pool is a concrete next experiment. In a post-hoc audit, we interleaved BM25 and grep results, deduplicated them, and kept the cap at 100. The union reached <strong>83.65% target-block coverage</strong>. We have not reranked this pool, so 83.65% cannot be reported as Recall@5. It does suggest a way to preserve the targets each route finds within a fixed scoring budget.</p>
+<p>As for the original question about skipping embeddings, this run demonstrated two workable routes without them and measured their tradeoffs. <strong>The full 100-issue experiment has no dense or hybrid control</strong>, so it cannot establish a general replacement for embedding retrieval. That comparison needs the same candidate budgets, timing boundaries, and aligned label coordinates.</p>
+<h2 id="reproducibility">Data and reproduction</h2>
+<p>The experiment used main commit <code>61a9ab2fd2cc8f656fa541d6891289f30531f2e7</code> plus the Jev integration. The implementation, evaluation scripts, and research records are available at the merged <a href="https://github.com/sysevol-ai/CodeNib/commit/06f905411f24959ed7956986d642a10811307798">CodeNib commit <code>06f90541</code></a>.</p>
+<p>In that source checkout, <code>docs/experiments/jev_candidates.md</code> records the full method, model settings, failures, and reproduction commands. Its companion <code>jev_candidates_results.json</code> retains both label coordinate frames; this article uses <code>base_aligned_sensitivity</code> for quality. The per-issue results are in <code>jev_candidates_cases.csv</code>, where aligned metrics use the <code>base_aligned/</code> column prefix.</p>
+<ul>
+<li><a href="https://github.com/sysevol-ai/CodeNib/blob/06f905411f24959ed7956986d642a10811307798/scripts/benchmark_jev_base.py">Candidate preparation and reranking evaluation</a></li>
+<li><a href="https://github.com/sysevol-ai/CodeNib/blob/06f905411f24959ed7956986d642a10811307798/scripts/benchmark_model_grep.py">Grep planning and execution</a></li>
+<li><a href="https://github.com/sysevol-ai/CodeNib/blob/06f905411f24959ed7956986d642a10811307798/scripts/analyze_jev_routes.py">Route comparison</a></li>
+<li><a href="https://github.com/sysevol-ai/CodeNib/blob/06f905411f24959ed7956986d642a10811307798/scripts/audit_jev_base_labels.py">Label-coordinate audit</a></li>
+</ul>
+<p>The same checkout contains an earlier top-50 comparison using the published coordinates and a separate embedding exploration with 15 queries from this repository. Those are different experiments; their figures are not mixed into the primary tables here.</p>
+      </div>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-row">
+      <a class="footer-brand" href="/" aria-label="CodeNib home">
+        <img src="/assets/codenib-icon.svg" alt="">
+        <span>codenib.ai</span>
+      </a>
+      <a href="/blogs/">Blog</a>
+      <a href="https://docs.codenib.ai/">Docs</a>
+      <a href="https://demo.codenib.ai/">Demo</a>
+      <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+      <span>© 2026 CodeNib</span>
+    </div>
+  </footer>
+</body>
+</html>
