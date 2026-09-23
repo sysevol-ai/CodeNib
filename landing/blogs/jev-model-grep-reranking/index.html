@@ -91,7 +91,7 @@ SPDX-License-Identifier: Apache-2.0
 
       <div class="article-body article-lead">
 <p>When we added Jev to CodeNib, we started with a practical question: if a model can judge whether code is relevant, can we skip embeddings and reduce retrieval latency? That led to more specific questions. Can BM25 feed Jev directly? Should the candidate budget be 100 or 1,000? What happens if a large model plans the grep actions, then hands the matching code to a reranker?</p>
-<p>We compared two retrieval routes and three rerankers across all 100 issues in CodeNib Base. After aligning the labels with the retrieved source revision, <strong>model-planned grep → Jev reached 71.40% code-block Recall@5, compared with 59.35% for BM25 top-100 → Jev</strong>. The grep route supplied only 17.47 candidates on average, but added a model-planning call and its latency and cost. Ranking still matters on that shorter list: <strong>on the same grep candidates, Jev raised Recall@5 by 14.75 percentage points over grep's own order</strong>.</p>
+<p>We compared two retrieval routes and three rerankers across all 100 issues in CodeNib Base. After aligning the labels with the retrieved source revision, <strong>model-planned grep → Jev reached 71.40% code-block Recall@5, compared with 59.35% for BM25 top-100 → Jev</strong>. The grep route supplied only 17.47 candidates on average, but added a model-planning call and its latency and cost. Ranking still matters on that shorter list: <strong>on the same grep candidates, Jev raised Recall@5 from 58.62% in grep's own order to 71.40%</strong>.</p>
 <p>Changing the retrieval route produced a clearer improvement than changing from Qwen 4B to Jev. A label audit also made us withdraw an initial conclusion: this sample does not establish that Jev consistently outperforms Qwen 4B on Recall@5.</p>
       </div>
 
@@ -207,29 +207,29 @@ SPDX-License-Identifier: Apache-2.0
 <tbody>
 <tr>
 <th scope="row">grep's own order, no reranker</th>
-<td>58.82%</td>
+<td>58.62%</td>
 <td>—</td>
 </tr>
 <tr>
 <th scope="row">Qwen3-Reranker-0.6B</th>
-<td>64.93%</td>
-<td>+6.12 pp</td>
+<td>62.48%</td>
+<td>+3.86 pp</td>
 </tr>
 <tr>
 <th scope="row">Qwen3-Reranker-4B</th>
-<td>69.73%</td>
-<td>+10.92 pp</td>
+<td>68.07%</td>
+<td>+9.45 pp</td>
 </tr>
 <tr>
 <th scope="row">Jev 1.13</th>
-<td><strong>73.57%</strong></td>
-<td><strong>+14.75 pp</strong></td>
+<td><strong>71.40%</strong></td>
+<td><strong>+12.78 pp</strong></td>
 </tr>
 </tbody>
 </table></div>
-<p>Jev's gain over grep's own order has a 95% interval of <strong>[+8.63, +21.25]</strong> percentage points, from 5,000 bootstrap samples clustered by repository. Issue by issue, Jev improved 21, left 78 unchanged, and lowered one. Many of the unchanged issues could not move: 27 had five or fewer candidates, so any order returns all of them. On the other 73 issues, grep's own order reached 48.04% and Jev reached 68.24%.</p>
+<p>Jev's gain over grep's own order is <strong>12.78 percentage points</strong>, a 21.8% relative improvement, with a 95% interval of <strong>[+6.44, +19.67]</strong>. Part of the pool cannot move at all: 27 issues had five or fewer candidates, so any order returns every one of them, and the gain comes from the issues where grep matched more code than fits in five results.</p>
 <p>Reranking is also the cheap part of this route. Jev scored the grep candidates in 0.480 seconds at p50, for $0.045 across all 100 issues. The planning call that produced the candidates took 4.044 seconds at p50 and cost $1.004. Grep narrows the search; the reranker decides which of the matches come first.</p>
-<p>These figures use the published label coordinates, because the unranked grep order was scored only in that frame. The reranked rows match the earlier table after alignment, where each drops by about two points (Jev 73.57% to 71.40%). Read the comparison within this table, not across tables.</p>
+<p>Like the rest of this post, these figures use labels aligned to <code>base_commit</code>. The alignment moved grep's own order by only 0.20 points but Jev by 2.17, so the reranker's measured gain is smaller in this frame than it was with the published coordinates.</p>
 <h2 id="label-alignment">Why correcting line numbers changed our conclusion</h2>
 <p>An audit of the label producer revealed a coordinate mismatch: <strong>modified symbols were stored with post-fix line numbers, while deleted symbols used pre-fix line numbers</strong>. Retrieval operates on the pre-fix <code>base_commit</code>. Comparing retrieved spans directly with the published labels mixes coordinates from two revisions.</p>
 <p>For example, inserting code above a target function moves its line range down. In the old revision, those same line numbers may point into a different function. A line-overlap metric can then reward the wrong code or miss the correct implementation.</p>
