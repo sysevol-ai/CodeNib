@@ -5,7 +5,9 @@
 """The one line a landing-page card says about a repository.
 
 Candidates, in order: the cached Overview's opening thesis, the package
-manifest's own description, the README-derived description. Each must read
+manifest's own description (root, then the workspace member named after the
+project), the first README sentence whose subject is the project, and the
+README-derived description. Each must read
 as a statement of purpose; support notes ("We have a community chat at
 Gitter", "For questions and support please use the forum") and behaviour
 notes ("By default, bat pipes its own output to a pager") are skipped. When
@@ -17,7 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any, Iterable, Optional, Tuple
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 MANIFEST_NAMES = (
     "package.json",
@@ -94,25 +96,87 @@ def manifest_summary(name: str, text: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
-def _manifests(bundle: Any) -> Iterable[Tuple[str, str]]:
+def _read(bundle: Any, relative: str, max_bytes: int) -> Optional[str]:
+    """Read one repository file through the bound reader when there is one."""
+
     reader = getattr(bundle, "source_reader", None)
+    if reader is not None:
+        captured = reader.captured_relative_path(relative)
+        if captured is None:
+            return None
+        return reader.read_prefix(captured, max_bytes=max_bytes).decode(
+            "utf-8", errors="replace"
+        )
     repo_dir = str(getattr(getattr(bundle, "entry", None), "repo_dir", "") or "")
-    for name in MANIFEST_NAMES:
-        if reader is not None:
-            relative = reader.captured_relative_path(name)
-            if relative is None:
-                continue
-            payload = reader.read_prefix(relative, max_bytes=_MAX_MANIFEST_BYTES)
-            yield name, payload.decode("utf-8", errors="replace")
+    path = os.path.join(repo_dir, relative) if repo_dir else ""
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return handle.read(max_bytes)
+    except OSError:
+        return None
+
+
+def project_names(repo: str) -> List[str]:
+    """Names a project goes by: ``vuejs/core`` is Vue, ``valkey-io/valkey``
+    is Valkey. The repository name comes first."""
+
+    owner, _, name = (repo or "").lower().partition("/")
+    if not name:
+        owner, name = "", owner
+    names = [name, owner.split("-")[0], owner[:-2] if owner.endswith("js") else ""]
+    return [n for n in dict.fromkeys(names) if len(n) >= 2]
+
+
+def _manifests(bundle: Any, names: Sequence[str]) -> Iterable[Tuple[str, str]]:
+    """Root manifests, then the workspace member named after the project."""
+
+    members = [
+        (manifest, f"{folder}/{name}/{manifest}")
+        for name in names
+        for folder, manifest in (("packages", "package.json"), ("crates", "Cargo.toml"))
+    ]
+    for name, relative in [(n, n) for n in MANIFEST_NAMES] + members:
+        text = _read(bundle, relative, _MAX_MANIFEST_BYTES)
+        if text is not None:
+            yield name, text
+
+
+def readme_subject_sentence(text: str, names: Sequence[str]) -> str:
+    """The first README sentence whose subject is the project itself.
+
+    "Valkey is a high-performance data structure server ..." qualifies;
+    "Please make sure to respect issue requirements" does not.
+    """
+
+    if not names:
+        return ""
+    subject = re.compile(
+        r"^(?:the\s+)?(?:" + "|".join(re.escape(n) for n in names) + r")(?:\.js)?\b",
+        re.IGNORECASE,
+    )
+    in_fence = False
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if line.startswith(("```", "~~~")):
+            in_fence = not in_fence
             continue
-        path = os.path.join(repo_dir, name) if repo_dir else ""
-        if not path or not os.path.isfile(path):
+        if (
+            in_fence
+            or not line
+            or line.startswith(("#", ">", "<", "|", "!", "[", "-", "*"))
+        ):
             continue
-        try:
-            with open(path, encoding="utf-8", errors="replace") as handle:
-                yield name, handle.read(_MAX_MANIFEST_BYTES)
-        except OSError:
-            continue
+        line = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", line)
+        sentence = re.split(r"(?<=[.!?])\s+", line)[0]
+        if (
+            subject.match(sentence)
+            and len(sentence.split()) >= 6
+            and is_purpose_sentence(sentence)
+        ):
+            return sentence
+    return ""
 
 
 def _trim(text: str) -> str:
@@ -128,13 +192,29 @@ def card_summary(bundle: Any, overview_lead: Optional[str], description: str) ->
 
     if is_purpose_sentence(overview_lead):
         return _trim(str(overview_lead))
-    for name, text in _manifests(bundle):
+    names = project_names(
+        str(getattr(getattr(bundle, "entry", None), "repo", "") or "")
+    )
+    for name, text in _manifests(bundle, names):
         value = manifest_summary(name, text)
         if is_purpose_sentence(value):
             return _trim(value)
+    for readme in ("README.md", "README.rst", "README"):
+        text = _read(bundle, readme, 256 * 1024)
+        if text is not None:
+            sentence = readme_subject_sentence(text, names)
+            if sentence:
+                return _trim(sentence)
+            break
     if is_purpose_sentence(description):
         return _trim(description)
     return ""
 
 
-__all__ = ["card_summary", "is_purpose_sentence", "manifest_summary"]
+__all__ = [
+    "card_summary",
+    "is_purpose_sentence",
+    "manifest_summary",
+    "project_names",
+    "readme_subject_sentence",
+]

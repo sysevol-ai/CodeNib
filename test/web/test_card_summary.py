@@ -4,7 +4,13 @@
 
 from types import SimpleNamespace
 
-from codenib.web.card_summary import card_summary, is_purpose_sentence, manifest_summary
+from codenib.web.card_summary import (
+    card_summary,
+    is_purpose_sentence,
+    manifest_summary,
+    project_names,
+    readme_subject_sentence,
+)
 
 
 def test_support_and_behaviour_notes_are_not_purpose():
@@ -50,3 +56,36 @@ def test_card_summary_prefers_lead_then_manifest_then_readme(tmp_path):
     )
     empty = SimpleNamespace(entry=SimpleNamespace(repo_dir=str(tmp_path / "none")))
     assert card_summary(empty, None, readme) == ""
+
+
+def test_project_names_cover_owner_style_names():
+    assert project_names("vuejs/core") == ["core", "vuejs", "vue"]
+    assert project_names("valkey-io/valkey") == ["valkey"]
+
+
+def test_readme_subject_sentence_needs_the_project_as_subject():
+    readme = (
+        "# Valkey\n\nPlease make sure to respect issue requirements here today.\n\n"
+        "Valkey is a high-performance data structure server for key/value data."
+        " It also supports more.\n"
+    )
+    assert readme_subject_sentence(readme, ["valkey"]) == (
+        "Valkey is a high-performance data structure server for key/value data."
+    )
+    sponsor = "Vue.js is an open source project made possible by its sponsors."
+    assert readme_subject_sentence(sponsor, ["vue"]) == ""
+
+
+def test_card_summary_reads_the_workspace_member_named_after_the_project(tmp_path):
+    (tmp_path / "package.json").write_text('{"private": true}')
+    member = tmp_path / "packages" / "vue"
+    member.mkdir(parents=True)
+    (member / "package.json").write_text(
+        '{"description": "The progressive JavaScript framework for building web UI."}'
+    )
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir=str(tmp_path), repo="vuejs/core")
+    )
+    assert card_summary(bundle, None, "For questions and support use the forum.") == (
+        "The progressive JavaScript framework for building web UI."
+    )
