@@ -591,6 +591,7 @@ dependencies = [
 agent = [
     { name = "litellm" },
     { name = "openai" },
+    { name = "requests" },
 ]
 datasets = [
     { name = "datasets" },
@@ -748,6 +749,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "regex", specifier = ">=2024.11.6" },
+    { name = "requests", marker = "extra == 'agent'", specifier = ">=2.25.0" },
     { name = "requests", marker = "extra == 'full'", specifier = ">=2.25.0" },
     { name = "requests", marker = "extra == 'test'", specifier = ">=2.25.0" },
     { name = "requests", marker = "extra == 'zoekt'", specifier = ">=2.25.0" },

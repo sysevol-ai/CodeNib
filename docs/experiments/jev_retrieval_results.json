@@ -1,0 +1,778 @@
+{
+  "run": "2026-09-22-local-H100-main-v3",
+  "config": {
+    "started_utc": "2026-09-23T04:44:36.553947+00:00",
+    "implementation_sha256": {
+      "scripts/benchmark_jev_retrieval.py": "60827f1357c6c40a1327879af3925aca4a67c41b550d23ea4ee6bfbb3b2f8410",
+      "codenib/llm/decisions.py": "fafca372e6e9575e1ebfdad05f82cd82722762ed1c66bf037f918a9b323f0de6",
+      "codenib/agent/rerank_agent.py": "abfdeb2b045b5dc021721f5c1efc0d8726e2930c3ca9df02878e928ad1286905"
+    },
+    "git_head": "61a9ab2fd2cc8f656fa541d6891289f30531f2e7",
+    "tracked_diff_sha256": "286b27619b4ec24487c9c3125e89f741f6423c250933b982fce282e7ba58425a",
+    "corpus_sha256": "5abde9a945443605742a54ecb67b14b671cdbec6bba2f23577f880e6cde70c4c",
+    "corpus_chunks": 7013,
+    "source_files": 447,
+    "max_content_chars": 3000,
+    "embedding_model": "nomic-ai/CodeRankEmbed",
+    "embedding_revision": "3c4b60807d71f79b43f3c4363786d9493691f8b1",
+    "embedding_max_seq_length": 1024,
+    "gpu": "NVIDIA H100 PCIe",
+    "python": "3.11.5",
+    "candidates": 20,
+    "repeats": 2,
+    "jev_model_requested": "typesafe/jev-1.13",
+    "continue_on_error": true,
+    "bm25_and_chunk_build_ms": 1566.7920475825667,
+    "embedding_model_load_ms": 4971.897426992655,
+    "embedding_document_build_ms": 33804.084146395326,
+    "cases_sha256": "8e7b8c8da5b125daa99ebc8aede290f15c3839446f1f51d8c87c6579a0349c3c",
+    "note": "Exploratory single-repository file-group labels; not held-out evaluation. Build and model load excluded from warmed online latency. No retries; failed API calls retained and their unknown cost not imputed as zero."
+  },
+  "runtime_versions": {
+    "numpy": "1.26.4",
+    "faiss-cpu": "1.13.0",
+    "torch": "2.9.0",
+    "transformers": "4.57.3",
+    "sentence-transformers": "5.1.2",
+    "rank-bm25": "0.2.2",
+    "requests": "2.32.5",
+    "pydantic": "2.12.5"
+  },
+  "summary": {
+    "bm25": {
+      "observations": 30,
+      "candidate_coverage": 0.6666666666666666,
+      "coverage_at_5": 0.3777777777777777,
+      "success_at_5": 0.26666666666666666,
+      "mrr_at_5": 0.41333333333333333,
+      "total_p50_ms": 38.414050824940205,
+      "total_p95_ms": 56.978505384176955,
+      "retrieval_p50_ms": 38.414050824940205,
+      "rerank_p50_ms": 0.0,
+      "recorded_cost_usd": 0.0,
+      "failed_calls": 0
+    },
+    "bm25+jev": {
+      "observations": 30,
+      "candidate_coverage": 0.6666666666666666,
+      "coverage_at_5": 0.5888888888888888,
+      "success_at_5": 0.5333333333333333,
+      "mrr_at_5": 0.5055555555555554,
+      "total_p50_ms": 593.8283083960414,
+      "total_p95_ms": 699.0399253554641,
+      "retrieval_p50_ms": 38.414050824940205,
+      "rerank_p50_ms": 545.0182929635048,
+      "recorded_cost_usd": 0.013992804,
+      "failed_calls": 2
+    },
+    "dense": {
+      "observations": 30,
+      "candidate_coverage": 0.6444444444444444,
+      "coverage_at_5": 0.5111111111111111,
+      "success_at_5": 0.4,
+      "mrr_at_5": 0.36666666666666664,
+      "total_p50_ms": 20.895558409392834,
+      "total_p95_ms": 32.42005850188433,
+      "retrieval_p50_ms": 20.895558409392834,
+      "rerank_p50_ms": 0.0,
+      "recorded_cost_usd": 0.0,
+      "failed_calls": 0
+    },
+    "dense+jev": {
+      "observations": 30,
+      "candidate_coverage": 0.6444444444444444,
+      "coverage_at_5": 0.5777777777777777,
+      "success_at_5": 0.4666666666666667,
+      "mrr_at_5": 0.5527777777777777,
+      "total_p50_ms": 590.1551297865808,
+      "total_p95_ms": 688.7856586370617,
+      "retrieval_p50_ms": 20.895558409392834,
+      "rerank_p50_ms": 568.3202669024467,
+      "recorded_cost_usd": 0.012064751999999998,
+      "failed_calls": 0
+    }
+  },
+  "timing_details": {
+    "query_encoding_p50_ms": 17.026898451149464,
+    "query_encoding_p95_ms": 22.301308065652844,
+    "successful_jev_batch_p50_ms": 279.4680814258754
+  },
+  "calls": {
+    "attempted": 140,
+    "successful": 138,
+    "failed": 2,
+    "resolved_models": {
+      "typesafe/jev-1.13-20260917": 138
+    },
+    "recorded_cost_usd": 0.02958576599999999,
+    "recorded_input_tokens": 704423,
+    "recorded_output_tokens": 22122,
+    "note": "Main sweep and 200-chunk scan only. Failed requests have no usage; their cost is unknown. Earlier pilot and diagnostic calls are excluded.",
+    "failures": [
+      {
+        "case": "wiki_transactions",
+        "rep": 0,
+        "arm": "bm25+jev",
+        "call_index": 27,
+        "question_count": 10,
+        "error": "HTTPError: 403 Client Error: Forbidden for url: https://openrouter.ai/api/alpha/decisions",
+        "http_status": 403,
+        "upstream_cloudflare_block": true,
+        "latency_ms": 144.0113913267851
+      },
+      {
+        "case": "wiki_transactions",
+        "rep": 1,
+        "arm": "bm25+jev",
+        "call_index": 119,
+        "question_count": 10,
+        "error": "HTTPError: 403 Client Error: Forbidden for url: https://openrouter.ai/api/alpha/decisions",
+        "http_status": 403,
+        "upstream_cloudflare_block": true,
+        "latency_ms": 155.747527256608
+      }
+    ]
+  },
+  "scan": {
+    "case": "stale_semantic_lifecycle",
+    "chunks": 200,
+    "latency_ms": 6259.548322297633,
+    "call_count": 20,
+    "quality_at_5": {
+      "coverage": 0.0,
+      "success": 0.0,
+      "mrr": 0.0
+    },
+    "failed_calls": 0,
+    "recorded_cost_usd": 0.0035282099999999995,
+    "top_5": [
+      [
+        "codenib/compiler/skill_context.py:build_skill_contexts()",
+        583,
+        676
+      ],
+      [
+        "codenib/compiler/index_builders.py:VectorIndexBuilder._build_once()",
+        1006,
+        1097
+      ],
+      [
+        "codenib/index/embedding/artifact_integrity.py:validate_schema_8_vector_document_row()",
+        523,
+        615
+      ],
+      [
+        "codenib/index/embedding/builders.py:build_hierarchical_vector_store()",
+        503,
+        578
+      ],
+      [
+        "codenib/artifacts/strict_bm25.py:_publish_planned_bm25_view_with_identity()",
+        1413,
+        1465
+      ]
+    ],
+    "note": "Gold file chunks deliberately included; this is a latency scaling probe, not unbiased recall measurement."
+  },
+  "posthoc_union_candidate_coverage": 0.8,
+  "union_note": "Union of both top-20 candidate sets, up to 40 chunks. Post-hoc candidate coverage diagnostic, not a timed or reranked hybrid arm.",
+  "per_case": [
+    {
+      "id": "stale_semantic_lifecycle",
+      "source": "existing Ask retrieval gate",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.2,
+          "total_p50_ms": 56.71809846535325,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.3333333333333333,
+          "total_p50_ms": 583.120767492801,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.5,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.3333333333333333,
+          "total_p50_ms": 23.445591796189547,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.5,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 529.4763674028218,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "model_configuration",
+      "source": "existing Ask retrieval gate",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.6666666666666666,
+          "success_at_5": 0.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 52.11095279082656,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.3333333333333333,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 585.1627737283707,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.6666666666666666,
+          "coverage_at_5": 0.6666666666666666,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 18.7912555411458,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.6666666666666666,
+          "coverage_at_5": 0.6666666666666666,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 569.9842632748187,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "wiki_grounding",
+      "source": "existing Ask retrieval gate",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 36.86954919248819,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 588.4117563255131,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.5,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 22.666263859719038,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.5,
+          "coverage_at_5": 0.5,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 541.39534663409,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "bounded_history",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 31.75088856369257,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 554.6543002128601,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.3333333333333333,
+          "total_p50_ms": 26.004747953265905,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 592.3109804280102,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "provider_retry",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 53.46000613644719,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 660.3450570255518,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 39.3933835439384,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 616.9737461023033,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 0.0
+    },
+    {
+      "id": "prompt_cache",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 35.55668564513326,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 548.8085672259331,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 29.461602680385113,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 644.6053176186979,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "vector_integrity",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 31.1637413688004,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 659.4067220576108,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 19.310422241687775,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.29166666666666663,
+          "total_p50_ms": 650.492777582258,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "graph_expansion",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 44.834825210273266,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 640.5300288461149,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.3333333333333333,
+          "total_p50_ms": 20.854351576417685,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 585.6086038984358,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "rank_fusion",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 28.409557417035103,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 623.3792849816382,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 23.258485365659,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 619.3061107769608,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "keyword_extraction",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 39.97575771063566,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 580.9216350317001,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 19.150125794112682,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 571.8935891054571,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "line_conversion",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 48.95757092162967,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 607.3235501535237,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 24.348538368940353,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 592.6688052713871,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 0.0
+    },
+    {
+      "id": "embedding_trust",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 35.48656078055501,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 591.3292621262372,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 22.9661138728261,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 522.2437097691,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "repository_exclusions",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 39.26312969997525,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.75,
+          "total_p50_ms": 573.3835194259882,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 19.994108006358147,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 622.8014696389437,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "wiki_transactions",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 36.43687628209591,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 515.3988325037062,
+          "failed_calls": 2
+        },
+        "dense": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 0.5,
+          "total_p50_ms": 24.228869471699,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 1.0,
+          "coverage_at_5": 1.0,
+          "success_at_5": 1.0,
+          "mrr_at_5": 1.0,
+          "total_p50_ms": 580.1469665020704,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 1.0
+    },
+    {
+      "id": "rerank_fallback",
+      "source": "exploratory authored question",
+      "arms": {
+        "bm25": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 43.1193090043962,
+          "failed_calls": 0
+        },
+        "bm25+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 696.3017024099827,
+          "failed_calls": 0
+        },
+        "dense": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 19.534372724592686,
+          "failed_calls": 0
+        },
+        "dense+jev": {
+          "candidate_coverage": 0.0,
+          "coverage_at_5": 0.0,
+          "success_at_5": 0.0,
+          "mrr_at_5": 0.0,
+          "total_p50_ms": 588.1645488552749,
+          "failed_calls": 0
+        }
+      },
+      "union_candidate_coverage": 0.0
+    }
+  ],
+  "raw_artifacts": {
+    "directory": "/mnt/data/zhongming/codenib-jev-retrieval-20260922-main-v3",
+    "sha256": {
+      "config.json": "aebc421eddd85800bc3c1ce309fd9d43339646917decc18bd0d8c134e34aac2b",
+      "corpus.json": "612da54d455f1546c76f26214d8bf90dabd93addfd2647e2f70673707994915c",
+      "cases.json": "8e7b8c8da5b125daa99ebc8aede290f15c3839446f1f51d8c87c6579a0349c3c",
+      "rows.json": "de06337e642efbf569b4161af54f806083d561eb6b6bb51cc4477f6a6d9910ac",
+      "calls.json": "cca6b9511c61cd8af11d53fd2e3106c8d616d350bac66d1098d5d3bfa6b46511",
+      "summary.json": "d129f69b43b06b628aa210863260bb01a395380e340773662014e4576b6a60cb",
+      "scan.json": "257d96f9b2734094a12cba3281e0dbeab4edc19415465a0f53b0d9e6c44791f2"
+    }
+  }
+}

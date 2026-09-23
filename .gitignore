@@ -50,6 +50,10 @@ web/*.tsbuildinfo
 !web/package-lock.json
 # Keep committed experiment-run evidence (relocated out of results/).
 !docs/experiments/agent_compile_runs/**/*.json
+!docs/experiments/jev_retrieval_cases.json
+!docs/experiments/jev_retrieval_results.json
+!docs/experiments/jev_base_results.json
+!docs/experiments/jev_candidates_results.json
 .env.local
 web_before
 qa_config.local.yaml

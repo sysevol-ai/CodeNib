@@ -11,8 +11,17 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+### Added
+
+- Jev reranking through OpenRouter's Decisions API, selectable with
+  `rerank_strategy="decisions"`. The typed client supports Noul, Choice, and
+  Score questions; reranking uses bounded batches and normalized relevance
+  scores while preserving first-stage candidates when a request fails.
+
 ### Changed
 
+- Bind the retrieve/rerank pipeline's BM25 source reads to its repository root
+  so rerankers receive candidate code when invoked from another directory.
 - Bound each built-in Wiki generation-lock acquisition to a 30-second wait. A
   timed-out waiter does not interrupt the owner or start duplicate generation,
   and a later request can reuse the owner's published result.

@@ -11,6 +11,7 @@ import numpy as np
 
 from ..agent.rerank_agent import RerankAgent
 from ..index.embedding.vector_store import CodeVectorStore
+from ..llm.decisions import OpenRouterDecisions
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
 from ..types import QueriedNode
@@ -91,19 +92,25 @@ class RerankContext:
     window_step: Optional[int] = None
     listwise_format: Literal["structured", "rankgpt"] = "structured"
     embedding_source: Literal["content", "index"] = "content"
+    decisions: Optional[OpenRouterDecisions] = None
 
     def ensure_agent(self) -> RerankAgent:
         if self.agent is None:
-            if self.llm is None:
-                raise RuntimeError("Rerank agent requested but no LLM was provided.")
+            model = self.decisions if self.decisions is not None else self.llm
+            if model is None:
+                raise RuntimeError("Rerank agent requested but no model was provided.")
             logger.info(
                 "Creating rerank agent.",
                 extra={
-                    "model": self.llm.model,
+                    "model": model.model,
                     "listwise_format": self.listwise_format,
                 },
             )
-            self.agent = RerankAgent(llm=self.llm, listwise_format=self.listwise_format)
+            self.agent = RerankAgent(
+                llm=self.llm,
+                listwise_format=self.listwise_format,
+                decisions=self.decisions,
+            )
         return self.agent
 
 

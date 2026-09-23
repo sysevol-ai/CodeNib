@@ -17,6 +17,7 @@ from ..index.embedding.artifact_integrity import require_authorized_vector_view
 from ..index.embedding.model_policy import resolve_embedding_load_policy_from_options
 from ..index.rerank.cross_encoder import build_reranker
 from ..index.sparse_idx.bm25_index import BM25CodeIndexer
+from ..llm.decisions import OpenRouterDecisions
 from ..llm.litellm_chat import LiteLLMChat
 from ..log_utils import get_logger
 from ..ops.expand import ExpandContext, expand_retrieval_candidates
@@ -46,6 +47,8 @@ if TYPE_CHECKING:
 
 SUPPORTED_ENGINES = {"dense", "sparse"}
 RETRIEVAL_TOP_K = 100
+DEFAULT_LLM_RERANK_MODEL = "openai/Qwen/Qwen2.5-Coder-7B"
+DEFAULT_DECISIONS_RERANK_MODEL = "~typesafe/jev-latest"
 
 
 @dataclass(frozen=True)
@@ -121,11 +124,15 @@ class RetrieveRerankPipeline:
         embedding_provider: Backend serving ``embedding_model``.
         embedding_dimension: Dense vector width.
         embedding_model_kwargs: Extra keyword arguments for the dense encoder.
-        rerank_model: Reranker model identifier.
+        rerank_model: Reranker model identifier. Defaults to
+            ``~typesafe/jev-latest`` for decisions and
+            ``openai/Qwen/Qwen2.5-Coder-7B`` for chat reranking.
         rerank_temperature: Sampling temperature for the LLM reranker.
         rerank_max_tokens: Token budget for a single rerank call.
-        rerank_strategy: Reranking backend: ``"llm"``, ``"embedding"``, or
-            ``"crossencoder"``.
+        rerank_strategy: Reranking backend: ``"llm"``, ``"decisions"`` (Jev via
+            OpenRouter), ``"embedding"``, or ``"crossencoder"``. Decisions use
+            ``rerank_model`` and ``OPENROUTER_API_KEY``; chat sampling/token
+            options do not apply.
         rerank_embedding_model: Model used by embedding-based reranking.
         rerank_embedding_provider: Backend for ``rerank_embedding_model``.
         rerank_embedding_dimension: Vector width for embedding-based reranking.
@@ -168,7 +175,7 @@ class RetrieveRerankPipeline:
         embedding_provider: str = "huggingface",
         embedding_dimension: int = 768,
         embedding_model_kwargs: Optional[dict] = None,
-        rerank_model: str = "openai/Qwen/Qwen2.5-Coder-7B",
+        rerank_model: Optional[str] = None,
         rerank_temperature: float = 0.0,
         rerank_max_tokens: int = 2048,
         rerank_strategy: str = "llm",
@@ -274,19 +281,29 @@ class RetrieveRerankPipeline:
             self.bm25_index = self._initialize_bm25_index(max_k=sparse_cap)
 
         strategy = (rerank_strategy or "llm").strip().lower()
-        if strategy not in ("llm", "embedding", "crossencoder"):
+        if strategy not in ("llm", "decisions", "embedding", "crossencoder"):
             raise ValueError(
-                "rerank_strategy must be 'llm', 'embedding', or 'crossencoder'."
+                "rerank_strategy must be 'llm', 'decisions', 'embedding', "
+                "or 'crossencoder'."
             )
         self.rerank_strategy = strategy
 
         rerank_llm = None
+        rerank_decisions = None
         self.cross_encoder = None
         if strategy == "llm":
             rerank_llm = LiteLLMChat(
-                model=rerank_model,
+                model=rerank_model or DEFAULT_LLM_RERANK_MODEL,
                 max_tokens=rerank_max_tokens,
                 temperature=rerank_temperature,
+            )
+        elif strategy == "decisions":
+            if rerank_listwise_format != "structured":
+                raise ValueError(
+                    "rerank_listwise_format applies only to chat rerankers"
+                )
+            rerank_decisions = OpenRouterDecisions(
+                model=rerank_model or DEFAULT_DECISIONS_RERANK_MODEL
             )
         elif strategy == "crossencoder":
             self.cross_encoder = build_reranker(
@@ -340,6 +357,7 @@ class RetrieveRerankPipeline:
         if self.enable_rerank:
             self.rerank_context = RerankContext(
                 llm=rerank_llm,
+                decisions=rerank_decisions,
                 embedding_store=self.rerank_vector_store or self.vector_store,
                 candidate_top_k=self.rerank_candidate_top_k,
                 window_size=rerank_window_size,
@@ -357,7 +375,7 @@ class RetrieveRerankPipeline:
                 has_sparse=bool(self.bm25_index),
                 has_graph=bool(self.expand_context.code_graph),
                 has_embedding_rerank=bool(self.vector_store),
-                has_llm_rerank=strategy == "llm",
+                has_llm_rerank=strategy in ("llm", "decisions"),
             )
         )
 
@@ -656,9 +674,10 @@ class RetrieveRerankPipeline:
             return self._rerank_crossencoder(query, candidates, top_k)
         if active_strategy == "embedding":
             return self._rerank_embedding(query, candidates, top_k)
-        if active_strategy != "llm":
+        if active_strategy not in ("llm", "decisions"):
             raise ValueError(
-                "rerank strategy must be 'llm', 'embedding', or 'crossencoder'."
+                "rerank strategy must be 'llm', 'decisions', 'embedding', "
+                "or 'crossencoder'."
             )
         return self._rerank_llm(query, candidates, top_k)
 
@@ -940,7 +959,7 @@ class RetrieveRerankPipeline:
     def _initialize_bm25_index(self, *, max_k: int) -> BM25CodeIndexer:
         logger.info("Building BM25 index.", extra={"max_k": max_k})
         chunks = self._ensure_chunks()
-        return BM25CodeIndexer(chunks=chunks, max_k=max_k)
+        return BM25CodeIndexer(chunks=chunks, max_k=max_k, project_root=self.repo_path)
 
     def _ensure_chunks(self):
         if self._chunks is not None:
