@@ -506,6 +506,16 @@ def test_static_export_reads_summary_excerpts_graph_and_paths_from_binding(
         )
     )
     assert "trusted-source" in graph["nodes"][0]["source"]["content"]
+    boundary = json.loads(
+        (setup.output / "data/repos/demo/page-boundaries/overview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert set(boundary) >= {"available", "focus", "inbound", "outbound"}
+    area_map = json.loads(
+        (setup.output / "data/repos/demo/wiki-map.json").read_text(encoding="utf-8")
+    )
+    assert set(area_map) >= {"available", "areas", "links"}
     assert "README.md" in prefix_reads
     assert "src/runtime.py" in prefix_reads  # generated-source header check
     assert line_reads.count("src/runtime.py") >= 2

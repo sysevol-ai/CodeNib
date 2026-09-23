@@ -39,6 +39,7 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
+from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
 from ..wiki.media_evidence import build_media_evidence_pack
 from ..wiki.media_generation import (
     image_generator_from_config,
@@ -51,6 +52,7 @@ from ..wiki.repository_visuals import attach_repository_visual, discover_overvie
 from ..wiki.sqlite_store import SQLiteWikiStore
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
+from .card_summary import card_summary
 from .config import load_config
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
@@ -645,6 +647,22 @@ async def list_repos() -> list[RepoInfo]:
         # Surface the global edge-label toggle per repo so the UI can gate the
         # feature, then derive window figures from that same generation.
         info.capabilities = {**info.capabilities, "edge_labels": edge_on}
+        # The card's one-line summary comes from the cached Overview, then the
+        # manifest or README; reading it never starts page generation.
+        try:
+            if bundle is None:
+                target = _bundle(info.id)
+                wiki = await asyncio.to_thread(_wiki, info.id, target)
+            else:
+                target = bundle
+                wiki = await _run_pinned_thread(_wiki, info.id, bundle)
+            lead_of = getattr(wiki, "cached_summary", None)
+            lead = await asyncio.to_thread(lead_of) if callable(lead_of) else None
+            info.summary = await asyncio.to_thread(
+                card_summary, target, lead, info.description
+            )
+        except Exception:  # noqa: BLE001 - a summary must not break the list
+            info.summary = ""
         try:
             if bundle is None:
                 info.incremental = await asyncio.to_thread(
@@ -739,6 +757,16 @@ async def wiki_page(
             )
         if "media_slots" not in page:
             page = {**page, "media_slots": []}
+        if page.get("markdown"):
+            # A row repeating an arrow the section flow already draws reads
+            # twice; the flow caption must not claim calls the index lacks.
+            page = {
+                **page,
+                "markdown": qualify_flow_caption(
+                    drop_flow_duplicate_interactions(str(page["markdown"])),
+                    (page.get("evidence") or {}).get("relations") or [],
+                ),
+            }
         if "story" not in page:
             page = {
                 **page,
@@ -887,6 +915,97 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
             repo_dir=bundle.entry.repo_dir,
             hierarchy_graph=hierarchy_graph,
             source_reader=bundle.source_reader,
+        )
+
+
+_AREA_MAP_CACHE: dict[tuple[str, str], dict] = {}
+
+
+@app.get("/api/repos/{repo_id}/wiki-map")
+async def wiki_area_map(repo_id: str) -> dict:
+    """How the wiki's top-level areas call each other in the indexed graph.
+
+    Uses only citations the wiki already resolved, so opening the map never
+    starts page generation.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        entry = getattr(bundle, "entry", None)
+        cache_key = (repo_id, str(getattr(entry, "base_commit", "") or ""))
+        if cache_key in _AREA_MAP_CACHE:
+            return _AREA_MAP_CACHE[cache_key]
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        page_citations = getattr(builder, "page_citations", None)
+        graph = await _run_pinned_thread(bundle.code_graph)
+        if graph is None or not callable(page_citations):
+            return {"available": False, "areas": [], "links": []}
+        tree = await _run_pinned_thread(builder.page_tree)
+
+        def collect() -> list[dict]:
+            areas = []
+            for top in tree:
+                if top.get("id") == "overview":
+                    continue
+                ids = [top["id"]] + [child["id"] for child in top.get("children") or []]
+                areas.append(
+                    {
+                        "id": top["id"],
+                        "title": top.get("title") or top["id"],
+                        "citations": [page_citations(page_id) or [] for page_id in ids],
+                    }
+                )
+            return areas
+
+        areas = await _run_pinned_thread(collect)
+        from .codemap import build_area_map
+
+        result = await _run_pinned_thread(
+            build_area_map,
+            graph,
+            areas,
+            repo_dir=getattr(entry, "repo_dir", None),
+            source_reader=getattr(bundle, "source_reader", None),
+        )
+        _AREA_MAP_CACHE[cache_key] = result
+        return result
+
+
+@app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")
+async def wiki_page_boundary(repo_id: str, page_id: str) -> dict:
+    """Callers into a page's cited symbols and the calls it makes outward.
+
+    Read straight off the indexed graph, so the same commit always yields the
+    same card; every row carries its exact call sites.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        page_citations = getattr(builder, "page_citations", None)
+        if callable(page_citations):
+            citations = await _run_pinned_thread(page_citations, page_id)
+        else:
+            page = await _run_pinned_thread(builder.page, page_id)
+            citations = page.get("citations", []) if isinstance(page, dict) else None
+        if citations is None:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown wiki page: {page_id!r}"
+            )
+        graph = await _run_pinned_thread(bundle.code_graph)
+        if graph is None:
+            return {
+                "available": False,
+                "focus": [],
+                "inbound": [],
+                "outbound": [],
+                "truncated": False,
+                "note": bundle.graph_unavailable_note(),
+            }
+        from .codemap import build_page_boundary
+
+        return await _run_pinned_thread(
+            build_page_boundary,
+            graph,
+            citations,
+            repo_dir=bundle.entry.repo_dir,
+            source_reader=getattr(bundle, "source_reader", None),
         )
 
 

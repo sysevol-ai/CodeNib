@@ -1,5 +1,7 @@
 import {
   materializedWikiMediaSlots,
+  type Citation,
+  type WikiVisualNode,
   type WikiMediaSlot,
   type WikiPage,
 } from "./api";
@@ -111,4 +113,106 @@ export function wikiRetryNotice(
     detail: `${cause} It is regenerated the next time this page is opened. ${used}`,
     nextAttemptEpoch: null,
   };
+}
+
+export interface JourneyStage {
+  index: number;
+  symbol: string;
+  /** Owning area page, when the stage names one. */
+  page?: { id: string; title: string };
+  /** The stage's one admitted sentence, still Markdown (code spans, cites). */
+  text: string;
+  evidence: string[];
+}
+
+export interface Journey {
+  title: string;
+  stages: JourneyStage[];
+}
+
+const JOURNEY_ITEM =
+  /^(\d+)\.\s+\*\*`([^`]+)`\*\*(?:\s*·\s*\[([^\]]+)\]\(\?p=([^)\s]+)\))?\s*:\s*(.*)$/;
+
+/**
+ * Take the Overview's recorded entry path out of the Markdown.
+ *
+ * The generator writes it as the first level-two section made only of
+ * numbered `**`symbol`**: sentence` stages. When the page also carries a
+ * system architecture, the path is drawn inside that card so the reader sees
+ * one path, not two; the section is returned separately and removed here.
+ * Anything else in the section (prose, other lists) leaves it in place.
+ */
+export function extractJourney(markdown: string): { journey: Journey | null; rest: string } {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+  let start = -1;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^##\s+/.test(lines[index])) continue;
+    let end = index + 1;
+    while (end < lines.length && !/^##\s+/.test(lines[end])) end += 1;
+    const body = lines.slice(index + 1, end).filter((line) => line.trim());
+    const stages = body.map((line) => JOURNEY_ITEM.exec(line.trim()));
+    if (stages.length >= 2 && stages.every(Boolean)) {
+      start = index;
+      const journey: Journey = {
+        title: lines[index].replace(/^##\s+/, "").trim(),
+        stages: stages.map((m) => {
+          const match = m as RegExpExecArray;
+          return {
+            index: Number(match[1]),
+            symbol: match[2],
+            page: match[4] ? { id: decodeURIComponent(match[4]), title: match[3] } : undefined,
+            text: match[5].trim(),
+            evidence: [...match[5].matchAll(/\[(E\d+)\]\(#evidence-E\d+\)/g)].map((e) => e[1]),
+          };
+        }),
+      };
+      const rest = [...lines.slice(0, start), ...lines.slice(end)].join("\n");
+      return { journey, rest };
+    }
+  }
+  return { journey: null, rest: markdown };
+}
+
+/**
+ * Which architecture role each journey stage belongs to, when the evidence
+ * says so: a stage citing one of a role's evidence ids belongs to it; failing
+ * that, a stage whose cited file only one role cites belongs to that role.
+ * Anything else stays unassigned rather than guessed.
+ */
+export function stageRoles(
+  stages: JourneyStage[],
+  nodes: WikiVisualNode[],
+  citations: Citation[] | undefined,
+): (string | null)[] {
+  const fileOf = (id: string) => {
+    const index = Number(id.replace(/^E/, "")) - 1;
+    return citations?.[index]?.file || null;
+  };
+  const roleFiles = new Map(
+    nodes.map((node) => [
+      node.id,
+      new Set(node.evidence.filter((id) => id.startsWith("E")).map(fileOf).filter(Boolean)),
+    ]),
+  );
+  return stages.map((stage) => {
+    const byEvidence = nodes.find((node) =>
+      node.evidence.some((id) => stage.evidence.includes(id)),
+    );
+    if (byEvidence) return byEvidence.id;
+    const files = stage.evidence.map(fileOf).filter(Boolean);
+    const owners = nodes.filter((node) => files.some((file) => roleFiles.get(node.id)?.has(file)));
+    return owners.length === 1 ? owners[0].id : null;
+  });
+}
+
+/** A stage sentence without the symbol its heading already shows:
+ *  "`get()` forwards its URL" under a `get()` heading reads "Forwards its URL". */
+export function stageSentence(stage: JourneyStage): string {
+  const bare = stage.symbol.replace(/\(\)$/, "");
+  const lead = new RegExp(
+    "^`(?:" + [stage.symbol, bare].map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?:\\(\\))?`\\s+",
+  );
+  const text = stage.text.replace(lead, "");
+  // Each stage reads as its own sentence under the symbol heading.
+  return /^[a-z]/.test(text) ? text.charAt(0).toUpperCase() + text.slice(1) : text;
 }

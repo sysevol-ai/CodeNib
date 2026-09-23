@@ -39,6 +39,8 @@ export interface RepoInfo {
   commit_short: string;
   language: string;
   description: string;
+  /** One line on what the repository is for, chosen for the landing card. */
+  summary?: string;
   problem_statement: string;
   languages: string[];
   file_count: number;
@@ -806,6 +808,82 @@ export async function fetchWikiGraph(repoId: string, pageId: string): Promise<Co
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/graph`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to load page graph (${res.status})`);
+  return res.json();
+}
+
+export interface BoundaryAnchor {
+  file: string;
+  line: number | null;
+}
+
+export interface BoundaryRow {
+  /** The symbol on the far side of the page boundary, file-qualified. */
+  symbol: string;
+  kind: string;
+  file: string;
+  line: number | null;
+  /** The page's own symbol this handoff enters or leaves. */
+  page_symbol: string;
+  /** True when the reference reaches a function or method (not a field read). */
+  call: boolean;
+  count: number;
+  anchors: BoundaryAnchor[];
+}
+
+export interface PageBoundary {
+  available: boolean;
+  focus: { symbol: string; file: string; line: number | null; degree: number }[];
+  inbound: BoundaryRow[];
+  outbound: BoundaryRow[];
+  truncated: boolean;
+  note?: string;
+}
+
+// Callers into a page's cited symbols and the calls it makes outward, read
+// straight off the indexed graph with exact call sites.
+export async function fetchWikiBoundary(repoId: string, pageId: string): Promise<PageBoundary> {
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "page-boundaries", `${pageId}.json`)
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/boundary`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to load page boundary (${res.status})`);
+  return res.json();
+}
+
+export interface WikiArea {
+  id: string;
+  title: string;
+  symbols: number;
+  files: number;
+}
+
+export interface WikiAreaLink {
+  source: string;
+  target: string;
+  /** Recorded references from the source area's symbols into the target's. */
+  weight: number;
+  /** Distinct caller/callee pairs behind the weight. */
+  calls: number;
+  example: {
+    source: string;
+    target: string;
+    anchor: BoundaryAnchor | null;
+  };
+}
+
+export interface WikiAreaMap {
+  available: boolean;
+  areas: WikiArea[];
+  links: WikiAreaLink[];
+}
+
+// How the wiki's top-level areas call each other in the indexed graph.
+export async function fetchWikiAreaMap(repoId: string): Promise<WikiAreaMap> {
+  const url = isStaticRuntime()
+    ? staticDataUrl("repos", repoId, "wiki-map.json")
+    : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki-map`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to load area map (${res.status})`);
   return res.json();
 }
 

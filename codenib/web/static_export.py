@@ -12,7 +12,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 
 from .._atomic_directory import (
@@ -44,9 +44,12 @@ from ..source_fingerprint import (
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
+from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
+from ..wiki.lead import overview_lead
 from ..wiki.media_generation import materialize_deterministic_svg_slots
 from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.story import derive_story_from_markdown
+from .card_summary import card_summary
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
 
@@ -219,6 +222,11 @@ def _normalize_page(builder: Any, page: Mapping[str, Any]) -> dict[str, Any]:
                 citation["content"] = source.get("content")
         citations.append(citation)
     payload["citations"] = citations
+    if payload.get("markdown"):
+        payload["markdown"] = qualify_flow_caption(
+            drop_flow_duplicate_interactions(str(payload["markdown"])),
+            (payload.get("evidence") or {}).get("relations") or [],
+        )
     if "story" not in payload:
         payload["story"] = derive_story_from_markdown(
             str(payload.get("markdown") or "")
@@ -272,6 +280,70 @@ def _page_graph(bundle: Any, page: Mapping[str, Any]) -> dict[str, Any]:
         )
     except Exception:  # noqa: BLE001 - an optional graph must not block the Wiki
         return _unavailable_page_graph("The indexed dependency view was unavailable.")
+
+
+def _page_boundary(bundle: Any, page: Mapping[str, Any]) -> dict[str, Any]:
+    empty: dict[str, Any] = {
+        "available": False,
+        "focus": [],
+        "inbound": [],
+        "outbound": [],
+        "truncated": False,
+    }
+    try:
+        graph = bundle.code_graph()
+        if graph is None:
+            return empty
+        from .codemap import build_page_boundary
+
+        return build_page_boundary(
+            graph,
+            list(page.get("citations") or ()),
+            repo_dir=bundle.entry.repo_dir,
+            source_reader=getattr(bundle, "source_reader", None),
+        )
+    except Exception:  # noqa: BLE001 - an optional card must not block the Wiki
+        return empty
+
+
+def _area_map(
+    bundle: Any, tree: Any, pages: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    empty: dict[str, Any] = {"available": False, "areas": [], "links": []}
+    try:
+        graph = bundle.code_graph()
+        if graph is None:
+            return empty
+        citations = {
+            str(page.get("id") or ""): list(page.get("citations") or ())
+            for page in pages
+        }
+        areas = []
+        for top in tree or []:
+            if not isinstance(top, Mapping) or top.get("id") == "overview":
+                continue
+            ids = [top.get("id")] + [
+                child.get("id")
+                for child in top.get("children") or []
+                if isinstance(child, Mapping)
+            ]
+            areas.append(
+                {
+                    "id": top.get("id"),
+                    "title": top.get("title") or top.get("id"),
+                    "citations": [citations.get(str(page_id), []) for page_id in ids],
+                }
+            )
+        from .codemap import build_area_map
+
+        return build_area_map(
+            graph,
+            areas,
+            repo_dir=bundle.entry.repo_dir,
+            source_reader=getattr(bundle, "source_reader", None),
+        )
+    except Exception:  # noqa: BLE001 - an optional map must not block the Wiki
+        return empty
 
 
 def _positive_line(value: Any) -> int | None:
@@ -957,6 +1029,7 @@ def export_static_wiki(
             page_ids = _page_ids(tree)
             pages = []
             graphs: dict[str, dict[str, Any]] = {}
+            boundaries: dict[str, dict[str, Any]] = {}
             for page_id in page_ids:
                 page = builder.page(page_id)
                 if page is None:
@@ -994,6 +1067,7 @@ def export_static_wiki(
                     builder,
                     _page_graph(bundle, normalized),
                 )
+                boundaries[page_id] = _page_boundary(bundle, normalized)
 
             repo_info = _model_dict(bundle.info())
             capabilities = {
@@ -1014,6 +1088,15 @@ def export_static_wiki(
             repo_info["capabilities"] = capabilities
             repo_info["problem_statement"] = ""
             repo_info["incremental"] = None
+            overview = next((p for p in pages if p.get("id") == "overview"), None)
+            try:
+                repo_info["summary"] = card_summary(
+                    bundle,
+                    overview_lead(str((overview or {}).get("markdown") or "")),
+                    str(repo_info.get("description") or ""),
+                )
+            except Exception:  # noqa: BLE001 - a card line must not block export
+                repo_info["summary"] = ""
             # The retained source authority does not authenticate Git config.
             # Publishing no origin is safer than attributing a raced checkout.
             repo_info["source_url"] = None
@@ -1047,6 +1130,7 @@ def export_static_wiki(
         )
         for relative, payload in sorted(repository_assets.items()):
             _write_bytes(stage, relative, payload)
+        _write_json(stage, f"{repo_root}/wiki-map.json", _area_map(bundle, tree, pages))
         for page, page_id in zip(pages, page_ids, strict=True):
             component = quote(page_id, safe="")
             _write_json(stage, f"{repo_root}/pages/{component}.json", page)
@@ -1054,6 +1138,11 @@ def export_static_wiki(
                 stage,
                 f"{repo_root}/page-graphs/{component}.json",
                 graphs[page_id],
+            )
+            _write_json(
+                stage,
+                f"{repo_root}/page-boundaries/{component}.json",
+                boundaries[page_id],
             )
 
         source_manifest = bundle.manifest

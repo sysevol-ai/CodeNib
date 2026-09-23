@@ -57,6 +57,42 @@ function installSanitizedSvg(container: HTMLElement, svg: string): boolean {
   return true;
 }
 
+/** Site tokens for the few flows that still draw as a diagram, so they
+ *  share the page's palette and type instead of Mermaid's grey default. */
+function themeVariables(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const css = getComputedStyle(document.documentElement);
+  const token = (name: string, fallback: string) =>
+    css.getPropertyValue(name).trim() || fallback;
+  return {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: "13px",
+    primaryColor: token("--accent-soft", "#eff6ff"),
+    primaryBorderColor: token("--accent-border", "#bfdbfe"),
+    primaryTextColor: token("--text-primary", "#0f172a"),
+    lineColor: token("--accent", "#2563eb"),
+    textColor: token("--text-secondary", "#475569"),
+    edgeLabelBackground: token("--bg-surface", "#ffffff"),
+    background: token("--bg-surface", "#ffffff"),
+  };
+}
+
+export function mermaidConfig(dark: boolean) {
+  return {
+    startOnLoad: false,
+    theme: "base" as const,
+    darkMode: dark,
+    themeVariables: themeVariables(),
+    securityLevel: "strict" as const,
+    // Mermaid 11 reads the top-level flag; the flowchart-scoped one alone
+    // still emits HTML labels inside <foreignObject>, which the sanitizer
+    // above deletes, leaving every node box empty.
+    htmlLabels: false,
+    // Symbol names are single tokens; wrapping splits them mid-name.
+    flowchart: { htmlLabels: false, wrappingWidth: 360 },
+  };
+}
+
 export default function Mermaid({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -65,12 +101,7 @@ export default function Mermaid({ chart }: { chart: string }) {
     let cancelled = false;
     const render = async () => {
       const dark = document.documentElement.dataset.theme === "dark";
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: dark ? "dark" : "neutral",
-        securityLevel: "strict",
-        flowchart: { htmlLabels: false },
-      });
+      mermaid.initialize(mermaidConfig(dark));
       // Validate first: a failed mermaid.render() appends an error graphic to
       // the DOM as a side effect, so on invalid charts we fall back instead.
       let ok = true;

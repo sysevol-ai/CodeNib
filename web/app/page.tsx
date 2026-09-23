@@ -1,14 +1,56 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Header from "@/components/Header";
-import { fetchRepos, type RepoInfo } from "@/lib/api";
+import { fetchRepos, fetchWikiAreaMap, repoRelative, type RepoInfo } from "@/lib/api";
+import { groupByLanguage, primaryLanguage } from "@/lib/landing";
+import { splitSymbolLabel } from "@/lib/symbols";
 import { AppLink, navigate } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 
-function repoDescription(r: RepoInfo): string {
-  if (r.description) return r.description;
-  return `${r.language || "Source"} repository indexed at ${r.commit_short}`;
+function repoDescription(r: RepoInfo): ReactNode {
+  // `summary` is chosen server-side to be a statement of purpose; the raw
+  // README blurb is often a chat invitation or a pager note, so it is not a
+  // fallback here.
+  const text = r.summary || `${primaryLanguage(r)} repository indexed at ${r.commit_short}.`;
+  return text.split(/(`[^`]+`)/).map((part, index) =>
+    part.startsWith("`") && part.endsWith("`") ? (
+      <code key={index}>{part.slice(1, -1)}</code>
+    ) : (
+      <span key={index}>{part}</span>
+    ),
+  );
+}
+
+interface Proof {
+  repoId: string;
+  repo: string;
+  commit: string;
+  from: string;
+  to: string;
+  file: string;
+  line: number | null;
+}
+
+/** One real recorded call, shown as the reason to trust the pages. */
+function HeroProof({ proof }: { proof: Proof }) {
+  return (
+    <AppLink className="hero-proof" href={`/${proof.repoId}`}>
+      <span className="hero-proof-label">A recorded call</span>
+      <span className="hero-proof-body">
+        <code>{proof.from}</code> calls <code>{proof.to}</code>
+        {proof.file && (
+          <span className="hero-proof-site mono">
+            {proof.file}
+            {proof.line != null ? `:${proof.line}` : ""}
+          </span>
+        )}
+      </span>
+      <span className="hero-proof-repo">
+        in {proof.repo} at <span className="mono">{proof.commit}</span> →
+      </span>
+    </AppLink>
+  );
 }
 
 // Cold graph-build time divided by mean warm patch time. The measurement
@@ -32,7 +74,7 @@ function RepoCard({ r }: { r: RepoInfo }) {
       <div className="repo-card-desc">{repoDescription(r)}</div>
       <div className="repo-card-footer">
         <span className={`lang lang-${(r.language || "").toLowerCase().split("/")[0]}`}>
-          {r.language || "code"}
+          {primaryLanguage(r)}
         </span>
         {r.file_count > 0 && (
           <span className="repo-metric" title="indexed files">
@@ -72,6 +114,7 @@ export default function Landing() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
+  const [proof, setProof] = useState<Proof | null>(null);
 
   const loadRepos = () => {
     setError(null);
@@ -116,6 +159,33 @@ export default function Landing() {
     return loadRepos();
   }, []);
 
+  // The strongest recorded call between two areas of a small, familiar repo.
+  useEffect(() => {
+    const pickRepo = repos.find((r) => r.id === "psf__requests") ?? repos[0];
+    if (!pickRepo) return;
+    let active = true;
+    fetchWikiAreaMap(pickRepo.id)
+      .then((map) => {
+        const link = map.links[0];
+        if (!active || !link?.example) return;
+        const anchor = link.example.anchor;
+        const file = anchor ? repoRelative(anchor.file) ?? anchor.file : "";
+        setProof({
+          repoId: pickRepo.id,
+          repo: pickRepo.repo,
+          commit: pickRepo.commit_short,
+          from: splitSymbolLabel(link.example.source).symbol,
+          to: splitSymbolLabel(link.example.target).symbol,
+          file: file.split("/").pop() || file,
+          line: anchor?.line ?? null,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [repos]);
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     if (!needle) return repos;
@@ -123,7 +193,8 @@ export default function Landing() {
       (r) =>
         r.repo.toLowerCase().includes(needle) ||
         r.id.toLowerCase().includes(needle) ||
-        (r.language || "").toLowerCase().includes(needle)
+        (r.language || "").toLowerCase().includes(needle) ||
+        (r.summary || "").toLowerCase().includes(needle)
     );
   }, [repos, q]);
 
@@ -131,7 +202,13 @@ export default function Landing() {
     <div className="landing">
       <Header />
       <section className="hero">
-        <h1>Which repo would you like to understand?</h1>
+        <h1>Read a codebase through its call graph</h1>
+        <p className="hero-sub">
+          Every wiki here stands on a compiler-precise index of the repository.
+          Its structure comes from recorded calls, and its prose cites the lines
+          it explains.
+        </p>
+        {proof && <HeroProof proof={proof} />}
         <div className="search-box">
           <span className="search-icon" aria-hidden>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -154,24 +231,16 @@ export default function Landing() {
         </div>
       </section>
 
-      <div className="repo-grid">
-        {!staticRuntime && (
-          <AppLink
-            className="repo-card add-repo"
-            aria-label="Index your own repository"
-            href="/add-repo"
-          >
-            <span className="add-plus">+</span>
-            <span className="add-label">Add repo</span>
-            <span className="repo-card-go" aria-hidden>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </span>
+      {!staticRuntime && (
+        <div className="landing-actions">
+          <AppLink className="add-repo-link" href="/add-repo" aria-label="Index your own repository">
+            + Index your own repository
           </AppLink>
-        )}
+        </div>
+      )}
 
-        {error && (
+      {error && (
+        <div className="repo-grid">
           <div className="empty">
             <p>
               {staticRuntime ? (
@@ -185,13 +254,34 @@ export default function Landing() {
               Retry
             </button>
           </div>
-        )}
-        {!error && loading && repos.length === 0 && <div className="empty">Loading repositories…</div>}
-        {!error && !loading && repos.length === 0 && <div className="empty">No repositories found.</div>}
-        {filtered.map((r) => (
-          <RepoCard key={r.id} r={r} />
-        ))}
-      </div>
+        </div>
+      )}
+      {!error && loading && repos.length === 0 && (
+        <div className="repo-grid"><div className="empty">Loading repositories…</div></div>
+      )}
+      {!error && !loading && repos.length === 0 && (
+        <div className="repo-grid"><div className="empty">No repositories found.</div></div>
+      )}
+      {q.trim() ? (
+        <div className="repo-grid">
+          {filtered.map((r) => (
+            <RepoCard key={r.id} r={r} />
+          ))}
+        </div>
+      ) : (
+        groupByLanguage(repos).map((group) => (
+          <section className="repo-group" key={group.language} aria-label={`${group.language} repositories`}>
+            <h2 className="repo-group-title">
+              {group.language} <span>{group.repos.length}</span>
+            </h2>
+            <div className="repo-grid">
+              {group.repos.map((r) => (
+                <RepoCard key={r.id} r={r} />
+              ))}
+            </div>
+          </section>
+        ))
+      )}
     </div>
   );
 }

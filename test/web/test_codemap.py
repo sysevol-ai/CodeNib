@@ -16,7 +16,9 @@ from codenib.web.codemap import (
     _DerivedFiles,
     _EdgeAnchorCollector,
     _enrich,
+    build_area_map,
     build_codemap,
+    build_page_boundary,
     build_page_subgraph,
 )
 
@@ -1119,3 +1121,217 @@ def test_page_subgraph_does_not_blame_the_snapshot_for_indexed_test_files():
         "which the symbol graph does not index, and the rest (e.g. demo/app.go) "
         "were not indexed either."
     )
+
+
+def _boundary_graph() -> CodeGraph:
+    graph = CodeGraph()
+    vertices = [
+        ("src/page.py:seed()", "function", "src/page.py", 0),
+        ("src/page.py:sibling()", "function", "src/page.py", 10),
+        ("src/busy.py:one()", "function", "src/busy.py", 0),
+        ("src/busy.py:two()", "function", "src/busy.py", 10),
+        ("src/busy.py:three()", "function", "src/busy.py", 20),
+        ("src/other.py:caller()", "function", "src/other.py", 0),
+        ("src/config.py:Config.flag", "field", "src/config.py", 3),
+        ("tests/test_page.py:test_seed()", "function", "tests/test_page.py", 0),
+        ("src/out.py:helper()", "function", "src/out.py", 5),
+    ]
+    for name, kind, file, line in vertices:
+        graph._add_vertex(
+            name,
+            {
+                "type": kind,
+                "file": file,
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+
+    def edge(source, target, anchor_file, anchor_line):
+        graph._add_edge(
+            source,
+            target,
+            "reference",
+            anchor_file=anchor_file,
+            anchor_line=anchor_line,
+        )
+
+    for index, caller in enumerate(["one", "two", "three"]):
+        edge(
+            f"src/busy.py:{caller}()",
+            "src/page.py:seed()",
+            "src/busy.py",
+            index * 10 + 1,
+        )
+    edge("src/other.py:caller()", "src/page.py:seed()", "src/other.py", 1)
+    edge(
+        "tests/test_page.py:test_seed()", "src/page.py:seed()", "tests/test_page.py", 1
+    )
+    edge("src/page.py:seed()", "src/page.py:sibling()", "src/page.py", 1)
+    edge("src/page.py:seed()", "src/config.py:Config.flag", "src/page.py", 2)
+    edge("src/page.py:seed()", "src/out.py:helper()", "src/page.py", 3)
+    return graph
+
+
+def test_page_boundary_reports_crossing_calls_with_call_sites():
+    result = build_page_boundary(
+        _boundary_graph(),
+        [
+            {"file": "src/page.py", "start_line": 1, "node_name": "seed"},
+            {"file": "src/page.py", "start_line": 11, "node_name": "sibling"},
+        ],
+        max_rows=3,
+    )
+
+    assert result["available"] is True
+    inbound = [row["symbol"] for row in result["inbound"]]
+    # One busy file may claim two rows before another file gets its turn, and
+    # the test caller never appears.
+    assert inbound[:2] == ["src/busy.py:one()", "src/busy.py:three()"]
+    assert inbound[2] == "src/other.py:caller()"
+    assert not any("tests/" in symbol for symbol in inbound)
+    assert result["truncated"] is True
+    assert result["inbound"][0]["anchors"] == [{"file": "src/busy.py", "line": 2}]
+    assert result["inbound"][0]["page_symbol"] == "src/page.py:seed()"
+
+    outbound = result["outbound"]
+    # The edge between two cited symbols is internal detail, and a call ranks
+    # above a field read.
+    assert [row["symbol"] for row in outbound] == [
+        "src/out.py:helper()",
+        "src/config.py:Config.flag",
+    ]
+    assert [row["call"] for row in outbound] == [True, False]
+    assert [focus["symbol"] for focus in result["focus"]] == ["src/page.py:seed()"]
+
+
+def test_page_boundary_is_unavailable_without_resolved_citations():
+    result = build_page_boundary(_boundary_graph(), [])
+    assert result == {
+        "available": False,
+        "focus": [],
+        "inbound": [],
+        "outbound": [],
+        "truncated": False,
+    }
+
+
+def test_page_boundary_spreads_rows_across_the_pages_own_symbols():
+    graph = CodeGraph()
+    names = [("src/page.py:hot()", 0), ("src/page.py:cold()", 10)]
+    names += [(f"src/c{index}.py:caller{index}()", 0) for index in range(5)]
+    for name, line in names:
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": name.split(":")[0],
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+    for index in range(4):
+        graph._add_edge(
+            f"src/c{index}.py:caller{index}()",
+            "src/page.py:hot()",
+            "reference",
+            anchor_file=f"src/c{index}.py",
+            anchor_line=1,
+        )
+    graph._add_edge(
+        "src/c4.py:caller4()",
+        "src/page.py:cold()",
+        "reference",
+        anchor_file="src/c4.py",
+        anchor_line=1,
+    )
+
+    result = build_page_boundary(
+        graph,
+        [
+            {"file": "src/page.py", "start_line": 1, "node_name": "hot"},
+            {"file": "src/page.py", "start_line": 11, "node_name": "cold"},
+        ],
+        max_rows=4,
+    )
+
+    targets = [row["page_symbol"] for row in result["inbound"]]
+    assert targets.count("src/page.py:hot()") == 3
+    assert "src/page.py:cold()" in targets
+
+
+def test_area_map_counts_calls_between_areas_with_an_example():
+    graph = CodeGraph()
+    for name, kind, file, line in [
+        ("src/api.py:get()", "function", "src/api.py", 0),
+        ("src/session.py:Session.send()", "method", "src/session.py", 10),
+        ("src/session.py:Session.cfg", "field", "src/session.py", 2),
+        ("src/adapter.py:send()", "function", "src/adapter.py", 5),
+        ("src/api.py", "file", "src/api.py", 0),
+    ]:
+        graph._add_vertex(
+            name,
+            {
+                "type": kind,
+                "file": file,
+                "start_line": line,
+                "end_line": line + 2,
+                "unified_name": name,
+            },
+        )
+    for source, target, anchor_file, anchor_line in [
+        ("src/api.py:get()", "src/session.py:Session.send()", "src/api.py", 1),
+        ("src/api.py:get()", "src/session.py:Session.cfg", "src/api.py", 2),
+        (
+            "src/session.py:Session.send()",
+            "src/adapter.py:send()",
+            "src/session.py",
+            11,
+        ),
+    ]:
+        graph._add_edge(
+            source,
+            target,
+            "reference",
+            anchor_file=anchor_file,
+            anchor_line=anchor_line,
+        )
+
+    def cite(file, line, name):
+        return {"file": file, "start_line": line + 1, "node_name": name}
+
+    result = build_area_map(
+        graph,
+        [
+            {
+                "id": "api",
+                "title": "API",
+                "citations": [[cite("src/api.py", 0, "get")]],
+            },
+            {
+                "id": "session",
+                "title": "Session",
+                "citations": [
+                    [cite("src/session.py", 10, "Session.send")],
+                    [cite("src/session.py", 2, "Session.cfg")],
+                ],
+            },
+            {
+                "id": "adapter",
+                "title": "Adapter",
+                "citations": [[cite("src/adapter.py", 5, "send")]],
+            },
+        ],
+    )
+
+    assert result["available"] is True
+    assert [area["symbols"] for area in result["areas"]] == [1, 2, 1]
+    links = {(link["source"], link["target"]): link for link in result["links"]}
+    assert set(links) == {("api", "session"), ("session", "adapter")}
+    api_session = links[("api", "session")]
+    assert api_session["weight"] == 2
+    # A call outranks a field read as the pair's example.
+    assert api_session["example"]["target"] == "src/session.py:Session.send()"
+    assert api_session["example"]["anchor"] == {"file": "src/api.py", "line": 2}

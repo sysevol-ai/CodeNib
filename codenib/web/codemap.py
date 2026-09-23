@@ -1378,3 +1378,361 @@ def build_page_subgraph(
         "mermaid": "",
         "note": "",
     }
+
+
+def _page_seed_names(
+    graph: CodeGraph,
+    citations: List[Dict[str, Any]],
+    max_nodes: int,
+    repo_dir: Optional[str],
+    source_reader: Optional[RepositorySourceReader] = None,
+) -> List[str]:
+    """Resolve a page's citations to graph identities, in citation order.
+
+    Mirrors the seed resolution in ``build_page_subgraph``: with a bound
+    source reader, citations and symbols outside the captured source are
+    dropped rather than resolved against the live checkout.
+    """
+
+    g = graph.get_graph()
+
+    def selected_source_path(value: object) -> Optional[str]:
+        if not isinstance(value, str) or not value:
+            return None
+        if source_reader is None:
+            return value
+        return source_reader.captured_relative_path(value)
+
+    def source_allowed(name: str) -> bool:
+        if source_reader is None:
+            return True
+        value = _attrs(graph, name).get("file")
+        return (
+            not isinstance(value, str)
+            or not value
+            or selected_source_path(value) is not None
+        )
+
+    by_loc: Dict[Tuple[str, int], str] = {}
+    by_file: Dict[str, List[Tuple[int, str]]] = {}
+    for v in g.vs:
+        a = v.attributes()
+        f = a.get("file")
+        s = a.get("start_line")
+        if not f or not isinstance(s, int) or not a.get("unified_name"):
+            continue
+        normalized_file = selected_source_path(f)
+        if normalized_file is None:
+            continue
+        if source_reader is None and repo_dir and os.path.isabs(f):
+            try:
+                relative = os.path.relpath(f, repo_dir)
+                if relative != ".." and not relative.startswith("../"):
+                    normalized_file = relative.replace("\\", "/")
+            except ValueError:
+                pass
+        by_loc.setdefault((normalized_file, s), a["name"])
+        by_file.setdefault(normalized_file, []).append((s, a["name"]))
+
+    names: List[str] = []
+    chosen: Set[str] = set()
+    for cit in citations:
+        if source_reader is not None:
+            citation_file = selected_source_path(cit.get("file"))
+            if citation_file is None:
+                continue
+            cit = dict(cit)
+            cit["file"] = citation_file
+        nm = _resolve_citation(graph, cit, by_loc, by_file, repo_dir)
+        if nm and source_allowed(nm) and nm not in chosen:
+            chosen.add(nm)
+            names.append(nm)
+        if len(names) >= max_nodes:
+            break
+    return names
+
+
+# Rows per side of a page's boundary card, and how many one neighbouring file
+# may claim before the rest are held back (the fact-card quota: without it a
+# popular helper such as ``debugPrint`` fills the card).
+_BOUNDARY_ROWS = 6
+_BOUNDARY_PER_FILE = 2
+# ...and how many rows one of the page's own symbols may take, so a popular
+# helper the page happens to cite does not become the whole card.
+_BOUNDARY_PER_PAGE_SYMBOL = 3
+_CALLABLE_KINDS = {"function", "method"}
+
+
+def _repo_file(
+    file: Any,
+    repo_dir: Optional[str],
+    source_reader: Optional[RepositorySourceReader] = None,
+) -> str:
+    text = str(file or "")
+    if source_reader is not None:
+        return source_reader.captured_relative_path(text) or "" if text else ""
+    if repo_dir and os.path.isabs(text):
+        try:
+            relative = os.path.relpath(text, repo_dir)
+            if relative != ".." and not relative.startswith("../"):
+                return relative.replace("\\", "/")
+        except ValueError:
+            pass
+    return text
+
+
+def build_page_boundary(
+    graph: CodeGraph,
+    citations: List[Dict[str, Any]],
+    *,
+    repo_dir: Optional[str] = None,
+    max_rows: int = _BOUNDARY_ROWS,
+    max_seeds: int = 18,
+    source_reader: Optional[RepositorySourceReader] = None,
+) -> Dict[str, Any]:
+    """Who calls into a page's symbols, and what they call outside the page.
+
+    The page's cited symbols are its subject. Every reference edge that crosses
+    from outside that set in, or from inside it out, is a boundary handoff;
+    each keeps its exact call sites. Tests are skipped, calls rank above field
+    reads, and one far-side file may claim at most two rows, so the card shows
+    the page's contract rather than one busy helper.
+    """
+
+    names = _page_seed_names(graph, citations, max_seeds, repo_dir, source_reader)
+    empty = {
+        "available": False,
+        "focus": [],
+        "inbound": [],
+        "outbound": [],
+        "truncated": False,
+    }
+    if not names:
+        return empty
+    seeds = set(names)
+    searcher = RepoDependencySearcher(graph)
+    anchors = _EdgeAnchorCollector()
+    sides: Dict[str, Dict[Tuple[str, str], str]] = {"inbound": {}, "outbound": {}}
+    seed_degree: Dict[str, int] = {}
+
+    for seed in names:
+        _, n_edges = searcher.get_neighbors(
+            seed, direction="all", etype_filter={"reference"}, ignore_test_file=True
+        )
+        for src, tgt, _w, meta in n_edges:
+            if src == tgt or (src in seeds and tgt in seeds):
+                continue
+            if src == seed:
+                side, far = "outbound", tgt
+            elif tgt == seed:
+                side, far = "inbound", src
+            else:
+                continue
+            far_attrs = _attrs(graph, far)
+            if _is_external(far_attrs, repo_dir, source_reader=source_reader):
+                continue
+            far_file = _repo_file(far_attrs.get("file"), repo_dir, source_reader)
+            if not far_file or is_test_file(far_file):
+                continue
+            key = (src, tgt)
+            sides[side].setdefault(key, far_file)
+            anchors.add(key, meta)
+            seed_degree[seed] = seed_degree.get(seed, 0) + 1
+
+    def row(key: Tuple[str, str], far_file: str, side: str) -> Dict[str, Any]:
+        src, tgt = key
+        far = src if side == "inbound" else tgt
+        near = tgt if side == "inbound" else src
+        far_attrs = _attrs(graph, far)
+        start = far_attrs.get("start_line")
+        fields = anchors.fields(key)
+        return {
+            "symbol": _label(far_attrs, far),
+            "kind": far_attrs.get("type") or "symbol",
+            "file": far_file,
+            "line": start + 1 if isinstance(start, int) else None,
+            "page_symbol": _label(_attrs(graph, near), near),
+            "call": str(_attrs(graph, tgt).get("type") or "").lower()
+            in _CALLABLE_KINDS,
+            "count": max(1, anchors.count(key)),
+            "anchors": [
+                {
+                    "file": _repo_file(item.get("file"), repo_dir, source_reader),
+                    "line": item.get("line"),
+                }
+                for item in fields.get("anchors") or []
+            ],
+        }
+
+    truncated = False
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for side, keyed in sides.items():
+        rows = [row(key, far_file, side) for key, far_file in keyed.items()]
+        rows.sort(
+            key=lambda r: (not r["call"], -r["count"], r["symbol"], r["page_symbol"])
+        )
+        per_file: Dict[str, int] = {}
+        per_near: Dict[str, int] = {}
+        primary: List[Dict[str, Any]] = []
+        overflow: List[Dict[str, Any]] = []
+        for item in rows:
+            seen = per_file.get(item["file"], 0)
+            near = per_near.get(item["page_symbol"], 0)
+            if (
+                seen < _BOUNDARY_PER_FILE
+                and near < _BOUNDARY_PER_PAGE_SYMBOL
+                and len(primary) < max_rows
+            ):
+                per_file[item["file"]] = seen + 1
+                per_near[item["page_symbol"]] = near + 1
+                primary.append(item)
+            else:
+                overflow.append(item)
+        kept = primary + overflow[: max(0, max_rows - len(primary))]
+        truncated = truncated or len(rows) > len(kept)
+        result[side] = kept
+
+    touched = {r["page_symbol"] for rows in result.values() for r in rows}
+    focus = []
+    for name in names:
+        attrs = _attrs(graph, name)
+        label = _label(attrs, name)
+        if label not in touched:
+            continue
+        start = attrs.get("start_line")
+        focus.append(
+            {
+                "symbol": label,
+                "file": _repo_file(attrs.get("file"), repo_dir, source_reader),
+                "line": start + 1 if isinstance(start, int) else None,
+                "degree": seed_degree.get(name, 0),
+            }
+        )
+    return {
+        "available": bool(result["inbound"] or result["outbound"]),
+        "focus": focus,
+        "inbound": result["inbound"],
+        "outbound": result["outbound"],
+        "truncated": truncated,
+    }
+
+
+def _mappable_symbol(graph: CodeGraph, name: str) -> bool:
+    """A named code symbol, not a file node or a punctuation-only type."""
+
+    attrs = _attrs(graph, name)
+    if str(attrs.get("type") or "").lower() in {NODE_TYPE_FILE, "directory", "module"}:
+        return False
+    symbol = _label(attrs, name).split(":")[-1]
+    return bool(re.search(r"[A-Za-z_]", symbol))
+
+
+def build_area_map(
+    graph: CodeGraph,
+    areas: Sequence[Dict[str, Any]],
+    *,
+    repo_dir: Optional[str] = None,
+    max_symbols_per_page: int = 18,
+    source_reader: Optional[RepositorySourceReader] = None,
+) -> Dict[str, Any]:
+    """How a wiki's top-level areas call each other, read off the graph.
+
+    ``areas`` are the outline's top-level pages, each with the citations of
+    the area page and its children. A symbol belongs to the first area that
+    cites it. Every reference edge whose two ends belong to different areas
+    counts toward that area pair, and the pair keeps its strongest example
+    call with its call site.
+    """
+
+    owner: Dict[str, str] = {}
+    area_rows: List[Dict[str, Any]] = []
+    for area in areas:
+        area_id = str(area.get("id") or "")
+        if not area_id:
+            continue
+        symbols: List[str] = []
+        for citations in area.get("citations") or []:
+            names = _page_seed_names(
+                graph,
+                list(citations or []),
+                max_symbols_per_page,
+                repo_dir,
+                source_reader,
+            )
+            for name in names:
+                if name not in owner and _mappable_symbol(graph, name):
+                    owner[name] = area_id
+                    symbols.append(name)
+        files = {
+            _repo_file(_attrs(graph, name).get("file"), repo_dir, source_reader)
+            for name in symbols
+        }
+        area_rows.append(
+            {
+                "id": area_id,
+                "title": str(area.get("title") or area_id),
+                "symbols": len(symbols),
+                "files": len({f for f in files if f}),
+            }
+        )
+
+    searcher = RepoDependencySearcher(graph)
+    links: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    pair_counts: Dict[Tuple[str, str], Dict[Tuple[str, str], int]] = {}
+    pair_anchor: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for name, area_id in owner.items():
+        _, n_edges = searcher.get_neighbors(
+            name, direction="out", etype_filter={"reference"}, ignore_test_file=True
+        )
+        for src, tgt, _w, meta in n_edges:
+            if src != name or tgt not in owner:
+                continue
+            if tgt == src:
+                continue
+            other = owner[tgt]
+            if other == area_id:
+                continue
+            key = (area_id, other)
+            link = links.setdefault(
+                key, {"source": area_id, "target": other, "weight": 0}
+            )
+            link["weight"] += 1
+            calls = pair_counts.setdefault(key, {})
+            calls[(src, tgt)] = calls.get((src, tgt), 0) + 1
+            anchor_file = meta.get("anchor_file") if isinstance(meta, dict) else None
+            anchor_line = meta.get("anchor_line") if isinstance(meta, dict) else None
+            if anchor_file and (src, tgt) not in pair_anchor.setdefault(key, {}):
+                pair_anchor[key][(src, tgt)] = {
+                    "file": _repo_file(anchor_file, repo_dir, source_reader),
+                    "line": anchor_line + 1 if isinstance(anchor_line, int) else None,
+                }
+
+    out_links: List[Dict[str, Any]] = []
+    for key, link in links.items():
+        calls = pair_counts[key]
+        (src, tgt), _count = sorted(
+            calls.items(),
+            key=lambda item: (
+                str(_attrs(graph, item[0][1]).get("type") or "").lower()
+                not in _CALLABLE_KINDS,
+                -item[1],
+                item[0],
+            ),
+        )[0]
+        out_links.append(
+            {
+                **link,
+                "calls": len(calls),
+                "example": {
+                    "source": _label(_attrs(graph, src), src),
+                    "target": _label(_attrs(graph, tgt), tgt),
+                    "anchor": pair_anchor.get(key, {}).get((src, tgt)),
+                },
+            }
+        )
+    out_links.sort(key=lambda link: (-link["weight"], link["source"], link["target"]))
+    return {
+        "available": bool(area_rows) and bool(out_links),
+        "areas": area_rows,
+        "links": out_links,
+    }

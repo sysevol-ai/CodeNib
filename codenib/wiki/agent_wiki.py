@@ -4975,6 +4975,27 @@ class AgentWiki:
             for item in evidence
         ]
 
+    def cached_summary(self) -> Optional[str]:
+        """The cached Overview's opening thesis, never generating anything.
+
+        Returns None when the outline or the Overview is not cached yet, or
+        when the cached Overview is degraded, so callers fall back quietly.
+        """
+
+        from .lead import overview_lead
+
+        outline = self._outline or self._read_cache("outline")
+        pages = outline.get("pages") if isinstance(outline, dict) else None
+        if not pages:
+            return None
+        meta = self._overview_page_meta(pages[0], pages[1:])
+        page = self._pages.get("overview") or self._read_cache(
+            self._page_cache_suffix(meta)
+        )
+        if not isinstance(page, dict) or self._cached_page_is_degraded(page):
+            return None
+        return overview_lead(str(page.get("markdown") or ""))
+
     def page_citations(self, page_id: str) -> Optional[List[dict[str, Any]]]:
         """Resolve graph seeds for a page without generating its prose."""
 

@@ -13,6 +13,8 @@ import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import { AppLink } from "@/lib/router";
 import { matchCitation, lineLabel } from "@/lib/citations";
+import { callPaths, parseFlowchart } from "@/lib/flowchart";
+import CallChain from "./CallChain";
 import {
   repoRelative,
   type Citation,
@@ -296,6 +298,31 @@ export default function Markdown({
             const className = codeEl?.props?.className || "";
             const text = nodeText(codeEl?.props?.children);
             if (/language-mermaid/.test(className)) {
+              // A straight call chain reads better as a list than as a row of
+              // boxes; only a flow that branches is drawn.
+              const flow = parseFlowchart(text);
+              const paths = flow ? callPaths(flow) : null;
+              if (paths) {
+                return (
+                  <CallChain
+                    paths={paths}
+                    relations={relations}
+                    renderSymbol={(label) => {
+                      const m = citations && onCite ? matchCitation(label, citations) : null;
+                      return m != null && onCite ? (
+                        <CiteChip
+                          text={label}
+                          c={citations![m.index]}
+                          showLoc={false}
+                          onClick={() => onCite(m.index)}
+                        />
+                      ) : (
+                        <code>{label}</code>
+                      );
+                    }}
+                  />
+                );
+              }
               return (
                 <Suspense fallback={<div className="mermaid-loading">Loading diagram…</div>}>
                   <Mermaid chart={text} />

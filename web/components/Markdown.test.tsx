@@ -99,3 +99,38 @@ describe("Markdown wiki page links", () => {
     expect(html).toContain('href="https://example.com/?p=1"');
   });
 });
+
+describe("Markdown section flows", () => {
+  const chain =
+    "```mermaid\nflowchart LR\n" +
+    '  n0["Context.MustBindWith()"]\n  n1["Context.AbortWithError()"]\n' +
+    "  n0 -->|binding failure triggers abort| n1\n```\n";
+
+  it("renders a straight chain as an ordered call path with its call site", () => {
+    const html = renderToStaticMarkup(
+      <Markdown
+        relations={[
+          {
+            id: "R3",
+            source: "context.go:Context.MustBindWith()",
+            target: "context.go:Context.AbortWithError()",
+            anchors: ["context.go:843"],
+          },
+        ]}
+      >
+        {chain}
+      </Markdown>,
+    );
+    expect(html).toContain('class="call-chain"');
+    expect(html).toContain("<code>Context.MustBindWith()</code>");
+    expect(html).toContain("binding failure triggers abort");
+    expect(html).toContain('<span class="cite-src-loc">:843</span>');
+    expect(html).not.toContain("mermaid");
+  });
+
+  it("still hands a branching flow to Mermaid", () => {
+    const fan = chain.replace("```\n", '  n2["x()"]\n  n0 --> n2\n```\n');
+    const html = renderToStaticMarkup(<Markdown>{fan}</Markdown>);
+    expect(html).not.toContain('class="call-chain"');
+  });
+});

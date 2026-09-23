@@ -860,6 +860,35 @@ def test_cached_wiki_tree_does_not_generate_a_missing_outline(monkeypatch):
     assert calls == ["cached_page_tree"]
 
 
+def test_wiki_page_drops_interaction_rows_the_flow_already_draws(monkeypatch):
+    markdown = (
+        "## Flow\n\n```mermaid\nflowchart LR\n"
+        '  n0["a()"]\n  n1["b()"]\n  n0 -->|calls| n1\n```\n\n'
+        "## Detail\n\nText.\n\n**Interactions**\n"
+        "- `a()` → `b()`: calls [R1](#evidence-R1)\n"
+    )
+
+    class Builder:
+        def page(self, page_id):
+            return {"id": page_id, "markdown": markdown}
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(
+        web_app,
+        "_bundle",
+        lambda _repo_id: SimpleNamespace(entry=SimpleNamespace(repo="org/repo")),
+    )
+    monkeypatch.setattr(web_app.asyncio, "to_thread", fake_to_thread)
+
+    page = asyncio.run(web_app.wiki_page("repo", "detail"))
+
+    assert "**Interactions**" not in page["markdown"]
+    assert "  n0 -->|calls| n1" in page["markdown"]
+
+
 def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
     class Builder:
         def page(self, page_id):
@@ -1819,3 +1848,32 @@ def test_source_endpoint_returns_404_for_excluded_current_source(tmp_path, monke
         binding.close()
 
     assert error.value.status_code == 404
+
+
+def test_wiki_page_boundary_reports_missing_graph(monkeypatch):
+    class Builder:
+        def page_citations(self, page_id):
+            return [] if page_id == "known" else None
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo="org/repo", repo_dir="/tmp/repo"),
+        code_graph=lambda: None,
+        graph_unavailable_note=lambda: "graph not indexed",
+    )
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app.asyncio, "to_thread", fake_to_thread)
+
+    result = asyncio.run(web_app.wiki_page_boundary("repo", "known"))
+    assert result["available"] is False
+    assert result["note"] == "graph not indexed"
+
+    try:
+        asyncio.run(web_app.wiki_page_boundary("repo", "missing"))
+    except web_app.HTTPException as exc:
+        assert exc.status_code == 404
+    else:  # pragma: no cover - the endpoint must reject unknown pages
+        raise AssertionError("unknown page should 404")

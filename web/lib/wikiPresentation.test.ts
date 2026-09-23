@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { WikiMediaSlot, WikiPage } from "./api";
 import {
+  extractJourney,
+  stageRoles,
+  stageSentence,
   partitionWikiMediaSlots,
   splitWikiMarkdown,
   wikiRetryNotice,
@@ -132,5 +135,86 @@ describe("wikiRetryNotice", () => {
   it("falls back to the cooldown wording without retry metadata", () => {
     const notice = wikiRetryNotice(degraded(undefined), 2000);
     expect(notice.detail).toContain("after a cooldown");
+  });
+});
+
+describe("extractJourney", () => {
+  const md = [
+    "# Overview",
+    "",
+    "Lead. [E1](#evidence-E1)",
+    "",
+    "## From `get()` to `send()`",
+    "",
+    "1. **`get()`**: `get()` forwards to `request()`. [E8](#evidence-E8)",
+    "2. **`Session.send()`** · [Session State](?p=session-management): sends it. [E14](#evidence-E14)",
+    "",
+    "## Next",
+    "",
+    "Body.",
+  ].join("\n");
+
+  it("lifts the numbered entry path out of the Markdown", () => {
+    const { journey, rest } = extractJourney(md);
+    expect(journey?.title).toBe("From `get()` to `send()`");
+    expect(journey?.stages).toEqual([
+      {
+        index: 1,
+        symbol: "get()",
+        page: undefined,
+        text: "`get()` forwards to `request()`. [E8](#evidence-E8)",
+        evidence: ["E8"],
+      },
+      {
+        index: 2,
+        symbol: "Session.send()",
+        page: { id: "session-management", title: "Session State" },
+        text: "sends it. [E14](#evidence-E14)",
+        evidence: ["E14"],
+      },
+    ]);
+    expect(rest).not.toContain("From `get()`");
+    expect(rest).toContain("## Next");
+  });
+
+  it("leaves a section with prose in it alone", () => {
+    const withProse = md.replace("## Next", "A remark.\n\n## Next");
+    expect(extractJourney(withProse).journey).toBeNull();
+  });
+});
+
+describe("stageRoles", () => {
+  const nodes = [
+    { id: "api", label: "API", detail: "", evidence: ["E1"] },
+    { id: "session", label: "Session", detail: "", evidence: ["E2"] },
+    { id: "adapter", label: "Adapter", detail: "", evidence: ["E3", "E4"] },
+  ];
+  const citations = [
+    { file: "api.py" },
+    { file: "sessions.py" },
+    { file: "adapters.py" },
+    { file: "adapters.py" },
+    { file: "sessions.py" },
+    { file: "models.py" },
+  ] as unknown as Parameters<typeof stageRoles>[2];
+  const stage = (evidence: string[]) => ({ index: 1, symbol: "x()", text: "", evidence });
+
+  it("assigns by shared evidence, then by a file only one role cites", () => {
+    expect(
+      stageRoles([stage(["E1"]), stage(["E5"]), stage(["E6"]), stage([])], nodes, citations),
+    ).toEqual(["api", "session", null, null]);
+  });
+});
+
+describe("stageSentence", () => {
+  const stage = (symbol: string, text: string) => ({ index: 1, symbol, text, evidence: [] });
+  it("drops a leading repeat of the stage symbol", () => {
+    expect(stageSentence(stage("get()", "`get()` forwards its URL. [E8](#evidence-E8)"))).toBe(
+      "Forwards its URL. [E8](#evidence-E8)",
+    );
+    expect(stageSentence(stage("Runtime.spawn_blocking", "`Runtime.spawn_blocking()` hands off."))).toBe(
+      "Hands off.",
+    );
+    expect(stageSentence(stage("get()", "`request()` is next."))).toBe("`request()` is next.");
   });
 });
