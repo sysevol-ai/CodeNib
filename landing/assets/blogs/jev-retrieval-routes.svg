@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" role="img" aria-labelledby="t d">
+  <title id="t">How code candidates reach the reranker</title>
+  <desc id="d">The full issue text feeds three candidate routes. BM25 returns the top 100 chunks. Model-planned grep uses one Sonnet 4.6 call to plan up to six regex or glob actions, runs rg locally, maps each match to its smallest enclosing chunk, then round-robins, deduplicates and keeps at most 100. An embedding route, CodeRankEmbed with FAISS top 20, comes from a separate 15-question check. All candidates enter one pool of code chunks and go to a replaceable reranker: Qwen3-Reranker 0.6B or 4B scoring each pair, or Jev 1.13 Decisions asking one four-level relevance question per chunk in batches of ten. The top five results give Jev Recall@5 of 59.35 percent for BM25 and 71.40 percent for grep.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <style>
+      text { font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
+      .mono { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .h { font-size: 22px; font-weight: 650; }
+      .b { font-size: 18px; font-weight: 600; }
+      .t { font-size: 17px; }
+      .s { font-size: 16px; fill: #475569; }
+      .kicker { font-size: 14px; font-weight: 650; letter-spacing: 0.08em; fill: #2563eb; }
+      .step { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.5; }
+      .lane { fill: #f8fafc; stroke: #e2e8f0; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #94a3b8; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1600" height="840" fill="#ffffff"/>
+
+  <text x="40" y="52" class="kicker">RETRIEVAL, THEN JUDGMENT</text>
+  <text x="40" y="86" class="h" style="font-size:28px">Retrieval decides what can be found. The reranker only orders it.</text>
+
+  <!-- Issue -->
+  <rect x="40" y="300" width="220" height="190" rx="14" class="step"/>
+  <text x="62" y="340" class="b">Full issue text</text>
+  <text x="62" y="370" class="t">+ repository name</text>
+  <text x="62" y="410" class="s">No patch, hints,</text>
+  <text x="62" y="434" class="s">target files, or</text>
+  <text x="62" y="458" class="s">target blocks</text>
+
+  <!-- Issue to routes -->
+  <path d="M260,395 C282,395 280,200 298,200" class="flow" marker-end="url(#arrow)"/>
+  <path d="M260,395 L298,395" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+  <path d="M260,395 C282,395 280,585 298,585" class="flow" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+
+  <!-- Lane A: BM25 -->
+  <rect x="300" y="130" width="700" height="140" rx="14" class="lane"/>
+  <circle cx="330" cy="161" r="7" fill="#64748b"/>
+  <text x="346" y="167" class="b">BM25</text>
+  <text x="976" y="167" class="s" text-anchor="end">K = 100 · coverage 63.78%</text>
+  <rect x="324" y="186" width="300" height="64" rx="10" class="step"/>
+  <text x="344" y="213" class="t">BM25 index over</text>
+  <text x="344" y="236" class="t">tree-sitter chunks</text>
+  <path d="M624,218 L662,218" class="flow" marker-end="url(#arrow)"/>
+  <rect x="664" y="186" width="312" height="64" rx="10" class="step"/>
+  <text x="684" y="213" class="t">Top 100 by</text>
+  <text x="684" y="236" class="t">lexical score</text>
+
+  <!-- Lane B: model-planned grep -->
+  <rect x="300" y="300" width="700" height="190" rx="14" class="lane" style="stroke:#93c5fd"/>
+  <circle cx="330" cy="331" r="7" fill="#2563eb"/>
+  <text x="346" y="337" class="b">Model-planned grep</text>
+  <text x="976" y="337" class="s" text-anchor="end">mean 17.47 chunks · coverage 75.83%</text>
+  <rect x="324" y="356" width="145" height="110" rx="10" class="step"/>
+  <text x="340" y="384" class="b">Sonnet 4.6</text>
+  <text x="340" y="409" class="s">1 call, up to 6</text>
+  <text x="340" y="431" class="s">regex or glob</text>
+  <text x="340" y="453" class="s">actions</text>
+  <path d="M469,411 L491,411" class="flow" marker-end="url(#arrow)"/>
+  <rect x="493" y="356" width="145" height="110" rx="10" class="step"/>
+  <text x="509" y="384" class="b mono">rg</text>
+  <text x="509" y="409" class="s">runs locally</text>
+  <text x="509" y="431" class="s">with match</text>
+  <text x="509" y="453" class="s">caps per file</text>
+  <path d="M638,411 L660,411" class="flow" marker-end="url(#arrow)"/>
+  <rect x="662" y="356" width="145" height="110" rx="10" class="step"/>
+  <text x="678" y="384" class="b">Chunk</text>
+  <text x="678" y="409" class="s">smallest code</text>
+  <text x="678" y="431" class="s">chunk around</text>
+  <text x="678" y="453" class="s">each match</text>
+  <path d="M807,411 L829,411" class="flow" marker-end="url(#arrow)"/>
+  <rect x="831" y="356" width="145" height="110" rx="10" class="step"/>
+  <text x="847" y="384" class="b">Merge</text>
+  <text x="847" y="409" class="s">round-robin,</text>
+  <text x="847" y="431" class="s">dedupe, keep</text>
+  <text x="847" y="453" class="s">at most 100</text>
+
+  <!-- Lane C: embedding (separate check) -->
+  <rect x="300" y="520" width="700" height="140" rx="14" class="lane" stroke-dasharray="8 6"/>
+  <circle cx="330" cy="551" r="7" fill="#0d9488"/>
+  <text x="346" y="557" class="b">Embedding</text>
+  <text x="976" y="557" class="s" text-anchor="end">separate 15-question check</text>
+  <rect x="324" y="576" width="300" height="64" rx="10" class="step"/>
+  <text x="344" y="603" class="t">CodeRankEmbed</text>
+  <text x="344" y="626" class="t">query vector</text>
+  <path d="M624,608 L662,608" class="flow" marker-end="url(#arrow)"/>
+  <rect x="664" y="576" width="312" height="64" rx="10" class="step"/>
+  <text x="684" y="603" class="t">FAISS nearest</text>
+  <text x="684" y="626" class="t">chunks, top 20</text>
+
+  <!-- Routes to pool -->
+  <path d="M1000,200 C1022,200 1020,380 1038,380" class="flow" marker-end="url(#arrow)"/>
+  <path d="M1000,395 L1038,395" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+  <path d="M1000,590 C1022,590 1020,410 1038,410" class="flow" stroke-dasharray="7 6" marker-end="url(#arrow)"/>
+
+  <!-- Pool -->
+  <rect x="1040" y="300" width="190" height="190" rx="14" class="step"/>
+  <text x="1060" y="340" class="b">Candidate pool</text>
+  <text x="1060" y="372" class="s">code chunks,</text>
+  <text x="1060" y="396" class="s">up to 3,000</text>
+  <text x="1060" y="420" class="s">characters each</text>
+  <text x="1060" y="456" class="s">BM25 and grep</text>
+  <text x="1060" y="478" class="s">use no embeddings</text>
+
+  <path d="M1230,395 L1268,395" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+
+  <!-- Reranker -->
+  <rect x="1270" y="130" width="300" height="430" rx="14" class="lane"/>
+  <text x="1292" y="167" class="b">Reranker</text>
+  <text x="1548" y="167" class="s" text-anchor="end">replaceable</text>
+  <rect x="1290" y="186" width="260" height="146" rx="10" class="step"/>
+  <text x="1308" y="215" class="b">Qwen3-Reranker</text>
+  <text x="1308" y="241" class="t">0.6B or 4B</text>
+  <text x="1308" y="272" class="s">scores each (issue,</text>
+  <text x="1308" y="296" class="s">chunk) pair on a</text>
+  <text x="1308" y="318" class="s" style="font-size:16px">local H100</text>
+  <rect x="1290" y="350" width="260" height="196" rx="10" class="step" style="stroke:#2563eb;stroke-width:2"/>
+  <text x="1308" y="379" class="b">Jev 1.13 · Decisions</text>
+  <text x="1308" y="408" class="s">one four-level</text>
+  <text x="1308" y="432" class="s">relevance question</text>
+  <text x="1308" y="456" class="s">per chunk, 10 per</text>
+  <text x="1308" y="480" class="s">request; Python sorts</text>
+  <text x="1308" y="504" class="s">the scores and keeps</text>
+  <text x="1308" y="528" class="s">failed batches in order</text>
+
+  <path d="M1420,560 L1420,598" class="flow" style="stroke:#2563eb" marker-end="url(#arrow-blue)"/>
+
+  <!-- Output -->
+  <rect x="1270" y="600" width="300" height="120" rx="14" class="step" style="stroke:#2563eb;stroke-width:2"/>
+  <text x="1292" y="636" class="b">Top 5 results</text>
+  <text x="1292" y="664" class="s">Jev code-block Recall@5</text>
+  <text x="1292" y="696" class="t">BM25 59.35% · grep <tspan style="font-weight:650;fill:#2563eb">71.40%</tspan></text>
+
+  <!-- Footnote -->
+  <line x1="40" y1="752" x2="1560" y2="752" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="40" y="786" class="t">Coverage is the ceiling: a reranker cannot recover code that never entered the pool.</text>
+  <text x="40" y="814" class="s">Coverage and Recall@5 use base-aligned labels on 100 CodeNib Base issues. The embedding route is from a separate, file-level 15-question check on CodeNib's own code.</text>
+</svg>
