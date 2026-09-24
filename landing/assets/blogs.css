@@ -453,6 +453,7 @@ pre,
 
 .article-body h2 {
   margin: 62px 0 20px;
+  scroll-margin-top: 88px;
   color: var(--ink);
   font-size: clamp(1.75rem, 3.8vw, 2.4rem);
   font-weight: 640;
