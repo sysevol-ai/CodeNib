@@ -20,6 +20,11 @@ batch implementation.
 This is an exploratory comparison of retrieval components, not an evaluation
 of full Ask answers or a reason to change the default retrieval route.
 
+For a matched comparison of complete retrieval-plus-reranker paths, see the
+[100-issue dense and hybrid controls](jev_dense.md). That experiment uses
+CodeNib Base, code-block Recall@5, and a candidate budget of 100; its quality
+numbers must not be mixed with this 15-question, file-group exploration.
+
 ## Method
 
 - A frozen corpus of 7,013 Python chunks from 447 files under `codenib/`, built
