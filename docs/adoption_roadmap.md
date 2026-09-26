@@ -27,8 +27,8 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | --- | --- | --- |
 | Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs, merged in #785. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
-| OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent, Linux desktop-vault acceptance and hosted browser authorization remain. |
-| Wiki demo | Source-grounded stories/graphs are merged in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). Static cached-story publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784); the real Requests corpus has passed export and desktop/mobile browsing without backend requests. | Producer fixes #789/#790/#791 are merged; hosted authorization and deployment remain. Live operator browsing/Ask can still intentionally generate. |
+| OpenRouter | Shared grep/Jev configuration and local PKCE are merged in #782/#783. The opt-in browser trial now uses direct provider calls and a short in-memory credential; real-source browser acceptance uses provider fixtures. | Actual provider consent, Linux desktop-vault acceptance, release and HTTPS-host verification remain. |
+| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | Producer fixes #789/#790/#791 are merged; browser trial review, actual consent and deployment remain. Live operator browsing/Ask can still intentionally generate. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
@@ -151,9 +151,7 @@ test verifies recovery. Real provider consent and Linux desktop-vault acceptance
 open. A real browser directly called OpenRouter key metadata, planning and
 Decisions with an existing normal key; all succeeded without exposing it to
 the local fixture server, DOM or browser storage. This establishes authenticated
-transport, not provider consent or hosted product acceptance. Prefer a direct
-browser connection for the hosted trial; callback/session handling, Wiki gating
-and the complete application's XSS/CSP review remain open. Detailed transport
+transport, not provider consent or hosted product acceptance. Detailed transport
 validation is recorded in #783.
 
 Lightweight installed-package acceptance in
@@ -166,6 +164,25 @@ bindings for ancestors and full repository-root version/inventory checks.
 Its deterministic regressions allow unrelated sibling creation and reject
 repository mutation or an ancestor replacement. The combined platform check
 passes; bundled-runtime release reconciliation and real provider consent remain open.
+
+The browser trial now exchanges a one-use S256 grant directly with OpenRouter
+and holds its key in a private JavaScript field for up to ten minutes. No key
+enters UI state, storage, URLs, exported assets or source-service requests.
+The nonce-scoped callback supports denial, expiry, replay rejection and
+disconnect without requiring a popup opener. Query submission is separate from
+authorization. Reported-cost thresholds stop subsequent calls at $0.10/query
+and $0.50/connection, with unknown costs and provider revocation stated
+explicitly. These thresholds are not billing caps.
+
+Real Chromium acceptance browses all 15 Requests pages under the opt-in CSP,
+then exercises actual source capture, ripgrep and chunking with fixture-only
+provider responses. Correct method spans link to the pinned commit; desktop
+and mobile checks cover error/disconnect and absence of credentials from
+DOM, browser storage, cookies and CodeNib HTTP requests. The CSP blocks inline
+script execution, and callback responses have a separate restrictive policy.
+Actual provider consent and production-host headers/callback behavior remain
+open. The public browser-trial guide documents same-origin script trust,
+callback grant logging, IP-proxy trust and the explicit deployment gate.
 
 Native registration is merged in
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785) as `50215406`. `codenib init` checks or
@@ -272,7 +289,18 @@ cover all 15 pages, citations, unavailable pages and the local-agent handoff,
 with no backend/external requests, browser errors or horizontal overflow.
 Export makes no network calls and preserves its source database/configuration.
 The local corpus and export are verified, and their dependencies are merged.
-Hosted authorization, release/deployment and broader corpus curation remain open.
+An explicit `--trial-api-base` opt-in adds browser-owned OpenRouter queries.
+The separate public source app exposes only published repository metadata and
+candidate search, reusing the product source authority and grep/chunker path.
+It has no credential exchange, model, generation, submission or indexing route.
+Allowlisted source identities, origin/host checks, request/response caps and
+one-process admission limits bound its work. Source workers own their slots
+through cleanup; deterministic concurrent tests verify that limit.
+
+Without the opt-in, static Ask keeps local-agent setup. Existing live Wiki Ask
+is unchanged. Local browser acceptance uses real Requests source and fixture
+provider calls, with no paid calls. Trial code review, actual provider consent,
+release/deployment and broader corpus curation remain open.
 
 The public demo must remain useful without authentication or a live LLM.
 

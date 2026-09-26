@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import builtins
+import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path, PureWindowsPath
@@ -426,6 +427,88 @@ def test_static_export_is_deterministic_and_publishable(
     assert "src='/demo/assets/app.js'" in index
     assert "href='?p=module'" in index
     assert "href='#heading'" in index
+
+
+def test_trial_export_pins_its_endpoint_csp_and_callback_assets(export_setup):
+    setup = export_setup
+    public = Path(__file__).parents[2] / "web" / "public"
+    for name in (
+        "openrouter-callback.html",
+        "openrouter-callback.js",
+        "theme.js",
+        "static-route.js",
+    ):
+        (setup.frontend / name).write_bytes((public / name).read_bytes())
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=setup.frontend,
+        base_path="/preview",
+        trial_api_base="https://source.example/",
+    )
+    manifest = json.loads((setup.output / STATIC_EXPORT_MANIFEST).read_text())
+    assert manifest["capabilities"]["browser_retrieval"] is True
+    assert manifest["capabilities"]["chat"] is False
+    runtime = (setup.output / "runtime-config.js").read_text()
+    assert '"trialApiBase":"https://source.example"' in runtime
+    index = (setup.output / "index.html").read_text()
+    assert "Content-Security-Policy" in index
+    assert "script-src &#x27;self&#x27;" in index
+    assert "https://openrouter.ai https://source.example" in index
+    assert "unsafe-eval" not in index
+    redirect = (setup.output / "404.html").read_text()
+    assert 'src="/preview/static-route.js"' in redirect
+    assert "location.replace" not in redirect
+    files = {item["path"]: item for item in manifest["files"]}
+    for name in (
+        "openrouter-callback.html",
+        "openrouter-callback.js",
+        "runtime-config.js",
+    ):
+        assert (
+            hashlib.sha256((setup.output / name).read_bytes()).hexdigest()
+            == files[name]["sha256"]
+        )
+
+
+def test_trial_export_requires_the_actual_callback_frontend(export_setup):
+    setup = export_setup
+    with pytest.raises(ValueError, match="rebuild the frontend"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=setup.frontend,
+            trial_api_base="https://source.example",
+        )
+    assert not setup.output.exists()
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://public.example",
+        "https://key@source.example",
+        "https://source.example?key=secret",
+        "https://source.example/path",
+        "https://source.example/#fragment",
+        "https://bad'host.example",
+    ],
+)
+def test_trial_export_refuses_untrusted_origins_before_publication(
+    export_setup, origin
+):
+    setup = export_setup
+    with pytest.raises(ValueError, match="exact HTTPS origin"):
+        export_static_wiki(
+            setup.repo,
+            setup.manifest_path,
+            setup.output,
+            frontend_dir=setup.frontend,
+            trial_api_base=origin,
+        )
+    assert not setup.output.exists()
 
 
 def test_static_export_reads_summary_excerpts_graph_and_paths_from_binding(

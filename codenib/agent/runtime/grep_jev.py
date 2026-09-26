@@ -400,6 +400,211 @@ class GrepJevResult:
     plan: dict[str, Any]
 
 
+def _source_plan_input(source, query, config, filter_test, budget):
+    identity = source.authenticated_identity_snapshot(check_cancelled=budget.check)
+    chunker = CodeChunker(
+        chunk_depth=2,
+        max_lines_per_chunk=100,
+        repo_config=RepoChunkingConfig(
+            filter_tests=filter_test or not config.include_tests,
+        ),
+    )
+    extensions = extension_to_language_map("chunker")
+    files = [
+        record
+        for record in identity.file_records
+        if record.link_target is None
+        and chunker._should_process_file_path(Path(record.path), extensions)
+        and all(
+            chunker._should_include_directory(Path(p))
+            for p in Path(record.path).parts[:-1]
+        )
+    ]
+    files.sort(key=lambda record: record.path)
+    if len(files) > MAX_SOURCE_FILES or sum(f.size for f in files) > MAX_SOURCE_BYTES:
+        raise GrepJevError("Repository exceeds the grep route's source size limit")
+    directories = Counter(str(Path(record.path).parent) for record in files)
+    overview = "\n".join(
+        f"{name}/ ({count} files)" for name, count in sorted(directories.items())
+    )
+    payload = {
+        "issue": query,
+        "repo": identity.root.name,
+        "source_file_count": len(files),
+        "source_directories": overview[:6000],
+        "directory_overview_truncated": len(overview) > 6000,
+        "note": (
+            "This is an overview, not a restriction; "
+            "all eligible source files are searchable."
+        ),
+    }
+    return identity, chunker, extensions, files, payload
+
+
+def grep_planning_context(
+    source: RepositorySourceBinding,
+    *,
+    check_cancelled: Callable[[], None] = lambda: None,
+) -> dict[str, Any]:
+    """Describe eligible source for the same planner, without source bodies or keys."""
+    config = GrepJevConfig(timeout=30)
+    budget = _RequestBudget(config, check_cancelled)
+    identity, _, _, _, payload = _source_plan_input(source, "", config, False, budget)
+    return {"source_fingerprint": identity.fingerprint, "payload": payload}
+
+
+@dataclass
+class GrepCandidateResult:
+    nodes: list[NodeInfo]
+    actions: list[dict[str, Any]]
+    skipped_files: int
+    source_file_count: int
+    source_fingerprint: str
+
+
+def collect_grep_candidates(
+    source: RepositorySourceBinding,
+    plan: GrepPlan,
+    *,
+    timeout: float = 30,
+    check_cancelled: Callable[[], None] = lambda: None,
+) -> GrepCandidateResult:
+    """Run an already planned query without resolving credentials or calling models.
+
+    The caller owns the source binding. This call owns and closes its temporary
+    source tree; complete source verification precedes delivery of any candidate.
+    The public browser trial uses this boundary after direct provider planning.
+    """
+    plan = GrepPlan.model_validate(plan.model_dump())
+    config = GrepJevConfig(timeout=timeout)
+    budget = _RequestBudget(config, check_cancelled)
+    return _collect_candidates(source, "", config, False, budget, lambda _: plan)
+
+
+def _collect_candidates(source, query, config, filter_test, budget, planner):
+    identity, chunker, extensions, files, payload = _source_plan_input(
+        source, query, config, filter_test, budget
+    )
+    skipped = 0
+    materialized_chunks = materialized_chars = 0
+    groups, audit = [], []
+    with tempfile.TemporaryDirectory(prefix="codenib-grep-") as directory:
+        root = Path(directory)
+        nodes_by_path = {}
+        with source.read_session(check_cancelled=budget.check):
+            for record in files:
+                budget.check()
+                if record.size > chunker.repo_config.max_file_size_mb * 1024**2:
+                    skipped += 1
+                    continue
+                raw = source.read_bytes(record.path, max_bytes=10 * 1024 * 1024)
+                text = (
+                    raw.decode("utf-8", errors="replace")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+                )
+                if chunker._is_minified_source(text, path=record.path):
+                    skipped += 1
+                    continue
+                nodes = []
+                for chunk in chunker._chunk_source_with_language(
+                    text, record.path, extensions[Path(record.path).suffix]
+                ):
+                    if not chunk.content or not chunk.content.strip():
+                        continue
+                    content = chunk.content[:MAX_CONTENT_CHARS]
+                    # Chunk metadata is not source: the first line is the
+                    # node ID; methods can also carry a synthetic class line.
+                    # Do not let these lines extend a truncated source range.
+                    metadata_lines = 1 + int(
+                        chunk.chunk_type == NODE_TYPE_METHOD and "." in chunk.name
+                    )
+                    visible_lines = len(content.splitlines()) - metadata_lines
+                    if visible_lines <= 0:
+                        continue
+                    materialized_chunks += 1
+                    materialized_chars += len(content)
+                    if (
+                        materialized_chunks > MAX_MATERIALIZED_CHUNKS
+                        or materialized_chars > MAX_MATERIALIZED_CONTENT_CHARS
+                    ):
+                        raise GrepJevError(
+                            "Repository exceeds the grep route's "
+                            "chunk materialization limit"
+                        )
+                    nodes.append(
+                        NodeInfo(
+                            node_id=chunk.node_id,
+                            node_name=chunk.node_id,
+                            file=record.path,
+                            type=chunk.chunk_type,
+                            start_line=chunk.start_line,
+                            end_line=min(
+                                chunk.end_line,
+                                chunk.start_line + visible_lines - 1,
+                            ),
+                            content=content,
+                            score=0.0,
+                        )
+                    )
+                if not nodes:
+                    continue
+                nodes_by_path[record.path] = sorted(
+                    nodes,
+                    key=lambda node: (
+                        node.end_line - node.start_line,
+                        node.start_line,
+                        node.node_id,
+                    ),
+                )
+                target = root / record.path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                # Preserve the normalized LF used for chunking and planned
+                # newline patterns, including on Windows text-mode hosts.
+                target.write_bytes(text.encode("utf-8"))
+        actions = planner(payload).actions if nodes_by_path else []
+        for action in actions:
+            matches, truncated = _rg_lines(root, action, budget)
+            hits, seen = [], set()
+            for path, line in matches:
+                budget.check()
+                if path not in nodes_by_path:
+                    raise GrepJevError(
+                        "grep returned a path outside the selected source"
+                    )
+                # A hit beyond the 3,000-character source prefix must not
+                # select a candidate whose visible text excludes that line.
+                node = next(
+                    (
+                        c
+                        for c in nodes_by_path[path]
+                        if c.start_line <= line <= c.end_line
+                    ),
+                    None,
+                )
+                if node is None:
+                    continue
+                if _node_key(node) not in seen:
+                    seen.add(_node_key(node))
+                    hits.append(node)
+            groups.append(hits)
+            audit.append(
+                {
+                    "action": action.model_dump(),
+                    "match_lines": len(matches),
+                    "capped_at_500_lines": truncated,
+                    "chunks": len(hits),
+                }
+            )
+        candidates = _interleave(groups)
+    # Validate again before disclosing snippets, including changes made
+    # while the remote planning call was in flight.
+    source.authenticated_identity_snapshot(check_cancelled=budget.check)
+    return GrepCandidateResult(
+        candidates, audit, skipped, len(files), identity.fingerprint
+    )
+
+
 class GrepJevRetriever:
     """Execute the measured candidate/rerank protocol over one source authority."""
 
@@ -448,165 +653,15 @@ class GrepJevRetriever:
         key = self.config.credential()
         if resolve_ripgrep() is None:
             raise GrepJevError("Install codenib[grep,mcp] or ripgrep to use grep → Jev")
-        identity = source.authenticated_identity_snapshot(check_cancelled=budget.check)
-        chunker = CodeChunker(
-            chunk_depth=2,
-            max_lines_per_chunk=100,
-            repo_config=RepoChunkingConfig(
-                filter_tests=filter_test or not self.config.include_tests,
-            ),
+        collected = _collect_candidates(
+            source,
+            query,
+            self.config,
+            filter_test,
+            budget,
+            lambda payload: _plan(payload, self.config, key, budget),
         )
-        extensions = extension_to_language_map("chunker")
-        files = [
-            record
-            for record in identity.file_records
-            if record.link_target is None
-            and chunker._should_process_file_path(Path(record.path), extensions)
-            and all(
-                chunker._should_include_directory(Path(p))
-                for p in Path(record.path).parts[:-1]
-            )
-        ]
-        files.sort(key=lambda record: record.path)
-        if (
-            len(files) > MAX_SOURCE_FILES
-            or sum(f.size for f in files) > MAX_SOURCE_BYTES
-        ):
-            raise GrepJevError("Repository exceeds the grep route's source size limit")
-        directories = Counter(str(Path(record.path).parent) for record in files)
-        overview = "\n".join(
-            f"{name}/ ({count} files)" for name, count in sorted(directories.items())
-        )
-        payload = {
-            "issue": query,
-            "repo": identity.root.name,
-            "source_file_count": len(files),
-            "source_directories": overview[:6000],
-            "directory_overview_truncated": len(overview) > 6000,
-            "note": (
-                "This is an overview, not a restriction; "
-                "all eligible source files are searchable."
-            ),
-        }
-        skipped = 0
-        materialized_chunks = materialized_chars = 0
-        groups, audit = [], []
-        with tempfile.TemporaryDirectory(prefix="codenib-grep-") as directory:
-            root = Path(directory)
-            nodes_by_path = {}
-            with source.read_session(check_cancelled=budget.check):
-                for record in files:
-                    budget.check()
-                    if record.size > chunker.repo_config.max_file_size_mb * 1024**2:
-                        skipped += 1
-                        continue
-                    raw = source.read_bytes(record.path, max_bytes=10 * 1024 * 1024)
-                    text = (
-                        raw.decode("utf-8", errors="replace")
-                        .replace("\r\n", "\n")
-                        .replace("\r", "\n")
-                    )
-                    if chunker._is_minified_source(text, path=record.path):
-                        skipped += 1
-                        continue
-                    nodes = []
-                    for chunk in chunker._chunk_source_with_language(
-                        text, record.path, extensions[Path(record.path).suffix]
-                    ):
-                        if not chunk.content or not chunk.content.strip():
-                            continue
-                        content = chunk.content[:MAX_CONTENT_CHARS]
-                        # Chunk metadata is not source: the first line is the
-                        # node ID; methods can also carry a synthetic class line.
-                        # Do not let these lines extend a truncated source range.
-                        metadata_lines = 1 + int(
-                            chunk.chunk_type == NODE_TYPE_METHOD and "." in chunk.name
-                        )
-                        visible_lines = len(content.splitlines()) - metadata_lines
-                        if visible_lines <= 0:
-                            continue
-                        materialized_chunks += 1
-                        materialized_chars += len(content)
-                        if (
-                            materialized_chunks > MAX_MATERIALIZED_CHUNKS
-                            or materialized_chars > MAX_MATERIALIZED_CONTENT_CHARS
-                        ):
-                            raise GrepJevError(
-                                "Repository exceeds the grep route's "
-                                "chunk materialization limit"
-                            )
-                        nodes.append(
-                            NodeInfo(
-                                node_id=chunk.node_id,
-                                node_name=chunk.node_id,
-                                file=record.path,
-                                type=chunk.chunk_type,
-                                start_line=chunk.start_line,
-                                end_line=min(
-                                    chunk.end_line,
-                                    chunk.start_line + visible_lines - 1,
-                                ),
-                                content=content,
-                                score=0.0,
-                            )
-                        )
-                    if not nodes:
-                        continue
-                    nodes_by_path[record.path] = sorted(
-                        nodes,
-                        key=lambda node: (
-                            node.end_line - node.start_line,
-                            node.start_line,
-                            node.node_id,
-                        ),
-                    )
-                    target = root / record.path
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    # Preserve the normalized LF used for chunking and planned
-                    # newline patterns, including on Windows text-mode hosts.
-                    target.write_bytes(text.encode("utf-8"))
-            actions = (
-                _plan(payload, self.config, key, budget).actions
-                if nodes_by_path
-                else []
-            )
-            for action in actions:
-                matches, truncated = _rg_lines(root, action, budget)
-                hits, seen = [], set()
-                for path, line in matches:
-                    budget.check()
-                    if path not in nodes_by_path:
-                        raise GrepJevError(
-                            "grep returned a path outside the selected source"
-                        )
-                    # A hit beyond the 3,000-character source prefix must not
-                    # select a candidate whose visible text excludes that line.
-                    node = next(
-                        (
-                            c
-                            for c in nodes_by_path[path]
-                            if c.start_line <= line <= c.end_line
-                        ),
-                        None,
-                    )
-                    if node is None:
-                        continue
-                    if _node_key(node) not in seen:
-                        seen.add(_node_key(node))
-                        hits.append(node)
-                groups.append(hits)
-                audit.append(
-                    {
-                        "action": action.model_dump(),
-                        "match_lines": len(matches),
-                        "capped_at_500_lines": truncated,
-                        "chunks": len(hits),
-                    }
-                )
-            candidates = _interleave(groups)
-        # Validate again before disclosing snippets, including changes made
-        # while the remote planning call was in flight.
-        source.authenticated_identity_snapshot(check_cancelled=budget.check)
+        candidates = collected.nodes
         for offset in range(0, len(candidates), 10):
             source.authenticated_identity_snapshot(check_cancelled=budget.check)
             timeout = budget.before_model()
@@ -642,9 +697,9 @@ class GrepJevRetriever:
                 "graph": None,
                 "fusion": "action_round_robin",
                 "candidate_count": len(candidates),
-                "actions": audit,
-                "skipped_files": skipped,
-                "source_file_count": len(files),
+                "actions": collected.actions,
+                "skipped_files": collected.skipped_files,
+                "source_file_count": collected.source_file_count,
                 **budget.usage(),
             },
         )

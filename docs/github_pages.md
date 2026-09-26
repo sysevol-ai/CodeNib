@@ -182,6 +182,12 @@ the export does not infer an authenticated GitHub origin from local Git config.
 The regular `codenib export /path/to/repository` route still builds deterministic
 index-derived pages. It does not export generated story prose automatically.
 
+An explicit source-checkout option can add a
+[browser OpenRouter trial](guides/browser-trial.md) for that published public
+repository. It requires a separate bounded CPU source service; the user's
+browser calls OpenRouter directly. The default Pages workflow and static export
+do not enable it.
+
 ## Incremental Builds
 
 The Action caches `~/.codenib/repositories` under a key that includes the

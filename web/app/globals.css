@@ -5752,3 +5752,17 @@ a.codepanel-name:hover {
     padding: 0 16px;
   }
 }
+
+/* Browser-owned OpenRouter trial; ordinary static Wiki browsing stays offline. */
+.openrouter-trial { max-width: 860px; }
+.trial-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+.trial-actions button { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; background: var(--bg); color: var(--text); cursor: pointer; font: inherit; }
+.trial-actions .trial-primary { background: var(--accent, #2563eb); color: white; border-color: transparent; }
+.trial-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.trial-form { margin: 24px 0 12px; }
+.trial-form label { display: block; font-weight: 600; margin-bottom: 8px; }
+.trial-form textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 100px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.trial-error { color: var(--error, #b91c1c); overflow-wrap: anywhere; }
+.trial-results { margin-top: 32px; }
+.trial-results a, .trial-results .small { overflow-wrap: anywhere; }
+.trial-results pre { max-height: 22rem; overflow: auto; }

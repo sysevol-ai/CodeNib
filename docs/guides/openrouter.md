@@ -124,5 +124,7 @@ clears the grant from its address bar and loads no external resources. Model
 results and MCP configuration contain no credential. The login key itself
 remains in the chosen credential store until removed or revoked.
 
-This page describes local CLI/MCP authorization. A hosted Wiki browser trial
-has a separate trust boundary and is not enabled by these commands.
+This page describes local CLI/MCP authorization. The optional
+[static Wiki browser trial](browser-trial.md) has a separate in-memory
+credential and source-service boundary. It is a source-checkout preview and
+is not enabled by these commands.

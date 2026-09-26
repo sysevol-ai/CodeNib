@@ -5,6 +5,7 @@ declare global {
       mode?: "api" | "static";
       basePath?: string;
       dataBase?: string;
+      trialApiBase?: string;
     };
   }
 }
