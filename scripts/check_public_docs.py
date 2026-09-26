@@ -20,6 +20,7 @@ import yaml
 
 REQUIRED_EXCLUSIONS = {
     "experiments/",
+    "adoption_roadmap.md",
     "product_roadmap.md",
     "agent_runner_architecture_goal.md",
     "agent_compile_design.md",
@@ -31,6 +32,7 @@ REQUIRED_EXCLUSIONS = {
 
 FORBIDDEN_PUBLIC_PREFIXES = {
     "experiments/",
+    "adoption_roadmap/",
     "product_roadmap/",
     "agent_runner_architecture_goal/",
     "agent_compile_design/",

@@ -174,6 +174,8 @@ clang-format for C/C++.
 - Public documentation changes require both `mkdocs build --strict` and
   `python scripts/check_public_docs.py`. Public pages must not link to excluded
   documents, including through GitHub URLs.
+  When excluding a new internal document, add it to both `REQUIRED_EXCLUSIONS`
+  and `FORBIDDEN_PUBLIC_PREFIXES` in `scripts/check_public_docs.py`.
 - Unit tier: `pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short`
 - Integration tier: `pytest -m integration --tb=short`
 - Serial integration tier: `pytest -m integration_serial -v --tb=short`

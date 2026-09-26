@@ -101,7 +101,7 @@ def test_legacy_blog_routes_redirect_to_reference_deployments():
         assert source in check_public_docs.ALLOWED_PUBLIC_STATIC_FILES
         html = (REPO_ROOT / "docs" / source).read_text(encoding="utf-8")
         assert f'content="0; url={target}"' in html
-        assert f'href="{target}"' in html
+        assert f'href="{target}"' in html  # noqa: B907 - HTML attribute quotes
 
 
 def _write_api_site(site_dir, routes=None):
@@ -178,6 +178,8 @@ def test_source_links_detect_encoded_autolink_html_and_repository_urls(tmp_path)
             [
                 "<https://docs.codenib.ai/%65xperiments/private/>",
                 "<a href=/product_roadmap/>roadmap</a>",
+                "[adoption](https://github.com/sysevol-ai/CodeNib/"
+                "blob/main/docs/adoption_roadmap.md)",
                 "[raw]: https://raw.githubusercontent.com/sysevol-ai/"
                 "CodeNib/main/docs/experiments/private.json",
             ]
@@ -190,7 +192,21 @@ def test_source_links_detect_encoded_autolink_html_and_repository_urls(tmp_path)
     assert errors
     assert "experiments" in errors[0]
     assert "product_roadmap" in errors[0]
+    assert "adoption_roadmap" in errors[0]
     assert "raw.githubusercontent.com" in errors[0]
+
+
+def test_adoption_roadmap_cannot_be_promoted_by_removing_its_exclusion():
+    config = _config()
+    config["exclude_docs"] = config["exclude_docs"].replace("adoption_roadmap.md", "")
+    config["nav"].append({"Adoption": "adoption_roadmap.md"})
+
+    errors = check_public_docs._check_config(config)
+
+    assert any(
+        "exclude_docs is missing: adoption_roadmap.md" in error for error in errors
+    )
+    assert any("nav" in error and "adoption_roadmap.md" in error for error in errors)
 
 
 def test_generated_html_links_to_internal_location_are_rejected(tmp_path):
