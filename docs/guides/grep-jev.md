@@ -109,7 +109,9 @@ one planning call and ten scoring calls. Searchable source is limited to
 skipped. Before retaining the chunk corpus, the route also limits it to
 50,000 chunks and 32 Mi characters of visible chunk text. Exceeding either
 bound stops before planning or scoring. Each grep action has a ten-second
-limit and bounded output.
+limit and bounded output. Planned regexes can span lines; each covered line
+is mapped to its source chunk, with at most 500 matched lines retained per
+action. A multiline pattern does not trigger a second planning call or retry.
 
 `--max-cost-usd` defaults to `0.10`. It stops **subsequent** calls when reported
 usage reaches that amount. An in-flight call can exceed it, and failed calls

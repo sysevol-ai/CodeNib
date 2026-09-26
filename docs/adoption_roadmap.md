@@ -80,31 +80,32 @@ all first-screen links work; quickstart remains exactly two commands.
 ### A2 — Ship grep → Jev as a bounded product route
 
 Status: [#782](https://github.com/sysevol-ai/CodeNib/pull/782) is merged into
-`main` as `d6af8f79`, not yet released. CLI `codenib explore` and MCP
-`--retrieval-route grep-jev` share a bounded source-only runtime. Both model
-stages use one OpenRouter credential, preserve reported usage on failure,
-disable automatic retries and stop later work on cancellation or budget
-exhaustion. Source, exclusion, range, resource-bound and lightweight-install
-checks pass; existing indexed routes remain the released defaults.
+`main` as `d6af8f79`, not yet released. CLI `codenib explore` and MCP share a
+bounded source-only grep/Jev runtime, one OpenRouter credential, reported usage,
+source/exclusion checks and cancellation. There are no automatic model retries;
+existing indexed routes remain the released defaults.
 
-The frozen-plan product audit in
-[#787](https://github.com/sysevol-ai/CodeNib/pull/787) completes all 100 cases
-with HTTP disabled. Ordered candidate text and corrected spans match in 94
-cases; six pools differ, and three contain new text without frozen Jev scores.
-Frozen-plan grep retains 58.62% Recall@5; aggregate frozen reranking is unset.
-The separate range audit preserves the research orderings' 58.62% / 71.40%.
+The candidate audit in [#787](https://github.com/sysevol-ai/CodeNib/pull/787),
+merged as `714218ab`, completes all 100 frozen plans with HTTP disabled. Ordered candidate text and
+corrected spans match in 94 cases; six pools differ. Frozen-plan grep retains
+58.62% Recall@5; aggregate frozen reranking is unset because three pools have
+new unscored text. The separate range audit preserves the historical research
+orderings' 58.62% / 71.40%.
 
 Fresh product evaluation in #787 attempts all 100 cases: 99 succeed and one
 rejects a multiline planned expression. Under the predeclared failure-zero
 policy, Recall@5 is 48.37% for grep and 65.57% after Jev (+17.20 points;
 repository-bootstrap 95% interval +8.88 to +25.44). Reported cost is
-$1.043885892 with no unknown call charges. Public evidence retains every case
-and the separate earlier incomplete attempt; no retries or substitutions are
-included. These are localization results, not an agent/token benchmark.
+$1.043885892 with no unknown call charges. Every case and the separate earlier
+incomplete attempt are retained without retries or substitutions. These are
+localization results, not an agent/token benchmark.
 
-Planner-expression reliability, authorization acceptance, paired agent
-measurement and release reconciliation remain open. The 71.40% historical
-research result must stay distinct from the current product measurement.
+The multiline correction is implemented in
+[#792](https://github.com/sysevol-ai/CodeNib/pull/792), not yet merged or released.
+Its 51 focused route tests pass, including Windows newline handling; the
+preceding evaluation is not a measurement of that correction. Authorization acceptance, paired agent measurement,
+default-route promotion and release reconciliation remain open. The 71.40%
+historical research result stays distinct from the fresh product measurement.
 
 - Extract the already measured plan/search/chunk/rerank path from the
   research runner into the existing repository-context runtime. Do not
