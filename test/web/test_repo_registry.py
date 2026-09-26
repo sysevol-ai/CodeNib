@@ -5794,6 +5794,85 @@ def test_repo_views_propagate_vector_integrity_failures(
         )
 
 
+def test_optional_vector_transport_outage_falls_back_to_bm25(
+    native_authorization, monkeypatch
+):
+    class FakeBM25:
+        def load_index(self, path):
+            self.path = path
+
+    class APIConnectionError(Exception):
+        pass
+
+    monkeypatch.setattr(
+        "codenib.index.sparse_idx.bm25_index.BM25CodeIndexer",
+        FakeBM25,
+    )
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.require_bm25_manifest_artifact",
+        lambda _entry: None,
+    )
+    bm25_entry = SimpleNamespace(path="/idx/bm25", config={})
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        source_fingerprint=f"sha256-v2:{'b' * 64}",
+        indexes={"bm25": bm25_entry, "vector": vector_entry},
+        index_is_current=lambda _index_type: True,
+    )
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=(
+            lambda _repo, _manifest, _entry: native_authorization
+        ),
+        allow_missing_native_index_authorization=True,
+    )
+    monkeypatch.setattr(
+        registry,
+        "_load_vector_store",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            APIConnectionError("embedding endpoint offline")
+        ),
+    )
+    bundle = SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+
+    registry._load_repo_views(bundle)
+
+    assert bundle.bm25.path == "/idx/bm25"
+    assert bundle.vector_store is None
+
+
+def test_required_vector_transport_outage_still_fails_closed(
+    native_authorization, monkeypatch
+):
+    class APIConnectionError(Exception):
+        pass
+
+    vector_entry = SimpleNamespace(path="/idx/vector", config={})
+    manifest = SimpleNamespace(
+        source_fingerprint=f"sha256-v2:{'b' * 64}",
+        indexes={"vector": vector_entry},
+        index_is_current=lambda _index_type: True,
+    )
+    registry = RepoRegistry(
+        QAConfig(mode="hybrid"),
+        native_index_authorization_resolver=(
+            lambda _repo, _manifest, _entry: native_authorization
+        ),
+    )
+    monkeypatch.setattr(
+        registry,
+        "_load_vector_store",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            APIConnectionError("embedding endpoint offline")
+        ),
+    )
+
+    with pytest.raises(APIConnectionError, match="endpoint offline"):
+        registry._load_repo_views(
+            SimpleNamespace(entry=SimpleNamespace(), manifest=manifest)
+        )
+
+
 def test_hybrid_requires_a_current_vector_or_current_bm25_fallback(monkeypatch):
     manifest = SimpleNamespace(
         indexes={},

@@ -79,6 +79,8 @@ class RepoInfo(BaseModel):
     commit_short: str = ""
     language: str = ""
     description: str = ""  # repo purpose (README-derived), not the issue text
+    # The cached Overview's opening thesis, when there is one.
+    summary: str = ""
     problem_statement: str = ""
     languages: List[str] = Field(default_factory=list)
     file_count: int = 0

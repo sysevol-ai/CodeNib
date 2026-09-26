@@ -210,8 +210,7 @@ def test_module_page_surfaces_classes_and_links(repo_dir):
     assert "?p=mod__" in md  # cross-page link (C9)
     assert page["diagram"].startswith("graph TD")
     assert len(page["citations"]) >= 1
-    assert [slot["kind"] for slot in page["media_slots"]] == ["diagram", "image"]
-    assert "pkg/mod/a.py" in page["media_slots"][0]["source_citations"]
+    assert page["media_slots"] == []
     c = page["citations"][0]
     assert c["start_line"] >= 1  # 0-based -> 1-based
 

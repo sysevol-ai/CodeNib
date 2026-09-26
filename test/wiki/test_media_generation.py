@@ -40,6 +40,109 @@ class _Response:
 _PNG = b"\x89PNG\r\n\x1a\n" + b"test-image"
 
 
+def _architecture_contract(
+    *,
+    evidence: str = "src/runtime.py",
+    first: str = "Request router",
+    second: str = "Worker queue",
+) -> dict:
+    return {
+        "schema_version": 1,
+        "adapter": "architecture",
+        "provenance": "deterministic-index",
+        "evidence": [evidence],
+        "data": {
+            "nodes": [
+                {"id": "router", "label": first, "evidence": [evidence]},
+                {"id": "worker", "label": second, "evidence": [evidence]},
+            ],
+            "edges": [
+                {
+                    "source": "router",
+                    "target": "worker",
+                    "label": "dispatches",
+                    "evidence": [],
+                }
+            ],
+        },
+    }
+
+
+def _semantic_architecture_contract() -> dict:
+    return {
+        "schema_version": 1,
+        "adapter": "architecture",
+        "provenance": "architecture-plan",
+        "evidence": ["E1", "E2", "E3", "E4", "R1", "R2", "R3"],
+        "data": {
+            "nodes": [
+                {
+                    "id": "entry",
+                    "label": "Entry surfaces",
+                    "detail": "Accept questions from readers.",
+                    "layer": "interface",
+                    "kind": "frontend",
+                    "evidence": ["E1"],
+                },
+                {
+                    "id": "coordination",
+                    "label": "Analysis coordinator",
+                    "detail": "Plans grounded repository work.",
+                    "layer": "coordination",
+                    "kind": "backend",
+                    "evidence": ["E2"],
+                },
+                {
+                    "id": "execution",
+                    "label": "Source analysis",
+                    "detail": "Retrieves and inspects evidence.",
+                    "layer": "execution",
+                    "kind": "backend",
+                    "evidence": ["E3"],
+                },
+                {
+                    "id": "result",
+                    "label": "Grounded result",
+                    "detail": "Returns source-linked findings.",
+                    "layer": "data",
+                    "kind": "database",
+                    "evidence": ["E4"],
+                },
+            ],
+            "edges": [
+                {
+                    "source": "entry",
+                    "target": "coordination",
+                    "label": "frames the question",
+                    "evidence": ["R1"],
+                },
+                {
+                    "source": "coordination",
+                    "target": "execution",
+                    "label": "dispatches grounded work",
+                    "evidence": ["R2"],
+                },
+                {
+                    "source": "execution",
+                    "target": "result",
+                    "label": "returns cited findings",
+                    "evidence": ["R3"],
+                },
+            ],
+            "primary_path": ["entry", "coordination", "execution", "result"],
+            "boundaries": [
+                {
+                    "id": "execution_boundary",
+                    "label": "Execution boundary",
+                    "detail": "Planning remains separate from source execution.",
+                    "members": ["coordination", "execution"],
+                    "evidence": ["E2", "E3"],
+                }
+            ],
+        },
+    }
+
+
 def test_openai_compatible_image_generator_writes_asset(tmp_path):
     requests = []
     png = base64.b64encode(_PNG).decode("ascii")
@@ -63,6 +166,7 @@ def test_openai_compatible_image_generator_writes_asset(tmp_path):
             "purpose": "Explain the system map.",
             "prompt": "Create a compact architecture diagram.",
             "source_citations": ["src/app.py"],
+            "render_contract": _architecture_contract(evidence="src/app.py"),
         },
         output_dir=tmp_path,
     )
@@ -80,6 +184,9 @@ def test_openai_compatible_image_generator_writes_asset(tmp_path):
     assert body["model"] == "openai/gpt-image-1"
     assert body["size"] == "512x512"
     assert "src/app.py" in body["prompt"]
+    assert "Validated render contract" in body["prompt"]
+    assert "Request router" in body["prompt"]
+    assert asset["metadata"]["adapter"] == "architecture"
 
 
 def test_materialize_media_slots_skips_unsupported_video_slots(tmp_path):
@@ -177,42 +284,271 @@ def test_deterministic_svg_generator_writes_visible_asset(tmp_path):
 
     asset = generator.generate(
         {
-            "id": "overview-image",
-            "kind": "image",
-            "title": "Overview image",
+            "id": "overview-diagram",
+            "kind": "diagram",
+            "title": "Overview architecture",
             "purpose": "Explain the repo visually.",
-            "prompt": "Draw a source-grounded concept.",
+            "prompt": "Render the supplied contract.",
             "source_citations": ["src/runtime.py"],
+            "render_contract": _semantic_architecture_contract(),
         },
         output_dir=tmp_path,
         asset_base_path="api/repos/demo/wiki-media/overview",
     )
 
-    assert asset["uri"] == "api/repos/demo/wiki-media/overview/overview-image.svg"
+    assert asset["uri"] == "api/repos/demo/wiki-media/overview/overview-diagram.svg"
     assert asset["mime_type"] == "image/svg+xml"
     assert asset["model"] == "local/svg"
-    assert (
-        (tmp_path / "overview-image.svg").read_text(encoding="utf-8").startswith("<svg")
-    )
+    assert asset["metadata"]["adapter"] == "architecture"
+    assert asset["metadata"]["design_system"] == "editorial-svg-v5"
+    svg = (tmp_path / "overview-diagram.svg").read_text(encoding="utf-8")
+    assert svg.startswith("<svg")
+    assert "Entry surfaces" in svg
+    assert "Analysis coordinator" in svg
+    assert "DISPATCHES GROUNDED WORK" in svg
+    assert "Execution boundary" in svg
+    assert "PRIMARY RUNTIME PATH" in svg
+    assert "CALLER" not in svg
+    assert "CALLEE" not in svg
+    assert "Source</text>" not in svg
+    assert "Facts</text>" not in svg
+    assert "linearGradient" not in svg
+    assert "feDropShadow" not in svg
+    assert "prompt sha256" not in svg
+    assert "SOURCE-GROUNDED / EDITORIAL SVG V5" in svg
 
 
 def test_deterministic_svg_escapes_untrusted_slot_text_once(tmp_path):
     DeterministicSvgMediaGenerator().generate(
         {
-            "id": "unsafe-image",
-            "kind": "image",
+            "id": "unsafe-diagram",
+            "kind": "diagram",
             "title": 'Unsafe "title"',
             "purpose": "Explain <script>& behavior.",
             "source_citations": ["<source>.py"],
+            "render_contract": _architecture_contract(
+                evidence="<source>.py",
+                first="<script> router",
+            ),
         },
         output_dir=tmp_path,
     )
 
-    svg = (tmp_path / "unsafe-image.svg").read_text(encoding="utf-8")
+    svg = (tmp_path / "unsafe-diagram.svg").read_text(encoding="utf-8")
     assert "<script>" not in svg
-    assert "&lt;script&gt;&amp; behavior." in svg
+    assert "Unsafe &quot;title&quot;" in svg
+    assert "Explain &lt;script&gt;&amp; behavior." not in svg
     assert "&amp;lt;script" not in svg
-    assert "&lt;source&gt;.py" in svg
+    assert "&lt;script&gt; router" in svg
+
+
+def test_local_svg_skips_untyped_concept_slots_but_renders_typed_slots(tmp_path):
+    page = {
+        "citations": [{"file": "src/runtime.py"}],
+        "media_slots": [
+            {
+                "id": "typed",
+                "kind": "diagram",
+                "render_contract": _architecture_contract(),
+            },
+            {"id": "concept", "kind": "image", "prompt": "Imagine a concept."},
+        ],
+    }
+
+    materialized = materialize_media_slots(
+        page,
+        generator=DeterministicSvgMediaGenerator(),
+        output_dir=tmp_path,
+    )
+
+    assert "asset" in materialized["media_slots"][0]
+    assert "asset" not in materialized["media_slots"][1]
+    assert materialized["visual_quality"] == {
+        "valid": True,
+        "required": False,
+        "publication_ready": True,
+        "errors": [],
+        "typed_slots": 1,
+        "valid_typed_slots": 1,
+        "materialized_typed_slots": 1,
+        "visible_assets": 1,
+        "repository_assets": 0,
+        "grounded_visuals": 1,
+        "adapters": ["architecture"],
+        "contracts": [
+            {
+                "valid": True,
+                "adapter": "architecture",
+                "errors": [],
+                "element_count": 3,
+                "evidence_count": 1,
+                "slot_id": "typed",
+                "materialized": True,
+            }
+        ],
+    }
+
+
+def test_local_svg_rejects_untyped_direct_generation(tmp_path):
+    with pytest.raises(ValueError, match="typed render contract"):
+        DeterministicSvgMediaGenerator().generate(
+            {"id": "concept", "kind": "image", "prompt": "Draw it."},
+            output_dir=tmp_path,
+        )
+
+
+def test_repository_lead_suppresses_a_duplicate_generated_lead(tmp_path):
+    page = {
+        "id": "overview",
+        "citations": [{"file": "src/runtime.py"}],
+        "media_slots": [
+            {
+                "id": "repository-visual",
+                "kind": "image",
+                "placement": "lead",
+                "asset": {
+                    "uri": "assets/architecture.png",
+                    "provider": "repository",
+                },
+            },
+            {
+                "id": "generated-structure",
+                "kind": "diagram",
+                "placement": "lead",
+                "render_contract": _architecture_contract(),
+            },
+        ],
+    }
+
+    materialized = materialize_media_slots(
+        page,
+        generator=DeterministicSvgMediaGenerator(),
+        output_dir=tmp_path,
+    )
+
+    assert "asset" in materialized["media_slots"][0]
+    assert "asset" not in materialized["media_slots"][1]
+    assert materialized["visual_quality"]["publication_ready"] is True
+    assert materialized["visual_quality"]["repository_assets"] == 1
+    assert materialized["visual_quality"]["materialized_typed_slots"] == 0
+
+
+def test_invalid_contract_is_rejected_before_provider_call(tmp_path):
+    calls = []
+    generator = OpenAICompatibleImageGenerator(
+        model="image-model",
+        api_base="https://api.example/v1",
+        urlopen=lambda _request, timeout: calls.append(timeout),
+    )
+    page = {
+        "citations": [{"file": "src/allowed.py"}],
+        "media_slots": [
+            {
+                "id": "invalid",
+                "kind": "diagram",
+                "render_contract": _architecture_contract(
+                    evidence="src/not-on-page.py"
+                ),
+            }
+        ],
+    }
+
+    materialized = materialize_media_slots(
+        page,
+        generator=generator,
+        output_dir=tmp_path,
+    )
+
+    assert calls == []
+    assert materialized["media_slots"] == []
+    assert materialized["visual_quality"]["valid"] is False
+    assert materialized["visual_quality"]["rejected_slots"] == ["invalid"]
+    assert (
+        "src/not-on-page.py"
+        in materialized["visual_quality"]["contracts"][0]["errors"][0]
+    )
+
+
+def test_local_svg_renders_chart_values_from_contract(tmp_path):
+    asset = DeterministicSvgMediaGenerator().generate(
+        {
+            "id": "language-chart",
+            "kind": "chart",
+            "title": "Indexed files by language",
+            "render_contract": {
+                "schema_version": 1,
+                "adapter": "bar-chart",
+                "provenance": "metrics",
+                "evidence": ["E1", "E2"],
+                "data": {
+                    "unit": "files",
+                    "bars": [
+                        {"label": "Python", "value": 12, "evidence": ["E1"]},
+                        {"label": "Rust", "value": 4, "evidence": ["E2"]},
+                    ],
+                },
+            },
+        },
+        output_dir=tmp_path,
+    )
+
+    svg = (tmp_path / "language-chart.svg").read_text(encoding="utf-8")
+    assert asset["metadata"]["adapter"] == "bar-chart"
+    assert "Python" in svg
+    assert "12 files" in svg
+    assert "Rust" in svg
+    assert "4 files" in svg
+
+
+def test_local_svg_renders_story_as_an_editorial_path(tmp_path):
+    DeterministicSvgMediaGenerator().generate(
+        {
+            "id": "overview-reading-path",
+            "kind": "storyboard",
+            "title": "Overview: the reading path",
+            "render_contract": {
+                "schema_version": 1,
+                "adapter": "storyboard",
+                "provenance": "story",
+                "evidence": ["E1", "E2", "E3"],
+                "data": {
+                    "panels": [
+                        {
+                            "id": "p1",
+                            "title": "Enter through the public command",
+                            "detail": "A repository path starts the work",
+                            "role": "entry",
+                            "evidence": ["E1"],
+                        },
+                        {
+                            "id": "p2",
+                            "title": "Build the searchable view",
+                            "detail": "The compiler records source units",
+                            "role": "mechanism",
+                            "evidence": ["E2"],
+                        },
+                        {
+                            "id": "p3",
+                            "title": "Return linked context",
+                            "detail": "The server resolves the requested page",
+                            "role": "outcome",
+                            "evidence": ["E3"],
+                        },
+                    ]
+                },
+            },
+        },
+        output_dir=tmp_path,
+    )
+
+    svg = (tmp_path / "overview-reading-path.svg").read_text(encoding="utf-8")
+    assert "3 editorial beats · one deliberate reading path" in svg
+    assert "Enter through the public" in svg
+    assert "Build the searchable view" in svg
+    assert "Return linked context" in svg
+    assert "ENTRY" in svg
+    assert "OUTCOME" in svg
+    assert "#7c3aed" not in svg
 
 
 def test_media_generation_reuses_cached_asset(tmp_path):
@@ -244,14 +580,16 @@ def test_media_generation_reuses_cached_asset(tmp_path):
 
 def test_asset_prompt_redacts_evidence_pack_contents(tmp_path):
     generator = DeterministicSvgMediaGenerator()
+    # Local SVG rendering draws only typed contracts, so the slot carries one.
     slot = {
         "id": "overview-image",
-        "kind": "image",
+        "kind": "diagram",
         "prompt": "Draw it.",
         "source_citations": ["src/app.py"],
+        "render_contract": _architecture_contract(evidence="src/app.py"),
         "evidence_pack": {
             "slot_id": "overview-image",
-            "kind": "image",
+            "kind": "diagram",
             "sources": [
                 {"file": "src/app.py", "snippet": "private code snippet"},
             ],
@@ -267,14 +605,17 @@ def test_asset_prompt_redacts_evidence_pack_contents(tmp_path):
 def test_materialize_media_slots_redacts_input_evidence_pack(tmp_path):
     page = {
         "id": "overview",
+        "citations": [{"file": "src/app.py"}],
         "media_slots": [
             {
                 "id": "overview-image",
-                "kind": "image",
+                "kind": "diagram",
                 "prompt": "Draw it.",
+                "source_citations": ["src/app.py"],
+                "render_contract": _architecture_contract(evidence="src/app.py"),
                 "evidence_pack": {
                     "slot_id": "overview-image",
-                    "kind": "image",
+                    "kind": "diagram",
                     "sources": [
                         {"file": "src/app.py", "snippet": "server-only source"}
                     ],
@@ -297,7 +638,15 @@ def test_materialize_media_slots_redacts_input_evidence_pack(tmp_path):
 
 def test_materialize_media_slots_rejects_non_mapping_evidence(tmp_path):
     page = {
-        "media_slots": [{"id": "overview-image", "kind": "image", "prompt": "Draw it."}]
+        "citations": [{"file": "src/app.py"}],
+        "media_slots": [
+            {
+                "id": "overview-image",
+                "kind": "diagram",
+                "prompt": "Draw it.",
+                "render_contract": _architecture_contract(evidence="src/app.py"),
+            }
+        ],
     }
 
     with pytest.raises(ValueError, match="must return a mapping or None"):
@@ -573,3 +922,45 @@ def test_unsafe_slot_ids_map_to_distinct_flat_filenames():
     assert "/" not in first
     assert "/" not in second
     assert media_generation._safe_filename("CON") != "CON"
+
+
+def test_deterministic_svg_is_well_formed_xml_with_the_data_layer_label(tmp_path):
+    from xml.etree import ElementTree
+
+    DeterministicSvgMediaGenerator().generate(
+        {
+            "id": "overview-diagram",
+            "kind": "diagram",
+            "title": "Overview architecture",
+            "purpose": "Explain the repo visually.",
+            "source_citations": ["src/runtime.py"],
+            "render_contract": _semantic_architecture_contract(),
+        },
+        output_dir=tmp_path,
+    )
+
+    svg = (tmp_path / "overview-diagram.svg").read_text(encoding="utf-8")
+    # The data layer label carries an ampersand; unescaped it turns the whole
+    # document into an XML parse error in the browser.
+    assert "DATA &amp; ARTIFACTS" in svg
+    assert "DATA & ARTIFACTS" not in svg
+    ElementTree.fromstring(svg)
+
+
+def test_deterministic_svg_refuses_to_persist_malformed_markup(tmp_path, monkeypatch):
+    import codenib.wiki.media_generation as module
+
+    monkeypatch.setattr(module, "_svg_for_slot", lambda _slot: "<svg>DATA & X</svg>")
+    with pytest.raises(ValueError, match="well-formed"):
+        DeterministicSvgMediaGenerator().generate(
+            {
+                "id": "broken",
+                "kind": "diagram",
+                "title": "Broken",
+                "purpose": "x",
+                "source_citations": ["src/runtime.py"],
+                "render_contract": _semantic_architecture_contract(),
+            },
+            output_dir=tmp_path,
+        )
+    assert not (tmp_path / "broken.svg").exists()

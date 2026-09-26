@@ -11,7 +11,10 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
+import { AppLink } from "@/lib/router";
 import { matchCitation, lineLabel } from "@/lib/citations";
+import { callPaths, parseFlowchart } from "@/lib/flowchart";
+import CallChain from "./CallChain";
 import {
   repoRelative,
   type Citation,
@@ -22,6 +25,54 @@ import {
 // demand so it never weighs down pages that have none (wiki strips diagrams).
 const Mermaid = lazy(() => import("./Mermaid"));
 const HighlightedBlock = lazy(() => import("./HighlightedBlock"));
+
+/** Parse a fence meta such as `hl=2,5-7` into 1-based line numbers. */
+function parseHighlightLines(meta: string): Set<number> {
+  const lines = new Set<number>();
+  const match = /(?:^|\s)hl=([\d,-]+)/.exec(meta || "");
+  if (!match) return lines;
+  for (const part of match[1].split(",")) {
+    const range = part.split("-").map((value) => Number.parseInt(value, 10));
+    if (range.some((value) => Number.isNaN(value))) continue;
+    const [start, end = start] = range;
+    for (let line = start; line <= end && line - start < 200; line += 1) {
+      if (line > 0) lines.add(line);
+    }
+  }
+  return lines;
+}
+
+/** Is this rendered child one of our citation references? */
+function isCitationElement(child: ReactNode): boolean {
+  return (
+    isValidElement<{ href?: string }>(child) &&
+    /^#evidence-[ER]\d+$/.test(String(child.props.href || ""))
+  );
+}
+
+/** Move the trailing run of citations into one group so they read as a
+ *  reference list at the end of the block rather than as words in it. */
+function groupTrailingCitations(children: ReactNode): ReactNode {
+  const items = Children.toArray(children);
+  let end = items.length;
+  while (end > 0) {
+    const item = items[end - 1];
+    if (isCitationElement(item) || (typeof item === "string" && !item.trim())) {
+      end -= 1;
+    } else {
+      break;
+    }
+  }
+  const tail = items.slice(end).filter(isCitationElement);
+  if (tail.length === 0) return children;
+  const body = items.slice(0, end);
+  return (
+    <>
+      {body}
+      <span className="cite-group">{tail}</span>
+    </>
+  );
+}
 
 type ChildElement = ReactElement<{ children?: ReactNode }>;
 
@@ -119,11 +170,16 @@ function CiteChip({
   );
 }
 
+/** A wiki page link the generator writes as `?p=<page-id>`. */
+const WIKI_PAGE_LINK_RE = /^\?p=([^&#]+)$/;
+
 export default function Markdown({
   children,
   citations,
   relations,
   onCite,
+  repoId,
+  onPageLink,
 }: {
   children: string;
   /** When provided (with onCite), inline code naming a citation becomes a clickable chip. */
@@ -131,6 +187,12 @@ export default function Markdown({
   /** Static relations, so an R# marker can name the call site it stands for. */
   relations?: WikiRelationItem[];
   onCite?: (index: number) => void;
+  /** Repository the `?p=<page>` links belong to. The document carries a
+   *  `<base href>`, so a relative `?p=` link would otherwise resolve against
+   *  the site root and land on the landing page instead of the wiki page. */
+  repoId?: string;
+  /** Switch wiki pages in place instead of routing through the app shell. */
+  onPageLink?: (pageId: string) => void;
 }) {
   return (
     <div className="markdown">
@@ -164,6 +226,41 @@ export default function Markdown({
                 );
               }
             }
+            const pageMatch = WIKI_PAGE_LINK_RE.exec(String(href || ""));
+            if (pageMatch && repoId) {
+              let pageId = pageMatch[1];
+              try {
+                pageId = decodeURIComponent(pageId);
+              } catch {
+                // Keep the raw id; the page lookup will report it as missing.
+              }
+              const target = `/${encodeURIComponent(repoId)}?p=${encodeURIComponent(pageId)}`;
+              return (
+                <AppLink
+                  href={target}
+                  onClick={
+                    onPageLink
+                      ? (event) => {
+                          if (
+                            event.button !== 0 ||
+                            event.metaKey ||
+                            event.ctrlKey ||
+                            event.shiftKey ||
+                            event.altKey
+                          ) {
+                            return;
+                          }
+                          event.preventDefault();
+                          onPageLink(pageId);
+                        }
+                      : undefined
+                  }
+                  {...rest}
+                >
+                  {children}
+                </AppLink>
+              );
+            }
             if (cite) {
               const rel = repoRelative(cite.file) ?? cite.file;
               const loc = lineLabel(cite);
@@ -188,6 +285,12 @@ export default function Markdown({
           table({ children }) {
             return <ResponsiveTable>{children}</ResponsiveTable>;
           },
+          p({ children }) {
+            return <p>{groupTrailingCitations(children)}</p>;
+          },
+          li({ children }) {
+            return <li>{groupTrailingCitations(children)}</li>;
+          },
           pre({ children }) {
             const codeEl = (Array.isArray(children) ? children[0] : children) as
               | ReactElement<{ className?: string; children?: ReactNode }>
@@ -195,6 +298,31 @@ export default function Markdown({
             const className = codeEl?.props?.className || "";
             const text = nodeText(codeEl?.props?.children);
             if (/language-mermaid/.test(className)) {
+              // A straight call chain reads better as a list than as a row of
+              // boxes; only a flow that branches is drawn.
+              const flow = parseFlowchart(text);
+              const paths = flow ? callPaths(flow) : null;
+              if (paths) {
+                return (
+                  <CallChain
+                    paths={paths}
+                    relations={relations}
+                    renderSymbol={(label) => {
+                      const m = citations && onCite ? matchCitation(label, citations) : null;
+                      return m != null && onCite ? (
+                        <CiteChip
+                          text={label}
+                          c={citations![m.index]}
+                          showLoc={false}
+                          onClick={() => onCite(m.index)}
+                        />
+                      ) : (
+                        <code>{label}</code>
+                      );
+                    }}
+                  />
+                );
+              }
               return (
                 <Suspense fallback={<div className="mermaid-loading">Loading diagram…</div>}>
                   <Mermaid chart={text} />
@@ -202,6 +330,12 @@ export default function Markdown({
               );
             }
             const lang = (className.match(/language-(\w+)/) || [])[1] || "";
+            // The fence info string (`python hl=3,5-6`) names the lines the
+            // surrounding prose is about; remark keeps it as the node's meta.
+            const meta = String(
+              (codeEl?.props as { node?: { data?: { meta?: string } } } | undefined)
+                ?.node?.data?.meta || "",
+            );
             return (
               <Suspense
                 fallback={
@@ -212,7 +346,11 @@ export default function Markdown({
                   </div>
                 }
               >
-                <HighlightedBlock text={text} language={lang} />
+                <HighlightedBlock
+                  text={text}
+                  language={lang}
+                  highlightLines={parseHighlightLines(meta)}
+                />
               </Suspense>
             );
           },

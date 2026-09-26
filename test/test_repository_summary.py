@@ -83,3 +83,23 @@ full-featured computer algebra system.
 def test_keeps_descriptions_that_open_with_a_lowercase_project_name(description):
     # A project name is often lowercase; that must not read as a fragment.
     assert readme_summary(f"# project\n\n{description}\n") == description
+
+
+def test_readme_summary_skips_wrapped_list_item_continuations():
+    text = (
+        "# Tokio\n\n"
+        "A runtime for writing reliable, asynchronous, and slim applications with\n"
+        "the Rust programming language. It is:\n\n"
+        "* **Fast**: Tokio's zero-cost abstractions give you bare-metal\n"
+        "  performance.\n\n"
+        "* **Reliable**: Tokio leverages Rust's ownership, type system, and\n"
+        "  concurrency model to reduce bugs and ensure thread safety.\n"
+    )
+    # The opening paragraph ends in a colon (it introduces the list), so no
+    # candidate remains; the wrapped bullet line must not become one.
+    assert readme_summary(text, limit=600) == ""
+
+    prose = text.replace("It is:", "It is built for servers.")
+    summary = readme_summary(prose, limit=600)
+    assert summary.startswith("A runtime for writing reliable")
+    assert "concurrency model" not in summary

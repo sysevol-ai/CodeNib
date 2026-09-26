@@ -39,6 +39,7 @@ from ..log_utils import get_logger
 from ..repository_filters import repository_path_is_visible
 from ..repository_source_selection import RepositorySourceSelection
 from ..wiki import WikiBuilder
+from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
 from ..wiki.media_evidence import build_media_evidence_pack
 from ..wiki.media_generation import (
     image_generator_from_config,
@@ -47,13 +48,17 @@ from ..wiki.media_generation import (
     redact_media_evidence_packs,
 )
 from ..wiki.narrator import Narrator
+from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
+from ..wiki.story import derive_story_from_markdown
+from ..wiki.visual_ir import page_visual_contract_report
+from .card_summary import card_summary
 from .config import load_config
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
 from .repo_registry import RepoRegistry
-from .repository_files import bound_source_slice
+from .repository_files import bound_source_slice, safe_repo_relative_path
 from .request_limits import RequestBodyLimitMiddleware
 from .schemas import (
     ChatRequest,
@@ -389,6 +394,8 @@ def _wiki(repo_id: str, bundle=None):
                 llm=_wiki_llm(config),
                 api_base=config.wiki_generation_api_base,
                 api_key=config.wiki_generation_api_key,
+                story_review=os.environ.get("CODENIB_WIKI_STORY_REVIEW", "1").strip()
+                not in {"0", "false", "no", "off"},
             )
         return WikiBuilder(bundle, narrator=getattr(app.state, "narrator", None))
 
@@ -474,6 +481,46 @@ def _materialize_wiki_media(
             exc_info=True,
         )
         return public_page
+
+
+def _attach_overview_repository_visual(
+    repo_id: str,
+    page_id: str,
+    page: dict,
+    bundle,
+) -> dict:
+    """Attach the strongest repository-provided Overview visual, if present."""
+
+    if page_id != "overview":
+        return page
+    entry = getattr(bundle, "entry", None)
+    repo_dir = getattr(entry, "repo_dir", None)
+    if not repo_dir:
+        return page
+    try:
+        visual = discover_overview_visual(
+            repo_dir,
+            repository=getattr(entry, "repo", None),
+            source_reader=getattr(bundle, "source_reader", None),
+        )
+        if visual is None:
+            return page
+        uri = (
+            f"api/repos/{quote(repo_id, safe='')}/wiki-source-assets/"
+            f"{quote(visual.path, safe='/')}"
+        )
+        return attach_repository_visual(page, visual, uri=uri)
+    except MemoryError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - an optional visual fails soft
+        logger.warning(
+            "Repository visual discovery failed for %s/%s: %s",
+            repo_id,
+            page_id,
+            exc,
+            exc_info=True,
+        )
+        return page
 
 
 def _safe_media_filename(value: str) -> str:
@@ -600,6 +647,22 @@ async def list_repos() -> list[RepoInfo]:
         # Surface the global edge-label toggle per repo so the UI can gate the
         # feature, then derive window figures from that same generation.
         info.capabilities = {**info.capabilities, "edge_labels": edge_on}
+        # The card's one-line summary comes from the cached Overview, then the
+        # manifest or README; reading it never starts page generation.
+        try:
+            if bundle is None:
+                target = _bundle(info.id)
+                wiki = await asyncio.to_thread(_wiki, info.id, target)
+            else:
+                target = bundle
+                wiki = await _run_pinned_thread(_wiki, info.id, bundle)
+            lead_of = getattr(wiki, "cached_summary", None)
+            lead = await asyncio.to_thread(lead_of) if callable(lead_of) else None
+            info.summary = await asyncio.to_thread(
+                card_summary, target, lead, info.description
+            )
+        except Exception:  # noqa: BLE001 - a summary must not break the list
+            info.summary = ""
         try:
             if bundle is None:
                 info.incremental = await asyncio.to_thread(
@@ -683,8 +746,32 @@ async def wiki_page(
                 status_code=404,
                 detail=f"Unknown wiki page: {page_id!r}",
             )
+        entry = getattr(bundle, "entry", None)
+        if page_id == "overview" and getattr(entry, "repo_dir", None):
+            page = await _run_pinned_thread(
+                _attach_overview_repository_visual,
+                repo_id,
+                page_id,
+                page,
+                bundle,
+            )
         if "media_slots" not in page:
             page = {**page, "media_slots": []}
+        if page.get("markdown"):
+            # A row repeating an arrow the section flow already draws reads
+            # twice; the flow caption must not claim calls the index lacks.
+            page = {
+                **page,
+                "markdown": qualify_flow_caption(
+                    drop_flow_duplicate_interactions(str(page["markdown"])),
+                    (page.get("evidence") or {}).get("relations") or [],
+                ),
+            }
+        if "story" not in page:
+            page = {
+                **page,
+                "story": derive_story_from_markdown(str(page.get("markdown") or "")),
+            }
         if materialize_media and page.get("media_slots"):
             page = await _run_pinned_thread(
                 _materialize_wiki_media,
@@ -693,6 +780,8 @@ async def wiki_page(
                 page,
                 bundle,
             )
+        if "visual_quality" not in page:
+            page = {**page, "visual_quality": page_visual_contract_report(page)}
         if "generation" not in page:
             page = {
                 **page,
@@ -727,11 +816,56 @@ async def wiki_media_asset(repo_id: str, page_id: str, filename: str):
             "X-Content-Type-Options": "nosniff",
         }
         if suffix == ".svg":
-            headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+            # An SVG document carries its own presentation in style
+            # attributes; scripts, fetches and frames stay blocked.
+            headers["Content-Security-Policy"] = (
+                "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+            )
         return Response(
             content=payload,
             media_type=_WIKI_MEDIA_TYPES[suffix],
             headers=headers,
+        )
+
+
+@app.get("/api/repos/{repo_id}/wiki-source-assets/{filename:path}")
+async def wiki_repository_visual_asset(repo_id: str, filename: str):
+    """Serve only the repository image selected for the Overview lead."""
+
+    with _pinned_bundle(repo_id) as bundle:
+        entry = getattr(bundle, "entry", None)
+        repo_dir = getattr(entry, "repo_dir", None)
+        if not repo_dir:
+            raise HTTPException(status_code=404, detail="repository visual not found")
+        safe_path = safe_repo_relative_path(repo_dir, filename)
+        if safe_path is None:
+            raise HTTPException(status_code=404, detail="repository visual not found")
+        try:
+            visual = await _run_pinned_thread(
+                discover_overview_visual,
+                repo_dir,
+                repository=getattr(entry, "repo", None),
+                source_reader=getattr(bundle, "source_reader", None),
+            )
+        except MemoryError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - expose no repository details
+            logger.warning(
+                "Repository visual read failed for %s: %s",
+                repo_id,
+                exc,
+                exc_info=True,
+            )
+            visual = None
+        if visual is None or visual.path != safe_path:
+            raise HTTPException(status_code=404, detail="repository visual not found")
+        return Response(
+            content=visual.payload,
+            media_type=visual.mime_type,
+            headers={
+                "Cache-Control": "private, no-store",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
 
@@ -781,6 +915,97 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
             repo_dir=bundle.entry.repo_dir,
             hierarchy_graph=hierarchy_graph,
             source_reader=bundle.source_reader,
+        )
+
+
+_AREA_MAP_CACHE: dict[tuple[str, str], dict] = {}
+
+
+@app.get("/api/repos/{repo_id}/wiki-map")
+async def wiki_area_map(repo_id: str) -> dict:
+    """How the wiki's top-level areas call each other in the indexed graph.
+
+    Uses only citations the wiki already resolved, so opening the map never
+    starts page generation.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        entry = getattr(bundle, "entry", None)
+        cache_key = (repo_id, str(getattr(entry, "base_commit", "") or ""))
+        if cache_key in _AREA_MAP_CACHE:
+            return _AREA_MAP_CACHE[cache_key]
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        page_citations = getattr(builder, "page_citations", None)
+        graph = await _run_pinned_thread(bundle.code_graph)
+        if graph is None or not callable(page_citations):
+            return {"available": False, "areas": [], "links": []}
+        tree = await _run_pinned_thread(builder.page_tree)
+
+        def collect() -> list[dict]:
+            areas = []
+            for top in tree:
+                if top.get("id") == "overview":
+                    continue
+                ids = [top["id"]] + [child["id"] for child in top.get("children") or []]
+                areas.append(
+                    {
+                        "id": top["id"],
+                        "title": top.get("title") or top["id"],
+                        "citations": [page_citations(page_id) or [] for page_id in ids],
+                    }
+                )
+            return areas
+
+        areas = await _run_pinned_thread(collect)
+        from .codemap import build_area_map
+
+        result = await _run_pinned_thread(
+            build_area_map,
+            graph,
+            areas,
+            repo_dir=getattr(entry, "repo_dir", None),
+            source_reader=getattr(bundle, "source_reader", None),
+        )
+        _AREA_MAP_CACHE[cache_key] = result
+        return result
+
+
+@app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")
+async def wiki_page_boundary(repo_id: str, page_id: str) -> dict:
+    """Callers into a page's cited symbols and the calls it makes outward.
+
+    Read straight off the indexed graph, so the same commit always yields the
+    same card; every row carries its exact call sites.
+    """
+    with _pinned_bundle(repo_id) as bundle:
+        builder = await _run_pinned_thread(_wiki, repo_id, bundle)
+        page_citations = getattr(builder, "page_citations", None)
+        if callable(page_citations):
+            citations = await _run_pinned_thread(page_citations, page_id)
+        else:
+            page = await _run_pinned_thread(builder.page, page_id)
+            citations = page.get("citations", []) if isinstance(page, dict) else None
+        if citations is None:
+            raise HTTPException(
+                status_code=404, detail=f"Unknown wiki page: {page_id!r}"
+            )
+        graph = await _run_pinned_thread(bundle.code_graph)
+        if graph is None:
+            return {
+                "available": False,
+                "focus": [],
+                "inbound": [],
+                "outbound": [],
+                "truncated": False,
+                "note": bundle.graph_unavailable_note(),
+            }
+        from .codemap import build_page_boundary
+
+        return await _run_pinned_thread(
+            build_page_boundary,
+            graph,
+            citations,
+            repo_dir=bundle.entry.repo_dir,
+            source_reader=getattr(bundle, "source_reader", None),
         )
 
 

@@ -16,15 +16,27 @@ import codenib.wiki.agent_wiki as agent_wiki_module
 from codenib.graph.code_graph import CodeGraph
 from codenib.wiki.agent_wiki import (
     AgentWiki,
+    _admissible_excerpt_caption,
+    _apply_overview_editorial_budget,
     _candidate_score,
     _clean_markdown,
     _compact_dense_plan,
+    _compact_overview_identifiers,
     _condense_relation_free_overview,
+    _drop_duplicate_framing,
     _ensure_cited_intro,
+    _excerpt_focus_terms,
+    _excerpt_window,
     _fact_plan_markdown,
     _format_supported_literals,
+    _framing_repeats_claim,
+    _handoff_label,
+    _interaction_row,
+    _journey_flow,
+    _journey_from_path,
     _normalize_plan_support,
     _overview_symbol_role_score,
+    _owning_topic,
     _page_planning_guidance,
     _page_quality_report,
     _plan_evidence_constraints,
@@ -37,13 +49,26 @@ from codenib.wiki.agent_wiki import (
     _relation_backed_recovery_plan,
     _remove_orphan_headings,
     _renderable_plan,
+    _subsystem_table,
     _supplement_topic_relation_flows,
 )
 from codenib.wiki.builder import Symbol
-from codenib.wiki.evidence import EvidenceItem, RelationItem, candidate_key
-from codenib.wiki.quality import prose_integrity_report
+from codenib.wiki.evidence import (
+    EvidenceItem,
+    RelationItem,
+    candidate_key,
+    grounding_report,
+)
+from codenib.wiki.fences import strip_code_fences
+from codenib.wiki.multimodal import MEDIA_PLAN_VERSION
+from codenib.wiki.quality import (
+    duplicate_prose_blocks,
+    prose_integrity_report,
+    section_sentence_redundancy_report,
+)
 from codenib.wiki.sqlite_store import SQLiteWikiStore
 from codenib.wiki.store import WikiStoreError
+from codenib.wiki.story import finalize_story_ir, story_quality_report
 
 
 class _FakeVectorStore:
@@ -79,6 +104,93 @@ def test_rel_uses_bound_source_inventory_without_live_exists(monkeypatch):
 
     assert wiki._rel("/builder/root/src/app.py") == "src/app.py"
     assert wiki._rel("/builder/root/private/secret.py") is None
+
+
+def _add_overview_architecture(
+    plan: dict,
+    evidence_ids: tuple[str, ...] = ("E1", "E2", "E3", "E4"),
+) -> dict:
+    refs = evidence_ids or ("E1",)
+    plan["architecture"] = {
+        "title": "How repository input becomes a source-linked result",
+        "components": [
+            {
+                "id": "reader",
+                "label": "Reader input",
+                "responsibility": "Supplies the repository request.",
+                "layer": "external",
+                "kind": "external",
+                "evidence": [refs[0]],
+            },
+            {
+                "id": "surface",
+                "label": "Entry surfaces",
+                "responsibility": "Accept repository input.",
+                "layer": "interface",
+                "kind": "frontend",
+                "evidence": [refs[min(1, len(refs) - 1)]],
+            },
+            {
+                "id": "coordination",
+                "label": "Workflow coordination",
+                "responsibility": "Plans the repository work.",
+                "layer": "coordination",
+                "kind": "backend",
+                "evidence": [refs[min(2, len(refs) - 1)]],
+            },
+            {
+                "id": "execution",
+                "label": "Repository execution",
+                "responsibility": "Builds the source-backed result.",
+                "layer": "execution",
+                "kind": "backend",
+                "evidence": [refs[min(2, len(refs) - 1)]],
+            },
+            {
+                "id": "result",
+                "label": "Source-linked result",
+                "responsibility": "Returns the result to the reader.",
+                "layer": "data",
+                "kind": "database",
+                "evidence": [refs[-1]],
+            },
+        ],
+        "connections": [
+            {
+                "source": "reader",
+                "target": "surface",
+                "label": "submits repository input",
+                "evidence": [refs[0]],
+            },
+            {
+                "source": "surface",
+                "target": "coordination",
+                "label": "frames repository work",
+                "evidence": [refs[min(1, len(refs) - 1)]],
+            },
+            {
+                "source": "coordination",
+                "target": "execution",
+                "label": "dispatches planned work",
+                "evidence": [refs[min(2, len(refs) - 1)]],
+            },
+            {
+                "source": "execution",
+                "target": "result",
+                "label": "returns source-linked output",
+                "evidence": [refs[-1]],
+            },
+        ],
+        "primary_path": [
+            "reader",
+            "surface",
+            "coordination",
+            "execution",
+            "result",
+        ],
+        "boundaries": [],
+    }
+    return plan
 
 
 def test_markdown_cleanup_removes_outer_fence_and_uncited_prose():
@@ -134,6 +246,38 @@ def test_style_repair_is_a_bounded_zero_temperature_edit():
     assert "do not replace it with a synonym" in prompt
 
 
+def test_enabled_story_review_uses_its_reader_rubric_without_shadowing_method():
+    class LLM:
+        cache_identity = "fake"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, _messages, **_kwargs):
+            self.calls += 1
+            return json.dumps(
+                {
+                    key: {"score": 1, "quote": "The page states the case."}
+                    for key in ("problem", "path", "decision", "failure")
+                }
+                | {"jargon": False, "repetition": False, "notes": ""}
+            )
+
+    llm = LLM()
+    wiki = AgentWiki(
+        SimpleNamespace(entry=SimpleNamespace(repo="owner/repo", language="python")),
+        model="fake-model",
+        llm=llm,
+        story_review=True,
+    )
+
+    review = wiki._review_story("The page states the case. [E1]")
+
+    assert llm.calls == 1
+    assert review is not None
+    assert review["passed"] is True
+
+
 def test_candidate_score_prefers_fewer_style_warnings():
     quality = {
         "valid": True,
@@ -182,8 +326,8 @@ def test_plan_repair_score_keeps_richer_progress_under_the_same_warning():
     assert _plan_repair_score(richer, warning) < _plan_repair_score(sparse, warning)
 
 
-def test_plan_repair_score_never_trades_a_required_topic_for_style_progress():
-    plan = {
+def test_plan_repair_score_prefers_editorial_budget_over_more_detail():
+    concise = {
         "sections": [
             {
                 "title": "Core Formatting",
@@ -197,18 +341,33 @@ def test_plan_repair_score_never_trades_a_required_topic_for_style_progress():
             }
         ]
     }
-    catalog_warnings = [
-        "page plan is dominated by isolated operation sections: Core Formatting",
-        "Overview reads as a callable catalog",
-    ]
-    missing_topic = [
-        "Overview needs a 'Core Formatting' section grounded in its allocated "
-        "evidence"
-    ]
+    overloaded = {
+        "sections": [
+            *concise["sections"],
+            *[
+                {
+                    "title": f"Detail {index}",
+                    "claims": [
+                        {
+                            "role": "component",
+                            "statement": f"Detail {index} records one symbol",
+                            "evidence": [f"E{index}"],
+                        },
+                        {
+                            "role": "component",
+                            "statement": f"Detail {index} records another symbol",
+                            "evidence": [f"E{index}"],
+                        },
+                    ],
+                }
+                for index in range(2, 7)
+            ],
+        ]
+    }
 
-    assert _plan_repair_score(plan, catalog_warnings) < _plan_repair_score(
-        plan,
-        missing_topic,
+    assert _plan_repair_score(concise, []) < _plan_repair_score(
+        overloaded,
+        ["Overview exceeds the editorial section budget of four"],
     )
 
 
@@ -273,6 +432,60 @@ def test_relation_free_overview_keeps_one_explanatory_fact_per_topic():
     assert [len(section["claims"]) for section in condensed["sections"]] == [1, 1]
 
 
+def test_overview_editorial_budget_removes_inventory_chrome_and_caps_detail():
+    plan = {
+        "purpose": {"statements": ["Purpose"], "evidence": ["E1"]},
+        "map": [{"concern": "Concern", "entity": "Entity", "evidence": ["E1"]}],
+        "see_also": [{"page": str(index)} for index in range(4)],
+        "story": {
+            "beats": [
+                {"section": f"Stage {index}", "role": "mechanism"} for index in range(6)
+            ]
+        },
+        "sections": [
+            {
+                "title": f"Stage {index}",
+                "lead": {
+                    "statements": ["First sentence", "Second sentence"],
+                    "evidence": [f"E{index + 1}"],
+                },
+                "excerpt": {"evidence": f"E{index + 1}"},
+                "claims": [
+                    {
+                        "role": role,
+                        "statement": f"Stage {index} {role} claim",
+                        "evidence": [f"E{index + 1}"],
+                    }
+                    for role in ("component", "responsibility", "flow")
+                ],
+            }
+            for index in range(6)
+        ],
+    }
+
+    concise = _apply_overview_editorial_budget(plan)
+
+    assert "purpose" not in concise
+    assert "map" not in concise
+    assert len(concise["see_also"]) == 2
+    assert len(concise["sections"]) == 4
+    assert concise["sections"][0]["title"] == "Stage 0"
+    assert concise["sections"][-1]["title"] == "Stage 5"
+    assert sum(len(section["claims"]) for section in concise["sections"]) == 4
+    assert all(len(section["claims"]) <= 2 for section in concise["sections"])
+    assert all("excerpt" not in section for section in concise["sections"])
+    assert all("lead" not in section for section in concise["sections"])
+
+
+def test_transition_preview_deduplicates_the_same_callable_claim():
+    assert _framing_repeats_claim(
+        "The agent's search actions are parsed by `SearchOutputParser.parse()`, "
+        "which routes to `parse_explore()` for exploration results.",
+        "`SearchOutputParser.parse()` routes to "
+        "`SearchOutputParser.parse_explore()` when the method is `explore`.",
+    )
+
+
 def test_markdown_cleanup_removes_empty_sections_but_keeps_parent_sections():
     markdown = (
         "## Runtime\n\n"
@@ -306,6 +519,14 @@ def test_supported_literals_render_as_inline_code():
     assert "'stable behavior'" in rendered
 
 
+def test_overview_display_hides_path_qualification_owned_by_citations():
+    rendered = _compact_overview_identifiers(
+        "`src/runtime.py:Runtime.run()` calls `src/store.py:Store.save()`"
+    )
+
+    assert rendered == "`Runtime.run()` calls `Store.save()`"
+
+
 def test_parent_page_guidance_reserves_child_implementation_details():
     guidance = _page_planning_guidance(
         {
@@ -321,7 +542,7 @@ def test_parent_page_guidance_reserves_child_implementation_details():
     assert "BM25 Indexing, Vector Indexing" in guidance
 
 
-def test_overview_guidance_uses_the_outline_as_a_breadth_check():
+def test_overview_guidance_treats_outline_as_candidate_evidence():
     guidance = _page_planning_guidance(
         {
             "id": "overview",
@@ -334,7 +555,11 @@ def test_overview_guidance_uses_the_outline_as_a_breadth_check():
     )
 
     assert "Indexing, Wiki Serving, Agent Runtime" in guidance
-    assert "Do not spend multiple sections on one area" in guidance
+    assert "candidates, not a coverage checklist" in guidance
+    assert "two to four sections" in guidance
+    assert "semantic roles, layers, primary runtime path" in guidance
+    assert "not a static call graph" in guidance
+    assert "Unused evidence is evidence of editorial restraint" in guidance
 
 
 def test_overview_meta_uses_parent_level_files_from_each_major_topic():
@@ -498,9 +723,10 @@ def test_overview_constraints_bind_topics_to_retrieved_evidence():
     assert "Indexing=E2" in constraints
     assert "E2 (`IndexBuilderRegistry`)" in constraints
     assert "R1 (`IndexBuilderRegistry.build()` -> `RepoManifest.save()`)" in constraints
-    assert "use it for that topic's concrete flow claim" in constraints
+    assert "R# relations may ground semantic architecture connections" in constraints
+    assert "do not require prose call claims" in constraints
     assert "do not shorten a method to its owner class" in constraints
-    assert "must cite its allocated evidence" in constraints
+    assert "unselected topics must not receive placeholder sections" in constraints
 
 
 def test_overview_constraints_guide_relation_free_topics_away_from_catalogs():
@@ -935,6 +1161,180 @@ def test_fact_plan_renderer_admits_only_source_backed_framing():
     assert "user-friendly" not in markdown
 
 
+def test_fact_plan_story_reorders_sections_and_renders_grounded_transitions():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/pipeline.py",
+            start_line=1,
+            end_line=8,
+            symbol="Pipeline.accept",
+            kind="method",
+            content=(
+                "def accept(self, request_payload):\n"
+                "    # The normalization stage produces a normalized request "
+                "payload.\n"
+                "    return normalize(request_payload)"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/store.py",
+            start_line=1,
+            end_line=8,
+            symbol="Store.write",
+            kind="method",
+            content=(
+                "def write(self, normalized_payload):\n"
+                "    # The persistence stage stores the normalized request "
+                "payload.\n"
+                "    self.storage.append(normalized_payload)"
+            ),
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The pipeline joins normalization and persistence stages",
+            "evidence": ["E1", "E2"],
+        },
+        "story": {
+            "origin": "planned",
+            "reader_question": {
+                "statement": (
+                    "How does `Pipeline.accept()` move a request payload into "
+                    "storage?"
+                ),
+                "evidence": ["E1", "E2"],
+            },
+            "beats": [
+                {"section": "Accept input", "role": "entry"},
+                {
+                    "section": "Persist result",
+                    "role": "outcome",
+                    "transition": {
+                        "statement": (
+                            "The normalization stage hands its result to the "
+                            "persistence stage"
+                        ),
+                        "evidence": ["E1", "E2"],
+                    },
+                },
+            ],
+        },
+        # Deliberately reverse the facts: the story, not retrieval order,
+        # controls the reader's path.
+        "sections": [
+            {
+                "title": "Persist result",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`Store.write()` stores the normalized request payload"
+                        ),
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+            {
+                "title": "Accept input",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": (
+                            "`Pipeline.accept()` produces a normalized request "
+                            "payload"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            },
+        ],
+    }
+
+    rendered = _renderable_plan(plan, evidence, [])
+    rendered = finalize_story_ir(rendered, available_ids=["E1", "E2"])
+    markdown = _fact_plan_markdown(rendered, evidence, [])
+
+    assert [section["title"] for section in rendered["sections"]] == [
+        "Accept input",
+        "Persist result",
+    ]
+    assert "**Reader question:**" in markdown
+    assert markdown.index("## Accept input") < markdown.index("## Persist result")
+    assert "*The normalization stage hands its result" in markdown
+    assert rendered["story"]["evidence_budget"]["allocated_source_evidence"] == 2
+    assert story_quality_report(rendered)["story_valid"] is True
+
+
+def test_fact_plan_story_drops_a_transition_spliced_across_unrelated_sources():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/alpha.py",
+            start_line=1,
+            end_line=3,
+            symbol="alpha",
+            kind="function",
+            content="def alpha():\n    return prepared_value",
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/beta.py",
+            start_line=1,
+            end_line=3,
+            symbol="beta",
+            kind="function",
+            content=(
+                "def beta(prepared_value):\n"
+                "    # Store a prepared value.\n"
+                "    storage.append(prepared_value)"
+            ),
+        ),
+    ]
+    plan = {
+        "story": {
+            "origin": "planned",
+            "beats": [
+                {"section": "Prepare", "role": "entry"},
+                {
+                    "section": "Store",
+                    "role": "handoff",
+                    "transition": {
+                        "statement": "`alpha()` calls `beta()` with the prepared value",
+                        "evidence": ["E1", "E2"],
+                    },
+                },
+            ],
+        },
+        "sections": [
+            {
+                "title": "Prepare",
+                "claims": [
+                    {
+                        "statement": "`alpha()` returns a prepared value",
+                        "evidence": ["E1"],
+                    }
+                ],
+            },
+            {
+                "title": "Store",
+                "claims": [
+                    {
+                        "statement": "`beta()` stores a prepared value",
+                        "evidence": ["E2"],
+                    }
+                ],
+            },
+        ],
+    }
+
+    rendered = _renderable_plan(plan, evidence, [])
+
+    assert "transition" not in rendered["story"]["beats"][1]
+    assert "calls `beta()`" not in _fact_plan_markdown(rendered, evidence, [])
+
+
 def test_fact_plan_excerpt_caption_is_neutral_source_metadata():
     evidence = [
         EvidenceItem(
@@ -978,11 +1378,94 @@ def test_fact_plan_excerpt_caption_is_neutral_source_metadata():
 
     integrity = prose_integrity_report(markdown)
 
-    assert "Source excerpt. [E1]" in markdown
+    assert "Source excerpt from `encode_payload`. [E1]" in markdown
     assert "`src/codec.py:1-8`" not in markdown
     assert "shows how values become bytes" not in markdown
     assert integrity["reference_narration_sentences"] == []
     assert integrity["prose_integrity_valid"] is True
+
+
+def test_concise_overview_renderer_keeps_the_argument_not_the_scaffolding():
+    evidence = [
+        EvidenceItem(
+            id="E0",
+            file="README.md",
+            start_line=1,
+            end_line=2,
+            symbol="README.md",
+            kind="file",
+            content="The project turns repository requests into source-linked results.",
+        ),
+        *[
+            EvidenceItem(
+                id=f"E{index}",
+                file=f"src/stage_{index}.py",
+                start_line=1,
+                end_line=5,
+                symbol=f"stage_{index}",
+                kind="function",
+                content=statement,
+            )
+            for index, statement in [
+                (1, "stage_1 accepts the repository request and prepares it"),
+                (2, "stage_2 transforms the prepared repository request"),
+                (3, "stage_3 returns the source-linked result to the caller"),
+            ]
+        ],
+    ]
+    plan = {
+        "thesis": {
+            "statement": "The project turns repository requests into source-linked results",
+            "evidence": ["E0"],
+        },
+        "purpose": {
+            "statements": ["`stage_1` prepares repository requests"],
+            "evidence": ["E1"],
+        },
+        "map": [
+            {
+                "concern": f"Stage {index}",
+                "entity": f"`stage_{index}`",
+                "evidence": [f"E{index}"],
+            }
+            for index in range(1, 4)
+        ],
+        "sections": [
+            {
+                "title": title,
+                "excerpt": {"evidence": f"E{index}"},
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": statement,
+                        "evidence": [f"E{index}"],
+                    }
+                ],
+            }
+            for index, title, statement in [
+                (1, "The entry", "`stage_1` prepares the repository request"),
+                (2, "The mechanism", "`stage_2` transforms the prepared request"),
+                (3, "The result", "`stage_3` returns the source-linked result"),
+            ]
+        ],
+    }
+
+    markdown = _fact_plan_markdown(
+        plan,
+        evidence,
+        [],
+        concise_overview=True,
+    )
+
+    assert "## Purpose and scope" not in markdown
+    assert "## At a glance" not in markdown
+    assert "Source excerpt" not in markdown
+    assert "```" not in markdown
+    assert [line for line in markdown.splitlines() if line.startswith("## ")] == [
+        "## The entry",
+        "## The mechanism",
+        "## The result",
+    ]
 
 
 def test_fact_plan_renderer_drops_a_lead_that_repeats_its_claim():
@@ -1587,21 +2070,11 @@ def test_overview_plan_requires_dense_page_wide_evidence():
                         "statement": "The CLI accepts a repository path",
                         "evidence": ["E2"],
                     },
-                    {
-                        "role": "purpose",
-                        "statement": "The Wiki exposes indexed source",
-                        "evidence": ["E1"],
-                    },
                 ],
             },
             {
                 "title": "Flow",
                 "claims": [
-                    {
-                        "role": "component",
-                        "statement": "The CLI accepts repository requests",
-                        "evidence": ["E2"],
-                    },
                     {
                         "role": "responsibility",
                         "statement": "The compiler records repository indexes",
@@ -1626,6 +2099,7 @@ def test_overview_plan_requires_dense_page_wide_evidence():
             },
         ],
     }
+    _add_overview_architecture(dense)
     meta = {"id": "overview"}
 
     assert _plan_quality_warnings(meta, sparse, evidence)
@@ -1743,7 +2217,7 @@ def test_overview_density_counts_the_rendered_thesis():
     )
 
 
-def test_overview_fact_minimum_tracks_allocated_topic_coverage():
+def test_overview_fact_minimum_tracks_editorial_floor_not_topic_count():
     evidence = [
         EvidenceItem(
             id=f"E{index}",
@@ -1801,13 +2275,13 @@ def test_overview_fact_minimum_tracks_allocated_topic_coverage():
     assert not any(
         warning.startswith("Overview needs at least") for warning in warnings
     )
-    assert any(
-        warning.startswith("Overview needs at least 5 supported narrative facts")
-        for warning in sparse_warnings
+    assert "page thesis must be a source-grounded claim" in sparse_warnings
+    assert not any(
+        "every planned or allocated topic" in warning for warning in sparse_warnings
     )
 
 
-def test_overview_requires_two_facts_for_a_topic_with_multiple_sources():
+def test_overview_does_not_expand_a_topic_to_consume_multiple_sources():
     evidence = [
         EvidenceItem(
             id="E1",
@@ -1864,10 +2338,7 @@ def test_overview_requires_two_facts_for_a_topic_with_multiple_sources():
 
     warnings = _plan_quality_warnings(meta, plan, evidence)
 
-    assert (
-        "Overview 'Chrono Support' needs two complementary supported facts "
-        "when multiple source items are allocated" in warnings
-    )
+    assert not any("two complementary supported facts" in item for item in warnings)
 
 
 def test_overview_accepts_one_substantive_fact_for_an_allocated_topic():
@@ -1969,21 +2440,11 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
                         "statement": "The Wiki accepts a repository path",
                         "evidence": ["E1"],
                     },
-                    {
-                        "role": "purpose",
-                        "statement": "The Wiki builds repository indexes",
-                        "evidence": ["E1"],
-                    },
                 ],
             },
             {
                 "title": "Execution",
                 "claims": [
-                    {
-                        "role": "component",
-                        "statement": "The CLI starts command execution",
-                        "evidence": ["E2"],
-                    },
                     {
                         "role": "responsibility",
                         "statement": "The compiler writes a manifest",
@@ -2008,6 +2469,7 @@ def test_overview_plan_allows_one_source_for_a_cohesive_section():
             },
         ],
     }
+    _add_overview_architecture(plan)
 
     assert _plan_quality_warnings({"id": "overview"}, plan, evidence) == []
 
@@ -2049,21 +2511,11 @@ def test_overview_plan_allows_distinct_readme_facts():
                         "statement": "The CLI accepts a path",
                         "evidence": ["E2"],
                     },
-                    {
-                        "role": "purpose",
-                        "statement": "The Wiki contains source links",
-                        "evidence": ["E1"],
-                    },
                 ],
             },
             {
                 "title": "Execution",
                 "claims": [
-                    {
-                        "role": "component",
-                        "statement": "The CLI accepts repository paths",
-                        "evidence": ["E2"],
-                    },
                     {
                         "role": "responsibility",
                         "statement": "The compiler writes a manifest",
@@ -2088,6 +2540,7 @@ def test_overview_plan_allows_distinct_readme_facts():
             },
         ],
     }
+    _add_overview_architecture(plan)
 
     warnings = _plan_quality_warnings({"id": "overview"}, plan, evidence)
 
@@ -2126,11 +2579,6 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
                         "statement": "The Wiki accepts a repository",
                         "evidence": ["E1"],
                     },
-                    {
-                        "role": "purpose",
-                        "statement": "The Wiki indexes the repository",
-                        "evidence": ["E1"],
-                    },
                 ],
             },
             {
@@ -2140,11 +2588,6 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
                         "role": "component",
                         "statement": "The CLI starts command execution",
                         "evidence": ["E2"],
-                    },
-                    {
-                        "role": "responsibility",
-                        "statement": "The server returns Wiki pages",
-                        "evidence": ["E4"],
                     },
                 ],
             },
@@ -2165,13 +2608,14 @@ def test_overview_plan_allows_core_source_reuse_for_distinct_claims():
             },
         ],
     }
+    _add_overview_architecture(plan)
 
     warnings = _plan_quality_warnings({"id": "overview"}, plan, evidence)
 
     assert warnings == []
 
 
-def test_overview_plan_requires_each_major_topic_to_use_its_evidence():
+def test_overview_plan_may_leave_a_major_topic_to_its_child_page():
     evidence = [
         EvidenceItem(
             id=f"E{index}",
@@ -2243,13 +2687,10 @@ def test_overview_plan_requires_each_major_topic_to_use_its_evidence():
 
     warnings = _plan_quality_warnings(meta, plan, evidence)
 
-    assert (
-        "Overview needs a 'Agent Runtime' section grounded in its allocated "
-        "evidence" in warnings
-    )
+    assert not any("Agent Runtime" in warning for warning in warnings)
 
 
-def test_overview_plan_requires_each_topic_to_use_its_allocated_relation():
+def test_overview_plan_does_not_require_a_prose_relation():
     evidence = [
         EvidenceItem(
             id=f"E{index}",
@@ -2357,13 +2798,12 @@ def test_overview_plan_requires_each_topic_to_use_its_allocated_relation():
 
     warnings = _plan_quality_warnings(meta, plan, evidence, relations)
 
-    assert (
-        "Overview 'Agent Runtime' must use an allocated relation (R1) for its "
-        "concrete flow claim" in warnings
-    )
+    assert not any("allocated relation" in warning for warning in warnings)
+    assert not any("supported component handoff" in warning for warning in warnings)
+    assert any("semantic architecture plan" in warning for warning in warnings)
 
 
-def test_overview_supplements_an_allocated_callable_relation():
+def test_overview_does_not_supplement_an_allocated_callable_relation():
     plan = {
         "sections": [
             {
@@ -2404,15 +2844,10 @@ def test_overview_supplements_an_allocated_callable_relation():
         [relation],
     )
 
-    flow = supplemented["sections"][0]["claims"][2]
-    assert flow == {
-        "role": "flow",
-        "statement": "`run()` calls `compile_query()`",
-        "evidence": ["R1"],
-    }
+    assert supplemented == plan
 
 
-def test_overview_aligns_an_existing_handoff_with_its_allocated_relation():
+def test_overview_removes_an_existing_callable_handoff():
     plan = {
         "sections": [
             {
@@ -2451,14 +2886,13 @@ def test_overview_aligns_an_existing_handoff_with_its_allocated_relation():
         [relation],
     )
 
-    flow = supplemented["sections"][0]["claims"][1]
-    assert flow["statement"] == (
-        "`Editor.revise_bug()` uses `Editor._edit_with_new_code()` "
-        "to update a snippet"
-    )
-    assert flow["role"] == "flow"
-    assert flow["evidence"] == ["E2", "R1"]
-    assert len(supplemented["sections"][0]["claims"]) == 2
+    assert supplemented["sections"][0]["claims"] == [
+        {
+            "role": "responsibility",
+            "statement": "`Editor.create_patch()` creates a patch",
+            "evidence": ["E1"],
+        }
+    ]
 
 
 def test_parent_page_supplements_a_relation_in_its_source_section():
@@ -2570,7 +3004,7 @@ def test_parent_page_does_not_attach_an_unrelated_relation():
     assert supplemented == plan
 
 
-def test_overview_supplements_a_missing_topic_with_two_callable_relations():
+def test_overview_does_not_create_a_section_only_to_cover_relations():
     relations = [
         RelationItem(
             id="R1",
@@ -2598,23 +3032,7 @@ def test_overview_supplements_a_missing_topic_with_two_callable_relations():
         relations,
     )
 
-    assert supplemented["sections"] == [
-        {
-            "title": "Indexing",
-            "claims": [
-                {
-                    "role": "flow",
-                    "statement": "`register_builders()` calls `Registry.register()`",
-                    "evidence": ["R1"],
-                },
-                {
-                    "role": "flow",
-                    "statement": "`register_builders()` calls `default_filters()`",
-                    "evidence": ["R2"],
-                },
-            ],
-        }
-    ]
+    assert supplemented["sections"] == []
 
 
 def test_overview_plan_rejects_private_helper_as_user_entrypoint():
@@ -3504,7 +3922,12 @@ def test_relation_recovery_plan_uses_verified_call_endpoints():
         == []
     )
     assert "## Verified call path" in markdown
-    assert "`fmt.detail.do_write_float()` calls `fmt.detail.write_fixed()`" in markdown
+    # Relations render as rows with their call site, never as a sentence.
+    assert (
+        "**Interactions**\n- `fmt.detail.do_write_float()` → "
+        "`fmt.detail.write_fixed()` [R1]" in markdown
+    )
+    assert "calls `fmt.detail.write_fixed()`" not in markdown
     assert "Source-backed components" not in markdown
     assert "is indexed from" not in markdown
 
@@ -4073,7 +4496,7 @@ def test_fact_plan_caps_total_model_calls_when_repairs_never_improve(monkeypatch
     assert metrics["fresh_replans"] + metrics["repair_attempts"] == 2
 
 
-def test_overview_fact_plan_repairs_sparse_plan():
+def test_overview_fact_plan_accepts_a_concise_supported_plan():
     sparse = {
         "thesis": "indexed source",
         "sections": [
@@ -4106,6 +4529,7 @@ def test_overview_fact_plan_repairs_sparse_plan():
             },
         ],
     }
+    _add_overview_architecture(sparse)
     dense = {
         "thesis": {
             "statement": "The repository serves indexed source through a local Wiki",
@@ -4225,9 +4649,9 @@ def test_overview_fact_plan_repairs_sparse_plan():
         [],
     )
 
-    assert llm.calls == 2
+    assert llm.calls == 1
     assert warnings == []
-    assert len(plan["sections"][2]["claims"]) == 2
+    assert [len(section["claims"]) for section in plan["sections"]] == [1, 1, 1]
 
 
 def test_overview_fact_plan_merges_complementary_repairs():
@@ -4247,20 +4671,9 @@ def test_overview_fact_plan_merges_complementary_repairs():
                     }
                 ],
             },
-            {
-                "title": "Build",
-                "claims": [
-                    {
-                        "role": "responsibility",
-                        "statement": (
-                            "`Compiler.record()` uses " "`Manifest(repository_indexes)`"
-                        ),
-                        "evidence": ["E3"],
-                    }
-                ],
-            },
         ],
     }
+    _add_overview_architecture(initial)
     complementary = {
         "thesis": initial["thesis"],
         "sections": [
@@ -4358,7 +4771,6 @@ def test_overview_fact_plan_merges_complementary_repairs():
     assert llm.calls == 2, warnings
     assert [section["title"] for section in plan["sections"]] == [
         "Workflow",
-        "Build",
         "Runtime",
     ]
     assert not any(warning.startswith("Overview needs") for warning in warnings)
@@ -4566,6 +4978,7 @@ def test_overview_uses_canonical_readme_intro():
     ]
     draft = (
         "This document provides a comprehensive overview of the system. [E1]\n\n"
+        "> **Reader question:** How does source become a Wiki? [E1]\n\n"
         "## Workflow\n\n"
         "The command builds a repository Wiki. [E1]"
     )
@@ -4577,6 +4990,7 @@ def test_overview_uses_canonical_readme_intro():
         "through a local developer Wiki. [E1]"
     )
     assert "This document provides" not in rendered
+    assert "> **Reader question:** How does source become a Wiki? [E1]" in rendered
     assert "## Workflow" in rendered
 
 
@@ -5892,72 +6306,66 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
 
-    plan = json.dumps(
-        {
-            "thesis": {
-                "statement": (
-                    "The repository compiles local source into lexical, semantic, "
-                    "and structural views"
-                ),
-                "evidence": ["E1"],
+    plan_payload = {
+        "thesis": {
+            "statement": (
+                "The repository compiles local source into lexical, semantic, "
+                "and structural views"
+            ),
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Workflow",
+                "claims": [
+                    {
+                        "role": "entry",
+                        "statement": (
+                            "Users run `codenib wiki` with a repository path "
+                            "to detect languages and start the local Wiki"
+                        ),
+                        "evidence": ["E1"],
+                    },
+                ],
             },
-            "sections": [
-                {
-                    "title": "Workflow",
-                    "claims": [
-                        {
-                            "role": "entry",
-                            "statement": (
-                                "Users run `codenib wiki` with a repository path"
-                            ),
-                            "evidence": ["E1"],
-                        },
-                        {
-                            "role": "contract",
-                            "statement": ("The command detects repository languages"),
-                            "evidence": ["E1"],
-                        },
-                    ],
-                },
-                {
-                    "title": "Execution",
-                    "claims": [
-                        {
-                            "role": "flow",
-                            "statement": "`main` invokes `compile_repository`",
-                            "evidence": ["E2"],
-                        },
-                        {
-                            "role": "responsibility",
-                            "statement": "The `Compiler` builds repository views",
-                            "evidence": ["E3"],
-                        },
-                    ],
-                },
-                {
-                    "title": "Subsystems",
-                    "claims": [
-                        {
-                            "role": "responsibility",
-                            "statement": (
-                                "The `Server` returns source-linked Wiki pages "
-                                "to callers"
-                            ),
-                            "evidence": ["E4"],
-                        },
-                        {
-                            "role": "contract",
-                            "statement": (
-                                "The page method accepts a page identifier and "
-                                "returns Markdown content"
-                            ),
-                            "evidence": ["E4"],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
+            {
+                "title": "Execution",
+                "claims": [
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`main` invokes `compile_repository` to begin the "
+                            "repository compilation workflow"
+                        ),
+                        "evidence": ["E2"],
+                    },
+                ],
+            },
+            {
+                "title": "Subsystems",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "The `Server` returns source-linked Wiki pages "
+                            "to callers"
+                        ),
+                        "evidence": ["E4"],
+                    },
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "The page method accepts a page identifier and "
+                            "returns Markdown content"
+                        ),
+                        "evidence": ["E4"],
+                    },
+                ],
+            },
+        ],
+    }
+    _add_overview_architecture(plan_payload)
+    plan = json.dumps(plan_payload)
 
     class LLM:
         cache_identity = "fake"
@@ -5983,7 +6391,9 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
         manifest=SimpleNamespace(languages=["python"], indexes={}),
         code_graph=lambda: None,
     )
-    page = AgentWiki(bundle, model="fake-model", llm=llm)._generate_page(
+    wiki = AgentWiki(bundle, model="fake-model", llm=llm)
+    wiki._outline = {"pages": []}
+    page = wiki._generate_page(
         {
             "id": "overview",
             "title": "Overview",
@@ -5998,6 +6408,17 @@ def test_overview_uses_validated_fact_plan_without_narration(tmp_path):
     assert page["generation"]["fallback"] is None
     assert page["generation"]["mode"] == "generated"
     assert page["quality"]["valid"] is True
+    assert page["architecture"]["primary_path"] == [
+        "reader",
+        "surface",
+        "coordination",
+        "execution",
+        "result",
+    ]
+    assert len(page["media_slots"]) == 1
+    assert page["media_slots"][0]["render_contract"]["provenance"] == (
+        "architecture-plan"
+    )
     assert "## Workflow" in page["markdown"]
 
 
@@ -6896,6 +7317,34 @@ def test_agent_wiki_page_tree_reports_ready_cold_and_degraded_cache_states(tmp_p
     assert tree[1]["cache_state"] == "degraded"
 
 
+def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose():
+    legacy = {
+        "id": "overview",
+        "title": "Overview",
+        "markdown": "# Overview\n\nSource-grounded prose.",
+        "citations": [{"file": "src/api.py"}],
+        "story": {
+            "beats": [
+                {"section": "Enter", "role": "entry", "evidence": ["E1"]},
+                {"section": "Run", "role": "outcome", "evidence": ["E2"]},
+            ]
+        },
+        "media_slots": [
+            {
+                "id": "overview-story-storyboard",
+                "kind": "storyboard",
+                "placement": "appendix",
+            }
+        ],
+    }
+
+    refreshed = AgentWiki._refresh_media_plan(legacy)
+
+    assert refreshed["markdown"] == legacy["markdown"]
+    assert refreshed["media_plan_version"] == MEDIA_PLAN_VERSION
+    assert refreshed["media_slots"] == []
+
+
 def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path):
     node = {
         "file": "src/router.py",
@@ -7543,8 +7992,8 @@ def test_fact_plan_flow_fallback_caption_is_auditable_and_not_thin():
 
     assert "## How it fits together" in markdown
     assert (
-        "How it fits together. The diagram traces the admitted "
-        "source-to-target handoffs between the named components. [R1] [R2]" in markdown
+        "How it fits together. Each arrow is a call site recorded in the "
+        "index. [R1] [R2]" in markdown
     )
     assert "How it fits together" not in quality["thin_sections"]
 
@@ -7591,3 +8040,821 @@ def test_flow_drops_names_that_exist_without_a_proven_relation():
     }
 
     assert "flow" not in _renderable_plan(plan, evidence, [])
+
+
+def test_handoff_label_keeps_only_the_purpose_clause():
+    assert (
+        _handoff_label(
+            "`Session.send()` calls `HTTPAdapter.send()` to hand the prepared "
+            "request to urllib3."
+        )
+        == "hand the prepared request to urllib3"
+    )
+    assert _handoff_label("`A.run()` calls `B.step()`") == ""
+    assert _handoff_label("`A.run()` calls `B.step()`, which returns `C`") == ""
+    assert _handoff_label("plain prose without code spans") == ""
+
+
+def test_interaction_row_uses_leaf_symbols_and_relation_marker():
+    relation = RelationItem(
+        id="R4",
+        source="src/requests/sessions.py:Session.send()",
+        target="src/requests/adapters.py:HTTPAdapter.send()",
+        anchors=("src/requests/sessions.py:703",),
+    )
+    assert (
+        _interaction_row(relation, "hand the prepared request to urllib3")
+        == "- `Session.send()` → `HTTPAdapter.send()`: hand the prepared "
+        "request to urllib3 [R4]"
+    )
+    assert (
+        _interaction_row(relation) == "- `Session.send()` → `HTTPAdapter.send()` [R4]"
+    )
+
+
+def test_fact_plan_markdown_moves_relation_claims_out_of_prose():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/requests/sessions.py",
+            start_line=680,
+            end_line=720,
+            symbol="src/requests/sessions.py:Session.send()",
+            kind="method",
+            content=(
+                "def send(self, request, **kwargs):\n"
+                "    adapter = self.get_adapter(url=request.url)\n"
+                "    r = adapter.send(request, **kwargs)\n"
+                "    return r\n"
+            ),
+        ),
+    ]
+    relations = [
+        RelationItem(
+            id="R1",
+            source="src/requests/sessions.py:Session.send()",
+            target="src/requests/adapters.py:HTTPAdapter.send()",
+            anchors=("src/requests/sessions.py:703",),
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Dispatch",
+                "claims": [
+                    {
+                        "role": "responsibility",
+                        "statement": (
+                            "`Session.send()` picks the adapter for the request "
+                            "URL and returns the adapter's response"
+                        ),
+                        "evidence": ["E1"],
+                    },
+                    {
+                        "role": "flow",
+                        "statement": (
+                            "`Session.send()` calls `HTTPAdapter.send()` to hand "
+                            "the prepared request to the transport"
+                        ),
+                        "evidence": ["R1"],
+                    },
+                ],
+            }
+        ],
+    }
+    rendered = _renderable_plan(plan, evidence, relations)
+    markdown = _fact_plan_markdown(rendered, evidence, relations)
+
+    assert "picks the adapter for the request URL" in markdown
+    assert "calls `HTTPAdapter.send()`" not in markdown
+    assert (
+        "**Interactions**\n- `Session.send()` → `HTTPAdapter.send()`: hand the "
+        "prepared request to the transport [R1]" in markdown
+    )
+    quality = _page_quality_report(
+        markdown,
+        rendered,
+        require_interaction=True,
+        relations=relations,
+        evidence_items=evidence,
+    )
+    assert quality["interaction_row_count"] == 1
+    assert quality["valid"] is True
+
+
+def _journey_fixture():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/requests/api.py",
+            start_line=14,
+            end_line=60,
+            symbol="src/requests/api.py:request()",
+            kind="function",
+            content=(
+                "def request(method, url, **kwargs):\n"
+                "    with sessions.Session() as session:\n"
+                "        return session.request(method=method, url=url, **kwargs)\n"
+            ),
+        ),
+        EvidenceItem(
+            id="E2",
+            file="src/requests/sessions.py",
+            start_line=500,
+            end_line=590,
+            symbol="src/requests/sessions.py:Session.request()",
+            kind="method",
+            content=(
+                "def request(self, method, url, **kwargs):\n"
+                "    req = Request(method=method.upper(), url=url)\n"
+                "    prep = self.prepare_request(req)\n"
+                "    resp = self.send(prep, **send_kwargs)\n"
+                "    return resp\n"
+            ),
+        ),
+        EvidenceItem(
+            id="E3",
+            file="src/requests/adapters.py",
+            start_line=600,
+            end_line=700,
+            symbol="src/requests/adapters.py:HTTPAdapter.send()",
+            kind="method",
+            content=(
+                "def send(self, request, stream=False, **kwargs):\n"
+                "    conn = self.get_connection_with_tls_context(request)\n"
+                "    resp = conn.urlopen(method=request.method, url=url)\n"
+                "    return self.build_response(request, resp)\n"
+            ),
+        ),
+    ]
+    plan = {
+        "thesis": {
+            "statement": "`request()` opens a session and sends the request",
+            "evidence": ["E1"],
+        },
+        "journey": {
+            "title": "From `request()` to a response",
+            "stages": [
+                {
+                    "stage": "`request()`",
+                    "statement": "opens a Session and forwards the method and url",
+                    "evidence": ["E1"],
+                },
+                {
+                    "stage": "`Session.request()`",
+                    "statement": "prepares the Request and sends the prepared request",
+                    "evidence": ["E2"],
+                },
+                {
+                    "stage": "`HTTPAdapter.send()`",
+                    "statement": "opens the connection and builds the response",
+                    "evidence": ["E3"],
+                },
+                {
+                    "stage": "`_private_helper()`",
+                    "statement": "must never appear as a stage",
+                    "evidence": ["E3"],
+                },
+            ],
+        },
+        "sections": [
+            {
+                "title": "Transport boundary",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`HTTPAdapter.send()` opens the connection for the "
+                            "request and returns the built response"
+                        ),
+                        "evidence": ["E3"],
+                    }
+                ],
+            }
+        ],
+        "see_also": [{"page": "sessions", "title": "Sessions"}],
+    }
+    context = {
+        "topics": [
+            {
+                "id": "public-api",
+                "title": "Public API",
+                "summary": "Module-level helpers that open a session per call.",
+                "files": ["src/requests/api.py"],
+            },
+            {
+                "id": "sessions",
+                "title": "Sessions",
+                "summary": "Session state, request preparation, and redirects.",
+                "files": ["src/requests/sessions.py"],
+            },
+        ],
+        "entry_points": [
+            {"path": "src/requests/__init__.py", "kind": "package", "label": "requests"}
+        ],
+    }
+    return evidence, plan, context
+
+
+def test_overview_journey_is_admitted_and_rendered_with_topic_links():
+    evidence, plan, context = _journey_fixture()
+    rendered = _renderable_plan(plan, evidence, [])
+
+    stages = [stage["stage"] for stage in rendered["journey"]["stages"]]
+    assert stages == ["request()", "Session.request()", "HTTPAdapter.send()"]
+
+    markdown = _fact_plan_markdown(
+        rendered,
+        evidence,
+        [],
+        concise_overview=True,
+        overview_context=context,
+    )
+    assert "## From `request()` to a response" in markdown
+    assert (
+        "1. **`request()`** · [Public API](?p=public-api): opens a Session and "
+        "forwards the method and url. [E1]" in markdown
+    )
+    assert "3. **`HTTPAdapter.send()`**: opens the connection" in markdown
+    assert "_private_helper" not in markdown
+    assert "## Explore the system" in markdown
+    assert "- [Public API](?p=public-api)" in markdown
+    assert "- [Sessions](?p=sessions)" in markdown
+    assert "src/requests/__init__.py" not in markdown
+    # Compact navigation replaces both the subsystem inventory and related list.
+    assert "## Related pages" not in markdown
+
+    quality = _page_quality_report(
+        markdown,
+        rendered,
+        # Journey parsing remains a compatibility surface; newly generated
+        # Overview pages use semantic architecture as their only path model.
+        require_dense_sections=False,
+        require_cited_intro=True,
+        evidence_items=evidence,
+    )
+    assert quality["valid"] is True
+    report = grounding_report(markdown, evidence, [])
+    assert report["valid"] is True
+
+
+def test_overview_journey_needs_three_supported_stages():
+    evidence, plan, _context = _journey_fixture()
+    plan["journey"]["stages"] = plan["journey"]["stages"][:2]
+    rendered = _renderable_plan(plan, evidence, [])
+    assert "journey" not in rendered
+
+
+def test_subsystem_table_and_owning_topic_helpers():
+    _evidence, _plan, context = _journey_fixture()
+    assert (
+        _owning_topic(["./src/requests/sessions.py"], context["topics"])["id"]
+        == "sessions"
+    )
+    assert _owning_topic(["src/other.py"], context["topics"]) is None
+    assert _subsystem_table({"topics": [], "entry_points": []}) == ""
+    navigation = _subsystem_table(context)
+    assert navigation.splitlines() == [
+        "- [Public API](?p=public-api)",
+        "- [Sessions](?p=sessions)",
+    ]
+
+
+def test_excerpt_window_centres_on_the_lines_the_section_names():
+    content = "\n".join(
+        [
+            "def rebuild_auth(self, prepared_request, response):",
+            '    """Strip auth on redirect."""',
+            *[f"    setup_{index} = {index}" for index in range(20)],
+            "    headers = prepared_request.headers",
+            '    if "Authorization" in headers and self.should_strip_auth(a, b):',
+            '        del headers["Authorization"]',
+            "    return None",
+        ]
+    )
+    section = {
+        "claims": [
+            {
+                "statement": (
+                    "`rebuild_auth()` deletes the Authorization header when "
+                    "`should_strip_auth()` returns true"
+                )
+            }
+        ]
+    }
+    terms = _excerpt_focus_terms(section, "notice the header removal")
+    assert {"rebuild_auth", "should_strip_auth", "authorization", "header"} <= terms
+    assert "returns" not in terms
+
+    window, marked = _excerpt_window(content, terms, max_lines=6)
+    assert 'del headers["Authorization"]' in "\n".join(window)
+    assert "def rebuild_auth" not in "\n".join(window)
+    assert marked and all(1 <= line <= 6 for line in marked)
+    assert any("should_strip_auth" in window[line - 1] for line in marked)
+
+    # With nothing to look for, the top of the body (its signature) is shown.
+    top, unmarked = _excerpt_window(content, set(), max_lines=6)
+    assert top[0].startswith("def rebuild_auth")
+    assert unmarked == []
+
+
+def test_excerpt_caption_uses_the_admitted_notice_and_marks_lines():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/requests/sessions.py",
+            start_line=309,
+            end_line=332,
+            symbol="src/requests/sessions.py:SessionRedirectMixin.rebuild_auth()",
+            kind="method",
+            content=(
+                "def rebuild_auth(self, prepared_request, response):\n"
+                "    headers = prepared_request.headers\n"
+                '    if "Authorization" in headers and self.should_strip_auth(o, u):\n'
+                '        del headers["Authorization"]\n'
+            ),
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Auth stripping",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`SessionRedirectMixin.rebuild_auth()` deletes the "
+                            "Authorization header when `should_strip_auth()` "
+                            "returns true"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+                "excerpt": {
+                    "evidence": "E1",
+                    "why": "the Authorization header is deleted before the redirect",
+                },
+            }
+        ]
+    }
+    rendered = _renderable_plan(plan, evidence, [])
+    markdown = _fact_plan_markdown(rendered, evidence, [])
+    assert "```python hl=" in markdown
+    assert (
+        "*What to notice:* the Authorization header is deleted before the "
+        "redirect. [E1]" in markdown
+    )
+    assert "Source excerpt." not in markdown
+
+    plan["sections"][0]["excerpt"]["why"] = "an efficient and powerful design"
+    markdown = _fact_plan_markdown(_renderable_plan(plan, evidence, []), evidence, [])
+    assert "What to notice" not in markdown
+    assert "Source excerpt from `SessionRedirectMixin.rebuild_auth()`. [E1]" in markdown
+
+
+def test_journey_from_path_admits_narration_and_falls_back_to_call_sites():
+    evidence, _plan, _context = _journey_fixture()
+    relations = [
+        RelationItem(
+            id="R1",
+            source="src/requests/api.py:request()",
+            target="src/requests/sessions.py:Session.request()",
+            anchors=("src/requests/api.py:59",),
+        ),
+        RelationItem(
+            id="R2",
+            source="src/requests/sessions.py:Session.request()",
+            target="src/requests/adapters.py:HTTPAdapter.send()",
+            anchors=("src/requests/sessions.py:589",),
+        ),
+    ]
+    entry_path = [
+        {"evidence": "E1", "symbol": evidence[0].symbol, "relation": None},
+        {"evidence": "E2", "symbol": evidence[1].symbol, "relation": "R1"},
+        {"evidence": "E3", "symbol": evidence[2].symbol, "relation": "R2"},
+    ]
+    narration = {
+        "E1": "`request()` opens a session and forwards the method and url",
+        # Not borne out by E2's source: falls back to the recorded hop.
+        "E2": "`Session.request()` negotiates TLS certificates with the proxy",
+        # Evaluative wording is rejected like any claim.
+        "E3": "`HTTPAdapter.send()` opens the connection with a powerful pool",
+    }
+    journey = _journey_from_path(entry_path, narration, evidence, relations)
+
+    assert journey["title"] == "From `request()` to `HTTPAdapter.send()`"
+    assert journey["stages"] == [
+        {
+            "stage": "request()",
+            "statement": "`request()` opens a session and forwards the method and url",
+            "evidence": ["E1"],
+        },
+        {
+            "stage": "Session.request()",
+            "statement": "hands off to `HTTPAdapter.send()`",
+            "evidence": ["R2"],
+            "relation": "R1",
+        },
+        {
+            "stage": "HTTPAdapter.send()",
+            "statement": "receives the work from `Session.request()`",
+            "evidence": ["R2"],
+            "relation": "R2",
+        },
+    ]
+    # The hops become the visual fallback, each arrow cited by its call site.
+    flow = _journey_flow(journey)
+    assert [(step["from"], step["to"], step["evidence"]) for step in flow["steps"]] == [
+        ("`request()`", "`Session.request()`", ["R1"]),
+        ("`Session.request()`", "`HTTPAdapter.send()`", ["R2"]),
+    ]
+    rendered = _renderable_plan(
+        {"journey": journey, "sections": []}, evidence, relations
+    )
+    assert [stage["stage"] for stage in rendered["journey"]["stages"]] == [
+        "request()",
+        "Session.request()",
+        "HTTPAdapter.send()",
+    ]
+    markdown = _fact_plan_markdown(rendered, evidence, relations, concise_overview=True)
+    assert "## From `request()` to `HTTPAdapter.send()`" in markdown
+    assert (
+        "2. **`Session.request()`**: hands off to `HTTPAdapter.send()`. [R2]"
+        in markdown
+    )
+
+    assert _journey_from_path(entry_path[:2], narration, evidence, relations) is None
+
+
+def test_story_review_is_off_by_default_and_parses_when_on(tmp_path):
+    class LLM:
+        cache_identity = "fake"
+
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, messages, **kwargs):
+            self.calls += 1
+            return (
+                '{"problem":{"score":2,"quote":"strips the header"},'
+                '"path":{"score":1,"quote":"from send()"},'
+                '"decision":{"score":2,"quote":"host changes"},'
+                '"failure":{"score":0,"quote":""},'
+                '"jargon":false,"repetition":false,"notes":"say what breaks"}'
+            )
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    llm = LLM()
+    quiet = AgentWiki(bundle, model="fake-model", llm=llm)
+    assert quiet._review_story("# Page\n\nSome prose. [E1]") is None
+    assert llm.calls == 0
+
+    loud = AgentWiki(bundle, model="fake-model", llm=llm, story_review=True)
+    review = loud._review_story("# Page\n\nSome prose. [E1]")
+    assert llm.calls == 1
+    assert review["score"] == 5 and review["max_score"] == 8
+    assert review["passed"] is False
+    assert review["answers"]["failure"] == {"score": 0, "quote": ""}
+    assert review["notes"] == "say what breaks"
+
+
+def test_excerpt_caption_falls_back_when_it_restates_the_claim():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/requests/sessions.py",
+            start_line=309,
+            end_line=332,
+            symbol="src/requests/sessions.py:SessionRedirectMixin.rebuild_auth()",
+            kind="method",
+            content=(
+                "def rebuild_auth(self, prepared_request, response):\n"
+                "    headers = prepared_request.headers\n"
+                '    if "Authorization" in headers and self.should_strip_auth(o, u):\n'
+                '        del headers["Authorization"]\n'
+            ),
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Auth stripping",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`rebuild_auth()` deletes the Authorization header "
+                            "from the prepared request headers before the "
+                            "redirect is followed"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+                "excerpt": {
+                    "evidence": "E1",
+                    # The plan's "why" says the claim again in other words —
+                    # the exact pattern the sentence-redundancy gate rejects.
+                    "why": (
+                        "the Authorization header is deleted from the prepared "
+                        "request headers before the redirect is followed"
+                    ),
+                },
+            }
+        ]
+    }
+    markdown = _fact_plan_markdown(_renderable_plan(plan, evidence, []), evidence, [])
+
+    assert "```python hl=" in markdown
+    assert "What to notice" not in markdown
+    assert "Source excerpt from `SessionRedirectMixin.rebuild_auth()`. [E1]" in markdown
+    assert section_sentence_redundancy_report(markdown)["sentence_redundancy_valid"]
+
+
+def test_admissible_excerpt_caption_keeps_a_distinct_notice():
+    parts = [
+        "`rebuild_auth()` deletes the Authorization header when the redirect "
+        "leaves the original host. [E1]"
+    ]
+    notice = "*What to notice:* `should_strip_auth()` compares scheme and port. [E1]"
+    plain = "Source excerpt from `rebuild_auth`. [E1]"
+
+    assert _admissible_excerpt_caption("Auth", parts, [notice, plain]) == notice
+    assert _admissible_excerpt_caption("Auth", parts, [plain]) == plain
+
+
+def test_admissible_excerpt_caption_drops_a_symbol_label_that_echoes_the_claim():
+    # `mp_lexer_to_next` contributes "mp", "lexer" and "next" as prose terms,
+    # so even the neutral symbol caption shares most words with a claim
+    # about that lexer; the bare label is the one that cannot repeat prose.
+    parts = [
+        "`mp_lexer_to_next()` advances the lexer through whitespace and comments "
+        "and reads the next token from the source buffer. [E3]"
+    ]
+    symbol = "Source excerpt from `mp_lexer_to_next`. [E3]"
+    bare = "Source excerpt. [E3]"
+
+    picked = _admissible_excerpt_caption("Lexer", parts, [symbol, bare])
+    assert picked == bare
+    assert section_sentence_redundancy_report(
+        "## Lexer\n\n" + "\n\n".join([*parts, picked])
+    )["sentence_redundancy_valid"]
+
+
+def test_excerpt_fence_outgrows_backticks_inside_the_source():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="src/render.rs",
+            start_line=1,
+            end_line=6,
+            symbol="src/render.rs:render",
+            kind="function",
+            content=(
+                "//! Lines are laid out in columns:\n"
+                "//! ```text\n"
+                "//!  /--- line number\n"
+                "//! ```\n"
+                "fn render(lines: &[Line]) {}\n"
+            ),
+        )
+    ]
+    plan = {
+        "sections": [
+            {
+                "title": "Rendering",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": "`render()` lays lines out in columns",
+                        "evidence": ["E1"],
+                    }
+                ],
+                "excerpt": {"evidence": "E1", "why": "see the column layout"},
+            }
+        ]
+    }
+    markdown = _fact_plan_markdown(_renderable_plan(plan, evidence, []), evidence, [])
+    fence_lines = [line for line in markdown.splitlines() if line.startswith("````")]
+    assert len(fence_lines) == 2, markdown
+    # Nothing from the excerpt leaks into what the gates read as prose.
+    assert "line number" not in strip_code_fences(markdown)
+
+
+def test_purpose_section_is_dropped_when_it_restates_the_thesis():
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="tsdb/nhcb.go",
+            start_line=1,
+            end_line=40,
+            symbol="tsdb/nhcb.go:ConvertNHCBToClassic",
+            kind="function",
+            content=(
+                "func ConvertNHCBToClassic(h *Histogram) []Sample {\n"
+                "\treturn nil\n}\n"
+            ),
+        )
+    ]
+    thesis = (
+        "`ConvertNHCBToClassic()` converts native histograms with custom "
+        "buckets into classic histogram series by emitting cumulative bucket, "
+        "count, and sum samples"
+    )
+    plan = {
+        "thesis": {"statement": thesis, "evidence": ["E1"]},
+        "purpose": {
+            "statements": [
+                "This area converts native histograms with custom buckets into "
+                "classic histogram series by emitting cumulative bucket, count, "
+                "and sum samples"
+            ],
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Conversion",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`ConvertNHCBToClassic()` validates the histogram "
+                            "before emitting samples"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    markdown = _fact_plan_markdown(_renderable_plan(plan, evidence, []), evidence, [])
+    assert "## Purpose and scope" not in markdown
+    assert duplicate_prose_blocks(markdown) == []
+
+
+def test_drop_duplicate_framing_removes_a_transition_that_restates_the_claims():
+    transition = (
+        "*Plan commands orchestrate the core graph engine, handling cancellation "
+        "and targeting as part of the planning lifecycle.* [E3]"
+    )
+    claims = (
+        "Plan commands orchestrate the core graph engine, handling cancellation "
+        "and targeting as part of the planning lifecycle, and the command reads "
+        "its view from `Meta`. [E3] [E4]"
+    )
+    distinct = "*The CLI first loads backend state from disk.* [E1]"
+
+    kept = _drop_duplicate_framing("Plan commands", [transition, claims], [transition])
+    assert kept == [claims]
+    assert duplicate_prose_blocks("## Plan commands\n\n" + "\n\n".join(kept)) == []
+
+    untouched = _drop_duplicate_framing("Plan commands", [distinct, claims], [distinct])
+    assert untouched == [distinct, claims]
+
+
+def _degraded_memory_page(next_attempt_epoch):
+    return {
+        "id": "runtime",
+        "markdown": "diagnostic draft",
+        "media_plan_version": MEDIA_PLAN_VERSION,
+        "generation": {
+            "mode": "degraded",
+            "fallback": None,
+            "reason": "quality_guard",
+            "retry": {
+                "state": "scheduled",
+                "attempts": 1,
+                "max_attempts": 2,
+                "last_attempt_epoch": 1.0,
+                "next_attempt_epoch": next_attempt_epoch,
+            },
+        },
+        "quality": {"valid": False},
+    }
+
+
+def test_agent_wiki_in_memory_degraded_page_retries_once_its_cooldown_passes(
+    tmp_path,
+):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    wiki = AgentWiki(bundle, model="fake-model")
+    meta = {"id": "runtime", "title": "Runtime", "children": []}
+    generated = {
+        "id": "runtime",
+        "markdown": "Readable source-linked explanation.",
+        "generation": {"mode": "generated", "fallback": None},
+    }
+    calls = []
+    wiki._find = lambda _page_id: meta
+    wiki._generate_page = lambda _meta: calls.append(_meta) or generated
+    wiki._write_cache = lambda _suffix, _page: None
+
+    # Inside the cooldown the diagnostic page is served as-is, without a model call.
+    cooling = _degraded_memory_page(next_attempt_epoch=10_000_000_000.0)
+    wiki._pages["runtime"] = cooling
+    wiki._read_cache = lambda _suffix: cooling
+    assert wiki.page("runtime")["markdown"] == "diagnostic draft"
+    assert calls == []
+
+    # Once the persisted window opens, the in-process copy must not pin the
+    # bad page for the life of the process: the read regenerates it.
+    due = _degraded_memory_page(next_attempt_epoch=1.0)
+    wiki._pages["runtime"] = due
+    wiki._read_cache = lambda _suffix: due
+    assert wiki.page("runtime") is generated
+    assert calls == [meta]
+    assert wiki._pages["runtime"] is generated
+
+
+def test_stub_bodies_are_recognised_but_real_ones_are_not():
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    stub = (
+        "def send(self, request):\n"
+        '    """Sends PreparedRequest object.\n\n    :param request: the request.\n    """\n'
+        "    raise NotImplementedError\n"
+    )
+    assert AgentWiki._is_stub_body(stub) is True
+    assert AgentWiki._is_stub_body("def close(self):\n    pass\n") is True
+    wrapped = (
+        "self,\n        request: PreparedRequest,\n        stream: bool = False,\n"
+        "    ) -> Response:\n"
+        '        """Sends PreparedRequest object.\n\n        :param stream: flag.\n'
+        '        """\n        raise NotImplementedError\n'
+    )
+    assert AgentWiki._is_stub_body(wrapped) is True
+    real = (
+        "def send(self, request):\n"
+        "    conn = self.get_connection(request)\n"
+        "    return conn\n"
+    )
+    assert AgentWiki._is_stub_body(real) is False
+    assert AgentWiki._is_stub_body("def only_signature(self): ...") is False
+
+
+def test_concrete_override_follows_the_subclass_header_reference():
+    from codenib.graph.code_graph import CodeGraph
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    graph = CodeGraph()
+    for name, kind, line in [
+        ("a.py:Base", "class", 0),
+        ("a.py:Base.send()", "method", 2),
+        ("a.py:HTTP", "class", 10),
+        ("a.py:HTTP.send()", "method", 12),
+        ("a.py:Other", "class", 20),
+        ("a.py:Other.close()", "method", 22),
+    ]:
+        graph._add_vertex(
+            name,
+            {
+                "type": kind,
+                "file": "a.py",
+                "start_line": line,
+                "end_line": line + 3,
+                "unified_name": name,
+            },
+        )
+    for parent, child in [
+        ("a.py:Base", "a.py:Base.send()"),
+        ("a.py:HTTP", "a.py:HTTP.send()"),
+        ("a.py:Other", "a.py:Other.close()"),
+    ]:
+        graph._add_edge(parent, child, "contain")
+    # `class HTTP(Base):` references Base on HTTP's own first line; Other only
+    # mentions Base inside a body, which is not inheritance.
+    graph._add_edge(
+        "a.py:HTTP", "a.py:Base", "reference", anchor_file="a.py", anchor_line=10
+    )
+    graph._add_edge(
+        "a.py:Other", "a.py:Base", "reference", anchor_file="a.py", anchor_line=23
+    )
+
+    raw = graph.get_graph()
+    vid = {v["unified_name"]: v.index for v in raw.vs}
+    assert AgentWiki._concrete_override(raw, vid["a.py:Base.send()"]) == (
+        vid["a.py:HTTP.send()"],
+        vid["a.py:HTTP"],
+    )
+    assert AgentWiki._concrete_override(raw, vid["a.py:HTTP.send()"]) is None

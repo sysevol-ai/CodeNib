@@ -251,6 +251,8 @@ def _tree_bytes(root: Path) -> dict[str, bytes]:
 def _bound_source_export_setup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    with_visual: bool = False,
 ) -> SimpleNamespace:
     repo = tmp_path / "repo"
     runtime = repo / "src" / "runtime.py"
@@ -260,11 +262,23 @@ def _bound_source_export_setup(
         encoding="utf-8",
     )
     readme = repo / "README.md"
-    readme.write_text(
+    readme_text = (
         "# Bound Demo\n\n"
-        "Bound Demo provides exact repository evidence for source exploration.\n",
-        encoding="utf-8",
+        "Bound Demo provides exact repository evidence for source exploration.\n"
     )
+    visual = None
+    if with_visual:
+        visual = repo / "docs" / "architecture.png"
+        visual.parent.mkdir()
+        visual.write_bytes(
+            b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + (1200).to_bytes(4, "big")
+            + (700).to_bytes(4, "big")
+            + b"static-architecture"
+        )
+        readme_text += "\n![System architecture](docs/architecture.png)\n"
+    readme.write_text(readme_text, encoding="utf-8")
     artifact = tmp_path / "artifact"
     manifest, manifest_path = _manifest(repo, artifact)
     local = SimpleNamespace(
@@ -319,6 +333,7 @@ def _bound_source_export_setup(
         repo=repo,
         runtime=runtime,
         readme=readme,
+        visual=visual,
         manifest_path=manifest_path,
         frontend=_frontend(tmp_path),
         output=tmp_path / "site",
@@ -391,6 +406,11 @@ def test_static_export_is_deterministic_and_publishable(
     )
     assert page["citations"][0]["content"].startswith("def run")
     assert page["generation"]["mode"] == "offline"
+    assert page["story"]["version"] == 1
+    assert page["story"]["origin"] == "derived"
+    assert isinstance(page["story"]["beats"], list)
+    assert page["visual_quality"]["valid"] is True
+    assert page["visual_quality"]["typed_slots"] == 0
     assert b"not-present-in-output" not in b"".join(first_bytes.values())
     assert str(setup.repo).encode() not in b"".join(first_bytes.values())
     runtime = (setup.output / "runtime-config.js").read_text()
@@ -477,15 +497,69 @@ def test_static_export_reads_summary_excerpts_graph_and_paths_from_binding(
     assert page["citations"][0]["file"] == "src/runtime.py"
     assert "trusted-source" in page["citations"][0]["content"]
     assert "stale-index-content" not in page["citations"][0]["content"]
+    assert page["media_slots"] == []
+    assert page["visual_quality"]["publication_ready"] is False
+    assert page["visual_quality"]["materialized_typed_slots"] == 0
     graph = json.loads(
         (setup.output / "data/repos/demo/page-graphs/overview.json").read_text(
             encoding="utf-8"
         )
     )
     assert "trusted-source" in graph["nodes"][0]["source"]["content"]
+    boundary = json.loads(
+        (setup.output / "data/repos/demo/page-boundaries/overview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert set(boundary) >= {"available", "focus", "inbound", "outbound"}
+    area_map = json.loads(
+        (setup.output / "data/repos/demo/wiki-map.json").read_text(encoding="utf-8")
+    )
+    assert set(area_map) >= {"available", "areas", "links"}
     assert "README.md" in prefix_reads
     assert "src/runtime.py" in prefix_reads  # generated-source header check
     assert line_reads.count("src/runtime.py") >= 2
+
+
+def test_static_export_copies_repository_visual_and_rewrites_page_uri(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = _bound_source_export_setup(
+        tmp_path,
+        monkeypatch,
+        with_visual=True,
+    )
+
+    export_static_wiki(
+        setup.repo,
+        setup.manifest_path,
+        setup.output,
+        frontend_dir=setup.frontend,
+        base_path="/docs",
+    )
+
+    page = json.loads(
+        (setup.output / "data/repos/demo/pages/overview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    lead = page["media_slots"][0]
+    assert lead["id"] == "overview-repository-visual"
+    assert lead["asset"]["provider"] == "repository"
+    relative = lead["asset"]["uri"]
+    assert relative.startswith("data/repos/demo/repository-assets/")
+    assert (setup.output / relative).read_bytes() == setup.visual.read_bytes()
+
+    assert not any(slot.get("render_contract") for slot in page["media_slots"])
+    assert page["visual_quality"]["valid"] is True
+    assert page["visual_quality"]["publication_ready"] is True
+    assert page["visual_quality"]["materialized_typed_slots"] == 0
+    assert page["visual_quality"]["repository_assets"] == 1
+
+    manifest = json.loads((setup.output / STATIC_EXPORT_MANIFEST).read_text())
+    published_paths = {item["path"] for item in manifest["files"]}
+    assert relative in published_paths
 
 
 def test_static_export_does_not_trust_mutable_source_identity_projection(

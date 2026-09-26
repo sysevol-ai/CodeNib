@@ -191,7 +191,14 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Turn the Wiki demo into a preview and activation path
 
-Status: design below; implementation follows reconciliation with #772.
+Status: the story and graph UI is implemented in
+[#772](https://github.com/sysevol-ai/CodeNib/pull/772), rebased onto the current
+`main`; it is not merged or released. The restack preserves the existing Wiki
+changes and the static marketing preview introduced by #781. Web/Wiki/CLI
+verification and the public-doc checks pass. Static cache publication and
+agent activation are in dependent #784; a current SQLite corpus, bounded
+operator generation and production deployment remain open gates. Legacy JSON
+Wiki caches are not read or migrated.
 
 The public demo must remain useful without authentication or a live LLM.
 

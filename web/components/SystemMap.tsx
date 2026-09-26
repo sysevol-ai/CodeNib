@@ -70,9 +70,10 @@ function basename(file: string): string {
   return parts[parts.length - 1] || file;
 }
 
+// Symbol names wrap in CSS instead of being cut: a truncated
+// `SessionRedirectMixin.rebuild_...` tells the reader nothing.
 function compactSymbol(label: string): string {
-  const sym = label.split(":").pop() || label;
-  return sym.length > 46 ? `${sym.slice(0, 43)}...` : sym;
+  return label.split(":").pop() || label;
 }
 
 function componentForFile(file: string): { id: string; title: string; subtitle: string } {
@@ -335,20 +336,26 @@ export default function SystemMap({
   const hasRelationships = links.length > 0;
 
   return (
-    <div className="system-map">
+    <div className={`system-map ${hasRelationships ? "" : "system-map-quiet"}`}>
       <div className="system-map-head">
         <div>
-          <div className="system-map-kicker">Core Logic Flow</div>
+          {/* Without recorded edges there is no "flow" to headline; say what
+              the card actually holds instead of advertising zero relationships. */}
+          <div className="system-map-kicker">
+            {hasRelationships ? "Core Logic Flow" : "Cited symbols"}
+          </div>
           <div className="system-map-title">
             {hasRelationships && mainFlow.length > 1
               ? mainFlow.map((group) => group.title).join(" -> ")
-              : `${groups.length} cited component${groups.length === 1 ? "" : "s"}`}
+              : hasRelationships
+                ? `${groups.length} cited component${groups.length === 1 ? "" : "s"}`
+                : "No call sites recorded between these symbols in the index"}
           </div>
         </div>
         <div className="system-map-stats">
           <span>{citedEntityCount} cited entities</span>
           <span>{totalFiles} files</span>
-          <span>{links.length} relationships</span>
+          {hasRelationships && <span>{links.length} relationships</span>}
         </div>
       </div>
 

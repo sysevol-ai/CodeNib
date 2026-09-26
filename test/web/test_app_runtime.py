@@ -26,6 +26,11 @@ from codenib.web.schemas import ChatRequest, ChatResponse
 def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
     ticks = iter((10.0, 12.5))
     monkeypatch.setattr(web_app, "perf_counter", lambda: next(ticks))
+    # Managed loggers do not propagate to pytest's root capture handler.
+    # Attach it explicitly so this check also works without prior test setup.
+    monkeypatch.setattr(
+        web_app.logger, "handlers", [*web_app.logger.handlers, caplog.handler]
+    )
 
     with caplog.at_level(logging.INFO, logger=web_app.logger.name):
         response = TestClient(web_app.app).get("/api/health?secret=query")
@@ -777,6 +782,20 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
     assert page == {
         "id": "overview",
         "media_slots": [],
+        "story": {
+            "version": 1,
+            "origin": "derived",
+            "beats": [],
+            "evidence_budget": {
+                "available_source_evidence": 0,
+                "allocated_source_evidence": 0,
+                "allocated_relations": 0,
+                "beat_coverage": 0.0,
+                "max_beat_reuse": 0.0,
+                "unallocated_source_evidence": [],
+                "sections": [],
+            },
+        },
         "generation": {
             "mode": "offline",
             "model": None,
@@ -788,6 +807,20 @@ def test_wiki_generation_runs_off_event_loop(monkeypatch):
             "cited_evidence": 0,
             "evidence_count": 0,
             "relation_count": 0,
+        },
+        "visual_quality": {
+            "valid": True,
+            "required": True,
+            "publication_ready": False,
+            "errors": ["Overview has no materialized repository-owned or typed visual"],
+            "typed_slots": 0,
+            "valid_typed_slots": 0,
+            "materialized_typed_slots": 0,
+            "visible_assets": 0,
+            "repository_assets": 0,
+            "grounded_visuals": 0,
+            "adapters": [],
+            "contracts": [],
         },
     }
     assert graph == {
@@ -832,6 +865,35 @@ def test_cached_wiki_tree_does_not_generate_a_missing_outline(monkeypatch):
     assert calls == ["cached_page_tree"]
 
 
+def test_wiki_page_drops_interaction_rows_the_flow_already_draws(monkeypatch):
+    markdown = (
+        "## Flow\n\n```mermaid\nflowchart LR\n"
+        '  n0["a()"]\n  n1["b()"]\n  n0 -->|calls| n1\n```\n\n'
+        "## Detail\n\nText.\n\n**Interactions**\n"
+        "- `a()` → `b()`: calls [R1](#evidence-R1)\n"
+    )
+
+    class Builder:
+        def page(self, page_id):
+            return {"id": page_id, "markdown": markdown}
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(
+        web_app,
+        "_bundle",
+        lambda _repo_id: SimpleNamespace(entry=SimpleNamespace(repo="org/repo")),
+    )
+    monkeypatch.setattr(web_app.asyncio, "to_thread", fake_to_thread)
+
+    page = asyncio.run(web_app.wiki_page("repo", "detail"))
+
+    assert "**Interactions**" not in page["markdown"]
+    assert "  n0 -->|calls| n1" in page["markdown"]
+
+
 def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
     class Builder:
         def page(self, page_id):
@@ -839,17 +901,44 @@ def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
                 "id": page_id,
                 "title": "Overview",
                 "markdown": "# Overview",
-                "citations": [],
+                "citations": [{"file": "src/runtime.py"}],
                 "diagram": "",
                 "media_slots": [
                     {
-                        "id": "overview-concept-illustration",
-                        "kind": "image",
+                        "id": "overview-structure-diagram",
+                        "kind": "diagram",
                         "placement": "section",
                         "title": "Overview concept illustration",
                         "purpose": "Show the source-grounded flow.",
                         "source_citations": ["src/runtime.py"],
                         "prompt": "Draw the runtime.",
+                        "render_contract": {
+                            "schema_version": 1,
+                            "adapter": "architecture",
+                            "provenance": "deterministic-index",
+                            "evidence": ["src/runtime.py"],
+                            "data": {
+                                "nodes": [
+                                    {
+                                        "id": "api",
+                                        "label": "Runtime API",
+                                        "evidence": ["src/runtime.py"],
+                                    },
+                                    {
+                                        "id": "worker",
+                                        "label": "Worker",
+                                        "evidence": ["src/runtime.py"],
+                                    },
+                                ],
+                                "edges": [
+                                    {
+                                        "source": "api",
+                                        "target": "worker",
+                                        "evidence": [],
+                                    }
+                                ],
+                            },
+                        },
                         "human_prior": {"editable": True, "notes": []},
                     }
                 ],
@@ -875,22 +964,95 @@ def test_wiki_page_materializes_local_svg_media(tmp_path, monkeypatch):
 
     asset = page["media_slots"][0]["asset"]
     assert asset["uri"].endswith(
-        "/api/repos/demo/wiki-media/overview/overview-concept-illustration.svg"
+        "/api/repos/demo/wiki-media/overview/overview-structure-diagram.svg"
     ) or asset["uri"].endswith(
-        "api/repos/demo/wiki-media/overview/overview-concept-illustration.svg"
+        "api/repos/demo/wiki-media/overview/overview-structure-diagram.svg"
     )
     assert asset["metadata"]["evidence_pack_sha256"]
     asset_response = asyncio.run(
         web_app.wiki_media_asset(
             "demo",
             "overview",
-            "overview-concept-illustration.svg",
+            "overview-structure-diagram.svg",
         )
     )
     assert asset_response.body.startswith(b"<svg")
+    assert b"Runtime API" in asset_response.body
     assert asset_response.media_type == "image/svg+xml"
     assert asset_response.headers["x-content-type-options"] == "nosniff"
     assert "sandbox" in asset_response.headers["content-security-policy"]
+    assert page["visual_quality"]["valid"] is True
+    assert page["visual_quality"]["materialized_typed_slots"] == 1
+
+
+def test_wiki_overview_serves_only_its_selected_repository_visual(
+    tmp_path, monkeypatch
+):
+    image = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + (1200).to_bytes(4, "big")
+        + (700).to_bytes(4, "big")
+        + b"overview"
+    )
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "architecture.png").write_bytes(image)
+    (tmp_path / "docs" / "unselected.png").write_bytes(image)
+    (tmp_path / "README.md").write_text(
+        "![Runtime architecture](docs/architecture.png)\n",
+        encoding="utf-8",
+    )
+
+    class Builder:
+        def page(self, page_id):
+            return {
+                "id": page_id,
+                "title": "Overview",
+                "markdown": "# Overview\n\nA source-linked introduction.",
+                "citations": [],
+                "diagram": "",
+                "media_slots": [],
+            }
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/demo",
+            repo_dir=str(tmp_path),
+        )
+    )
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(
+        web_app,
+        "_materialize_wiki_media",
+        lambda _repo_id, _page_id, page, _bundle=None: page,
+    )
+
+    page = asyncio.run(web_app.wiki_page("demo", "overview"))
+
+    lead = page["media_slots"][0]
+    assert lead["placement"] == "lead"
+    assert lead["asset"]["provider"] == "repository"
+    assert lead["asset"]["uri"].endswith("/wiki-source-assets/docs/architecture.png")
+
+    response = asyncio.run(
+        web_app.wiki_repository_visual_asset(
+            "demo",
+            "docs/architecture.png",
+        )
+    )
+    assert response.body == image
+    assert response.media_type == "image/png"
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+    with pytest.raises(web_app.HTTPException) as unselected:
+        asyncio.run(
+            web_app.wiki_repository_visual_asset(
+                "demo",
+                "docs/unselected.png",
+            )
+        )
+    assert unselected.value.status_code == 404
 
 
 def test_wiki_media_materialization_builds_page_evidence(tmp_path, monkeypatch):
@@ -1691,3 +1853,32 @@ def test_source_endpoint_returns_404_for_excluded_current_source(tmp_path, monke
         binding.close()
 
     assert error.value.status_code == 404
+
+
+def test_wiki_page_boundary_reports_missing_graph(monkeypatch):
+    class Builder:
+        def page_citations(self, page_id):
+            return [] if page_id == "known" else None
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo="org/repo", repo_dir="/tmp/repo"),
+        code_graph=lambda: None,
+        graph_unavailable_note=lambda: "graph not indexed",
+    )
+    monkeypatch.setattr(web_app, "_wiki", lambda _repo_id, _bundle=None: Builder())
+    monkeypatch.setattr(web_app, "_bundle", lambda _repo_id: bundle)
+    monkeypatch.setattr(web_app.asyncio, "to_thread", fake_to_thread)
+
+    result = asyncio.run(web_app.wiki_page_boundary("repo", "known"))
+    assert result["available"] is False
+    assert result["note"] == "graph not indexed"
+
+    try:
+        asyncio.run(web_app.wiki_page_boundary("repo", "missing"))
+    except web_app.HTTPException as exc:
+        assert exc.status_code == 404
+    else:  # pragma: no cover - the endpoint must reject unknown pages
+        raise AssertionError("unknown page should 404")

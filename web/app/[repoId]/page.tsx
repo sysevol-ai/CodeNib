@@ -1,14 +1,36 @@
 "use client";
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
+import PageBoundaryCard from "@/components/PageBoundary";
+import AreaMap from "@/components/AreaMap";
 import AskBar from "@/components/AskBar";
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
 import {
+  extractJourney,
+  stageRoles,
+  stageSentence,
+  type Journey,
+  partitionWikiMediaSlots,
+  splitWikiMarkdown,
+  wikiRetryNotice,
+} from "@/lib/wikiPresentation";
+import {
   fetchCommits,
   fetchRepos,
+  fetchWikiAreaMap,
+  fetchWikiBoundary,
   fetchWikiGraph,
   fetchWikiPage,
   fetchWikiTree,
@@ -17,6 +39,8 @@ import {
   repoRelative,
   shouldWithholdWikiPage,
   type CodemapResponse,
+  type PageBoundary,
+  type WikiAreaMap,
   type Citation,
   type CommitRef,
   type RepoInfo,
@@ -51,8 +75,9 @@ function stripGeneratedDiagrams(
 ): string {
   if (keepValidatedPlan) return md;
   return md
-    .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```/g, "") // a heading + its diagram
-    .replace(/```mermaid[\s\S]*?```/g, "") // any stray diagram
+    // a heading, its diagram, and the caption paragraph under it
+    .replace(/\n#{1,6}[^\n]*\n+```mermaid[\s\S]*?```(?:\n+(?![#\n])[^\n]*)?/g, "")
+    .replace(/```mermaid[\s\S]*?```(?:\n+(?![#\n])[^\n]*)?/g, "") // any stray diagram
     .trimEnd();
 }
 
@@ -165,6 +190,8 @@ function mediaKindLabel(kind: WikiMediaSlot["kind"]): string {
       return "Illustration";
     case "storyboard":
       return "Storyboard";
+    case "chart":
+      return "Chart";
     case "video":
       return "Video";
     default:
@@ -172,10 +199,26 @@ function mediaKindLabel(kind: WikiMediaSlot["kind"]): string {
   }
 }
 
-function MediaPreview({ slot }: { slot: WikiMediaSlot }) {
+function MediaPreview({
+  slot,
+  trace,
+}: {
+  slot: WikiMediaSlot;
+  trace?: ArchitectureJourney;
+}) {
   const asset = slot.asset;
   const src = asset?.uri ? mediaAssetUrl(asset.uri) : null;
   if (!src || !asset) return null;
+  const adapter = slot.render_contract?.adapter;
+  if (
+    adapter === "architecture" &&
+    slot.render_contract?.provenance === "architecture-plan"
+  ) {
+    return <SystemArchitecture slot={slot} trace={trace} />;
+  }
+  if (adapter === "storyboard") {
+    return <StoryPath slot={slot} />;
+  }
   if (asset.mime_type.startsWith("video/")) {
     return (
       <video className="wiki-media-asset" controls src={src}>
@@ -185,7 +228,13 @@ function MediaPreview({ slot }: { slot: WikiMediaSlot }) {
   }
   return (
     <img
-      className="wiki-media-asset"
+      className={`wiki-media-asset ${
+        asset.provider === "repository"
+          ? "repository-owned"
+          : slot.render_contract
+            ? "contract-visual"
+            : ""
+      }`}
       src={src}
       alt={slot.title}
       referrerPolicy="no-referrer"
@@ -193,10 +242,335 @@ function MediaPreview({ slot }: { slot: WikiMediaSlot }) {
   );
 }
 
-function MediaStatus() {
+function architectureLayerLabel(layer: string | undefined): string {
+  switch (layer) {
+    case "external":
+      return "Outside the system";
+    case "interface":
+      return "Interface";
+    case "coordination":
+      return "Coordination";
+    case "execution":
+      return "Execution";
+    case "data":
+      return "Data & artifacts";
+    default:
+      return "System role";
+  }
+}
+
+/** Render a heading string with its `code` spans. */
+function inlineCode(text: string): ReactNode[] {
+  return text.split(/(`[^`]+`)/).map((part, index) =>
+    part.startsWith("`") && part.endsWith("`") ? (
+      <code key={index}>{part.slice(1, -1)}</code>
+    ) : (
+      <span key={index}>{part}</span>
+    ),
+  );
+}
+
+interface ArchitectureJourney {
+  journey: Journey;
+  citations?: Citation[];
+  renderText: (markdown: string) => ReactNode;
+  onPick?: (pageId: string) => void;
+}
+
+function SystemArchitecture({
+  slot,
+  trace,
+}: {
+  slot: WikiMediaSlot;
+  trace?: ArchitectureJourney;
+}) {
+  const [activeRole, setActiveRole] = useState<string | null>(null);
+  const contract = slot.render_contract;
+  if (
+    contract?.adapter !== "architecture" ||
+    contract.provenance !== "architecture-plan"
+  ) {
+    return null;
+  }
+  const nodes = new Map(contract.data.nodes.map((node) => [node.id, node]));
+  const primaryNodes = contract.data.primary_path
+    .map((id) => nodes.get(id))
+    .filter((node) => node !== undefined);
+  const primaryIds = new Set(primaryNodes.map((node) => node.id));
+  const supportingNodes = contract.data.nodes.filter(
+    (node) => !primaryIds.has(node.id),
+  );
+  const primaryConnections = contract.data.primary_path.slice(0, -1).map(
+    (source, index) =>
+      contract.data.edges.find(
+        (edge) =>
+          edge.source === source &&
+          edge.target === contract.data.primary_path[index + 1],
+      ),
+  );
+  const stages = trace?.journey.stages ?? [];
+  const roles = trace ? stageRoles(stages, contract.data.nodes, trace.citations) : [];
+  const stagesOf = (roleId: string) =>
+    stages.filter((_stage, index) => roles[index] === roleId);
+  const lit = (roleId: string | null) =>
+    activeRole == null ? "" : roleId === activeRole ? "is-lit" : "is-dim";
+
+  const supportingConnection = (nodeId: string) => {
+    const edge = contract.data.edges.find(
+      (candidate) =>
+        candidate.source === nodeId || candidate.target === nodeId,
+    );
+    if (!edge) return null;
+    const peerId = edge.source === nodeId ? edge.target : edge.source;
+    const peer = nodes.get(peerId);
+    if (!peer) return null;
+    return `${edge.label} ${edge.source === nodeId ? "→" : "←"} ${peer.label}`;
+  };
+
+  const roleStages = (roleId: string) => {
+    const own = stagesOf(roleId);
+    if (!own.length) return null;
+    return (
+      <div className="wiki-system-role-stages" aria-label="Traced functions in this role">
+        {own.map((stage) => (
+          <span className="wiki-system-stage-chip" key={stage.index}>
+            <span className="wiki-system-stage-number">{stage.index}</span>
+            <code>{stage.symbol}</code>
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <section
+      className="wiki-system-architecture"
+      aria-label={slot.title}
+      onMouseLeave={() => setActiveRole(null)}
+    >
+      <header className="wiki-system-architecture-head">
+        <div>
+          <span className="wiki-system-architecture-eyebrow">System architecture</span>
+          <h3>{slot.title}</h3>
+        </div>
+      </header>
+      <div className="wiki-system-architecture-body">
+        <div className="wiki-system-primary">
+          <div className="wiki-system-section-label">
+            <span>Main path</span>
+          </div>
+          <ol className="wiki-system-path">
+            {primaryNodes.map((node, index) => {
+              const connection = primaryConnections[index];
+              return (
+                <li className="wiki-system-path-step" key={node.id}>
+                  <article
+                    className={`wiki-system-role layer-${node.layer ?? "system"} ${lit(node.id)}`}
+                    onMouseEnter={() => setActiveRole(node.id)}
+                  >
+                    <span className="wiki-system-role-index" aria-hidden="true">
+                      {index + 1}
+                    </span>
+                    <div className="wiki-system-role-copy">
+                      <span className="wiki-system-role-layer">
+                        {architectureLayerLabel(node.layer)}
+                      </span>
+                      <h4>{node.label}</h4>
+                      <p>{inlineCode(node.detail)}</p>
+                      {roleStages(node.id)}
+                    </div>
+                  </article>
+                  {connection && (
+                    <div className="wiki-system-connection">
+                      <span className="wiki-system-connection-line" aria-hidden="true" />
+                      <span>{connection.label}</span>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+        <aside className="wiki-system-context">
+          {supportingNodes.length > 0 && (
+            <div className="wiki-system-supporting">
+              <div className="wiki-system-section-label">
+                <span>Supporting roles</span>
+              </div>
+              {supportingNodes.map((node) => (
+                <article
+                  className={`wiki-system-support-card ${lit(node.id)}`}
+                  key={node.id}
+                  onMouseEnter={() => setActiveRole(node.id)}
+                >
+                  <span>{architectureLayerLabel(node.layer)}</span>
+                  <h4>{node.label}</h4>
+                  <p>{inlineCode(node.detail)}</p>
+                  {roleStages(node.id)}
+                  {supportingConnection(node.id) && (
+                    <small>{supportingConnection(node.id)}</small>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+          {contract.data.boundaries.length > 0 && (
+            <div className="wiki-system-boundaries">
+              <div className="wiki-system-section-label">
+                <span>Boundaries</span>
+              </div>
+              {contract.data.boundaries.map((boundary) => (
+                <article className="wiki-system-boundary" key={boundary.id}>
+                  <span className="wiki-system-boundary-mark" aria-hidden="true" />
+                  <div>
+                    <h4>{boundary.label}</h4>
+                    {boundary.detail && <p>{inlineCode(boundary.detail)}</p>}
+                    <small>
+                      {boundary.members
+                        .map((member) => nodes.get(member)?.label)
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </aside>
+      </div>
+      {trace && stages.length > 0 && (
+        <div className="wiki-system-trace">
+          <div className="wiki-system-section-label">
+            <span>Traced call path, recorded in the index</span>
+          </div>
+          <h4 className="wiki-system-trace-title">{inlineCode(trace.journey.title)}</h4>
+          <ol className="wiki-system-trace-steps">
+            {stages.map((stage, index) => {
+              const role = roles[index] ? nodes.get(roles[index]!) : undefined;
+              return (
+                <li
+                  key={stage.index}
+                  className={`wiki-system-trace-step ${role ? lit(role.id) : activeRole ? "is-dim" : ""}`}
+                  onMouseEnter={() => setActiveRole(role?.id ?? null)}
+                >
+                  <span className="wiki-system-stage-number">{stage.index}</span>
+                  <div className="wiki-system-trace-copy">
+                    <div className="wiki-system-trace-head">
+                      <code className="wiki-system-trace-symbol">{stage.symbol}</code>
+                      {role && (
+                        <span className={`wiki-system-trace-role layer-${role.layer ?? "system"}`}>
+                          {role.label}
+                        </span>
+                      )}
+                      {stage.page && trace.onPick && (
+                        <button
+                          type="button"
+                          className="wiki-system-trace-page"
+                          onClick={() => trace.onPick?.(stage.page!.id)}
+                        >
+                          {stage.page.title} →
+                        </button>
+                      )}
+                    </div>
+                    <div className="wiki-system-trace-text">
+                      {trace.renderText(stageSentence(stage))}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function StoryPath({ slot }: { slot: WikiMediaSlot }) {
+  const contract = slot.render_contract;
+  if (contract?.adapter !== "storyboard") return null;
+
+  return (
+    <ol className="wiki-story-path" aria-label={slot.title}>
+      {contract.data.panels.map((panel, index) => (
+        <li className="wiki-story-path-step" key={panel.id}>
+          <span className="wiki-story-path-index" aria-hidden="true">
+            {String(index + 1).padStart(2, "0")}
+          </span>
+          <div className="wiki-story-path-copy">
+            {panel.role && <span className="wiki-story-path-role">{panel.role}</span>}
+            <strong>{panel.title}</strong>
+            {panel.detail && <p>{panel.detail}</p>}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function MediaStatus({ slot }: { slot: WikiMediaSlot }) {
+  const repositoryOwned = slot.asset?.provider === "repository";
+  const adapter = slot.render_contract?.adapter.replace("-", " ");
   return (
     <div className="wiki-media-status">
-      <span className="ready">Generated from cited source</span>
+      <span className="ready">
+        {repositoryOwned
+          ? "Provided by repository"
+          : adapter
+            ? "Sources"
+            : "Generated from cited source"}
+      </span>
+    </div>
+  );
+}
+
+function mediaOpenLabel(slot: WikiMediaSlot): string {
+  switch (slot.render_contract?.adapter) {
+    case "architecture":
+      return "Open as image ↗";
+    case "flow":
+      return "Open as image ↗";
+    case "storyboard":
+      return "Open as image ↗";
+    default:
+      return "Open generated asset ↗";
+  }
+}
+
+function MediaCitations({
+  slot,
+  repo,
+}: {
+  slot: WikiMediaSlot;
+  repo: RepoInfo | null;
+}) {
+  if (!(slot.source_citations ?? []).length) return null;
+  return (
+    <div className="wiki-media-citations">
+      {(slot.source_citations ?? []).slice(0, 4).map((file) => {
+        const url = ghFileUrl(
+          repo?.repo,
+          repo?.source_url,
+          repo?.base_commit,
+          file,
+        );
+        return url ? (
+          <a
+            className="wiki-media-citation mono"
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            key={file}
+            title={`Open ${file} on GitHub`}
+          >
+            {repoRelative(file)}
+          </a>
+        ) : (
+          <span className="wiki-media-citation mono" key={file}>
+            {repoRelative(file)}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -204,45 +578,90 @@ function MediaStatus() {
 function MultimodalMedia({
   slots,
   repo,
+  variant = "section",
+  trace,
 }: {
   slots: WikiMediaSlot[];
   repo: RepoInfo | null;
+  variant?: "lead" | "bridge" | "section";
+  /** The Overview's entry path, drawn inside the architecture card. */
+  trace?: ArchitectureJourney;
 }) {
   const visibleSlots = materializedWikiMediaSlots(slots).filter((slot) =>
     slot.asset?.uri ? Boolean(mediaAssetUrl(slot.asset.uri)) : false,
   );
   if (!visibleSlots.length) return null;
+
+  if (variant === "bridge") {
+    return (
+      <section className="wiki-media wiki-media-bridge" aria-label="Page reading map">
+        {visibleSlots.map((slot) => {
+          const assetUrl = slot.asset?.uri ? mediaAssetUrl(slot.asset.uri) : null;
+          return (
+            <article className="wiki-story-map" key={slot.id}>
+              <div className="wiki-story-map-frame">
+                <MediaPreview slot={slot} trace={trace} />
+              </div>
+              <div className="wiki-story-map-footer">
+                <MediaStatus slot={slot} />
+                <MediaCitations slot={slot} repo={repo} />
+                {assetUrl && (
+                  <a
+                    className="wiki-media-open"
+                    href={assetUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {mediaOpenLabel(slot)}
+                  </a>
+                )}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+    );
+  }
+
   const [primary, ...secondary] = visibleSlots;
   const primaryAssetUrl = primary?.asset?.uri
     ? mediaAssetUrl(primary.asset.uri)
     : null;
 
   return (
-    <section className="wiki-media" aria-labelledby="wiki-media-title">
-      <div className="wiki-media-head">
-        <div>
-          <h2 id="wiki-media-title">Source-linked visuals</h2>
-          <p>
-            Generated visual explanations grounded in the source citations on this page.
-          </p>
+    <section
+      className={`wiki-media ${variant === "lead" ? "wiki-media-lead" : ""}`}
+      aria-label={variant === "lead" ? "Overview visual" : "Source-linked visuals"}
+    >
+      {variant !== "lead" && (
+        <div className="wiki-media-head">
+          <div>
+            <h2>Source-linked visuals</h2>
+            <p>
+              Generated visual explanations grounded in the source citations on this page.
+            </p>
+          </div>
+          <span className="wiki-media-count">
+            {visibleSlots.length} visual{visibleSlots.length === 1 ? "" : "s"}
+          </span>
         </div>
-        <span className="wiki-media-count">
-          {visibleSlots.length} visual{visibleSlots.length === 1 ? "" : "s"}
-        </span>
-      </div>
+      )}
 
       {primary && (
         <article className="wiki-media-feature">
           <div className="wiki-media-feature-preview">
-            <MediaPreview slot={primary} />
+            <MediaPreview slot={primary} trace={trace} />
           </div>
           <div className="wiki-media-feature-body">
             <div className="wiki-media-eyebrow">
-              {mediaKindLabel(primary.kind)} · {primary.placement}
+              {primary.asset?.provider === "repository"
+                ? "Repository visual"
+                : `${mediaKindLabel(primary.kind)} · ${primary.placement}`}
             </div>
             <h3>{primary.title}</h3>
             <p>{primary.purpose}</p>
-            <MediaStatus />
+            <MediaStatus slot={primary} />
+            <MediaCitations slot={primary} repo={repo} />
             {primaryAssetUrl && (
               <a
                 className="wiki-media-open"
@@ -250,57 +669,34 @@ function MultimodalMedia({
                 target="_blank"
                 rel="noreferrer"
               >
-                Open generated asset ↗
+                {primary.asset?.provider === "repository"
+                  ? "Open repository asset ↗"
+                  : "Open generated asset ↗"}
               </a>
             )}
           </div>
         </article>
       )}
 
-      <div className="wiki-media-grid">
-        {secondary.map((slot) => (
-          <article className="wiki-media-slot" key={slot.id}>
-            <MediaPreview slot={slot} />
-            <div className="wiki-media-body">
-              <div className="wiki-media-meta">
-                <span>{mediaKindLabel(slot.kind)}</span>
-                <span>{slot.placement}</span>
-              </div>
-              <h3>{slot.title}</h3>
-              <p>{slot.purpose}</p>
-              <MediaStatus />
-              {(slot.source_citations ?? []).length > 0 && (
-                <div className="wiki-media-citations">
-                  {(slot.source_citations ?? []).slice(0, 4).map((file) => {
-                    const url = ghFileUrl(
-                      repo?.repo,
-                      repo?.source_url,
-                      repo?.base_commit,
-                      file,
-                    );
-                    return url ? (
-                      <a
-                        className="wiki-media-citation mono"
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        key={file}
-                        title={`Open ${file} on GitHub`}
-                      >
-                        {repoRelative(file)}
-                      </a>
-                    ) : (
-                      <span className="wiki-media-citation mono" key={file}>
-                        {repoRelative(file)}
-                      </span>
-                    );
-                  })}
+      {secondary.length > 0 && (
+        <div className="wiki-media-grid">
+          {secondary.map((slot) => (
+            <article className="wiki-media-slot" key={slot.id}>
+              <MediaPreview slot={slot} trace={trace} />
+              <div className="wiki-media-body">
+                <div className="wiki-media-meta">
+                  <span>{mediaKindLabel(slot.kind)}</span>
+                  <span>{slot.placement}</span>
                 </div>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
+                <h3>{slot.title}</h3>
+                <p>{slot.purpose}</p>
+                <MediaStatus slot={slot} />
+                <MediaCitations slot={slot} repo={repo} />
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -321,6 +717,8 @@ export default function WikiPageView({
   const [page, setPage] = useState<WikiPage | null>(null);
   const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
+  const [boundary, setBoundary] = useState<PageBoundary | null>(null);
+  const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
   const [pageGraphOpen, setPageGraphOpen] = useState(false);
   const [pageGraphLoading, setPageGraphLoading] = useState(false);
   const [pageGraphError, setPageGraphError] = useState(false);
@@ -459,6 +857,36 @@ export default function WikiPageView({
     };
   }, [repoId, activeId, pageGraphOpen, pageGraph]);
 
+  // The system map belongs to the repository, not a page: load it once.
+  useEffect(() => {
+    setAreaMap(null);
+    let cancelled = false;
+    fetchWikiAreaMap(repoId)
+      .then((m) => {
+        if (!cancelled) setAreaMap(m);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId]);
+
+  // The graph card is deterministic and cheap; load it with the page rather
+  // than behind a toggle so the reader meets the code's shape first.
+  useEffect(() => {
+    setBoundary(null);
+    if (activeId === "overview") return;
+    let cancelled = false;
+    fetchWikiBoundary(repoId, activeId)
+      .then((b) => {
+        if (!cancelled) setBoundary(b);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [repoId, activeId]);
+
   // Build "On this page" from the actually-rendered heading ids (matches rehype-slug).
   const rescanHeadings = useCallback(() => {
     const root = contentRef.current;
@@ -503,6 +931,31 @@ export default function WikiPageView({
     window.scrollTo({ top: 0 });
   }
 
+  // The document carries a `<base href>`, so a bare `#id` link resolves
+  // against the site root and would leave the wiki for the landing page.
+  // Scroll in place and record the fragment ourselves.
+  function jumpToHeading(event: MouseEvent<HTMLAnchorElement>, id: string) {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    const el = document.getElementById(id);
+    if (!el) return;
+    event.preventDefault();
+    el.scrollIntoView({ block: "start" });
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}#${id}`,
+    );
+    setActiveHeading(id);
+  }
+
   // Esc closes the graph explorer modal.
   useEffect(() => {
     if (!graphOpen) return;
@@ -530,9 +983,57 @@ export default function WikiPageView({
   // operator diagnostic, so it must not override those reader-facing checks.
   const sourceChecked = isSourceCheckedWikiPage(page);
   const withheldByQualityGuard = shouldWithholdWikiPage(page);
+  const retryNotice = wikiRetryNotice(page);
   const evidenceRoutes = [
     ...new Set(page?.evidence?.items.flatMap((item) => item.routes) ?? []),
   ];
+  // A fact-plan diagram was validated edge-by-edge against the page's
+  // evidence before the backend rendered the fence, so it stays even when a
+  // prose check later marked the page degraded; losing it left an orphan
+  // caption under the heading.
+  const wikiMedia = partitionWikiMediaSlots(page?.media_slots);
+  // A typed visual (storyboard or architecture) draws the same validated
+  // path as the fact-plan mermaid fence; showing both is two competing
+  // pictures of one flow, so the fence yields to the richer rendering.
+  const hasTypedVisual = [...wikiMedia.lead, ...wikiMedia.bridge, ...wikiMedia.body].some(
+    (slot) => !!slot.render_contract?.adapter,
+  );
+  const renderedMarkdown = page
+    ? stripGeneratedDiagrams(
+        page.markdown,
+        page.generation?.renderer === "fact_plan" && !hasTypedVisual,
+      )
+    : "";
+  const wikiMarkdown = splitWikiMarkdown(renderedMarkdown);
+  // On the Overview the recorded entry path is drawn inside the architecture
+  // card, so the page tells one path instead of two stacked ones.
+  const hasArchitecture = [...wikiMedia.lead, ...wikiMedia.bridge, ...wikiMedia.body].some(
+    (slot) =>
+      slot.render_contract?.adapter === "architecture" &&
+      slot.render_contract?.provenance === "architecture-plan",
+  );
+  const lifted =
+    page && activeId === "overview" && hasArchitecture
+      ? extractJourney(wikiMarkdown.body)
+      : { journey: null, rest: wikiMarkdown.body };
+  const trace = lifted.journey
+    ? {
+        journey: lifted.journey,
+        citations: page?.citations,
+        onPick: pick,
+        renderText: (markdown: string) => (
+          <Markdown
+            citations={page?.citations}
+            relations={page?.evidence?.relations}
+            onCite={(index) => setSourceCitation(page?.citations[index] ?? null)}
+            repoId={repoId}
+            onPageLink={pick}
+          >
+            {markdown}
+          </Markdown>
+        ),
+      }
+    : undefined;
   const openGraph = (seed?: string) => {
     setGraphSeed(seed);
     setGraphOpen(true);
@@ -651,6 +1152,66 @@ export default function WikiPageView({
 
         <main className="wiki-main">
           <div className="wiki-content" ref={contentRef}>
+              {page && !withheldByQualityGuard && (
+                <div className="wiki-story">
+                  {wikiMarkdown.lead && (
+                    <Markdown
+                      citations={page.citations}
+                      relations={page.evidence?.relations}
+                      onCite={(index) =>
+                        setSourceCitation(page.citations[index] ?? null)
+                      }
+                      repoId={repoId}
+                      onPageLink={pick}
+                    >
+                      {wikiMarkdown.lead}
+                    </Markdown>
+                  )}
+                  {activeId === "overview" && areaMap?.available && (
+                    <AreaMap map={areaMap} commit={repo?.commit_short} onPick={pick} />
+                  )}
+                  {boundary?.available && (
+                    <PageBoundaryCard
+                      boundary={boundary}
+                      commit={repo?.commit_short}
+                      onFocus={hasGraph ? (symbol) => openGraph(symbol) : undefined}
+                      onOpenMap={hasGraph ? () => openGraph() : undefined}
+                    />
+                  )}
+                  {wikiMedia.lead.length > 0 && (
+                    <MultimodalMedia
+                      slots={wikiMedia.lead}
+                      repo={repo}
+                      variant="lead"
+                      trace={trace}
+                    />
+                  )}
+                  {wikiMedia.bridge.length > 0 && (
+                    <MultimodalMedia
+                      slots={wikiMedia.bridge}
+                      repo={repo}
+                      variant="bridge"
+                      trace={trace}
+                    />
+                  )}
+                  {lifted.rest && (
+                    <Markdown
+                      citations={page.citations}
+                      relations={page.evidence?.relations}
+                      onCite={(index) =>
+                        setSourceCitation(page.citations[index] ?? null)
+                      }
+                      repoId={repoId}
+                      onPageLink={pick}
+                    >
+                      {lifted.rest}
+                    </Markdown>
+                  )}
+                  {wikiMedia.body.length > 0 && (
+                    <MultimodalMedia slots={wikiMedia.body} repo={repo} trace={trace} />
+                  )}
+                </div>
+              )}
               {page && (
                 <div
                   className={`page-provenance ${
@@ -670,16 +1231,28 @@ export default function WikiPageView({
                             : "Generated, evidence review needed"}
                   </span>
                   {page.grounding && (
-                    <span className="provenance-detail">
-                      {page.grounding.evidence_count} source symbols
+                    // The reader gets counts they can check; the pipeline's
+                    // routes, review score, and visual audit stay in the
+                    // tooltip for whoever maintains the page.
+                    <span
+                      className="provenance-detail"
+                      title={[
+                        evidenceRoutes.length > 0 && `Evidence routes: ${evidenceRoutes.join(" + ")}`,
+                        page.quality?.story_review &&
+                          `Reader review ${page.quality.story_review.score}/${page.quality.story_review.max_score}${
+                            page.quality.story_review.notes ? `: ${page.quality.story_review.notes}` : ""
+                          }`,
+                        (page.visual_quality?.grounded_visuals ?? 0) > 0 &&
+                          `${page.visual_quality?.grounded_visuals} source-grounded visual(s)`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n")}
+                    >
+                      {page.grounding.evidence_count} cited symbols
                       {page.grounding.relation_count > 0 &&
-                        ` · ${page.grounding.relation_count} static relations`}
-                      {/* State how much of the page carries its source rather
-                          than only flagging a shortfall: the coverage number is
-                          the claim this product makes. */}
+                        ` · ${page.grounding.relation_count} recorded calls`}
                       {page.grounding.citation_coverage < 1 &&
                         ` · ${Math.round(page.grounding.citation_coverage * 100)}% of blocks sourced`}
-                      {evidenceRoutes.length > 0 && ` · ${evidenceRoutes.join(" + ")}`}
                     </span>
                   )}
                   {page.generation?.model && (
@@ -832,33 +1405,28 @@ export default function WikiPageView({
                   })()}
                 </details>
               ) : null}
-              {page?.media_slots && page.media_slots.length > 0 && (
-                <MultimodalMedia slots={page.media_slots} repo={repo} />
-              )}
               {page ? (
-                withheldByQualityGuard ? (
+                withheldByQualityGuard && (
                   <div className="page-load-error" role="alert">
-                    <p>A readable source-linked explanation is being regenerated.</p>
+                    <p>{retryNotice.headline}</p>
                     <p className="page-load-error-detail">
-                      Source evidence was retrieved, but the generated prose did not
-                      pass validation. The diagnostic draft has been hidden while a
-                      bounded background retry is pending.
+                      {retryNotice.detail}
+                      {retryNotice.nextAttemptEpoch !== null && (
+                        <>
+                          {" "}
+                          Cooldown ends{" "}
+                          <time
+                            dateTime={new Date(
+                              retryNotice.nextAttemptEpoch * 1000,
+                            ).toISOString()}
+                          >
+                            {new Date(retryNotice.nextAttemptEpoch * 1000).toLocaleString()}
+                          </time>
+                          .
+                        </>
+                      )}
                     </p>
                   </div>
-                ) : (
-                  <Markdown
-                    citations={page.citations}
-                    relations={page.evidence?.relations}
-                    onCite={(index) =>
-                      setSourceCitation(page.citations[index] ?? null)
-                    }
-                  >
-                    {stripGeneratedDiagrams(
-                      page.markdown,
-                      generationMode === "generated" &&
-                        page.generation?.renderer === "fact_plan",
-                    )}
-                  </Markdown>
                 )
               ) : pageError ? (
                 <div className="page-load-error" role="alert">
@@ -892,7 +1460,11 @@ export default function WikiPageView({
             <ul className="onthispage-list">
               {headings.map((h) => (
                 <li key={h.id} className={`lvl-${h.level}`}>
-                  <a href={`#${h.id}`} className={h.id === activeHeading ? "active" : ""}>
+                  <a
+                    href={`#${h.id}`}
+                    className={h.id === activeHeading ? "active" : ""}
+                    onClick={(event) => jumpToHeading(event, h.id)}
+                  >
                     {h.text}
                   </a>
                 </li>

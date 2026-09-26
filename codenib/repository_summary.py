@@ -109,30 +109,44 @@ def readme_summary(text: str, limit: int = 160) -> str:
             paragraph.clear()
 
     in_fence = False
+    # A wrapped list item or quote continues on indented lines; those lines
+    # belong to the skipped block, not to a new paragraph. Reading them as
+    # prose produced fragments such as "concurrency model to reduce bugs".
+    in_skipped_block = False
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             flush_paragraph()
+            in_skipped_block = False
             continue
         if line.startswith("```"):
             flush_paragraph()
             in_fence = not in_fence
+            in_skipped_block = False
             continue
         if in_fence:
             continue
         if line.startswith("#"):
             flush_paragraph()
+            in_skipped_block = False
             if re.match(r"^#(?!#)\s+", line):
                 heading = _descriptive_heading(line)
                 if heading:
                     candidates.append(heading)
             continue
-        if line.startswith((">", "<", "---", "===", "|", "- ", "* ")):
+        if line.startswith((">", "<", "---", "===", "|", "- ", "* ")) or re.match(
+            r"^\d+[.)]\s", line
+        ):
             flush_paragraph()
+            in_skipped_block = True
             continue
         if line.startswith(("![", "[![")) or line.startswith("["):
             flush_paragraph()
+            in_skipped_block = True
             continue
+        if in_skipped_block and raw[:1] in (" ", "\t"):
+            continue
+        in_skipped_block = False
         line = _plain_text(line)
         if line:
             paragraph.append(line)

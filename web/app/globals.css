@@ -348,7 +348,7 @@ pre {
   color: var(--muted);
   /* READMEs leak URLs and HTML attributes with no break opportunity; let them
      wrap rather than push the card wider than its track. */
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -470,13 +470,22 @@ pre {
      not the cavernous margins a fixed centred cap leaves on wide screens. */
   padding-inline: var(--wiki-gutter);
 }
-@media (max-width: 1180px) {
+/* Below ~1320px a three-column grid leaves the reading column under 600px,
+   which squeezes architecture panels and story maps into a stack of slivers.
+   Give the column back by folding the "On this page" rail first; the left
+   outline is the reader's primary navigation and stays until 820px. */
+@media (max-width: 1320px) {
   .wiki-grid {
     grid-template-columns: var(--rail-left) minmax(0, 1fr);
   }
   .wiki-onthispage {
     display: none;
   }
+  .askbar {
+    right: var(--wiki-gutter); /* right rail is hidden at this width */
+  }
+}
+@media (max-width: 1180px) {
   .site-header {
     gap: 10px;
     padding-inline: 24px;
@@ -967,6 +976,24 @@ pre {
   border-left: 3px solid var(--border-2);
   color: var(--muted);
 }
+.wiki-story > .markdown:first-child blockquote {
+  margin: 20px 0 4px;
+  padding: 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+  border-left: 4px solid var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-surface));
+  color: var(--text-secondary);
+}
+.wiki-story > .markdown:first-child blockquote p {
+  margin: 0;
+}
+.wiki-story > .markdown:first-child blockquote strong:first-child {
+  color: var(--accent);
+  font-size: 0.78em;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 .markdown :not(pre) > code {
   background: var(--code-bg);
   border-radius: 5px;
@@ -1123,7 +1150,6 @@ pre {
   text-align: center;
 }
 .mermaid-diagram svg {
-  max-width: 100%;
   height: auto;
 }
 .mermaid-error {
@@ -1425,11 +1451,6 @@ pre {
 .askbar-trigger:hover {
   border-color: var(--accent);
   background: var(--accent-soft);
-}
-@media (max-width: 1180px) {
-  .askbar {
-    right: var(--wiki-gutter); /* right rail is hidden at this width */
-  }
 }
 @media (max-width: 820px) {
   .askbar {
@@ -2135,11 +2156,14 @@ pre {
 .system-symbol b {
   grid-area: name;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: 12px;
-  line-height: 1.2;
+  line-height: 1.25;
+}
+.system-map-quiet .system-map-title {
+  color: var(--text-muted);
+  font-weight: 500;
 }
 .system-symbol em {
   grid-area: loc;
@@ -3413,6 +3437,13 @@ a.evidence-row:hover {
     linear-gradient(135deg, var(--bg-surface), var(--bg-muted));
   box-shadow: 0 18px 50px -36px rgba(15, 23, 42, 0.35);
 }
+.wiki-media-lead {
+  margin: 20px 0 34px;
+  padding: 10px;
+}
+.wiki-media-lead .wiki-media-feature {
+  margin-bottom: 0;
+}
 .wiki-media-head {
   display: flex;
   align-items: flex-start;
@@ -3514,6 +3545,348 @@ a.evidence-row:hover {
 }
 .wiki-media-asset {
   object-fit: cover;
+}
+.wiki-media-asset.repository-owned {
+  object-fit: contain;
+  padding: 12px;
+  background: #fff;
+}
+.wiki-media-asset.contract-visual {
+  object-fit: contain;
+  background: #fff;
+}
+.wiki-media-bridge {
+  margin: -4px 0 38px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.wiki-story-map {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, #4b4a45 32%, var(--border));
+  border-radius: 3px;
+  background: #fbfaf6;
+  box-shadow: 0 20px 42px -40px rgba(28, 28, 24, 0.7);
+}
+.wiki-story-map-frame .wiki-media-asset {
+  min-height: 0;
+  border-bottom: 1px solid #cbc7bd;
+  background: #f4f1e9;
+}
+.wiki-system-architecture {
+  border-bottom: 1px solid #cbc7bd;
+  padding: 30px;
+  color: #272724;
+  background:
+    radial-gradient(circle at 84% 8%, rgba(37, 99, 235, 0.07), transparent 25%),
+    #f4f1e9;
+}
+.wiki-system-architecture-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+.wiki-system-architecture-eyebrow {
+  display: block;
+  margin-bottom: 7px;
+  color: #2563eb;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.wiki-system-architecture-head h3 {
+  margin: 0;
+  color: #242420;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 650;
+  line-height: 1.12;
+}
+.wiki-system-architecture-summary {
+  flex: 0 0 auto;
+  padding-bottom: 3px;
+  color: #68665f;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.wiki-system-architecture-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(230px, 0.75fr);
+  gap: 34px;
+  padding-top: 24px;
+  border-top: 1px solid #aaa79f;
+}
+.wiki-system-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 13px;
+  color: #77736a;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.wiki-system-path {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wiki-system-path-step {
+  min-width: 0;
+}
+.wiki-system-role {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 18px;
+  min-width: 0;
+  padding: 19px 21px 19px 17px;
+  border: 1px solid #cbc7bd;
+  border-left: 4px solid #2563eb;
+  border-radius: 3px;
+  background: rgba(251, 250, 246, 0.88);
+  box-shadow: 0 14px 30px -29px rgba(28, 28, 24, 0.9);
+}
+.wiki-system-role.layer-external {
+  border-left-color: #7c3aed;
+}
+.wiki-system-role.layer-interface {
+  border-left-color: #2563eb;
+}
+.wiki-system-role.layer-coordination {
+  border-left-color: #c26715;
+}
+.wiki-system-role.layer-execution {
+  border-left-color: #087f5b;
+}
+.wiki-system-role.layer-data {
+  border-left-color: #9a5b13;
+}
+.wiki-system-role-index {
+  padding-top: 2px;
+  color: #2563eb;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 25px;
+  font-style: italic;
+  line-height: 1;
+}
+.wiki-system-role-copy {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+.wiki-system-role-layer,
+.wiki-system-support-card > span {
+  color: #77736a;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.wiki-system-role h4,
+.wiki-system-support-card h4,
+.wiki-system-boundary h4 {
+  margin: 0;
+  color: #242420;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+.wiki-system-role p,
+.wiki-system-support-card p,
+.wiki-system-boundary p {
+  margin: 0;
+  color: #5f5c55;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.wiki-system-connection {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  color: #5e5b55;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.wiki-system-connection > span:not(.wiki-system-connection-line) {
+  position: relative;
+  z-index: 1;
+  padding: 4px 9px;
+  background: #f4f1e9;
+}
+.wiki-system-connection-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 32px;
+  width: 1px;
+  background: #9e9a91;
+}
+.wiki-system-connection-arrow {
+  position: absolute !important;
+  bottom: -1px;
+  left: 21px;
+  padding: 0 !important;
+  color: #2563eb;
+  font-size: 17px;
+  line-height: 1;
+  background: transparent !important;
+}
+.wiki-system-context {
+  display: grid;
+  align-content: start;
+  gap: 28px;
+  padding-left: 28px;
+  border-left: 1px solid #cbc7bd;
+}
+.wiki-system-supporting,
+.wiki-system-boundaries {
+  display: grid;
+  gap: 10px;
+}
+.wiki-system-supporting .wiki-system-section-label,
+.wiki-system-boundaries .wiki-system-section-label {
+  margin-bottom: 3px;
+}
+.wiki-system-support-card {
+  display: grid;
+  gap: 6px;
+  padding: 15px 0;
+  border-bottom: 1px solid #cbc7bd;
+}
+.wiki-system-support-card:first-of-type {
+  padding-top: 8px;
+}
+.wiki-system-support-card small,
+.wiki-system-boundary small {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+.wiki-system-boundary {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+  border: 1px dashed #a7a299;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.32);
+}
+.wiki-system-boundary > div {
+  display: grid;
+  gap: 7px;
+}
+.wiki-system-boundary-mark {
+  width: 4px;
+  min-height: 100%;
+  border-radius: 999px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #c26715 0 5px,
+    transparent 5px 9px
+  );
+}
+.wiki-story-path {
+  display: grid;
+  margin: 0;
+  padding: 0 28px;
+  list-style: none;
+  border-bottom: 1px solid #cbc7bd;
+  background: #f4f1e9;
+}
+.wiki-story-path-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  gap: 16px;
+  padding: 24px 0;
+  border-bottom: 1px solid #cbc7bd;
+}
+.wiki-story-path-step:last-child {
+  border-bottom: 0;
+}
+.wiki-story-path-step:not(:last-child)::after {
+  position: absolute;
+  bottom: -4px;
+  left: 21px;
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid #79766d;
+  border-bottom: 1px solid #79766d;
+  background: #f4f1e9;
+  content: "";
+  transform: rotate(45deg);
+}
+.wiki-story-path-index {
+  color: #2563eb;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  line-height: 1.2;
+}
+.wiki-story-path-copy {
+  min-width: 0;
+}
+.wiki-story-path-role {
+  display: block;
+  margin-bottom: 5px;
+  color: #77736a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.wiki-story-path-copy strong {
+  display: block;
+  color: #272724;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 20px;
+  line-height: 1.25;
+}
+.wiki-story-path-copy p {
+  max-width: 72ch;
+  margin: 8px 0 0;
+  color: #5f5d56;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.wiki-story-map-footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 9px 12px;
+  background: #fbfaf6;
+}
+.wiki-story-map-footer .wiki-media-status,
+.wiki-story-map-footer .wiki-media-citations {
+  margin: 0;
+}
+.wiki-story-map-footer .wiki-media-open {
+  margin: 0 0 0 auto;
+}
+.wiki-story-map-footer .wiki-media-status .ready {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #5f5d56;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 .wiki-media-diagram-preview {
   display: grid;
@@ -3750,6 +4123,115 @@ a.wiki-media-citation:hover {
   }
   .wiki-media-feature-body {
     padding: 14px;
+  }
+  .wiki-media-bridge {
+    margin-top: 0;
+    padding: 0;
+  }
+  .wiki-system-architecture {
+    padding: 22px 18px 20px;
+  }
+  .wiki-system-architecture-head {
+    display: block;
+    margin-bottom: 18px;
+  }
+  .wiki-system-architecture-summary {
+    display: block;
+    margin-top: 8px;
+  }
+  .wiki-system-architecture-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    padding-top: 20px;
+  }
+  .wiki-system-role {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 12px;
+    padding: 17px 16px 17px 13px;
+  }
+  .wiki-system-role-index {
+    font-size: 21px;
+  }
+  .wiki-system-role h4 {
+    font-size: 17px;
+  }
+  .wiki-system-connection-line {
+    left: 24px;
+  }
+  .wiki-system-connection-arrow {
+    left: 13px;
+  }
+  .wiki-system-context {
+    gap: 24px;
+    padding-top: 23px;
+    padding-left: 0;
+    border-top: 1px solid #cbc7bd;
+    border-left: 0;
+  }
+  .wiki-story-path {
+    padding: 0 18px;
+  }
+  .wiki-story-path-step {
+    position: relative;
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px;
+    padding: 20px 0;
+    border-bottom: 1px solid #cbc7bd;
+  }
+  .wiki-story-path-step:last-child {
+    border-bottom: 0;
+  }
+  .wiki-story-path-step:not(:last-child)::after {
+    position: absolute;
+    bottom: -4px;
+    left: 18px;
+    width: 7px;
+    height: 7px;
+    border-right: 1px solid #79766d;
+    border-bottom: 1px solid #79766d;
+    background: #f4f1e9;
+    content: "";
+    transform: rotate(45deg);
+  }
+  .wiki-story-path-index {
+    color: #2563eb;
+    font-family: var(--font-mono);
+    font-size: 18px;
+    line-height: 1.2;
+  }
+  .wiki-story-path-copy {
+    min-width: 0;
+  }
+  .wiki-story-path-role {
+    display: block;
+    margin-bottom: 4px;
+    color: #77736a;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .wiki-story-path-copy strong {
+    display: block;
+    color: #272724;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.25;
+  }
+  .wiki-story-path-copy p {
+    margin: 6px 0 0;
+    color: #5f5d56;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .wiki-story-map-footer {
+    align-items: flex-start;
+  }
+  .wiki-story-map-footer .wiki-media-open {
+    width: 100%;
+    margin-left: 0;
+    text-align: center;
   }
   .wiki-media-diagram-preview {
     grid-template-columns: 1fr;
@@ -4352,4 +4834,887 @@ a.codepanel-name:hover {
 }
 .addrepo-foot a {
   color: var(--accent);
+}
+
+/* --- Story rendering: citations, relation rows, journey, marked lines --- */
+
+/* Citations gather at the end of a block as a quiet reference run. */
+.cite-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+.cite-group .cite-src {
+  margin: 0;
+  font-size: 0.76em;
+  color: var(--text-muted, var(--muted));
+}
+.cite-group .cite-src:hover {
+  color: var(--accent);
+}
+
+/* "**Interactions**" label followed by relation rows rendered from graph edges. */
+.markdown p:has(> strong:only-child) {
+  margin: 14px 0 4px;
+  font-size: 0.74em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted, var(--muted));
+}
+.markdown p:has(> strong:only-child) > strong {
+  font-weight: 600;
+}
+.markdown p:has(> strong:only-child) + ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 14px;
+  display: grid;
+  gap: 4px;
+}
+.markdown p:has(> strong:only-child) + ul > li {
+  display: block;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 8px;
+  background: var(--bg-surface, var(--surface));
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+.markdown p:has(> strong:only-child) + ul > li code {
+  font-size: 0.84em;
+}
+
+/* Overview journey: numbered stages down a rail. */
+.wiki-story .markdown ol {
+  list-style: none;
+  counter-reset: stage;
+  padding-left: 0;
+  margin: 8px 0 18px;
+  display: grid;
+  gap: 8px;
+}
+.wiki-story .markdown ol > li {
+  counter-increment: stage;
+  position: relative;
+  padding: 8px 12px 8px 44px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+.wiki-story .markdown ol > li::before {
+  content: counter(stage);
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+}
+.wiki-story .markdown ol > li > strong code {
+  font-size: 0.9em;
+}
+
+/* Lines a code excerpt was chosen for. */
+.code-block-marked .code-line {
+  display: block;
+  margin: 0 -16px;
+  padding: 0 16px;
+}
+.code-block-marked .code-line.is-marked {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* The notice under an excerpt reads as a caption, not a paragraph. */
+.markdown pre + p,
+.code-block + p {
+  margin-top: -6px;
+  font-size: 0.92em;
+  color: var(--text-secondary);
+}
+.provenance-review.advisory {
+  color: var(--warning, #b45309);
+}
+
+/* A straight call path from a section flow: symbols down a rail, each call
+   written between them with its recorded call site. Scoped under .markdown
+   so the Overview journey's numbered-stage list style does not apply. */
+.markdown ol.call-chain {
+  list-style: none;
+  counter-reset: none;
+  display: block;
+  margin: 12px 0 8px;
+  padding: 2px 0;
+}
+.markdown ol.call-chain > li.call-chain-step {
+  position: relative;
+  counter-increment: none;
+  margin: 0;
+  padding: 0 0 0 24px;
+  border-left: 0;
+}
+.markdown ol.call-chain > li.call-chain-step::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 9px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--bg-surface, var(--surface));
+  border: 2px solid var(--accent);
+  box-sizing: border-box;
+}
+.markdown ol.call-chain > li.call-chain-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 22px;
+  bottom: -7px;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.call-chain-symbol {
+  display: inline-block;
+  line-height: 28px;
+}
+.call-chain-symbol code,
+.call-chain-symbol .cite-chip code {
+  font-size: 0.84em;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--text-primary, var(--text));
+}
+.call-chain-call {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  padding: 2px 0 12px;
+  font-size: 0.88em;
+  line-height: 1.45;
+  color: var(--text-secondary, var(--muted));
+}
+.call-chain-call .cite-src {
+  font-size: 0.86em;
+  color: var(--text-muted, var(--muted));
+}
+.call-chains {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 40px;
+  margin: 8px 0 4px;
+}
+.call-chains > .call-chain {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+/* The flow caption reads as a figure caption, like the excerpt notice. */
+.call-chains + p {
+  margin-top: 0;
+  font-size: 0.92em;
+  color: var(--text-secondary);
+}
+
+/* --- Page boundary: where a detail page's symbols sit in the code graph --- */
+.page-boundary {
+  margin: 18px 0 26px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 12px;
+  background: var(--bg-surface, var(--surface));
+}
+.boundary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+}
+.boundary-kicker {
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.boundary-meta {
+  font-size: 0.78em;
+  color: var(--text-muted, var(--muted));
+}
+.boundary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 28px;
+}
+@media (max-width: 720px) {
+  .boundary-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.page-boundary .boundary-heading {
+  margin: 0 0 6px;
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--text-secondary, var(--muted));
+}
+.boundary-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.boundary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "symbol site"
+    "link link";
+  align-items: baseline;
+  gap: 0 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-subtle, var(--border));
+}
+.boundary-row:first-child {
+  border-top: 0;
+}
+.boundary-symbol {
+  grid-area: symbol;
+  justify-self: start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.boundary-symbol:disabled {
+  cursor: default;
+}
+.boundary-symbol code {
+  font-size: 0.84em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--text-primary, var(--text));
+}
+.boundary-symbol:not(:disabled):hover code {
+  border-color: var(--accent);
+}
+.boundary-link {
+  grid-area: link;
+  font-size: 0.8em;
+  color: var(--text-secondary, var(--muted));
+  overflow-wrap: anywhere;
+}
+.boundary-link code {
+  font-size: 0.95em;
+  background: none;
+  padding: 0;
+}
+.boundary-site {
+  grid-area: site;
+  font-size: 0.74em;
+  color: var(--text-muted, var(--muted));
+  white-space: nowrap;
+}
+.boundary-empty {
+  margin: 4px 0;
+  font-size: 0.82em;
+  color: var(--text-muted, var(--muted));
+}
+.boundary-more {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.8em;
+  color: var(--accent);
+  cursor: pointer;
+}
+.boundary-more:hover {
+  text-decoration: underline;
+}
+.boundary-symbol code {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 720px) {
+  .boundary-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "symbol"
+      "link"
+      "site";
+  }
+}
+
+/* --- Overview system map: the wiki's areas by who calls whom --- */
+.area-map {
+  margin: 18px 0 26px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 12px;
+  background: var(--bg-surface, var(--surface));
+}
+.area-map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+}
+.area-map-canvas {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.area-map-canvas.is-layered {
+  grid-template-columns: repeat(var(--area-columns), minmax(0, 1fr));
+  column-gap: clamp(36px, 7vw, 72px);
+  align-items: center;
+}
+.area-map-column {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  position: relative;
+  z-index: 1;
+}
+.area-map-links {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  z-index: 0;
+}
+.area-map-link {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 55%, var(--border));
+  transition: stroke 120ms ease, opacity 120ms ease;
+  pointer-events: stroke;
+  cursor: default;
+}
+.area-map-link.is-lit {
+  stroke: var(--accent);
+}
+.area-map-link.is-dim {
+  opacity: 0.18;
+}
+.area-map-arrowhead {
+  fill: color-mix(in srgb, var(--accent) 70%, var(--border));
+}
+.area-card {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 10px;
+  background: var(--bg-page, var(--bg));
+  transition: opacity 120ms ease, border-color 120ms ease;
+}
+.area-card:hover {
+  border-color: var(--accent-border);
+}
+.area-card.is-dim {
+  opacity: 0.45;
+}
+.area-card-title {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-size: 0.92em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary, var(--text));
+  cursor: pointer;
+}
+.area-card-title:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.area-card-meta {
+  font-size: 0.74em;
+  color: var(--text-muted, var(--muted));
+}
+.area-card-calls {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 0.76em;
+  color: var(--text-secondary, var(--muted));
+}
+.area-card-count {
+  color: var(--text-muted, var(--muted));
+}
+/* With arrows on screen the per-card call list repeats them. */
+.area-map-canvas.is-layered .area-card-calls {
+  display: none;
+}
+.area-map-caption {
+  margin: 12px 0 0;
+  font-size: 0.84em;
+  line-height: 1.5;
+  color: var(--text-secondary, var(--muted));
+}
+.area-map-caption code {
+  font-size: 0.92em;
+}
+@media (max-width: 720px) {
+  .area-map-canvas.is-layered {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .area-map-canvas.is-layered .area-map-links {
+    display: none;
+  }
+  .area-map-canvas.is-layered .area-card-calls {
+    display: block;
+  }
+}
+.area-map-canvas.is-layered.has-arcs {
+  padding-top: 30px;
+}
+@media (max-width: 720px) {
+  .area-map-canvas.is-layered.has-arcs {
+    padding-top: 0;
+  }
+}
+@media (max-width: 720px) {
+  .area-map-canvas.is-layered,
+  .area-map-canvas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .area-map-column {
+    display: contents;
+  }
+  .area-card {
+    padding: 8px 9px;
+  }
+  .area-card-title {
+    font-size: 0.84em;
+  }
+  .area-card-calls li:nth-child(n + 3) {
+    display: none;
+  }
+}
+
+/* --- One visual language for the Overview architecture card ---------------
+   The card used a fixed paper palette and serif display type, so it read as
+   a different product and stayed beige in dark mode. It now shares the
+   tokens, type and card shape of the system map and the boundary card. */
+.wiki-media-bridge {
+  margin: 0 0 30px;
+}
+.wiki-story-map {
+  border: 1px solid var(--border-subtle, var(--border));
+  border-radius: 12px;
+  background: var(--bg-surface, var(--surface));
+  box-shadow: none;
+}
+.wiki-system-architecture {
+  padding: 16px 18px 18px;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  color: var(--text-primary, var(--text));
+  background: var(--bg-surface, var(--surface));
+}
+.wiki-system-architecture-head {
+  margin-bottom: 12px;
+}
+.wiki-system-architecture-eyebrow {
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.wiki-system-architecture-head h3,
+.wiki-system-role h4,
+.wiki-system-support-card h4,
+.wiki-system-boundary h4,
+.wiki-story-path-copy strong {
+  font-family: inherit;
+  color: var(--text-primary, var(--text));
+}
+.wiki-system-architecture-head h3 {
+  font-size: 1.15em;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.wiki-system-architecture-body {
+  grid-template-columns: minmax(0, 1.55fr) minmax(210px, 0.8fr);
+  gap: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle, var(--border));
+}
+.wiki-system-section-label,
+.wiki-system-role-layer,
+.wiki-system-support-card > span {
+  color: var(--text-muted, var(--muted));
+  font-size: 0.66em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.wiki-system-role {
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  padding: 11px 13px 11px 11px;
+  border: 1px solid var(--border-subtle, var(--border));
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-page, var(--bg));
+  box-shadow: none;
+  transition: opacity 120ms ease, border-color 120ms ease;
+}
+.wiki-system-role.layer-external {
+  border-left-color: var(--purple-border);
+}
+.wiki-system-role.layer-interface {
+  border-left-color: var(--accent);
+}
+.wiki-system-role.layer-coordination {
+  border-left-color: #d97706;
+}
+.wiki-system-role.layer-execution {
+  border-left-color: #059669;
+}
+.wiki-system-role.layer-data {
+  border-left-color: #b45309;
+}
+.wiki-system-role-index {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.wiki-system-role h4,
+.wiki-system-support-card h4,
+.wiki-system-boundary h4 {
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.wiki-system-role p,
+.wiki-system-support-card p,
+.wiki-system-boundary p {
+  color: var(--text-secondary, var(--muted));
+  font-size: 0.82em;
+  line-height: 1.5;
+}
+.wiki-system-connection {
+  min-height: 34px;
+  justify-content: flex-start;
+  padding-left: 40px;
+  color: var(--text-secondary, var(--muted));
+  font-size: 0.74em;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.wiki-system-connection > span:not(.wiki-system-connection-line) {
+  padding: 2px 0;
+  background: transparent;
+}
+.wiki-system-connection-line {
+  left: 22px;
+  background: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.wiki-system-context {
+  gap: 18px;
+  padding-left: 20px;
+  border-left: 1px solid var(--border-subtle, var(--border));
+}
+.wiki-system-support-card {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  transition: opacity 120ms ease;
+}
+.wiki-system-support-card small,
+.wiki-system-boundary small {
+  color: var(--accent);
+  font-size: 0.72em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.wiki-system-boundary {
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 10px;
+  background: transparent;
+}
+.wiki-system-boundary-mark {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--text-muted, var(--muted)) 0 4px,
+    transparent 4px 8px
+  );
+}
+.wiki-story-map-frame .wiki-media-asset {
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  background: var(--bg-surface, var(--surface));
+}
+.wiki-story-map-footer {
+  color: var(--text-muted, var(--muted));
+  background: var(--bg-surface, var(--surface));
+}
+.wiki-system-role.is-dim,
+.wiki-system-support-card.is-dim,
+.wiki-system-trace-step.is-dim {
+  opacity: 0.4;
+}
+.wiki-system-role.is-lit {
+  border-color: var(--accent-border);
+}
+
+/* Functions the traced path passes through, shown on their role. */
+.wiki-system-role-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.wiki-system-stage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+}
+.wiki-system-stage-chip code {
+  font-size: 0.76em;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  overflow-wrap: anywhere;
+}
+.wiki-system-stage-number {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 10.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The traced call path, inside the card below the roles. */
+.wiki-system-trace {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle, var(--border));
+}
+.wiki-system-trace-title {
+  margin: 0 0 8px;
+  font-size: 0.95em;
+  font-weight: 600;
+}
+.wiki-system-trace-title code {
+  font-size: 0.92em;
+}
+.wiki-system-trace-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wiki-system-trace-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  padding: 0 0 10px;
+  transition: opacity 120ms ease;
+}
+.wiki-system-trace-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 8.5px;
+  top: 22px;
+  bottom: 2px;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.wiki-system-trace-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.wiki-system-trace-symbol {
+  font-size: 0.82em;
+  font-weight: 600;
+}
+.wiki-system-trace-role {
+  font-size: 0.7em;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-subtle, var(--surface));
+  color: var(--text-secondary, var(--muted));
+}
+.wiki-system-trace-page {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.74em;
+  color: var(--accent);
+  cursor: pointer;
+}
+.wiki-system-trace-page:hover {
+  text-decoration: underline;
+}
+.wiki-system-trace-text .markdown p {
+  margin: 2px 0 0;
+  font-size: 0.86em;
+  line-height: 1.5;
+  color: var(--text-secondary, var(--muted));
+}
+@media (max-width: 720px) {
+  .wiki-system-architecture {
+    padding: 14px 14px 16px;
+  }
+  .wiki-system-architecture-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wiki-system-context {
+    padding-left: 0;
+    border-left: 0;
+  }
+}
+/* Roles follow each other down the connectors; only the traced functions
+   carry numbers, so the card has one numbering, not two. */
+.wiki-system-role {
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: 13px;
+}
+.wiki-system-role-index {
+  display: none;
+}
+.wiki-system-connection {
+  padding-left: 26px;
+}
+.wiki-system-connection-line {
+  left: 14px;
+}
+.wiki-system-role p code,
+.wiki-system-support-card p code,
+.wiki-system-boundary p code {
+  font-size: 0.92em;
+}
+
+/* --- Landing: say what is different, prove it with one recorded call --- */
+.landing .hero .hero-sub {
+  max-width: 620px;
+  margin: 10px auto 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary, var(--muted));
+  text-align: center;
+}
+.hero-proof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 10px;
+  max-width: 720px;
+  margin: 0 auto 22px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text-primary, var(--text));
+  font-size: 14px;
+  text-decoration: none;
+}
+.hero-proof:hover {
+  border-color: var(--accent);
+}
+.hero-proof-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.hero-proof code {
+  font-size: 0.9em;
+}
+.hero-proof-site {
+  margin-left: 6px;
+  font-size: 0.82em;
+  color: var(--text-secondary, var(--muted));
+}
+.hero-proof-repo {
+  font-size: 12.5px;
+  color: var(--text-secondary, var(--muted));
+}
+.landing-actions {
+  display: flex;
+  justify-content: center;
+  margin: -4px 0 8px;
+}
+.add-repo-link {
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.add-repo-link:hover {
+  text-decoration: underline;
+}
+.repo-group {
+  max-width: 1120px;
+  width: 100%;
+  margin: 0 auto;
+}
+.repo-group-title {
+  margin: 22px 0 0;
+  padding: 0 24px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary, var(--muted));
+}
+.repo-group-title span {
+  margin-left: 4px;
+  font-weight: 400;
+  color: var(--text-muted, var(--muted));
+}
+.repo-group .repo-grid {
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+.repo-card-desc code {
+  font-size: 0.9em;
+}
+@media (max-width: 680px) {
+  .repo-group-title {
+    padding: 0 16px;
+  }
 }
