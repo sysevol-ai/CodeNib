@@ -25,14 +25,14 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 
 | Surface | Current outcome | Open gate / dependency |
 | --- | --- | --- |
-| Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs, merged in #785. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
+| Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs, merged in #785. | Keep package/source-checkout instructions distinct until publication; promote OAuth setup after actual provider-consent acceptance. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
 | OpenRouter | Shared grep/Jev configuration and local PKCE are merged in #782/#783. The opt-in browser trial uses direct provider calls and a short in-memory credential; real-source browser acceptance uses provider fixtures. Real Linux SecretService and macOS/Windows vault round trips pass with fake entries. | Actual provider consent, interactive desktop unlock, release and HTTPS-host verification remain. |
-| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | Producer fixes #789/#790/#791 are merged; browser trial review, actual consent and deployment remain. Live operator browsing/Ask can still intentionally generate. |
+| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | Producer fixes #789/#790/#791 and reviewed browser trial #796 are merged; actual consent and deployment remain. Live operator browsing/Ask can still intentionally generate. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
-| Releases | Five GitHub releases exist; v0.2.3 is latest. The 0.2.4 candidate aligns package/lockfile, Registry pins, changelog and curated release notes. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Candidate depends on #796; consent acceptance, exact-SHA TestPyPI verification and protected production publication remain. No new version or tag is published. |
+| Releases | Five GitHub releases exist; v0.2.3 is latest. Draft [#797](https://github.com/sysevol-ai/CodeNib/pull/797) aligns the 0.2.4 package/lockfile, Registry pins, changelog and curated notes. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Dependency #796 is merged; restacked candidate CI, exact-SHA TestPyPI verification and protected production publication remain. No new version or tag is published. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. #770/#752 are drafts and are not merge prerequisites. |
 
 ## Delivery order and acceptance gates
@@ -171,8 +171,8 @@ repository mutation or an ancestor replacement. The combined platform check
 passes. Its complete release-artifact, installation and unit checks passed
 before merge; package publication and real provider consent remain open.
 
-The browser trial in [#796](https://github.com/sysevol-ai/CodeNib/pull/796)
-now exchanges a one-use S256 grant directly with OpenRouter
+The browser trial in [#796](https://github.com/sysevol-ai/CodeNib/pull/796),
+merged as `56472bfe`, exchanges a one-use S256 grant directly with OpenRouter
 and holds its key in a private JavaScript field for up to ten minutes. No key
 enters UI state, storage, URLs, exported assets or source-service requests.
 The nonce-scoped callback supports denial, expiry, replay rejection and
@@ -206,8 +206,11 @@ calls. The source-API check passes on Linux, macOS and Windows in the installati
 job. Browser acceptance uses `localhost` against a real IPv6 listener. Export,
 service configuration and frontend admission consistently reject IPv6 literals:
 browser CSP host sources cannot match them. The guide documents the hostname
-route; the script and connection policies remain restrictive. Current-head CI
-and review reconciliation remain required before merging #796.
+route; the script and connection policies remain restrictive. All five review
+threads are addressed. All executed checks passed on the accepted head, including
+three-platform installed-package coverage, manylinux artifact verification and
+Python 3.10–3.14 ABI3 smokes. The merge message was inspected; actual provider
+consent and deployment remain open.
 
 Native registration is merged in
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785) as `50215406`. `codenib init` checks or
@@ -404,11 +407,14 @@ or unbounded inference is required to finish A1–A5.
 
 ## Measurement and rollout
 
-The `chore/release-0.2.4` candidate is stacked on the reviewed browser trial
-#796. It includes the merged #779/#780 fix and keeps grep/Jev and browser
-authorization opt-in. Version metadata and curated notes describe the proposed
+The 0.2.4 candidate in [#797](https://github.com/sysevol-ai/CodeNib/pull/797)
+is based on main after browser trial #796 merged as `56472bfe`. It includes the
+merged #779/#780 fix and keeps grep/Jev and browser authorization opt-in. Version metadata and curated notes describe the proposed
 release; they are not publication evidence. Hold the release PR as draft until
-its dependency is merged and the remaining acceptance gates are recorded.
+its restacked package checks are accepted. The MCP version
+fix ships through the established indexed route. Actual provider consent gates
+promotion of OAuth onboarding and activation of the public browser trial;
+both remain opt-in previews while those interaction checks are open.
 TestPyPI admits `main` only, while production admits `v*` tags. Run the existing
 candidate workflow on the final main SHA, require registry-download/installed
 acceptance, and tag that exact SHA. Do not upload the existing 0.2.3 version or
