@@ -11,17 +11,17 @@ model. CodeNib uses your OpenRouter account to plan local `rg` searches, then
 Jev ranks the matching code blocks. Results include verified source excerpts,
 file paths, line numbers, actual model IDs, and reported API usage.
 
-**Source-checkout preview:** these commands are not in the published 0.2.3
-package. Use a checkout containing this feature. The released
+**Optional route in CodeNib 0.2.4.** The
 [CodeGraph setup](../codegraph.md) remains available for model-free search and
-typed graph navigation.
+typed graph navigation. Browser authorization remains a preview while actual
+provider-consent and interactive desktop-unlock acceptance are open.
 
 ## Connect Claude Code or Codex
 
-From your CodeNib checkout:
+Install the optional runtime, then connect your repository:
 
 ```bash
-python -m pip install -e ".[grep,mcp,auth]"
+python -m pip install "codenib[grep,mcp,auth]==0.2.4"
 codenib init /path/to/your/repository
 ```
 
@@ -44,8 +44,9 @@ Use `--agent claude` or `--agent codex` to select one client. `--headless` suppo
 authorization from SSH; `--store file` explicitly opts into unencrypted local
 storage when an OS keyring is unavailable. See
 [OpenRouter authorization](openrouter.md) for details and disconnect behavior.
-Keep the installed environment and checkout available: the registered command
-uses that installation's absolute executable path.
+Keep the installed Python environment and your target repository available:
+the registered command uses that installation's absolute executable path.
+No CodeNib source checkout is required.
 
 Check, preview, or remove this checkout's connection:
 

@@ -11,11 +11,12 @@ pasting a key into your repository or MCP configuration. Authorization and
 model requests go directly from your machine to OpenRouter. A CodeNib hosted
 service does not receive the key.
 
-**Source-checkout preview:** these commands are not in PyPI 0.2.3. From a
-checkout containing the feature, install the local authorization support:
+Install CodeNib 0.2.4 with local authorization support. Browser consent and
+interactive desktop unlock remain preview interactions pending acceptance;
+existing-key transport and isolated native credential-store checks pass.
 
 ```bash
-python -m pip install -e ".[grep,mcp,auth]"
+python -m pip install "codenib[grep,mcp,auth]==0.2.4"
 codenib auth login
 ```
 
@@ -126,5 +127,5 @@ remains in the chosen credential store until removed or revoked.
 
 This page describes local CLI/MCP authorization. The optional
 [static Wiki browser trial](browser-trial.md) has a separate in-memory
-credential and source-service boundary. It is a source-checkout preview and
-is not enabled by these commands.
+credential and source-service boundary. It remains an optional deployment
+preview and is not enabled by these commands.

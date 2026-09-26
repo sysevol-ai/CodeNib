@@ -31,14 +31,14 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
     with:
       preset: fast
 ```
 
-The version tag keeps the compiler, frontend, Action, and artifact schema on
-one reviewed version. Production deployments may replace it with the tag's
-resolved commit SHA. In the repository's **Settings > Pages**, select
+The commit pin resolves to v0.2.4 and keeps the compiler, frontend, Action,
+and artifact schema on one reviewed version. When upgrading, update both
+the commit SHA and its version comment. In the repository's **Settings > Pages**, select
 **GitHub Actions** as the source.
 
 The workflow checks out the caller's exact commit, builds or reuses the
@@ -51,9 +51,9 @@ browser; the BM25 artifact remains reusable through local or MCP serving.
 These are index-derived pages. Model-written story pages require a separate,
 explicit generation step before cached-story export.
 
-The example selects `fast` explicitly so it also avoids model downloads with
-the released v0.2.3 workflow. The source-checkout workflow and composite Action
-now use `fast` by default; that changed default is not yet in a release tag.
+The v0.2.4 workflow and composite Action use `fast` by default. The example
+selects it explicitly; repositories still pinned to v0.2.3 must set `fast`
+to avoid that version's semantic default and embedding download.
 
 ## Optionally Publish Semantic Views
 
@@ -62,7 +62,7 @@ Select `semantic` when consumers need the portable dense-vector view:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
     with:
       preset: semantic
 ```
@@ -81,7 +81,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
     with:
       preset: semantic
       embedding-provider: openai
@@ -125,10 +125,10 @@ Pages artifacts.
 
 ## Publish an Existing Story Wiki
 
-!!! note "Source checkout preview"
-    Cached-story export is not available in the v0.2.3 wheel or tagged Pages
-    workflow. Use a source checkout containing this feature and build its
-    frontend with `make web-deps` followed by `npm --prefix web run build`.
+Cached-story export is included in CodeNib 0.2.4 with a prebuilt frontend.
+It needs no Node.js installation or CodeNib source checkout. The reusable Pages
+workflow builds an index-derived preview; exporting existing story pages is a
+separate operator command.
 
 An operator can generate story pages once, then publish them as static files.
 Visitors browse the recorded prose, source excerpts, page relationships and
@@ -141,9 +141,10 @@ WAL, SHM or rollback journal. The command reads a private immutable snapshot;
 it does not change the database, configuration or registry:
 
 ```bash
+python -m pip install "codenib==0.2.4"
 codenib export --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/site \
-  --frontend-dir web/dist --base-path /requests
+  --base-path /requests
 ```
 
 The configuration's `data_dir` locates `qa_registry.json` and
@@ -182,7 +183,7 @@ the export does not infer an authenticated GitHub origin from local Git config.
 The regular `codenib export /path/to/repository` route still builds deterministic
 index-derived pages. It does not export generated story prose automatically.
 
-An explicit source-checkout option can add a
+An explicit option can add a
 [browser OpenRouter trial](guides/browser-trial.md) for that published public
 repository. It requires a separate bounded CPU source service; the user's
 browser calls OpenRouter directly. The default Pages workflow and static export
@@ -216,7 +217,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.3
+- uses: sysevol-ai/CodeNib/.github/actions/publish@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
   id: codenib
   with:
     preset: fast
