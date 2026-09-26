@@ -31,7 +31,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | Producer fixes #789/#790/#791 and reviewed browser trial #796 are merged; actual consent and deployment remain. Live operator browsing/Ask can still intentionally generate. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
-| GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
+| GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
 | Releases | Five GitHub releases exist; v0.2.3 is latest. Draft [#797](https://github.com/sysevol-ai/CodeNib/pull/797) aligns the 0.2.4 package/lockfile, Registry pins, changelog and curated notes. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Dependency #796 is merged; restacked candidate CI, exact-SHA TestPyPI verification and protected production publication remain. No new version or tag is published. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. #770/#752 are drafts and are not merge prerequisites. |
 
@@ -331,8 +331,9 @@ through cleanup; deterministic concurrent tests verify that limit.
 
 Without the opt-in, static Ask keeps local-agent setup. Existing live Wiki Ask
 is unchanged. Local browser acceptance uses real Requests source and fixture
-provider calls, with no paid calls. Trial code review, actual provider consent,
-release/deployment and broader corpus curation remain open.
+provider calls, with no paid calls. Trial code review is complete in merged
+#796; actual provider consent, release/deployment and broader corpus curation
+remain open.
 
 The public demo must remain useful without authentication or a live LLM.
 
@@ -408,9 +409,10 @@ or unbounded inference is required to finish A1–A5.
 ## Measurement and rollout
 
 The 0.2.4 candidate in [#797](https://github.com/sysevol-ai/CodeNib/pull/797)
-is based on main after browser trial #796 merged as `56472bfe`. It includes the
-merged #779/#780 fix and keeps grep/Jev and browser authorization opt-in. Version metadata and curated notes describe the proposed
-release; they are not publication evidence. Hold the release PR as draft until
+is based on main after browser trial #796 (`56472bfe`) and native ARM release
+verification #799 (`170f7bab`) merged. It includes the merged #779/#780 fix and
+keeps grep/Jev and browser authorization opt-in. Version metadata and curated
+notes describe the proposed release; they are not publication evidence. Hold the release PR as draft until
 its restacked package checks are accepted. The MCP version
 fix ships through the established indexed route. Actual provider consent gates
 promotion of OAuth onboarding and activation of the public browser trial;
@@ -419,6 +421,15 @@ TestPyPI admits `main` only, while production admits `v*` tags. Run the existing
 candidate workflow on the final main SHA, require registry-download/installed
 acceptance, and tag that exact SHA. Do not upload the existing 0.2.3 version or
 change the protected environments to bypass their publication gates.
+
+Native ARM verification in [#799](https://github.com/sysevol-ai/CodeNib/pull/799)
+keeps the complete pinned cibuildwheel step, ownership/protocol smoke and every
+other job unchanged. All executed checks passed before merge. The native ARM
+job took 2m35s; the preceding accepted QEMU job took 29m34s. This is an observed
+pair of CI runs, not a controlled hardware or product benchmark. The candidate
+is restacked onto that workflow; its product source and package metadata are
+unchanged, and current-head checks are required before release preparation
+advances.
 
 Local candidate validation passes 7,318 unit tests, 62 release/Registry/CI
 contracts, strict public docs and the release all-files pre-commit check.
