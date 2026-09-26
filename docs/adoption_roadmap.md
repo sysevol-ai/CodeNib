@@ -190,14 +190,16 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Turn the Wiki demo into a preview and activation path
 
-Status: the story and graph UI is implemented in
-[#772](https://github.com/sysevol-ai/CodeNib/pull/772), rebased onto the current
-`main`; it is not merged or released. The restack preserves the existing Wiki
-changes and the static marketing preview introduced by #781. Web/Wiki/CLI
-verification and the public-doc checks pass. Static cache publication and
-agent activation are in dependent #784; a current SQLite corpus, bounded
-operator generation and production deployment remain open gates. Legacy JSON
-Wiki caches are not read or migrated.
+Status: story browsing is merged in
+[#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
+publication remains in [#784](https://github.com/sysevol-ai/CodeNib/pull/784).
+A real 15-page Requests corpus is persisted in SQLite. New evidence and
+citation ranges now follow the source reader's returned lines, including the
+end-of-file boundary; focused regressions and the Wiki unit tier pass. Source
+identity and publication checks remain strict. The corpus also uses the
+pending graph-boundary and JSON persistence fixes in #789/#790. Complete static
+export/browser acceptance and production deployment remain open; the corpus
+is not yet public.
 
 The public demo must remain useful without authentication or a live LLM.
 

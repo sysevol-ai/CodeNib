@@ -5926,6 +5926,12 @@ class AgentWiki:
             if has_complete_span and start_line is not None and end_line is not None:
                 source = self._wb.source(file, start_line, end_line)
                 content = (source or {}).get("content", "") if source else ""
+                if content:
+                    # A tree-sitter endpoint at column zero after the final
+                    # newline can be one line beyond EOF. Cite the lines the
+                    # source reader actually returned, not the requested span.
+                    start_line = source.get("start_line", start_line)
+                    end_line = source.get("end_line", end_line)
             if not content:
                 content = self._node_attr(node, "content") or ""
             content = _prepare_evidence_content(file, content)

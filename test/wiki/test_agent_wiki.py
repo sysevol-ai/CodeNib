@@ -5110,7 +5110,8 @@ def test_readme_evidence_drops_chrome_and_keeps_complete_paragraphs():
     assert prepared.endswith((".", "!", "?"))
 
 
-def test_evidence_items_prefer_the_current_source_span(tmp_path):
+@pytest.mark.parametrize("indexed_end_line", [2, 3])
+def test_evidence_items_prefer_the_current_source_span(tmp_path, indexed_end_line):
     source = tmp_path / "src" / "core.py"
     source.parent.mkdir(parents=True)
     source.write_text(
@@ -5137,7 +5138,7 @@ def test_evidence_items_prefer_the_current_source_span(tmp_path):
                 "node_name": "Router.dispatch",
                 "type": "method",
                 "start_line": 0,
-                "end_line": 2,
+                "end_line": indexed_end_line,
                 "content": "class Router:\n    pass  # stale index excerpt",
             }
         ]
@@ -5146,6 +5147,9 @@ def test_evidence_items_prefer_the_current_source_span(tmp_path):
     assert len(evidence) == 1
     assert "Authorization" in evidence[0].content
     assert "stale index excerpt" not in evidence[0].content
+    assert (evidence[0].start_line, evidence[0].end_line) == (1, 3)
+    citation = wiki._citation_payload(evidence)[0]
+    assert citation["end_line"] == len(source.read_text().splitlines())
 
 
 def test_evidence_items_keep_indexed_content_for_an_incomplete_span(tmp_path):
