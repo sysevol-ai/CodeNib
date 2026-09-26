@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
 
 from pydantic import Field
 
+from .._version import package_version
 from ..compiler.manifest import RepoManifest
 from ..log_utils import set_console_log_level
 from .context import ServerContext
@@ -142,6 +143,7 @@ if not _root_logger.handlers:
 try:
     mcp = MCPServer(
         "codenib",
+        version=package_version(),
         instructions=CODENIB_FULL_INSTRUCTIONS,
         lifespan=_mcp_lifespan,
     )
