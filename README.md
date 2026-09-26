@@ -93,9 +93,10 @@ This compares capabilities, not benchmark scores.
 | [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Hosted | No user key | Wiki and generated answers | Public indexed repos | Service-managed |
 
 [Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).
-CodeNib's **experimental grep → Jev** route uses OpenRouter for planning and
-reranking; selected code goes to remote models. Its measured result does not
-apply to the model-free CodeGraph row.
+CodeNib 0.2.4 also includes an optional [grep → Jev route](https://docs.codenib.ai/guides/grep-jev/)
+using OpenRouter for planning and reranking; selected code goes to remote
+models. Authorization previews remain opt-in. The historical research result
+above is separate from the product evaluation and the model-free CodeGraph row.
 
 ## Languages
 

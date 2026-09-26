@@ -20,7 +20,7 @@ model. “No key” excludes the agent's own subscription or API credentials.
 | --- | --- | --- | --- | --- | --- |
 | grep / file reads | Yes | No | Text matches and source files | Any searchable text | Reads current files; no graph index |
 | [CodeNib CodeGraph](codegraph.md) | Yes | No | Typed SCIP/LSP symbol graph | [14 chunkers; 12 graph-capable language entries](language_capabilities.md) | Reuse unchanged views; rebuild changed views |
-| [CodeNib grep → Jev experiment](evaluation/grep_jev.md) | Local search; remote model calls | OpenRouter | Ranked source blocks; a graph is not required | Evaluated on five language groups | Searches the selected source snapshot |
+| [CodeNib grep → Jev (opt-in)](guides/grep-jev.md) | Local search; remote model calls | OpenRouter | Ranked source blocks; a graph is not required | Evaluated on five language groups | Searches the selected source snapshot |
 | [Serena](https://github.com/oraios/serena) | Local LSP or IDE backend | No separate retrieval model | Symbol, definition, reference and editing tools | [Upstream language/backend matrix](https://oraios.github.io/serena/01-about/020_programming-languages.html) | Backend maintains project state; indexing/caches are backend-dependent |
 | [CodeGraph (colbymchenry/codegraph)](https://github.com/colbymchenry/codegraph) | Yes; telemetry opt-out | No model or API key for indexing/search | Typed AST-derived symbol and relationship graph | [20+ languages and templates; upstream matrix](https://github.com/colbymchenry/codegraph/blob/ba3c21e50d9129d2f5f3843ec3728868ae6d47a1/README.md#supported-languages) | File watcher, incremental changed-file sync and reconnect catch-up |
 | [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Hosted service | No user key/authentication for public MCP | Wiki structure, contents and generated answers | Public indexed repositories; no per-language graph matrix in this contract | Service-managed; local file-level update contract not documented |
@@ -63,9 +63,11 @@ File- and symbol-level delta repair is not enabled on the product path.
 The language registry's incremental-backend entries must not be read as a
 claim that every CLI index update performs delta repair.
 
-The grep/Jev result motivates a lighter initial retrieval path, but remains
-an experiment until exposed and verified in the product. Its
-[71.4% Recall@5](evaluation/grep_jev.md) is not a head-to-head measurement
-against Serena, CodeGraph, or DeepWiki.
+CodeNib 0.2.4 includes the optional [grep → Jev route](guides/grep-jev.md).
+It uses the caller's OpenRouter account without requiring embeddings or a
+prebuilt graph. OAuth onboarding and the browser trial retain their separate
+acceptance gates. The historical research [71.4% Recall@5](evaluation/grep_jev.md)
+is distinct from the fresh product evaluation and is not a head-to-head
+measurement against Serena, CodeGraph, or DeepWiki.
 CodeGraph's own agent token/cost reports use different tasks and measurements;
 they cannot be ranked against CodeNib's retrieval Recall@5 result.
