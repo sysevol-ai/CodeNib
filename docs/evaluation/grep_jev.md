@@ -80,3 +80,86 @@ For the source-checkout OpenRouter route, use [grep and Jev](../guides/grep-jev.
 For reproduced method contracts and scorer validation, use
 [agent integrations](../agent_integrations.md) and the
 [evaluation matrix](index.md).
+
+## Does the product preview reproduce these candidates?
+
+An [offline product audit](../assets/grep_jev_product_audit.json) replays all
+100 saved search plans through the actual product source reader, chunker,
+ripgrep search and candidate limits. Each input is rebuilt from the experiment's
+pinned Git blobs in a temporary directory; the original checkouts are unchanged.
+Network calls are disabled. Labels are applied only after candidate selection.
+
+All **100 cases complete**, and **94 have exactly the same ordered candidate
+text and corrected source spans**. Six have different pools:
+
+| Case | Research candidates | Product candidates |
+| --- | ---: | ---: |
+| jq #2235 | 26 | 99 |
+| jq #2658 | 36 | 35 |
+| Nushell #12950 | 58 | 57 |
+| Redis #10068 | 22 | 22 |
+| Redis #13338 | 16 | 16 |
+| Valkey #1842 | 68 | 66 |
+
+In jq #2235, text-mode ripgrep executes a saved regex containing `\x00` that
+the research runner had skipped after a binary-mode error. Equal counts in
+the Redis cases still contain different candidates. The frozen-plan product
+grep ordering retains **58.62% Recall@5** across all 100 cases, but three pools
+contain new text with no frozen Jev scores. The aggregate reranked result is
+therefore deliberately left unset. **71.40% remains a research result.**
+
+The planner request also identifies the repository by local directory name,
+where the research runner used `owner/repo`. Replaying saved plans cannot
+measure the effect on fresh planning. A complete product quality result needs
+new planning and Jev calls, including failures, followed by an agent evaluation
+before making token-saving claims.
+
+A [fresh product attempt on 2026-09-26](../assets/grep_jev_product_live.json)
+completed 19 cases before a Jev scoring call failed on Caddy #5870. That call
+did not provide usable cost accounting, so the shared budget stopped the
+remaining 80 cases. The recorded successful calls cost $0.225604746; the
+failed call's cost is unknown. This is **not a complete quality result** and
+does not change the 71.40% research claim. The report retains all 100 case
+statuses and leaves aggregate recall unset. There were no automatic retries
+or substitutions for the failed case.
+
+A [separate complete-split attempt](../assets/grep_jev_product_live_v2.json)
+on the same day attempted **all 100 cases**: 99 succeeded and one failed.
+For Xarray #6992, the planner produced an expression containing a newline
+escape, which line-oriented ripgrep rejected. All call costs were reported,
+so this failure did not stop later cases. The run made no retries and did not
+reuse successful cases from the earlier attempt.
+
+The metric policy was fixed before execution: failed cases score zero in both
+orderings and remain in the 100-case denominator.
+
+| Fresh product ordering | Macro code-block Recall@5 |
+| --- | ---: |
+| Planned grep, original candidate order | 48.37% |
+| Same candidates after Jev | 65.57% |
+| Paired difference | +17.20 percentage points |
+
+There are 23 wins, 74 ties (including the failed case), and three losses.
+The repository-bootstrap 95% interval for the difference is **+8.88 to +25.44
+points**. Reported provider usage totals **$1.043885892** for 100 planning and
+223 scoring calls. The resolved models are `anthropic/claude-sonnet-4.6` and
+`typesafe/jev-1.13-20260917`. Both this run's scores are lower than the frozen
+research orderings; fresh plans and product candidate construction differ.
+This is a failure-inclusive localization measurement of the source preview,
+not a clean 100/100 success result, agent token benchmark, or proof that the
+released product reproduces 71.40%.
+
+`scripts/evaluate_grep_jev_product.py` runs fresh planning and Jev against the
+same immutable source snapshots, without graph construction or embeddings.
+It requires `--allow-billed-calls` and `--max-cost-usd`; these stop subsequent
+calls based on reported usage and do not replace a provider billing cap.
+Unknown cost stops the run. Operator-local traces retain candidates and usage;
+the shared report omits queries and source. The current runner also retains
+the failed scoring exception type and HTTP status when available, without
+provider response bodies, headers or exception messages.
+
+The source checkout includes `scripts/audit_grep_jev_product.py`. Supply the
+frozen prepared corpus, Jev run, base-aligned labels and pinned repository
+checkouts; its local output includes full candidate traces. The shared JSON
+contains input/runtime/script hashes and all per-case counts and metrics,
+without query text, source bodies or local filesystem paths.
