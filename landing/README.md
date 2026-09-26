@@ -8,9 +8,17 @@ Run it locally from the repository root:
 python -m http.server 7870 --directory landing
 ```
 
-Deploy `landing/` as the document root for `codenib.ai`. The product previews
-embed `https://demo.codenib.ai`; when that service is unavailable, the shipped
-wiki screenshot remains as the visual fallback.
+Deploy `landing/` as the document root for `codenib.ai`. The homepage preview
+uses local recorded-session media. Loading it makes no request to the live
+Wiki service; visiting a Wiki is an explicit link.
+
+The 15-second CLI replay is rendered from selected fields of
+`assets/demos/codegraph-claude.json`, an actual CodeGraph/Claude Code run.
+It condenses waits and does not imitate the interactive Claude UI. With the
+Web dev dependencies, Playwright Chromium and ffmpeg installed, regenerate
+the GIF, WebM, MP4 and static poster with `node scripts/render_agent_demo.mjs`
+from the repository root. This command makes no model calls. Keep the
+recorded source/CodeNib commits and cost/measurement limitations intact.
 
 ## Static routes
 

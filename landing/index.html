@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 <meta name="description" content="Source context and typed graph navigation for Claude Code and Codex. Local MCP setup, multilingual support, and reproducible retrieval results.">
 <meta property="og:title" content="CodeNib: Find the Right Code. Trace the Calls.">
 <meta property="og:description" content="71.4% code-block Recall@5 in our 100-issue grep → Jev experiment. Explore the evidence and connect your own repository.">
-<meta property="og:image" content="https://codenib.ai/assets/shots/wiki-light.png">
+<meta property="og:image" content="https://codenib.ai/assets/demos/codegraph-claude.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://codenib.ai/">
 <meta name="twitter:card" content="summary_large_image">
@@ -117,9 +117,7 @@ header {
   padding: 10px 16px; border-bottom: 1px solid var(--line);
   background: var(--subtle); color: var(--ink-2); font-size: 12px;
 }
-.preview-link { display: block; }
-.preview-link:hover .frame-bar { color: var(--accent); }
-.preview-link img { width: 100%; }
+.agent-demo { display: block; width: 100%; height: auto; background: #0b1523; }
 .preview-caption { padding: 12px 16px; font-size: 13px; color: var(--ink-2); }
 .evidence { margin-top: 22px; font-size: 14px; color: var(--ink-2); }
 .evidence strong { display: block; font-size: 22px; color: var(--ink); letter-spacing: -.02em; }
@@ -260,11 +258,13 @@ footer { border-top: 1px solid var(--line); }
         </div>
       </div>
       <figure class="frame rise d2">
-        <a class="preview-link" href="https://demo.codenib.ai/caddyserver__caddy">
-          <div class="frame-bar"><span>Caddy · Wiki preview</span><span>Open demo ↗</span></div>
-          <img src="assets/shots/wiki-light.png" alt="Caddy Wiki with subsystem context, source files and line references" width="2000" height="1250" fetchpriority="high">
-        </a>
-        <figcaption class="preview-caption">Explore the public example, then connect CodeNib to your own repository.</figcaption>
+        <div class="frame-bar"><span>Requests · Claude Code + CodeNib</span><span>15-second replay</span></div>
+        <video class="agent-demo" controls muted playsinline preload="metadata" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup and Claude Code source lookup" aria-describedby="agent-demo-caption">
+          <source src="assets/demos/codegraph-claude.webm" type="video/webm">
+          <source src="assets/demos/codegraph-claude.mp4" type="video/mp4">
+          <img src="assets/demos/codegraph-claude.png" alt="CodeNib returns source references for Requests authentication during redirects">
+        </video>
+        <figcaption class="preview-caption" id="agent-demo-caption">Real CLI output, replayed with waits condensed. <a class="text-link" href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Transcript and sources</a>.</figcaption>
       </figure>
     </div>
     <div class="wrap">
