@@ -1490,7 +1490,10 @@ def _verify_windows_root_path(
     root_handle: int,
     root_identity: tuple[object, ...],
 ) -> None:
-    authority.verify()
+    # Ancestors bind the lexical HANDLE chain, not their directory contents:
+    # an unrelated sibling (such as grep's temporary tree) may change their
+    # timestamps. The repository itself retains the full version check below.
+    authority.verify_binding()
     opened = api.metadata(root_handle)
     if _windows_version_identity(opened) != root_identity:
         raise ValueError("Windows repository root changed during source resolution")
