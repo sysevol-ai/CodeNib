@@ -4587,6 +4587,39 @@ class AgentWiki:
             return None
         return self._page_tree_refs(outline["pages"])
 
+    def cached_page(self, page_id: str) -> Optional[dict]:
+        """Read a ready page without generation, media refresh or cache writes.
+
+        Static publication injects a store backed by one immutable snapshot,
+        so the outline and its pages describe the same captured database.
+        Ordinary serving keeps using ``page`` and its existing retry policy.
+        """
+
+        outline = self._outline
+        if outline is None:
+            outline = self._read_cache("outline")
+        pages = outline.get("pages") if isinstance(outline, dict) else None
+        if not isinstance(pages, list):
+            return None
+        meta = self._find(page_id, pages)
+        if meta is None:
+            return None
+        if page_id == "overview":
+            meta = self._overview_page_meta(meta, pages[1:])
+        page = self._pages.get(page_id)
+        if page is None:
+            page = self._read_cache(self._page_cache_suffix(meta))
+        if (
+            not isinstance(page, dict)
+            or page.get("id") != page_id
+            or not str(page.get("markdown") or "").strip()
+            or (page.get("generation") or {}).get("mode") == "degraded"
+            or (page.get("quality") or {}).get("valid") is False
+            or (page.get("grounding") or {}).get("valid") is False
+        ):
+            return None
+        return page
+
     def _page_cache_state(self, meta: Dict[str, Any]) -> str:
         """Return a reader-facing cache state without generating the page."""
 

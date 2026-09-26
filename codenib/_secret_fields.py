@@ -358,6 +358,53 @@ def _string_contains_url_credentials(
     return False
 
 
+def _is_authorization_value(
+    value: str,
+    start: int,
+    end: int,
+    *,
+    check_cancelled: Callable[[], None] | None,
+) -> bool:
+    """Recognize a whole Basic/Bearer token68 value (RFC 9110 section 11.2).
+
+    Multiword Wiki titles can begin with "Basic authentication". A scheme
+    prefix alone does not make that prose a credential. Ambiguous single-token
+    values remain rejected; credential field names are checked separately.
+    """
+
+    prefix = value[start : min(end, start + 7)].casefold()
+    if prefix.startswith(("bearer ", "bearer\t")):
+        position = start + 6
+    elif prefix.startswith(("basic ", "basic\t")):
+        position = start + 5
+    else:
+        return False
+    while position < end and value[position] in " \t":
+        position += 1
+        if check_cancelled is not None and (position - start) % _STRING_SCAN_CHARS == 0:
+            check_cancelled()
+    token_start = position
+    padding = False
+    for position in range(token_start, end):
+        char = value[position]
+        if char == "=" and position > token_start:
+            padding = True
+        elif padding or not (
+            "a" <= char <= "z"
+            or "A" <= char <= "Z"
+            or "0" <= char <= "9"
+            or char in "-._~+/"
+        ):
+            return False
+        if (
+            check_cancelled is not None
+            and (position - token_start + 1) % _STRING_SCAN_CHARS == 0
+            and position + 1 < end
+        ):
+            check_cancelled()
+    return token_start < end
+
+
 def assert_no_secret_fields(
     value: Any,
     *,
@@ -388,8 +435,9 @@ def assert_no_secret_fields(
                 check_cancelled=check_cancelled,
             ):
                 raise SecretFieldError(f"{source} must not contain URL credentials")
-            prefix = current[start : min(end, start + 7)].casefold()
-            if prefix.startswith(("bearer ", "basic ")):
+            if _is_authorization_value(
+                current, start, end, check_cancelled=check_cancelled
+            ):
                 raise SecretFieldError(
                     f"{source} must not contain authorization credentials"
                 )

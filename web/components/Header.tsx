@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AppLink } from "@/lib/router";
 import { assetUrl } from "@/lib/runtime";
+import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 
 function ThemeToggle() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -79,7 +80,9 @@ export default function Header({
       </AppLink>
       {center}
       <div className="header-right">
-        <span className="header-note">Source-linked repository docs</span>
+        <a className="header-link agent-setup-link" href={AGENT_SETUP_URL} target="_blank" rel="noreferrer">
+          Use with your agent
+        </a>
         <a
           className="header-link"
           href="https://docs.codenib.ai"

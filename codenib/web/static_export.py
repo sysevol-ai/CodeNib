@@ -24,6 +24,7 @@ from .._atomic_directory import (
     reopen_authenticated_directory,
 )
 from .._captured_directory import OwnedDirectoryStage
+from .._secret_fields import SecretFieldError, assert_no_secret_fields
 from .._version import package_version
 from ..artifacts.runtime import (
     SourceBindingCleanupOwner,
@@ -36,20 +37,20 @@ from ..compiler.manifest import RepoManifest
 from ..compiler.manifest_source import (
     capture_repository_source_for_manifest as capture_repository_source,
 )
-from ..compiler.manifest_source import (
-    require_manifest_source_identity,
-)
+from ..compiler.manifest_source import require_manifest_source_identity
 from ..source_fingerprint import (
     RepositorySourceReader,
     is_secure_source_fingerprint_v2,
     lexical_repository_path,
 )
+from ..storage import WikiStore
 from ..wiki.flowchart import drop_flow_duplicate_interactions, qualify_flow_caption
 from ..wiki.lead import overview_lead
 from ..wiki.media_generation import materialize_deterministic_svg_slots
 from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.story import derive_story_from_markdown
 from .card_summary import card_summary
+from .config import RepoEntry
 from .launcher import find_frontend_dir
 from .local import prepare_local_wiki
 
@@ -205,14 +206,45 @@ def _normalize_source_fields(value: Any) -> Any:
     return value
 
 
-def _normalize_page(builder: Any, page: Mapping[str, Any]) -> dict[str, Any]:
+def _public_source_preview(content: str) -> bool:
+    """Keep credential-shaped source examples out of inline public previews.
+
+    The source citation remains valid and links to its pinned location. This
+    does not relax the final publication scan of metadata or configured keys.
+    """
+    try:
+        assert_no_secret_fields(content, source="inline source preview")
+    except SecretFieldError:
+        return False
+    return True
+
+
+def _normalize_page(
+    builder: Any, page: Mapping[str, Any], *, verify_citations: bool = False
+) -> dict[str, Any]:
     payload = dict(page)
+    if isinstance(payload.get("quality"), Mapping):
+        # These operator diagnostics key maps by arbitrary prose headings.
+        # Keep them in the private Wiki cache, not the public page contract:
+        # headings such as "Proxy Authorization" are not credential fields.
+        # Retain quality verdicts and scan all remaining metadata normally.
+        quality = dict(payload["quality"])
+        for diagnostic in (
+            "evidence_by_section",
+            "new_evidence_by_section",
+            "section_similarity",
+            "section_synthesis",
+        ):
+            quality.pop(diagnostic, None)
+        payload["quality"] = quality
     citations = []
     for value in payload.get("citations") or ():
         citation = dict(value)
         file = _source_path(str(citation.get("file") or ""))
         citation["file"] = file or None
-        if file and not citation.get("content"):
+        if verify_citations and not file:
+            raise ValueError("cached Wiki citation has no source file")
+        if file and (verify_citations or not citation.get("content")):
             source = builder.source(
                 file,
                 citation.get("start_line"),
@@ -220,6 +252,23 @@ def _normalize_page(builder: Any, page: Mapping[str, Any]) -> dict[str, Any]:
             )
             if source is not None:
                 citation["content"] = source.get("content")
+            unanchored = (
+                citation.get("start_line") is None and citation.get("end_line") is None
+            )
+            if verify_citations and (
+                source is None
+                or (
+                    not unanchored
+                    and (
+                        source.get("start_line") != citation.get("start_line")
+                        or source.get("end_line") != citation.get("end_line")
+                    )
+                )
+            ):
+                raise ValueError("cached Wiki citation does not match captured source")
+        if citation.get("content") and not _public_source_preview(citation["content"]):
+            citation["content"] = None
+            citation["preview_omitted"] = True
         citations.append(citation)
     payload["citations"] = citations
     if payload.get("markdown"):
@@ -470,6 +519,9 @@ def _bounded_graph_source(
         "end_line": result_end,
         "content": "".join(lines),
     }
+    if not _public_source_preview(result["content"]):
+        cache[key] = None
+        return None
     cache[key] = result
     return result
 
@@ -774,6 +826,7 @@ def _load_static_bundle(
     manifest_path: Path,
     *,
     source_reader: RepositorySourceReader | None = None,
+    entry: RepoEntry | None = None,
 ) -> Any:
     """Load only the persisted views required to render static Wiki pages."""
 
@@ -787,8 +840,11 @@ def _load_static_bundle(
         raise ValueError("static Wiki export requires a current bm25 view")
     require_bm25_manifest_artifact(bm25_entry)
 
-    entries = load_registry(str(local.data_dir / REGISTRY_FILENAME))
-    entry = next((item for item in entries if item.instance_id == local.repo_id), None)
+    if entry is None:
+        entries = load_registry(str(local.data_dir / REGISTRY_FILENAME))
+        entry = next(
+            (item for item in entries if item.instance_id == local.repo_id), None
+        )
     if entry is None:
         raise ValueError(f"prepared repository {local.repo_id!r} could not be loaded")
 
@@ -960,8 +1016,21 @@ def export_static_wiki(
     frontend_dir: str | os.PathLike[str] | None = None,
     base_path: str = "/",
     environ: Mapping[str, str] | None = None,
+    wiki_store: WikiStore | None = None,
+    wiki_entry: RepoEntry | None = None,
 ) -> StaticExportResult:
-    """Build a deterministic static Wiki from an existing repository manifest."""
+    """Publish a source-bound Wiki with no model calls.
+
+    An injected Wiki store and registry entry select precomputed story pages;
+    both must be supplied together. Otherwise use the deterministic builder.
+    The caller owns the store snapshot for this call. Existing directory
+    publication retains its atomic replacement and source validation boundary.
+    """
+
+    if (wiki_store is None) != (wiki_entry is None):
+        raise ValueError(
+            "cached Wiki export requires both its store and registry entry"
+        )
 
     repo_path = lexical_repository_path(repo_path)
     manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))
@@ -975,14 +1044,26 @@ def export_static_wiki(
     frontend = _prebuilt_frontend(frontend_dir)
     environment = os.environ if environ is None else environ
 
-    local = prepare_local_wiki(
-        repo_path,
-        manifest_path,
-        frontend_port=0,
-        repository_slug=repo_path.name or "repository",
-        agent_wiki=False,
-    )
-    repo_component = quote(local.repo_id, safe="")
+    local = None
+    if wiki_entry is None:
+        local = prepare_local_wiki(
+            repo_path,
+            manifest_path,
+            frontend_port=0,
+            repository_slug=repo_path.name or "repository",
+            agent_wiki=False,
+        )
+        repo_id = local.repo_id
+    else:
+        repo_id = wiki_entry.instance_id
+        if not _SAFE_PAGE_ID_RE.fullmatch(repo_id) or repo_id in {".", ".."}:
+            raise ValueError("cached Wiki repository id must be URL-safe")
+        if (
+            lexical_repository_path(wiki_entry.repo_dir) != repo_path
+            or Path(os.path.abspath(wiki_entry.manifest_path)) != manifest_path
+        ):
+            raise ValueError("cached Wiki registry paths do not match the export")
+    repo_component = quote(repo_id, safe="")
     repo_root = f"data/repos/{repo_component}"
 
     from ..wiki import WikiBuilder
@@ -992,6 +1073,11 @@ def export_static_wiki(
     repository_assets: dict[str, bytes] = {}
     try:
         expected_manifest = RepoManifest.load(str(manifest_path))
+        if (
+            wiki_entry is not None
+            and wiki_entry.base_commit != expected_manifest.commit
+        ):
+            raise ValueError("cached Wiki registry commit does not match the manifest")
         if not is_secure_source_fingerprint_v2(expected_manifest.source_fingerprint):
             raise ValueError("static export source reads require source fingerprint v2")
         source_binding = capture_repository_source(
@@ -1014,6 +1100,7 @@ def export_static_wiki(
                 local,
                 manifest_path,
                 source_reader=source_reader,
+                **({"entry": wiki_entry} if wiki_entry is not None else {}),
             )
             require_manifest_source_identity(
                 source_identity,
@@ -1024,19 +1111,58 @@ def export_static_wiki(
                 ),
             )
             builder = WikiBuilder(bundle, source_reader=source_reader)
+            cached_wiki = None
+            cache_prompt_versions = None
+            if wiki_store is not None:
+                from ..wiki.agent_wiki import (
+                    _OUTLINE_PROMPT_VERSION,
+                    _PAGE_PROMPT_VERSION,
+                    AgentWiki,
+                )
 
-            tree = builder.page_tree()
+                cached_wiki = AgentWiki(bundle, model="", store=wiki_store)
+                # These versions select the cache entries we read. Older
+                # generated payloads need not duplicate them in generation.
+                cache_prompt_versions = {
+                    "outline": _OUTLINE_PROMPT_VERSION,
+                    "page": _PAGE_PROMPT_VERSION,
+                }
+            tree = (
+                cached_wiki.cached_page_tree()
+                if cached_wiki is not None
+                else builder.page_tree()
+            )
+            if not tree:
+                raise ValueError(
+                    "Wiki outline is unavailable; precompute it before export"
+                )
             page_ids = _page_ids(tree)
             pages = []
             graphs: dict[str, dict[str, Any]] = {}
             boundaries: dict[str, dict[str, Any]] = {}
             for page_id in page_ids:
-                page = builder.page(page_id)
+                page = (
+                    cached_wiki.cached_page(page_id)
+                    if cached_wiki is not None
+                    else builder.page(page_id)
+                )
                 if page is None:
                     raise ValueError(
-                        f"Wiki page tree references a missing page: {page_id}"
+                        f"Wiki page is missing or not ready: {page_id}; "
+                        "precompute healthy pages before export"
                     )
-                normalized = _normalize_page(builder, page)
+                normalized = _normalize_page(
+                    builder, page, verify_citations=cached_wiki is not None
+                )
+                if cached_wiki is not None:
+                    # Cached asset URLs belong to the live server. Re-render
+                    # typed diagrams locally and rediscover source-bound images;
+                    # never fetch a remote asset or retain a live API URL.
+                    normalized["media_slots"] = [
+                        {k: v for k, v in slot.items() if k != "asset"}
+                        for slot in normalized.get("media_slots") or ()
+                        if isinstance(slot, Mapping)
+                    ]
                 if page_id == "overview":
                     visual = discover_overview_visual(
                         repo_path,
@@ -1150,7 +1276,7 @@ def export_static_wiki(
         export_manifest = {
             "schema_version": STATIC_EXPORT_SCHEMA_VERSION,
             "repository": {
-                "id": local.repo_id,
+                "id": repo_id,
                 "slug": bundle.entry.repo,
                 "url": repo_info["source_url"],
                 "commit": source_manifest.commit,
@@ -1158,8 +1284,14 @@ def export_static_wiki(
                 "languages": list(source_manifest.languages),
             },
             "builder": {
+                "wiki_source": "cached" if wiki_store is not None else "deterministic",
                 "codenib_version": package_version(),
                 "manifest_version": source_manifest.version,
+                **(
+                    {"wiki_cache_prompt_versions": cache_prompt_versions}
+                    if cache_prompt_versions is not None
+                    else {}
+                ),
                 "profile": sorted(
                     name
                     for name in source_manifest.indexes
@@ -1240,10 +1372,61 @@ def export_static_wiki(
     return StaticExportResult(
         output_dir=output_dir,
         manifest_path=manifest_file,
-        repo_id=local.repo_id,
+        repo_id=repo_id,
         page_count=len(pages),
         file_count=len(export_manifest["files"]),
     )
+
+
+def export_cached_wiki(
+    config_path: str | os.PathLike[str],
+    repo_id: str,
+    output_dir: Path,
+    *,
+    frontend_dir: str | os.PathLike[str] | None = None,
+    base_path: str = "/",
+) -> StaticExportResult:
+    """Publish one configured repository from a quiescent Wiki snapshot.
+
+    No registry runtime, vector provider, LLM client or generation guard starts.
+    The existing private snapshot reader rejects active WAL/SHM/journal files;
+    all page reads then use its immutable copy. The source database, registry
+    and configuration are never initialized or changed by publication.
+    """
+
+    from ..wiki.sqlite_store import SQLiteWikiStore
+    from .config import REGISTRY_FILENAME, load_config, load_registry
+
+    config_path = Path(config_path).expanduser().absolute()
+    if not config_path.is_file():
+        raise ValueError("cached Wiki config does not exist")
+    config_sources: set[Path] = set()
+    config = load_config(str(config_path), source_paths=config_sources)
+    registry_path = Path(config.data_dir).absolute() / REGISTRY_FILENAME
+    entries = load_registry(str(registry_path))
+    matches = [entry for entry in entries if entry.instance_id == repo_id]
+    if len(matches) != 1:
+        raise ValueError("select exactly one repository id from the Wiki registry")
+    entry = matches[0]
+    database = registry_path.parent / "wiki_cache" / "wiki.sqlite3"
+    output_dir = lexical_directory_path(output_dir)
+    for protected in (*config_sources, registry_path, database):
+        for destination, source in (
+            (output_dir, protected),
+            (output_dir.resolve(), protected.resolve()),
+        ):
+            if destination == source or destination in source.parents:
+                raise ValueError("static output must not contain Wiki inputs")
+    with SQLiteWikiStore._read_only_snapshot(database) as store:
+        return export_static_wiki(
+            Path(entry.repo_dir),
+            Path(entry.manifest_path),
+            output_dir,
+            frontend_dir=frontend_dir,
+            base_path=base_path,
+            wiki_store=store,
+            wiki_entry=entry,
+        )
 
 
 __all__ = [
@@ -1251,5 +1434,6 @@ __all__ = [
     "STATIC_EXPORT_SCHEMA_VERSION",
     "StaticExportResult",
     "export_static_wiki",
+    "export_cached_wiki",
     "normalize_base_path",
 ]

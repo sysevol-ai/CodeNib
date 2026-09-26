@@ -220,6 +220,34 @@ def test_export_parser_accepts_pages_mount_options() -> None:
     assert args.frontend_dir == "/tmp/frontend"
 
 
+def test_export_rejects_ambiguous_cached_source_before_repository_work(monkeypatch):
+    monkeypatch.setattr(
+        cli, "resolve_repo_path", lambda _: pytest.fail("unexpected repository work")
+    )
+    args = cli.build_parser().parse_args(
+        [
+            "export",
+            ".",
+            "--wiki-config",
+            "/config.yaml",
+            "--wiki-repo",
+            "demo",
+            "--output",
+            "/site",
+        ]
+    )
+    with pytest.raises(cli.CLIError, match="choose a repository path"):
+        cli._run_export(args)
+
+
+def test_cached_export_requires_all_operator_inputs():
+    args = cli.build_parser().parse_args(["export", "--wiki-config", "/config.yaml"])
+    with pytest.raises(
+        cli.CLIError, match="requires --wiki-config, --wiki-repo and --output"
+    ):
+        cli._run_export(args)
+
+
 def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
     publish = cli.build_parser().parse_args(
         [

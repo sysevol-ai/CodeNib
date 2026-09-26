@@ -12,6 +12,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
 import { AppLink } from "@/lib/router";
+import { isStaticRuntime } from "@/lib/runtime";
 import { matchCitation, lineLabel } from "@/lib/citations";
 import { callPaths, parseFlowchart } from "@/lib/flowchart";
 import CallChain from "./CallChain";
@@ -200,6 +201,13 @@ export default function Markdown({
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeSlug]}
         components={{
+          img({ alt, ...props }) {
+            // Exported illustrations are shown through validated media slots.
+            // Markdown from a cached page must not load a remote/live image.
+            return isStaticRuntime()
+              ? <span className="muted">{alt || "Illustration"} (not included in this export)</span>
+              : <img alt={alt || ""} {...props} />;
+          },
           a({ href, children, ...rest }) {
             // `[E3]` is an internal handle; the reader wants the source it
             // stands for. Resolve it to file and line range, the way a
