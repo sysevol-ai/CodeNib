@@ -77,6 +77,11 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   Concurrent readers receive 503 with `Retry-After` after a bounded lock wait,
   and the browser retries at most five times. Validate cold overviews on a
   large repository as well as cached Requests pages before deploying.
+- **Optional subsystem maps** read only cached outlines and citation seeds.
+  Opening a map must not fan out retrieval across every cold child page; that
+  work can block the foreground page on shared retrieval resources. Recompute
+  the small graph projection from current evidence so a cold/partial result
+  does not remain cached after more pages become ready.
 - **Wiki prose is LLM-generated and stored** in
   `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
   (that holds the prebuilt graph + vectors).

@@ -5155,16 +5155,24 @@ class AgentWiki:
             return None
         return overview_lead(str(page.get("markdown") or ""))
 
-    def page_citations(self, page_id: str) -> Optional[List[dict[str, Any]]]:
-        """Resolve graph seeds for a page without generating its prose."""
+    def page_citations(
+        self, page_id: str, *, cached_only: bool = False
+    ) -> Optional[List[dict[str, Any]]]:
+        """Resolve graph seeds, optionally without outline or evidence work."""
 
-        meta = self._find(page_id)
+        pages = None
+        if cached_only:
+            outline = self._outline or self._read_cache("outline")
+            pages = outline.get("pages") if isinstance(outline, dict) else None
+            if not isinstance(pages, list):
+                return None
+        meta = self._find(page_id, pages)
         if meta is None:
             return None
         if page_id == "overview":
             meta = self._overview_page_meta(
                 meta,
-                self.outline().get("pages", [])[1:],
+                (pages if pages is not None else self.outline().get("pages", []))[1:],
             )
         page_suffix = self._page_cache_suffix(meta)
         page = self._pages.get(page_id) or self._read_cache(page_suffix)
@@ -5175,6 +5183,8 @@ class AgentWiki:
         cached = self._read_cache(evidence_suffix)
         if isinstance(cached, dict) and isinstance(cached.get("citations"), list):
             return cached["citations"]
+        if cached_only:
+            return None
         with self._cache_generation_lock(evidence_suffix):
             cached = self._read_cache(evidence_suffix)
             if isinstance(cached, dict) and isinstance(cached.get("citations"), list):

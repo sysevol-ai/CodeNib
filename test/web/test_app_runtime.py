@@ -68,6 +68,40 @@ def test_web_app_has_no_retained_storage_control_plane() -> None:
     assert not hasattr(web_app, "_configured_local_index_runtime")
 
 
+def test_area_map_only_reads_cached_evidence_and_sees_new_pages(monkeypatch):
+    import codenib.web.codemap as codemap
+
+    state = {"tree": None, "citations": None}
+
+    class Builder:
+        def cached_page_tree(self):
+            return state["tree"]
+
+        def page_citations(self, _page_id, *, cached_only=False):
+            assert cached_only, "optional map must not retrieve cold page evidence"
+            return state["citations"]
+
+        def page_tree(self):
+            pytest.fail("optional map must not generate a cold outline")
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/repo", base_commit="same-commit"),
+        code_graph=lambda: object(),
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _id: bundle)
+    monkeypatch.setattr(web_app, "_wiki", lambda *_args: Builder())
+    monkeypatch.setattr(
+        codemap,
+        "build_area_map",
+        lambda _graph, areas, **_kw: {"available": bool(areas[0]["citations"][0])},
+    )
+    assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is False
+    state["tree"] = [{"id": "runtime", "children": []}]
+    assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is False
+    state["citations"] = [{"file": "runtime.py", "start_line": 1}]
+    assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is True
+
+
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
     captured = {}
     config = SimpleNamespace(

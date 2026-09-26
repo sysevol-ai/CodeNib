@@ -939,27 +939,26 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
         )
 
 
-_AREA_MAP_CACHE: dict[tuple[str, str], dict] = {}
-
-
 @app.get("/api/repos/{repo_id}/wiki-map")
 async def wiki_area_map(repo_id: str) -> dict:
     """How the wiki's top-level areas call each other in the indexed graph.
 
-    Uses only citations the wiki already resolved, so opening the map never
-    starts page generation.
+    Uses only cached outlines and citations. Optional maps must not run
+    retrieval for every cold page and occupy the shared retrieval worker.
     """
     with _pinned_bundle(repo_id) as bundle:
         entry = getattr(bundle, "entry", None)
-        cache_key = (repo_id, str(getattr(entry, "base_commit", "") or ""))
-        if cache_key in _AREA_MAP_CACHE:
-            return _AREA_MAP_CACHE[cache_key]
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
         page_citations = getattr(builder, "page_citations", None)
-        graph = await _run_pinned_thread(bundle.code_graph)
-        if graph is None or not callable(page_citations):
+        cached_tree = getattr(builder, "cached_page_tree", None)
+        if not callable(page_citations) or not callable(cached_tree):
             return {"available": False, "areas": [], "links": []}
-        tree = await _run_pinned_thread(builder.page_tree)
+        tree = await _run_pinned_thread(cached_tree)
+        if not tree:
+            return {"available": False, "areas": [], "links": []}
+        graph = await _run_pinned_thread(bundle.code_graph)
+        if graph is None:
+            return {"available": False, "areas": [], "links": []}
 
         def collect() -> list[dict]:
             areas = []
@@ -971,7 +970,10 @@ async def wiki_area_map(repo_id: str) -> dict:
                     {
                         "id": top["id"],
                         "title": top.get("title") or top["id"],
-                        "citations": [page_citations(page_id) or [] for page_id in ids],
+                        "citations": [
+                            page_citations(page_id, cached_only=True) or []
+                            for page_id in ids
+                        ],
                     }
                 )
             return areas
@@ -979,15 +981,16 @@ async def wiki_area_map(repo_id: str) -> dict:
         areas = await _run_pinned_thread(collect)
         from .codemap import build_area_map
 
-        result = await _run_pinned_thread(
+        # A later request may see newly cached evidence or a new generation.
+        # Rebuild this small graph projection rather than retaining an empty
+        # or partial map forever under a repository/commit-only cache key.
+        return await _run_pinned_thread(
             build_area_map,
             graph,
             areas,
             repo_dir=getattr(entry, "repo_dir", None),
             source_reader=getattr(bundle, "source_reader", None),
         )
-        _AREA_MAP_CACHE[cache_key] = result
-        return result
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")

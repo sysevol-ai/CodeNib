@@ -7431,11 +7431,15 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
     cache_dir = tmp_path / "wiki-cache"
     wiki_store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
     wiki = AgentWiki(bundle, model="fake-model", store=wiki_store)
+    assert wiki.page_citations("runtime", cached_only=True) is None
+    assert vector_store.calls == []
     wiki._outline = outline
     wiki._generate_page = lambda _meta: (_ for _ in ()).throw(
         AssertionError("graph evidence must not generate prose")
     )
 
+    assert wiki.page_citations("runtime", cached_only=True) is None
+    assert vector_store.calls == []
     citations = wiki.page_citations("runtime")
 
     assert citations == [
@@ -7459,6 +7463,7 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
         store=SQLiteWikiStore(cache_dir / "wiki.sqlite3"),
     )
     reloaded._outline = outline
+    assert reloaded.page_citations("runtime", cached_only=True) == citations
     assert reloaded.page_citations("runtime") == citations
     assert vector_store.calls == []
 
