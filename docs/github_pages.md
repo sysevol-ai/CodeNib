@@ -8,10 +8,11 @@ SPDX-License-Identifier: Apache-2.0
 
 CodeNib can build repository context in GitHub Actions, deploy a source-linked
 static Wiki to GitHub Pages, and retain the matching context views as one
-downloadable artifact. The default path builds BM25 and dense-vector views with
-a cached local embedding model and needs no API key.
+downloadable artifact. Start with the `fast` preset: it builds deterministic
+pages and a BM25 artifact without a model download, GPU, or API key. Visitors
+browse static files; their visits do not trigger indexing or model calls.
 
-## Publish Hybrid Context
+## Publish a Static Preview
 
 Create a caller workflow in the repository that should receive a Wiki:
 
@@ -31,6 +32,8 @@ permissions:
 jobs:
   publish:
     uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
+    with:
+      preset: fast
 ```
 
 The version tag keeps the compiler, frontend, Action, and artifact schema on
@@ -39,29 +42,36 @@ resolved commit SHA. In the repository's **Settings > Pages**, select
 **GitHub Actions** as the source.
 
 The workflow checks out the caller's exact commit, builds or reuses the
-`semantic` preset views, exports the Wiki at the Pages-provided mount path, and
+`fast` preset view, exports the Wiki at the Pages-provided mount path, and
 deploys it through the `github-pages` environment. It also uploads an artifact
-named from the repository and commit. The workflow caches both repository
-views and the pinned Hugging Face model. The static Wiki serves precomputed
+named from the repository and commit. The workflow caches the repository view
+for later builds. The static Wiki serves precomputed
 pages, citations, and navigation without executing a query engine in the
-browser; BM25 and vector views remain reusable through local or MCP serving.
+browser; the BM25 artifact remains reusable through local or MCP serving.
+These are index-derived pages. Model-written story pages require a separate,
+explicit generation step before cached-story export.
 
-## Use The No-Model Fallback
+The example selects `fast` explicitly so it also avoids model downloads with
+the released v0.2.3 workflow. The source-checkout workflow and composite Action
+now use `fast` by default; that changed default is not yet in a release tag.
 
-Select `fast` when cold-start time or avoiding a model download matters more
-than natural-language retrieval quality:
+## Optionally Publish Semantic Views
+
+Select `semantic` when consumers need the portable dense-vector view:
 
 ```yaml
 jobs:
   publish:
     uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.3
     with:
-      preset: fast
+      preset: semantic
 ```
 
-This builds only the deterministic BM25 artifact and downloads no model. It is
-an explicit compatibility and resource-constrained route rather than the
-recommended retrieval default.
+This builds BM25 and dense-vector views and downloads a local embedding model.
+The workflow caches that model for later runs. Semantic views are optional for
+static browsing. For new questions through a coding agent, the separate
+[grep → Jev route](guides/grep-jev.md) uses the user's OpenRouter account and
+does not require these prebuilt views.
 
 ## Bring Your Own Embedding Endpoint
 
