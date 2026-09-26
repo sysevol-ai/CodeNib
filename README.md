@@ -89,13 +89,14 @@ This compares capabilities, not benchmark scores.
 | grep / read | Yes | No | Text and files | Any text | Current files |
 | **CodeNib CodeGraph** | Yes | No | Typed SCIP/LSP graph | [14 chunkers / 12 graph entries](https://docs.codenib.ai/language_capabilities/) | Reuse unchanged views; rebuild changed views |
 | [Serena](https://github.com/oraios/serena) | Yes | No retrieval model | LSP/IDE symbol navigation and editing | [Backend matrix](https://oraios.github.io/serena/01-about/020_programming-languages.html) | Backend-managed project state |
-| [CodeGraph (Lordymine)](https://github.com/Lordymine/codegraph) | Yes | No retrieval model | Typed call graph | Go, TS/JS | Re-index on launch; no-op if unchanged |
+| [CodeGraph (colbymchenry)](https://github.com/colbymchenry/codegraph) | Yes; telemetry opt-out | No | Typed AST-derived graph | [20+; upstream matrix](https://github.com/colbymchenry/codegraph/blob/ba3c21e50d9129d2f5f3843ec3728868ae6d47a1/README.md#supported-languages) | File watcher and incremental sync |
 | [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Hosted | No user key | Wiki and generated answers | Public indexed repos | Service-managed |
 
-[Detailed comparison and boundaries](https://docs.codenib.ai/comparison/).
-CodeNib's **experimental grep → Jev** route uses OpenRouter for planning and
-reranking; selected code goes to remote models. Its measured result does not
-apply to the model-free CodeGraph row.
+[Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).
+CodeNib 0.2.4 also includes an optional [grep → Jev route](https://docs.codenib.ai/guides/grep-jev/)
+using OpenRouter for planning and reranking; selected code goes to remote
+models. Authorization previews remain opt-in. The historical research result
+above is separate from the product evaluation and the model-free CodeGraph row.
 
 ## Languages
 
