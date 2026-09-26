@@ -29,6 +29,7 @@ from ..types import (
     ROOT_NODE,
     is_symbol_node,
     node_has_definition,
+    node_is_reference_only,
 )
 
 ARTIFACT_QUALITY_SCHEMA_VERSION = 1
@@ -60,6 +61,8 @@ def _path_or_none(value: object) -> str | None:
 
 def _graph_paths_and_invalid(
     graph: CodeGraph,
+    *,
+    include_reference_hints: bool = True,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     paths: set[str] = set()
     invalid: set[str] = set()
@@ -88,6 +91,20 @@ def _graph_paths_and_invalid(
                 f"vertex[{vertex.index}].name",
                 required=True,
             )
+        elif (
+            not include_reference_hints
+            and is_symbol_node(node_type)
+            and node_is_reference_only(attrs)
+            and all(
+                attrs.get(field) is None
+                for field in ("start_line", "end_line", "selection_line")
+            )
+        ):
+            # SCIP may put an external module name (e.g. idna.core) in the
+            # file field of a reference-only vertex. Without a definition or
+            # range this is a resolution hint, not readable repository source.
+            # The edge's anchor_file still authenticates the actual call site.
+            continue
         else:
             collect(attrs.get("file"), f"vertex[{vertex.index}].file")
     for edge in graph.graph.es:
@@ -104,9 +121,19 @@ def _graph_paths_and_invalid(
 
 
 def graph_source_paths(graph: CodeGraph) -> tuple[str, ...]:
-    """Collect every repository path represented by a graph artifact."""
+    """Collect source locations, excluding explicit location-free references.
 
-    paths, _invalid = _graph_paths_and_invalid(graph)
+    Definitions, file nodes, call-site anchors and occurrence paths remain
+    required to belong to the authenticated source. A reference carrying any
+    location is checked even if its has_definition flag is false. Benchmark
+    artifact-constraining audits retain their existing all-fields contract.
+    The Web consumer removes unbound, location-free reference hints before
+    exposing the graph, including unresolved paths in excluded directories.
+    """
+
+    paths, invalid = _graph_paths_and_invalid(graph, include_reference_hints=False)
+    if invalid:
+        raise ValueError("symbol graph contains invalid source paths: " + invalid[0])
     return paths
 
 

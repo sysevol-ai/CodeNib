@@ -33,6 +33,7 @@ from ..provider_routes import normalize_endpoint, resolve_embedding_artifact_rou
 from ..repository_source_selection import RepositorySourceSelection
 from ..repository_summary import read_bound_repository_summary, read_repository_summary
 from ..source_fingerprint import is_secure_source_fingerprint_v2
+from ..types import is_symbol_node, node_is_reference_only
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import GraphCoverage, RepoInfo
 
@@ -467,6 +468,47 @@ def _require_authenticated_documents(
     _require_authenticated_source_paths(paths, source_reader, subject=subject)
 
 
+def _remove_unbound_reference_hints(
+    graph: "CodeGraph", source_reader: "RepositorySourceReader"
+) -> None:
+    """Keep unresolved, source-less references out of the readable graph.
+
+    Definition/anchor/occurrence validation must run first, so removing an
+    endpoint cannot erase evidence of a bad call site. This mutates only the
+    privately loaded graph; the manifest-bound artifact remains unchanged.
+    Both external module hints and unresolved excluded local paths are removed.
+    """
+    remove = []
+    for vertex in graph.graph.vs:
+        attrs = vertex.attributes()
+        path = attrs.get("file")
+        if (
+            is_symbol_node(attrs.get("type"))
+            and node_is_reference_only(attrs)
+            and all(
+                attrs.get(field) is None
+                for field in ("start_line", "end_line", "selection_line")
+            )
+            and path not in (None, "")
+            and (
+                not isinstance(path, str)
+                or source_reader.captured_relative_path(path) is None
+            )
+        ):
+            remove.append(vertex.index)
+    if not remove:
+        return
+    graph.graph.delete_vertices(remove)
+    graph.name_to_vertex = {vertex["name"]: vertex.index for vertex in graph.graph.vs}
+    graph.symbol_ranges = {
+        name: value
+        for name, value in graph.symbol_ranges.items()
+        if name in graph.name_to_vertex
+    }
+    graph.invalidate_caches()
+    graph.build_range_indexes()
+
+
 @dataclass
 class RepoBundle:
     """Everything needed to answer questions about one repo."""
@@ -683,13 +725,18 @@ class RepoBundle:
             from ..compiler.artifact_quality import graph_source_paths
             from ..compiler.graph_artifact import load_authenticated_graph_artifact
 
-            self._code_graph = load_authenticated_graph_artifact(graph_entry)
+            graph = load_authenticated_graph_artifact(graph_entry)
             if self.source_reader is not None:
                 _require_authenticated_source_paths(
-                    graph_source_paths(self._code_graph),
+                    graph_source_paths(graph),
                     self.source_reader,
                     subject="symbol graph",
                 )
+                _remove_unbound_reference_hints(graph, self.source_reader)
+            # Publish only after validation and pruning. Concurrent readers
+            # see None while the existing loaded flag marks this load in flight;
+            # this assignment is the point at which the graph becomes visible.
+            self._code_graph = graph
             logger.info(
                 "codemap: loaded symbol graph for %r (%s)", self.entry.instance_id, path
             )
