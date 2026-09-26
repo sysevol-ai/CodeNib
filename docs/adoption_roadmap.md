@@ -180,19 +180,18 @@ and checks live in #785. A real Claude Code query on pinned Requests source
 used the source-only route, found both authentication/redirect methods and
 returned verified source without creating an index. Source and user profiles
 were preserved. This is a connectivity smoke, not a quality or token benchmark.
-The separate provider-consent/OS-vault gate remains open.
+Provider consent and Linux desktop-vault acceptance remain open.
 
 The lightweight `grep` extra in
 [#793](https://github.com/sysevol-ai/CodeNib/pull/793) includes `ripgrep-bin`.
-CLI startup, source
-capture entry and the retriever use its installed executable even when the
+CLI startup, source capture entry and the retriever use its installed executable even when the
 agent has not activated the Python environment; an existing system `rg` is a
 fallback. A clean Linux installation verifies actual source-linked retrieval
 with PATH empty, no embedding/graph/model SDK packages and fixture-only provider
 responses. The installed-package smoke is scheduled on Linux, macOS and Windows;
 the latter two also exercise the real OS credential store with a unique fake
-entry that is removed afterward. Cross-platform CI results and actual provider
-consent remain acceptance gates. These installation checks do not establish
+entry that is removed afterward. The three platform jobs and macOS/Windows
+vault checks pass. Actual provider consent remains an acceptance gate. These installation checks do not establish
 retrieval quality or agent token savings.
 
 - Prefer OpenRouter OAuth PKCE (S256), using a fresh verifier and one-time
