@@ -39,8 +39,9 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 
 ### A1 — Make the existing product understandable
 
-Status: implemented and locally verified on `feat/adoption-onboarding`, based
-on `main`; PR reconciliation remains. README has two setup commands, an early
+Status: implemented and locally verified in
+[#781](https://github.com/sysevol-ai/CodeNib/pull/781) (open), based on `main`;
+merge and deployment remain. README has two setup commands, an early
 authentic Wiki image, a
 sourced comparison and prominent language/reproduction links. Landing uses a
 static preview instead of live demo iframes. Public method, comparison and
