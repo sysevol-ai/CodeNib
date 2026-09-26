@@ -157,9 +157,19 @@ and the complete application's XSS/CSP review remain open. Detailed transport
 validation is recorded in #783.
 
 Native registration is implemented in dependent
-[#785](https://github.com/sysevol-ai/CodeNib/pull/785). Its native CLI ownership,
-real-client acceptance and first-query evidence are tracked with that PR.
-The local credential connector can be reviewed independently of registration.
+[#785](https://github.com/sysevol-ai/CodeNib/pull/785). `codenib init` checks or
+requests authorization and registers source-only MCP through Claude Code/Codex
+without indexing or model calls. Independent server names let CodeGraph coexist.
+The existing pending receipt supports recovery and refuses unmanaged/drifted
+configuration. Registration reloads ownership under the existing directory
+lock and merges concurrent client selections. Status inspects each client
+independently; uninstall preserves source and credentials. Native CLI setup
+and MCP discovery are verified in isolated real clients; detailed versions
+and checks live in #785. A real Claude Code query on pinned Requests source
+used the source-only route, found both authentication/redirect methods and
+returned verified source without creating an index. Source and user profiles
+were preserved. This is a connectivity smoke, not a quality or token benchmark.
+The separate provider-consent/OS-vault gate remains open.
 
 - Prefer OpenRouter OAuth PKCE (S256), using a fresh verifier and one-time
   local callback. Bind callback state to the initiating session, validate
