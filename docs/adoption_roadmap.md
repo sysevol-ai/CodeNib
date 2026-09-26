@@ -32,7 +32,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
-| Releases | Five GitHub releases exist; v0.2.3 is latest. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Improve visibility; inspect retry/failure behavior. Do not introduce a second release pipeline. |
+| Releases | Five GitHub releases exist; v0.2.3 is latest. The 0.2.4 candidate aligns package/lockfile, Registry pins, changelog and curated release notes. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Candidate depends on #796; consent acceptance, exact-SHA TestPyPI verification and protected production publication remain. No new version or tag is published. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. #770/#752 are drafts and are not merge prerequisites. |
 
 ## Delivery order and acceptance gates
@@ -403,6 +403,27 @@ before publishing `mcp.codenib.ai` setup instructions. No speculative service
 or unbounded inference is required to finish A1–A5.
 
 ## Measurement and rollout
+
+The `chore/release-0.2.4` candidate is stacked on the reviewed browser trial
+#796. It includes the merged #779/#780 fix and keeps grep/Jev and browser
+authorization opt-in. Version metadata and curated notes describe the proposed
+release; they are not publication evidence. Hold the release PR as draft until
+its dependency is merged and the remaining acceptance gates are recorded.
+TestPyPI admits `main` only, while production admits `v*` tags. Run the existing
+candidate workflow on the final main SHA, require registry-download/installed
+acceptance, and tag that exact SHA. Do not upload the existing 0.2.3 version or
+change the protected environments to bypass their publication gates.
+
+Local candidate validation passes 7,318 unit tests, 62 release/Registry/CI
+contracts, strict public docs and the release all-files pre-commit check.
+The local x86-64 ABI3 wheel and sdist pass build and metadata checks; they are
+not the production pair of manylinux wheels. Python 3.12 with MCP SDK 2.2.0
+reports 0.2.4 in modern and legacy handshakes. Real installed Wiki, checkout MCP
+and portable-artifact MCP smokes pass, with a permanent installed-version guard
+in the release harness. Fixture-backed source-only MCP and the public source
+API pass without embedding/model/graph SDKs or billed calls. Baseline formatter
+failures are corrected in a separate commit with unchanged production
+non-import ASTs and 85 focused tests. Remote artifact verification remains open.
 
 Record baseline and subsequent counts for documentation-to-install clicks,
 successful local setup, first source-linked query, repeat use, Pages backlink

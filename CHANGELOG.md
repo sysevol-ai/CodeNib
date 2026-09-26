@@ -11,8 +11,19 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-26
+
 ### Added
 
+- Source-only model-planned grep followed by Jev reranking, using one
+  user-owned OpenRouter credential from CLI or MCP. The optional `grep` extra
+  bundles ripgrep; the route does not require embeddings, a GPU or an index.
+- OpenRouter S256 PKCE login and credential management, with supported OS
+  keyrings and an explicit private POSIX file fallback. `codenib init`
+  registers the source-only route through native Claude Code and Codex CLIs.
+- Static export of precomputed story Wikis with source citations, page maps,
+  architecture visuals and CodeNib backlinks. Public browsing needs no model
+  calls or live Wiki backend.
 - Optional browser OpenRouter trials on explicitly enabled static public Wikis.
   The browser owns authorization and model requests; a separate bounded CPU
   service returns source-checked grep candidates without receiving a model key.
@@ -25,6 +36,12 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Changed
 
+- GitHub Pages previews default to the `fast` preset, avoiding embedding
+  downloads. Generated story Wikis remain a separate, explicit generation and
+  cached-export path.
+- Present source-linked agent setup, a recorded agent session, retrieval
+  evidence, language capabilities and sourced tool comparisons prominently
+  in the README and homepage.
 - Bind the retrieve/rerank pipeline's BM25 source reads to its repository root
   so rerankers receive candidate code when invoked from another directory.
 - Bound each built-in Wiki generation-lock acquisition to a 30-second wait. A
@@ -36,6 +53,16 @@ All notable user-facing changes are recorded here. CodeNib follows
   source database, do not initialize or change its schema or lock directory,
   and reject existing transaction sidecars or a source change while the
   snapshot is captured.
+
+### Fixed
+
+- Pass the installed package version explicitly to MCP initialization so
+  `serverInfo.version` is populated with MCP Python SDK 2.2.0 (#779, #780).
+- Support bounded multiline grep plans and Windows newline handling. Preserve
+  Windows source authority when unrelated sibling directories change while
+  retaining repository-root and ancestor-identity checks.
+- Validate Wiki graph references separately from source paths, persist evidence
+  as strict JSON and limit evidence ranges to the returned source lines.
 
 ### Removed
 
@@ -286,7 +313,8 @@ All notable user-facing changes are recorded here. CodeNib follows
 - Prepared secretless PyPI publishing through a dedicated GitHub Actions OIDC
   workflow.
 
-[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/sysevol-ai/CodeNib/compare/v0.2.0...v0.2.1

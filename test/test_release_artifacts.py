@@ -192,8 +192,8 @@ def test_project_identity_and_tag_match_release_metadata() -> None:
     name, version = project_identity(root / "pyproject.toml")
 
     assert name == "codenib"
-    assert expected_tag(version) == "v0.2.3"
-    validate_tag("v0.2.3", version)
+    assert expected_tag(version) == "v0.2.4"
+    validate_tag("v0.2.4", version)
 
 
 def test_release_tag_must_match_project_version() -> None:
@@ -407,7 +407,7 @@ def test_select_compatible_wheel_rejects_unsupported_platform(tmp_path: Path) ->
         select_compatible_wheel(dist, system="linux", machine="ppc64le")
 
 
-def test_stable_release_notes_describe_the_wiki_storage_boundary() -> None:
+def test_023_release_notes_retain_the_wiki_storage_boundary() -> None:
     root = Path(__file__).resolve().parents[1]
     notes = (root / "docs" / "releases" / "0.2.3.md").read_text(encoding="utf-8")
 
@@ -464,7 +464,7 @@ def test_public_install_commands_select_the_current_stable_release(
 
     assert install_lines
     assert "CODENIB_ALPHA_WHEEL=" not in text
-    assert all("==0.2.3" in line for line in install_lines)
+    assert all("==0.2.4" in line for line in install_lines)
 
 
 def test_readme_install_commands_remain_unpinned() -> None:

@@ -33,7 +33,9 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
    view and materialized artifact remain reusable, and proves that the
    Wiki-only `codenib.storage` facade replaced the retired generic package and
    CLI commands.
-8. Exercises the installed Wiki and MCP services end to end.
+8. Exercises the installed Wiki and MCP services end to end. Modern and legacy
+   MCP handshakes must report the installed package version, including when
+   serving a portable artifact.
 9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
    semantic or graph extras.

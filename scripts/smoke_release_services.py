@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.metadata
 import json
 import logging
 import os
@@ -296,12 +297,23 @@ async def _assert_mcp_async(
         cwd=root,
         env=env,
     )
+    expected_version = importlib.metadata.version("codenib")
     try:
         try:
             with stderr_path.open("w+", encoding="utf-8") as server_stderr:
                 for mode in ("auto", "legacy"):
                     transport = stdio_client(parameters, errlog=server_stderr)
                     async with Client(transport, mode=mode, cache=None) as client:
+                        identity = client.server_info
+                        if (
+                            identity is None
+                            or identity.name != "codenib"
+                            or identity.version != expected_version
+                        ):
+                            raise RuntimeError(
+                                f"installed MCP identity in {mode} mode is "
+                                f"{identity!r}; expected codenib {expected_version}"
+                            )
                         tools = await client.list_tools()
                         names = {tool.name for tool in tools.tools}
                         required = {
