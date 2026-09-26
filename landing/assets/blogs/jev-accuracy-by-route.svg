@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" width="1600" height="700" role="img" aria-labelledby="t d">
+<title id="t">Recall@5 by retrieval route, before and after reranking</title>
+<desc id="d">Code-block Recall@5 on 100 CodeNib Base issues with base-aligned labels. BM25: coverage 63.78%, no reranker 28.78%, Qwen3-Reranker-4B 58.30%, Jev 59.35%; Dense: coverage 71.98%, no reranker 39.75%, Qwen3-Reranker-4B 63.40%, Jev 63.05%; Hybrid: coverage 75.28%, no reranker 32.02%, Qwen3-Reranker-4B 65.03%, Jev 67.92%; Model-planned grep: coverage 75.83%, no reranker 58.62%, Qwen3-Reranker-4B 68.07%, Jev 71.40%.</desc>
+<style>
+text { font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #0f172a; }
+.num { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 18px; }
+.lab { font-size: 21px; font-weight: 600; }
+.sub { font-size: 16px; fill: #64748b; }
+.tick { font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; fill: #64748b; }
+.leg { font-size: 18px; fill: #475569; }
+</style>
+<rect width="1600" height="700" fill="#ffffff"/>
+<text x="40" y="52" style="font-size:14px;font-weight:650;letter-spacing:0.08em;fill:#2563eb">ACCURACY BEFORE AND AFTER RERANKING</text>
+<text x="40" y="88" style="font-size:28px;font-weight:650">Code-block Recall@5 on four retrieval routes</text>
+<circle cx="49" cy="134" r="8" fill="#ffffff" stroke="#64748b" stroke-width="2.5"/><text x="66" y="140" class="leg">No reranker</text>
+<circle cx="219" cy="134" r="8" fill="#eb6834"/><text x="236" y="140" class="leg">Qwen3-Reranker-4B</text>
+<path d="M449,123 L460,134 L449,145 L438,134 z" fill="#2563eb"/><text x="470" y="140" class="leg">Jev 1.13</text>
+<line x1="596" y1="120" x2="596" y2="148" stroke="#0f172a" stroke-width="3"/><text x="612" y="140" class="leg">Candidate coverage, the ceiling for reranking</text>
+<line x1="360.0" y1="190" x2="360.0" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="360.0" y="628" class="tick" text-anchor="middle">20%</text>
+<line x1="556.7" y1="190" x2="556.7" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="556.7" y="628" class="tick" text-anchor="middle">30%</text>
+<line x1="753.3" y1="190" x2="753.3" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="753.3" y="628" class="tick" text-anchor="middle">40%</text>
+<line x1="950.0" y1="190" x2="950.0" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="950.0" y="628" class="tick" text-anchor="middle">50%</text>
+<line x1="1146.7" y1="190" x2="1146.7" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="1146.7" y="628" class="tick" text-anchor="middle">60%</text>
+<line x1="1343.3" y1="190" x2="1343.3" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="1343.3" y="628" class="tick" text-anchor="middle">70%</text>
+<line x1="1540.0" y1="190" x2="1540.0" y2="600" stroke="#e2e8f0" stroke-width="1.5"/>
+<text x="1540.0" y="628" class="tick" text-anchor="middle">80%</text>
+<text x="40" y="248" class="lab">BM25</text><text x="40" y="272" class="sub">top 100</text>
+<line x1="532.7" y1="250" x2="1133.9" y2="250" stroke="#cbd5e1" stroke-width="3"/>
+<line x1="1221.0" y1="228" x2="1221.0" y2="272" stroke="#0f172a" stroke-width="3"/>
+<text x="1221.0" y="218" class="num" text-anchor="middle" style="fill:#0f172a">63.78</text>
+<circle cx="532.7" cy="250" r="9" fill="#ffffff" stroke="#64748b" stroke-width="2.5"/>
+<text x="532.7" y="286" class="num" text-anchor="middle" style="fill:#475569">28.78</text>
+<circle cx="1113.2" cy="250" r="9" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<path d="M1133.9,238 L1145.9,250 L1133.9,262 L1121.9,250 z" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+<text x="1113.2" y="286" class="num" text-anchor="middle" style="fill:#475569">58.30</text>
+<text x="1133.9" y="232" class="num" text-anchor="middle" style="font-weight:650">59.35</text>
+<text x="40" y="348" class="lab">Dense</text><text x="40" y="372" class="sub">CodeRankEmbed + FAISS</text>
+<line x1="748.4" y1="350" x2="1213.5" y2="350" stroke="#cbd5e1" stroke-width="3"/>
+<line x1="1382.3" y1="328" x2="1382.3" y2="372" stroke="#0f172a" stroke-width="3"/>
+<text x="1382.3" y="318" class="num" text-anchor="middle" style="fill:#0f172a">71.98</text>
+<circle cx="748.4" cy="350" r="9" fill="#ffffff" stroke="#64748b" stroke-width="2.5"/>
+<text x="748.4" y="386" class="num" text-anchor="middle" style="fill:#475569">39.75</text>
+<path d="M1206.6,338 L1218.6,350 L1206.6,362 L1194.6,350 z" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+<circle cx="1213.5" cy="350" r="9" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<text x="1213.5" y="386" class="num" text-anchor="middle" style="fill:#475569">63.40</text>
+<text x="1206.6" y="332" class="num" text-anchor="middle" style="font-weight:650">63.05</text>
+<text x="40" y="448" class="lab">Hybrid</text><text x="40" y="472" class="sub">BM25 + dense, RRF</text>
+<line x1="596.4" y1="450" x2="1302.4" y2="450" stroke="#cbd5e1" stroke-width="3"/>
+<line x1="1447.2" y1="428" x2="1447.2" y2="472" stroke="#0f172a" stroke-width="3"/>
+<text x="1447.2" y="418" class="num" text-anchor="middle" style="fill:#0f172a">75.28</text>
+<circle cx="596.4" cy="450" r="9" fill="#ffffff" stroke="#64748b" stroke-width="2.5"/>
+<text x="596.4" y="486" class="num" text-anchor="middle" style="fill:#475569">32.02</text>
+<circle cx="1245.6" cy="450" r="9" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<path d="M1302.4,438 L1314.4,450 L1302.4,462 L1290.4,450 z" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+<text x="1245.6" y="486" class="num" text-anchor="middle" style="fill:#475569">65.03</text>
+<text x="1302.4" y="432" class="num" text-anchor="middle" style="font-weight:650">67.92</text>
+<text x="40" y="548" class="lab">Model-planned grep</text><text x="40" y="572" class="sub">17.47 chunks on average</text>
+<line x1="1119.5" y1="550" x2="1370.9" y2="550" stroke="#cbd5e1" stroke-width="3"/>
+<line x1="1458.0" y1="528" x2="1458.0" y2="572" stroke="#0f172a" stroke-width="3"/>
+<text x="1458.0" y="518" class="num" text-anchor="middle" style="fill:#0f172a">75.83</text>
+<circle cx="1119.5" cy="550" r="9" fill="#ffffff" stroke="#64748b" stroke-width="2.5"/>
+<text x="1119.5" y="586" class="num" text-anchor="middle" style="fill:#475569">58.62</text>
+<circle cx="1305.4" cy="550" r="9" fill="#eb6834" stroke="#ffffff" stroke-width="2"/>
+<path d="M1370.9,538 L1382.9,550 L1370.9,562 L1358.9,550 z" fill="#2563eb" stroke="#ffffff" stroke-width="2"/>
+<text x="1305.4" y="586" class="num" text-anchor="middle" style="fill:#475569">68.07</text>
+<text x="1370.9" y="532" class="num" text-anchor="middle" style="font-weight:650">71.40</text>
+<text x="40" y="676" class="sub">100 CodeNib Base issues, labels aligned to base_commit. Each route keeps at most 100 candidates; coverage counts targets anywhere in the pool.</text>
+</svg>
