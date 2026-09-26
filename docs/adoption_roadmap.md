@@ -192,14 +192,22 @@ billed calls without an explicit opt-in; paired results include failures.
 
 Status: story browsing is merged in
 [#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
-publication remains in [#784](https://github.com/sysevol-ai/CodeNib/pull/784).
-A real 15-page Requests corpus is persisted in SQLite. New evidence and
-citation ranges now follow the source reader's returned lines, including the
-end-of-file boundary; focused regressions and the Wiki unit tier pass. Source
-identity and publication checks remain strict. The corpus also uses the
-pending graph-boundary and JSON persistence fixes in #789/#790. Complete static
-export/browser acceptance and production deployment remain open; the corpus
-is not yet public.
+publication is implemented in [#784](https://github.com/sysevol-ai/CodeNib/pull/784),
+not yet merged or deployed. A real 15-page Requests corpus exports from SQLite
+with all pages generated and grounding-valid. Export verifies 159 citation
+ranges, retains 148 inline excerpts and omits 11 credential-shaped previews
+while preserving their repository links. Source/model identity, cache prompt
+versions and file hashes accompany the static artifact.
+
+The combined validation tree includes the graph-boundary, evidence-serialization
+and source-range fixes in [#789](https://github.com/sysevol-ai/CodeNib/pull/789),
+[#790](https://github.com/sysevol-ai/CodeNib/pull/790) and
+[#791](https://github.com/sysevol-ai/CodeNib/pull/791). Desktop and mobile checks
+cover all 15 pages, citations, unavailable pages and the local-agent handoff,
+with no backend/external requests, browser errors or horizontal overflow.
+Export makes no network calls and preserves its source database/configuration.
+The local corpus and export are verified; dependency merges, hosted authorization,
+release/deployment and broader corpus curation remain open.
 
 The public demo must remain useful without authentication or a live LLM.
 
