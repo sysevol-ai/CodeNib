@@ -695,6 +695,63 @@ def test_list_repos_keeps_info_and_window_stats_on_one_generation(monkeypatch):
     assert events == ["pin-enter", "stats-old", "pin-exit"]
 
 
+def test_repo_cards_are_warm_after_startup_and_follow_wiki_updates(
+    monkeypatch, tmp_path
+):
+    from codenib.compiler.manifest import RepoManifest
+    from codenib.web.config import RepoEntry
+    from codenib.web.repo_registry import RepoBundle
+
+    reads = []
+
+    class Reader:
+        def captured_relative_path(self, path):
+            return path if path == "package.json" else None
+
+        def read_prefix(self, path, *, max_bytes):
+            reads.append(path)
+            return b'{"description": "A library for making HTTP requests."}'
+
+    bundle = RepoBundle(
+        RepoEntry(
+            instance_id="owner__repo",
+            repo="owner/repo",
+            base_commit="abc123",
+            language="python",
+            repo_dir=str(tmp_path),
+            manifest_path=str(tmp_path / "manifest.json"),
+        ),
+        RepoManifest(repo_path=str(tmp_path)),
+        source_reader=Reader(),
+    )
+    # The startup metadata listing prepares the fallback without an LLM or
+    # opening the optional Wiki store.
+    assert bundle.info().summary == "A library for making HTTP requests."
+    assert reads == ["package.json"]
+    leads = iter([None, "Client dispatches requests through an HTTP adapter."])
+
+    class Registry:
+        @contextmanager
+        def pin_all(self):
+            yield (bundle,)
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(
+        web_app, "load_config", lambda: SimpleNamespace(edge_labels=False)
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_wiki",
+        lambda *_args: SimpleNamespace(cached_summary=lambda: next(leads)),
+    )
+    monkeypatch.setattr(web_app, "_window_stats_for_bundle", lambda *_args: None)
+    first = asyncio.run(web_app.list_repos())
+    second = asyncio.run(web_app.list_repos())
+    assert first[0].summary == "A library for making HTTP requests."
+    assert second[0].summary == "Client dispatches requests through an HTTP adapter."
+    assert reads == ["package.json"]
+
+
 def test_chat_fails_closed_without_authenticated_source_reader(monkeypatch):
     class Runner:
         def run(self, _query, *, chat_history):

@@ -57,6 +57,19 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
 
 ## Performance & caching (why a page can feel slow)
 
+- **Repository cards** reuse source-derived summaries for the lifetime of a
+  `RepoBundle`. Startup prepares those summaries before accepting requests;
+  replacing an indexed generation gives it a fresh cache. Authenticated source
+  reads still run on the first computation, failures can retry, and a newly
+  cached Wiki lead takes precedence on the next list request. Avoid reading
+  each package manifest again on every `/api/repos` call: each authenticated
+  read verifies the source inventory, which made a 27-repository list take
+  roughly 10 seconds. Warm requests after this fix measured 27–39 ms locally.
+- **Browser repository lists** share an in-flight request and reuse a successful
+  response for 60 seconds across home, Wiki, and Ask navigation. Failed requests
+  are evicted; explicit refresh bypasses the cache. Consumers with an abort
+  signal own an independent request so dialog cancellation cannot cancel page
+  navigation. This cache does not pre-generate cold Wiki pages.
 - **Wiki prose is LLM-generated and stored** in
   `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
   (that holds the prebuilt graph + vectors).

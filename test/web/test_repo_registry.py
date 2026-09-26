@@ -5331,6 +5331,11 @@ def test_manifest_selected_bundle_never_falls_back_to_live_checkout(
     )
 
     assert bundle._description() == ""
+    monkeypatch.setattr(
+        "codenib.web.repo_registry.resolve_card_summary",
+        lambda *_args: pytest.fail("must not read the live checkout for card text"),
+    )
+    assert bundle.card_summary(None, "") == ""
     assert bundle.code_graph() is None
     assert bundle.hierarchical_graph() is None
 

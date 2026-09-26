@@ -34,6 +34,8 @@ from ..repository_source_selection import RepositorySourceSelection
 from ..repository_summary import read_bound_repository_summary, read_repository_summary
 from ..source_fingerprint import is_secure_source_fingerprint_v2
 from ..types import is_symbol_node, node_is_reference_only
+from .card_summary import card_summary as resolve_card_summary
+from .card_summary import is_purpose_sentence
 from .config import QAConfig, RepoEntry, load_registry
 from .schemas import GraphCoverage, RepoInfo
 
@@ -529,6 +531,8 @@ class RepoBundle:
     def __post_init__(self) -> None:
         self._views_lock = Lock()
         self._runtime_lock = Lock()
+        self._card_summary_lock = Lock()
+        self._card_summary_cache: Optional[str] = None
         self._views_loaded = self.view_loader is None
         self._runtime_loaded = self.runner is not None
 
@@ -601,6 +605,13 @@ class RepoBundle:
         display_name = self.entry.repo
         if self.entry.commit_short:
             display_name += f" @ {self.entry.commit_short}"
+        description = self._description()
+        try:
+            # Prime the source-derived fallback during the startup metadata
+            # listing, before browsers begin requesting repository cards.
+            summary = self.card_summary(None, description)
+        except Exception:  # noqa: BLE001 - optional prose must not hide a repo
+            summary = ""
         return RepoInfo(
             id=self.entry.instance_id,
             name=display_name,
@@ -608,13 +619,36 @@ class RepoBundle:
             base_commit=self.entry.base_commit,
             commit_short=self.entry.commit_short,
             language=self.entry.language,
-            description=self._description(),
+            description=description,
+            summary=summary,
             problem_statement=self.entry.problem_statement,
             languages=self.manifest.languages,
             file_count=self._file_count(),
             capabilities=capabilities,
             graph_coverage=self.graph_coverage(),
         )
+
+    def card_summary(self, overview_lead: Optional[str], description: str) -> str:
+        """Reuse source-derived card text for this exact bundle generation.
+
+        The lock publishes one successful fallback after its authenticated
+        reads finish; concurrent listings share it, including an empty result.
+        Lock order is summary then source reader; no view/runtime lock is held.
+        Failures publish nothing and a later caller can retry. A replacement
+        bundle starts empty, while a newly cached Wiki lead takes precedence
+        immediately without repeating source reads.
+        """
+
+        if self.source_reader is None and _manifest_requires_authenticated_source(
+            self.manifest
+        ):
+            return ""
+        if is_purpose_sentence(overview_lead):
+            return resolve_card_summary(self, overview_lead, description)
+        with self._card_summary_lock:
+            if self._card_summary_cache is None:
+                self._card_summary_cache = resolve_card_summary(self, None, description)
+            return self._card_summary_cache
 
     def graph_coverage(self) -> GraphCoverage | None:
         """Describe partial multi-language graph coverage when metadata exists."""

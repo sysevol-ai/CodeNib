@@ -658,11 +658,17 @@ async def list_repos() -> list[RepoInfo]:
                 wiki = await _run_pinned_thread(_wiki, info.id, bundle)
             lead_of = getattr(wiki, "cached_summary", None)
             lead = await asyncio.to_thread(lead_of) if callable(lead_of) else None
-            info.summary = await asyncio.to_thread(
-                card_summary, target, lead, info.description
-            )
+            summary_of = getattr(target, "card_summary", None)
+            if callable(summary_of):
+                info.summary = await _run_pinned_thread(
+                    summary_of, lead, info.description
+                )
+            else:
+                info.summary = await _run_pinned_thread(
+                    card_summary, target, lead, info.description
+                )
         except Exception:  # noqa: BLE001 - a summary must not break the list
-            info.summary = ""
+            info.summary = getattr(info, "summary", "")
         try:
             if bundle is None:
                 info.incremental = await asyncio.to_thread(

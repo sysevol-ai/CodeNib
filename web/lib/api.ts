@@ -83,11 +83,41 @@ export interface ChatResponse {
   total_duration_ms: number;
 }
 
-export async function fetchRepos(opts: { signal?: AbortSignal } = {}): Promise<RepoInfo[]> {
+const REPO_LIST_TTL_MS = 60_000;
+let repoListRequest: {
+  url: string;
+  expiresAt: number;
+  request: Promise<RepoInfo[]>;
+} | undefined;
+
+export async function fetchRepos(
+  opts: { signal?: AbortSignal; refresh?: boolean } = {},
+): Promise<RepoInfo[]> {
   const url = isStaticRuntime() ? staticDataUrl("repos.json") : `${API_BASE}/api/repos`;
-  const res = await fetch(url, { signal: opts.signal });
-  if (!res.ok) throw new Error(`Failed to load repos (${res.status})`);
-  return res.json();
+  const load = async (): Promise<RepoInfo[]> => {
+    const res = await fetch(url, { signal: opts.signal });
+    if (!res.ok) throw new Error(`Failed to load repos (${res.status})`);
+    return res.json();
+  };
+  // A cancellable consumer owns its request; closing a trial dialog must not
+  // abort the shared request used by the home, Wiki, and Ask pages.
+  if (opts.signal) return load();
+  if (
+    !opts.refresh && repoListRequest?.url === url &&
+    repoListRequest.expiresAt > Date.now()
+  ) {
+    return repoListRequest.request;
+  }
+  const entry = { url, expiresAt: Infinity, request: load() };
+  repoListRequest = entry;
+  try {
+    const repos = await entry.request;
+    entry.expiresAt = Date.now() + REPO_LIST_TTL_MS;
+    return repos;
+  } catch (error) {
+    if (repoListRequest === entry) repoListRequest = undefined;
+    throw error;
+  }
 }
 
 export interface WikiPageRef {
