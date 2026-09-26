@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import subprocess
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -338,3 +340,101 @@ def test_server_command_probes_the_recorded_route(tmp_path):
         "--retrieval-route",
         "grep-jev",
     )
+
+
+def _register_from_stale_snapshot(repo_string, client, barrier, results):
+    """Separate processes deliberately read the same empty receipt first."""
+    repo = Path(repo_string)
+    try:
+        server = onboarding.make_server_spec(
+            repo, command="/opt/code/bin/codenib", retrieval_route="grep-jev"
+        )
+        receipt = onboarding.load_codegraph_receipt(repo, retrieval_route="grep-jev")
+        assert receipt is None
+
+        def inspect(name, _server, _repo):
+            exists = (repo.parent / f"{name}.native").is_file()
+            return onboarding.ClientInspection(name, True, exists, exists, "fixture")
+
+        def add(name, _server, _repo):
+            (repo.parent / f"{name}.native").write_text("registered")
+
+        onboarding.inspect_client_registration = inspect
+        onboarding.add_client_registration = add
+        barrier.wait(timeout=15)
+        onboarding.configure_client_registrations(repo, [client], server, receipt)
+        results.put(None)
+    except Exception as exc:
+        results.put(repr(exc))
+
+
+def test_concurrent_processes_preserve_both_native_registration_owners(
+    tmp_path, monkeypatch
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setenv("CODENIB_HOME", str(tmp_path / "state"))
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(3)
+    results = context.Queue()
+    processes = [
+        context.Process(
+            target=_register_from_stale_snapshot,
+            args=(str(repo), name, barrier, results),
+        )
+        for name in ("codex", "claude")
+    ]
+    try:
+        for process in processes:
+            process.start()
+        barrier.wait(timeout=15)
+        assert [results.get(timeout=15) for _ in processes] == [None, None]
+        for process in processes:
+            process.join(timeout=5)
+            assert process.exitcode == 0
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=5)
+        results.close()
+    receipt = onboarding.load_codegraph_receipt(repo, retrieval_route="grep-jev")
+    assert {c.name for c in receipt.clients} == {"codex", "claude"}
+    assert all(c.state == "configured" for c in receipt.clients)
+    assert (tmp_path / "codex.native").is_file()
+    assert (tmp_path / "claude.native").is_file()
+
+
+def test_status_keeps_healthy_client_after_another_inspection_fails(
+    setup, monkeypatch, capsys
+):
+    assert cli.run(["init", str(setup.repo)]) == 0
+    capsys.readouterr()
+    original = onboarding.inspect_client_registration
+
+    def inspect(client, *args):
+        if client == "codex":
+            raise onboarding.CodeGraphOnboardingError("codex config is corrupt")
+        return original(client, *args)
+
+    monkeypatch.setattr(onboarding, "inspect_client_registration", inspect)
+    assert cli.run(["status", str(setup.repo), "--json"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    clients = {c["name"]: c for c in report["clients"]}
+    assert clients["codex"]["error"] == "codex config is corrupt"
+    assert clients["claude"]["matches"]
+    assert report["ready"] is False
+
+
+def test_symlinked_ancestor_has_one_identity_through_init_status_and_uninstall(setup):
+    alias = setup.repo.parent / "alias"
+    alias.symlink_to(setup.repo.parent, target_is_directory=True)
+    lexical = alias / setup.repo.name
+    assert cli.run(["init", str(lexical), "--dry-run"]) == 0
+    assert cli.run(["init", str(lexical)]) == 0
+    assert cli.run(["status", str(lexical)]) == 0
+    receipt = onboarding.load_codegraph_receipt(setup.repo, retrieval_route="grep-jev")
+    assert receipt.repository == setup.repo
+    assert receipt.server.args[1] == str(setup.repo)
+    assert cli.run(["uninstall", str(lexical)]) == 0
+    assert setup.configured == {}

@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -661,6 +663,35 @@ def remove_client_registration(
         raise CodeGraphOnboardingError(f"{client} rejected MCP removal: {detail[:400]}")
 
 
+@contextmanager
+def registration_lock(repository: Path, *, retrieval_route: str = "indexed"):
+    """Serialize receipt/native transitions with the existing private-file lock.
+
+    Lock order is this route's receipt directory, then the native CLI's own
+    configuration lock. Indexing and authorization finish before acquisition.
+    The native CLI and receipt are not one transaction: pending publication
+    establishes ownership; exact readback followed by configured publication
+    completes registration. After interruption, the next init/uninstall owns
+    recovery under this same lock. The lock file is never removed on release.
+    """
+    from .compiler.cache_lock import compiler_cache_lock
+
+    directory = codegraph_receipt_path(
+        repository, retrieval_route=retrieval_route
+    ).parent
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    deadline = time.monotonic() + 30
+
+    def check():
+        if time.monotonic() >= deadline:
+            raise CodeGraphOnboardingError(
+                "Timed out waiting for agent setup to finish"
+            )
+
+    with compiler_cache_lock(directory, check_cancelled=check):
+        yield
+
+
 def configure_client_registrations(
     repository: Path,
     clients: Sequence[str],
@@ -669,39 +700,52 @@ def configure_client_registrations(
 ) -> CodeGraphReceipt:
     """Reconcile native registrations using the existing pending receipt.
 
-    The pending receipt is published before a native CLI mutation. Each client
-    becomes configured only after observing its exact command. If interrupted,
-    the next init inspects that native state and resumes; uninstall removes only
-    receipt-owned registrations. Native clients own their config-file locking;
-    CodeNib never edits those files or overwrites an observed different command.
+    A preflight receipt is only a snapshot. Reload it under registration_lock
+    before inspecting ownership, so concurrent init selections cannot overwrite
+    each other's client lists. The same lock covers uninstall and native calls.
     """
-
-    managed = receipt or CodeGraphReceipt(repository, server, ())
-    if managed.repository != repository or managed.server != server:
-        raise CodeGraphOnboardingError(
-            "managed MCP receipt does not match registration"
-        )
-    for client in clients:
-        if managed.client(client) is None:
-            managed = managed.with_client(client, state="pending")
-    write_codegraph_receipt(managed)
-    for client in clients:
-        inspection = inspect_client_registration(client, server, repository)
-        if inspection.exists and not inspection.matches:
+    del receipt
+    repository = repository.resolve()
+    route = _server_route(server, repository)
+    with registration_lock(repository, retrieval_route=route):
+        managed = load_codegraph_receipt(repository, retrieval_route=route)
+        managed = managed or CodeGraphReceipt(repository, server, ())
+        if managed.server != server:
             raise CodeGraphOnboardingError(
-                f"{client} MCP server {server.name} changed during setup; "
-                "refusing to overwrite it"
+                "managed MCP receipt does not match registration"
             )
-        if not inspection.exists:
-            add_client_registration(client, server, repository)
+        for client in clients:
             inspection = inspect_client_registration(client, server, repository)
-        if not inspection.matches:
-            raise CodeGraphOnboardingError(
-                f"{client} did not retain the expected MCP registration"
-            )
-        managed = managed.with_client(client, state="configured")
+            if inspection.exists and not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} MCP server {server.name} changed during setup; "
+                    "refusing to overwrite it"
+                )
+            if inspection.exists and managed.client(client) is None:
+                raise CodeGraphOnboardingError(
+                    f"{client} already has an unmanaged MCP server named {server.name}"
+                )
+        for client in clients:
+            if managed.client(client) is None:
+                managed = managed.with_client(client, state="pending")
         write_codegraph_receipt(managed)
-    return managed
+        for client in clients:
+            inspection = inspect_client_registration(client, server, repository)
+            if inspection.exists and not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} MCP server {server.name} changed during setup; "
+                    "refusing to overwrite it"
+                )
+            if not inspection.exists:
+                add_client_registration(client, server, repository)
+                inspection = inspect_client_registration(client, server, repository)
+            if not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} did not retain the expected MCP registration"
+                )
+            managed = managed.with_client(client, state="configured")
+            write_codegraph_receipt(managed)
+        return managed
 
 
 __all__ = [
@@ -718,6 +762,7 @@ __all__ = [
     "inspect_client_registration",
     "inspect_server_command",
     "load_codegraph_receipt",
+    "registration_lock",
     "make_server_spec",
     "remove_client_registration",
     "remove_codegraph_receipt",
