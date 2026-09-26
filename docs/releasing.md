@@ -33,7 +33,9 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
    view and materialized artifact remain reusable, and proves that the
    Wiki-only `codenib.storage` facade replaced the retired generic package and
    CLI commands.
-8. Exercises the installed Wiki and MCP services end to end.
+8. Exercises the installed Wiki and MCP services end to end. Modern and legacy
+   MCP handshakes must report the installed package version, including when
+   serving a portable artifact.
 9. Runs sparse Ask through a local OpenAI-compatible endpoint, including a
    real BM25 tool call, final answer, and source citation, without installing
    semantic or graph extras.
@@ -194,6 +196,10 @@ on PyPI.
     workflow.
 11. Confirm PyPI, MCP Registry discovery, and the generated GitHub Release all
     identify the same version and that a stable release is marked latest.
+    Then update public installation pins, their existing contract check and
+    release-navigation labels. Keep installation commands on the last verified
+    public version while a candidate waits for TestPyPI or protected production
+    approval, and label its release notes as a candidate in navigation.
 12. After the first successful production OIDC publication, revoke the
     bootstrap PyPI token from the GitHub environment and local configuration.
 

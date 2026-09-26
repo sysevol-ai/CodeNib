@@ -223,8 +223,10 @@ def build_visual_fact_extraction_prompt(artifact: Mapping[str, Any]) -> str:
         "requirements": [
             "Return JSON only.",
             "Do not invent repository symbols that are not visually or textually supported.",
-            "Prefer entities that can later be grounded to files, symbols, routes, or dependencies.",
-            "Use the artifact caption and surrounding markdown as supporting context, not as proof of unseen code.",
+            "Prefer entities that can later be grounded to files, symbols, routes, "
+            "or dependencies.",
+            "Use the artifact caption and surrounding markdown as supporting context, "
+            "not as proof of unseen code.",
         ],
     }
     prompt = (
@@ -327,9 +329,9 @@ def _artifact_prompt_payload(artifact: Mapping[str, Any]) -> dict[str, Any]:
         "references": [
             {
                 "markdown_path": _safe_text(reference.get("markdown_path")),
-                "line": reference.get("line")
-                if type(reference.get("line")) is int
-                else 0,
+                "line": (
+                    reference.get("line") if type(reference.get("line")) is int else 0
+                ),
                 "alt_text": _safe_text(reference.get("alt_text")),
                 "title": _safe_text(reference.get("title")),
             }

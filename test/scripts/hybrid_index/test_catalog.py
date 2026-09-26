@@ -79,12 +79,17 @@ def test_catalog_creates_exact_four_table_cnix_wal_schema(tmp_path: Path) -> Non
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     try:
-        objects = tuple(tuple(row) for row in connection.execute("""
+        objects = tuple(
+            tuple(row)
+            for row in connection.execute(
+                """
                 SELECT type, name, tbl_name
                   FROM sqlite_schema
                  WHERE name NOT LIKE 'sqlite_%'
                  ORDER BY type, name
-                """))
+                """
+            )
+        )
         columns = {
             table: tuple(
                 str(row["name"])

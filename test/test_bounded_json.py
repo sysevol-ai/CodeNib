@@ -529,7 +529,8 @@ def test_canonical_array_chunks_match_the_existing_json_contract() -> None:
 
 
 def _pipeline_rss(path: Path) -> dict[str, int]:
-    script = textwrap.dedent("""
+    script = textwrap.dedent(
+        """
         import hashlib
         import json
         import os
@@ -576,7 +577,8 @@ def _pipeline_rss(path: Path) -> dict[str, int]:
                 }
             )
         )
-        """)
+        """
+    )
     result = subprocess.run(
         [sys.executable, "-c", script, str(path)],
         check=True,
