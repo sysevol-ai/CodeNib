@@ -80,3 +80,42 @@ For the source-checkout OpenRouter route, use [grep and Jev](../guides/grep-jev.
 For reproduced method contracts and scorer validation, use
 [agent integrations](../agent_integrations.md) and the
 [evaluation matrix](index.md).
+
+## Does the product preview reproduce these candidates?
+
+An [offline product audit](../assets/grep_jev_product_audit.json) replays all
+100 saved search plans through the actual product source reader, chunker,
+ripgrep search and candidate limits. Each input is rebuilt from the experiment's
+pinned Git blobs in a temporary directory; the original checkouts are unchanged.
+Network calls are disabled. Labels are applied only after candidate selection.
+
+All **100 cases complete**, and **94 have exactly the same ordered candidate
+text and corrected source spans**. Six have different pools:
+
+| Case | Research candidates | Product candidates |
+| --- | ---: | ---: |
+| jq #2235 | 26 | 99 |
+| jq #2658 | 36 | 35 |
+| Nushell #12950 | 58 | 57 |
+| Redis #10068 | 22 | 22 |
+| Redis #13338 | 16 | 16 |
+| Valkey #1842 | 68 | 66 |
+
+In jq #2235, text-mode ripgrep executes a saved regex containing `\x00` that
+the research runner had skipped after a binary-mode error. Equal counts in
+the Redis cases still contain different candidates. The frozen-plan product
+grep ordering retains **58.62% Recall@5** across all 100 cases, but three pools
+contain new text with no frozen Jev scores. The aggregate reranked result is
+therefore deliberately left unset. **71.40% remains a research result.**
+
+The planner request also identifies the repository by local directory name,
+where the research runner used `owner/repo`. Replaying saved plans cannot
+measure the effect on fresh planning. A complete product quality result needs
+new planning and Jev calls, including failures, followed by an agent evaluation
+before making token-saving claims.
+
+The source checkout includes `scripts/audit_grep_jev_product.py`. Supply the
+frozen prepared corpus, Jev run, base-aligned labels and pinned repository
+checkouts; its local output includes full candidate traces. The shared JSON
+contains input/runtime/script hashes and all per-case counts and metrics,
+without query text, source bodies or local filesystem paths.
