@@ -184,10 +184,13 @@ script execution, and callback responses have a separate restrictive policy.
 Actual provider consent and production-host headers/callback behavior remain
 open. The public browser-trial guide documents same-origin script trust,
 callback grant logging, IP-proxy trust and the explicit deployment gate.
-The trial branch passes 7,307 unit tests (35 skipped; 190 heavier tests
+The trial branch, stacked on bundled runtime #793, passes 7,309 unit tests (35 skipped; 190 heavier tests
 deselected), 95 frontend tests, the production frontend build, strict MkDocs,
 the public-document audit and changed-file pre-commit. Provider fixtures
-support these results; none makes a new quality or token-savings claim.
+support these results; none makes a new quality or token-savings claim. A fresh
+Linux installed-package check runs both MCP retrieval and the public source
+API with PATH empty and no model/graph SDKs, credentials or real provider
+calls. The same source-API check joins the three-platform installation job.
 
 Native registration is merged in
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785) as `50215406`. `codenib init` checks or

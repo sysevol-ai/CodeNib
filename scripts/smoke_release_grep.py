@@ -164,9 +164,75 @@ def _query(root: Path) -> dict:
     return {"source_verified": True, "fixture_provider_calls": len(calls)}
 
 
+def _public_trial(root: Path) -> bool:
+    import requests
+    from fastapi.testclient import TestClient
+
+    from codenib.agent.runtime.grep_jev import GrepJevConfig
+    from codenib.source_fingerprint import capture_repository_source
+    from codenib.web.public_trial import PublicTrialConfig, create_public_trial_app
+
+    repository = root / "repository"
+    with capture_repository_source(repository) as source:
+        fingerprint = source.authenticated_identity_snapshot().fingerprint
+    config = PublicTrialConfig.model_validate(
+        {
+            "origins": ["https://demo.example"],
+            "hosts": ["testserver"],
+            "repositories": [
+                {
+                    "id": "fixture",
+                    "repository": "example/fixture",
+                    "root": str(repository),
+                    "commit": "a" * 40,
+                    "source_fingerprint": fingerprint,
+                }
+            ],
+        }
+    )
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("Public trial accessed a credential or the network")
+
+    with (
+        # Start the local ASGI loop before blocking network connections:
+        # Windows event loops can create their wakeup socket during startup.
+        TestClient(create_public_trial_app(config)) as client,
+        patch.object(requests.Session, "send", forbidden),
+        patch.object(GrepJevConfig, "credential", forbidden),
+        patch.object(socket.socket, "connect", forbidden),
+    ):
+        metadata = client.get("/trial/repos/fixture")
+        assert metadata.status_code == 200
+        assert metadata.json()["source_fingerprint"] == fingerprint
+        response = client.post(
+            "/trial/repos/fixture/candidates",
+            json={
+                "source_fingerprint": fingerprint,
+                "plan": {
+                    "actions": [
+                        {
+                            "pattern": "retry",
+                            "glob": "**/*.py",
+                            "case_sensitive": True,
+                        }
+                    ]
+                },
+            },
+        )
+        assert response.status_code == 200, response.text
+        candidate = response.json()["candidates"][0]
+        assert candidate["file"] == "service.py"
+        assert candidate["start_line"] == 1
+        assert candidate["source"].startswith("def retry_request")
+    assert not (repository / ".codenib").exists()
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native-keyring", action="store_true")
+    parser.add_argument("--public-trial", action="store_true")
     args = parser.parse_args()
 
     from tree_sitter_language_pack import get_language
@@ -211,6 +277,8 @@ def main() -> None:
                 cwd=root,
             )
             report = _query(root)
+            if args.public_trial:
+                report["public_trial_source_verified"] = _public_trial(root)
             report["native_keyring"] = (
                 _native_keyring() if args.native_keyring else "not requested"
             )
