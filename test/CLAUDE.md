@@ -35,6 +35,8 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 
 - Repo fixtures cache clones under `${CODENIB_TEMP_DIR}/gt-test/`.
 - HuggingFace dataset cache lives at `~/.codenib/`.
+- Git fixtures that copy or swap `.git` must disable automatic maintenance
+  before committing, so transient maintenance files cannot race the snapshot.
 
 ## Gotchas
 
