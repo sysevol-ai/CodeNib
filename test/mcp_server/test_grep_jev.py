@@ -541,6 +541,18 @@ def test_rg_paths_keep_posix_backslashes_and_normalize_windows_separators():
             _rg_path({"text": path}, separator="\\")
 
 
+def test_nul_regex_does_not_abort_other_actions_on_the_selected_text(repo, api):
+    api.actions.insert(
+        0, {"pattern": r"\x00", "glob": "**/*.py", "case_sensitive": True}
+    )
+    with capture_repository_source(repo) as source:
+        result = GrepJevRetriever().search(source, "retry")
+    assert result.nodes
+    assert result.plan["actions"][0]["match_lines"] == 0
+    assert result.plan["actions"][1]["chunks"] > 0
+    assert [stage for stage, *_ in api.calls] == ["planning", "scoring"]
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX byte filenames")
 def test_real_rg_decodes_non_utf8_filenames(tmp_path):
     from codenib.agent.runtime.grep_jev import GrepAction, _RequestBudget, _rg_lines

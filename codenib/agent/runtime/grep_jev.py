@@ -287,6 +287,9 @@ def _rg_lines(root: Path, action: GrepAction, budget: _RequestBudget):
         "path",
         "--hidden",
         "--no-ignore",
+        # Only selected, decoded source is materialized here. Text mode makes
+        # a NUL regex a valid search instead of triggering binary-mode rejection.
+        "--text",
         "--max-count",
         "20",
     ]
