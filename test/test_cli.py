@@ -248,6 +248,17 @@ def test_cached_export_requires_all_operator_inputs():
         cli._run_export(args)
 
 
+def test_browser_trial_rejects_index_derived_export_before_repository_work(monkeypatch):
+    monkeypatch.setattr(
+        cli, "resolve_repo_path", lambda _: pytest.fail("unexpected repository work")
+    )
+    args = cli.build_parser().parse_args(
+        ["export", ".", "--trial-api-base", "https://source.example"]
+    )
+    with pytest.raises(cli.CLIError, match="requires --wiki-config and --wiki-repo"):
+        cli._run_export(args)
+
+
 def test_publish_and_artifact_parsers_expose_distribution_options() -> None:
     publish = cli.build_parser().parse_args(
         [

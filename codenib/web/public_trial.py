@@ -70,9 +70,10 @@ class PublicTrialConfig(BaseModel):
     def validate_publication(self):
         for origin in self.origins:
             parsed = urlsplit(origin)
-            local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+            local = parsed.hostname in {"localhost", "127.0.0.1"}
             if (
                 not parsed.hostname
+                or ":" in parsed.hostname
                 or parsed.username
                 or parsed.password
                 or parsed.path
@@ -83,7 +84,8 @@ class PublicTrialConfig(BaseModel):
                 )
             ):
                 raise ValueError(
-                    "Trial origins must be exact HTTPS origins or loopback"
+                    "Trial origins require an HTTPS hostname or localhost/127.0.0.1; "
+                    "IPv6 literals are not supported by the browser CSP"
                 )
         if any(
             not host or len(host) > 253 or any(c in host for c in "*/\\@:#? ")

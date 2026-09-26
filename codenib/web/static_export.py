@@ -1081,6 +1081,11 @@ def export_static_wiki(
         parsed = urlsplit(trial_api_base)
         host = parsed.hostname or ""
         port = parsed.port
+        if ":" in host:
+            raise ValueError(
+                "trial API IPv6 literals are not supported by browser CSP; "
+                "use localhost or 127.0.0.1 for local acceptance"
+            )
         if (
             not re.fullmatch(r"[a-zA-Z0-9.-]+", host)
             or parsed.username
@@ -1102,6 +1107,18 @@ def export_static_wiki(
             else ""
         )
         trial_api_base = f"{parsed.scheme}://{host.lower()}{suffix}"
+        if wiki_entry is None:
+            raise ValueError(
+                "browser trial requires a cached Wiki with a public repository identity"
+            )
+        if (
+            not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", wiki_entry.repo)
+            or any(part in {".", ".."} for part in wiki_entry.repo.split("/"))
+            or not re.fullmatch(r"[a-f0-9]{40}", wiki_entry.base_commit)
+        ):
+            raise ValueError(
+                "browser trial requires owner/name and a full source commit"
+            )
 
     repo_path = lexical_repository_path(repo_path)
     manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))

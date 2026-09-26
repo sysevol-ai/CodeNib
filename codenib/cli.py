@@ -970,6 +970,11 @@ def _run_export(args: argparse.Namespace) -> int:
                 **trial_options,
             )
         else:
+            if args.trial_api_base:
+                raise CLIError(
+                    "--trial-api-base requires --wiki-config and --wiki-repo; "
+                    "index-derived exports do not carry a public repository identity"
+                )
             repo_path = resolve_repo_path(args.repo or ".")
             manifest_path = resolve_manifest_path(str(repo_path))
             output_dir = (
@@ -3292,7 +3297,7 @@ def build_parser() -> argparse.ArgumentParser:
     export_parser.add_argument(
         "--trial-api-base",
         help=(
-            "opt in to browser-owned OpenRouter queries "
+            "opt a cached Wiki export into browser-owned OpenRouter queries "
             "using this public source-service origin"
         ),
     )

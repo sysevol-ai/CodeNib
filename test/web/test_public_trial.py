@@ -220,6 +220,8 @@ def test_invalid_regex_does_not_start_fallback_or_leak_input(publication):
     [
         {"origins": ["https://demo.example/path"]},
         {"origins": ["http://public.example"]},
+        {"origins": ["http://[::1]:3000"]},
+        {"origins": ["https://[::1]:3000"]},
         {"origins": ["https://user:pass@demo.example"]},
         {"hosts": ["*"]},
         {"repositories": []},

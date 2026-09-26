@@ -17,6 +17,7 @@ export default function AskBar({
   disabled = false,
   collapsible = false,
   inline = false,
+  browserTrial = false,
 }: {
   repoId: string;
   repo: string;
@@ -25,6 +26,7 @@ export default function AskBar({
   disabled?: boolean;
   collapsible?: boolean;
   inline?: boolean;
+  browserTrial?: boolean;
 }) {
   const [q, setQ] = useState(defaultValue);
   const [expanded, setExpanded] = useState(!collapsible);
@@ -52,7 +54,9 @@ export default function AskBar({
       setQ("");
       return;
     }
-    navigate(`/${encodeURIComponent(repoId)}/ask?q=${encodeURIComponent(query)}`);
+    navigate(
+      `/${encodeURIComponent(repoId)}/ask?q=${encodeURIComponent(query)}`,
+    );
   }
 
   if (collapsible && !expanded) {
@@ -62,13 +66,23 @@ export default function AskBar({
           className="askbar-trigger"
           type="button"
           onClick={() => setExpanded(true)}
-          aria-label={`Ask a question about ${repo}`}
-          title={`Ask about ${repo}`}
+          aria-label={
+            browserTrial
+              ? `Find code in ${repo} with OpenRouter`
+              : `Ask a question about ${repo}`
+          }
+          title={
+            browserTrial
+              ? "Find code with your OpenRouter account"
+              : `Ask about ${repo}`
+          }
         >
           <span className="askbar-icon" aria-hidden>
             ✦
           </span>
-          <span>Ask this repository</span>
+          <span>
+            {browserTrial ? "Find code with OpenRouter" : "Ask this repository"}
+          </span>
         </button>
       </div>
     );
@@ -92,13 +106,19 @@ export default function AskBar({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={
-            inline
-              ? `Ask about ${repo}…`
-              : onSubmit
-                ? `Ask a follow-up about ${repo}…`
-                : `Ask anything about ${repo}…`
+            browserTrial
+              ? `Find source in ${repo}…`
+              : inline
+                ? `Ask about ${repo}…`
+                : onSubmit
+                  ? `Ask a follow-up about ${repo}…`
+                  : `Ask anything about ${repo}…`
           }
-          aria-label={`Ask a question about ${repo}`}
+          aria-label={
+            browserTrial
+              ? `Find code in ${repo}`
+              : `Ask a question about ${repo}`
+          }
         />
         {collapsible && (
           <button
@@ -111,8 +131,13 @@ export default function AskBar({
             ×
           </button>
         )}
-        <button className="askbar-send" type="submit" disabled={disabled || !q.trim()}>
-          Ask <span className="askbar-kbd">↵</span>
+        <button
+          className="askbar-send"
+          type="submit"
+          disabled={disabled || !q.trim()}
+        >
+          {browserTrial ? "Continue" : "Ask"}{" "}
+          <span className="askbar-kbd">↵</span>
         </button>
       </div>
     </form>

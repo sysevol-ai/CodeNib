@@ -5,6 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   loadTrialContext,
+  OpenRouterAuthorizationError,
   OpenRouterTrialSession,
   trialBase,
   type TrialContext,
@@ -28,6 +29,9 @@ function fixture(
     failure?: boolean;
     invalidScore?: boolean;
     malformedPlan?: boolean;
+    metadata?: Record<string, unknown> | null;
+    metadataFailure?: boolean;
+    exchangeFailure?: boolean;
   } = {},
 ) {
   const calls: {
@@ -55,9 +59,19 @@ function fixture(
     calls.push({ url, init, body });
     const reply = (value: unknown) =>
       new Response(JSON.stringify(value), { status: 200 });
-    if (url.endsWith("/auth/keys")) return reply({ key: KEY });
-    if (url.endsWith("/api/v1/key"))
-      return reply({ data: { is_management_key: false, limit_remaining: 2 } });
+    if (url.endsWith("/auth/keys"))
+      return options.exchangeFailure
+        ? new Response(KEY, { status: 502 })
+        : reply({ key: KEY });
+    if (url.endsWith("/api/v1/key")) {
+      if (options.metadataFailure) return new Response(KEY, { status: 502 });
+      return reply({
+        data:
+          options.metadata === undefined
+            ? { is_management_key: false, limit_remaining: 2 }
+            : options.metadata,
+      });
+    }
     if (url.endsWith("/chat/completions")) {
       if (options.failure) return new Response(KEY, { status: 502 });
       return reply({
@@ -219,6 +233,84 @@ describe("browser-owned OpenRouter trial", () => {
     expect(calls).toEqual([]);
   });
 
+  it.each([
+    null,
+    {},
+    { is_management_key: true },
+    { is_management_key: null },
+    { is_management_key: "false" },
+    { is_management_key: 0 },
+    { is_management_key: false, is_provisioning_key: true },
+    { is_management_key: false, is_provisioning_key: null },
+    { is_management_key: false, is_provisioning_key: "false" },
+  ])(
+    "requires verified inference metadata and retains safe revocation guidance: %j",
+    async (metadata) => {
+      const { session, context, calls } = fixture({ metadata });
+      const error = await connect(session).catch((reason: unknown) => reason);
+      expect(error).toBeInstanceOf(OpenRouterAuthorizationError);
+      expect((error as OpenRouterAuthorizationError).settingsUrl).toMatch(
+        /^https:\/\/openrouter.ai\/keys\/[a-f0-9]{64}$/,
+      );
+      expect(String(error)).toContain("review or revoke");
+      expect(String(error)).not.toContain(KEY);
+      expect(JSON.stringify(error)).not.toContain(KEY);
+      expect(session.connected()).toBe(false);
+      await expect(session.retrieve(context, "retry")).rejects.toThrow(
+        "Connect OpenRouter",
+      );
+      expect(calls).toHaveLength(2);
+    },
+  );
+
+  it("reports an issued key after metadata transport failure without echoing its body", async () => {
+    const { session, calls } = fixture({ metadataFailure: true });
+    const error = await connect(session).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(OpenRouterAuthorizationError);
+    expect(String(error)).toContain("HTTP 502");
+    expect(String(error)).not.toContain(KEY);
+    expect(session.connected()).toBe(false);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("offers the provider key list when the exchange outcome is unknown", async () => {
+    const { session, calls } = fixture({ exchangeFailure: true });
+    const error = await connect(session).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(OpenRouterAuthorizationError);
+    expect((error as OpenRouterAuthorizationError).settingsUrl).toBe(
+      "https://openrouter.ai/settings/keys",
+    );
+    expect(String(error)).not.toContain(KEY);
+    expect(session.connected()).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("retains revocation guidance when cancelled during metadata verification", async () => {
+    const { session, fetch } = fixture();
+    const original = fetch.getMockImplementation()!;
+    let started!: () => void;
+    const metadataStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    fetch.mockImplementation(async (url, init) => {
+      if (!url.endsWith("/api/v1/key")) return original(url, init);
+      started();
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal!.addEventListener("abort", () => reject(new Error(KEY)));
+      });
+    });
+    const pending = connect(session).catch((reason: unknown) => reason);
+    await metadataStarted;
+    session.disconnect();
+    const error = await pending;
+    expect(error).toBeInstanceOf(OpenRouterAuthorizationError);
+    expect((error as OpenRouterAuthorizationError).settingsUrl).toMatch(
+      /^https:\/\/openrouter.ai\/keys\/[a-f0-9]{64}$/,
+    );
+    expect(String(error)).not.toContain(KEY);
+    expect(session.connected()).toBe(false);
+  });
+
   it("validates published context and keeps provider credentials off the source service", async () => {
     const { session, context, calls } = fixture();
     const published = await loadTrialContext(
@@ -363,8 +455,11 @@ describe("browser-owned OpenRouter trial", () => {
   it("accepts only explicit HTTPS or loopback service origins", () => {
     expect(trialBase("https://source.example")).toBe("https://source.example");
     expect(trialBase("http://127.0.0.1:8001")).toBe("http://127.0.0.1:8001");
+    expect(trialBase("http://localhost:8001")).toBe("http://localhost:8001");
     for (const url of [
       "http://public.example",
+      "http://[::1]:8001",
+      "https://[::1]:8001",
       "https://key@source.example",
       "https://source.example/?key=secret",
       "https://source.example/path",

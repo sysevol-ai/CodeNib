@@ -114,7 +114,9 @@ def _frontend(root: Path) -> Path:
     return frontend
 
 
-def _manifest(repo: Path, artifact: Path) -> tuple[RepoManifest, Path]:
+def _manifest(
+    repo: Path, artifact: Path, *, commit: str = "abc123"
+) -> tuple[RepoManifest, Path]:
     repo.mkdir(parents=True, exist_ok=True)
     source = fingerprint_repository(repo)
     entry = IndexEntry(
@@ -123,12 +125,12 @@ def _manifest(repo: Path, artifact: Path) -> tuple[RepoManifest, Path]:
         built_at="2026-08-04T00:00:00Z",
         built_at_epoch=0.0,
         status="fresh",
-        commit="abc123",
+        commit=commit,
         source_fingerprint=source.value,
     )
     manifest = RepoManifest(
         repo_path=str(repo),
-        commit="abc123",
+        commit=commit,
         source_fingerprint=source.value,
         languages=["python"],
         file_count=source.file_count,
@@ -258,6 +260,7 @@ def _bound_source_export_setup(
     monkeypatch: pytest.MonkeyPatch,
     *,
     with_visual: bool = False,
+    commit: str = "abc123",
 ) -> SimpleNamespace:
     repo = tmp_path / "repo"
     runtime = repo / "src" / "runtime.py"
@@ -285,7 +288,7 @@ def _bound_source_export_setup(
         readme_text += "\n![System architecture](docs/architecture.png)\n"
     readme.write_text(readme_text, encoding="utf-8")
     artifact = tmp_path / "artifact"
-    manifest, manifest_path = _manifest(repo, artifact)
+    manifest, manifest_path = _manifest(repo, artifact, commit=commit)
     local = SimpleNamespace(
         repo_id="demo",
         data_dir=artifact / "wiki",
@@ -429,8 +432,13 @@ def test_static_export_is_deterministic_and_publishable(
     assert "href='#heading'" in index
 
 
-def test_trial_export_pins_its_endpoint_csp_and_callback_assets(export_setup):
-    setup = export_setup
+@pytest.mark.parametrize(
+    "origin", ["https://source.example/", "http://localhost:8001/"]
+)
+def test_trial_export_pins_its_endpoint_csp_and_callback_assets(
+    cached_export_setup, origin
+):
+    setup = cached_export_setup
     public = Path(__file__).parents[2] / "web" / "public"
     for name in (
         "openrouter-callback.html",
@@ -439,23 +447,23 @@ def test_trial_export_pins_its_endpoint_csp_and_callback_assets(export_setup):
         "static-route.js",
     ):
         (setup.frontend / name).write_bytes((public / name).read_bytes())
-    export_static_wiki(
-        setup.repo,
-        setup.manifest_path,
+    export_cached_wiki(
+        setup.config_path,
+        "demo",
         setup.output,
         frontend_dir=setup.frontend,
         base_path="/preview",
-        trial_api_base="https://source.example/",
+        trial_api_base=origin,
     )
     manifest = json.loads((setup.output / STATIC_EXPORT_MANIFEST).read_text())
     assert manifest["capabilities"]["browser_retrieval"] is True
     assert manifest["capabilities"]["chat"] is False
     runtime = (setup.output / "runtime-config.js").read_text()
-    assert '"trialApiBase":"https://source.example"' in runtime
+    assert '"trialApiBase":' + json.dumps(origin.rstrip("/")) in runtime
     index = (setup.output / "index.html").read_text()
     assert "Content-Security-Policy" in index
     assert "script-src &#x27;self&#x27;" in index
-    assert "https://openrouter.ai https://source.example" in index
+    assert f"https://openrouter.ai {origin.rstrip('/')}" in index
     assert "unsafe-eval" not in index
     redirect = (setup.output / "404.html").read_text()
     assert 'src="/preview/static-route.js"' in redirect
@@ -472,9 +480,22 @@ def test_trial_export_pins_its_endpoint_csp_and_callback_assets(export_setup):
         )
 
 
-def test_trial_export_requires_the_actual_callback_frontend(export_setup):
-    setup = export_setup
+def test_trial_export_requires_the_actual_callback_frontend(cached_export_setup):
+    setup = cached_export_setup
     with pytest.raises(ValueError, match="rebuild the frontend"):
+        export_cached_wiki(
+            setup.config_path,
+            "demo",
+            setup.output,
+            frontend_dir=setup.frontend,
+            trial_api_base="https://source.example",
+        )
+    assert not setup.output.exists()
+
+
+def test_trial_export_requires_a_published_repository_identity(export_setup):
+    setup = export_setup
+    with pytest.raises(ValueError, match="requires a cached Wiki"):
         export_static_wiki(
             setup.repo,
             setup.manifest_path,
@@ -485,10 +506,34 @@ def test_trial_export_requires_the_actual_callback_frontend(export_setup):
     assert not setup.output.exists()
 
 
+@pytest.mark.parametrize("field,value", [("repo", "demo"), ("base_commit", "abc123")])
+def test_trial_export_rejects_incomplete_published_identity(
+    cached_export_setup, field, value
+):
+    setup = cached_export_setup
+    path = setup.data / REGISTRY_FILENAME
+    entries = json.loads(path.read_text())
+    entries[0][field] = value
+    path.write_text(json.dumps(entries))
+    before = _tree_bytes(setup.data)
+    with pytest.raises(ValueError, match="owner/name and a full source commit"):
+        export_cached_wiki(
+            setup.config_path,
+            "demo",
+            setup.output,
+            frontend_dir=setup.frontend,
+            trial_api_base="https://source.example",
+        )
+    assert not setup.output.exists()
+    assert _tree_bytes(setup.data) == before
+
+
 @pytest.mark.parametrize(
     "origin",
     [
         "http://public.example",
+        "http://[::1]:8001",
+        "https://[::1]:8001",
         "https://key@source.example",
         "https://source.example?key=secret",
         "https://source.example/path",
@@ -500,7 +545,7 @@ def test_trial_export_refuses_untrusted_origins_before_publication(
     export_setup, origin
 ):
     setup = export_setup
-    with pytest.raises(ValueError, match="exact HTTPS origin"):
+    with pytest.raises(ValueError, match="trial API"):
         export_static_wiki(
             setup.repo,
             setup.manifest_path,
@@ -1607,7 +1652,7 @@ def test_normalize_base_path_rejects_unsafe_values(value: str) -> None:
 
 @pytest.fixture
 def cached_export_setup(tmp_path, monkeypatch):
-    setup = _bound_source_export_setup(tmp_path, monkeypatch)
+    setup = _bound_source_export_setup(tmp_path, monkeypatch, commit="a" * 40)
     load_bundle = static_module._load_static_bundle
 
     def cached_bundle(local, manifest_path, *, source_reader, entry=None):

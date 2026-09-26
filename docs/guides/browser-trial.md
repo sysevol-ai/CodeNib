@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # Try public source with your OpenRouter account
 
-A static CodeNib Wiki can offer an optional **Find code** trial on its published
+A precomputed story Wiki can offer an optional **Find code** trial on its published
 repository. Browsing its pages remains free of model calls. When you connect
 OpenRouter and submit a question, your browser asks a model to plan bounded grep
 searches, then asks Jev to rank the matching source. Results link to file and
@@ -22,7 +22,8 @@ retrieval quality or coding-agent token savings.
 
 On a Wiki that explicitly enables the trial:
 
-1. Open **Ask** and review the repository, models and source disclosure.
+1. Select **Find code with OpenRouter** and review the repository, models and
+   source disclosure.
 2. Select **Connect OpenRouter**. Review the account and key settings on
    OpenRouter's authorization page. Return to the original Wiki tab afterward.
 3. Enter a concrete question and select **Find code**. Authorization alone
@@ -57,6 +58,11 @@ browser rejects management/provisioning keys and does not request permission
 to manage other keys. Local CLI credentials are independent; see
 [local authorization and logout](openrouter.md).
 
+If a key was created but metadata validation or transport then fails, the page
+retains a safe OpenRouter settings link to review or revoke that unused key.
+It does not keep the key as a connected credential. A normal inference key
+must be explicitly confirmed by the provider's management-key flag.
+
 ## Enable the trial on a static Wiki
 
 Keep the static host and source service separate from the operator's Wiki
@@ -78,10 +84,19 @@ codenib export --wiki-config /path/to/qa_config.yaml \
 ```
 
 The API option must be an exact HTTPS origin, with no path, credentials, query
-or fragment. HTTP loopback origins are supported for local acceptance. Without
+or fragment. HTTP `localhost` and `127.0.0.1` origins are supported for local
+acceptance. IPv6 address literals are rejected because browsers cannot match
+them in a [CSP host source](https://www.w3.org/TR/CSP/#match-hosts); use a hostname
+for an IPv6 listener. Without
 the option, Ask retains the static site's local-agent handoff. Ordinary Wiki
 navigation never contacts the trial service or a model. Live local Wiki Ask
 keeps its existing behavior.
+
+The trial requires `--wiki-config` and `--wiki-repo`, with an explicit
+`owner/name` and full commit in the registry entry. Index-derived exports
+currently publish a local directory label and reject the trial option before
+repository work; they keep the local-agent handoff. The exporter does not
+infer a public GitHub identity from ambient Git configuration.
 
 Create a separate source-service configuration. Copy the repository slug,
 commit and source fingerprint from the verified site's `codenib-static.json`;
@@ -115,6 +130,8 @@ python -m codenib.web.public_trial \
 
 `--trusted-proxy` is optional, repeatable and accepts only exact IP addresses.
 Omit it for a direct local test. By default forwarded headers are ignored.
+For an IPv6 loopback service, bind with `--host ::1`, put `"localhost"` in
+`hosts`, and export with an origin such as `http://localhost:8001`.
 Configure your proxy to replace untrusted client forwarding headers, preserve
 the configured public Host, and forward only these two routes:
 

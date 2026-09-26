@@ -9,11 +9,31 @@ import { AppLink } from "@/lib/router";
 import { assetUrl } from "@/lib/runtime";
 import {
   loadTrialContext,
+  OpenRouterAuthorizationError,
   OpenRouterTrialSession,
   type TrialCandidate,
   type TrialContext,
   type TrialUsage,
 } from "@/lib/openrouterTrial";
+
+function RevocationNotice({ urls }: { urls: string[] }) {
+  if (!urls.length) return null;
+  return (
+    <div className="trial-error" role="alert">
+      <p>
+        An earlier authorization may have created a key that could not be
+        verified for this session. Disconnecting here does not revoke it.
+      </p>
+      {urls.map((url) => (
+        <p key={url}>
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            Review or revoke the unused key on OpenRouter
+          </a>
+        </p>
+      ))}
+    </div>
+  );
+}
 
 export default function OpenRouterTrial({
   base,
@@ -38,6 +58,7 @@ export default function OpenRouterTrial({
     remaining: number | null;
   } | null>(null);
   const [authorizationUrl, setAuthorizationUrl] = useState("");
+  const [revocationUrls, setRevocationUrls] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState<TrialCandidate[] | null>(null);
@@ -159,6 +180,12 @@ export default function OpenRouterTrial({
           setConnection("connected");
           setUsage(session.current.usage());
         } catch (reason) {
+          // Keep revocation guidance even if the user cancelled while key
+          // metadata was in flight. It contains only a safe provider URL.
+          if (reason instanceof OpenRouterAuthorizationError)
+            setRevocationUrls((urls) => [
+              ...new Set([...urls, reason.settingsUrl]),
+            ]);
           if (generation.current !== current) return;
           session.current.disconnect();
           setConnection("off");
@@ -212,7 +239,13 @@ export default function OpenRouterTrial({
     }
   }
 
-  if (local) return <AgentSetup repoId={repoId} query={question} />;
+  if (local)
+    return (
+      <>
+        <RevocationNotice urls={revocationUrls} />
+        <AgentSetup repoId={repoId} query={question} />
+      </>
+    );
   return (
     <section
       className="agent-setup openrouter-trial"
@@ -328,6 +361,7 @@ export default function OpenRouterTrial({
           . Disconnecting here does not revoke the provider key.
         </p>
       )}
+      <RevocationNotice urls={revocationUrls} />
       {usage.calls.length > 0 && (
         <p className="small" aria-live="polite">
           ${usage.reportedCost.toFixed(6)} reported · {usage.calls.length} model

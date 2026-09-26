@@ -99,11 +99,14 @@ export function trialBase(value: unknown): string | null {
   try {
     const url = new URL(value);
     if (url.username || url.password || url.search || url.hash) return null;
+    // CSP host sources do not match IPv6 literals. Use localhost for a local
+    // IPv6 listener so export, configuration and browser admission agree.
+    if (url.hostname.startsWith("[")) return null;
     if (
       url.protocol !== "https:" &&
       !(
         url.protocol === "http:" &&
-        ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+        ["localhost", "127.0.0.1"].includes(url.hostname)
       )
     )
       return null;
@@ -281,6 +284,19 @@ export interface TrialUsage {
   calls: { stage: string; model: string; cost: number }[];
 }
 
+/** Only a provider settings URL crosses this error boundary, never the key. */
+export class OpenRouterAuthorizationError extends Error {
+  constructor(
+    message: string,
+    readonly settingsUrl: string,
+  ) {
+    super(
+      `${message} A provider key may exist; review or revoke it on OpenRouter.`,
+    );
+    this.name = "OpenRouterAuthorizationError";
+  }
+}
+
 export class OpenRouterTrialSession {
   #key = "";
   #pending: { nonce: string; verifier: string; expires: number } | null = null;
@@ -354,6 +370,9 @@ export class OpenRouterTrialSession {
     const controller = new AbortController();
     this.#controller = controller;
     const timer = setTimeout(() => controller.abort(), 30000);
+    // A lost exchange response can also leave a provider key behind. Use the
+    // account's key list until a returned key allows a precise hashed link.
+    let settingsUrl = `${OPENROUTER}/settings/keys`;
     try {
       const grant = await readJSON(
         `${OPENROUTER}/api/v1/auth/keys`,
@@ -369,9 +388,15 @@ export class OpenRouterTrialSession {
         controller.signal,
         32768,
       );
+      // A successful exchange can create a persistent key even if metadata
+      // validation, cancellation or expiry prevents retaining it locally.
       const key = text(grant.key, 1024);
       if (!/^[\x21-\x7e]+$/.test(key))
         throw new Error("Invalid provider credential.");
+      const hash = [...(await digest(key))]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      settingsUrl = `${OPENROUTER}/keys/${hash}`;
       const metadata = record(
         (
           await readJSON(
@@ -383,13 +408,11 @@ export class OpenRouterTrialSession {
         ).data,
       );
       if (
-        metadata.is_provisioning_key === true ||
-        metadata.is_management_key === true
+        metadata.is_management_key !== false ||
+        (metadata.is_provisioning_key !== undefined &&
+          metadata.is_provisioning_key !== false)
       )
-        throw new Error("Use an inference key, not a management key.");
-      const hash = [...(await digest(key))]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
+        throw new Error("OpenRouter did not verify a normal inference key.");
       active(controller.signal);
       if (generation !== this.#generation)
         throw new Error("Authorization was cancelled.");
@@ -399,7 +422,7 @@ export class OpenRouterTrialSession {
       this.#usage = { reportedCost: 0, unknownCost: false, calls: [] };
       const remaining = metadata.limit_remaining;
       return {
-        settingsUrl: `${OPENROUTER}/keys/${hash}`,
+        settingsUrl,
         remaining:
           typeof remaining === "number" &&
           Number.isFinite(remaining) &&
@@ -407,6 +430,10 @@ export class OpenRouterTrialSession {
             ? remaining
             : null,
       };
+    } catch (reason) {
+      const message =
+        reason instanceof Error ? reason.message : "Authorization failed.";
+      throw new OpenRouterAuthorizationError(message, settingsUrl);
     } finally {
       clearTimeout(timer);
       if (this.#controller === controller) this.#controller = null;

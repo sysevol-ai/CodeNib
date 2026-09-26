@@ -6,10 +6,23 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AskPage from "@/app/[repoId]/ask/page";
 import Markdown from "./Markdown";
+import AskBar from "./AskBar";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("static activation", () => {
+  it("labels public trial entry controls before requesting account authorization", () => {
+    const html = renderToStaticMarkup(
+      <AskBar repoId="requests" repo="psf/requests" collapsible browserTrial />,
+    );
+    expect(html).toContain("Find code with OpenRouter");
+    expect(html).not.toContain("Ask this repository");
+    const expanded = renderToStaticMarkup(
+      <AskBar repoId="requests" repo="psf/requests" browserTrial />,
+    );
+    expect(expanded).toContain("Find source in psf/requests");
+    expect(expanded).toContain("Continue");
+  });
   it("offers direct authorization only for an explicitly configured public trial", () => {
     vi.stubGlobal("window", { __CODENIB_RUNTIME__: { mode: "static", trialApiBase: "https://source.example" } });
     const fetch = vi.fn();
