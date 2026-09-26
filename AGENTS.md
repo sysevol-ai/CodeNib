@@ -171,6 +171,9 @@ clang-format for C/C++.
 
 ## Testing Guidance
 
+- Dependency and optional-extra changes in `pyproject.toml` must update
+  `uv.lock` in the same change. Run `uv lock --check`; the documentation CI
+  installs with `uv sync --locked --only-group docs`.
 - Public documentation changes require both `mkdocs build --strict` and
   `python scripts/check_public_docs.py`. Public pages must not link to excluded
   documents, including through GitHub URLs.
