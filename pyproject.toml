@@ -72,6 +72,9 @@ codenib-quality-cost-report = "codenib.eval.reports.quality_cost:main"
 codenib-serve = "codenib._optional_entrypoints:serving_main"
 
 [project.optional-dependencies]
+grep = [
+    "requests>=2.25.0",
+]
 agent = [
     "litellm>=1.93.0",
     "openai>=1.0.0",

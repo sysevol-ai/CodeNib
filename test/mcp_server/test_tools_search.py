@@ -56,6 +56,7 @@ def _make_ctx(
     )
     ctx.bm25 = bm25
     ctx.vector = vector
+    ctx.grep_jev = None
     ctx.symbol_graph = symbol_graph
     ctx.regex_index = regex_index
     ctx.zoekt = zoekt

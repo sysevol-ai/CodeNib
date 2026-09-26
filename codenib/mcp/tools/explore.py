@@ -401,6 +401,8 @@ def explore_context_impl(
     direction: str = "both",
     include_dependencies: bool = True,
     filter_test: bool = False,
+    *,
+    check_cancelled=None,
 ) -> dict[str, Any]:
     """Return ranked, routed, dependency-aware source context in one call."""
 
@@ -426,6 +428,7 @@ def explore_context_impl(
     if (
         getattr(ctx, "bm25", None) is not None
         or getattr(ctx, "vector", None) is not None
+        or getattr(ctx, "grep_jev", None) is not None
     ):
         try:
             result = search_context_impl(
@@ -435,6 +438,11 @@ def explore_context_impl(
                 budget=normalized_budget,
                 level="l2",
                 filter_test=bool(filter_test),
+                **(
+                    {"check_cancelled": check_cancelled}
+                    if getattr(ctx, "grep_jev", None) is not None
+                    else {}
+                ),
             )
             retrieval_response = result
             payloads = result.get("results", [])
@@ -444,6 +452,16 @@ def explore_context_impl(
             Exception
         ) as exc:  # noqa: BLE001 - composed backends degrade independently
             diagnostics.append(_diagnostic("retrieval_failed", exc))
+            from ...agent.runtime.grep_jev import GrepJevError
+
+            if isinstance(exc, GrepJevError) and exc.provider_usage is not None:
+                retrieval_response = {
+                    "plan": {
+                        "name": "grep_jev",
+                        "status": "failed",
+                        **exc.provider_usage,
+                    }
+                }
     else:
         diagnostics.append(
             _diagnostic("retrieval_unavailable", "no ranked retrieval view is loaded")
