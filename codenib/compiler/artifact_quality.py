@@ -127,6 +127,8 @@ def graph_source_paths(graph: CodeGraph) -> tuple[str, ...]:
     required to belong to the authenticated source. A reference carrying any
     location is checked even if its has_definition flag is false. Benchmark
     artifact-constraining audits retain their existing all-fields contract.
+    The Web consumer removes unbound, location-free reference hints before
+    exposing the graph, including unresolved paths in excluded directories.
     """
 
     paths, invalid = _graph_paths_and_invalid(graph, include_reference_hints=False)

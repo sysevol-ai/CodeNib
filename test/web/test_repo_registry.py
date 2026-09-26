@@ -5207,12 +5207,21 @@ def test_bundle_rejects_graph_paths_outside_authenticated_selection(
     assert "outside the authenticated" in bundle._code_graph_error
 
 
-def test_bundle_loads_graph_with_external_module_reference(tmp_path):
+@pytest.mark.parametrize(
+    "reference_path", ["idna.core", "private/secret.py", "secret.py"]
+)
+@pytest.mark.parametrize("anchor_path", ["main.py", "private/secret.py"])
+def test_bundle_prunes_unbound_location_free_references(
+    tmp_path, reference_path, anchor_path, monkeypatch
+):
     from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION, NODE_TYPE_SYMBOL
 
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "main.py").write_text("import idna\nidna.encode('example.test')\n")
+    (repo / "private").mkdir()
+    (repo / "private" / "secret.py").write_text("PRIVATE_MARKER\n")
+    (repo / "secret.py").write_text("PRIVATE_MARKER\n")
     graph_dir = tmp_path / "symbol_graph"
     graph_dir.mkdir()
     graph_path = graph_dir / "graph.pkl"
@@ -5232,18 +5241,34 @@ def test_bundle_loads_graph_with_external_module_reference(tmp_path):
         {
             "type": NODE_TYPE_SYMBOL,
             "has_definition": False,
-            "file": "idna.core",
+            "file": reference_path,
         },
     )
     graph._add_edge(
         "entry",
         "idna.encode",
         EDGE_TYPE_REFERENCE,
-        anchor_file="main.py",
+        anchor_file=anchor_path,
         anchor_line=1,
     )
+    graph._add_vertex(
+        "helper",
+        {
+            "type": NODE_TYPE_FUNCTION,
+            "has_definition": True,
+            "file": "main.py",
+            "start_line": 0,
+            "end_line": 1,
+        },
+    )
+    graph._add_edge(
+        "entry", "helper", EDGE_TYPE_REFERENCE, anchor_file="main.py", anchor_line=1
+    )
     graph.save_graph(graph_path)
-    with capture_repository_source(repo) as binding:
+    before = regular_file_fingerprint(graph_path)
+    with capture_repository_source(
+        repo, selection=RepositorySourceSelection(("private", "secret.py"))
+    ) as binding:
         bundle = RepoBundle(
             entry=SimpleNamespace(instance_id="owner__repo-1"),
             manifest=_legacy_view_manifest(
@@ -5260,11 +5285,33 @@ def test_bundle_loads_graph_with_external_module_reference(tmp_path):
             ),
             source_reader=binding.borrow_reader(),
         )
+        import codenib.web.repo_registry as registry_module
+
+        require_paths = registry_module._require_authenticated_source_paths
+
+        def check_before_publication(*args, **kwargs):
+            # A reader arriving at the source-authentication boundary must not
+            # observe the loaded but still unvalidated/unpruned graph.
+            assert bundle.code_graph() is None
+            return require_paths(*args, **kwargs)
+
+        monkeypatch.setattr(
+            registry_module,
+            "_require_authenticated_source_paths",
+            check_before_publication,
+        )
         loaded = bundle.code_graph()
+        if anchor_path != "main.py":
+            assert loaded is None
+            assert "outside the authenticated" in bundle._code_graph_error
+            return
         assert loaded is not None
         assert loaded.graph.ecount() == 1
+        assert set(loaded.name_to_vertex) == {"entry", "helper"}
+        assert set(loaded.graph.vs["name"]) == {"entry", "helper"}
+        assert regular_file_fingerprint(graph_path) == before
         assert bundle._code_graph_error is None
-        assert binding.borrow_reader().captured_relative_path("idna.core") is None
+        assert binding.borrow_reader().captured_relative_path(reference_path) is None
 
 
 def test_manifest_selected_bundle_never_falls_back_to_live_checkout(
