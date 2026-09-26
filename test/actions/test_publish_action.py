@@ -65,7 +65,7 @@ def _run_resolve_step(
             "INPUT_EMBEDDING_ENDPOINT": "",
             "INPUT_EMBEDDING_MODEL": "",
             "INPUT_EMBEDDING_PROVIDER": "",
-            "INPUT_PRESET": "fast",
+            "INPUT_PRESET": action["inputs"]["preset"]["default"],
             "INPUT_PYTHON_VERSION": "3.12",
             "INPUT_REPOSITORY": "",
             "INPUT_REPOSITORY_PATH": str(ROOT),
@@ -104,7 +104,7 @@ def test_publish_action_has_secret_free_inputs_and_stable_outputs() -> None:
         "cache-key",
         "source-commit",
     } <= set(action["outputs"])
-    assert action["inputs"]["preset"]["default"] == "semantic"
+    assert action["inputs"]["preset"]["default"] == "fast"
     resolve = next(step for step in _steps(action) if step.get("id") == "inputs")
     assert "fast|semantic)" in resolve["run"]
     assert "graph|full" not in resolve["run"]
@@ -177,8 +177,8 @@ def test_publish_action_resolves_valid_inputs(tmp_path: Path) -> None:
     )
     assert f"site_path={tmp_path / 'codenib-site'}" in output
     assert f"context_path={tmp_path / 'codenib-context'}" in output
-    assert "embedding_provider=" in output
-    assert "extras=" in output
+    assert "embedding_provider=\n" in output
+    assert "extras=\n" in output
     assert f"source_path={ROOT}" in output
     assert f"source_commit={source_commit}" in output
 
@@ -292,9 +292,7 @@ def test_publish_action_cache_identity_is_public_and_commit_addressed() -> None:
 
 def test_reusable_workflow_is_fork_safe_and_binds_its_exact_revision() -> None:
     workflow = _load(WORKFLOW_PATH)
-    assert workflow["on"]["workflow_call"]["inputs"]["preset"]["default"] == (
-        "semantic"
-    )
+    assert workflow["on"]["workflow_call"]["inputs"]["preset"]["default"] == "fast"
     build = workflow["jobs"]["build"]
     condition = build["if"]
 
@@ -361,7 +359,7 @@ def test_hosted_publish_smoke_is_narrow_and_sha_pinned() -> None:
         if step.get("name") == "Exercise local publish Action"
     )
     assert publish["with"]["cache"] == "false"
-    assert publish["with"]["preset"] == "fast"
+    assert "preset" not in publish["with"]  # Exercise the actual Action default.
     assert publish["with"]["upload-context"] == "false"
     assert publish["with"]["repository-path"] == "${{ steps.fixture.outputs.path }}"
     _assert_external_actions_are_sha_pinned(workflow)
