@@ -15,6 +15,7 @@ repo_name: sysevol-ai/CodeNib
 exclude_docs: |
   experiments/
   product_roadmap.md
+  adoption_roadmap.md
   storage_backend_roadmap.md
   cognitive_debt_roadmap.md
   agent_runner_architecture_goal.md
@@ -170,6 +171,7 @@ nav:
       - get-started/index.md
       - Quickstart: quickstart.md
       - Agent-ready CodeGraph: codegraph.md
+      - Compare repository tools: comparison.md
       - Release 0.2.3: releases/0.2.3.md
       - Release 0.2.2: releases/0.2.2.md
       - Release 0.2.1: releases/0.2.1.md
@@ -191,6 +193,7 @@ nav:
           - NVIDIA DGX Spark: guides/reference-deployments/dgx-spark.md
   - Concepts:
       - concepts/index.md
+      - Repository Context Architecture: concepts/architecture.md
       - Retrieval Planning:
           - RAG Ops And Planner: rag_ops.md
       - Indexes:
@@ -218,6 +221,7 @@ nav:
           - Naming: branding.md
       - Benchmarks & Evaluation:
           - evaluation/index.md
+          - Model-planned grep and Jev: evaluation/grep_jev.md
           - SWE-Explore Compatibility: evaluation/swe_explore.md
           - SWE-bench Collection: collect_swebench.md
           - Synthesis Pipeline: synthesis_pipeline.md

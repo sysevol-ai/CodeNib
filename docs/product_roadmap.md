@@ -20,6 +20,12 @@ The release is ready when a new user can:
 
 Passing unit tests or publishing a wheel is necessary but not sufficient.
 
+The active adoption program is tracked in [the adoption roadmap](adoption_roadmap.md).
+It adds the measured model-planned grep → Jev path with OpenRouter, reduces
+onboarding friction, and turns the hosted Wiki into a precomputed preview.
+Those milestones distinguish planned retrieval/authorization changes from
+the shipping paths below and retain their own verification gates.
+
 ## North-Star Journey
 
 The 0.2.1 agent path is local, model-free, and one command after installation:

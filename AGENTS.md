@@ -42,6 +42,11 @@ whenever a package changes lifecycle class, an experimental surface is retired,
 an architectural dependency direction changes, or a subtraction iteration is
 completed.
 
+For the adoption, OpenRouter, and Wiki preview program, use
+`docs/adoption_roadmap.md` as the durable objective record. Keep shipping
+CodeGraph capabilities separate from experimental grep/Jev results, and
+update the relevant milestone when its acceptance gates or PR status change.
+
 ## Storage Scope Guard
 
 - The only product database boundary is the Wiki-only
@@ -169,6 +174,8 @@ clang-format for C/C++.
 - Public documentation changes require both `mkdocs build --strict` and
   `python scripts/check_public_docs.py`. Public pages must not link to excluded
   documents, including through GitHub URLs.
+  When excluding a new internal document, add it to both `REQUIRED_EXCLUSIONS`
+  and `FORBIDDEN_PUBLIC_PREFIXES` in `scripts/check_public_docs.py`.
 - Unit tier: `pytest -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short`
 - Integration tier: `pytest -m integration --tb=short`
 - Serial integration tier: `pytest -m integration_serial -v --tb=short`
