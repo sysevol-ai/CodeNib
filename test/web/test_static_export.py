@@ -1624,6 +1624,53 @@ def test_cached_export_preserves_story_provenance_and_reads_only_snapshot(
     assert setup.config_path.read_bytes() == config_before
 
 
+@pytest.mark.parametrize("credential_field", [False, True])
+def test_cached_export_keeps_section_diagnostics_private_without_relaxing_scan(
+    cached_export_setup, credential_field
+):
+    setup = cached_export_setup
+    meta = setup.wiki._find("architecture", setup.outline)
+    entry_id = setup.wiki._store_entry_id(setup.wiki._page_cache_suffix(meta))
+    page = dict(setup.pages["architecture"])
+    page["quality"] = {
+        "valid": True,
+        "evidence_by_section": {"Proxy Authorization": ["E1"]},
+        "new_evidence_by_section": {"Proxy Authorization": ["E1"]},
+        "section_similarity": {
+            "Proxy Authorization": {"against": "Overview", "overlap": 0.0}
+        },
+        "section_synthesis": {
+            "Proxy Authorization": {
+                "catalog_sentences": 0,
+                "interactions": 1,
+                "sentences": 1,
+            }
+        },
+    }
+    if credential_field:
+        page["quality"]["api_key"] = "fixture-credential"
+    SQLiteWikiStore(setup.database).publish(
+        entry_id=entry_id, repository_id="demo", envelope={"data": page}
+    )
+    before = _tree_bytes(setup.data)
+    if credential_field:
+        with pytest.raises(ValueError, match="credential field.*api_key"):
+            export_cached_wiki(
+                setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+            )
+        assert not setup.output.exists()
+    else:
+        export_cached_wiki(
+            setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+        )
+        exported = json.loads(
+            (setup.output / "data/repos/demo/pages/architecture.json").read_text()
+        )
+        assert exported["quality"] == {"valid": True}
+        assert exported["markdown"] == page["markdown"]
+    assert _tree_bytes(setup.data) == before
+
+
 @pytest.mark.parametrize(
     "fault",
     ["outline", "missing", "degraded", "quality", "grounding", "range", "identity"],

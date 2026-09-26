@@ -147,7 +147,9 @@ checks stop publication. The exporter never fills those gaps with model calls;
 precompute healthy pages separately and rerun the export. Existing static output
 is replaced only after source and publication checks pass.
 
-Story structure and generation model/prompt metadata are retained. Citation
+Story structure, quality verdicts and generation model/prompt metadata are
+retained. Internal quality maps keyed by section headings remain in the Wiki
+cache and are omitted from public pages. Citation
 excerpts are reread from the captured source. Inline excerpts containing
 credential-shaped values, including example URLs with user information, are
 omitted; their file/line citations remain and the source panel offers its

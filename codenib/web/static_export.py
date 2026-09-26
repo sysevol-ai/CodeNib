@@ -223,6 +223,20 @@ def _normalize_page(
     builder: Any, page: Mapping[str, Any], *, verify_citations: bool = False
 ) -> dict[str, Any]:
     payload = dict(page)
+    if isinstance(payload.get("quality"), Mapping):
+        # These operator diagnostics key maps by arbitrary prose headings.
+        # Keep them in the private Wiki cache, not the public page contract:
+        # headings such as "Proxy Authorization" are not credential fields.
+        # Retain quality verdicts and scan all remaining metadata normally.
+        quality = dict(payload["quality"])
+        for diagnostic in (
+            "evidence_by_section",
+            "new_evidence_by_section",
+            "section_similarity",
+            "section_synthesis",
+        ):
+            quality.pop(diagnostic, None)
+        payload["quality"] = quality
     citations = []
     for value in payload.get("citations") or ():
         citation = dict(value)
