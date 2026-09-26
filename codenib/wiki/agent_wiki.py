@@ -69,9 +69,7 @@ from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
 from .quality import leading_code_subject as _leading_code_subject
 from .quality import narrative_density_report as _narrative_density_report
 from .quality import page_quality_report as _page_quality_report
-from .quality import (
-    parse_story_review,
-)
+from .quality import parse_story_review
 from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import (
@@ -114,7 +112,7 @@ _MAX_CONTEXT_EVIDENCE_CHARS = 2400
 # A quoted body should carry an idea, not reproduce a file.
 _MAX_EXCERPT_LINES = 14
 _OUTLINE_PROMPT_VERSION = "13"
-_PAGE_PROMPT_VERSION = "128"
+_PAGE_PROMPT_VERSION = "129"
 _MAX_PLAN_REPAIRS = 3
 _MAX_FACT_PLAN_MODEL_CALLS = 3
 _MAX_COMPOSITION_PLAN_REPAIRS = 1

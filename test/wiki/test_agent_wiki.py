@@ -7150,6 +7150,43 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
     }
 
 
+def test_page_prompt_upgrade_reuses_outline_without_reusing_old_page(
+    tmp_path, monkeypatch
+):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    store = SQLiteWikiStore(tmp_path / "wiki-cache" / "wiki.sqlite3")
+    meta = {"id": "overview", "title": "Overview"}
+    outline = {"pages": [meta]}
+    old_page = {"id": "overview", "content": "Cached before the range fix."}
+    suffix = AgentWiki._page_cache_suffix(meta)
+    with monkeypatch.context() as previous_version:
+        previous_version.setattr(agent_wiki_module, "_PAGE_PROMPT_VERSION", "128")
+        original = AgentWiki(bundle, model="fake-model", store=store)
+        original._write_cache("outline", outline)
+        original._write_cache(suffix, old_page)
+        old_entry_id = original._store_entry_id(suffix)
+        old_entry = store.read(old_entry_id)
+        assert original._read_cache(suffix) == old_page
+
+    reloaded = AgentWiki(bundle, model="fake-model", store=store)
+
+    assert reloaded._read_cache("outline") == outline
+    assert reloaded._read_cache(suffix) is None
+    assert store.read(old_entry_id) == old_entry
+    assert reloaded._llm is None
+
+
 def test_agent_wiki_reads_store_envelope_with_retired_provenance_field(tmp_path):
     bundle = SimpleNamespace(
         entry=SimpleNamespace(
