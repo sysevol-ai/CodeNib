@@ -670,12 +670,12 @@ def test_registry_publishers_use_separate_workflows() -> None:
     wheel_job = verification["jobs"]["build-wheel"]
     assert wheel_job["needs"] == "build-sdist"
     assert wheel_job["strategy"]["matrix"]["arch"] == ["x86_64", "aarch64"]
+    assert wheel_job["runs-on"] == "${{ matrix.runner }}"
+    assert wheel_job["strategy"]["matrix"]["include"] == [
+        {"arch": "x86_64", "runner": "ubuntu-latest"},
+        {"arch": "aarch64", "runner": "ubuntu-24.04-arm"},
+    ]
     wheel_steps = {step["name"]: step for step in wheel_job["steps"]}
-    qemu = wheel_steps["Set up QEMU for aarch64"]
-    assert qemu["if"] == "matrix.arch == 'aarch64'"
-    assert qemu["uses"] == (
-        "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8"
-    )
     wheel_build = wheel_steps["Build and smoke-test wheel"]
     assert wheel_build["uses"] == (
         "pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c"

@@ -63,7 +63,7 @@ jobs:
   build-wheel:
     name: Build ${{ matrix.arch }} wheel
     needs: build-sdist
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -71,6 +71,11 @@ jobs:
         arch:
           - x86_64
           - aarch64
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Download source distribution
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
@@ -91,12 +96,6 @@ jobs:
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
               handle.write(f"path={sources[0]}\n")
           PY
-
-      - name: Set up QEMU for aarch64
-        if: matrix.arch == 'aarch64'
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
-        with:
-          platforms: arm64
 
       - name: Build and smoke-test wheel
         uses: pypa/cibuildwheel@4726cd35bb13f7bde50cf2761f2499ac7b3aa32c # v4.1.1
