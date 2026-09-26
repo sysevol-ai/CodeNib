@@ -708,18 +708,20 @@ def _mcp_context_mode(args: argparse.Namespace) -> str:
         or repo is not None
         or repository is not None
     )
-    if getattr(args, "retrieval_route", "indexed") == "grep-jev":
-        if runtime_probe or artifact is not None or repository is not None:
-            raise CLIError(
-                "grep-jev requires a repository, without an artifact or probe"
-            )
-        if explicit_path and repo is not None:
-            raise CLIError("choose a repository path or --repo, not both")
-        return "grep-jev"
     if runtime_probe:
         if any_context:
             raise CLIError("--runtime-probe cannot be combined with MCP context input")
-        return "probe"
+        return (
+            "grep-probe"
+            if getattr(args, "retrieval_route", "indexed") == "grep-jev"
+            else "probe"
+        )
+    if getattr(args, "retrieval_route", "indexed") == "grep-jev":
+        if artifact is not None or repository is not None:
+            raise CLIError("grep-jev requires a repository, without an artifact")
+        if explicit_path and repo is not None:
+            raise CLIError("choose a repository path or --repo, not both")
+        return "grep-jev"
     if artifact is not None:
         if explicit_path:
             raise CLIError("choose either a manifest or --artifact, not both")
@@ -733,19 +735,27 @@ def _mcp_context_mode(args: argparse.Namespace) -> str:
 
 def _run_mcp(args: argparse.Namespace) -> int:
     mode = _mcp_context_mode(args)
-    runtime_probe = mode == "probe"
-    if runtime_probe:
+    runtime_probe = mode in {"probe", "grep-probe"}
+    if mode == "probe":
         _require_modules(
             ("mcp", "igraph", "google.protobuf"),
             extra="graph,mcp",
             feature="the CodeGraph MCP server",
         )
+    elif mode == "grep-probe":
+        _require_modules(
+            ("requests", "mcp"), extra="grep,mcp", feature="grep → Jev MCP"
+        )
+        if shutil.which("rg") is None:
+            raise CLIError("grep → Jev requires ripgrep (rg) on PATH")
+        from .mcp.grep_jev import explore_repository  # noqa: F401 - import smoke
     else:
         _require_modules(("mcp",), extra="mcp", feature="the MCP server")
     from .mcp.server import main as mcp_main
 
     if runtime_probe:
-        print("codenib codegraph mcp runtime ready")
+        route = "grep-jev" if mode == "grep-probe" else "codegraph"
+        print(f"codenib {route} mcp runtime ready")
         return 0
 
     if mode == "grep-jev":
@@ -2369,11 +2379,8 @@ def _require_unchanged_codegraph_checkout(
 def _run_codegraph_init(args: argparse.Namespace) -> int:
     from .codegraph_onboarding import (
         CodeGraphOnboardingError,
-        CodeGraphReceipt,
-        add_client_registration,
-        inspect_client_registration,
+        configure_client_registrations,
         inspect_server_command,
-        write_codegraph_receipt,
     )
     from .toolchains import install_requirements
 
@@ -2504,28 +2511,8 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
     if failed:
         raise CLIError("CodeGraph indexing failed for: " + ", ".join(failed))
 
-    managed = receipt or CodeGraphReceipt(repo_path, server, ())
-    for client in clients:
-        if managed.client(client) is None:
-            managed = managed.with_client(client, state="pending")
     try:
-        write_codegraph_receipt(managed)
-        for client in clients:
-            inspection = inspect_client_registration(client, server, repo_path)
-            if inspection.exists and not inspection.matches:
-                raise CodeGraphOnboardingError(
-                    f"{client} MCP server {server.name} changed during indexing; "
-                    "refusing to overwrite it"
-                )
-            if not inspection.exists:
-                add_client_registration(client, server, repo_path)
-                inspection = inspect_client_registration(client, server, repo_path)
-            if not inspection.matches:
-                raise CodeGraphOnboardingError(
-                    f"{client} did not retain the expected MCP registration"
-                )
-            managed = managed.with_client(client, state="configured")
-            write_codegraph_receipt(managed)
+        configure_client_registrations(repo_path, clients, server, receipt)
     except (CodeGraphOnboardingError, OSError) as exc:
         _require_unchanged_codegraph_checkout(
             repo_path,
@@ -2549,6 +2536,156 @@ def _run_codegraph_init(args: argparse.Namespace) -> int:
         "dependency_subgraph for impact analysis."
     )
     return 0
+
+
+def _run_grep_init(args: argparse.Namespace) -> int:
+    from . import codegraph_onboarding as onboarding
+    from . import openrouter_auth as auth
+
+    repo = resolve_repo_path(args.repo).resolve()
+    route = "grep-jev"
+    try:
+        receipt = onboarding.load_codegraph_receipt(repo, retrieval_route=route)
+        if receipt is not None and args.server_command is None:
+            server = receipt.server
+        else:
+            command, prefix = onboarding.resolve_codenib_command(args.server_command)
+            server = onboarding.make_server_spec(
+                repo, command=command, command_prefix=prefix, retrieval_route=route
+            )
+        if receipt is not None and receipt.server != server:
+            raise CLIError(
+                "MCP command changed; run `codenib uninstall` before replacing it"
+            )
+        inspection = onboarding.inspect_server_command(server, repo)
+        if not inspection.ready:
+            raise CLIError("grep/Jev MCP runtime is unavailable: " + inspection.detail)
+        clients = onboarding.resolve_requested_clients(args.agent)
+        observed = _codegraph_preflight_clients(repo, clients, server, receipt)
+        if args.dry_run:
+            print(f"Repository: {repo}")
+            print(f"MCP server: {server.name}")
+            for client in clients:
+                action = "reuse" if observed[client].matches else "register"
+                print(f"{client}: would {action} grep → Jev")
+            print("Dry run complete; authorization and registration were not started.")
+            return 0
+
+        print(
+            "grep → Jev uses your OpenRouter account. Queries, directory names "
+            "and selected source snippets go to its model providers."
+        )
+        key, source = auth.credential()
+        if key is None:
+            if not sys.stdin.isatty():
+                raise CLIError(
+                    "Run `codenib auth login` in a terminal, or set "
+                    "OPENROUTER_API_KEY before initialization"
+                )
+            _run_auth(
+                argparse.Namespace(
+                    auth_command="login",
+                    store=args.store,
+                    headless=args.headless,
+                    import_key=False,
+                    timeout=300.0,
+                )
+            )
+            key, source = auth.credential()
+            if key is None:
+                raise CLIError("OpenRouter authorization did not save a credential")
+        else:
+            info = auth.key_info(key)
+            if info.get("limit") is None:
+                print("Set an OpenRouter credit limit at " + auth.settings_url(key))
+        # Consent may take minutes. Reconciliation reloads ownership under the
+        # shared registration lock before touching native client configuration.
+        onboarding.configure_client_registrations(repo, clients, server, receipt)
+    except (
+        onboarding.CodeGraphOnboardingError,
+        auth.OpenRouterAuthError,
+        OSError,
+    ) as exc:
+        raise CLIError(str(exc)) from exc
+    print(f"\ngrep → Jev is connected: {', '.join(clients)}")
+    print(f"MCP server: {server.name}")
+    print(f"OpenRouter: {source} credential verified")
+    if source == "environment":
+        print(
+            "Launch your agent from this environment, or run `codenib auth login` "
+            "to save a credential for other launches."
+        )
+    print("Restart an already-running agent to load its new MCP registration.")
+    print("Ask it to use explore_context to find source for your repository question.")
+    print("Model calls start with queries; each reads the current checkout.")
+    print(f"Status: codenib status {shlex.quote(str(repo))}")
+    return 0
+
+
+def _run_grep_status(args: argparse.Namespace) -> int:
+    from . import codegraph_onboarding as onboarding
+    from . import openrouter_auth as auth
+
+    repo = resolve_repo_path(args.repo).resolve()
+    report: dict[str, object] = {
+        "repository": str(repo),
+        "retrieval_route": "grep-jev",
+        "ready": False,
+        "provider_verified": False,
+        "credential_source": "none",
+        "clients": [],
+    }
+    try:
+        key, source = auth.credential()
+        report["credential_present"] = key is not None
+        report["credential_source"] = source
+        receipt = onboarding.load_codegraph_receipt(repo, retrieval_route="grep-jev")
+        if receipt is not None:
+            report["server"] = {
+                "name": receipt.server.name,
+                "command": receipt.server.command,
+                "args": list(receipt.server.args),
+            }
+            runtime = onboarding.inspect_server_command(receipt.server, repo)
+            report["runtime_ready"] = runtime.ready
+            report["runtime_detail"] = runtime.detail
+            clients = []
+            for managed in receipt.clients:
+                entry = {"name": managed.name, "state": managed.state, "matches": False}
+                try:
+                    observed = onboarding.inspect_client_registration(
+                        managed.name, receipt.server, repo
+                    )
+                    entry.update(matches=observed.matches, detail=observed.detail)
+                except (onboarding.CodeGraphOnboardingError, OSError) as exc:
+                    entry.update(detail=str(exc), error=str(exc))
+                clients.append(entry)
+            report["clients"] = clients
+            report["ready"] = bool(
+                runtime.ready
+                and key is not None
+                and clients
+                and all(c["matches"] and c["state"] == "configured" for c in clients)
+            )
+    except (
+        onboarding.CodeGraphOnboardingError,
+        auth.OpenRouterAuthError,
+        OSError,
+    ) as exc:
+        report["error"] = str(exc)
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"grep → Jev: {'READY' if report['ready'] else 'NOT READY'}")
+        print(f"Repository: {repo}")
+        print(f"Credential: {report['credential_source']} (provider not contacted)")
+        for client in report["clients"]:
+            print(f"{client['name']}: {client['detail']}")
+        if report.get("error"):
+            print(report["error"])
+        if not report["ready"]:
+            print("Run `codenib init` to connect this repository.")
+    return 0 if report["ready"] else 1
 
 
 def _codegraph_index_report(repo_path: Path) -> dict[str, object]:
@@ -2853,73 +2990,90 @@ def _selected_uninstall_clients(
 
 
 def _run_codegraph_uninstall(args: argparse.Namespace) -> int:
+    from contextlib import nullcontext
+
     from .codegraph_onboarding import (
         CodeGraphOnboardingError,
         inspect_client_registration,
         load_codegraph_receipt,
+        registration_lock,
         remove_client_registration,
         remove_codegraph_receipt,
         write_codegraph_receipt,
     )
 
-    repo_path = resolve_repo_path(args.repo)
+    repo_path = resolve_repo_path(args.repo).resolve()
+    route = getattr(args, "retrieval_route", "indexed")
+    label = "CodeGraph" if route == "indexed" else "grep/Jev"
     try:
-        receipt = load_codegraph_receipt(repo_path)
-        if receipt is None:
-            print("No CodeNib-managed CodeGraph agent registration was found.")
-            return 0
-        selected = _selected_uninstall_clients(args.agent, receipt)
-        for client in selected:
-            managed = receipt.client(client)
-            if managed is None:
-                print(f"{client}: not managed for this repository")
-                continue
-            inspection = inspect_client_registration(
-                client,
-                receipt.server,
-                repo_path,
+        with (
+            nullcontext()
+            if args.dry_run
+            else registration_lock(repo_path, retrieval_route=route)
+        ):
+            receipt = load_codegraph_receipt(
+                repo_path, **({"retrieval_route": route} if route != "indexed" else {})
             )
-            if not inspection.installed:
-                raise CodeGraphOnboardingError(
-                    f"cannot safely remove {client}: client command not found"
-                )
-            if inspection.exists and not inspection.matches and not args.force:
-                raise CodeGraphOnboardingError(
-                    f"refusing to remove drifted {client} registration "
-                    f"{receipt.server.name}; inspect it or repeat with --force"
-                )
-            if args.dry_run:
-                action = "remove" if inspection.exists else "reconcile missing"
-                print(f"{client}: would {action} {receipt.server.name}")
-                continue
-            if inspection.exists:
-                remove_client_registration(
+            if receipt is None:
+                print(f"No CodeNib-managed {label} agent registration was found.")
+                return 0
+            selected = _selected_uninstall_clients(args.agent, receipt)
+            for client in selected:
+                managed = receipt.client(client)
+                if managed is None:
+                    print(f"{client}: not managed for this repository")
+                    continue
+                inspection = inspect_client_registration(
                     client,
                     receipt.server,
                     repo_path,
                 )
-                after = inspect_client_registration(
-                    client,
-                    receipt.server,
-                    repo_path,
-                )
-                if after.exists:
+                if not inspection.installed:
                     raise CodeGraphOnboardingError(
-                        f"{client} still reports MCP server {receipt.server.name}"
+                        f"cannot safely remove {client}: client command not found"
                     )
-            receipt = receipt.without_client(client)
-            if receipt.clients:
-                write_codegraph_receipt(receipt)
+                if inspection.exists and not inspection.matches and not args.force:
+                    raise CodeGraphOnboardingError(
+                        f"refusing to remove drifted {client} registration "
+                        f"{receipt.server.name}; inspect it or repeat with --force"
+                    )
+                if args.dry_run:
+                    action = "remove" if inspection.exists else "reconcile missing"
+                    print(f"{client}: would {action} {receipt.server.name}")
+                    continue
+                if inspection.exists:
+                    remove_client_registration(
+                        client,
+                        receipt.server,
+                        repo_path,
+                    )
+                    after = inspect_client_registration(
+                        client,
+                        receipt.server,
+                        repo_path,
+                    )
+                    if after.exists:
+                        raise CodeGraphOnboardingError(
+                            f"{client} still reports MCP server {receipt.server.name}"
+                        )
+                receipt = receipt.without_client(client)
+                if receipt.clients:
+                    write_codegraph_receipt(receipt)
+                else:
+                    remove_codegraph_receipt(receipt)
+                print(f"{client}: removed {receipt.server.name}")
+            if args.dry_run:
+                print("Dry run complete; no client configuration or receipt changed.")
+            elif route == "grep-jev":
+                print(
+                    "Selected registrations removed; source and OpenRouter credentials "
+                    "were preserved."
+                )
+            elif receipt.clients:
+                print("CodeGraph indexes were preserved for the remaining clients.")
             else:
-                remove_codegraph_receipt(receipt)
-            print(f"{client}: removed {receipt.server.name}")
-        if args.dry_run:
-            print("Dry run complete; no client configuration or receipt changed.")
-        elif receipt.clients:
-            print("CodeGraph indexes were preserved for the remaining clients.")
-        else:
-            print("Agent registrations removed; CodeGraph indexes were preserved.")
-        return 0
+                print("Agent registrations removed; CodeGraph indexes were preserved.")
+            return 0
     except (CodeGraphOnboardingError, OSError) as exc:
         raise _codegraph_error(exc) from exc
 
@@ -3362,6 +3516,61 @@ def build_parser() -> argparse.ArgumentParser:
         help="grep-jev searches a repository without indexes using OpenRouter",
     )
     _add_grep_jev_arguments(mcp_parser)
+
+    init_parser = subparsers.add_parser(
+        "init", help="connect source-only grep/Jev retrieval to your coding agent"
+    )
+    init_parser.add_argument("repo", nargs="?", default=".")
+    init_parser.add_argument(
+        "--agent",
+        action="append",
+        choices=("auto", "codex", "claude"),
+        help="client to configure; omit to detect installed clients, repeat for both",
+    )
+    init_parser.add_argument(
+        "--command", dest="server_command", help="durable CodeNib executable for MCP"
+    )
+    init_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="inspect setup without authorizing or registering",
+    )
+    init_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="use a pasted OpenRouter authorization code when login is needed",
+    )
+    init_parser.add_argument(
+        "--store",
+        choices=("keyring", "file"),
+        default="keyring",
+        help="credential store when login is needed; file is explicitly unencrypted",
+    )
+    init_parser.set_defaults(handler=_run_grep_init)
+
+    status_parser = subparsers.add_parser(
+        "status", help="inspect this checkout's managed grep/Jev connection"
+    )
+    status_parser.add_argument("repo", nargs="?", default=".")
+    status_parser.add_argument("--json", action="store_true")
+    status_parser.set_defaults(handler=_run_grep_status)
+
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="remove this checkout's managed grep/Jev agent registrations"
+    )
+    uninstall_parser.add_argument("repo", nargs="?", default=".")
+    uninstall_parser.add_argument(
+        "--agent", action="append", choices=("all", "codex", "claude")
+    )
+    uninstall_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="remove an owned registration even when its configuration has drifted",
+    )
+    uninstall_parser.add_argument("--dry-run", action="store_true")
+    uninstall_parser.set_defaults(
+        handler=_run_codegraph_uninstall, retrieval_route="grep-jev"
+    )
 
     codegraph_parser = subparsers.add_parser(
         "codegraph",

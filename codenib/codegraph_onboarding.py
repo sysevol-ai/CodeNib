@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-"""Managed MCP client registration for the CodeGraph product path.
+"""Managed MCP client registration for CodeGraph and source-only retrieval.
 
 The client applications own their configuration files.  CodeNib invokes their
 public CLIs, records only the registration it created, and refuses to overwrite
@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
@@ -128,17 +130,22 @@ RunCommand = Callable[..., subprocess.CompletedProcess[str]]
 FindCommand = Callable[[str], str | None]
 
 
-def codegraph_receipt_path(repository: str | Path) -> Path:
+def codegraph_receipt_path(
+    repository: str | Path, *, retrieval_route: str = "indexed"
+) -> Path:
     """Return the per-checkout onboarding receipt path."""
 
-    return (
-        repo_state_dir(repository)
-        / CODEGRAPH_RECEIPT_DIRNAME
-        / CODEGRAPH_RECEIPT_FILENAME
+    if retrieval_route not in {"indexed", "grep-jev"}:
+        raise CodeGraphOnboardingError("unsupported managed retrieval route")
+    directory = (
+        CODEGRAPH_RECEIPT_DIRNAME if retrieval_route == "indexed" else "grep-jev"
     )
+    return repo_state_dir(repository) / directory / CODEGRAPH_RECEIPT_FILENAME
 
 
-def codegraph_server_name(repository: str | Path) -> str:
+def codegraph_server_name(
+    repository: str | Path, *, retrieval_route: str = "indexed"
+) -> str:
     """Return a readable, bounded, collision-resistant MCP server name."""
 
     key = repository_state_key(repository)
@@ -146,7 +153,10 @@ def codegraph_server_name(repository: str | Path) -> str:
     if not separator:
         slug, digest = "repository", key[-12:]
     slug = _SERVER_NAME_PART.sub("-", slug.lower()).strip("-._")[:32]
-    return f"codenib-{slug or 'repository'}-{digest}"
+    if retrieval_route not in {"indexed", "grep-jev"}:
+        raise CodeGraphOnboardingError("unsupported managed retrieval route")
+    prefix = "codenib" if retrieval_route == "indexed" else "codenib-grep"
+    return f"{prefix}-{slug or 'repository'}-{digest}"
 
 
 def resolve_codenib_command(
@@ -187,8 +197,9 @@ def make_server_spec(
     *,
     command: str,
     command_prefix: Sequence[str] = (),
+    retrieval_route: str = "indexed",
 ) -> MCPServerSpec:
-    """Build the exact full-surface MCP command for one checkout."""
+    """Build one exact, credential-free MCP command for a checkout."""
 
     repo = Path(repository).expanduser().resolve()
     if any(character in str(repo) for character in "\x00\r\n"):
@@ -196,10 +207,30 @@ def make_server_spec(
             "CodeGraph repository paths must not contain control line breaks"
         )
     return MCPServerSpec(
-        name=codegraph_server_name(repo),
+        name=codegraph_server_name(repo, retrieval_route=retrieval_route),
         command=command,
-        args=tuple(command_prefix) + ("mcp", str(repo), "--tool-surface", "full"),
+        args=tuple(command_prefix) + _server_suffix(repo, retrieval_route),
     )
+
+
+def _server_suffix(repository: Path, retrieval_route: str) -> tuple[str, ...]:
+    if retrieval_route == "indexed":
+        return ("mcp", str(repository), "--tool-surface", "full")
+    if retrieval_route == "grep-jev":
+        return ("mcp", str(repository), "--retrieval-route", "grep-jev")
+    raise CodeGraphOnboardingError("unsupported managed retrieval route")
+
+
+def _server_route(server: MCPServerSpec, repository: Path) -> str:
+    for route in ("indexed", "grep-jev"):
+        suffix = _server_suffix(repository, route)
+        if (
+            server.args[-len(suffix) :] == suffix
+            and server.args[: -len(suffix)] in ((), ("-m", "codenib"))
+            and server.name == codegraph_server_name(repository, retrieval_route=route)
+        ):
+            return route
+    raise CodeGraphOnboardingError("managed MCP server command is malformed")
 
 
 def resolve_requested_clients(
@@ -262,11 +293,13 @@ def _strict_keys(
     return value
 
 
-def load_codegraph_receipt(repository: str | Path) -> CodeGraphReceipt | None:
+def load_codegraph_receipt(
+    repository: str | Path, *, retrieval_route: str = "indexed"
+) -> CodeGraphReceipt | None:
     """Load and strictly validate the per-checkout receipt, if present."""
 
     repo = Path(repository).expanduser().resolve()
-    path = codegraph_receipt_path(repo)
+    path = codegraph_receipt_path(repo, retrieval_route=retrieval_route)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -319,11 +352,11 @@ def load_codegraph_receipt(repository: str | Path) -> CodeGraphReceipt | None:
         raise CodeGraphOnboardingError(
             "CodeGraph integration receipt has a non-absolute MCP command"
         )
-    if server.name != codegraph_server_name(repo):
+    if server.name != codegraph_server_name(repo, retrieval_route=retrieval_route):
         raise CodeGraphOnboardingError(
             "CodeGraph integration receipt has an unexpected server name"
         )
-    suffix = ("mcp", str(repo), "--tool-surface", "full")
+    suffix = _server_suffix(repo, retrieval_route)
     prefix = server.args[: -len(suffix)]
     if server.args[-len(suffix) :] != suffix or prefix not in ((), ("-m", "codenib")):
         raise CodeGraphOnboardingError(
@@ -357,7 +390,10 @@ def load_codegraph_receipt(repository: str | Path) -> CodeGraphReceipt | None:
 def write_codegraph_receipt(receipt: CodeGraphReceipt) -> Path:
     """Atomically write a private, deterministic integration receipt."""
 
-    path = codegraph_receipt_path(receipt.repository)
+    path = codegraph_receipt_path(
+        receipt.repository,
+        retrieval_route=_server_route(receipt.server, receipt.repository),
+    )
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     payload = (
         json.dumps(receipt.to_dict(), ensure_ascii=True, indent=2, sort_keys=True)
@@ -386,7 +422,10 @@ def write_codegraph_receipt(receipt: CodeGraphReceipt) -> Path:
 def remove_codegraph_receipt(receipt: CodeGraphReceipt) -> None:
     """Remove the receipt after every managed client has been reconciled."""
 
-    codegraph_receipt_path(receipt.repository).unlink(missing_ok=True)
+    codegraph_receipt_path(
+        receipt.repository,
+        retrieval_route=_server_route(receipt.server, receipt.repository),
+    ).unlink(missing_ok=True)
 
 
 def _invoke_client(
@@ -420,14 +459,9 @@ def inspect_server_command(
 
     if not os.path.isabs(server.command):
         raise CodeGraphOnboardingError("managed MCP server command is not absolute")
-    mcp_suffix = (
-        "mcp",
-        str(Path(repository).expanduser().resolve()),
-        "--tool-surface",
-        "full",
-    )
-    if server.args[-len(mcp_suffix) :] != mcp_suffix:
-        raise CodeGraphOnboardingError("managed MCP server command is malformed")
+    repo = Path(repository).expanduser().resolve()
+    route = _server_route(server, repo)
+    mcp_suffix = _server_suffix(repo, route)
     prefix = server.args[: -len(mcp_suffix)]
     result = _invoke_client(
         (server.command, *prefix, "--version"),
@@ -446,12 +480,19 @@ def inspect_server_command(
             f"expected {expected!r}, observed {observed[:240]!r}",
         )
     probe = _invoke_client(
-        (server.command, *prefix, "mcp", "--runtime-probe"),
+        (
+            server.command,
+            *prefix,
+            "mcp",
+            "--runtime-probe",
+            *(("--retrieval-route", route) if route != "indexed" else ()),
+        ),
         repository=Path(repository).expanduser().resolve(),
         runner=runner,
     )
     probe_output = probe.stdout or probe.stderr or ""
-    probe_marker = "codenib codegraph mcp runtime ready"
+    label = "codegraph" if route == "indexed" else "grep-jev"
+    probe_marker = f"codenib {label} mcp runtime ready"
     ready = probe.returncode == 0 and probe_marker in {
         line.strip() for line in probe_output.splitlines()
     }
@@ -460,7 +501,7 @@ def inspect_server_command(
         (
             expected
             if ready
-            else "CodeGraph MCP runtime probe failed: "
+            else f"{label} MCP runtime probe failed: "
             + " ".join((probe_output or "no output").split())[:240]
         ),
     )
@@ -622,6 +663,91 @@ def remove_client_registration(
         raise CodeGraphOnboardingError(f"{client} rejected MCP removal: {detail[:400]}")
 
 
+@contextmanager
+def registration_lock(repository: Path, *, retrieval_route: str = "indexed"):
+    """Serialize receipt/native transitions with the existing private-file lock.
+
+    Lock order is this route's receipt directory, then the native CLI's own
+    configuration lock. Indexing and authorization finish before acquisition.
+    The native CLI and receipt are not one transaction: pending publication
+    establishes ownership; exact readback followed by configured publication
+    completes registration. After interruption, the next init/uninstall owns
+    recovery under this same lock. The lock file is never removed on release.
+    """
+    from .compiler.cache_lock import compiler_cache_lock
+
+    directory = codegraph_receipt_path(
+        repository, retrieval_route=retrieval_route
+    ).parent
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    deadline = time.monotonic() + 30
+
+    def check():
+        if time.monotonic() >= deadline:
+            raise CodeGraphOnboardingError(
+                "Timed out waiting for agent setup to finish"
+            )
+
+    with compiler_cache_lock(directory, check_cancelled=check):
+        yield
+
+
+def configure_client_registrations(
+    repository: Path,
+    clients: Sequence[str],
+    server: MCPServerSpec,
+    receipt: CodeGraphReceipt | None,
+) -> CodeGraphReceipt:
+    """Reconcile native registrations using the existing pending receipt.
+
+    A preflight receipt is only a snapshot. Reload it under registration_lock
+    before inspecting ownership, so concurrent init selections cannot overwrite
+    each other's client lists. The same lock covers uninstall and native calls.
+    """
+    del receipt
+    repository = repository.resolve()
+    route = _server_route(server, repository)
+    with registration_lock(repository, retrieval_route=route):
+        managed = load_codegraph_receipt(repository, retrieval_route=route)
+        managed = managed or CodeGraphReceipt(repository, server, ())
+        if managed.server != server:
+            raise CodeGraphOnboardingError(
+                "managed MCP receipt does not match registration"
+            )
+        for client in clients:
+            inspection = inspect_client_registration(client, server, repository)
+            if inspection.exists and not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} MCP server {server.name} changed during setup; "
+                    "refusing to overwrite it"
+                )
+            if inspection.exists and managed.client(client) is None:
+                raise CodeGraphOnboardingError(
+                    f"{client} already has an unmanaged MCP server named {server.name}"
+                )
+        for client in clients:
+            if managed.client(client) is None:
+                managed = managed.with_client(client, state="pending")
+        write_codegraph_receipt(managed)
+        for client in clients:
+            inspection = inspect_client_registration(client, server, repository)
+            if inspection.exists and not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} MCP server {server.name} changed during setup; "
+                    "refusing to overwrite it"
+                )
+            if not inspection.exists:
+                add_client_registration(client, server, repository)
+                inspection = inspect_client_registration(client, server, repository)
+            if not inspection.matches:
+                raise CodeGraphOnboardingError(
+                    f"{client} did not retain the expected MCP registration"
+                )
+            managed = managed.with_client(client, state="configured")
+            write_codegraph_receipt(managed)
+        return managed
+
+
 __all__ = [
     "CODEGRAPH_CLIENTS",
     "ClientInspection",
@@ -632,9 +758,11 @@ __all__ = [
     "add_client_registration",
     "codegraph_receipt_path",
     "codegraph_server_name",
+    "configure_client_registrations",
     "inspect_client_registration",
     "inspect_server_command",
     "load_codegraph_receipt",
+    "registration_lock",
     "make_server_spec",
     "remove_client_registration",
     "remove_codegraph_receipt",

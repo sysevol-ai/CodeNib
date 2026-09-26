@@ -743,7 +743,7 @@ def test_init_does_not_overwrite_registration_created_during_indexing(
         ["codegraph", "init", str(repo), "--language", "python"]
     )
 
-    with pytest.raises(cli.CLIError, match="changed during indexing"):
+    with pytest.raises(cli.CLIError, match="changed during setup"):
         cli._run_codegraph_init(args)
 
 

@@ -16,20 +16,57 @@ package. Use a checkout containing this feature. The released
 [CodeGraph setup](../codegraph.md) remains available for model-free search and
 typed graph navigation.
 
-## Run a query
+## Connect Claude Code or Codex
 
 Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) so that
 `rg` is on your PATH. From your CodeNib checkout:
 
 ```bash
 python -m pip install -e ".[grep,mcp,auth]"
+codenib init /path/to/your/repository
+```
+
+`init` checks the installed runtime and detects Claude Code and Codex. It checks
+an existing OpenRouter key or opens browser authorization when none is saved,
+then registers a repository-specific MCP server through each agent's CLI.
+It saves new credentials in your OS credential store. It does not build an
+index or make model calls. Restart an already-running agent and ask:
+
+> Use explore_context to find where retry backoff is implemented. Cite the
+> returned source paths and lines.
+
+Use `--agent claude` or `--agent codex` to select one client. `--headless` supports
+authorization from SSH; `--store file` explicitly opts into unencrypted local
+storage when an OS keyring is unavailable. See
+[OpenRouter authorization](openrouter.md) for details and disconnect behavior.
+Keep the installed environment and checkout available: the registered command
+uses that installation's absolute executable path.
+
+Check, preview, or remove this checkout's connection:
+
+```bash
+codenib status /path/to/your/repository
+codenib init /path/to/your/repository --dry-run
+codenib uninstall /path/to/your/repository
+```
+
+Status checks local credentials, the runtime and native configuration; it does
+not verify current OpenRouter account validity. Repeating `init` recovers an
+interrupted registration. CodeNib refuses to overwrite a conflicting server.
+Uninstall removes only its managed grep/Jev registrations and preserves source,
+CodeGraph registrations and credentials. Use `codenib auth logout` separately
+to remove a saved login.
+
+## Run a query from the terminal
+
+After connecting your account, run:
+
+```bash
 codenib explore /path/to/your/repository "Where is retry backoff implemented?"
 ```
 
-Before querying, run `codenib auth login` to connect OpenRouter and save the key
-in your OS credential store. See [OpenRouter authorization](openrouter.md) for
-the browser, SSH, import, and disconnect paths. An environment variable also
-works; this Bash prompt keeps its value out of shell history:
+You can use `codenib auth login` independently of agent setup. An environment
+variable also works; this Bash prompt keeps its value out of shell history:
 
 ```bash
 read -rsp 'OpenRouter API key: ' OPENROUTER_API_KEY; echo
@@ -42,13 +79,15 @@ upload the key to a CodeNib service. It sends the key directly to OpenRouter
 over HTTPS; it does not persist it in the repository, results, or MCP config.
 The local process and its environment can read it. Environment credentials
 override a saved login; unset the variable to use your OS-stored key instead.
+If you use an environment key, launch your agent from the same environment;
+`init` deliberately does not copy it into client configuration.
 
 There is no graph, embedding model, GPU, or repository build step. Supported
 source languages use the [language registry](../language_capabilities.md).
 The `grep` installation extra adds the HTTP client; `mcp` adds the shared
 response format and stdio server. Install both for these CLI commands.
 
-## Connect your agent
+## Configure another MCP client
 
 Start the same route as an MCP server:
 
@@ -56,7 +95,8 @@ Start the same route as an MCP server:
 codenib mcp /path/to/your/repository --retrieval-route grep-jev
 ```
 
-Register that command with your agent's MCP settings, using the absolute path
+For clients without an automatic setup command, register it in MCP settings
+using the absolute path
 to the installed executable. For clients using `mcpServers` JSON:
 
 ```json
