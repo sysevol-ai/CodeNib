@@ -25,7 +25,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 
 | Surface | Current outcome | Open gate / dependency |
 | --- | --- | --- |
-| Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs on the dependent onboarding branch. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
+| Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs, merged in #785. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
 | OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent, Linux desktop-vault acceptance and hosted browser authorization remain. |
 | Wiki demo | Source-grounded stories/graphs are merged in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). Static cached-story publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784); the real Requests corpus has passed export and desktop/mobile browsing without backend requests. | Producer fixes #789/#790/#791 are merged; hosted authorization and deployment remain. Live operator browsing/Ask can still intentionally generate. |
@@ -161,14 +161,14 @@ Lightweight installed-package acceptance in
 Windows with PATH empty, no embedding/graph/model SDK packages and fixture-only
 provider responses. macOS and Windows also pass real OS keyring save/read/delete
 round trips with unique fake entries. The Windows source-read correction in
-[#795](https://github.com/sysevol-ai/CodeNib/pull/795) preserves lexical HANDLE
+[#795](https://github.com/sysevol-ai/CodeNib/pull/795), merged as `873f0c64`, preserves lexical HANDLE
 bindings for ancestors and full repository-root version/inventory checks.
 Its deterministic regressions allow unrelated sibling creation and reject
 repository mutation or an ancestor replacement. The combined platform check
-passes; merge/release reconciliation and real provider consent remain open.
+passes; bundled-runtime release reconciliation and real provider consent remain open.
 
-Native registration is implemented in dependent
-[#785](https://github.com/sysevol-ai/CodeNib/pull/785). `codenib init` checks or
+Native registration is merged in
+[#785](https://github.com/sysevol-ai/CodeNib/pull/785) as `50215406`. `codenib init` checks or
 requests authorization and registers source-only MCP through Claude Code/Codex
 without indexing or model calls. Independent server names let CodeGraph coexist.
 The existing pending receipt supports recovery and refuses unmanaged/drifted
@@ -180,7 +180,11 @@ and checks live in #785. A real Claude Code query on pinned Requests source
 used the source-only route, found both authentication/redirect methods and
 returned verified source without creating an index. Source and user profiles
 were preserved. This is a connectivity smoke, not a quality or token benchmark.
-Provider consent and Linux desktop-vault acceptance remain open.
+Provider consent and Linux desktop-vault acceptance remain open. The combined
+installation tree passes 7,286 unit tests (35 skipped; 190 heavier tests
+deselected), strict documentation checks and the public-document audit. Restacking
+the bundled runtime onto both merged dependencies preserves that complete tree;
+the remaining changes reconcile this roadmap.
 
 The lightweight `grep` extra in
 [#793](https://github.com/sysevol-ai/CodeNib/pull/793) includes `ripgrep-bin`.
