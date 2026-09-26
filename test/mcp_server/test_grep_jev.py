@@ -13,11 +13,13 @@ import json
 import os
 import shutil
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import requests
 
+import codenib.agent.runtime.grep_jev as grep_module
 from codenib.agent.runtime.grep_jev import GrepJevConfig, GrepJevError, GrepJevRetriever
 from codenib.mcp.grep_jev import explore_repository
 from codenib.source_fingerprint import capture_repository_source
@@ -25,7 +27,7 @@ from codenib.source_fingerprint import capture_repository_source
 
 @pytest.fixture
 def repo(tmp_path):
-    if shutil.which("rg") is None:
+    if grep_module.resolve_ripgrep() is None:
         pytest.skip("ripgrep is required for the grep route")
     root = tmp_path / "repository"
     (root / "src").mkdir(parents=True)
@@ -118,6 +120,47 @@ def search(repo, **kwargs):
         return GrepJevRetriever(config).search(
             source, "Where is retry handled?", **kwargs
         )
+
+
+def test_installed_ripgrep_runs_without_environment_activation(
+    repo, api, tmp_path, monkeypatch
+):
+    binary = Path(grep_module.resolve_ripgrep())
+    scripts = tmp_path / "environment" / "bin"
+    scripts.mkdir(parents=True)
+    installed = scripts / binary.name
+    shutil.copy2(binary, installed)
+    package = SimpleNamespace(
+        files=[Path("../../../bin") / binary.name],
+        locate_file=lambda _: installed,
+    )
+    monkeypatch.setattr(grep_module, "distribution", lambda _: package)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-path"))
+
+    matches, truncated = grep_module._rg_lines(
+        repo,
+        grep_module.GrepAction(pattern="retry", glob="**/*.py", case_sensitive=True),
+        grep_module._RequestBudget(GrepJevConfig(), lambda: None),
+    )
+
+    assert grep_module.resolve_ripgrep() == str(installed.resolve())
+    assert matches == [("src/service.py", 0), ("src/service.py", 1)]
+    assert not truncated
+
+    response = explore_repository(repo, GrepJevConfig(), "Where is retry handled?")
+    assert response["source"]["verified"] is True
+    context = response["files"][0]["contexts"][0]
+    assert context["start_line"] == 1
+    assert "retry_request" in context["content"]
+
+
+def test_existing_system_ripgrep_remains_available_without_the_wheel(monkeypatch):
+    def absent(_):
+        raise grep_module.PackageNotFoundError("ripgrep-bin")
+
+    monkeypatch.setattr(grep_module, "distribution", absent)
+    monkeypatch.setattr(grep_module.shutil, "which", lambda _: "/system/bin/rg")
+    assert grep_module.resolve_ripgrep() == "/system/bin/rg"
 
 
 def test_shared_key_source_locations_and_actual_usage(repo, api):
@@ -561,7 +604,7 @@ def test_nul_regex_does_not_abort_other_actions_on_the_selected_text(repo, api):
 def test_real_rg_decodes_non_utf8_filenames(tmp_path):
     from codenib.agent.runtime.grep_jev import GrepAction, _RequestBudget, _rg_lines
 
-    if shutil.which("rg") is None:
+    if grep_module.resolve_ripgrep() is None:
         pytest.skip("ripgrep is required")
     (tmp_path / os.fsdecode(b"\xff.py")).write_text("def retry(): pass\n")
     matches, truncated = _rg_lines(

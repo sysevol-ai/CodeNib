@@ -18,13 +18,18 @@ typed graph navigation.
 
 ## Connect Claude Code or Codex
 
-Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) so that
-`rg` is on your PATH. From your CodeNib checkout:
+From your CodeNib checkout:
 
 ```bash
 python -m pip install -e ".[grep,mcp,auth]"
 codenib init /path/to/your/repository
 ```
+
+The `grep` extra includes [ripgrep-bin](https://pypi.org/project/ripgrep-bin/),
+which supplies the `rg` executable on supported Windows, macOS and Linux
+platforms. CodeNib finds it inside the installed Python environment even when
+your agent has not activated that environment. Existing installations can
+still use [system ripgrep](https://github.com/BurntSushi/ripgrep#installation).
 
 `init` checks the installed runtime and detects Claude Code and Codex. It checks
 an existing OpenRouter key or opens browser authorization when none is saved,
@@ -84,7 +89,7 @@ If you use an environment key, launch your agent from the same environment;
 
 There is no graph, embedding model, GPU, or repository build step. Supported
 source languages use the [language registry](../language_capabilities.md).
-The `grep` installation extra adds the HTTP client; `mcp` adds the shared
+The `grep` installation extra adds the HTTP client and ripgrep; `mcp` adds the shared
 response format and stdio server. Install both for these CLI commands.
 
 ## Configure another MCP client
@@ -173,9 +178,10 @@ result to the agent session.
 
 ## Interpreting the quality claim
 
-The [100-issue experiment](../evaluation/grep_jev.md) measured this method's
-research implementation, not this product preview or agent task completion.
-The product retains its planner prompt/schema, candidate limits, and scoring
-criteria, while adding source verification, cancellation, failure reporting,
-and corrected visible line ranges. A full production-route evaluation remains
-necessary before claiming the same quality or recommending it as the default.
+The [evaluation report](../evaluation/grep_jev.md) separates the historical
+research result from fresh product measurements. The recorded 100-case product
+attempt scores 48.37% Recall@5 before Jev and 65.57% after it, including one
+failed case as zero. It is not a measurement of later runtime corrections or
+agent task completion. The research result of 71.40% must not be presented as
+the current product's score. Reliability, authorization acceptance and release
+verification remain gates before promoting this preview as the default.

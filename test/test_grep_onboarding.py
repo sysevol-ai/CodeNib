@@ -300,7 +300,9 @@ def test_grep_probe_checks_route_without_reading_source_or_credentials(
     monkeypatch.setattr(
         cli, "_require_modules", lambda modules, **_: calls.extend(modules)
     )
-    monkeypatch.setattr(cli.shutil, "which", lambda _: "/usr/bin/rg")
+    monkeypatch.setattr(
+        "codenib.agent.runtime.grep_jev.resolve_ripgrep", lambda: "/environment/bin/rg"
+    )
     assert cli.run(["mcp", "--runtime-probe", "--retrieval-route", "grep-jev"]) == 0
     assert calls == ["requests", "mcp"]
     assert "grep-jev mcp runtime ready" in capsys.readouterr().out

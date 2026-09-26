@@ -1,0 +1,84 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+name: Lightweight grep installation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/grep-install.yml"
+      - "scripts/smoke_release_grep.py"
+      - "codenib/agent/runtime/grep_jev.py"
+      - "codenib/code_chunking/**"
+      - "codenib/mcp/**"
+      - "codenib/openrouter_auth.py"
+      - "codenib/source_fingerprint.py"
+      - "codenib/_windows_fs_authority.py"
+      - "codenib/cli.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "setup.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/grep-install.yml"
+      - "scripts/smoke_release_grep.py"
+      - "codenib/agent/runtime/grep_jev.py"
+      - "codenib/code_chunking/**"
+      - "codenib/mcp/**"
+      - "codenib/openrouter_auth.py"
+      - "codenib/source_fingerprint.py"
+      - "codenib/_windows_fs_authority.py"
+      - "codenib/cli.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "setup.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grep-install-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  install:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            vault: ""
+          - os: macos-latest
+            vault: --native-keyring
+          - os: windows-latest
+            vault: --native-keyring
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Build packaged frontend
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Install only grep, MCP and credential dependencies
+        shell: bash
+        env:
+          VAULT_ARGS: ${{ matrix.vault }}
+        run: >-
+          uv run --isolated --no-project --with '.[grep,mcp,auth]'
+          python -I scripts/smoke_release_grep.py $VAULT_ARGS

@@ -78,6 +78,7 @@ auth = [
 ]
 grep = [
     "requests>=2.25.0",
+    "ripgrep-bin>=15.2.0,<16",
 ]
 agent = [
     "litellm>=1.93.0",
