@@ -187,9 +187,10 @@ async def _wait_for_abandoned_explore_worker(
     if worker is None:
         return
     try:
-        await asyncio.shield(worker)
-    except Exception:  # noqa: BLE001 - the abandoned call was already cancelled
-        pass
+        # Wait for completion without propagating an abandoned worker's
+        # cooperative CancelledError into its replacement caller. Cancelling
+        # this wait still cancels the new caller, without cancelling the worker.
+        await asyncio.wait({worker})
     finally:
         if worker.done() and runtime.pending_worker is worker:
             runtime.pending_worker = None

@@ -11,6 +11,7 @@ owns the source binding; no worker or filesystem resource outlives search().
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import os
@@ -40,6 +41,8 @@ MAX_QUERY_CHARS = 16000
 MAX_SOURCE_FILES = 20000
 MAX_SOURCE_BYTES = 256 * 1024 * 1024
 MAX_GREP_OUTPUT_BYTES = 8 * 1024 * 1024
+MAX_MATERIALIZED_CHUNKS = 50000
+MAX_MATERIALIZED_CONTENT_CHARS = 32 * 1024 * 1024
 
 # Keep the measured planning protocol stable; it receives no source bodies.
 PLANNER_SYSTEM = """Plan source-code searches to locate the implementation responsible for
@@ -252,6 +255,29 @@ def _plan(payload: dict, config: GrepJevConfig, key: str, budget: _RequestBudget
         ) from None
 
 
+def _rg_path(value: dict, *, separator: str = os.sep) -> str:
+    """Decode rg's text-or-base64 paths into source inventory path notation."""
+    try:
+        if isinstance(value.get("text"), str):
+            path = value["text"]
+        else:
+            path = os.fsdecode(base64.b64decode(value["bytes"], validate=True))
+        if separator == "\\":
+            path = path.replace("\\", "/")
+        path = path.removeprefix("./")
+        if (
+            not path
+            or path.startswith("/")
+            or "\0" in path
+            or ".." in path.split("/")
+            or (separator == "\\" and ":" in path)
+        ):
+            raise ValueError("invalid relative path")
+        return path
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise GrepJevError("grep returned an invalid source path") from None
+
+
 def _rg_lines(root: Path, action: GrepAction, budget: _RequestBudget):
     command = [
         "rg",
@@ -301,9 +327,7 @@ def _rg_lines(root: Path, action: GrepAction, budget: _RequestBudget):
                     truncated = True
                     break
                 data = row["data"]
-                matches.append(
-                    (data["path"]["text"].removeprefix("./"), data["line_number"] - 1)
-                )
+                matches.append((_rg_path(data["path"]), data["line_number"] - 1))
             return matches, truncated
         finally:
             if process.poll() is None:
@@ -423,6 +447,7 @@ class GrepJevRetriever:
             ),
         }
         skipped = 0
+        materialized_chunks = materialized_chars = 0
         groups, audit = [], []
         with tempfile.TemporaryDirectory(prefix="codenib-grep-") as directory:
             root = Path(directory)
@@ -458,6 +483,16 @@ class GrepJevRetriever:
                         visible_lines = len(content.splitlines()) - metadata_lines
                         if visible_lines <= 0:
                             continue
+                        materialized_chunks += 1
+                        materialized_chars += len(content)
+                        if (
+                            materialized_chunks > MAX_MATERIALIZED_CHUNKS
+                            or materialized_chars > MAX_MATERIALIZED_CONTENT_CHARS
+                        ):
+                            raise GrepJevError(
+                                "Repository exceeds the grep route's "
+                                "chunk materialization limit"
+                            )
                         nodes.append(
                             NodeInfo(
                                 node_id=chunk.node_id,

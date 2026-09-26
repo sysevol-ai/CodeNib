@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
 import shutil
 import threading
 from types import SimpleNamespace
@@ -451,3 +453,105 @@ def test_mcp_cancellation_retains_worker_until_in_flight_call_finishes(
         release.set()
         server._ctx.close()
         server.configure_tool_surface(original_surface)
+
+
+@pytest.mark.parametrize("cancel_replacement", [False, True])
+def test_replacement_waits_for_cancelled_worker_without_inheriting_its_cancellation(
+    repo, api, monkeypatch, cancel_replacement
+):
+    from codenib.mcp import server
+
+    started, release = threading.Event(), threading.Event()
+    original_surface = server.mcp.tool_surface
+    monkeypatch.setattr(server, "_ctx", None)
+    server.init_grep_jev_server(repo, GrepJevConfig())
+
+    def block(stage, _payload):
+        if stage == "planning" and not started.is_set():
+            started.set()
+            assert release.wait(timeout=5)
+
+    api.hook = block
+
+    async def run():
+        waiting = asyncio.Event()
+        original_wait = server._wait_for_abandoned_explore_worker
+
+        async def notify_wait(runtime):
+            if runtime.pending_worker is not None:
+                waiting.set()
+            await original_wait(runtime)
+
+        monkeypatch.setattr(server, "_wait_for_abandoned_explore_worker", notify_wait)
+        first = asyncio.create_task(server.explore_context("retry"))
+        assert await asyncio.to_thread(started.wait, 5)
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        runtime = server._ctx.explore_runtime
+        abandoned = runtime.pending_worker
+        replacement = asyncio.create_task(server.explore_context("retry again"))
+        await asyncio.wait_for(waiting.wait(), 5)
+        assert not abandoned.done()
+        if cancel_replacement:
+            replacement.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await replacement
+            assert not abandoned.done()
+            replacement = asyncio.create_task(server.explore_context("retry once more"))
+        release.set()
+        result = await asyncio.wait_for(replacement, 5)
+        assert result["plan"]["retrieval"]["name"] == "grep_jev"
+        assert runtime.pending_worker is None
+        assert runtime.ledger.stats()["calls"] == 1
+        assert [stage for stage, *_ in api.calls] == ["planning", "planning", "scoring"]
+
+    try:
+        asyncio.run(run())
+    finally:
+        release.set()
+        server._ctx.close()
+        server.configure_tool_surface(original_surface)
+
+
+@pytest.mark.parametrize(
+    "limit", ["MAX_MATERIALIZED_CHUNKS", "MAX_MATERIALIZED_CONTENT_CHARS"]
+)
+def test_materialized_corpus_limit_stops_before_any_model_call(
+    repo, api, monkeypatch, limit
+):
+    from codenib.agent.runtime import grep_jev as runtime
+
+    monkeypatch.setattr(runtime, limit, 1)
+    with capture_repository_source(repo) as source:
+        with pytest.raises(GrepJevError, match="chunk materialization limit"):
+            GrepJevRetriever().search(source, "retry")
+    assert api.calls == []
+
+
+def test_rg_paths_keep_posix_backslashes_and_normalize_windows_separators():
+    from codenib.agent.runtime.grep_jev import _rg_path
+
+    assert _rg_path({"text": r".\src\service.py"}, separator="\\") == "src/service.py"
+    assert _rg_path({"text": r"./src/a\b.py"}, separator="/") == r"src/a\b.py"
+    raw = b"./src/\xff.py"
+    assert os.fsencode(_rg_path({"bytes": base64.b64encode(raw).decode()})) == raw[2:]
+    for path in (r"..\secret.py", r"C:\secret.py", r"\\server\secret.py"):
+        with pytest.raises(GrepJevError, match="invalid source path"):
+            _rg_path({"text": path}, separator="\\")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX byte filenames")
+def test_real_rg_decodes_non_utf8_filenames(tmp_path):
+    from codenib.agent.runtime.grep_jev import GrepAction, _RequestBudget, _rg_lines
+
+    if shutil.which("rg") is None:
+        pytest.skip("ripgrep is required")
+    (tmp_path / os.fsdecode(b"\xff.py")).write_text("def retry(): pass\n")
+    matches, truncated = _rg_lines(
+        tmp_path,
+        GrepAction(pattern="retry", glob="**/*.py", case_sensitive=True),
+        _RequestBudget(GrepJevConfig(), lambda: None),
+    )
+    assert [(os.fsencode(path), line) for path, line in matches] == [(b"\xff.py", 0)]
+    assert not truncated

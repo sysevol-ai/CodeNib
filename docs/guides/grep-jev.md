@@ -106,7 +106,10 @@ One query permits at most six grep actions, 100 distinct candidate blocks,
 3,000 characters per candidate, and ten candidates per Jev call: at most
 one planning call and ten scoring calls. Searchable source is limited to
 20,000 files and 256 MiB. Individual files over 10 MiB and minified files are
-skipped. Each grep action has a ten-second limit and bounded output.
+skipped. Before retaining the chunk corpus, the route also limits it to
+50,000 chunks and 32 Mi characters of visible chunk text. Exceeding either
+bound stops before planning or scoring. Each grep action has a ten-second
+limit and bounded output.
 
 `--max-cost-usd` defaults to `0.10`. It stops **subsequent** calls when reported
 usage reaches that amount. An in-flight call can exceed it, and failed calls
