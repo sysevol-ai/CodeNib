@@ -13,6 +13,7 @@ from codenib.wiki.evidence import (
     candidate_key,
     diversify_by_file,
     evidence_matches_claim,
+    evidence_metadata,
     grounding_report,
     is_interaction_claim,
     is_internal_wiki_navigation,
@@ -23,6 +24,35 @@ from codenib.wiki.evidence import (
     relation_matches_claim,
     remove_promotional_sentences,
 )
+from codenib.wiki.sqlite_store import SQLiteWikiStore
+
+
+def test_evidence_metadata_persists_routes_and_relation_anchors_as_json(tmp_path):
+    item = EvidenceItem(
+        id="E1",
+        file="src/main.py",
+        start_line=1,
+        end_line=2,
+        symbol="run",
+        kind="function",
+        content="omitted source",
+        routes=("bm25", "outline"),
+    )
+    relation = RelationItem(
+        id="R1",
+        source="run",
+        target="send",
+        anchors=("src/main.py:2",),
+    )
+    payload = evidence_metadata([item], [relation])
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    store.publish(entry_id="page", repository_id="repo", envelope={"data": payload})
+    assert store.read("page").envelope["data"] == payload
+    assert payload["items"][0]["routes"] == ["bm25", "outline"]
+    assert payload["relations"][0]["anchors"] == ["src/main.py:2"]
+    assert "content" not in payload["items"][0]
+    assert item.routes == ("bm25", "outline")
+    assert relation.anchors == ("src/main.py:2",)
 
 
 def _get(node, key, default=None):

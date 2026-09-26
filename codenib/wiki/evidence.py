@@ -1364,12 +1364,22 @@ def evidence_metadata(
     evidence: Sequence[EvidenceItem],
     relations: Sequence[RelationItem],
 ) -> dict[str, Any]:
+    """Return JSON metadata for persisted pages and API/export payloads."""
     return {
         "items": [
-            {key: value for key, value in asdict(item).items() if key != "content"}
+            {
+                **{
+                    key: value
+                    for key, value in asdict(item).items()
+                    if key != "content"
+                },
+                "routes": list(item.routes),
+            }
             for item in evidence
         ],
-        "relations": [asdict(item) for item in relations],
+        "relations": [
+            {**asdict(item), "anchors": list(item.anchors)} for item in relations
+        ],
     }
 
 

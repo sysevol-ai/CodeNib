@@ -6481,17 +6481,20 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
         manifest=SimpleNamespace(languages=["python"], indexes={}),
         code_graph=lambda: None,
     )
-    wiki = AgentWiki(bundle, model="fake-model", llm=llm)
-
-    page = wiki._generate_page(
-        {
-            "id": "routing",
-            "title": "Request Routing",
-            "summary": "How requests move through the repository",
-            "keywords": ["dispatch"],
-            "files": ["src/core.py"],
-        }
+    database = tmp_path / "wiki-cache" / "wiki.sqlite3"
+    wiki = AgentWiki(
+        bundle, model="fake-model", llm=llm, store=SQLiteWikiStore(database)
     )
+    meta = {
+        "id": "routing",
+        "title": "Request Routing",
+        "summary": "How requests move through the repository",
+        "keywords": ["dispatch"],
+        "files": ["src/core.py"],
+    }
+    wiki._outline = {"pages": [meta]}
+    wiki._write_cache("outline", wiki._outline)
+    page = wiki.page("routing")
 
     assert len(llm.calls) == 1
     assert page["grounding"]["valid"] is True
@@ -6502,7 +6505,13 @@ def test_generated_page_uses_fact_plan_and_reports_grounding(tmp_path):
     assert page["generation"]["metrics"]["repair_attempts"] == 0
     assert page["generation"]["metrics"]["total_ms"] >= 0
     assert page["citations"][0]["start_line"] == 1
-    assert page["evidence"]["items"][0]["routes"] == ("outline", "dense")
+    assert page["evidence"]["items"][0]["routes"] == ["outline", "dense"]
+
+    reloaded = AgentWiki(
+        bundle, model="another-model", llm=llm, store=SQLiteWikiStore(database)
+    )
+    assert reloaded.page("routing")["evidence"] == page["evidence"]
+    assert len(llm.calls) == 1
 
 
 def test_empty_fact_plan_replans_from_original_evidence(tmp_path):
