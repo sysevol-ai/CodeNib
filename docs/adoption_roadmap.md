@@ -104,7 +104,7 @@ The multiline correction is implemented in
 [#792](https://github.com/sysevol-ai/CodeNib/pull/792), merged as `fbfe1fbb`
 but not yet released.
 Its 51 focused route tests pass, including Windows newline handling; the
-preceding evaluation is not a measurement of that correction. Authorization acceptance, paired agent measurement,
+preceding evaluation is not a measurement of that correction. Provider-consent acceptance, paired agent measurement,
 default-route promotion and release reconciliation remain open. The 71.40%
 historical research result stays distinct from the fresh product measurement.
 
