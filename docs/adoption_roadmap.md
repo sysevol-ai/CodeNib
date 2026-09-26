@@ -26,10 +26,10 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Surface | Current outcome | Open gate / dependency |
 | --- | --- | --- |
 | Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs on the dependent onboarding branch. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
-| Retrieval evidence | Model-planned grep → Jev scores 71.40% macro code-block Recall@5 on the complete 100-issue CodeNib Base test split; unchanged grep ordering scores 58.62%. | Research runner, not a released CLI/MCP route; no corresponding measured Claude Code token saving. |
+| Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
 | OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent/OS-vault manual acceptance and hosted browser authorization remain. |
-| Wiki demo | Source-grounded stories/graphs are in [#772](https://github.com/sysevol-ai/CodeNib/pull/772); static cached-story publication and activation are in its dependent [#784](https://github.com/sysevol-ai/CodeNib/pull/784). | Merge/rebase in that order, curate a current SQLite corpus and validate deployment. Live operator browsing/Ask can still intentionally generate. |
-| Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. | Production corpus and hosted browser authorization remain; the existing workflow's default semantic indexing still downloads a model. |
+| Wiki demo | Source-grounded stories/graphs are merged in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). Static cached-story publication is implemented in [#784](https://github.com/sysevol-ai/CodeNib/pull/784); the real Requests corpus has passed export and desktop/mobile browsing without backend requests. | Reconcile producer fixes #789/#790/#791 before static publication; hosted authorization and deployment remain. Live operator browsing/Ask can still intentionally generate. |
+| Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the existing workflow's default semantic indexing still downloads a model. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
 | Releases | Five GitHub releases exist; v0.2.3 is latest. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Improve visibility; inspect retry/failure behavior. Do not introduce a second release pipeline. |
@@ -309,8 +309,8 @@ aggregate web events; do not collect code, prompts or credentials. Establish
 baseline measurements before assigning numerical conversion targets.
 
 Release in focused PRs: evidence/onboarding, production retrieval,
-authorization, demo mode/export, and distribution. Keep #772's shared UI
-changes separate until its base is reconciled. Each milestone lists current
+authorization, demo mode/export, and distribution. Keep native onboarding
+stacked on #783; reconcile the Wiki producer fixes before #784. Each milestone lists current
 outcomes, remaining gates and PRs rather than an implementation diary.
 
 The broad goal stays active until the requested core surface is implemented,
