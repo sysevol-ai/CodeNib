@@ -38,6 +38,9 @@ def repo(tmp_path):
 
 @pytest.fixture
 def api(monkeypatch):
+    # A missing-key test must never inspect the developer's real OS vault.
+    monkeypatch.setattr("codenib.openrouter_auth._os_keyring", lambda: None)
+    monkeypatch.setattr("codenib.openrouter_auth._read_file_key", lambda: None)
     state = SimpleNamespace(
         calls=[],
         actions=[{"pattern": "retry", "glob": "**/*.py", "case_sensitive": False}],

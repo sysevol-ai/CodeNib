@@ -72,6 +72,10 @@ codenib-quality-cost-report = "codenib.eval.reports.quality_cost:main"
 codenib-serve = "codenib._optional_entrypoints:serving_main"
 
 [project.optional-dependencies]
+auth = [
+    "keyring>=25.0.0",
+    "requests>=2.25.0",
+]
 grep = [
     "requests>=2.25.0",
 ]

@@ -128,17 +128,16 @@ class GrepJevConfig:
                 raise ValueError(f"{name} must be positive and finite")
 
     def credential(self) -> str:
-        key = (
-            self.api_key
-            if self.api_key is not None
-            else os.getenv("OPENROUTER_API_KEY")
-        )
-        if not isinstance(key, str) or not key.strip():
-            raise GrepJevError("Set OPENROUTER_API_KEY to use the grep → Jev route")
-        key = key.strip()
-        if any(ord(char) < 33 or ord(char) > 126 for char in key):
-            raise GrepJevError("OPENROUTER_API_KEY contains invalid characters")
-        return key
+        from ...openrouter_auth import OpenRouterAuthError, require_key, validate_key
+
+        try:
+            return (
+                validate_key(self.api_key)
+                if self.api_key is not None
+                else require_key()
+            )
+        except OpenRouterAuthError as exc:
+            raise GrepJevError(str(exc)) from None
 
 
 @dataclass
