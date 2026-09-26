@@ -52,6 +52,7 @@ def _query(root: Path) -> dict:
     import requests
 
     from codenib.agent.runtime.grep_jev import GrepJevConfig
+    from codenib.mcp import grep_jev
     from codenib.mcp.grep_jev import explore_repository
 
     repository = root / "repository"
@@ -61,6 +62,13 @@ def _query(root: Path) -> dict:
         b"def unrelated():\n    return 'other behavior'\n"
     )
     calls = []
+    bindings = []
+    capture = grep_jev.capture_repository_source
+
+    def capture_fixture(*args, **kwargs):
+        source = capture(*args, **kwargs)
+        bindings.append(source)
+        return source
 
     def send(_session, request, **kwargs):
         assert request.headers["Authorization"] == "Bearer install-smoke-fixture"
@@ -117,16 +125,33 @@ def _query(root: Path) -> dict:
         return response
 
     with (
+        patch.object(grep_jev, "capture_repository_source", capture_fixture),
         patch.object(requests.Session, "send", send),
         patch.object(
             socket.socket, "connect", side_effect=AssertionError("unexpected network")
         ),
     ):
-        result = explore_repository(
-            repository,
-            GrepJevConfig(api_key="install-smoke-fixture"),
-            "Where is retry handled?",
-        )
+        try:
+            result = explore_repository(
+                repository,
+                GrepJevConfig(api_key="install-smoke-fixture"),
+                "Where is retry handled?",
+            )
+        except Exception:
+            # Retain the first source failure if composed retrieval reports a
+            # later poisoned-binding error. Only our generated fixture is read.
+            print(
+                json.dumps(
+                    {
+                        "fixture_source_failures": [
+                            source.failure_reason
+                            for source in bindings
+                            if source.failure_reason is not None
+                        ]
+                    }
+                )
+            )
+            raise
     assert len(calls) == 2
     assert result["source"]["verified"] is True
     assert result["source"]["commit_verified"] is False
