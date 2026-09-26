@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
 import os
 import shutil
@@ -569,10 +570,33 @@ def test_real_rg_decodes_non_utf8_filenames(tmp_path):
     assert not truncated
 
 
-def test_multiline_planned_expression_maps_every_covered_chunk(repo, api):
+@pytest.mark.parametrize("windows_newlines", [False, True])
+def test_multiline_planned_expression_maps_every_covered_chunk(
+    repo, api, monkeypatch, windows_newlines
+):
     # The fresh product evaluation hit a planner-produced newline escape.
     # This variant also crosses definitions, so retaining only the first line
     # would lose the second relevant chunk despite a successful rg process.
+    if windows_newlines:
+        real_open = io.open
+
+        def windows_text_open(
+            file,
+            mode="r",
+            buffering=-1,
+            encoding=None,
+            errors=None,
+            newline=None,
+            closefd=True,
+            opener=None,
+        ):
+            if "w" in mode and "b" not in mode and newline is None:
+                newline = "\r\n"
+            return real_open(
+                file, mode, buffering, encoding, errors, newline, closefd, opener
+            )
+
+        monkeypatch.setattr(io, "open", windows_text_open)
     api.actions = [
         {
             "pattern": r"return 'retry network request'\n\ndef unrelated",

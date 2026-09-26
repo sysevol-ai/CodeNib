@@ -539,7 +539,9 @@ class GrepJevRetriever:
                     )
                     target = root / record.path
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_text(text, encoding="utf-8")
+                    # Preserve the normalized LF used for chunking and planned
+                    # newline patterns, including on Windows text-mode hosts.
+                    target.write_bytes(text.encode("utf-8"))
             actions = (
                 _plan(payload, self.config, key, budget).actions
                 if nodes_by_path
