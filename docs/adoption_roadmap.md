@@ -32,7 +32,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are set, with the six existing topics retained. The About description now names source context, call navigation, Claude Code, Codex and MCP. | Description, topics and unchanged homepage verified through GitHub metadata on 2026-09-26. |
-| Releases | Five GitHub releases exist; v0.2.3 is latest. Draft [#797](https://github.com/sysevol-ai/CodeNib/pull/797) aligns the 0.2.4 package/lockfile, Registry pins, changelog and curated notes. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Dependency #796 is merged; restacked candidate CI, exact-SHA TestPyPI verification and protected production publication remain. No new version or tag is published. |
+| Releases | Five GitHub releases exist; v0.2.3 is latest. Draft [#797](https://github.com/sysevol-ai/CodeNib/pull/797) aligns the 0.2.4 package/lockfile, Registry pins, changelog and curated notes. Public installation pins stay on verified 0.2.3 until publication. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Dependency #796 is merged; restacked candidate CI, exact-SHA TestPyPI verification and protected production publication remain. No new version or tag is published. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. #770/#752 are drafts and are not merge prerequisites. |
 
 ## Delivery order and acceptance gates
@@ -421,6 +421,14 @@ TestPyPI admits `main` only, while production admits `v*` tags. Run the existing
 candidate workflow on the final main SHA, require registry-download/installed
 acceptance, and tag that exact SHA. Do not upload the existing 0.2.3 version or
 change the protected environments to bypass their publication gates.
+
+Public installation commands stay on the verified 0.2.3 release while the
+0.2.4 candidate passes registry and protected publication. The new release
+notes are labeled as a candidate in documentation navigation.
+Draft [#798](https://github.com/sysevol-ai/CodeNib/pull/798) switches those pins,
+their existing contract check, the candidate navigation label and package-based preview
+guides only after public 0.2.4 verification. This prevents automatic Docs
+deployment from directing new users to an unavailable package during approval.
 
 Native ARM verification in [#799](https://github.com/sysevol-ai/CodeNib/pull/799)
 keeps the complete pinned cibuildwheel step, ownership/protocol smoke and every

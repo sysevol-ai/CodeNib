@@ -196,6 +196,10 @@ on PyPI.
     workflow.
 11. Confirm PyPI, MCP Registry discovery, and the generated GitHub Release all
     identify the same version and that a stable release is marked latest.
+    Then update public installation pins, their existing contract check and
+    release-navigation labels. Keep installation commands on the last verified
+    public version while a candidate waits for TestPyPI or protected production
+    approval, and label its release notes as a candidate in navigation.
 12. After the first successful production OIDC publication, revoke the
     bootstrap PyPI token from the GitHub environment and local configuration.
 

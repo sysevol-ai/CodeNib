@@ -464,7 +464,8 @@ def test_public_install_commands_select_the_current_stable_release(
 
     assert install_lines
     assert "CODENIB_ALPHA_WHEEL=" not in text
-    assert all("==0.2.4" in line for line in install_lines)
+    # Public setup follows the verified registry release, not an unpublished candidate.
+    assert all("==0.2.3" in line for line in install_lines)
 
 
 def test_readme_install_commands_remain_unpinned() -> None:
