@@ -1637,20 +1637,29 @@ def build_area_map(
 ) -> Dict[str, Any]:
     """How a wiki's top-level areas call each other, read off the graph.
 
-    ``areas`` are the outline's top-level pages, each with the citations of
-    the area page and its children. A symbol belongs to the first area that
-    cites it. Every reference edge whose two ends belong to different areas
-    counts toward that area pair, and the pair keeps its strongest example
-    call with its call site.
+    Live maps use the cached outline's file assignments, so cold prose cannot
+    hide the repository map. Static callers may supply published citations.
+    A symbol belongs to the first area citing it, then to the first area
+    listing its file. Only captured paths and actual indexed reference edges
+    contribute; outline file assignments do not create edges.
     """
 
     owner: Dict[str, str] = {}
+    file_owner: Dict[str, str] = {}
+    for area in areas:
+        area_id = str(area.get("id") or "")
+        if not area_id:
+            continue
+        for file in area.get("files") or []:
+            relative = _repo_file(file, repo_dir, source_reader)
+            if relative and not is_test_file(relative):
+                file_owner.setdefault(relative, area_id)
+
     area_rows: List[Dict[str, Any]] = []
     for area in areas:
         area_id = str(area.get("id") or "")
         if not area_id:
             continue
-        symbols: List[str] = []
         for citations in area.get("citations") or []:
             names = _page_seed_names(
                 graph,
@@ -1662,17 +1671,42 @@ def build_area_map(
             for name in names:
                 if name not in owner and _mappable_symbol(graph, name):
                     owner[name] = area_id
-                    symbols.append(name)
-        files = {
-            _repo_file(_attrs(graph, name).get("file"), repo_dir, source_reader)
-            for name in symbols
-        }
         area_rows.append(
             {
                 "id": area_id,
                 "title": str(area.get("title") or area_id),
-                "symbols": len(symbols),
-                "files": len({f for f in files if f}),
+                "symbols": 0,
+                "files": 0,
+            }
+        )
+
+    if file_owner:
+        for vertex in graph.get_graph().vs:
+            attrs = vertex.attributes()
+            name = attrs.get("name")
+            file = _repo_file(attrs.get("file"), repo_dir, source_reader)
+            if (
+                file in file_owner
+                and name not in owner
+                and _mappable_symbol(graph, name)
+            ):
+                owner[name] = file_owner[file]
+
+    area_symbols: Dict[str, List[str]] = {}
+    for name, area_id in owner.items():
+        area_symbols.setdefault(area_id, []).append(name)
+    for area in area_rows:
+        names = area_symbols.get(area["id"], [])
+        area["symbols"] = len(names)
+        area["files"] = len(
+            {
+                file
+                for name in names
+                if (
+                    file := _repo_file(
+                        _attrs(graph, name).get("file"), repo_dir, source_reader
+                    )
+                )
             }
         )
 
@@ -1735,4 +1769,5 @@ def build_area_map(
         "available": bool(area_rows) and bool(out_links),
         "areas": area_rows,
         "links": out_links,
+        "reason": None if out_links else "no_cross_area_calls",
     }

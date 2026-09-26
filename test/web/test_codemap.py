@@ -1335,3 +1335,51 @@ def test_area_map_counts_calls_between_areas_with_an_example():
     # A call outranks a field read as the pair's example.
     assert api_session["example"]["target"] == "src/session.py:Session.send()"
     assert api_session["example"]["anchor"] == {"file": "src/api.py", "line": 2}
+
+
+def test_area_map_uses_outline_files_without_prose_and_rejects_uncaptured_paths(
+    tmp_path,
+):
+    for file in ("api.py", "worker.py"):
+        (tmp_path / file).write_text("def run():\n    pass\n", encoding="utf-8")
+    binding = capture_repository_source(tmp_path)
+    graph = CodeGraph()
+    for file in ("api.py", "worker.py", "outside.py"):
+        name = f"{file}:run()"
+        graph._add_vertex(
+            name,
+            {
+                "type": "function",
+                "file": str(tmp_path / file),
+                "start_line": 0,
+                "end_line": 1,
+                "unified_name": name,
+            },
+        )
+    for target in ("worker.py:run()", "outside.py:run()"):
+        graph._add_edge(
+            "api.py:run()",
+            target,
+            "reference",
+            anchor_file=str(tmp_path / "api.py"),
+            anchor_line=1,
+        )
+    try:
+        result = build_area_map(
+            graph,
+            [
+                {"id": "api", "files": ["api.py"]},
+                {"id": "worker", "files": ["worker.py", "api.py"]},
+                {"id": "outside", "files": ["outside.py", "../outside.py"]},
+            ],
+            repo_dir=str(tmp_path),
+            source_reader=binding.borrow_reader(),
+        )
+    finally:
+        binding.close()
+    assert result["available"] is True
+    assert [area["symbols"] for area in result["areas"]] == [1, 1, 0]
+    assert [(link["source"], link["target"]) for link in result["links"]] == [
+        ("api", "worker")
+    ]
+    assert result["links"][0]["example"]["anchor"] == {"file": "api.py", "line": 2}

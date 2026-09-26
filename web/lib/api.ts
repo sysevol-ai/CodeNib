@@ -919,6 +919,7 @@ export interface WikiAreaMap {
   available: boolean;
   areas: WikiArea[];
   links: WikiAreaLink[];
+  reason?: "outline_pending" | "graph_unavailable" | "no_cross_area_calls" | null;
 }
 
 // How the wiki's top-level areas call each other in the indexed graph.

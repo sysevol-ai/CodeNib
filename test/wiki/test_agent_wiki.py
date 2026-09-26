@@ -7292,6 +7292,9 @@ def test_agent_wiki_cached_page_tree_reads_store_without_generating(
 
     tree = wiki.cached_page_tree()
 
+    assert wiki.cached_outline() == {
+        "pages": [{"id": "runtime", "title": "Runtime", "children": []}]
+    }
     assert tree == [
         {
             "id": "runtime",

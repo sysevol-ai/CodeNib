@@ -4583,13 +4583,20 @@ class AgentWiki:
         outline_pages = self.outline().get("pages", [])
         return self._page_tree_refs(outline_pages)
 
-    def cached_page_tree(self) -> Optional[List[dict]]:
-        """Return the cached page tree without generating or publishing data."""
-
+    def cached_outline(self) -> Optional[dict]:
+        """Read outline metadata without generating pages or retrieving evidence."""
         outline = self._outline
         if outline is None:
             outline = self._read_cache("outline")
         if not isinstance(outline, dict) or not isinstance(outline.get("pages"), list):
+            return None
+        return outline
+
+    def cached_page_tree(self) -> Optional[List[dict]]:
+        """Return the cached page tree without generating or publishing data."""
+
+        outline = self.cached_outline()
+        if outline is None:
             return None
         return self._page_tree_refs(outline["pages"])
 

@@ -532,6 +532,7 @@ class RepoBundle:
         self._views_lock = Lock()
         self._runtime_lock = Lock()
         self._card_summary_lock = Lock()
+        self._code_graph_lock = Lock()
         self._card_summary_cache: Optional[str] = None
         self._views_loaded = self.view_loader is None
         self._runtime_loaded = self.runner is not None
@@ -734,6 +735,15 @@ class RepoBundle:
 
     def code_graph(self) -> Optional[CodeGraph]:
         """Lazily load + cache the repo's symbol graph (None if unavailable)."""
+
+        # One loader per bundle; readers wait until validation and publication
+        # finish instead of interpreting an in-flight load as an absent graph.
+        # No other bundle lock is acquired under this lock. Requests retain
+        # their existing generation pin while the borrowed source is checked.
+        with self._code_graph_lock:
+            return self._load_code_graph()
+
+    def _load_code_graph(self) -> Optional[CodeGraph]:
         if self.source_reader is None and _manifest_requires_authenticated_source(
             self.manifest
         ):
@@ -767,9 +777,7 @@ class RepoBundle:
                     subject="symbol graph",
                 )
                 _remove_unbound_reference_hints(graph, self.source_reader)
-            # Publish only after validation and pruning. Concurrent readers
-            # see None while the existing loaded flag marks this load in flight;
-            # this assignment is the point at which the graph becomes visible.
+            # Publish only after validation and pruning, under _code_graph_lock.
             self._code_graph = graph
             logger.info(
                 "codemap: loaded symbol graph for %r (%s)", self.entry.instance_id, path

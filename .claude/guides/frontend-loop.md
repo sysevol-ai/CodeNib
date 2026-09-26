@@ -77,11 +77,18 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   Concurrent readers receive 503 with `Retry-After` after a bounded lock wait,
   and the browser retries at most five times. Validate cold overviews on a
   large repository as well as cached Requests pages before deploying.
-- **Optional subsystem maps** read only cached outlines and citation seeds.
-  Opening a map must not fan out retrieval across every cold child page; that
-  work can block the foreground page on shared retrieval resources. Recompute
-  the small graph projection from current evidence so a cold/partial result
-  does not remain cached after more pages become ready.
+- **System maps** assign indexed symbols using files in the cached outline,
+  including child-page file assignments. They must work before child prose or
+  citation caches exist, without fanning out retrieval across cold pages.
+  Only authenticated source paths and recorded graph edges contribute. The
+  first area listing a shared file owns its symbols. Concurrent graph readers
+  wait for validation to finish; loading, unavailable graphs, and no recorded
+  cross-area calls have distinct UI states instead of silently hiding the map.
+- **Deployment acceptance** checks cache coverage across the entire page tree
+  and System Map availability for every served repository. Successful Overview
+  requests do not establish that child pages are cached or maps are present.
+  Use `scripts/prewarm_wiki_cache.py --scope all` for full prose coverage;
+  report cold, degraded, and failed pages explicitly while prewarming runs.
 - **Wiki prose is LLM-generated and stored** in
   `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
   (that holds the prebuilt graph + vectors).

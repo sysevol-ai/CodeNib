@@ -68,18 +68,17 @@ def test_web_app_has_no_retained_storage_control_plane() -> None:
     assert not hasattr(web_app, "_configured_local_index_runtime")
 
 
-def test_area_map_only_reads_cached_evidence_and_sees_new_pages(monkeypatch):
+def test_area_map_works_before_pages_or_evidence_are_generated(monkeypatch):
     import codenib.web.codemap as codemap
 
-    state = {"tree": None, "citations": None}
+    state = {"outline": None}
 
     class Builder:
-        def cached_page_tree(self):
-            return state["tree"]
+        def cached_outline(self):
+            return state["outline"]
 
         def page_citations(self, _page_id, *, cached_only=False):
-            assert cached_only, "optional map must not retrieve cold page evidence"
-            return state["citations"]
+            pytest.fail("system map must not depend on page citations")
 
         def page_tree(self):
             pytest.fail("optional map must not generate a cold outline")
@@ -90,16 +89,28 @@ def test_area_map_only_reads_cached_evidence_and_sees_new_pages(monkeypatch):
     )
     monkeypatch.setattr(web_app, "_bundle", lambda _id: bundle)
     monkeypatch.setattr(web_app, "_wiki", lambda *_args: Builder())
-    monkeypatch.setattr(
-        codemap,
-        "build_area_map",
-        lambda _graph, areas, **_kw: {"available": bool(areas[0]["citations"][0])},
-    )
-    assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is False
-    state["tree"] = [{"id": "runtime", "children": []}]
-    assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is False
-    state["citations"] = [{"file": "runtime.py", "start_line": 1}]
+
+    def build(_graph, areas, **_kw):
+        assert areas == [
+            {"id": "runtime", "title": "runtime", "files": ["runtime.py", "child.py"]}
+        ]
+        return {"available": True}
+
+    monkeypatch.setattr(codemap, "build_area_map", build)
+    assert asyncio.run(web_app.wiki_area_map("repo"))["reason"] == "outline_pending"
+    state["outline"] = {
+        "pages": [
+            {"id": "overview", "files": ["README.md"]},
+            {
+                "id": "runtime",
+                "files": ["runtime.py"],
+                "children": [{"id": "child", "files": ["child.py", "runtime.py"]}],
+            },
+        ]
+    }
     assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is True
+    bundle.code_graph = lambda: None
+    assert asyncio.run(web_app.wiki_area_map("repo"))["reason"] == "graph_unavailable"
 
 
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):

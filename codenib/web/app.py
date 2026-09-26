@@ -943,37 +943,49 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
 async def wiki_area_map(repo_id: str) -> dict:
     """How the wiki's top-level areas call each other in the indexed graph.
 
-    Uses only cached outlines and citations. Optional maps must not run
-    retrieval for every cold page and occupy the shared retrieval worker.
+    Assign indexed symbols to the files in the cached outline. The map must
+    work before prose exists, without retrieving evidence for every page.
     """
     with _pinned_bundle(repo_id) as bundle:
         entry = getattr(bundle, "entry", None)
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
-        page_citations = getattr(builder, "page_citations", None)
-        cached_tree = getattr(builder, "cached_page_tree", None)
-        if not callable(page_citations) or not callable(cached_tree):
-            return {"available": False, "areas": [], "links": []}
-        tree = await _run_pinned_thread(cached_tree)
-        if not tree:
-            return {"available": False, "areas": [], "links": []}
+        cached_outline = getattr(builder, "cached_outline", None)
+        outline = (
+            await _run_pinned_thread(cached_outline)
+            if callable(cached_outline)
+            else None
+        )
+        if not outline:
+            return {
+                "available": False,
+                "areas": [],
+                "links": [],
+                "reason": "outline_pending",
+            }
         graph = await _run_pinned_thread(bundle.code_graph)
         if graph is None:
-            return {"available": False, "areas": [], "links": []}
+            return {
+                "available": False,
+                "areas": [],
+                "links": [],
+                "reason": "graph_unavailable",
+            }
 
         def collect() -> list[dict]:
+            def files(page):
+                yield from page.get("files") or []
+                for child in page.get("children") or []:
+                    yield from files(child)
+
             areas = []
-            for top in tree:
+            for top in outline["pages"]:
                 if top.get("id") == "overview":
                     continue
-                ids = [top["id"]] + [child["id"] for child in top.get("children") or []]
                 areas.append(
                     {
                         "id": top["id"],
                         "title": top.get("title") or top["id"],
-                        "citations": [
-                            page_citations(page_id, cached_only=True) or []
-                            for page_id in ids
-                        ],
+                        "files": list(dict.fromkeys(files(top))),
                     }
                 )
             return areas
@@ -981,9 +993,7 @@ async def wiki_area_map(repo_id: str) -> dict:
         areas = await _run_pinned_thread(collect)
         from .codemap import build_area_map
 
-        # A later request may see newly cached evidence or a new generation.
-        # Rebuild this small graph projection rather than retaining an empty
-        # or partial map forever under a repository/commit-only cache key.
+        # No prose or evidence generation is necessary for this projection.
         return await _run_pinned_thread(
             build_area_map,
             graph,

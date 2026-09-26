@@ -720,6 +720,8 @@ export default function WikiPageView({
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
+  const [areaMapError, setAreaMapError] = useState(false);
+  const [areaMapAttempt, setAreaMapAttempt] = useState(0);
   const [pageGraphOpen, setPageGraphOpen] = useState(false);
   const [pageGraphLoading, setPageGraphLoading] = useState(false);
   const [pageGraphError, setPageGraphError] = useState(false);
@@ -817,6 +819,33 @@ export default function WikiPageView({
     );
   }, [page]);
 
+  // Background prewarming changes cache states without navigating this tab.
+  useEffect(() => {
+    if (staticRuntime || tocLoading) return;
+    let cancelled = false;
+    let pending = false;
+    const refresh = async () => {
+      if (pending || document.visibilityState === "hidden") return;
+      pending = true;
+      try {
+        const tree = await fetchWikiTree(repoId, { cachedOnly: true });
+        if (!cancelled) setPages(tree.pages);
+      } catch {
+        // Keep the last known tree when a background refresh fails.
+      } finally {
+        pending = false;
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 15000);
+    const onVisible = () => void refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [repoId, staticRuntime, tocLoading]);
+
   // Preload at most two adjacent pages that the server already reports as
   // cached. This makes sidebar navigation instant without turning browsing
   // into hidden model spend for cold pages.
@@ -858,19 +887,23 @@ export default function WikiPageView({
     };
   }, [repoId, activeId, pageGraphOpen, pageGraph]);
 
-  // The system map belongs to the repository, not a page: load it once.
+  // Wait for the outline; fetching earlier can retain an outline_pending map.
   useEffect(() => {
     setAreaMap(null);
+    setAreaMapError(false);
+    if (tocLoading) return;
     let cancelled = false;
     fetchWikiAreaMap(repoId)
       .then((m) => {
         if (!cancelled) setAreaMap(m);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setAreaMapError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [repoId]);
+  }, [repoId, tocLoading, areaMapAttempt]);
 
   // The graph card is deterministic and cheap; load it with the page rather
   // than behind a toggle so the reader meets the code's shape first.
@@ -1177,8 +1210,26 @@ export default function WikiPageView({
                       {wikiMarkdown.lead}
                     </Markdown>
                   )}
-                  {activeId === "overview" && areaMap?.available && (
-                    <AreaMap map={areaMap} commit={repo?.commit_short} onPick={pick} />
+                  {activeId === "overview" && (
+                    areaMap?.available ? (
+                      <AreaMap map={areaMap} commit={repo?.commit_short} onPick={pick} />
+                    ) : (
+                      <figure className="area-map" aria-label="System map" aria-busy={!areaMap && !areaMapError}>
+                        <figcaption className="area-map-head">
+                          <span className="boundary-kicker">System map</span>
+                        </figcaption>
+                        <p className="area-map-caption" role="status">
+                          {areaMapError ? "The system map could not be loaded. "
+                            : !areaMap ? "Loading the system map…"
+                            : areaMap.reason === "graph_unavailable" ? "The code graph for this repository is unavailable."
+                            : areaMap.reason === "outline_pending" ? "The repository outline is still being prepared. "
+                            : "No calls between these areas were found in the current index."}
+                          {(areaMapError || areaMap?.reason === "outline_pending") && (
+                            <button type="button" className="btn btn-ghost" onClick={() => setAreaMapAttempt((n) => n + 1)}>Retry map</button>
+                          )}
+                        </p>
+                      </figure>
+                    )
                   )}
                   {boundary?.available && (
                     <PageBoundaryCard

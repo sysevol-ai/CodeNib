@@ -5290,9 +5290,10 @@ def test_bundle_prunes_unbound_location_free_references(
         require_paths = registry_module._require_authenticated_source_paths
 
         def check_before_publication(*args, **kwargs):
-            # A reader arriving at the source-authentication boundary must not
-            # observe the loaded but still unvalidated/unpruned graph.
-            assert bundle.code_graph() is None
+            # Nothing is published at the authentication boundary. Concurrent
+            # readers now wait for the load lock (covered separately), so do
+            # not simulate a second reader by reentering on the owner thread.
+            assert bundle._code_graph is None
             return require_paths(*args, **kwargs)
 
         monkeypatch.setattr(
@@ -5566,6 +5567,54 @@ def test_bundle_rejects_legacy_graph_without_a_symbol_graph_entry(tmp_path):
     )
 
     assert bundle._graph_path() is None
+
+
+def test_bundle_concurrent_graph_reader_waits_for_validated_graph(
+    tmp_path, monkeypatch
+):
+    manifest = _legacy_view_manifest(
+        "symbol_graph", str(tmp_path), view_commit="abc123", manifest_commit="abc123"
+    )
+    bundle = RepoBundle(entry=SimpleNamespace(instance_id="repo"), manifest=manifest)
+    monkeypatch.setattr(bundle, "_graph_path", lambda: tmp_path / "graph.pkl")
+    loading, release, second_waiting = Event(), Event(), Event()
+    graph = CodeGraph()
+    calls = []
+
+    def load(_entry):
+        calls.append(True)
+        loading.set()
+        assert release.wait(5)
+        return graph
+
+    class ObservedLock:
+        def __init__(self):
+            self.lock = Lock()
+
+        def __enter__(self):
+            if self.lock.locked():
+                second_waiting.set()
+            self.lock.acquire()
+
+        def __exit__(self, *_args):
+            self.lock.release()
+
+    bundle._code_graph_lock = ObservedLock()
+    monkeypatch.setattr(
+        "codenib.compiler.graph_artifact.load_authenticated_graph_artifact", load
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(bundle.code_graph)
+        try:
+            assert loading.wait(5)
+            second = pool.submit(bundle.code_graph)
+            assert second_waiting.wait(5)
+            assert not second.done()
+        finally:
+            release.set()
+        assert first.result() is graph
+        assert second.result() is graph
+    assert len(calls) == 1
 
 
 def test_bundle_explains_schema_mismatch_without_advertising_codemap(
