@@ -182,7 +182,9 @@ returned verified source without creating an index. Source and user profiles
 were preserved. This is a connectivity smoke, not a quality or token benchmark.
 The separate provider-consent/OS-vault gate remains open.
 
-The lightweight `grep` extra now includes `ripgrep-bin`. CLI startup, source
+The lightweight `grep` extra in
+[#793](https://github.com/sysevol-ai/CodeNib/pull/793) includes `ripgrep-bin`.
+CLI startup, source
 capture entry and the retriever use its installed executable even when the
 agent has not activated the Python environment; an existing system `rg` is a
 fallback. A clean Linux installation verifies actual source-linked retrieval

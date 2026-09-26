@@ -162,7 +162,9 @@ def main() -> None:
     assert executable is not None
     get_language("python")  # Download a parser, never a model, before offline query.
     with tempfile.TemporaryDirectory(prefix="codenib-grep-install-") as temporary:
-        root = Path(temporary)
+        # Match CLI repository normalization: macOS /var is a symlink and a
+        # Windows TEMP directory may contain DOS short-name path components.
+        root = Path(temporary).resolve()
         clean_env = {
             name: value
             for name, value in os.environ.items()
