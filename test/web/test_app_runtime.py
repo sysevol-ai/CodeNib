@@ -26,6 +26,11 @@ from codenib.web.schemas import ChatRequest, ChatResponse
 def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
     ticks = iter((10.0, 12.5))
     monkeypatch.setattr(web_app, "perf_counter", lambda: next(ticks))
+    # Managed loggers do not propagate to pytest's root capture handler.
+    # Attach it explicitly so this check also works without prior test setup.
+    monkeypatch.setattr(
+        web_app.logger, "handlers", [*web_app.logger.handlers, caplog.handler]
+    )
 
     with caplog.at_level(logging.INFO, logger=web_app.logger.name):
         response = TestClient(web_app.app).get("/api/health?secret=query")

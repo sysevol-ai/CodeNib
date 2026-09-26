@@ -37,6 +37,9 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 - HuggingFace dataset cache lives at `~/.codenib/`.
 - Git fixtures that copy or swap `.git` must disable automatic maintenance
   before committing, so transient maintenance files cannot race the snapshot.
+- CodeNib's managed loggers do not propagate to the root logger. Attach
+  `caplog.handler` to the actual logger when asserting its records, so the
+  test does not depend on another test's logging setup.
 
 ## Gotchas
 
