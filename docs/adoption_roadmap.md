@@ -25,12 +25,12 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 
 | Surface | Current outcome | Open gate / dependency |
 | --- | --- | --- |
-| Agent setup | `codegraph init` installs applicable package-level providers and registers local MCP with native Claude Code/Codex CLIs. | Clean-checkout and system/project prerequisites; verify fresh install and persistent executable registration before recommending `uvx`. |
+| Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs on the dependent onboarding branch. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
 | Retrieval evidence | Model-planned grep → Jev scores 71.40% macro code-block Recall@5 on the complete 100-issue CodeNib Base test split; unchanged grep ordering scores 58.62%. | Research runner, not a released CLI/MCP route; no corresponding measured Claude Code token saving. |
-| OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. | Provider-consent/OS-vault manual acceptance, native registration and hosted browser authorization remain. |
+| OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent/OS-vault manual acceptance and hosted browser authorization remain. |
 | Wiki demo | Source-grounded stories/graphs are in [#772](https://github.com/sysevol-ai/CodeNib/pull/772); static cached-story publication and activation are in its dependent [#784](https://github.com/sysevol-ai/CodeNib/pull/784). | Merge/rebase in that order, curate a current SQLite corpus and validate deployment. Live operator browsing/Ask can still intentionally generate. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. | Production corpus and hosted browser authorization remain; the existing workflow's default semantic indexing still downloads a model. |
-| MCP protocol | Empty server version fix is in [#780](https://github.com/sysevol-ai/CodeNib/pull/780), addressing [#779](https://github.com/sysevol-ai/CodeNib/issues/779). | Green reviewed patch still needs release reconciliation; do not tell reporters it is released before publication. |
+| MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
 | Releases | Five GitHub releases exist; v0.2.3 is latest. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Improve visibility; inspect retry/failure behavior. Do not introduce a second release pipeline. |
 | Related work | #777/#778 improve the Jev blog evidence; #773 changes blog layout. | Preserve their ownership; do not duplicate their chart or hardware corrections. #770/#752 are drafts and are not merge prerequisites. |
@@ -48,7 +48,7 @@ architecture pages are added. Strict MkDocs build, public-doc boundary audit,
 pre-commit checks and desktop/mobile/no-JavaScript browser checks pass. The
 landing page makes zero external requests and its setup links reach the two
 commands without overflow. The recorded agent clip and source-linked poster
-are implemented in #788 (A4), including user-controlled playback. A fresh
+are merged in #788 (A4) as `dc2b4df0`, including user-controlled playback. A fresh
 published-package recording and paired token comparison remain open;
 production grep/Jev authorization remains in A2/A3.
 
@@ -134,7 +134,7 @@ live smoke with recorded model identities before promoting it as default.
 
 Status: local CLI/MCP authorization is implemented in
 [#783](https://github.com/sysevol-ai/CodeNib/pull/783),
-stacked on #782; not merged or released. Browser and headless PKCE use S256,
+based on `main` after #782; not merged or released. Browser and headless PKCE use S256,
 one-use in-memory verifiers and direct OpenRouter exchange. Saved keys resolve
 for both retrieval stages. Default storage uses a supported OS keyring;
 an explicit POSIX file fallback enforces 0700/0600, no links, no Git checkout
@@ -142,21 +142,23 @@ placement and atomic replacement. Imports reject management/provisioning keys.
 Status and logout distinguish local presence, provider verification and provider
 revocation; keys never appear in ordinary output or repository/MCP config.
 
-401 relevant tests pass, with seven optional Zoekt skips; all 64 auth/retrieval
-tests pass in a fresh `[grep,mcp,auth]` environment. Callback tests use
-real loopback HTTP with a fake provider; a real Chromium check confirms CSP
-execution clears the grant from the URL, includes it in neither HTML nor
-external requests, and produces no page errors. A real OpenRouter metadata
-lookup succeeds with a normal existing key. The live consent/key-minting flow
-and OS-specific keyring interactions still require manual acceptance; automated
-tests do not claim to verify those external interactions.
+Local callback behavior, provider metadata access and lightweight installation
+are verified; detailed validation is recorded in #783. Logout handles malformed
+files and unavailable keyrings explicitly. Credential preparation and logout
+recover owned temporaries under the existing directory lock; a process-kill
+test verifies recovery. Real provider consent and OS-vault acceptance remain
+open. A real browser directly called OpenRouter key metadata, planning and
+Decisions with an existing normal key; all succeeded without exposing it to
+the local fixture server, DOM or browser storage. This establishes authenticated
+transport, not provider consent or hosted product acceptance. Prefer a direct
+browser connection for the hosted trial; callback/session handling, Wiki gating
+and the complete application's XSS/CSP review remain open. Detailed transport
+validation is recorded in #783.
 
-Hosted browser authorization remains open. Uncredentialed OPTIONS checks to
-OpenRouter's auth, chat, Decisions and key-status endpoints returned 204 with
-the required origin/method/header permissions on 2026-09-26. This supports the
-browser-direct design but is not an authenticated browser end-to-end test.
-Wiki gating, session-memory credentials, XSS/CSP review and native agent
-registration remain part of the next activation batch.
+Native registration is implemented in dependent
+[#785](https://github.com/sysevol-ai/CodeNib/pull/785). Its native CLI ownership,
+real-client acceptance and first-query evidence are tracked with that PR.
+The local credential connector can be reviewed independently of registration.
 
 - Prefer OpenRouter OAuth PKCE (S256), using a fresh verifier and one-time
   local callback. Bind callback state to the initiating session, validate
@@ -187,13 +189,13 @@ code disclosure; no automatic billed retry after budget exhaustion.
 ### A4 — Show the benefit on the user's own repository
 
 Status: the actual CodeGraph/Claude Code recording and first-screen media are
-implemented in [#788](https://github.com/sysevol-ai/CodeNib/pull/788), independently
-of A2. The clip replays selected CLI output on pinned Requests source; waits
+merged in [#788](https://github.com/sysevol-ai/CodeNib/pull/788) as `dc2b4df0`,
+independently of A2. The clip replays selected CLI output on pinned Requests source; waits
 are condensed and source/profile preservation is verified. GIF, WebM, MP4 and
 a static poster are served locally, with transcript/provenance and a renderer
 that makes no model calls. The source build includes merged #780; a newly
-published package install remains to be recorded. A paired agent/token study,
-merge and website deployment remain open. Detailed versions and validation
+published package install remains to be recorded. A paired agent/token study
+and website deployment remain open. Detailed versions and validation
 live in #788 and the public CodeGraph recording guide.
 
 - Record about 15 seconds of real `codegraph init`, a Claude Code
