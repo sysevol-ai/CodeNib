@@ -103,9 +103,16 @@ The visible-range regression found synthetic chunk headers counted as source
 lines. Product ranges now exclude them. `scripts/audit_jev_visible_ranges.py`
 rechecks frozen artifact hashes and all 100 cases without API calls: 173 of
 1,747 ranges shorten, with no change to the frozen orderings' 58.62% / 71.40%
-Recall@5. Evidence is in `docs/assets/grep_jev_range_audit.json`. This is not
-a replay of candidate generation. The full product-route quality gate,
-authorization/onboarding in A3, and main/release reconciliation remain open.
+Recall@5. Evidence is in `docs/assets/grep_jev_range_audit.json`.
+
+The product candidate audit in
+[#787](https://github.com/sysevol-ai/CodeNib/pull/787) replays all 100 frozen
+plans through the product runtime with HTTP disabled. All cases complete;
+94 match ordered text and corrected spans exactly, and six pools differ.
+Frozen-plan grep retains 58.62% Recall@5. Three pools contain new unscored
+text, so aggregate reranked quality is deliberately unset. Full fresh-model
+quality, authorization/onboarding acceptance and main/release reconciliation
+remain open; 71.40% is still a research claim.
 
 - Extract the already measured plan/search/chunk/rerank path from the
   research runner into the existing repository-context runtime. Do not
