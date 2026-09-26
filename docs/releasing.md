@@ -41,6 +41,13 @@ TestPyPI dispatches additionally run the heavier installed-service gates:
    repository-aware diagnostics, a real caller-to-callee graph edge, source
    anchors, and the installed Dependency Map API.
 
+Each wheel builds on its native architecture: `ubuntu-latest` for x86-64 and
+`ubuntu-24.04-arm` for AArch64. Both are ephemeral GitHub-hosted runners and
+consume the same source distribution. The pinned cibuildwheel action still
+builds inside manylinux 2.28, repairs the ABI3 wheel, and runs the complete
+ownership/protocol smoke on each architecture. No QEMU emulation is needed.
+See GitHub's [standard runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
 Manually dispatching the TestPyPI Release workflow from `main` runs these gates,
 publishes to TestPyPI, then downloads that exact version from TestPyPI's public
 simple index. The workflow selects the current host's compatible wheel and
