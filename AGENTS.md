@@ -144,7 +144,9 @@ commands. If the default system gem lacks Ruby headers, pass
 `CODENIB_SCIP_TOOLS_DIR`.
 
 Pre-commit uses black with line length 88, isort, flake8+bugbear, and
-clang-format for C/C++.
+clang-format for C/C++. Use the formatter versions pinned by
+`.pre-commit-config.yaml` through their hooks; an unrelated environment's
+Black or isort can produce changes that fail the release all-files check.
 
 ## Git, Commit, And PR Rules
 

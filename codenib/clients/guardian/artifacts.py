@@ -6,13 +6,13 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
-import csv
 from pathlib import Path
 
-from .memory import evidence_to_dict, memory_to_dict, specification_to_dict
 from .contribution import explorer_contribution_report
+from .memory import evidence_to_dict, memory_to_dict, specification_to_dict
 from .types import (
     CandidateSpecification,
     ExplorerOutput,

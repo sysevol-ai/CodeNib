@@ -101,12 +101,14 @@ def _schema_objects(connection: sqlite3.Connection) -> tuple[tuple[object, ...],
             row["tbl_name"],
             _normalize_sql(row["sql"]),
         )
-        for row in connection.execute("""
+        for row in connection.execute(
+            """
             SELECT type, name, tbl_name, sql
               FROM sqlite_schema
              WHERE name NOT LIKE 'sqlite_%'
              ORDER BY type, name
-            """)
+            """
+        )
     )
 
 

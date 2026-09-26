@@ -211,7 +211,10 @@ def test_load_multimodal_knowledge_bundle_rejects_duplicate_keys(tmp_path):
     serialized = json.dumps(bundle)
     path = tmp_path / "bundle.json"
     path.write_text(
-        serialized[:-1] + f', "schema": "{MULTIMODAL_KNOWLEDGE_BUNDLE_SCHEMA}"}}',
+        serialized[:-1]
+        + ', "schema": '
+        + json.dumps(MULTIMODAL_KNOWLEDGE_BUNDLE_SCHEMA)
+        + "}",
         encoding="utf-8",
     )
 
