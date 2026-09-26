@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,7 @@ import scripts.evaluate_grep_jev_product as evaluation
 from scripts.evaluate_grep_jev_product import evaluate, stop_reason, summarize
 
 
+@pytest.mark.skipif(shutil.which("rg") is None, reason="real candidate route needs rg")
 def test_failed_real_candidate_route_keeps_safe_diagnostics(monkeypatch, tmp_path):
     def snapshot(_repo, _commit, _tree, root):
         (root / "app.py").write_text("def run():\n    return 1\n")
@@ -56,7 +58,10 @@ def test_failed_real_candidate_route_keeps_safe_diagnostics(monkeypatch, tmp_pat
     )
 
     assert result["status"] == "error"
-    assert result["provider_failure"] == {"type": "HTTPError", "http_status": 503}
+    assert result.get("provider_failure") == {
+        "type": "HTTPError",
+        "http_status": 503,
+    }, result
     assert result["search_plan"]["actions"][0]["pattern"] == "run"
     assert result["observed_candidates"][0]["file"] == "app.py"
     assert result["plan"]["unreported_call_cost"]

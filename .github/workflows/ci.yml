@@ -74,6 +74,12 @@ jobs:
       - name: Prewarm tree-sitter parsers
         uses: ./.github/actions/prewarm-parsers
 
+      - name: Install ripgrep for source retrieval tests
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends ripgrep
+          rg --version
+
       - name: Run unit tests
         shell: bash -l {0}
         run: pytest -n auto -m "not slow and not integration and not integration_serial and not integration_serial_consumer" -x --tb=short --timeout=180 --durations=20

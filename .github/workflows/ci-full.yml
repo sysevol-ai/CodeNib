@@ -276,6 +276,12 @@ jobs:
         with:
           cold-cache: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.cold_parser_cache) }}
 
+      - name: Install ripgrep for source retrieval tests
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends ripgrep
+          rg --version
+
       - name: Run unit tests
         id: unit-tests
         shell: bash -l {0}
