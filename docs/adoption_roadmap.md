@@ -65,9 +65,12 @@ production grep/Jev authorization remains in A2/A3.
 - Add a compact, sourced comparison with grep/read, Serena, DeepWiki, and an
   explicitly identified CodeGraph project. Distinguish local tool execution
   from the agent's model, persisted typed graphs from LSP symbol navigation,
-  and view reuse/rebuild from file-level incremental repair. The user's
-  intended CodeGraph repository is still to be confirmed. The current table
-  explicitly compares `Lordymine/codegraph` as one named example.
+  and view reuse/rebuild from file-level incremental repair. The user confirmed
+  `colbymchenry/codegraph`; README and the detailed table use that project,
+  checked at `ba3c21e50d9129d2f5f3843ec3728868ae6d47a1`. Its local typed graph,
+  broad language support and incremental watcher are shared or competing
+  capabilities, not gaps to claim. Document its telemetry controls and keep
+  upstream agent-token results separate from CodeNib retrieval measurements.
 - Make the generated language matrix and pinned method reproductions
   prominent. Describe compatibility separately from reproduced paper scores.
 - Add missing GitHub topics and direct GitHub Release links. Audit the
@@ -351,6 +354,11 @@ origin. Both exports leave SQLite, configuration and registry bytes unchanged;
 the trial output is acceptance material, not a public deployment.
 
 The public demo must remain useful without authentication or a live LLM.
+The maintainer will deploy `codenib.ai` and `demo.codenib.ai` on their separate
+DGX Spark server later. The reviewed static roots and deployment checks are
+the handoff for that step; production-host acceptance remains pending the
+maintainer's deployment. No additional hosting account or server access is
+needed for this iteration.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |
