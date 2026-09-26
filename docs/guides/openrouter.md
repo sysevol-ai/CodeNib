@@ -30,7 +30,11 @@ codenib explore /path/to/repository "Where is retry backoff implemented?"
 codenib mcp /path/to/repository --retrieval-route grep-jev
 ```
 
-See [grep and Jev](grep-jev.md) for agent configuration and retrieval behavior.
+For automatic Claude Code/Codex registration, use
+`codenib init /path/to/repository`. It starts this same authorization flow when
+you have no credential, checks an existing key, and registers the local MCP
+command without copying credentials into agent configuration. See
+[grep and Jev](grep-jev.md) for setup and retrieval behavior.
 
 ## SSH, containers, and existing keys
 
