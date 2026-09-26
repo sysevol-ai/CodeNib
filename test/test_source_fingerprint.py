@@ -3514,6 +3514,44 @@ def test_windows_fake_absolute_symlink_retained_reads() -> None:
     assert api.handles == {}
 
 
+@pytest.mark.parametrize("changed_directory", ["ancestor", "repository", "replacement"])
+def test_windows_source_reads_bind_ancestor_identity_and_repository_version(
+    changed_directory: str,
+) -> None:
+    api = _FakeWindowsSourceApi()
+    parent = api.add_directory(api.volume_id, "temporary")
+    api._children(api.volume_id).pop("repo")
+    api._children(parent)["repo"] = api.root_id
+    payload = b"def retry_request():\n    return 'retry'\n"
+    api.add_file(api.root_id, "source.py", payload)
+    binding = source_fingerprint_module._fingerprint_windows_repository(
+        r"C:\temporary\repo",
+        exclude_roots=(),
+        version=SOURCE_FINGERPRINT_VERSION,
+        api=api,
+        retain_binding=True,
+    )
+    assert isinstance(binding, RepositorySourceBinding)
+
+    if changed_directory == "replacement":
+        api._children(api.volume_id)["temporary"] = api.add_directory()
+    else:
+        changed = parent if changed_directory == "ancestor" else api.root_id
+        api.add_directory(changed, "grep-scratch")
+        api.nodes[changed]["version"] = 2
+    try:
+        if changed_directory == "ancestor":
+            assert binding.read_bytes("source.py", max_bytes=1024) == payload
+            assert binding.authenticated_identity_snapshot().file_count == 1
+        else:
+            with pytest.raises(RepositoryChangedError):
+                binding.read_bytes("source.py", max_bytes=1024)
+            assert not binding.usable
+    finally:
+        binding.close()
+    assert api.handles == {}
+
+
 def test_windows_fake_binds_initial_symlink_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

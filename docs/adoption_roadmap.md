@@ -156,6 +156,16 @@ browser connection for the hosted trial; callback/session handling, Wiki gating
 and the complete application's XSS/CSP review remain open. Detailed transport
 validation is recorded in #783.
 
+Lightweight installation acceptance in
+[#793](https://github.com/sysevol-ai/CodeNib/pull/793) has passed real Linux/macOS
+retrieval and the macOS keyring round trip. Windows exposed a source-authority false positive:
+creating grep's temporary tree changed an ancestor directory timestamp. The
+source-read boundary now reuses lexical HANDLE binding verification for ancestors
+and retains the full repository-root version and source inventory checks. A
+deterministic regression reproduces the sibling change and still rejects
+repository mutation or an ancestor replacement. Real Windows acceptance remains
+open until the combined fix passes its platform job.
+
 Native registration is implemented in dependent
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785). Its native CLI ownership,
 real-client acceptance and first-query evidence are tracked with that PR.
