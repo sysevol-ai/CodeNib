@@ -35,9 +35,12 @@ SPDX-License-Identifier: Apache-2.0
 </div>
 
 <p align="center">
-  <a href="https://demo.codenib.ai/caddyserver__caddy">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/assets/codenib_wiki.png" alt="CodeNib Wiki for Caddy, with architecture context and citations into the repository" width="100%">
+  <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.gif" alt="Recorded CodeGraph setup and Claude Code explore_context call on Requests, returning source references for authentication during redirects" width="100%">
   </a>
+</p>
+<p align="center">15-second replay of real CLI output · waits condensed ·
+  <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>.
 </p>
 
 ## Quickstart

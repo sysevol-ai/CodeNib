@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-09-26",
+  "scope": "Edited replay of actual CodeGraph and Claude Code CLI output; waits condensed. Not a screen recording of the interactive Claude UI, benchmark, or released grep/Jev route.",
+  "repository": "https://github.com/psf/requests",
+  "repository_tag": "v2.32.5",
+  "source_commit": "b25c87d7cb8d6a18a37fa12442b5f883f9e41741",
+  "codenib_commit": "28910cc9a4324de0adb714b98729165679b5386a",
+  "codenib_install": "Built wheel from the pinned source checkout with [graph,mcp], frontend prebuilt; clean Python 3.11 environment and MCP SDK 2.2.0. Installed scip-python reused; no embedding model.",
+  "claude_version": "2.1.283",
+  "model": "anthropic/claude-sonnet-4.6",
+  "gateway": "OpenRouter",
+  "setup_command": "codenib codegraph init . --agent claude",
+  "setup_output_excerpt": [
+    "Languages:  python",
+    "bm25           fresh (0.32s)",
+    "symbol_graph   fresh (10.13s)",
+    "CodeGraph is ready for coding agents.",
+    "MCP server: codenib-requests-0a0ae69ed86e",
+    "Clients:    claude"
+  ],
+  "prompt": "Use CodeNib's explore_context once to find where Requests strips authentication when redirecting to another host. Cite files and line numbers. Do not call other tools or edit files. Answer in at most 90 words.",
+  "tool_name": "mcp__codenib-requests-0a0ae69ed86e__explore_context",
+  "tool_input": {
+    "query": "strip authentication headers when redirecting to different host"
+  },
+  "source_anchors": [
+    {
+      "file": "src/requests/sessions.py",
+      "symbol": "src/requests/sessions.py:SessionRedirectMixin.rebuild_auth()",
+      "start_line": 282,
+      "end_line": 300,
+      "excerpt": "                \"Content-Length\" in headers or \"Transfer-Encoding\" in headers\n            )\n\n            # Attempt to rewind consumed file-like object.\n            if rewindable:\n... 24 source lines omitted ...\n\n    def rebuild_auth(self, prepared_request, response):\n        \"\"\"When being redirected we may want to strip authentication from the\n        request to avoid leaking credentials. This method intelligently removes\n        and reapplies authentication where possible to avoid credential loss.\n        \"\"\"\n        headers = prepared_request.headers\n        url = prepared_request.url\n\n        if \"Authorization\" in headers and self.should_strip_auth(\n            response.request.url, url\n        ):\n            # If we get redirected to a new host, we should strip out any\n            # authentication headers.\n            del headers[\"Authorization\"]\n\n        # .netrc might have more auth for us on our new host.\n        new_auth = get_netrc_auth(url) if self.trust_env else None\n        if new_auth is not None:\n... 3 source lines omitted ...\n        \"\"\"This method re-evaluates the proxy configuration by considering the\n        environment variables. If we are redirected to a URL covered by\n        NO_PROXY, we strip the proxy configuration. Otherwise, we set missing\n        proxy keys for this URL (in case they were stripped by a previous\n        redirect).\n\n... 3 source lines omitted ...\n        :rtype: dict\n        \"\"\"\n        headers = prepared_request.headers\n        scheme = urlparse(prepared_request.url).scheme\n        new_proxies = resolve_proxies(prepared_request, proxies, self.trust_env)\n\n        if \"Proxy-Authorization\" in headers:\n            del headers[\"Proxy-Authorization\"]\n\n        try:\n... 10 source lines omitted ...",
+      "source_verified": true
+    },
+    {
+      "file": "src/requests/sessions.py",
+      "symbol": "src/requests/sessions.py:SessionRedirectMixin.should_strip_auth()",
+      "start_line": 127,
+      "end_line": 157,
+      "excerpt": "        return request_setting\n\n    if request_setting is None:\n        return session_setting\n\n... 41 source lines omitted ...\n        # attribute.\n        if resp.is_redirect:\n            location = resp.headers[\"location\"]\n            # Currently the underlying http module on py3 decode headers\n            # in latin1, but empirical evidence suggests that latin1 is very\n            # rarely used with non-ASCII characters in HTTP headers.\n            # It is more likely to get UTF8 header rather than latin1.\n            # This causes incorrect handling of UTF8 encoded location headers.\n            # To solve this, we re-encode the location in latin1.\n            location = location.encode(\"latin1\")\n... 1 source lines omitted ...\n        return None\n\n    def should_strip_auth(self, old_url, new_url):\n        \"\"\"Decide whether Authorization header should be removed when redirecting\"\"\"\n        old_parsed = urlparse(old_url)\n        new_parsed = urlparse(new_url)\n        if old_parsed.hostname != new_parsed.hostname:\n            return True\n        # Special case: allow http -> https redirect when using the standard\n        # ports. This isn't specified by RFC 7235, but is kept to avoid\n        # breaking backwards compatibility with older versions of requests\n        # that allowed any redirects on the same host.\n        if (\n            old_parsed.scheme == \"http\"\n... 61 source lines omitted ...",
+      "source_verified": true
+    }
+  ],
+  "answer": "Authentication stripping on cross-host redirects lives entirely in **`src/requests/sessions.py`**:\n\n- **`should_strip_auth()` (lines 127\u2013157):** Compares `old_parsed.hostname` vs `new_parsed.hostname`; returns `True` when they differ.\n- **`rebuild_auth()` (lines 282\u2013300):** Calls `should_strip_auth()`; if it returns `True`, executes `del headers[\"Authorization\"]` (\u2248 line 292) to drop the credential before following the redirect.",
+  "answer_note": "The answer correctly locates both function ranges but approximates the deletion as line 292; the pinned source deletes Authorization at line 295. The clip displays the verified function anchors.",
+  "seconds": {
+    "setup": 14.001779831945896,
+    "agent": 11.259079991839826,
+    "edited_clip": 15
+  },
+  "agent_usage": {
+    "input_tokens": 18,
+    "cache_creation_input_tokens": 14299,
+    "cache_read_input_tokens": 4023,
+    "output_tokens": 398,
+    "output_tokens_details": {
+      "thinking_tokens": 180
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 0,
+      "ephemeral_5m_input_tokens": 14299
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard"
+  },
+  "agent_estimated_cost_usd": 0.06085215,
+  "cost_basis": "Claude Code list-price estimate, not a provider billing receipt",
+  "source_unchanged": true,
+  "global_profiles_unchanged": true,
+  "raw_sha256": {
+    "init-events.jsonl": "a99c3745c2096175f37a29b4423568187212664d2fcb8b581300acc22f44d203",
+    "agent-events.jsonl": "7f7b45ab25a10dc936ac67e198f4e6afdfa5b584566b577997f1073baaedcde3",
+    "agent-stream.jsonl": "539c516e3d2148a2a8ca95724bd7293bd84a30bb69c67b188ab22dfa51de2fb2"
+  },
+  "source_license": "Apache-2.0",
+  "source_license_url": "https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/LICENSE"
+}
