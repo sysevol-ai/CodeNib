@@ -21,6 +21,7 @@ import tempfile
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 from typing import Any, Callable
 
@@ -277,9 +278,32 @@ def _rg_path(value: dict, *, separator: str = os.sep) -> str:
         raise GrepJevError("grep returned an invalid source path") from None
 
 
+def resolve_ripgrep() -> str | None:
+    """Find the installed grep extra's binary without requiring shell activation.
+
+    Python wheels install scripts beside the environment's interpreter, which
+    need not be on an MCP client's PATH. Resolve through the distribution's
+    installed file inventory; retain system ripgrep for existing installations.
+    """
+    try:
+        package = distribution("ripgrep-bin")
+    except PackageNotFoundError:
+        package = None
+    if package is not None:
+        for entry in package.files or ():
+            if entry.name in {"rg", "rg.exe"}:
+                binary = Path(package.locate_file(entry))
+                if binary.is_file() and os.access(binary, os.X_OK):
+                    return str(binary.resolve())
+    return shutil.which("rg")
+
+
 def _rg_lines(root: Path, action: GrepAction, budget: _RequestBudget):
+    executable = resolve_ripgrep()
+    if executable is None:
+        raise GrepJevError("Install codenib[grep,mcp] or ripgrep to use grep → Jev")
     command = [
-        "rg",
+        executable,
         "--no-config",
         "--json",
         "--sort",
@@ -422,8 +446,8 @@ class GrepJevRetriever:
         ):
             raise ValueError("top_k must be an integer from 1 to 100")
         key = self.config.credential()
-        if shutil.which("rg") is None:
-            raise GrepJevError("Install ripgrep (rg) to use grep → Jev")
+        if resolve_ripgrep() is None:
+            raise GrepJevError("Install codenib[grep,mcp] or ripgrep to use grep → Jev")
         identity = source.authenticated_identity_snapshot(check_cancelled=budget.check)
         chunker = CodeChunker(
             chunk_depth=2,

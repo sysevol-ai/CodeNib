@@ -182,6 +182,17 @@ returned verified source without creating an index. Source and user profiles
 were preserved. This is a connectivity smoke, not a quality or token benchmark.
 The separate provider-consent/OS-vault gate remains open.
 
+The lightweight `grep` extra now includes `ripgrep-bin`. CLI startup, source
+capture entry and the retriever use its installed executable even when the
+agent has not activated the Python environment; an existing system `rg` is a
+fallback. A clean Linux installation verifies actual source-linked retrieval
+with PATH empty, no embedding/graph/model SDK packages and fixture-only provider
+responses. The installed-package smoke is scheduled on Linux, macOS and Windows;
+the latter two also exercise the real OS credential store with a unique fake
+entry that is removed afterward. Cross-platform CI results and actual provider
+consent remain acceptance gates. These installation checks do not establish
+retrieval quality or agent token savings.
+
 - Prefer OpenRouter OAuth PKCE (S256), using a fresh verifier and one-time
   local callback. Bind callback state to the initiating session, validate
   the callback host/path, and reject replay. Test against OpenRouter's actual

@@ -6,13 +6,12 @@
 
 from __future__ import annotations
 
-import shutil
 import time
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from ..agent.runtime.grep_jev import GrepJevConfig, GrepJevError
+from ..agent.runtime.grep_jev import GrepJevConfig, GrepJevError, resolve_ripgrep
 from ..compiler.manifest import RepoManifest
 from ..compiler.manifest_source import resolve_compiler_source_selection
 from ..paths import repo_index_dir
@@ -45,8 +44,8 @@ def explore_repository(
     if budget not in {"fast", "balanced", "thorough"}:
         raise ValueError("budget must be 'fast', 'balanced', or 'thorough'.")
     config.credential()  # Missing credentials must fail before scanning source.
-    if shutil.which("rg") is None:
-        raise GrepJevError("Install ripgrep (rg) to use grep → Jev")
+    if resolve_ripgrep() is None:
+        raise GrepJevError("Install codenib[grep,mcp] or ripgrep to use grep → Jev")
     deadline = time.monotonic() + config.timeout
 
     def check() -> None:

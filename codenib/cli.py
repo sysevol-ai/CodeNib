@@ -746,8 +746,10 @@ def _run_mcp(args: argparse.Namespace) -> int:
         _require_modules(
             ("requests", "mcp"), extra="grep,mcp", feature="grep → Jev MCP"
         )
-        if shutil.which("rg") is None:
-            raise CLIError("grep → Jev requires ripgrep (rg) on PATH")
+        from .agent.runtime.grep_jev import resolve_ripgrep
+
+        if resolve_ripgrep() is None:
+            raise CLIError("Install codenib[grep,mcp] or ripgrep to use grep → Jev")
         from .mcp.grep_jev import explore_repository  # noqa: F401 - import smoke
     else:
         _require_modules(("mcp",), extra="mcp", feature="the MCP server")
