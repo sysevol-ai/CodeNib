@@ -224,10 +224,18 @@ def _normalize_page(
             )
             if source is not None:
                 citation["content"] = source.get("content")
+            unanchored = (
+                citation.get("start_line") is None and citation.get("end_line") is None
+            )
             if verify_citations and (
                 source is None
-                or source.get("start_line") != citation.get("start_line")
-                or source.get("end_line") != citation.get("end_line")
+                or (
+                    not unanchored
+                    and (
+                        source.get("start_line") != citation.get("start_line")
+                        or source.get("end_line") != citation.get("end_line")
+                    )
+                )
             ):
                 raise ValueError("cached Wiki citation does not match captured source")
         citations.append(citation)
@@ -1342,7 +1350,8 @@ def export_cached_wiki(
     config_path = Path(config_path).expanduser().absolute()
     if not config_path.is_file():
         raise ValueError("cached Wiki config does not exist")
-    config = load_config(str(config_path))
+    config_sources: set[Path] = set()
+    config = load_config(str(config_path), source_paths=config_sources)
     registry_path = Path(config.data_dir).absolute() / REGISTRY_FILENAME
     entries = load_registry(str(registry_path))
     matches = [entry for entry in entries if entry.instance_id == repo_id]
@@ -1351,7 +1360,7 @@ def export_cached_wiki(
     entry = matches[0]
     database = registry_path.parent / "wiki_cache" / "wiki.sqlite3"
     output_dir = lexical_directory_path(output_dir)
-    for protected in (config_path, registry_path, database):
+    for protected in (*config_sources, registry_path, database):
         for destination, source in (
             (output_dir, protected),
             (output_dir.resolve(), protected.resolve()),

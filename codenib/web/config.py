@@ -134,7 +134,12 @@ def _config_parents(value: Any, *, source: Path) -> List[str]:
     return parents
 
 
-def _load_config_data(path: Path, *, chain: tuple[Path, ...] = ()) -> Dict[str, Any]:
+def _load_config_data(
+    path: Path,
+    *,
+    chain: tuple[Path, ...] = (),
+    source_paths: set[Path] | None = None,
+) -> Dict[str, Any]:
     """Load one YAML profile and recursively merge its relative parents."""
 
     resolved = path.expanduser().resolve()
@@ -150,6 +155,10 @@ def _load_config_data(path: Path, *, chain: tuple[Path, ...] = ()) -> Dict[str, 
         loaded = yaml.load(handle, Loader=_UniqueKeySafeLoader) or {}
     if not isinstance(loaded, dict):
         raise ValueError(f"demo config must contain a YAML mapping: {resolved}")
+    if source_paths is not None:
+        # Publication must preserve both a configured symlink and its target.
+        # Keep these call-owned paths out of the runtime config/public payload.
+        source_paths.update((path.expanduser().absolute(), resolved))
 
     merged: Dict[str, Any] = {}
     next_chain = (*chain, resolved)
@@ -159,7 +168,7 @@ def _load_config_data(path: Path, *, chain: tuple[Path, ...] = ()) -> Dict[str, 
             parent_path = resolved.parent / parent_path
         merged = _merge_config_data(
             merged,
-            _load_config_data(parent_path, chain=next_chain),
+            _load_config_data(parent_path, chain=next_chain, source_paths=source_paths),
         )
     return _merge_config_data(merged, loaded)
 
@@ -377,10 +386,12 @@ class QAConfig:
         )
 
 
-def load_config(path: Optional[str] = None) -> QAConfig:
+def load_config(
+    path: Optional[str] = None, *, source_paths: set[Path] | None = None
+) -> QAConfig:
     """Load a layered demo config from YAML, then apply env overrides."""
     cfg_path = path or os.environ.get("CODENIB_DEMO_CONFIG", DEFAULT_CONFIG_PATH)
-    data = _load_config_data(Path(cfg_path))
+    data = _load_config_data(Path(cfg_path), source_paths=source_paths)
     if "index_storage" in data:
         raise ValueError(
             "index_storage is no longer supported by the Web service; "

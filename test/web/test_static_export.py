@@ -1638,3 +1638,72 @@ def test_cached_export_cannot_replace_wiki_inputs(cached_export_setup):
         export_cached_wiki(
             setup.config_path, "demo", setup.data, frontend_dir=setup.frontend
         )
+
+
+@pytest.mark.parametrize("symlinked_parent", [False, True])
+def test_cached_export_preserves_every_inherited_config_input(
+    cached_export_setup, symlinked_parent
+):
+    setup = cached_export_setup
+    export_cached_wiki(
+        setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+    )
+    parent = setup.output / "inherited.yaml"
+    profile = json.dumps({"data_dir": str(setup.data)})
+    if symlinked_parent:
+        external = setup.config_path.parent / "external-profile.yaml"
+        external.write_text(profile)
+        parent.symlink_to(external)
+    else:
+        parent.write_text(profile)
+    middle = setup.config_path.parent / "middle.yaml"
+    middle.write_text(json.dumps({"extends": str(parent)}))
+    setup.config_path.write_text(json.dumps({"extends": str(middle)}))
+    before = _tree_bytes(setup.output)
+    data_before = _tree_bytes(setup.data)
+
+    with pytest.raises(ValueError, match="contain Wiki inputs"):
+        export_cached_wiki(
+            setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+        )
+
+    assert _tree_bytes(setup.output) == before
+    assert _tree_bytes(setup.data) == data_before
+    assert parent.is_symlink() == symlinked_parent
+    assert parent.read_text() == profile
+
+
+def test_cached_export_reads_unanchored_citations_without_inventing_a_span(
+    cached_export_setup,
+):
+    setup = cached_export_setup
+    wiki = setup.wiki
+    meta = wiki._find("architecture", setup.outline)
+    payload = dict(setup.pages["architecture"])
+    payload["citations"] = [
+        {
+            "file": "src/runtime.py",
+            "start_line": None,
+            "end_line": None,
+            "content": "stale unverified snippet",
+        }
+    ]
+    SQLiteWikiStore(setup.database).publish(
+        entry_id=wiki._store_entry_id(wiki._page_cache_suffix(meta)),
+        repository_id="demo",
+        envelope={"data": payload},
+    )
+    before = _tree_bytes(setup.data)
+
+    export_cached_wiki(
+        setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+    )
+
+    page = json.loads(
+        (setup.output / "data/repos/demo/pages/architecture.json").read_text()
+    )
+    citation = page["citations"][0]
+    assert citation["start_line"] is citation["end_line"] is None
+    assert "trusted-source" in citation["content"]
+    assert "stale unverified" not in citation["content"]
+    assert _tree_bytes(setup.data) == before
