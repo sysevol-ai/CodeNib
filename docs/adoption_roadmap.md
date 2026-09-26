@@ -27,9 +27,9 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | --- | --- | --- |
 | Agent setup | `codegraph init` installs applicable package-level providers and registers local MCP with native Claude Code/Codex CLIs. | Clean-checkout and system/project prerequisites; verify fresh install and persistent executable registration before recommending `uvx`. |
 | Retrieval evidence | Model-planned grep → Jev scores 71.40% macro code-block Recall@5 on the complete 100-issue CodeNib Base test split; unchanged grep ordering scores 58.62%. | Research runner, not a released CLI/MCP route; no corresponding measured Claude Code token saving. |
-| OpenRouter | Production Jev Decisions adapter exists. The research grep planner uses OpenRouter chat completions. | Shared product configuration, authorization, budget handling, and source disclosure are missing. |
-| Wiki demo | Live browsing/Ask can invoke generation; source-grounded story and graph work is in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). | Review/reconcile #772 before changes to its shared UI, boundary endpoints, and export format. Do not restore legacy JSON cache adoption. |
-| Static distribution | Static export and reusable GitHub Pages workflow already exist. | Confirm generated story/cache export parity and badge/link behavior; default semantic indexing still downloads a model. |
+| OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. | Provider-consent/OS-vault manual acceptance, native registration and hosted browser authorization remain. |
+| Wiki demo | Source-grounded stories/graphs are in [#772](https://github.com/sysevol-ai/CodeNib/pull/772); static cached-story publication and activation are in its dependent [#784](https://github.com/sysevol-ai/CodeNib/pull/784). | Merge/rebase in that order, curate a current SQLite corpus and validate deployment. Live operator browsing/Ask can still intentionally generate. |
+| Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. | Production corpus and hosted browser authorization remain; the existing workflow's default semantic indexing still downloads a model. |
 | MCP protocol | Empty server version fix is in [#780](https://github.com/sysevol-ai/CodeNib/pull/780), addressing [#779](https://github.com/sysevol-ai/CodeNib/issues/779). | Green reviewed patch still needs release reconciliation; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
 | Releases | Five GitHub releases exist; v0.2.3 is latest. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Improve visibility; inspect retry/failure behavior. Do not introduce a second release pipeline. |
@@ -132,7 +132,8 @@ live smoke with recorded model identities before promoting it as default.
 
 ### A3 — Connect OpenRouter without collecting a master key
 
-Status: local CLI/MCP authorization is implemented in `feat/openrouter-connect`,
+Status: local CLI/MCP authorization is implemented in
+[#783](https://github.com/sysevol-ai/CodeNib/pull/783),
 stacked on #782; not merged or released. Browser and headless PKCE use S256,
 one-use in-memory verifiers and direct OpenRouter exchange. Saved keys resolve
 for both retrieval stages. Default storage uses a supported OS keyring;
@@ -141,7 +142,8 @@ placement and atomic replacement. Imports reject management/provisioning keys.
 Status and logout distinguish local presence, provider verification and provider
 revocation; keys never appear in ordinary output or repository/MCP config.
 
-401 relevant tests pass, with seven optional Zoekt skips. Callback tests use
+401 relevant tests pass, with seven optional Zoekt skips; all 64 auth/retrieval
+tests pass in a fresh `[grep,mcp,auth]` environment. Callback tests use
 real loopback HTTP with a fake provider; a real Chromium check confirms CSP
 execution clears the grant from the URL, includes it in neither HTML nor
 external requests, and produces no page errors. A real OpenRouter metadata
@@ -213,14 +215,24 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Turn the Wiki demo into a preview and activation path
 
-Status: the story and graph UI is implemented in
-[#772](https://github.com/sysevol-ai/CodeNib/pull/772), rebased onto the current
-`main`; it is not merged or released. The restack preserves the existing Wiki
-changes and the static marketing preview introduced by #781. Web/Wiki/CLI
-verification and the public-doc checks pass. Static cache publication and
-agent activation are in dependent #784; a current SQLite corpus, bounded
-operator generation and production deployment remain open gates. Legacy JSON
-Wiki caches are not read or migrated.
+Status: story browsing is merged in
+[#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
+publication is implemented in [#784](https://github.com/sysevol-ai/CodeNib/pull/784),
+not yet merged or deployed. A real 15-page Requests corpus exports from SQLite
+with all pages generated and grounding-valid. Export verifies 159 citation
+ranges, retains 148 inline excerpts and omits 11 credential-shaped previews
+while preserving their repository links. Source/model identity, cache prompt
+versions and file hashes accompany the static artifact.
+
+The combined validation tree includes the graph-boundary, evidence-serialization
+and source-range fixes in [#789](https://github.com/sysevol-ai/CodeNib/pull/789),
+[#790](https://github.com/sysevol-ai/CodeNib/pull/790) and
+[#791](https://github.com/sysevol-ai/CodeNib/pull/791). Desktop and mobile checks
+cover all 15 pages, citations, unavailable pages and the local-agent handoff,
+with no backend/external requests, browser errors or horizontal overflow.
+Export makes no network calls and preserves its source database/configuration.
+The local corpus and export are verified; dependency merges, hosted authorization,
+release/deployment and broader corpus curation remain open.
 
 The public demo must remain useful without authentication or a live LLM.
 
