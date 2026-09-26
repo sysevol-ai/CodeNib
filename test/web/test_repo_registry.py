@@ -5153,7 +5153,10 @@ def test_repo_views_reject_documents_outside_authenticated_selection(tmp_path):
     assert bundle.bm25 is None
 
 
-def test_bundle_rejects_graph_paths_outside_authenticated_selection(tmp_path):
+@pytest.mark.parametrize("has_definition", [True, False])
+def test_bundle_rejects_graph_paths_outside_authenticated_selection(
+    tmp_path, has_definition
+):
     repo = tmp_path / "repo"
     (repo / "src").mkdir(parents=True)
     (repo / "src" / "runtime.py").write_text("runtime\n", encoding="utf-8")
@@ -5167,6 +5170,7 @@ def test_bundle_rejects_graph_paths_outside_authenticated_selection(tmp_path):
         "private/secret.py:secret()",
         {
             "type": "function",
+            "has_definition": has_definition,
             "file": "private/secret.py",
             "start_line": 0,
             "end_line": 0,
@@ -5201,6 +5205,66 @@ def test_bundle_rejects_graph_paths_outside_authenticated_selection(tmp_path):
         binding.close()
 
     assert "outside the authenticated" in bundle._code_graph_error
+
+
+def test_bundle_loads_graph_with_external_module_reference(tmp_path):
+    from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION, NODE_TYPE_SYMBOL
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.py").write_text("import idna\nidna.encode('example.test')\n")
+    graph_dir = tmp_path / "symbol_graph"
+    graph_dir.mkdir()
+    graph_path = graph_dir / "graph.pkl"
+    graph = CodeGraph()
+    graph._add_vertex(
+        "entry",
+        {
+            "type": NODE_TYPE_FUNCTION,
+            "has_definition": True,
+            "file": "main.py",
+            "start_line": 0,
+            "end_line": 1,
+        },
+    )
+    graph._add_vertex(
+        "idna.encode",
+        {
+            "type": NODE_TYPE_SYMBOL,
+            "has_definition": False,
+            "file": "idna.core",
+        },
+    )
+    graph._add_edge(
+        "entry",
+        "idna.encode",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="main.py",
+        anchor_line=1,
+    )
+    graph.save_graph(graph_path)
+    with capture_repository_source(repo) as binding:
+        bundle = RepoBundle(
+            entry=SimpleNamespace(instance_id="owner__repo-1"),
+            manifest=_legacy_view_manifest(
+                "symbol_graph",
+                str(graph_dir),
+                view_commit="abc123",
+                manifest_commit="abc123",
+                config={
+                    "graph_artifact": {
+                        "relative_path": "graph.pkl",
+                        **regular_file_fingerprint(graph_path),
+                    }
+                },
+            ),
+            source_reader=binding.borrow_reader(),
+        )
+        loaded = bundle.code_graph()
+        assert loaded is not None
+        assert loaded.graph.ecount() == 1
+        assert bundle._code_graph_error is None
+        assert binding.borrow_reader().captured_relative_path("idna.core") is None
 
 
 def test_manifest_selected_bundle_never_falls_back_to_live_checkout(

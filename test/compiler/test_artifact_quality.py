@@ -18,6 +18,7 @@ from codenib.compiler.artifact_quality import (
     assess_vector_artifact,
     constrain_and_assess_graph_artifact,
     constrain_graph_to_source_selection,
+    graph_source_paths,
     vector_artifact_files_match,
 )
 from codenib.git_snapshot import GitSourceSurface
@@ -29,7 +30,67 @@ from codenib.scip_interface.lsp_occurrence_index import (
     SCIPOccurrence,
     SCIPOccurrenceIndex,
 )
-from codenib.types import EDGE_TYPE_REFERENCE
+from codenib.types import EDGE_TYPE_REFERENCE, NODE_TYPE_FUNCTION, NODE_TYPE_SYMBOL
+
+
+def test_graph_source_paths_distinguish_external_hints_from_source_locations():
+    graph = CodeGraph()
+    graph._add_vertex(
+        "local",
+        {
+            "type": NODE_TYPE_FUNCTION,
+            "has_definition": True,
+            "file": "src/main.py",
+            "start_line": 0,
+            "end_line": 1,
+        },
+    )
+    graph._add_vertex(
+        "external",
+        {
+            "type": NODE_TYPE_SYMBOL,
+            "has_definition": False,
+            "file": "idna.core",
+        },
+    )
+    graph._add_edge(
+        "local",
+        "external",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="src/main.py",
+        anchor_line=1,
+    )
+    assert graph_source_paths(graph) == ("src/main.py",)
+
+    # A conflicting flag cannot turn an actual source location into a hint.
+    external = graph.graph.vs[graph.name_to_vertex["external"]]
+    external["start_line"] = 3
+    assert graph_source_paths(graph) == ("idna.core", "src/main.py")
+    external["file"] = "../secret.py"
+    with pytest.raises(ValueError, match="invalid source paths"):
+        graph_source_paths(graph)
+
+
+def test_graph_source_paths_rejects_invalid_call_site_even_on_external_reference():
+    graph = CodeGraph()
+    graph._add_vertex("local", {"type": NODE_TYPE_SYMBOL, "file": "src/main.py"})
+    graph._add_vertex(
+        "external",
+        {
+            "type": NODE_TYPE_SYMBOL,
+            "has_definition": False,
+            "file": "idna.core",
+        },
+    )
+    graph._add_edge(
+        "local",
+        "external",
+        EDGE_TYPE_REFERENCE,
+        anchor_file="../secret.py",
+        anchor_line=1,
+    )
+    with pytest.raises(ValueError, match="invalid source paths"):
+        graph_source_paths(graph)
 
 
 def _git(repo, *args):
