@@ -11,6 +11,10 @@ CodeNib serves a pre-built repository manifest to coding agents over
 construction and query serving are separate: build or update a repository once,
 then reuse that manifest across agent sessions.
 
+For the unreleased source-checkout route that searches directly with your
+OpenRouter account, see [grep and Jev](guides/grep-jev.md). It exposes
+`explore_context` without an index, embedding model, GPU, or graph build.
+
 ## Install And Index
 
 For Codex or Claude Code, the recommended 0.2.3 path prepares the graph index

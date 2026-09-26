@@ -38,6 +38,7 @@ def _make_server_ctx(*, bm25_results=None, regex_results=None, zoekt_results=Non
     )
     ctx.bm25 = MagicMock() if bm25_results is not None else None
     ctx.vector = None
+    ctx.grep_jev = None
     ctx.symbol_graph = None
     ctx.regex_index = MagicMock() if regex_results is not None else None
     ctx.zoekt = MagicMock() if zoekt_results is not None else None

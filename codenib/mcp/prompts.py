@@ -19,6 +19,17 @@ CODENIB_EXPLORE_INSTRUCTIONS = (
     "drawing conclusions."
 )
 
+CODENIB_GREP_INSTRUCTIONS = (
+    "CodeNib searches current repository source with model-planned grep and Jev. "
+    "Use explore_context with a precise repository question. Each call uses the "
+    "user's OpenRouter account: planning receives the query and directory overview, "
+    "and scoring receives candidate source snippets. Inspect plan.retrieval for "
+    "actual models, reported cost, and failures; source.verified for source identity. "
+    "This mode does not load a graph: symbols, direction, and include_dependencies "
+    "do not add graph navigation. budget bounds returned context, not API spend. "
+    "Do not automatically repeat a failed or empty query."
+)
+
 CODENIB_EXPLORE_GUIDE = """\
 # CodeNib Explore Guide
 

@@ -44,7 +44,13 @@ An OpenRouter planning model proposes regex/glob searches. Local `rg` executes
 them; tree-sitter maps matches to code blocks, deduplicates them, and retains
 at most 100 candidates. Jev scores the visible candidate code through the
 OpenRouter Decisions API, in batches of ten. Candidates are limited to
-3,000 characters, and the evaluation scores only those visible source ranges.
+3,000 characters. The original range calculation included synthetic chunk
+headers when counting visible lines. A subsequent
+[offline range audit](../assets/grep_jev_range_audit.json) removed those header lines:
+173 of 1,747 candidate ranges shortened, and the frozen rankings' Recall@5
+remained 58.62% and 71.40%. That audit does not rerun candidate generation.
+The [product preview](../guides/grep-jev.md) uses corrected ranges and has not
+yet been evaluated end to end on this complete split.
 
 The route does not need embeddings or a local GPU. It **does** use remote
 models: query text and selected source snippets leave the local machine.
@@ -70,6 +76,7 @@ waits are not production request latency. See the separate
 deployment configuration.
 
 For today's model-free agent setup, use [CodeGraph](../codegraph.md).
+For the source-checkout OpenRouter route, use [grep and Jev](../guides/grep-jev.md).
 For reproduced method contracts and scorer validation, use
 [agent integrations](../agent_integrations.md) and the
 [evaluation matrix](index.md).

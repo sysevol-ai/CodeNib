@@ -54,6 +54,7 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/images/codenib-favicon-v2.png",
     "assets/images/codenib-icon.svg",
     "assets/swe_explore_cases.json",
+    "assets/grep_jev_range_audit.json",
     "assets/stylesheets/extra.css",
     "incremental_graph/incremental_interactive.html",
 }

@@ -708,6 +708,14 @@ def _mcp_context_mode(args: argparse.Namespace) -> str:
         or repo is not None
         or repository is not None
     )
+    if getattr(args, "retrieval_route", "indexed") == "grep-jev":
+        if runtime_probe or artifact is not None or repository is not None:
+            raise CLIError(
+                "grep-jev requires a repository, without an artifact or probe"
+            )
+        if explicit_path and repo is not None:
+            raise CLIError("choose a repository path or --repo, not both")
+        return "grep-jev"
     if runtime_probe:
         if any_context:
             raise CLIError("--runtime-probe cannot be combined with MCP context input")
@@ -740,6 +748,27 @@ def _run_mcp(args: argparse.Namespace) -> int:
         print("codenib codegraph mcp runtime ready")
         return 0
 
+    if mode == "grep-jev":
+        _require_modules(("requests",), extra="grep,mcp", feature="grep → Jev MCP")
+        command = [
+            "--retrieval-route",
+            "grep-jev",
+            "--repo",
+            str(resolve_repo_path(args.repo or args.path or ".")),
+            "--planner-model",
+            args.planner_model,
+            "--max-cost-usd",
+            str(args.max_cost_usd),
+            "--request-timeout",
+            str(args.request_timeout),
+            "--log-level",
+            args.log_level,
+        ]
+        if args.include_tests:
+            command.append("--include-tests")
+        mcp_main(command)
+        return 0
+
     if mode == "artifact":
         command = [
             "--artifact",
@@ -770,6 +799,41 @@ def _run_mcp(args: argparse.Namespace) -> int:
             ]
         )
     return 0
+
+
+def _run_explore(args: argparse.Namespace) -> int:
+    _require_modules(("requests", "mcp"), extra="grep,mcp", feature="grep → Jev search")
+    from .agent.runtime.grep_jev import GrepJevConfig
+    from .mcp.grep_jev import explore_repository
+
+    try:
+        result = explore_repository(
+            resolve_repo_path(args.repo),
+            GrepJevConfig(
+                planner_model=args.planner_model,
+                max_cost_usd=args.max_cost_usd,
+                timeout=args.request_timeout,
+                include_tests=args.include_tests,
+            ),
+            args.query,
+            top_k=args.top_k,
+        )
+    except (OSError, ValueError, RuntimeError) as exc:
+        raise CLIError(str(exc)) from exc
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return int(any(d.get("code") == "retrieval_failed" for d in result["diagnostics"]))
+
+
+def _add_grep_jev_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--planner-model", default="anthropic/claude-sonnet-4.6")
+    parser.add_argument(
+        "--max-cost-usd",
+        type=float,
+        default=0.10,
+        help="stop subsequent requests at reported cost; in-flight cost can cross this limit",
+    )
+    parser.add_argument("--request-timeout", type=float, default=90.0)
+    parser.add_argument("--include-tests", action="store_true")
 
 
 def _run_export(args: argparse.Namespace) -> int:
@@ -3082,6 +3146,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     publish_parser.set_defaults(handler=_run_publish)
 
+    explore_parser = subparsers.add_parser(
+        "explore",
+        help="find source with model-planned grep and Jev using your OpenRouter account",
+    )
+    explore_parser.add_argument("repo")
+    explore_parser.add_argument("query")
+    explore_parser.add_argument("--top-k", type=int, default=5)
+    _add_grep_jev_arguments(explore_parser)
+    explore_parser.set_defaults(handler=_run_explore)
+
     mcp_parser = subparsers.add_parser(
         "mcp",
         help="serve an indexed repository over MCP stdio",
@@ -3122,6 +3196,13 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     mcp_parser.set_defaults(handler=_run_mcp)
+    mcp_parser.add_argument(
+        "--retrieval-route",
+        choices=("indexed", "grep-jev"),
+        default="indexed",
+        help="grep-jev searches a repository without indexes using OpenRouter",
+    )
+    _add_grep_jev_arguments(mcp_parser)
 
     codegraph_parser = subparsers.add_parser(
         "codegraph",

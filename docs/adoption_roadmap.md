@@ -79,7 +79,33 @@ all first-screen links work; quickstart remains exactly two commands.
 
 ### A2 — Ship grep → Jev as a bounded product route
 
-Status: planned; independent of the story Wiki UI, after A1's evidence audit.
+Status: implemented in the `feat/grep-jev` source-checkout preview, stacked
+on #781; not merged or released. CLI `codenib explore` and MCP
+`--retrieval-route grep-jev` share a bounded source-only runtime. Both calls use
+one OpenRouter credential, preserve reported usage on failure, disable retries,
+and stop later work on cancellation or budget exhaustion. Existing indexed
+routes remain the released defaults. No new storage abstraction is introduced.
+
+435 relevant unit checks pass (seven optional Zoekt checks skip), plus 15
+public-doc boundary tests, strict MkDocs and pre-commit. The tests cover real
+rg/chunking, CLI/MCP delivery, source edits, exclusions, cancellation, invalid
+provider responses and cost limits. A clean
+`[grep,mcp]` environment installs neither torch, FAISS, LiteLLM, igraph nor
+sentence-transformers; all 41 new route tests also pass there with MCP 2.2.
+A live query over CodeNib's six-file LLM module returned
+verified source in 4.747 seconds with $0.003869574 reported usage. This is a
+connectivity smoke, not a benchmark. The initial planning attempt timed out
+at 45 seconds with unknown usage; it was not automatically retried. After
+restoring the experiment's exact wire schema, the separate live check passed;
+this does not establish the timeout's cause.
+
+The visible-range regression found synthetic chunk headers counted as source
+lines. Product ranges now exclude them. `scripts/audit_jev_visible_ranges.py`
+rechecks frozen artifact hashes and all 100 cases without API calls: 173 of
+1,747 ranges shorten, with no change to the frozen orderings' 58.62% / 71.40%
+Recall@5. Evidence is in `docs/assets/grep_jev_range_audit.json`. This is not
+a replay of candidate generation. The full product-route quality gate,
+authorization/onboarding in A3, and main/release reconciliation remain open.
 
 - Extract the already measured plan/search/chunk/rerank path from the
   research runner into the existing repository-context runtime. Do not

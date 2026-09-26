@@ -46,6 +46,8 @@ def search_context_impl(
     budget: str = "balanced",
     level: str = "l2",
     filter_test: bool = False,
+    *,
+    check_cancelled=None,
 ) -> Dict[str, Any]:
     """Plan and execute ranked retrieval over the available repository views."""
     normalized_query = required_text(
@@ -57,6 +59,26 @@ def search_context_impl(
     normalized_level = (level or "l2").strip().lower()
     if normalized_level not in {"l0", "l2"}:
         raise ValueError("level must be 'l0' or 'l2'.")
+
+    if getattr(ctx, "grep_jev", None) is not None:
+        if normalized_level != "l2":
+            raise ValueError("grep → Jev returns l2 code blocks")
+        result = ctx.search_grep_jev(
+            normalized_query,
+            top_k=top_k,
+            filter_test=filter_test,
+            check_cancelled=check_cancelled or (lambda: None),
+        )
+        return {
+            "plan": result.plan,
+            "source": {
+                "repository": ctx.manifest.repo_path,
+                "commit": ctx.manifest.commit,
+                "source_fingerprint": ctx.manifest.source_fingerprint,
+                "verification_scope": "content-bytes",
+            },
+            "results": _project_nodes(result.nodes, query=normalized_query),
+        }
 
     from ...model.retrieval_planner import RetrievalCapabilities, RetrievalPlanner
     from ...ops.retrieve import execute_retrieval_stages

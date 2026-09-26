@@ -35,6 +35,7 @@ from ..provider_routes import resolve_embedding_artifact_route
 from ..repository_source_selection import DEFAULT_REPOSITORY_SOURCE_SELECTION
 
 if TYPE_CHECKING:
+    from ..agent.runtime.grep_jev import GrepJevConfig
     from ..artifacts.runtime import ContextArtifactBinding
     from ..compiler.zoekt_artifact import ZoektShardSnapshot
     from ..graph.code_graph import CodeGraph
@@ -305,6 +306,7 @@ class ServerContext:
     errors: Dict[str, str] = field(default_factory=dict)
     artifact: Optional[Mapping[str, Any]] = None
     source_error: Optional[str] = "source binding has not been verified"
+    grep_jev: Optional[GrepJevConfig] = field(default=None, repr=False)
     explore_runtime: Optional[ExploreSessionRuntime] = field(
         default=None, init=False, repr=False
     )
@@ -388,6 +390,16 @@ class ServerContext:
                 f"source reads are unavailable: {self.source_error or 'unverified'}"
             )
         return self._source_binding.borrow_reader()
+
+    def search_grep_jev(self, query: str, **options: Any):
+        """Run the explicit remote route only against this context's source."""
+        from ..agent.runtime.grep_jev import GrepJevRetriever
+
+        if self.grep_jev is None or self._source_binding is None:
+            raise RuntimeError("grep → Jev requires configured, authenticated source")
+        return GrepJevRetriever(self.grep_jev).search(
+            self._source_binding, query, **options
+        )
 
     def verify_source_status(self) -> bool:
         """Refresh whole-tree source truth before publishing verified status."""

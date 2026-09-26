@@ -627,6 +627,9 @@ graph = [
     { name = "igraph" },
     { name = "protobuf" },
 ]
+grep = [
+    { name = "requests" },
+]
 mcp = [
     { name = "mcp" },
 ]
@@ -751,6 +754,7 @@ requires-dist = [
     { name = "regex", specifier = ">=2024.11.6" },
     { name = "requests", marker = "extra == 'agent'", specifier = ">=2.25.0" },
     { name = "requests", marker = "extra == 'full'", specifier = ">=2.25.0" },
+    { name = "requests", marker = "extra == 'grep'", specifier = ">=2.25.0" },
     { name = "requests", marker = "extra == 'test'", specifier = ">=2.25.0" },
     { name = "requests", marker = "extra == 'zoekt'", specifier = ">=2.25.0" },
     { name = "rich", specifier = ">=14.0.0" },
@@ -766,7 +770,7 @@ requires-dist = [
     { name = "tree-sitter-language-pack", specifier = ">=1.8.1,<1.9.0" },
     { name = "uvicorn", specifier = ">=0.20.0" },
 ]
-provides-extras = ["agent", "datasets", "graph", "mcp", "semantic", "semantic-remote", "serving", "vertex", "zoekt", "full", "dev", "test"]
+provides-extras = ["grep", "agent", "datasets", "graph", "mcp", "semantic", "semantic-remote", "serving", "vertex", "zoekt", "full", "dev", "test"]
 
 [package.metadata.requires-dev]
 docs = [

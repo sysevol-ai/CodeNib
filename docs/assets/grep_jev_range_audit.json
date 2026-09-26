@@ -1,0 +1,24 @@
+{
+  "scope": "Offline range correction with frozen candidates, text, model scores and rankings; not a rerun of candidate generation or the production route.",
+  "cases": 100,
+  "candidates": 1747,
+  "changed_ranges": 173,
+  "before_recall_at_5": {
+    "grep": 0.5861666666666666,
+    "grep_jev": 0.714
+  },
+  "after_recall_at_5": {
+    "grep": 0.5861666666666666,
+    "grep_jev": 0.714
+  },
+  "changed_case_scores": [],
+  "input_sha256": {
+    "prepared_manifest": "e055006df271dddfeb18350897cf5e619d1061ea8c1e3efe4d9253d595230ddb",
+    "label_report": "22bea146f5971f295f18a6b08437719ff06663ac51826272133fc3dd1bdf2180",
+    "config.json": "515fb29333413901524e9d3a687d186ae4e0c663c446f29ab9e8beccdebe7c2f",
+    "rows.json": "83af1014f9bc326d22717b75678b5e929f9157b7f8a37d22bb91eb0b1ecb0caf",
+    "calls.json": "f33ac02a5217d7e64005e6757d06a1d63e94a754053e3ce811d16e31918bc22d"
+  },
+  "audit_script_sha256": "5b7c06a372c5ff696ed517de403ac0316fc479719f5082d9b9401caa3eb3adf2",
+  "billed_api_calls": 0
+}

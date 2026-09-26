@@ -25,6 +25,7 @@ import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
+from threading import Event
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Optional
 
 from pydantic import Field
@@ -38,6 +39,7 @@ from .prompts import (
     CODENIB_EXPLORE_GUIDE,
     CODENIB_EXPLORE_INSTRUCTIONS,
     CODENIB_FULL_INSTRUCTIONS,
+    CODENIB_GREP_INSTRUCTIONS,
     CODENIB_GUIDE,
 )
 from .tool_surface import (
@@ -185,9 +187,10 @@ async def _wait_for_abandoned_explore_worker(
     if worker is None:
         return
     try:
-        await asyncio.shield(worker)
-    except Exception:  # noqa: BLE001 - the abandoned call was already cancelled
-        pass
+        # Wait for completion without propagating an abandoned worker's
+        # cooperative CancelledError into its replacement caller. Cancelling
+        # this wait still cancels the new caller, without cancelling the worker.
+        await asyncio.wait({worker})
     finally:
         if worker.done() and runtime.pending_worker is worker:
             runtime.pending_worker = None
@@ -222,8 +225,27 @@ async def explore_context(
     runtime = ctx.ensure_explore_session()
     async with runtime.call_lock:
         await _wait_for_abandoned_explore_worker(runtime)
-        worker = asyncio.create_task(
-            asyncio.to_thread(
+        cancelled = Event()
+
+        def check_cancelled() -> None:
+            if cancelled.is_set():
+                raise asyncio.CancelledError()
+
+        if ctx.grep_jev is not None:
+            from .grep_jev import explore_repository
+
+            work = asyncio.to_thread(
+                explore_repository,
+                ctx.manifest.repo_path,
+                ctx.grep_jev,
+                query,
+                top_k=top_k,
+                budget=budget,
+                filter_test=filter_test,
+                check_cancelled=check_cancelled,
+            )
+        else:
+            work = asyncio.to_thread(
                 explore_context_impl,
                 ctx,
                 query,
@@ -234,10 +256,13 @@ async def explore_context(
                 include_dependencies,
                 filter_test,
             )
-        )
+        worker = asyncio.create_task(work)
         try:
             response = await asyncio.shield(worker)
         except asyncio.CancelledError:
+            # An HTTP request may already be in flight, but cancellation stops
+            # every later planning/scoring call and kills a running rg process.
+            cancelled.set()
             # ``to_thread`` cannot stop an already-running function. Let it
             # finish read-only and never commit it. Cancellation remains
             # responsive; the next call waits on this worker before touching
@@ -594,6 +619,8 @@ async def get_manifest() -> dict[str, Any]:
     description="Guidance on how to use CodeNib search tools effectively.",
 )
 async def codenib_guide() -> str:
+    if _ctx is not None and _ctx.grep_jev is not None:
+        return CODENIB_GREP_INSTRUCTIONS
     if mcp.tool_surface == TOOL_SURFACE_EXPLORE:
         return CODENIB_EXPLORE_GUIDE
     return CODENIB_GUIDE
@@ -724,7 +751,33 @@ def _parse_args(
         default=TOOL_SURFACE_FULL,
         help="MCP tool discovery and call surface.",
     )
+    parser.add_argument(
+        "--retrieval-route",
+        choices=("indexed", "grep-jev"),
+        default="indexed",
+        help="grep-jev searches --repo without indexes and uses your OpenRouter account",
+    )
+    parser.add_argument("--planner-model", default="anthropic/claude-sonnet-4.6")
+    parser.add_argument("--max-cost-usd", type=float, default=0.10)
+    parser.add_argument("--request-timeout", type=float, default=90.0)
+    parser.add_argument("--include-tests", action="store_true")
     return parser.parse_args(argv)
+
+
+def init_grep_jev_server(repository: str, config) -> None:
+    """Configure the existing stdio server for source-only, user-funded search."""
+    from ..source_fingerprint import lexical_repository_path
+
+    config.credential()
+    root = lexical_repository_path(repository)
+    if not root.is_dir() or root.is_symlink():
+        raise ValueError("grep → Jev requires a regular repository directory")
+    global _ctx
+    if _ctx is not None:
+        _ctx.close()
+    _ctx = ServerContext(manifest=RepoManifest(repo_path=str(root)), grep_jev=config)
+    configure_tool_surface(TOOL_SURFACE_EXPLORE)
+    mcp._lowlevel_server.instructions = CODENIB_GREP_INSTRUCTIONS
 
 
 def init_server(
@@ -960,7 +1013,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.artifact and manifest_path:
         logger.error("Choose either a manifest or --artifact, not both")
         sys.exit(1)
-    if not args.artifact and not manifest_path:
+    if (
+        not args.artifact
+        and not manifest_path
+        and not (args.retrieval_route == "grep-jev" and args.repo)
+    ):
         logger.error(
             "No context provided. Use: %s <manifest> or --artifact <dir> "
             "[--repo <dir>]",
@@ -969,7 +1026,23 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(1)
 
     try:
-        if args.artifact:
+        if args.retrieval_route == "grep-jev":
+            from ..agent.runtime.grep_jev import GrepJevConfig
+
+            if args.artifact or args.repository or (args.repo and manifest_path):
+                raise ValueError(
+                    "grep-jev requires one repository, without an artifact"
+                )
+            init_grep_jev_server(
+                args.repo or manifest_path,
+                GrepJevConfig(
+                    planner_model=args.planner_model,
+                    max_cost_usd=args.max_cost_usd,
+                    timeout=args.request_timeout,
+                    include_tests=args.include_tests,
+                ),
+            )
+        elif args.artifact:
             if args.repo:
                 from ..artifacts import bind_context_artifact
 
