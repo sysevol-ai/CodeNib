@@ -57,6 +57,7 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/grep_jev_range_audit.json",
     "assets/grep_jev_product_audit.json",
     "assets/grep_jev_product_live.json",
+    "assets/grep_jev_product_live_v2.json",
     "assets/stylesheets/extra.css",
     "incremental_graph/incremental_interactive.html",
 }

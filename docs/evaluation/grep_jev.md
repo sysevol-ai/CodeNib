@@ -123,6 +123,32 @@ does not change the 71.40% research claim. The report retains all 100 case
 statuses and leaves aggregate recall unset. There were no automatic retries
 or substitutions for the failed case.
 
+A [separate complete-split attempt](../assets/grep_jev_product_live_v2.json)
+on the same day attempted **all 100 cases**: 99 succeeded and one failed.
+For Xarray #6992, the planner produced an expression containing a newline
+escape, which line-oriented ripgrep rejected. All call costs were reported,
+so this failure did not stop later cases. The run made no retries and did not
+reuse successful cases from the earlier attempt.
+
+The metric policy was fixed before execution: failed cases score zero in both
+orderings and remain in the 100-case denominator.
+
+| Fresh product ordering | Macro code-block Recall@5 |
+| --- | ---: |
+| Planned grep, original candidate order | 48.37% |
+| Same candidates after Jev | 65.57% |
+| Paired difference | +17.20 percentage points |
+
+There are 23 wins, 74 ties (including the failed case), and three losses.
+The repository-bootstrap 95% interval for the difference is **+8.88 to +25.44
+points**. Reported provider usage totals **$1.043885892** for 100 planning and
+223 scoring calls. The resolved models are `anthropic/claude-sonnet-4.6` and
+`typesafe/jev-1.13-20260917`. Both this run's scores are lower than the frozen
+research orderings; fresh plans and product candidate construction differ.
+This is a failure-inclusive localization measurement of the source preview,
+not a clean 100/100 success result, agent token benchmark, or proof that the
+released product reproduces 71.40%.
+
 `scripts/evaluate_grep_jev_product.py` runs fresh planning and Jev against the
 same immutable source snapshots, without graph construction or embeddings.
 It requires `--allow-billed-calls` and `--max-cost-usd`; these stop subsequent
