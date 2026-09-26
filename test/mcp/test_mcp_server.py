@@ -24,6 +24,7 @@ from mcp.types import LATEST_PROTOCOL_VERSION
 
 # Import server module components
 import codenib.mcp.server as server_module
+from codenib._version import package_version
 from codenib.compiler.manifest import IndexEntry, RepoManifest
 from codenib.index.embedding.vector_store import CodeVectorStore
 from codenib.mcp.context import ServerContext
@@ -71,6 +72,19 @@ def test_server_negotiates_modern_and_legacy_protocols() -> None:
         "search_bm25",
         "search_semantic",
     } <= modern_tools
+
+
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+def test_server_advertises_installed_version(mode: Literal["auto", "legacy"]) -> None:
+    async def server_identity() -> tuple[str, str]:
+        async with Client(server_module.mcp, mode=mode, cache=None) as client:
+            return client.server_info.name, client.server_info.version
+
+    name, version = asyncio.run(server_identity())
+
+    assert name == "codenib"
+    assert version
+    assert version == package_version()
 
 
 def test_search_tool_schemas_publish_bounded_inputs() -> None:
