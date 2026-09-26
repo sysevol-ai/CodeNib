@@ -212,6 +212,16 @@ three-platform installed-package coverage, manylinux artifact verification and
 Python 3.10–3.14 ABI3 smokes. The merge message was inspected; actual provider
 consent and deployment remain open.
 
+Post-release installation guides in draft
+[#798](https://github.com/sysevol-ai/CodeNib/pull/798) are separate from #797.
+They use the versioned package and its bundled frontend, while keeping authorization
+and hosted-trial promotion gates explicit. Do not merge those instructions
+until 0.2.4 is publicly available and its tag resolves to the accepted release
+commit. A fresh installation of the CI-built manylinux x86-64 wheel needs only
+the `grep` extra to serve real HTTP planning metadata and source candidates:
+MCP, auth, graph and model SDK packages are absent, credential headers are
+rejected, and no provider call or credential read occurs.
+
 Native registration is merged in
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785) as `50215406`. `codenib init` checks or
 requests authorization and registers source-only MCP through Claude Code/Codex
@@ -333,7 +343,12 @@ Without the opt-in, static Ask keeps local-agent setup. Existing live Wiki Ask
 is unchanged. Local browser acceptance uses real Requests source and fixture
 provider calls, with no paid calls. Trial code review is complete in merged
 #796; actual provider consent, release/deployment and broader corpus curation
-remain open.
+remain open. The CI-built 0.2.4 base wheel exports all 15 cached pages using
+its packaged frontend without a CodeNib checkout, frontend override, Node.js,
+MCP/auth/graph/model SDKs or a network request. The same installed CLI with
+only the `grep` extra also exports the optional trial with a placeholder HTTPS
+origin. Both exports leave SQLite, configuration and registry bytes unchanged;
+the trial output is acceptance material, not a public deployment.
 
 The public demo must remain useful without authentication or a live LLM.
 

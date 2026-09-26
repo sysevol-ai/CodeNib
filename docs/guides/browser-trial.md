@@ -12,10 +12,10 @@ OpenRouter and submit a question, your browser asks a model to plan bounded grep
 searches, then asks Jev to rank the matching source. Results link to file and
 line ranges at the Wiki's published commit.
 
-**Source-checkout preview:** this feature is not in PyPI 0.2.3 and has not been
-deployed to the public demo. The complete browser flow has passed with real
+**Optional deployment preview in CodeNib 0.2.4:** this feature has not been
+enabled on the public demo. The complete browser flow has passed with real
 Requests source and fixture provider responses. Actual provider consent and
-production-host acceptance remain release gates. Those checks do not establish
+production-host acceptance remain deployment gates. Those checks do not establish
 retrieval quality or coding-agent token savings.
 
 ## Connect and query
@@ -71,15 +71,15 @@ and retain the exact source checkout and source-selection manifest used by that
 export. Publish only a public repository that you intend readers to search.
 No private repository submission or hosted indexing route is provided.
 
-Use one reviewed source revision for the frontend, exporter and service. Build
-the frontend, then opt in when exporting:
+Use the same package version for the frontend, exporter and source service.
+The package includes the prebuilt frontend; Node.js and a CodeNib checkout are
+not required. After completing the deployment gates below, opt in when exporting:
 
 ```bash
-make web-deps
-npm --prefix web run build
+python -m pip install "codenib[grep]==0.2.4"
 codenib export --wiki-config /path/to/qa_config.yaml \
   --wiki-repo psf__requests --output /path/to/site \
-  --frontend-dir web/dist --base-path / \
+  --base-path / \
   --trial-api-base https://source.example.com
 ```
 
