@@ -31,14 +31,14 @@ permissions:
 
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.4
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
     with:
       preset: fast
 ```
 
-The version tag keeps the compiler, frontend, Action, and artifact schema on
-one reviewed version. Production deployments may replace it with the tag's
-resolved commit SHA. In the repository's **Settings > Pages**, select
+The commit pin resolves to v0.2.4 and keeps the compiler, frontend, Action,
+and artifact schema on one reviewed version. When upgrading, update both
+the commit SHA and its version comment. In the repository's **Settings > Pages**, select
 **GitHub Actions** as the source.
 
 The workflow checks out the caller's exact commit, builds or reuses the
@@ -62,7 +62,7 @@ Select `semantic` when consumers need the portable dense-vector view:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.4
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
     with:
       preset: semantic
 ```
@@ -81,7 +81,7 @@ artifact or Pages workflow:
 ```yaml
 jobs:
   publish:
-    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@v0.2.4
+    uses: sysevol-ai/CodeNib/.github/workflows/codenib-pages.yml@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
     with:
       preset: semantic
       embedding-provider: openai
@@ -217,7 +217,7 @@ The composite Action can be used directly when another static host or artifact
 store owns deployment:
 
 ```yaml
-- uses: sysevol-ai/CodeNib/.github/actions/publish@v0.2.4
+- uses: sysevol-ai/CodeNib/.github/actions/publish@3f3bc2cf44ba83d1d86e9e5eb74f8da0f8bc63ac # v0.2.4
   id: codenib
   with:
     preset: fast
