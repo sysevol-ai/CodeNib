@@ -5110,7 +5110,8 @@ def test_readme_evidence_drops_chrome_and_keeps_complete_paragraphs():
     assert prepared.endswith((".", "!", "?"))
 
 
-def test_evidence_items_prefer_the_current_source_span(tmp_path):
+@pytest.mark.parametrize("indexed_end_line", [2, 3])
+def test_evidence_items_prefer_the_current_source_span(tmp_path, indexed_end_line):
     source = tmp_path / "src" / "core.py"
     source.parent.mkdir(parents=True)
     source.write_text(
@@ -5137,7 +5138,7 @@ def test_evidence_items_prefer_the_current_source_span(tmp_path):
                 "node_name": "Router.dispatch",
                 "type": "method",
                 "start_line": 0,
-                "end_line": 2,
+                "end_line": indexed_end_line,
                 "content": "class Router:\n    pass  # stale index excerpt",
             }
         ]
@@ -5146,6 +5147,9 @@ def test_evidence_items_prefer_the_current_source_span(tmp_path):
     assert len(evidence) == 1
     assert "Authorization" in evidence[0].content
     assert "stale index excerpt" not in evidence[0].content
+    assert (evidence[0].start_line, evidence[0].end_line) == (1, 3)
+    citation = wiki._citation_payload(evidence)[0]
+    assert citation["end_line"] == len(source.read_text().splitlines())
 
 
 def test_evidence_items_keep_indexed_content_for_an_incomplete_span(tmp_path):
@@ -7153,6 +7157,43 @@ def test_agent_wiki_persists_through_injected_store_without_json_mirror(tmp_path
         "llm_identity": "",
         "data": payload,
     }
+
+
+def test_page_prompt_upgrade_reuses_outline_without_reusing_old_page(
+    tmp_path, monkeypatch
+):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    store = SQLiteWikiStore(tmp_path / "wiki-cache" / "wiki.sqlite3")
+    meta = {"id": "overview", "title": "Overview"}
+    outline = {"pages": [meta]}
+    old_page = {"id": "overview", "content": "Cached before the range fix."}
+    suffix = AgentWiki._page_cache_suffix(meta)
+    with monkeypatch.context() as previous_version:
+        previous_version.setattr(agent_wiki_module, "_PAGE_PROMPT_VERSION", "128")
+        original = AgentWiki(bundle, model="fake-model", store=store)
+        original._write_cache("outline", outline)
+        original._write_cache(suffix, old_page)
+        old_entry_id = original._store_entry_id(suffix)
+        old_entry = store.read(old_entry_id)
+        assert original._read_cache(suffix) == old_page
+
+    reloaded = AgentWiki(bundle, model="fake-model", store=store)
+
+    assert reloaded._read_cache("outline") == outline
+    assert reloaded._read_cache(suffix) is None
+    assert store.read(old_entry_id) == old_entry
+    assert reloaded._llm is None
 
 
 def test_agent_wiki_reads_store_envelope_with_retired_provenance_field(tmp_path):
