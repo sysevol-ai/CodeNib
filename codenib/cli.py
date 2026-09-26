@@ -837,24 +837,38 @@ def _add_grep_jev_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_export(args: argparse.Namespace) -> int:
-    repo_path = resolve_repo_path(args.repo)
-    manifest_path = resolve_manifest_path(str(repo_path))
-    output_dir = (
-        Path(os.path.abspath(os.fspath(Path(args.output).expanduser())))
-        if args.output
-        else manifest_path.parent / "static-wiki"
-    )
-
-    from .web.static_export import export_static_wiki
+    from .web.static_export import export_cached_wiki, export_static_wiki
 
     try:
-        result = export_static_wiki(
-            repo_path,
-            manifest_path,
-            output_dir,
-            frontend_dir=args.frontend_dir,
-            base_path=args.base_path,
-        )
+        if args.wiki_config or args.wiki_repo:
+            if not args.wiki_config or not args.wiki_repo or not args.output:
+                raise CLIError(
+                    "cached export requires --wiki-config, --wiki-repo and --output"
+                )
+            if args.repo is not None:
+                raise CLIError("choose a repository path or --wiki-config, not both")
+            result = export_cached_wiki(
+                args.wiki_config,
+                args.wiki_repo,
+                Path(args.output),
+                frontend_dir=args.frontend_dir,
+                base_path=args.base_path,
+            )
+        else:
+            repo_path = resolve_repo_path(args.repo or ".")
+            manifest_path = resolve_manifest_path(str(repo_path))
+            output_dir = (
+                Path(os.path.abspath(os.fspath(Path(args.output).expanduser())))
+                if args.output
+                else manifest_path.parent / "static-wiki"
+            )
+            result = export_static_wiki(
+                repo_path,
+                manifest_path,
+                output_dir,
+                frontend_dir=args.frontend_dir,
+                base_path=args.base_path,
+            )
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
 
@@ -2997,7 +3011,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="export an indexed repository Wiki for static hosting",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    export_parser.add_argument("repo", nargs="?", default=".")
+    export_parser.add_argument("repo", nargs="?", help="repository path; defaults to .")
+    export_parser.add_argument(
+        "--wiki-config",
+        help="export precomputed story pages from this Wiki config without model calls",
+    )
+    export_parser.add_argument(
+        "--wiki-repo",
+        help="repository id in the configured Wiki registry; requires --wiki-config",
+    )
     export_parser.add_argument(
         "--output",
         help="output directory; defaults beside the repository manifest",

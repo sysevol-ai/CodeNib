@@ -57,6 +57,15 @@ export function assetUrl(path: string): string {
 export function mediaAssetUrl(path: string): string | null {
   const value = path.trim();
   if (!value || /[\\\u0000-\u001f\u007f]/.test(value)) return null;
+  // Exports own every displayed media file. Never turn a cached live-server
+  // URL or third-party image into a hidden request from a static preview.
+  if (isStaticRuntime()) {
+    if (!/^data\/repos\/[A-Za-z0-9_./%-]+$/.test(value)) return null;
+    try {
+      const decoded = decodeURIComponent(value);
+      if (/[\\\u0000-\u001f\u007f]/.test(decoded) || decoded.split("/").some((p) => p === "." || p === "..")) return null;
+    } catch { return null; }
+  }
   if (/^https?:/i.test(value)) {
     try {
       const url = new URL(value);

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header";
+import AgentSetup from "@/components/AgentSetup";
+import { isStaticRuntime } from "@/lib/runtime";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
 import CodePanel from "@/components/CodePanel";
@@ -326,5 +328,8 @@ export default function AskPage({
   repoId: string;
   query: string;
 }) {
+  if (isStaticRuntime()) {
+    return <div className="wiki"><Header /><AgentSetup repoId={repoId} query={query} /></div>;
+  }
   return <AskAnswer repoId={repoId} query={query} />;
 }

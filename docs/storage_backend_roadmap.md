@@ -74,6 +74,12 @@ mutate the source database, its sidecars, or its lock directory. This private
 maintenance entry does not change the public `SQLiteWikiStore(path)`
 constructor or `WikiStore` protocol.
 
+Cached-story static publication also uses this private snapshot reader. The
+exporter injects the captured `WikiStore` into `AgentWiki`, reads existing
+outline/page envelopes, and never starts generation or changes the source
+database. This is a Wiki-domain consumer of the existing boundary; repository
+manifests, source captures and published site files remain file artifacts.
+
 ## Promotion Rule
 
 Each later milestone is demand-gated. A design document, test fixture, or

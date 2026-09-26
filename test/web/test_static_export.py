@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import builtins
 import json
+from dataclasses import asdict
 from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 
@@ -30,10 +31,13 @@ from codenib.web.static_export import (
     STATIC_EXPORT_MANIFEST,
     _embed_page_graph_sources,
     _load_static_bundle,
+    export_cached_wiki,
     export_static_wiki,
     normalize_base_path,
 )
+from codenib.wiki.agent_wiki import AgentWiki
 from codenib.wiki.builder import WikiBuilder
+from codenib.wiki.sqlite_store import SQLiteWikiStore
 
 
 class _Builder:
@@ -1479,3 +1483,158 @@ def test_normalize_base_path(value: str, expected: str) -> None:
 def test_normalize_base_path_rejects_unsafe_values(value: str) -> None:
     with pytest.raises(ValueError):
         normalize_base_path(value)
+
+
+@pytest.fixture
+def cached_export_setup(tmp_path, monkeypatch):
+    setup = _bound_source_export_setup(tmp_path, monkeypatch)
+    load_bundle = static_module._load_static_bundle
+
+    def cached_bundle(local, manifest_path, *, source_reader, entry=None):
+        result = load_bundle(local, manifest_path, source_reader=source_reader)
+        result.manifest = RepoManifest.load(manifest_path)
+        if entry is not None:
+            result.entry = entry
+        return result
+
+    monkeypatch.setattr(static_module, "_load_static_bundle", cached_bundle)
+    # Seeding cache entries does no source I/O. Export receives the real bound
+    # source reader, graph and WikiBuilder from _bound_source_export_setup.
+    bundle = cached_bundle(None, setup.manifest_path, source_reader=object())
+    data = tmp_path / "wiki-data"
+    data.mkdir()
+    config_path = tmp_path / "wiki.yaml"
+    config_path.write_text(json.dumps({"data_dir": str(data)}))
+    (data / REGISTRY_FILENAME).write_text(json.dumps([asdict(bundle.entry)]))
+    database = data / "wiki_cache" / "wiki.sqlite3"
+    wiki = AgentWiki(bundle, "fixture-model", store=SQLiteWikiStore(database))
+    outline = _Builder(None).page_tree()
+    wiki._write_cache("outline", {"pages": outline})
+    page_values = _Builder(None).pages
+    for page_id, page in page_values.items():
+        meta = wiki._find(page_id, outline)
+        if page_id == "overview":
+            meta = wiki._overview_page_meta(meta, outline[1:])
+        page["generation"] = {
+            "mode": "generated",
+            "model": "fixture-model",
+            "prompt_version": "fixture-prompt",
+        }
+        page["story"] = {"version": 1, "origin": "fixture", "beats": []}
+        if page["citations"]:
+            page["citations"][0]["content"] = "stale unverified snippet"
+        wiki._write_cache(wiki._page_cache_suffix(meta), page)
+    setup.config_path, setup.database, setup.data, setup.wiki = (
+        config_path,
+        database,
+        data,
+        wiki,
+    )
+    setup.pages, setup.outline = page_values, outline
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail(
+            "static publication must not generate, publish or take a generation lock"
+        )
+
+    for name in (
+        "page",
+        "outline",
+        "_client",
+        "_generate_page",
+        "_write_cache",
+        "_cache_generation_lock",
+    ):
+        monkeypatch.setattr(AgentWiki, name, forbidden)
+    monkeypatch.setattr(static_module, "prepare_local_wiki", forbidden)
+    return setup
+
+
+def test_cached_export_preserves_story_provenance_and_reads_only_snapshot(
+    cached_export_setup,
+):
+    setup = cached_export_setup
+    before = _tree_bytes(setup.data)
+    config_before = setup.config_path.read_bytes()
+    result = export_cached_wiki(
+        setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+    )
+    root = setup.output / "data/repos/demo"
+    page = json.loads((root / "pages/overview.json").read_text())
+    assert result.page_count == 2
+    assert page["markdown"] == setup.pages["overview"]["markdown"]
+    assert page["story"] == setup.pages["overview"]["story"]
+    assert page["generation"]["model"] == "fixture-model"
+    assert "trusted-source" in page["citations"][0]["content"]
+    assert "stale unverified" not in page["citations"][0]["content"]
+    assert (root / "page-boundaries/overview.json").is_file()
+    assert (root / "wiki-map.json").is_file()
+    manifest = json.loads(result.manifest_path.read_text())
+    assert manifest["builder"]["wiki_source"] == "cached"
+    assert manifest["generation"]["models"] == ["fixture-model"]
+    assert manifest["generation"]["prompt_versions"] == ["fixture-prompt"]
+    assert _tree_bytes(setup.data) == before
+    assert setup.config_path.read_bytes() == config_before
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["outline", "missing", "degraded", "quality", "grounding", "range", "identity"],
+)
+def test_cached_export_refuses_incomplete_or_mismatched_pages(
+    cached_export_setup, fault
+):
+    setup = cached_export_setup
+    wiki = setup.wiki
+    store = SQLiteWikiStore(setup.database)
+    meta = wiki._find("architecture", setup.outline)
+    if fault == "outline":
+        entry_id, payload = wiki._store_entry_id("outline"), {"pages": []}
+    elif fault == "identity":
+        manifest = RepoManifest.load(setup.manifest_path)
+        manifest.indexes["bm25"].config["changed"] = True
+        manifest.save(setup.manifest_path)
+        entry_id, payload = wiki._store_entry_id("unrelated"), {}
+    else:
+        entry_id = wiki._store_entry_id(wiki._page_cache_suffix(meta))
+        payload = dict(setup.pages["architecture"])
+        if fault == "missing":
+            payload = None
+        elif fault == "degraded":
+            payload["generation"] = {"mode": "degraded"}
+        elif fault in {"quality", "grounding"}:
+            payload[fault] = {"valid": False}
+        elif fault == "range":
+            payload["citations"] = [
+                {"file": "src/runtime.py", "start_line": 1, "end_line": 999}
+            ]
+    store.publish(entry_id=entry_id, repository_id="demo", envelope={"data": payload})
+    before = _tree_bytes(setup.data)
+    with pytest.raises(ValueError, match="outline|not ready|citation"):
+        export_cached_wiki(
+            setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+        )
+    assert not setup.output.exists()
+    assert _tree_bytes(setup.data) == before
+
+
+def test_cached_export_rejects_active_database_without_touching_inputs(
+    cached_export_setup,
+):
+    setup = cached_export_setup
+    Path(str(setup.database) + "-wal").write_bytes(b"active writer")
+    before = _tree_bytes(setup.data)
+    with pytest.raises(RuntimeError, match="quiescent"):
+        export_cached_wiki(
+            setup.config_path, "demo", setup.output, frontend_dir=setup.frontend
+        )
+    assert _tree_bytes(setup.data) == before
+    assert not setup.output.exists()
+
+
+def test_cached_export_cannot_replace_wiki_inputs(cached_export_setup):
+    setup = cached_export_setup
+    with pytest.raises(ValueError, match="contain Wiki inputs"):
+        export_cached_wiki(
+            setup.config_path, "demo", setup.data, frontend_dir=setup.frontend
+        )
