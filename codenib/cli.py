@@ -892,9 +892,15 @@ def _run_auth(args: argparse.Namespace) -> int:
         else:
             stores = ("file", "keyring") if args.store == "all" else (args.store,)
             errors = []
+            unavailable = []
             for store in stores:
                 try:
                     auth.forget_key(store=store)
+                except auth.KeyringUnavailableError as exc:
+                    if args.store == "all":
+                        unavailable.append(store)
+                    else:
+                        errors.append(str(exc))
                 except (auth.OpenRouterAuthError, OSError) as exc:
                     errors.append(str(exc))
             result = {
@@ -902,6 +908,10 @@ def _run_auth(args: argparse.Namespace) -> int:
                 "provider_revoked": False,
                 "revocation_url": "https://openrouter.ai/settings/keys",
                 "environment_key_present": "OPENROUTER_API_KEY" in os.environ,
+                "unavailable_stores": unavailable,
+                "removal_scope": (
+                    "available local stores; unavailable stores were not inspected"
+                ),
             }
             if errors:
                 result["errors"] = errors

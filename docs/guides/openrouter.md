@@ -99,6 +99,14 @@ The logout result explicitly reports that provider revocation has not occurred
 and whether an environment key is still present. If the OS keyring is locked,
 local removal reports the failure instead of claiming success.
 
+Default logout removes credentials from the available local stores and lists
+unavailable backends in `unavailable_stores`; those backends were not inspected.
+An explicit `--store keyring` request fails when no supported backend exists.
+File logout can remove a damaged credential without parsing it, and preparation
+or logout recovers private temporary keys left by an interrupted file save.
+These operations serialize with active saves so cleanup does not remove a
+writer's temporary key. Unsafe linked entries cause a removal error.
+
 ## Source and credential boundaries
 
 The planner receives your question and a directory overview. Jev receives your

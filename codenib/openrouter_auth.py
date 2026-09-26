@@ -18,6 +18,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import secrets
 import stat
 import time
@@ -45,6 +46,10 @@ _OS_KEYRINGS = {
 
 class OpenRouterAuthError(RuntimeError):
     """Safe error text: never include a credential, grant, or provider body."""
+
+
+class KeyringUnavailableError(OpenRouterAuthError):
+    """No supported keyring backend is available in this environment."""
 
 
 def validate_key(value: object) -> str:
@@ -129,6 +134,57 @@ def _check_file(fd: int) -> None:
         )
 
 
+def _unlink_owned_file(directory: int, name: str) -> bool:
+    """Remove an owned regular entry without parsing its possibly corrupt key."""
+    try:
+        info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return False
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_nlink != 1
+    ):
+        raise OpenRouterAuthError("Cannot remove an unsafe credential file entry")
+    os.unlink(name, dir_fd=directory)
+    return True
+
+
+@contextmanager
+def _locked_credential_directory(*, create: bool = False) -> Iterator[int]:
+    """Serialize file saves/removal and recover interrupted atomic writes.
+
+    Lock order is the private credential directory's existing file-lock
+    primitive, then fd-relative entry operations. Replacement is a save's
+    linearization point; unlink is logout's. A killed writer releases the OS
+    lock, leaving its private temporary in our reserved name space. The next
+    preparation/save/logout owns cleanup under this same lock, so recovery
+    cannot remove a cooperating writer's active temporary. Readers use the
+    atomically published file and need no lock. The lock entry is retained.
+    """
+    from .compiler.cache_lock import compiler_cache_lock
+
+    with _credential_directory(create=create) as directory:
+        deadline = time.monotonic() + 30
+
+        def check():
+            if time.monotonic() >= deadline:
+                raise OpenRouterAuthError("Timed out waiting for credential storage")
+
+        with compiler_cache_lock(_credential_root(), check_cancelled=check):
+            pinned = os.fstat(directory)
+            current = _credential_root().stat(follow_symlinks=False)
+            if (pinned.st_dev, pinned.st_ino) != (current.st_dev, current.st_ino):
+                raise OpenRouterAuthError("Credential directory changed during locking")
+            removed = False
+            for name in os.listdir(directory):
+                if re.fullmatch(r"\.openrouter-[0-9a-f]{32}", name):
+                    removed = _unlink_owned_file(directory, name) or removed
+            if removed:
+                os.fsync(directory)
+            yield directory
+
+
 def _read_file_key() -> str | None:
     # Windows uses the OS credential manager; do not pretend mode bits are ACLs.
     if os.name != "posix":
@@ -199,7 +255,7 @@ def prepare_store(store: str) -> None:
     """Check storage before asking the user to mint a new key."""
     if store == "file":
         try:
-            with _credential_directory(create=True):
+            with _locked_credential_directory(create=True):
                 pass
             _read_file_key()
         except OSError:
@@ -242,7 +298,7 @@ def save_key(key: str, *, store: str) -> None:
         return
     temporary = f".openrouter-{secrets.token_hex(16)}"
     try:
-        with _credential_directory() as directory:
+        with _locked_credential_directory() as directory:
             fd = os.open(
                 temporary,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -276,15 +332,19 @@ def save_key(key: str, *, store: str) -> None:
 def forget_key(*, store: str) -> None:
     """Forget one local copy. Provider revocation remains an explicit user action."""
     if store == "file":
-        if _read_file_key() is None:
+        if os.name != "posix":
             return
-        with _credential_directory() as directory:
-            os.unlink(_CREDENTIAL_FILE, dir_fd=directory)
-            os.fsync(directory)
+        try:
+            _credential_root().lstat()
+            with _locked_credential_directory() as directory:
+                if _unlink_owned_file(directory, _CREDENTIAL_FILE):
+                    os.fsync(directory)
+        except FileNotFoundError:
+            return
     elif store == "keyring":
         backend = _os_keyring()
         if backend is None:
-            raise OpenRouterAuthError("OS keyring unavailable; no key was removed")
+            raise KeyringUnavailableError("OS keyring unavailable; no key was removed")
         try:
             if backend.get_password(_SERVICE, _ACCOUNT) is not None:
                 backend.delete_password(_SERVICE, _ACCOUNT)

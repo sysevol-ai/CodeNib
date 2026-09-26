@@ -8,10 +8,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import multiprocessing
 import os
 import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -20,6 +22,7 @@ import pytest
 import requests
 
 from codenib import openrouter_auth as auth
+from codenib.compiler.cache_lock import COMPILER_CACHE_LOCK_FILENAME
 
 KEY = "sk-or-v1-local-fixture-secret"
 GRANT = "single-use-fixture-grant"
@@ -269,7 +272,7 @@ def test_explicit_file_login_is_private_atomic_and_used_by_retrieval(api):
     assert root.stat().st_mode & 0o777 == 0o700
     assert path.stat().st_mode & 0o777 == 0o600
     assert json.loads(path.read_text())["key"] == KEY
-    assert list(root.iterdir()) == [path]
+    assert {p.name for p in root.iterdir()} == {path.name, COMPILER_CACHE_LOCK_FILENAME}
     assert result["store"] == "file"
     assert auth.credential() == (KEY, "file")
     assert GrepJevConfig().credential() == KEY
@@ -298,9 +301,83 @@ def test_failed_atomic_replacement_preserves_old_key_and_cleans_temporary_file(
     with pytest.raises(auth.OpenRouterAuthError):
         auth.save_key("new-key-must-not-be-partially-visible", store="file")
     assert auth.credential() == (KEY, "file")
-    assert [path.name for path in auth._credential_root().iterdir()] == [
-        "openrouter.json"
-    ]
+    assert {path.name for path in auth._credential_root().iterdir()} == {
+        "openrouter.json",
+        COMPILER_CACHE_LOCK_FILENAME,
+    }
+
+
+@pytest.mark.parametrize("payload", [b"{", b'{"schema":2,"key":"broken"}', b"x" * 9000])
+def test_logout_can_remove_corrupt_credential_payload_without_parsing_it(payload):
+    auth.save_key(KEY, store="file")
+    path = auth._credential_root() / "openrouter.json"
+    path.write_bytes(payload)
+    with pytest.raises(auth.OpenRouterAuthError):
+        auth.credential()
+    auth.forget_key(store="file")
+    assert not path.exists()
+    auth.save_key(KEY, store="file")
+    assert auth.credential() == (KEY, "file")
+
+
+def test_default_logout_succeeds_for_file_fallback_with_no_keyring(monkeypatch, capsys):
+    from codenib.cli import run
+
+    auth.save_key(KEY, store="file")
+    monkeypatch.setattr(auth, "_os_keyring", lambda: None)
+    assert run(["auth", "logout"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["local_removal_complete"]
+    assert report["unavailable_stores"] == ["keyring"]
+    assert not (auth._credential_root() / "openrouter.json").exists()
+    assert run(["auth", "logout", "--store", "keyring"]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert not report["local_removal_complete"]
+
+
+def _crash_before_credential_publication(root):
+    auth._credential_root = lambda: Path(root)
+
+    def die(*_args, **_kwargs):
+        os._exit(0)
+
+    auth.os.replace = die
+    auth.save_key(KEY, store="file")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="explicit POSIX file fallback")
+def test_logout_recovers_secret_temporary_left_by_a_killed_writer():
+    root = auth._credential_root()
+    process = multiprocessing.get_context("spawn").Process(
+        target=_crash_before_credential_publication, args=(str(root),)
+    )
+    process.start()
+    try:
+        process.join(timeout=10)
+        assert process.exitcode == 0
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+    temporaries = list(root.glob(".openrouter-*"))
+    assert len(temporaries) == 1
+    assert KEY.encode() in temporaries[0].read_bytes()
+    assert not (root / "openrouter.json").exists()
+    auth.forget_key(store="file")
+    assert not list(root.glob(".openrouter-*"))
+    assert all(KEY.encode() not in p.read_bytes() for p in root.iterdir())
+
+
+def test_logout_refuses_symlinked_recovery_entry_without_touching_target(tmp_path):
+    auth.prepare_store("file")
+    outside = tmp_path / "outside"
+    outside.write_text("must remain")
+    orphan = auth._credential_root() / (".openrouter-" + "a" * 32)
+    orphan.symlink_to(outside)
+    with pytest.raises(auth.OpenRouterAuthError, match="unsafe credential file"):
+        auth.forget_key(store="file")
+    assert orphan.is_symlink()
+    assert outside.read_text() == "must remain"
 
 
 @pytest.mark.parametrize("unsafe", ["permissions", "symlink", "hardlink", "fifo"])
