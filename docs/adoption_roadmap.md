@@ -191,14 +191,24 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Turn the Wiki demo into a preview and activation path
 
-Status: the story and graph UI is implemented in
-[#772](https://github.com/sysevol-ai/CodeNib/pull/772), rebased onto the current
-`main`; it is not merged or released. The restack preserves the existing Wiki
-changes and the static marketing preview introduced by #781. Web/Wiki/CLI
-verification and the public-doc checks pass. Static cache publication and
-agent activation are in dependent #784; a current SQLite corpus, bounded
-operator generation and production deployment remain open gates. Legacy JSON
-Wiki caches are not read or migrated.
+Status: story browsing is merged in
+[#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
+publication is implemented in [#784](https://github.com/sysevol-ai/CodeNib/pull/784),
+not yet merged or deployed. A real 15-page Requests corpus exports from SQLite
+with all pages generated and grounding-valid. Export verifies 159 citation
+ranges, retains 148 inline excerpts and omits 11 credential-shaped previews
+while preserving their repository links. Source/model identity, cache prompt
+versions and file hashes accompany the static artifact.
+
+The combined validation tree includes the graph-boundary, evidence-serialization
+and source-range fixes in [#789](https://github.com/sysevol-ai/CodeNib/pull/789),
+[#790](https://github.com/sysevol-ai/CodeNib/pull/790) and
+[#791](https://github.com/sysevol-ai/CodeNib/pull/791). Desktop and mobile checks
+cover all 15 pages, citations, unavailable pages and the local-agent handoff,
+with no backend/external requests, browser errors or horizontal overflow.
+Export makes no network calls and preserves its source database/configuration.
+The local corpus and export are verified; dependency merges, hosted authorization,
+release/deployment and broader corpus curation remain open.
 
 The public demo must remain useful without authentication or a live LLM.
 
