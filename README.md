@@ -35,11 +35,11 @@ SPDX-License-Identifier: Apache-2.0
 </div>
 
 <p align="center">
-  <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.gif" alt="Recorded CodeGraph setup and Claude Code explore_context call on Requests, returning source references for authentication during redirects" width="100%">
+  <a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.png" alt="Play a recorded CodeGraph setup and Claude Code explore_context call on Requests, returning source references for authentication during redirects" width="100%">
   </a>
 </p>
-<p align="center">15-second replay of real CLI output · waits condensed ·
+<p align="center"><a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">▶ Watch the 15-second replay</a> · real CLI output · waits condensed ·
   <a href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Pinned source, transcript and setup details</a>.
 </p>
 

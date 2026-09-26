@@ -25,6 +25,8 @@ with relevant PRs/issues. Do not mark a broad goal complete just because a
 single subgoal landed. Prefer local targeted verification and continued
 implementation over waiting on slow remote CI; run the remote/slow tier after
 the merge queue or feature batch is otherwise coherent.
+Update each milestone's outcomes and open gates in the PR that changes them;
+an update only on a parallel branch does not keep that PR's roadmap current.
 
 For the current multi-language SCIP cold-start and acceleration program, use
 `docs/scip_multilanguage_roadmap.md` as the durable objective record. Update it

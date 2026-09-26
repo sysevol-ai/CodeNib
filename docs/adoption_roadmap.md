@@ -39,17 +39,18 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 
 ### A1 — Make the existing product understandable
 
-Status: implemented and locally verified in
-[#781](https://github.com/sysevol-ai/CodeNib/pull/781) (open), based on `main`;
-merge and deployment remain. README has two setup commands, an early
-authentic Wiki image, a
+Status: [#781](https://github.com/sysevol-ai/CodeNib/pull/781) merged into
+`main` as `28910cc9`; production deployment verification remains. README has
+two setup commands, an early authentic product image, a
 sourced comparison and prominent language/reproduction links. Landing uses a
 static preview instead of live demo iframes. Public method, comparison and
 architecture pages are added. Strict MkDocs build, public-doc boundary audit,
 pre-commit checks and desktop/mobile/no-JavaScript browser checks pass. The
 landing page makes zero external requests and its setup links reach the two
-commands without overflow. The agent GIF and fresh-install recording remain
-in A4, and production grep/Jev authorization remains in A2/A3.
+commands without overflow. The recorded agent clip and source-linked poster
+are implemented in #788 (A4), including user-controlled playback. A fresh
+published-package recording and paired token comparison remain open;
+production grep/Jev authorization remains in A2/A3.
 
 - Rewrite README and website around finding source context for coding agents.
   Put the verified 71.4% Recall@5 result in the first screen with its dataset,
@@ -135,7 +136,15 @@ code disclosure; no automatic billed retry after budget exhaustion.
 
 ### A4 — Show the benefit on the user's own repository
 
-Status: planned; record the shipping CodeGraph path independently of A2.
+Status: the actual CodeGraph/Claude Code recording and first-screen media are
+implemented in [#788](https://github.com/sysevol-ai/CodeNib/pull/788), independently
+of A2. The clip replays selected CLI output on pinned Requests source; waits
+are condensed and source/profile preservation is verified. GIF, WebM, MP4 and
+a static poster are served locally, with transcript/provenance and a renderer
+that makes no model calls. The source build includes merged #780; a newly
+published package install remains to be recorded. A paired agent/token study,
+merge and website deployment remain open. Detailed versions and validation
+live in #788 and the public CodeGraph recording guide.
 
 - Record about 15 seconds of real `codegraph init`, a Claude Code
   `explore_context` call, and source-linked results. Retain the repository,
