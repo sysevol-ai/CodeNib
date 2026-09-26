@@ -950,6 +950,9 @@ def _add_grep_jev_arguments(parser: argparse.ArgumentParser) -> None:
 def _run_export(args: argparse.Namespace) -> int:
     from .web.static_export import export_cached_wiki, export_static_wiki
 
+    trial_options = (
+        {"trial_api_base": args.trial_api_base} if args.trial_api_base else {}
+    )
     try:
         if args.wiki_config or args.wiki_repo:
             if not args.wiki_config or not args.wiki_repo or not args.output:
@@ -964,8 +967,14 @@ def _run_export(args: argparse.Namespace) -> int:
                 Path(args.output),
                 frontend_dir=args.frontend_dir,
                 base_path=args.base_path,
+                **trial_options,
             )
         else:
+            if args.trial_api_base:
+                raise CLIError(
+                    "--trial-api-base requires --wiki-config and --wiki-repo; "
+                    "index-derived exports do not carry a public repository identity"
+                )
             repo_path = resolve_repo_path(args.repo or ".")
             manifest_path = resolve_manifest_path(str(repo_path))
             output_dir = (
@@ -979,6 +988,7 @@ def _run_export(args: argparse.Namespace) -> int:
                 output_dir,
                 frontend_dir=args.frontend_dir,
                 base_path=args.base_path,
+                **trial_options,
             )
     except (OSError, RuntimeError, ValueError) as exc:
         raise CLIError(str(exc)) from exc
@@ -3283,6 +3293,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--base-path",
         default="/",
         help="URL path where the static site will be mounted",
+    )
+    export_parser.add_argument(
+        "--trial-api-base",
+        help=(
+            "opt a cached Wiki export into browser-owned OpenRouter queries "
+            "using this public source-service origin"
+        ),
     )
     export_parser.add_argument(
         "--frontend-dir",

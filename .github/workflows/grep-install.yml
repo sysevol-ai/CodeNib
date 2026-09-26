@@ -14,6 +14,8 @@ on:
       - "codenib/mcp/**"
       - "codenib/openrouter_auth.py"
       - "codenib/source_fingerprint.py"
+      - "codenib/_contained_source.py"
+      - "codenib/web/public_trial.py"
       - "codenib/_windows_fs_authority.py"
       - "codenib/cli.py"
       - "pyproject.toml"
@@ -29,6 +31,8 @@ on:
       - "codenib/mcp/**"
       - "codenib/openrouter_auth.py"
       - "codenib/source_fingerprint.py"
+      - "codenib/_contained_source.py"
+      - "codenib/web/public_trial.py"
       - "codenib/_windows_fs_authority.py"
       - "codenib/cli.py"
       - "pyproject.toml"
@@ -81,4 +85,4 @@ jobs:
           VAULT_ARGS: ${{ matrix.vault }}
         run: >-
           uv run --isolated --no-project --with '.[grep,mcp,auth]'
-          python -I scripts/smoke_release_grep.py $VAULT_ARGS
+          python -I scripts/smoke_release_grep.py --public-trial $VAULT_ARGS

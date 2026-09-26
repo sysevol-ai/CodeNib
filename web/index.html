@@ -17,16 +17,7 @@
     />
     <link rel="icon" href="/codenib-icon.svg" />
     <title>CodeNib Wiki · Source-linked repository docs</title>
-    <script>
-      (() => {
-        try {
-          const theme = localStorage.getItem("cm-theme");
-          if (theme === "dark" || theme === "light") {
-            document.documentElement.dataset.theme = theme;
-          }
-        } catch {}
-      })();
-    </script>
+    <script src="/theme.js"></script>
     <script src="/runtime-config.js"></script>
   </head>
   <body>

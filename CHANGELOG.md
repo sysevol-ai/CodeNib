@@ -13,6 +13,11 @@ All notable user-facing changes are recorded here. CodeNib follows
 
 ### Added
 
+- Optional browser OpenRouter trials on explicitly enabled static public Wikis.
+  The browser owns authorization and model requests; a separate bounded CPU
+  service returns source-checked grep candidates without receiving a model key.
+  Default static browsing still makes no model calls. Actual provider consent
+  and production-host acceptance remain preview deployment gates.
 - Jev reranking through OpenRouter's Decisions API, selectable with
   `rerank_strategy="decisions"`. The typed client supports Noul, Choice, and
   Score questions; reranking uses bounded batches and normalized relevance

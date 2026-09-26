@@ -11,6 +11,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from html import escape
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
@@ -719,6 +720,7 @@ def _copy_frontend(
     stage: OwnedDirectoryStage,
     *,
     base_path: str,
+    trial_api_base: str | None = None,
 ) -> None:
     file_count = 0
     byte_count = 0
@@ -744,6 +746,15 @@ def _copy_frontend(
     )
 
     def copy(reader: PublicationDirectoryReader) -> None:
+        if trial_api_base and not {
+            "openrouter-callback.html",
+            "openrouter-callback.js",
+            "theme.js",
+            "static-route.js",
+        }.issubset({record.path for record in reader.file_records()}):
+            raise ValueError(
+                "rebuild the frontend before enabling the OpenRouter trial"
+            )
         for record in reader.file_records():
             if record.path in {"runtime-config.js", "404.html"}:
                 continue
@@ -759,6 +770,31 @@ def _copy_frontend(
                     max_bytes=_MAX_FRONTEND_INDEX_BYTES,
                 )
                 mounted = _mounted_frontend_index(payload, base_path=base_path)
+                if trial_api_base:
+                    policy = (
+                        "default-src 'self'; script-src 'self'; script-src-attr 'none'; "
+                        f"connect-src 'self' https://openrouter.ai {trial_api_base}; "
+                        "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                        "font-src 'self' data:; object-src 'none'; frame-src 'none'; "
+                        "base-uri 'self'; form-action 'none'"
+                    )
+                    meta = (
+                        '<meta name="referrer" content="no-referrer">'
+                        '<meta http-equiv="Content-Security-Policy" content="'
+                        + escape(policy, quote=True)
+                        + '">'
+                    )
+                    mounted, count = re.subn(
+                        rb"(<head(?:\s[^>]*)?>)",
+                        lambda match, policy_meta=meta.encode(): match[1] + policy_meta,
+                        mounted,
+                        count=1,
+                        flags=re.I,
+                    )
+                    if count != 1:
+                        raise ValueError(
+                            "OpenRouter trial requires an HTML head element"
+                        )
                 stage.write_file(
                     record.path,
                     (mounted,),
@@ -780,13 +816,15 @@ def _copy_frontend(
     reopen_authenticated_directory(source, ownership, copy)
 
 
-def _runtime_config(base_path: str) -> bytes:
+def _runtime_config(base_path: str, trial_api_base: str | None = None) -> bytes:
     data_base = f"{base_path.rstrip('/')}/data" if base_path != "/" else "/data"
     config = {
         "mode": "static",
         "basePath": base_path,
         "dataBase": data_base,
     }
+    if trial_api_base:
+        config["trialApiBase"] = trial_api_base
     encoded = json.dumps(
         config, ensure_ascii=True, sort_keys=True, separators=(",", ":")
     )
@@ -796,8 +834,14 @@ def _runtime_config(base_path: str) -> bytes:
     ).encode("utf-8")
 
 
-def _not_found_page(base_path: str) -> bytes:
+def _not_found_page(base_path: str, *, external_script: bool = False) -> bytes:
     root = f"{base_path.rstrip('/')}/" if base_path != "/" else "/"
+    if external_script:
+        return (
+            '<!doctype html><meta charset="utf-8"><title>CodeNib Wiki</title>'
+            f'<script src="{escape(root)}runtime-config.js"></script>'
+            f'<script src="{escape(root)}static-route.js"></script>'
+        ).encode("utf-8")
     encoded_root = json.dumps(root)
     return (
         '<!doctype html><meta charset="utf-8"><title>CodeNib Wiki</title>'
@@ -1018,6 +1062,7 @@ def export_static_wiki(
     environ: Mapping[str, str] | None = None,
     wiki_store: WikiStore | None = None,
     wiki_entry: RepoEntry | None = None,
+    trial_api_base: str | None = None,
 ) -> StaticExportResult:
     """Publish a source-bound Wiki with no model calls.
 
@@ -1031,6 +1076,49 @@ def export_static_wiki(
         raise ValueError(
             "cached Wiki export requires both its store and registry entry"
         )
+
+    if trial_api_base is not None:
+        parsed = urlsplit(trial_api_base)
+        host = parsed.hostname or ""
+        port = parsed.port
+        if ":" in host:
+            raise ValueError(
+                "trial API IPv6 literals are not supported by browser CSP; "
+                "use localhost or 127.0.0.1 for local acceptance"
+            )
+        if (
+            not re.fullmatch(r"[a-zA-Z0-9.-]+", host)
+            or parsed.username
+            or parsed.password
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or (
+                parsed.scheme != "https"
+                and not (parsed.scheme == "http" and host in {"localhost", "127.0.0.1"})
+            )
+        ):
+            raise ValueError(
+                "trial API must be an exact HTTPS origin or loopback origin"
+            )
+        suffix = (
+            f":{port}"
+            if port and port != (443 if parsed.scheme == "https" else 80)
+            else ""
+        )
+        trial_api_base = f"{parsed.scheme}://{host.lower()}{suffix}"
+        if wiki_entry is None:
+            raise ValueError(
+                "browser trial requires a cached Wiki with a public repository identity"
+            )
+        if (
+            not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", wiki_entry.repo)
+            or any(part in {".", ".."} for part in wiki_entry.repo.split("/"))
+            or not re.fullmatch(r"[a-f0-9]{40}", wiki_entry.base_commit)
+        ):
+            raise ValueError(
+                "browser trial requires owner/name and a full source commit"
+            )
 
     repo_path = lexical_repository_path(repo_path)
     manifest_path = Path(os.path.abspath(os.fspath(manifest_path.expanduser())))
@@ -1212,6 +1300,8 @@ def export_static_wiki(
                 }
             )
             repo_info["capabilities"] = capabilities
+            if trial_api_base:
+                capabilities["browser_retrieval"] = True
             repo_info["problem_statement"] = ""
             repo_info["incremental"] = None
             overview = next((p for p in pages if p.get("id") == "overview"), None)
@@ -1239,9 +1329,16 @@ def export_static_wiki(
                 f"static export: {output_dir}"
             ) from exc
 
-        _copy_frontend(frontend, stage, base_path=base_path)
-        _write_bytes(stage, "runtime-config.js", _runtime_config(base_path))
-        _write_bytes(stage, "404.html", _not_found_page(base_path))
+        frontend_options = {"trial_api_base": trial_api_base} if trial_api_base else {}
+        _copy_frontend(frontend, stage, base_path=base_path, **frontend_options)
+        _write_bytes(
+            stage, "runtime-config.js", _runtime_config(base_path, trial_api_base)
+        )
+        _write_bytes(
+            stage,
+            "404.html",
+            _not_found_page(base_path, external_script=bool(trial_api_base)),
+        )
         _write_json(stage, "data/repos.json", [repo_info])
 
         _write_json(
@@ -1385,6 +1482,7 @@ def export_cached_wiki(
     *,
     frontend_dir: str | os.PathLike[str] | None = None,
     base_path: str = "/",
+    trial_api_base: str | None = None,
 ) -> StaticExportResult:
     """Publish one configured repository from a quiescent Wiki snapshot.
 
@@ -1426,6 +1524,7 @@ def export_cached_wiki(
             base_path=base_path,
             wiki_store=store,
             wiki_entry=entry,
+            trial_api_base=trial_api_base,
         )
 
 

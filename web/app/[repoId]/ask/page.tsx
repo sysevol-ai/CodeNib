@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/Header";
 import AgentSetup from "@/components/AgentSetup";
+import OpenRouterTrial from "@/components/OpenRouterTrial";
+import { trialBase } from "@/lib/openrouterTrial";
 import { isStaticRuntime } from "@/lib/runtime";
 import Markdown from "@/components/Markdown";
 import AskBar from "@/components/AskBar";
@@ -329,6 +331,8 @@ export default function AskPage({
   query: string;
 }) {
   if (isStaticRuntime()) {
+    const trial = trialBase(window.__CODENIB_RUNTIME__?.trialApiBase);
+    if (trial) return <div className="wiki"><Header /><OpenRouterTrial base={trial} repoId={repoId} query={query} /></div>;
     return <div className="wiki"><Header /><AgentSetup repoId={repoId} query={query} /></div>;
   }
   return <AskAnswer repoId={repoId} query={query} />;

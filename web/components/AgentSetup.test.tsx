@@ -6,10 +6,43 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AskPage from "@/app/[repoId]/ask/page";
 import Markdown from "./Markdown";
+import AskBar from "./AskBar";
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe("static activation", () => {
+  it("labels public trial entry controls before requesting account authorization", () => {
+    const html = renderToStaticMarkup(
+      <AskBar repoId="requests" repo="psf/requests" collapsible browserTrial />,
+    );
+    expect(html).toContain("Find code with OpenRouter");
+    expect(html).not.toContain("Ask this repository");
+    const expanded = renderToStaticMarkup(
+      <AskBar repoId="requests" repo="psf/requests" browserTrial />,
+    );
+    expect(expanded).toContain("Find source in psf/requests");
+    expect(expanded).toContain("Continue");
+  });
+  it("offers direct authorization only for an explicitly configured public trial", () => {
+    vi.stubGlobal("window", { __CODENIB_RUNTIME__: { mode: "static", trialApiBase: "https://source.example" } });
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const html = renderToStaticMarkup(<AskPage repoId="repo" query="Where is retry handled?" />);
+    expect(html).toContain("Connect OpenRouter");
+    expect(html).toContain("sent only to OpenRouter");
+    expect(html).toContain("Use with your local agent");
+    expect(html).not.toContain('type="password"');
+    expect(html).not.toContain("api-key");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not enable a trial from an insecure or credential-bearing endpoint", () => {
+    vi.stubGlobal("window", { __CODENIB_RUNTIME__: { mode: "static", trialApiBase: "https://key@source.example" } });
+    const html = renderToStaticMarkup(<AskPage repoId="repo" query="retry" />);
+    expect(html).toContain("Ask on your own repository");
+    expect(html).not.toContain("Connect OpenRouter");
+  });
+
   it("replaces direct Ask links with local setup and escapes the question", () => {
     vi.stubGlobal("window", { __CODENIB_RUNTIME__: { mode: "static", basePath: "/demo" } });
     const fetch = vi.fn();
