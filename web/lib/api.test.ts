@@ -11,6 +11,59 @@ import {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+describe("cold Wiki generation contention", () => {
+  it("waits for the existing generator and keeps concurrent page reads coalesced", async () => {
+    vi.useFakeTimers();
+    const page = { id: "overview", markdown: "Prepared page" };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("Still preparing", {
+        status: 503, headers: { "Retry-After": "2" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(page)));
+    vi.stubGlobal("fetch", fetchMock);
+    const first = fetchWikiPage("cold-retry", "overview");
+    const second = fetchWikiPage("cold-retry", "overview");
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await first).toEqual(page);
+    expect(await second).toEqual(page);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds retries and lets a later navigation recover", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(
+      new Response(JSON.stringify({ detail: "Still preparing" }), {
+        status: 503, headers: { "Retry-After": "2" },
+      }),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const failed = expect(fetchWikiPage("bounded-retry", "overview"))
+      .rejects.toThrow("Still preparing");
+    await vi.runAllTimersAsync();
+    await failed;
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: "overview" })));
+    expect(await fetchWikiPage("bounded-retry", "overview")).toEqual({ id: "overview" });
+  });
+
+  it("retries an outline while its owner is still generating", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("Preparing", {
+        status: 503, headers: { "Retry-After": "2" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ pages: [{ id: "overview" }] })));
+    vi.stubGlobal("fetch", fetchMock);
+    const tree = fetchWikiTree("cold-outline");
+    await vi.runAllTimersAsync();
+    expect(await tree).toEqual({ pages: [{ id: "overview" }] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("fetchEdgeLabel", () => {

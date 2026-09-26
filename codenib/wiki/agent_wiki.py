@@ -77,7 +77,13 @@ from .quality import (
 )
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
-from .store import WikiStore, WikiStoreCorruptionError, WikiStoredEntry, WikiStoreError
+from .store import (
+    WikiGenerationBusyError,
+    WikiStore,
+    WikiStoreCorruptionError,
+    WikiStoredEntry,
+    WikiStoreError,
+)
 from .story import (
     STORY_BEAT_ROLES,
     STORY_SCHEMA_VERSION,
@@ -228,7 +234,7 @@ def _bounded_generation_lock(lock: Any):
     """
 
     if not lock.acquire(timeout=_GENERATION_LOCK_TIMEOUT_SECONDS):
-        raise WikiStoreError("Wiki generation lock wait timed out")
+        raise WikiGenerationBusyError("Wiki generation lock wait timed out")
     try:
         yield
     finally:

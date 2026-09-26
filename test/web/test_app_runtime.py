@@ -45,6 +45,22 @@ def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
     assert all("secret=query" not in message for message in app_messages)
 
 
+@pytest.mark.parametrize("suffix", ["wiki", "wiki/overview", "wiki-map"])
+def test_busy_wiki_generation_returns_retryable_response(monkeypatch, suffix):
+    from codenib.wiki.store import WikiGenerationBusyError
+
+    def busy(*_args, **_kwargs):
+        raise WikiGenerationBusyError("Wiki generation lock wait timed out")
+
+    monkeypatch.setattr(web_app, "_bundle", lambda _id: SimpleNamespace())
+    monkeypatch.setattr(web_app, "_wiki", busy)
+    response = TestClient(web_app.app).get(f"/api/repos/repo/{suffix}")
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["cache-control"] == "no-store"
+    assert "still being prepared" in response.json()["detail"]
+
+
 def test_web_app_has_no_retained_storage_control_plane() -> None:
     paths = {route.path for route in web_app.app.routes}
 

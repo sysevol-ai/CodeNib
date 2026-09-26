@@ -70,6 +70,13 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   are evicted; explicit refresh bypasses the cache. Consumers with an abort
   signal own an independent request so dialog cancellation cannot cancel page
   navigation. This cache does not pre-generate cold Wiki pages.
+- **Cold large-repository Wiki loads** batch symbol source reads through the
+  borrowed reader's authenticated session. Keep inventory checks before and
+  after the batch and publish the symbol cache only after successful exit;
+  otherwise per-symbol whole-tree scans can occupy a generator for minutes.
+  Concurrent readers receive 503 with `Retry-After` after a bounded lock wait,
+  and the browser retries at most five times. Validate cold overviews on a
+  large repository as well as cached Requests pages before deploying.
 - **Wiki prose is LLM-generated and stored** in
   `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
   (that holds the prebuilt graph + vectors).

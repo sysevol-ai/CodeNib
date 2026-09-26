@@ -17,6 +17,10 @@ class WikiStoreError(RuntimeError):
     """Base error for a Wiki store operation."""
 
 
+class WikiGenerationBusyError(WikiStoreError):
+    """Another owner is still generating; a later read can reuse its result."""
+
+
 class WikiStoreValidationError(WikiStoreError, ValueError):
     """The caller supplied an invalid Wiki entry or query."""
 
@@ -68,6 +72,7 @@ class WikiStore(Protocol):
 __all__ = [
     "WIKI_ENVELOPE_MAX_BYTES",
     "WikiStore",
+    "WikiGenerationBusyError",
     "WikiStoreCorruptionError",
     "WikiStoreError",
     "WikiStoreSchemaError",

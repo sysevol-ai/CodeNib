@@ -67,7 +67,7 @@ from codenib.wiki.quality import (
     section_sentence_redundancy_report,
 )
 from codenib.wiki.sqlite_store import SQLiteWikiStore
-from codenib.wiki.store import WikiStoreError
+from codenib.wiki.store import WikiGenerationBusyError, WikiStoreError
 from codenib.wiki.story import finalize_story_ir, story_quality_report
 
 
@@ -7703,7 +7703,7 @@ def test_agent_wiki_bounds_process_local_generation_wait(tmp_path, monkeypatch):
         0.01,
     )
     try:
-        with pytest.raises(WikiStoreError, match="lock wait timed out"):
+        with pytest.raises(WikiGenerationBusyError, match="lock wait timed out"):
             wiki.page("runtime")
     finally:
         owner.release()

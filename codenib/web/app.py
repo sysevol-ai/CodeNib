@@ -50,6 +50,7 @@ from ..wiki.media_generation import (
 from ..wiki.narrator import Narrator
 from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
+from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
 from .card_summary import card_summary
@@ -218,6 +219,20 @@ async def add_request_timing(request: Request, call_next):
             duration_ms,
         )
     return response
+
+
+@app.exception_handler(WikiGenerationBusyError)
+async def wiki_generation_busy(
+    _request: Request,
+    _exc: WikiGenerationBusyError,
+) -> JSONResponse:
+    """Let concurrent browsers retry the existing owner's generation."""
+
+    return JSONResponse(
+        status_code=503,
+        headers={"Retry-After": "2", "Cache-Control": "no-store"},
+        content={"detail": "This Wiki page is still being prepared. Retrying shortly."},
+    )
 
 
 @app.exception_handler(RequestValidationError)

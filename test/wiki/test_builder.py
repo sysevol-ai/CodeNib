@@ -14,7 +14,7 @@ import pytest
 
 from codenib.repository_source_selection import RepositorySourceSelection
 from codenib.repository_summary import readme_summary
-from codenib.source_fingerprint import capture_repository_source
+from codenib.source_fingerprint import RepositoryChangedError, capture_repository_source
 from codenib.wiki.builder import (
     Symbol,
     WikiBuilder,
@@ -279,6 +279,63 @@ def test_bound_source_hydrates_far_offset_symbol_without_prefix_truncation(
         excerpt = builder.source("pkg/far.py", 17_001, 17_001)
         assert excerpt is not None
         assert excerpt["content"] == "def target(): return 'far-offset'\n"
+
+
+@pytest.mark.parametrize("change_inventory", [False, True])
+def test_symbol_batch_checks_inventory_once_per_side_before_publication(
+    tmp_path, monkeypatch, change_inventory
+):
+    source = tmp_path / "source.py"
+    source.write_text("".join(f"def f{i}(): return {i}\n" for i in range(20)))
+    docs = [
+        _Doc(
+            "stale index content",
+            {
+                "file": str(source),
+                "name": f"f{i}",
+                "chunk_type": "function",
+                "start_line": i,
+                "end_line": i,
+            },
+        )
+        for i in range(20)
+    ]
+    bundle = _make_bundle(str(tmp_path))
+    bundle.vector_store = None
+    bundle.bm25 = SimpleNamespace(documents=docs)
+    with capture_repository_source(tmp_path) as binding:
+        reader = binding.borrow_reader()
+        bundle.source_reader = reader
+        builder = WikiBuilder(bundle)
+        checks, reads = [], []
+        verify = binding._verify_inventory
+        read_range = binding.read_line_range
+
+        def checked_inventory(_self, *args, **kwargs):
+            checks.append(None)
+            return verify(*args, **kwargs)
+
+        def checked_read(_self, *args, **kwargs):
+            result = read_range(*args, **kwargs)
+            reads.append(None)
+            if change_inventory and len(reads) == 20:
+                (tmp_path / "new.py").write_text("CHANGED = True\n")
+            return result
+
+        monkeypatch.setattr(type(binding), "_verify_inventory", checked_inventory)
+        monkeypatch.setattr(type(binding), "read_line_range", checked_read)
+        if change_inventory:
+            with pytest.raises(RepositoryChangedError):
+                builder._symbols()
+            assert builder._symbols_cache is None
+            assert not binding.usable
+        else:
+            symbols = builder._symbols()
+            assert len(symbols) == 20
+            assert symbols[-1].content == "def f19(): return 19"
+            assert builder._symbols() is symbols
+        assert len(reads) == 20
+        assert len(checks) == 2
 
 
 def test_source_traversal_guard(repo_dir):

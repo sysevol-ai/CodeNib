@@ -35,6 +35,7 @@ from .._bounded_json import (
 )
 from .store import (
     WIKI_ENVELOPE_MAX_BYTES,
+    WikiGenerationBusyError,
     WikiStoreCorruptionError,
     WikiStoredEntry,
     WikiStoreError,
@@ -667,7 +668,9 @@ class SQLiteWikiStore:
             lock = FileLock(str(self._lock_directory / lock_name))
             lock.acquire(timeout=_GENERATION_LOCK_TIMEOUT_SECONDS)
         except FileLockTimeout as exc:
-            raise WikiStoreError("Wiki generation lock wait timed out") from exc
+            raise WikiGenerationBusyError(
+                "Wiki generation lock wait timed out"
+            ) from exc
         except OSError as exc:
             raise WikiStoreError("Wiki generation lock failed") from exc
         try:

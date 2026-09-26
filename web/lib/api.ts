@@ -2,6 +2,20 @@ import { apiBase, isStaticRuntime, staticDataUrl } from "./runtime";
 
 export const API_BASE = apiBase();
 
+async function fetchWikiResponse(url: string): Promise<Response> {
+  // Cold outline/page generation has one owner. A bounded server lock wait
+  // returns 503 + Retry-After; keep the loading state and read that owner's
+  // result instead of turning normal contention into a blank/error page.
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(url);
+    const retryAfter = response.headers?.get("Retry-After");
+    if (response.status !== 503 || !retryAfter || attempt >= 5) return response;
+    const seconds = Number(retryAfter);
+    if (!Number.isFinite(seconds) || seconds < 0) return response;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(10, Math.max(1, seconds)) * 1000));
+  }
+}
+
 async function responseError(response: Response, label: string): Promise<Error> {
   let detail = "";
   try {
@@ -455,7 +469,7 @@ export async function fetchWikiTree(
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki${
         options.cachedOnly ? "?cached_only=true" : ""
       }`;
-  const res = await fetch(url);
+  const res = await fetchWikiResponse(url);
   if (!res.ok) throw await responseError(res, "Failed to load wiki");
   return res.json();
 }
@@ -479,7 +493,7 @@ export async function fetchWikiPage(
       : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}${
           materializeMedia ? "" : "?materialize_media=false"
         }`;
-    const res = await fetch(url);
+    const res = await fetchWikiResponse(url);
     if (!res.ok) throw await responseError(res, "Failed to load page");
     return res.json();
   })();
@@ -836,7 +850,7 @@ export async function fetchWikiGraph(repoId: string, pageId: string): Promise<Co
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "page-graphs", `${pageId}.json`)
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/graph`;
-  const res = await fetch(url);
+  const res = await fetchWikiResponse(url);
   if (!res.ok) throw new Error(`Failed to load page graph (${res.status})`);
   return res.json();
 }
@@ -875,7 +889,7 @@ export async function fetchWikiBoundary(repoId: string, pageId: string): Promise
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "page-boundaries", `${pageId}.json`)
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/boundary`;
-  const res = await fetch(url);
+  const res = await fetchWikiResponse(url);
   if (!res.ok) throw new Error(`Failed to load page boundary (${res.status})`);
   return res.json();
 }
@@ -912,7 +926,7 @@ export async function fetchWikiAreaMap(repoId: string): Promise<WikiAreaMap> {
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "wiki-map.json")
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki-map`;
-  const res = await fetch(url);
+  const res = await fetchWikiResponse(url);
   if (!res.ok) throw new Error(`Failed to load area map (${res.status})`);
   return res.json();
 }
