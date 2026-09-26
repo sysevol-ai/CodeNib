@@ -24,6 +24,7 @@ from .._atomic_directory import (
     reopen_authenticated_directory,
 )
 from .._captured_directory import OwnedDirectoryStage
+from .._secret_fields import SecretFieldError, assert_no_secret_fields
 from .._version import package_version
 from ..artifacts.runtime import (
     SourceBindingCleanupOwner,
@@ -205,6 +206,19 @@ def _normalize_source_fields(value: Any) -> Any:
     return value
 
 
+def _public_source_preview(content: str) -> bool:
+    """Keep credential-shaped source examples out of inline public previews.
+
+    The source citation remains valid and links to its pinned location. This
+    does not relax the final publication scan of metadata or configured keys.
+    """
+    try:
+        assert_no_secret_fields(content, source="inline source preview")
+    except SecretFieldError:
+        return False
+    return True
+
+
 def _normalize_page(
     builder: Any, page: Mapping[str, Any], *, verify_citations: bool = False
 ) -> dict[str, Any]:
@@ -238,6 +252,9 @@ def _normalize_page(
                 )
             ):
                 raise ValueError("cached Wiki citation does not match captured source")
+        if citation.get("content") and not _public_source_preview(citation["content"]):
+            citation["content"] = None
+            citation["preview_omitted"] = True
         citations.append(citation)
     payload["citations"] = citations
     if payload.get("markdown"):
@@ -488,6 +505,9 @@ def _bounded_graph_source(
         "end_line": result_end,
         "content": "".join(lines),
     }
+    if not _public_source_preview(result["content"]):
+        cache[key] = None
+        return None
     cache[key] = result
     return result
 
@@ -1078,10 +1098,21 @@ def export_static_wiki(
             )
             builder = WikiBuilder(bundle, source_reader=source_reader)
             cached_wiki = None
+            cache_prompt_versions = None
             if wiki_store is not None:
-                from ..wiki.agent_wiki import AgentWiki
+                from ..wiki.agent_wiki import (
+                    _OUTLINE_PROMPT_VERSION,
+                    _PAGE_PROMPT_VERSION,
+                    AgentWiki,
+                )
 
                 cached_wiki = AgentWiki(bundle, model="", store=wiki_store)
+                # These versions select the cache entries we read. Older
+                # generated payloads need not duplicate them in generation.
+                cache_prompt_versions = {
+                    "outline": _OUTLINE_PROMPT_VERSION,
+                    "page": _PAGE_PROMPT_VERSION,
+                }
             tree = (
                 cached_wiki.cached_page_tree()
                 if cached_wiki is not None
@@ -1242,6 +1273,11 @@ def export_static_wiki(
                 "wiki_source": "cached" if wiki_store is not None else "deterministic",
                 "codenib_version": package_version(),
                 "manifest_version": source_manifest.version,
+                **(
+                    {"wiki_cache_prompt_versions": cache_prompt_versions}
+                    if cache_prompt_versions is not None
+                    else {}
+                ),
                 "profile": sorted(
                     name
                     for name in source_manifest.indexes

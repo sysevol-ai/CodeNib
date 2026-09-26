@@ -85,7 +85,9 @@ function Fragment({
       {loading ? (
         <p className="muted frag-msg">Loading…</p>
       ) : err || !code ? (
-        <p className="muted frag-msg">Source not available.</p>
+        <p className="muted frag-msg">
+          Source preview is unavailable.{gh ? " Open the source link above." : ""}
+        </p>
       ) : (
         <HighlightedCode code={code} file={rel} startLine={start} />
       )}

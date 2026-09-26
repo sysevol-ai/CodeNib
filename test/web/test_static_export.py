@@ -1065,6 +1065,43 @@ def test_static_export_rejects_a_configured_secret(
     assert not export_setup.output.exists()
 
 
+@pytest.mark.parametrize(
+    "content",
+    [
+        "https://user:password@example.test\n",
+        "# source example\n" * 600 + 'example = "https://user:password@example.test"\n',
+    ],
+)
+def test_static_export_omits_credential_shaped_source_but_keeps_citation(
+    export_setup, monkeypatch, content
+):
+    class AuthenticationBuilder(_Builder):
+        def source(self, file, start, end):
+            source = super().source(file, start, end)
+            source["content"] = content
+            return source
+
+    monkeypatch.setattr("codenib.wiki.WikiBuilder", AuthenticationBuilder)
+    result = export_static_wiki(
+        export_setup.repo,
+        export_setup.manifest_path,
+        export_setup.output,
+        frontend_dir=export_setup.frontend,
+    )
+    page = json.loads(
+        (result.output_dir / "data/repos/demo/pages/overview.json").read_text()
+    )
+    citation = page["citations"][0]
+    assert citation["content"] is None
+    assert citation["preview_omitted"] is True
+    assert (citation["file"], citation["start_line"], citation["end_line"]) == (
+        "src/runtime.py",
+        1,
+        2,
+    )
+    assert "user:password" not in json.dumps(page)
+
+
 def test_static_export_reader_rejects_late_decoded_secret(
     export_setup,
     monkeypatch: pytest.MonkeyPatch,
@@ -1520,7 +1557,11 @@ def cached_export_setup(tmp_path, monkeypatch):
             "model": "fixture-model",
             "prompt_version": "fixture-prompt",
         }
-        page["story"] = {"version": 1, "origin": "fixture", "beats": []}
+        page["story"] = {
+            "version": 1,
+            "origin": "fixture",
+            "beats": [{"section": "Basic authentication adds a request header"}],
+        }
         if page["citations"]:
             page["citations"][0]["content"] = "stale unverified snippet"
         wiki._write_cache(wiki._page_cache_suffix(meta), page)
@@ -1571,6 +1612,12 @@ def test_cached_export_preserves_story_provenance_and_reads_only_snapshot(
     assert (root / "wiki-map.json").is_file()
     manifest = json.loads(result.manifest_path.read_text())
     assert manifest["builder"]["wiki_source"] == "cached"
+    from codenib.wiki.agent_wiki import _OUTLINE_PROMPT_VERSION, _PAGE_PROMPT_VERSION
+
+    assert manifest["builder"]["wiki_cache_prompt_versions"] == {
+        "outline": _OUTLINE_PROMPT_VERSION,
+        "page": _PAGE_PROMPT_VERSION,
+    }
     assert manifest["generation"]["models"] == ["fixture-model"]
     assert manifest["generation"]["prompt_versions"] == ["fixture-prompt"]
     assert _tree_bytes(setup.data) == before
