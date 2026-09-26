@@ -567,3 +567,39 @@ def test_real_rg_decodes_non_utf8_filenames(tmp_path):
     )
     assert [(os.fsencode(path), line) for path, line in matches] == [(b"\xff.py", 0)]
     assert not truncated
+
+
+def test_multiline_planned_expression_maps_every_covered_chunk(repo, api):
+    # The fresh product evaluation hit a planner-produced newline escape.
+    # This variant also crosses definitions, so retaining only the first line
+    # would lose the second relevant chunk despite a successful rg process.
+    api.actions = [
+        {
+            "pattern": r"return 'retry network request'\n\ndef unrelated",
+            "glob": "**/*.py",
+            "case_sensitive": True,
+        }
+    ]
+    result = search(repo)
+    assert {node.node_name for node in result.nodes} == {
+        "src/service.py:retry_request()",
+        "src/service.py:unrelated()",
+    }
+    assert result.plan["actions"][0]["match_lines"] == 3
+    assert result.plan["actions"][0]["chunks"] == 2
+    assert [stage for stage, *_ in api.calls] == ["planning", "scoring"]
+
+
+def test_multiline_grep_keeps_the_500_line_bound(tmp_path):
+    from codenib.agent.runtime.grep_jev import GrepAction, _RequestBudget, _rg_lines
+
+    if shutil.which("rg") is None:
+        pytest.skip("ripgrep is required")
+    (tmp_path / "source.txt").write_text("needle\n" * 600)
+    matches, truncated = _rg_lines(
+        tmp_path,
+        GrepAction(pattern=r"(?s)^.*", glob="**/*", case_sensitive=True),
+        _RequestBudget(GrepJevConfig(), lambda: None),
+    )
+    assert matches == [("source.txt", line) for line in range(500)]
+    assert truncated

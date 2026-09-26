@@ -290,6 +290,9 @@ def _rg_lines(root: Path, action: GrepAction, budget: _RequestBudget):
         # Only selected, decoded source is materialized here. Text mode makes
         # a NUL regex a valid search instead of triggering binary-mode rejection.
         "--text",
+        # Planned Rust regexes may contain newline escapes. Keep them within
+        # the same bounded subprocess and map every covered line to source.
+        "--multiline",
         "--max-count",
         "20",
     ]
@@ -326,11 +329,24 @@ def _rg_lines(root: Path, action: GrepAction, budget: _RequestBudget):
                 row = json.loads(line)
                 if row["type"] != "match":
                     continue
-                if len(matches) == 500:
-                    truncated = True
-                    break
                 data = row["data"]
-                matches.append((_rg_path(data["path"]), data["line_number"] - 1))
+                path = _rg_path(data["path"])
+                lines = data["lines"]
+                body = (
+                    lines["text"].encode("utf-8")
+                    if "text" in lines
+                    else base64.b64decode(lines["bytes"], validate=True)
+                )
+                count = max(1, body.count(b"\n") + int(not body.endswith(b"\n")))
+                first = data["line_number"] - 1
+                for matched_line in range(first, first + count):
+                    budget.check()
+                    if len(matches) == 500:
+                        truncated = True
+                        break
+                    matches.append((path, matched_line))
+                if truncated:
+                    break
             return matches, truncated
         finally:
             if process.poll() is None:
