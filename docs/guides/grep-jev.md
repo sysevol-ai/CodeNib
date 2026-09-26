@@ -22,13 +22,14 @@ Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) so that
 `rg` is on your PATH. From your CodeNib checkout:
 
 ```bash
-python -m pip install -e ".[grep,mcp]"
+python -m pip install -e ".[grep,mcp,auth]"
 codenib explore /path/to/your/repository "Where is retry backoff implemented?"
 ```
 
-Before querying, supply `OPENROUTER_API_KEY` through your local secret manager
-or an environment variable. For example, this Bash prompt keeps the value out
-of shell history:
+Before querying, run `codenib auth login` to connect OpenRouter and save the key
+in your OS credential store. See [OpenRouter authorization](openrouter.md) for
+the browser, SSH, import, and disconnect paths. An environment variable also
+works; this Bash prompt keeps its value out of shell history:
 
 ```bash
 read -rsp 'OpenRouter API key: ' OPENROUTER_API_KEY; echo
@@ -39,8 +40,8 @@ Use a dedicated key with a credit limit from
 [OpenRouter settings](https://openrouter.ai/settings/keys). This path does not
 upload the key to a CodeNib service. It sends the key directly to OpenRouter
 over HTTPS; it does not persist it in the repository, results, or MCP config.
-The local process and its environment can read it. Browser authorization and
-OS credential storage are separate work; this preview does not provide them.
+The local process and its environment can read it. Environment credentials
+override a saved login; unset the variable to use your OS-stored key instead.
 
 There is no graph, embedding model, GPU, or repository build step. Supported
 source languages use the [language registry](../language_capabilities.md).
@@ -69,8 +70,9 @@ to the installed executable. For clients using `mcpServers` JSON:
 }
 ```
 
-Launch the agent from an environment containing `OPENROUTER_API_KEY`; do not
-paste a key into this JSON. This mode exposes one tool, `explore_context`.
+Run `codenib auth login` on the machine where the MCP process runs, or launch
+the agent from an environment containing `OPENROUTER_API_KEY`. Do not paste a
+key into this JSON. This mode exposes one tool, `explore_context`.
 Ask your agent to call it with a precise repository question and cite the
 returned source. Each call reads the current checkout, so edits between calls
 do not require reindexing. Changes during a call invalidate source delivery.

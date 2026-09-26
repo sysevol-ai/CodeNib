@@ -824,6 +824,105 @@ def _run_explore(args: argparse.Namespace) -> int:
     return int(any(d.get("code") == "retrieval_failed" for d in result["diagnostics"]))
 
 
+def _run_auth(args: argparse.Namespace) -> int:
+    from . import openrouter_auth as auth
+
+    try:
+        if args.auth_command == "login":
+            import getpass
+
+            _require_modules(
+                ("requests",), extra="auth", feature="OpenRouter authorization"
+            )
+            if (args.headless or args.import_key) and not sys.stdin.isatty():
+                raise CLIError(
+                    "Authorization-code/key entry requires a terminal; "
+                    "use OPENROUTER_API_KEY for automation"
+                )
+            print(
+                "Planning and scoring are billed to your OpenRouter account. "
+                "Queries, directory names and selected source snippets go "
+                "to its model providers."
+            )
+            if args.store == "file":
+                print(
+                    "File storage is unencrypted (directory 0700, file 0600), "
+                    "outside your repository."
+                )
+            if args.import_key:
+                auth.prepare_store(args.store)
+                key = auth.validate_key(getpass.getpass("OpenRouter limited API key: "))
+                info = auth.key_info(key)
+                auth.save_key(key, store=args.store)
+                result = {
+                    "connected": True,
+                    "store": args.store,
+                    **info,
+                    "settings_url": auth.settings_url(key),
+                }
+            else:
+                result = auth.login(
+                    store=args.store,
+                    headless=args.headless,
+                    timeout=args.timeout,
+                    read_code=getpass.getpass,
+                )
+            if os.environ.get("OPENROUTER_API_KEY") is not None:
+                result["environment_override"] = (
+                    "OPENROUTER_API_KEY takes precedence; unset it to use the saved login"
+                )
+            if result.get("limit") is None:
+                result["billing_limit_note"] = (
+                    "No provider credit limit is set; configure one at settings_url"
+                )
+        elif args.auth_command == "status":
+            key, source = auth.credential()
+            result = {
+                "connected": key is not None,
+                "source": source,
+                "provider_verified": False,
+            }
+            if key is not None and args.remote:
+                _require_modules(
+                    ("requests",), extra="auth", feature="OpenRouter key status"
+                )
+                result.update(auth.key_info(key))
+                result["provider_verified"] = True
+                result["settings_url"] = auth.settings_url(key)
+        else:
+            stores = ("file", "keyring") if args.store == "all" else (args.store,)
+            errors = []
+            unavailable = []
+            for store in stores:
+                try:
+                    auth.forget_key(store=store)
+                except auth.KeyringUnavailableError as exc:
+                    if args.store == "all":
+                        unavailable.append(store)
+                    else:
+                        errors.append(str(exc))
+                except (auth.OpenRouterAuthError, OSError) as exc:
+                    errors.append(str(exc))
+            result = {
+                "local_removal_complete": not errors,
+                "provider_revoked": False,
+                "revocation_url": "https://openrouter.ai/settings/keys",
+                "environment_key_present": "OPENROUTER_API_KEY" in os.environ,
+                "unavailable_stores": unavailable,
+                "removal_scope": (
+                    "available local stores; unavailable stores were not inspected"
+                ),
+            }
+            if errors:
+                result["errors"] = errors
+            print(json.dumps(result, indent=2))
+            return int(bool(errors))
+    except (auth.OpenRouterAuthError, ValueError, OSError) as exc:
+        raise CLIError(str(exc)) from exc
+    print(json.dumps(result, indent=2))
+    return 0
+
+
 def _add_grep_jev_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--planner-model", default="anthropic/claude-sonnet-4.6")
     parser.add_argument(
@@ -3145,6 +3244,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="path to a prebuilt CodeNib frontend or web source checkout",
     )
     publish_parser.set_defaults(handler=_run_publish)
+
+    auth_parser = subparsers.add_parser(
+        "auth", help="connect your OpenRouter account locally"
+    )
+    auth_commands = auth_parser.add_subparsers(dest="auth_command", required=True)
+    login_parser = auth_commands.add_parser(
+        "login", help="authorize with OpenRouter using PKCE"
+    )
+    login_parser.add_argument("--store", choices=("keyring", "file"), default="keyring")
+    login_mode = login_parser.add_mutually_exclusive_group()
+    login_mode.add_argument(
+        "--headless",
+        action="store_true",
+        help="paste a single-use authorization code for SSH/containers",
+    )
+    login_mode.add_argument(
+        "--import-key",
+        action="store_true",
+        help="enter a limited API key through a hidden terminal prompt",
+    )
+    login_parser.add_argument("--timeout", type=float, default=300.0)
+    login_parser.set_defaults(handler=_run_auth)
+    auth_status = auth_commands.add_parser(
+        "status", help="inspect the active local credential source"
+    )
+    auth_status.add_argument(
+        "--remote",
+        action="store_true",
+        help="check key validity and credit limits on OpenRouter",
+    )
+    auth_status.set_defaults(handler=_run_auth)
+    logout_parser = auth_commands.add_parser(
+        "logout", help="forget local credentials; provider revocation is separate"
+    )
+    logout_parser.add_argument(
+        "--store", choices=("all", "keyring", "file"), default="all"
+    )
+    logout_parser.set_defaults(handler=_run_auth)
 
     explore_parser = subparsers.add_parser(
         "explore",

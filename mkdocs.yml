@@ -185,6 +185,7 @@ nav:
       - Agent-ready CodeGraph: codegraph.md
       - MCP Server: mcp.md
       - Search with grep and Jev: guides/grep-jev.md
+      - Connect OpenRouter: guides/openrouter.md
       - Agent Skills: agent_skills.md
       - Jev Reranking: jev.md
       - Agent Integrations: agent_integrations.md
