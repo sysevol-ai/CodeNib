@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeNib: Multi-View Repository Context for Coding Agents</title>
-<meta name="description" content="CodeNib is a multi-view data system for serving repository context to coding agents through incremental, source-linked indexes.">
-<meta property="og:title" content="CodeNib: Multi-View Repository Context for Coding Agents">
-<meta property="og:description" content="Incremental lexical, semantic, structural, and navigation views served through agent-native interfaces.">
+<title>CodeNib: Find the Right Code. Trace the Calls.</title>
+<meta name="description" content="Source context and typed graph navigation for Claude Code and Codex. Local MCP setup, multilingual support, and reproducible retrieval results.">
+<meta property="og:title" content="CodeNib: Find the Right Code. Trace the Calls.">
+<meta property="og:description" content="71.4% code-block Recall@5 in our 100-issue grep → Jev experiment. Explore the evidence and connect your own repository.">
 <meta property="og:image" content="https://codenib.ai/assets/shots/wiki-light.png">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://codenib.ai/">
@@ -95,11 +95,11 @@ header {
 
 /* ---- hero ---- */
 .hero { position: relative; padding: 72px 0 0; }
-.hero-grid { display: grid; grid-template-columns: 1.2fr 0.9fr; gap: 56px; align-items: center; }
+.hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
 .hero h1 {
   font-size: clamp(2.5rem, 5.6vw, 4rem);
   font-weight: 640; letter-spacing: -0.035em; line-height: 1.06;
-  max-width: 15ch;
+  max-width: 17ch;
 }
 .hero p.sub {
   margin-top: 22px; font-size: 17.5px; color: var(--ink-2);
@@ -107,67 +107,46 @@ header {
 }
 .hero .ctas { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
 
-/* product stage */
-.shot-stage { position: relative; margin-top: 48px; }
+/* Static product preview: visiting the landing page never loads the demo. */
 .frame {
   border: 1px solid var(--line); border-radius: var(--r-box);
   background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
 }
 .frame-bar {
-  display: flex; align-items: center; justify-content: center;
-  height: 38px; border-bottom: 1px solid var(--line); background: var(--subtle);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  background: var(--subtle); color: var(--ink-2); font-size: 12px;
 }
-.frame-bar span {
-  font-family: "Geist Mono", monospace; font-size: 12px; color: var(--ink-2);
-  background: var(--bg); border: 1px solid var(--line);
-  padding: 3px 14px; border-radius: 99px;
-}
-
-/* Live product embeds: the real demo rendered in a scaled iframe. A fixed
-   design width keeps the demo's desktop layout; the scale factor adapts to
-   whatever container (or phone) the embed lands in. */
-.live {
-  position: relative; overflow: hidden;
-  background: var(--subtle) url("assets/shots/wiki-light.png") center top / cover no-repeat;
-}
-.live > iframe {
-  position: absolute; top: 0; left: 0; border: 0;
-  transform-origin: 0 0; pointer-events: none;
-}
-html:not(.js) .live > iframe { display: none; }
-.live > a.cover { position: absolute; inset: 0; z-index: 2; }
+.preview-link { display: block; }
+.preview-link:hover .frame-bar { color: var(--accent); }
+.preview-link img { width: 100%; }
+.preview-caption { padding: 12px 16px; font-size: 13px; color: var(--ink-2); }
+.evidence { margin-top: 22px; font-size: 14px; color: var(--ink-2); }
+.evidence strong { display: block; font-size: 22px; color: var(--ink); letter-spacing: -.02em; }
+.evidence a, .text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.setup { margin-top: 40px; padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--subtle); }
+.setup h2 { font-size: 20px; }
+.setup pre { overflow-x: auto; margin: 14px 0; padding: 16px; background: var(--ink); color: #f8fafc; border-radius: var(--r-ui); font-size: 13px; }
+.setup p { color: var(--ink-2); font-size: 14px; }
+.setup code { font-family: "Geist Mono", ui-monospace, monospace; }
+a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+[id] { scroll-margin-top: 84px; }
 
 /* ---- sections ---- */
 section { padding: 96px 0 0; }
 h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0.025em; line-height: 1.15; }
 .section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
 
-/* bento */
-.bento { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 44px; }
+/* Product paths */
+.bento { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 32px; }
 .cell {
   border: 1px solid var(--line); border-radius: var(--r-box);
-  background: var(--surface); padding: 28px; overflow: hidden;
-  display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface); padding: 28px;
+  display: flex; flex-direction: column; gap: 12px;
 }
-.cell h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.cell h3 { font-size: 18px; font-weight: 600; }
 .cell p { font-size: 14.5px; color: var(--ink-2); }
-.cell-ask { grid-column: span 3; grid-row: span 2; padding-bottom: 0; }
-.cell-ask .live {
-  margin: 18px -1px -1px; border-radius: 12px 12px 0 0;
-  border: 1px solid var(--line); border-bottom: 0; flex: 1;
-  min-height: 420px;
-}
-.cell-side { grid-column: span 2; justify-content: center; }
-.cell-side.tint { background: var(--subtle); }
-.cell-wide { grid-column: span 5; flex-direction: row; align-items: center; gap: 40px; padding: 0; }
-.cell-wide .cw-text { padding: 32px 0 32px 28px; max-width: 40%; }
-.cell-wide .live { flex: 1; align-self: stretch; border-left: 1px solid var(--line); min-height: 340px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.chips span {
-  font-family: "Geist Mono", monospace; font-size: 12px; color: var(--ink-2);
-  border: 1px solid var(--line); background: var(--bg);
-  padding: 3px 10px; border-radius: 99px;
-}
+.cell .text-link { margin-top: auto; font-size: 14px; }
 
 /* latest article */
 .latest-card {
@@ -198,32 +177,6 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
   border-left: 1px solid var(--line); background: var(--subtle); padding: 24px;
 }
 .latest-art img { width: 100%; border: 1px solid #dbe5f1; border-radius: 12px; }
-
-/* hero traits: the three system contributions, stacked beside the headline */
-.traits { display: flex; flex-direction: column; gap: 12px; }
-.traits > div {
-  display: flex; align-items: flex-start; gap: 14px;
-  background: var(--subtle); border: 1px solid var(--line);
-  border-radius: var(--r-box); padding: 18px;
-}
-.t-icon {
-  position: relative; isolation: isolate; overflow: hidden;
-  flex: none; width: 44px; height: 44px; border-radius: 13px;
-  background: #f6f9fe;
-  border: 1px solid #cfe0fb;
-  display: flex; align-items: center; justify-content: center;
-}
-.t-icon svg {
-  width: 27px; height: 27px; overflow: visible;
-  stroke: var(--accent); fill: none; stroke-width: 1.55;
-  stroke-linecap: round; stroke-linejoin: round;
-}
-.t-icon .panel { fill: rgba(255, 255, 255, 0.82); stroke: #8bb7fa; }
-.t-icon .guide { stroke: #93c5fd; stroke-width: 1.2; }
-.t-icon .hot { fill: var(--accent); stroke: var(--accent); }
-.t-icon .spark { fill: #dbeafe; stroke: var(--accent); }
-.traits .k { font-family: "Geist Mono", monospace; font-size: 13px; color: var(--accent); font-weight: 560; }
-.traits .v { margin-top: 3px; font-size: 14px; color: var(--ink-2); line-height: 1.5; }
 
 /* final CTA */
 .cta-block { text-align: center; padding: 110px 0; }
@@ -258,15 +211,6 @@ footer { border-top: 1px solid var(--line); }
   .hero { padding-top: 56px; }
   .hero-grid { grid-template-columns: 1fr; gap: 36px; }
   .bento { grid-template-columns: 1fr; }
-  .cell-ask, .cell-side, .cell-wide { grid-column: span 1; grid-row: auto; }
-  .cell-wide { flex-direction: column; align-items: stretch; gap: 0; }
-  .cell-wide .cw-text { max-width: none; padding: 28px 28px 24px; }
-  .cell-wide .live { border-left: 0; border-top: 1px solid var(--line); min-height: 260px; }
-  /* The ask page's empty state is too sparse at phone scale; keep the cell
-     as a text card and let the hero + repo-grid embeds carry the live feel. */
-  .cell-ask .live { display: none; }
-  .cell-ask { padding-bottom: 28px; }
-  .traits { grid-template-columns: 1fr; gap: 18px; margin-top: 40px; }
   .latest-card { grid-template-columns: 1fr; }
   .latest-copy { padding: 30px 28px; }
   .latest-art { min-height: 0; border-top: 1px solid var(--line); border-left: 0; }
@@ -294,7 +238,7 @@ footer { border-top: 1px solid var(--line); }
     <a class="link gh" href="https://github.com/sysevol-ai/CodeNib" aria-label="Source on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     </a>
-    <a class="btn btn-primary" href="https://demo.codenib.ai">Open the demo</a>
+    <a class="btn btn-primary" href="#get-started">Use with your agent</a>
   </div>
 </header>
 
@@ -302,132 +246,60 @@ footer { border-top: 1px solid var(--line); }
   <div class="hero">
     <div class="wrap hero-grid">
       <div>
-        <h1 class="rise">Understand any codebase in minutes.</h1>
-        <p class="sub rise d1">CodeNib is a multi-view data system for serving repository context to coding agents.</p>
+        <h1 class="rise">Find the right code.<br>Trace the calls.</h1>
+        <p class="sub rise d1">Source context and typed graph navigation for Claude Code and Codex, across languages.</p>
+        <p class="evidence rise d1">
+          <strong>71.4% code-block Recall@5.</strong>
+          Model-planned grep → Jev on 100 real issues.<br>
+          +12.8 points over the same grep candidates without reranking.<br>
+          <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
+        </p>
         <div class="ctas rise d2">
-          <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-          <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+          <a class="btn btn-primary btn-lg" href="#get-started">Use with your agent</a>
+          <a class="btn btn-ghost btn-lg" href="https://demo.codenib.ai">Browse a Wiki</a>
         </div>
       </div>
-      <div class="traits rise d2">
-        <div>
-          <span class="t-icon" aria-hidden="true">
-            <svg viewBox="0 0 32 32">
-              <path class="guide" d="M10 12.5 16 19m6-6.5-6 6"/>
-              <rect class="panel" x="2.5" y="3.5" width="11" height="10" rx="3"/>
-              <path d="M5.5 7h5M5.5 10h3.5"/>
-              <rect class="panel" x="18.5" y="3.5" width="11" height="10" rx="3"/>
-              <circle class="hot" cx="22" cy="8.5" r=".8"/>
-              <circle class="hot" cx="26" cy="6.5" r=".8"/>
-              <circle class="hot" cx="26" cy="10.5" r=".8"/>
-              <path class="guide" d="m22.7 8.1 2.6-1.2m-2.6 2 2.6 1.2"/>
-              <rect class="panel" x="10.5" y="18.5" width="11" height="10" rx="3"/>
-              <circle class="hot" cx="14" cy="23.5" r=".75"/>
-              <circle class="hot" cx="18" cy="21.5" r=".75"/>
-              <circle class="hot" cx="18" cy="25.5" r=".75"/>
-              <path class="guide" d="m14.7 23.1 2.6-1.2m-2.6 2 2.6 1.2"/>
-            </svg>
-          </span>
-          <div>
-            <div class="k">heterogeneous</div>
-            <div class="v">Lexical, dense, and graph views of the repo, from one compile.</div>
-          </div>
-        </div>
-        <div>
-          <span class="t-icon" aria-hidden="true">
-            <svg viewBox="0 0 32 32">
-              <path class="guide" d="M9 5.5v21"/>
-              <circle class="panel" cx="9" cy="6.5" r="2.5"/>
-              <circle class="hot" cx="9" cy="16" r="2.5"/>
-              <circle class="panel" cx="9" cy="25.5" r="2.5"/>
-              <path d="M11.5 16c4.5 0 3.2-6.5 7.5-6.5h2.5"/>
-              <path d="m19.5 7.5 2 2-2 2"/>
-              <rect class="panel" x="18.5" y="14.5" width="10" height="10" rx="3"/>
-              <path d="M21.5 19.5h4m-2-2v4"/>
-            </svg>
-          </span>
-          <div>
-            <div class="k">incremental</div>
-            <div class="v">Supported changes repair affected views; other transitions rebuild safely.</div>
-          </div>
-        </div>
-        <div>
-          <span class="t-icon" aria-hidden="true">
-            <svg viewBox="0 0 32 32">
-              <path class="guide" d="M8 9.5 14 14m10-4.5L18 14m-2 5v5"/>
-              <rect class="panel" x="3.5" y="5" width="9" height="9" rx="3"/>
-              <path d="m8.5 7.8-2 1.7 2 1.7"/>
-              <rect class="panel" x="19.5" y="5" width="9" height="9" rx="3"/>
-              <path d="m23.5 7.8 2 1.7-2 1.7"/>
-              <path class="spark" d="m16 10.5 1.6 3.9 3.9 1.6-3.9 1.6-1.6 3.9-1.6-3.9-3.9-1.6 3.9-1.6Z"/>
-              <rect class="panel" x="11.5" y="23" width="9" height="6" rx="2.5"/>
-              <circle class="hot" cx="14.5" cy="26" r=".7"/>
-              <path d="M16.8 26h1.3"/>
-            </svg>
-          </span>
-          <div>
-            <div class="k">agent-native</div>
-            <div class="v">Context served to agents as tools, with bounded budgets, over MCP.</div>
-          </div>
-        </div>
-      </div>
+      <figure class="frame rise d2">
+        <a class="preview-link" href="https://demo.codenib.ai/caddyserver__caddy">
+          <div class="frame-bar"><span>Caddy · Wiki preview</span><span>Open demo ↗</span></div>
+          <img src="assets/shots/wiki-light.png" alt="Caddy Wiki with subsystem context, source files and line references" width="2000" height="1250" fetchpriority="high">
+        </a>
+        <figcaption class="preview-caption">Explore the public example, then connect CodeNib to your own repository.</figcaption>
+      </figure>
     </div>
-    <div class="wrap shot-stage rise d4">
-      <div class="frame">
-        <div class="frame-bar"><span>demo.codenib.ai</span></div>
-        <div class="live" data-min-w="1100" style="aspect-ratio: 1440 / 860">
-          <iframe src="https://demo.codenib.ai/caddyserver__caddy"
-                  title="Live CodeNib wiki for caddyserver/caddy"
-                  tabindex="-1" inert aria-hidden="true"></iframe>
-          <a class="cover" href="https://demo.codenib.ai/caddyserver__caddy"
-             aria-label="Open caddyserver/caddy in the demo"></a>
-        </div>
+    <div class="wrap">
+      <div class="setup" id="get-started">
+        <h2>Two commands. Your repository, your agent.</h2>
+        <pre><code>python -m pip install "codenib[graph,mcp]"
+codenib codegraph init /path/to/your/repo</code></pre>
+        <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
+        <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
       </div>
     </div>
   </div>
 
   <section>
     <div class="wrap">
-      <h2 class="reveal">One repository, coordinated views</h2>
-      <p class="section-sub reveal">The Wiki, Dependency Map, and Ask consume manifest-linked lexical, semantic, and structural views from one incremental compiler.</p>
+      <h2 class="reveal">Evidence you can inspect. Tools you can compare.</h2>
+      <p class="section-sub reveal">Follow source locations, check language coverage, and reproduce the retrieval methods.</p>
       <div class="bento">
-        <div class="cell cell-ask reveal">
-          <h3>Ask, with receipts</h3>
-          <p>Every answer cites the file and line it came from. Click a citation to open the source.</p>
-          <div class="live" data-min-w="1100">
-            <iframe src="https://demo.codenib.ai/caddyserver__caddy/ask"
-                    title="Ask a question about caddyserver/caddy"
-                    loading="lazy" tabindex="-1" inert aria-hidden="true"></iframe>
-            <a class="cover" href="https://demo.codenib.ai/caddyserver__caddy/ask"
-               aria-label="Ask a question in the demo"></a>
-          </div>
+        <div class="cell reveal">
+          <h3>Follow definitions and calls</h3>
+          <p>Bounded context and typed SCIP/LSP graphs help your agent navigate from a question to the source. Compare the fit with grep, Serena, CodeGraph, and DeepWiki.</p>
+          <a class="text-link" href="https://docs.codenib.ai/comparison/">Compare repository tools →</a>
         </div>
-        <div class="cell cell-side tint reveal">
-          <h3>Compiler-grade graphs</h3>
-          <p>Dependency maps come from SCIP symbol resolution, not model guesses. Edges link to definitions and references in the source.</p>
-          <div class="chips"><span>calls</span><span>imports</span><span>references</span></div>
+        <div class="cell reveal">
+          <h3>Know your language's support</h3>
+          <p>14 language entries, 12 with graph backends. See which providers, prerequisites, and capabilities apply to your repository.</p>
+          <a class="text-link" href="https://docs.codenib.ai/language_capabilities/">Open the language matrix →</a>
         </div>
-        <div class="cell cell-side reveal">
-          <h3>Wikis that write themselves</h3>
-          <p>Architecture pages are generated per subsystem and cached, so every page loads instantly.</p>
-        </div>
-        <div class="cell cell-wide reveal">
-          <div class="cw-text">
-            <h3>Five languages in the live demo</h3>
-            <p>Language backends preserve shared source locations and capability metadata across each compiled view.</p>
-            <div class="chips">
-              <span>python</span><span>c/c++</span><span>go</span><span>rust</span><span>typescript</span>
-            </div>
-          </div>
-          <div class="live" data-min-w="1100">
-            <iframe src="https://demo.codenib.ai/"
-                    title="Repositories indexed in the CodeNib demo"
-                    loading="lazy" tabindex="-1" inert aria-hidden="true"></iframe>
-            <a class="cover" href="https://demo.codenib.ai/"
-               aria-label="Browse indexed repositories in the demo"></a>
-          </div>
+        <div class="cell reveal">
+          <h3>Reproduce the methods</h3>
+          <p>Pinned LocAgent, Agentless, CoSIL, OrcaLoca, and RepoNavigator contracts. Dataset and scorer checks make the evaluation boundaries visible.</p>
+          <a class="text-link" href="https://docs.codenib.ai/agent_integrations/">Explore agent integrations →</a>
         </div>
       </div>
+      <p class="section-sub reveal">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
     </div>
   </section>
 
@@ -454,10 +326,10 @@ footer { border-top: 1px solid var(--line); }
 
   <div class="cta-block">
     <div class="wrap">
-      <h2 class="reveal">Point it at a codebase.</h2>
+      <h2 class="reveal">Try it where you write code.</h2>
       <div class="ctas reveal">
-        <a class="btn btn-primary btn-lg" href="https://demo.codenib.ai">Open the demo</a>
-        <a class="btn btn-ghost btn-lg" href="https://docs.codenib.ai">Read the docs</a>
+        <a class="btn btn-primary btn-lg" href="#get-started">Use with your agent</a>
+        <a class="btn btn-ghost btn-lg" href="https://github.com/sysevol-ai/CodeNib/releases">Latest releases</a>
       </div>
     </div>
   </div>
@@ -474,6 +346,7 @@ footer { border-top: 1px solid var(--line); }
     <a href="https://docs.codenib.ai">Docs</a>
     <a href="https://demo.codenib.ai">Demo</a>
     <a href="https://github.com/sysevol-ai/CodeNib">GitHub</a>
+    <a href="https://github.com/sysevol-ai/CodeNib/releases">Releases</a>
     <span>© 2026 CodeNib</span>
   </div>
 </footer>
@@ -484,20 +357,6 @@ footer { border-top: 1px solid var(--line); }
   }, { threshold: 0.15 });
   document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
 
-  // Scale each live demo embed: render at its design width (desktop layout),
-  // shrink to whatever the container gives us. Never upscale.
-  const fit = (el) => {
-    const frame = el.querySelector("iframe");
-    const w = el.clientWidth, h = el.clientHeight;
-    if (!frame || !w || !h) return;
-    const dw = Math.max(w, parseFloat(el.dataset.minW || "1000"));
-    const scale = w / dw;
-    frame.style.width = dw + "px";
-    frame.style.height = h / scale + "px";
-    frame.style.transform = `scale(${scale})`;
-  };
-  const ro = new ResizeObserver((es) => es.forEach((e) => fit(e.target)));
-  document.querySelectorAll(".live").forEach((el) => { fit(el); ro.observe(el); });
 </script>
 
 </body>

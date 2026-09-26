@@ -42,6 +42,11 @@ whenever a package changes lifecycle class, an experimental surface is retired,
 an architectural dependency direction changes, or a subtraction iteration is
 completed.
 
+For the adoption, OpenRouter, and Wiki preview program, use
+`docs/adoption_roadmap.md` as the durable objective record. Keep shipping
+CodeGraph capabilities separate from experimental grep/Jev results, and
+update the relevant milestone when its acceptance gates or PR status change.
+
 ## Storage Scope Guard
 
 - The only product database boundary is the Wiki-only

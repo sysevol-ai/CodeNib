@@ -22,6 +22,12 @@ interpret every result.
 
 ## Dataset And Benchmark Support
 
+For a measured retrieval result, start with
+[model-planned grep → Jev](grep_jev.md): 71.4% code-block Recall@5 on
+100 CodeNib Base issues, compared with 58.6% for the same grep candidates
+without reranking. This research route is separate from the shipping
+model-free CodeGraph setup.
+
 Dataset loading, benchmark scoring, and agent-policy compatibility are
 different surfaces. A loader entry means CodeNib can prepare snapshots and
 ground truth; it does not imply that every retrieval route or external policy

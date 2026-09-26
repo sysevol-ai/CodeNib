@@ -11,15 +11,19 @@ SPDX-License-Identifier: Apache-2.0
 
 # CodeNib
 
-CodeNib is a multi-view data system for serving repository context to coding
-agents. It compiles repositories into reusable, source-linked lexical, semantic,
-structural, and static-navigation views, then serves the same manifest through
-MCP, Python APIs, the local Wiki, and evaluation harnesses.
+Give your coding agent source context and typed graph navigation across
+languages. Start with [local CodeGraph setup](codegraph.md),
+[compare repository tools](comparison.md), or inspect the
+[measured grep → Jev experiment](evaluation/grep_jev.md): **71.4% code-block
+Recall@5 on 100 issues**, 12.8 percentage points above the same grep candidates
+without reranking. That experiment is separate from today's model-free setup.
 
 Language support varies by surface. Start with the generated
 [Language Capabilities](language_capabilities.md) matrix when you need to know
-which languages support chunking, graph indexing, incremental patching, or C++
-core decoder parity.
+which languages support chunking, graph indexing, incremental backends, or C++
+core decoder parity. See [architecture](concepts/architecture.md) for view
+reuse and rebuild boundaries, and [agent integrations](agent_integrations.md)
+for pinned method contracts and their reproduction status.
 
 ## Choose a path
 
