@@ -165,7 +165,8 @@ Its deterministic regressions allow unrelated sibling creation and reject
 repository mutation or an ancestor replacement. The combined platform check
 passes; bundled-runtime release reconciliation and real provider consent remain open.
 
-The browser trial now exchanges a one-use S256 grant directly with OpenRouter
+The browser trial in [#796](https://github.com/sysevol-ai/CodeNib/pull/796)
+now exchanges a one-use S256 grant directly with OpenRouter
 and holds its key in a private JavaScript field for up to ten minutes. No key
 enters UI state, storage, URLs, exported assets or source-service requests.
 The nonce-scoped callback supports denial, expiry, replay rejection and
@@ -183,6 +184,10 @@ script execution, and callback responses have a separate restrictive policy.
 Actual provider consent and production-host headers/callback behavior remain
 open. The public browser-trial guide documents same-origin script trust,
 callback grant logging, IP-proxy trust and the explicit deployment gate.
+The trial branch passes 7,307 unit tests (35 skipped; 190 heavier tests
+deselected), 95 frontend tests, the production frontend build, strict MkDocs,
+the public-document audit and changed-file pre-commit. Provider fixtures
+support these results; none makes a new quality or token-savings claim.
 
 Native registration is merged in
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785) as `50215406`. `codenib init` checks or
