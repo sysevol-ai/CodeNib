@@ -4032,6 +4032,10 @@ def _selection_recording_builder(calls: list, index_type: str = "rec"):
 def _git_repo(path) -> str:
     """Init a git repo with one commit; return the commit sha."""
     subprocess.run(["git", "init", "-q", str(path)], check=True)
+    # These fixtures copy .git for namespace swaps. A commit must not leave a
+    # background maintenance process creating/removing entries during that copy.
+    for name, value in (("maintenance.auto", "false"), ("gc.auto", "0")):
+        subprocess.run(["git", "-C", str(path), "config", name, value], check=True)
     subprocess.run(["git", "-C", str(path), "config", "user.email", "t@t"], check=True)
     subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
     (path / "a.py").write_text("def a():\n    pass\n")
