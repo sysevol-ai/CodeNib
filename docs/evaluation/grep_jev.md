@@ -114,6 +114,24 @@ measure the effect on fresh planning. A complete product quality result needs
 new planning and Jev calls, including failures, followed by an agent evaluation
 before making token-saving claims.
 
+A [fresh product attempt on 2026-09-26](../assets/grep_jev_product_live.json)
+completed 19 cases before a Jev scoring call failed on Caddy #5870. That call
+did not provide usable cost accounting, so the shared budget stopped the
+remaining 80 cases. The recorded successful calls cost $0.225604746; the
+failed call's cost is unknown. This is **not a complete quality result** and
+does not change the 71.40% research claim. The report retains all 100 case
+statuses and leaves aggregate recall unset. There were no automatic retries
+or substitutions for the failed case.
+
+`scripts/evaluate_grep_jev_product.py` runs fresh planning and Jev against the
+same immutable source snapshots, without graph construction or embeddings.
+It requires `--allow-billed-calls` and `--max-cost-usd`; these stop subsequent
+calls based on reported usage and do not replace a provider billing cap.
+Unknown cost stops the run. Operator-local traces retain candidates and usage;
+the shared report omits queries and source. The current runner also retains
+the failed scoring exception type and HTTP status when available, without
+provider response bodies, headers or exception messages.
+
 The source checkout includes `scripts/audit_grep_jev_product.py`. Supply the
 frozen prepared corpus, Jev run, base-aligned labels and pinned repository
 checkouts; its local output includes full candidate traces. The shared JSON

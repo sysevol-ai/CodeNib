@@ -110,7 +110,13 @@ The product candidate audit in
 plans through the product runtime with HTTP disabled. All cases complete;
 94 match ordered text and corrected spans exactly, and six pools differ.
 Frozen-plan grep retains 58.62% Recall@5. Three pools contain new unscored
-text, so aggregate reranked quality is deliberately unset. Full fresh-model
+text, so aggregate reranked quality is deliberately unset.
+
+The first fresh-model attempt completed 19 cases before a scoring failure on
+Caddy #5870 left cost unreported. Its shared budget stopped the remaining 80
+cases; recorded usage is $0.225604746 plus the unknown failed-call cost. The
+published status report keeps all 100 cases and leaves aggregate recall unset.
+There are no automatic retries or case substitutions. Full fresh-model
 quality, authorization/onboarding acceptance and main/release reconciliation
 remain open; 71.40% is still a research claim.
 
