@@ -28,8 +28,8 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs on the dependent onboarding branch. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
 | OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent/OS-vault manual acceptance and hosted browser authorization remain. |
-| Wiki demo | Source-grounded stories/graphs are merged in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). Static cached-story publication is implemented in [#784](https://github.com/sysevol-ai/CodeNib/pull/784); the real Requests corpus has passed export and desktop/mobile browsing without backend requests. | Reconcile producer fixes #789/#790/#791 before static publication; hosted authorization and deployment remain. Live operator browsing/Ask can still intentionally generate. |
-| Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the existing workflow's default semantic indexing still downloads a model. |
+| Wiki demo | Source-grounded stories/graphs are merged in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). Static cached-story publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784); the real Requests corpus has passed export and desktop/mobile browsing without backend requests. | Producer fixes #789/#790/#791 are merged; hosted authorization and deployment remain. Live operator browsing/Ask can still intentionally generate. |
+| Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
 | GitHub discovery | `mcp`, `mcp-server`, `claude-code`, and `codex` are now set, with the six existing topics retained. | Verified through GitHub repository metadata on 2026-09-26. |
 | Releases | Five GitHub releases exist; v0.2.3 is latest. `release.yml` already publishes GitHub assets after PyPI verification and MCP registry publication. | Improve visibility; inspect retry/failure behavior. Do not introduce a second release pipeline. |
@@ -101,7 +101,8 @@ incomplete attempt are retained without retries or substitutions. These are
 localization results, not an agent/token benchmark.
 
 The multiline correction is implemented in
-[#792](https://github.com/sysevol-ai/CodeNib/pull/792), not yet merged or released.
+[#792](https://github.com/sysevol-ai/CodeNib/pull/792), merged as `fbfe1fbb`
+but not yet released.
 Its 51 focused route tests pass, including Windows newline handling; the
 preceding evaluation is not a measurement of that correction. Authorization acceptance, paired agent measurement,
 default-route promotion and release reconciliation remain open. The 71.40%
@@ -134,7 +135,7 @@ live smoke with recorded model identities before promoting it as default.
 
 Status: local CLI/MCP authorization is implemented in
 [#783](https://github.com/sysevol-ai/CodeNib/pull/783),
-based on `main` after #782; not merged or released. Browser and headless PKCE use S256,
+merged into `main` as `f2a805eb`; not yet released. Browser and headless PKCE use S256,
 one-use in-memory verifiers and direct OpenRouter exchange. Saved keys resolve
 for both retrieval stages. Default storage uses a supported OS keyring;
 an explicit POSIX file fallback enforces 0700/0600, no links, no Git checkout
@@ -219,22 +220,22 @@ billed calls without an explicit opt-in; paired results include failures.
 
 Status: story browsing is merged in
 [#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
-publication is implemented in [#784](https://github.com/sysevol-ai/CodeNib/pull/784),
-not yet merged or deployed. A real 15-page Requests corpus exports from SQLite
+publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784)
+as `ae4225f9`, not yet deployed. A real 15-page Requests corpus exports from SQLite
 with all pages generated and grounding-valid. Export verifies 159 citation
 ranges, retains 148 inline excerpts and omits 11 credential-shaped previews
 while preserving their repository links. Source/model identity, cache prompt
 versions and file hashes accompany the static artifact.
 
-The combined validation tree includes the graph-boundary, evidence-serialization
+Main includes the graph-boundary, evidence-serialization
 and source-range fixes in [#789](https://github.com/sysevol-ai/CodeNib/pull/789),
 [#790](https://github.com/sysevol-ai/CodeNib/pull/790) and
 [#791](https://github.com/sysevol-ai/CodeNib/pull/791). Desktop and mobile checks
 cover all 15 pages, citations, unavailable pages and the local-agent handoff,
 with no backend/external requests, browser errors or horizontal overflow.
 Export makes no network calls and preserves its source database/configuration.
-The local corpus and export are verified; dependency merges, hosted authorization,
-release/deployment and broader corpus curation remain open.
+The local corpus and export are verified, and their dependencies are merged.
+Hosted authorization, release/deployment and broader corpus curation remain open.
 
 The public demo must remain useful without authentication or a live LLM.
 
@@ -276,7 +277,14 @@ to local agent activation. The public site remains usable during Spark outage.
 
 ### A6 — Expand distribution with measured demand
 
-Status: planned after the activation path works; service deployment is gated.
+Status: the existing Pages workflow and composite Action default to `fast`,
+which produces a static index-derived preview and portable BM25 artifact without
+an embedding download. The real publication smoke exercises this default and
+checks the resulting artifact views. The public example passes `preset: fast`
+explicitly so the model-free path also works with released v0.2.3; the changed
+workflow default is not released yet. Semantic views remain opt-in. This does
+not substitute BM25 for the selected grep/Jev query route. Cached-story
+generation in Actions, curated-corpus expansion and hosted services remain separate gates.
 
 1. Improve the existing Pages workflow and generated-site backlink. Pin all
    external actions. Offer a no-embedding preview and explicit OpenRouter

@@ -14,7 +14,7 @@ inputs:
     default: ""
   preset:
     description: Portable CodeNib view preset (fast or semantic).
-    default: semantic
+    default: fast
   python-version:
     description: Python runtime used to build the artifact.
     default: "3.12"

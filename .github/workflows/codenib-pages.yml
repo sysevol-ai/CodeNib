@@ -8,9 +8,9 @@ on:
   workflow_call:
     inputs:
       preset:
-        description: CodeNib view preset.
+        description: CodeNib view preset; fast needs no embedding model.
         type: string
-        default: semantic
+        default: fast
       python-version:
         description: Python runtime used for indexing.
         type: string
