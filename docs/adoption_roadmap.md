@@ -27,7 +27,7 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | --- | --- | --- |
 | Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs on the dependent onboarding branch. | Publish only after retrieval/auth gates; keep source-checkout instructions distinct from the released package. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
-| OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent/OS-vault manual acceptance and hosted browser authorization remain. |
+| OpenRouter | Shared grep/Jev configuration, budget handling and local PKCE authorization are implemented in [#782](https://github.com/sysevol-ai/CodeNib/pull/782)/[#783](https://github.com/sysevol-ai/CodeNib/pull/783), not released. Native registration has passed real isolated-client acceptance. | Provider-consent, Linux desktop-vault acceptance and hosted browser authorization remain. |
 | Wiki demo | Source-grounded stories/graphs are merged in [#772](https://github.com/sysevol-ai/CodeNib/pull/772). Static cached-story publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784); the real Requests corpus has passed export and desktop/mobile browsing without backend requests. | Producer fixes #789/#790/#791 are merged; hosted authorization and deployment remain. Live operator browsing/Ask can still intentionally generate. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | Deployment and hosted browser authorization remain; the no-embedding workflow default is implemented but not released. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | The installed-version handshake fix is on main, not yet published; do not tell reporters it is released before publication. |
@@ -147,7 +147,7 @@ Local callback behavior, provider metadata access and lightweight installation
 are verified; detailed validation is recorded in #783. Logout handles malformed
 files and unavailable keyrings explicitly. Credential preparation and logout
 recover owned temporaries under the existing directory lock; a process-kill
-test verifies recovery. Real provider consent and OS-vault acceptance remain
+test verifies recovery. Real provider consent and Linux desktop-vault acceptance remain
 open. A real browser directly called OpenRouter key metadata, planning and
 Decisions with an existing normal key; all succeeded without exposing it to
 the local fixture server, DOM or browser storage. This establishes authenticated
@@ -156,15 +156,16 @@ browser connection for the hosted trial; callback/session handling, Wiki gating
 and the complete application's XSS/CSP review remain open. Detailed transport
 validation is recorded in #783.
 
-Lightweight installation acceptance in
-[#793](https://github.com/sysevol-ai/CodeNib/pull/793) has passed real Linux/macOS
-retrieval and the macOS keyring round trip. Windows exposed a source-authority false positive:
-creating grep's temporary tree changed an ancestor directory timestamp. The
-source-read boundary now reuses lexical HANDLE binding verification for ancestors
-and retains the full repository-root version and source inventory checks. A
-deterministic regression reproduces the sibling change and still rejects
-repository mutation or an ancestor replacement. Real Windows acceptance remains
-open until the combined fix passes its platform job.
+Lightweight installed-package acceptance in
+[#793](https://github.com/sysevol-ai/CodeNib/pull/793) passes on Linux, macOS and
+Windows with PATH empty, no embedding/graph/model SDK packages and fixture-only
+provider responses. macOS and Windows also pass real OS keyring save/read/delete
+round trips with unique fake entries. The Windows source-read correction in
+[#795](https://github.com/sysevol-ai/CodeNib/pull/795) preserves lexical HANDLE
+bindings for ancestors and full repository-root version/inventory checks.
+Its deterministic regressions allow unrelated sibling creation and reject
+repository mutation or an ancestor replacement. The combined platform check
+passes; merge/release reconciliation and real provider consent remain open.
 
 Native registration is implemented in dependent
 [#785](https://github.com/sysevol-ai/CodeNib/pull/785). Its native CLI ownership,
