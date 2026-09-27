@@ -132,13 +132,19 @@ def repair_architecture_plan(value: Mapping[str, Any]) -> dict[str, Any]:
 
     The gate keeps its rules; this only fixes what a rule can prove: a kind
     written in the layer field maps to that kind's layer, and a primary path
-    keeps its longest connected run. Anything else still fails validation.
+    keeps its longest connected run. Inline code typography inside a role's
+    prose label is flattened; a label consisting only of a symbol stays invalid.
+    Anything else still fails validation.
     """
 
     plan = dict(value)
     components = []
     for raw in plan.get("components") or ():
         if isinstance(raw, Mapping):
+            label = str(raw.get("label") or "")
+            prose = re.sub(r"`[^`]+`", "", label)
+            if "`" in label and len(re.findall(r"[A-Za-z]{2,}", prose)) >= 2:
+                raw = {**raw, "label": label.replace("`", "")}
             layer = str(raw.get("layer") or "")
             kind = str(raw.get("kind") or "")
             if layer not in _ARCHITECTURE_LAYERS and layer in _KIND_TO_LAYER:

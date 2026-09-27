@@ -19,7 +19,7 @@ from .visual_ir import architecture_contract_from_plan
 
 MediaKind = Literal["diagram", "image", "storyboard", "chart", "video"]
 MediaPlacement = Literal["lead", "section", "aside", "appendix"]
-MEDIA_PLAN_VERSION = 12
+MEDIA_PLAN_VERSION = 13
 
 _MAX_SOURCE_CITATIONS = 6
 

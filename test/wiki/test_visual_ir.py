@@ -136,6 +136,18 @@ def test_architecture_plan_rejects_call_graphs_disguised_as_architecture():
     assert architecture_contract_from_plan(call_edge_plan) is None
 
 
+def test_architecture_role_with_inline_output_notation_survives_rendering():
+    plan = _architecture_plan()
+    plan["components"][3]["label"] = "Compact `(H, tau)` artifact"
+    contract = architecture_contract_from_plan(plan)
+    assert contract is not None
+    assert contract["data"]["nodes"][3]["label"] == "Compact (H, tau) artifact"
+    assert plan["components"][3]["label"] == "Compact `(H, tau)` artifact"
+    for label in ("`custom_kernel`", "`main()`", "source `src/main.py`"):
+        plan["components"][3]["label"] = label
+        assert architecture_contract_from_plan(plan) is None
+
+
 def test_architecture_plan_rejects_a_copied_prompt_template():
     copied = _architecture_plan()
     for component, label in zip(
