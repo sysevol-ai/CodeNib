@@ -493,13 +493,15 @@ server connectivity, with immediate submit feedback, progressive chapter reads,
 progress. The extra editorial pass reports its actual review stage. Refresh and
 reconnect remain read-only, and existing paid runs must drain before deployment.
 The review chain is #803 → #804 → #805 →
-[#806](https://github.com/sysevol-ai/CodeNib/pull/806); restack it in that order
+[#806](https://github.com/sysevol-ai/CodeNib/pull/806) →
+[#807](https://github.com/sysevol-ai/CodeNib/pull/807); restack it in that order
 before merging. Deployment does not imply the stack is merged.
 
-The community iteration is deployed to the demo as of 2026-09-27. Acceptance
-passes 1,283 Wiki/web unit tests (one skipped), 142 frontend tests, production
-build, strict docs and the provider-free desktop/mobile publication and waiting
-matrices. Public browser checks render the existing visitor architecture with
+The community and visitor-quality fixes are deployed as of 2026-09-27.
+Acceptance passes 1,341 Wiki/web/grep-MCP unit tests (one skipped), 142 frontend
+tests, production build, strict docs and the provider-free desktop/mobile
+publication and waiting matrices. Publication acceptance includes the completion
+invitation and failure/retry path. Public browser checks render the existing visitor architecture with
 seven roles and pinned-source navigation, keep completed diagnostics collapsed,
 preserve unlisted visibility and refresh without mutations. The two existing
 visitor Wikis and all 27 prepared repositories remain readable. Cache coverage
