@@ -1944,6 +1944,20 @@ class RepositorySourceReader:
     def captured_relative_path(self, path: str) -> str | None:
         return self._binding.captured_relative_path(path)
 
+    @contextmanager
+    def read_session(self) -> Iterator[RepositorySourceReader]:
+        """Batch exact reads without exposing the binding's ownership methods.
+
+        Reuse the binding's authentication lease and inventory checks before
+        and after the batch. Each file still authenticates its complete bytes.
+        Callers must publish derived data only after the context exits, when
+        the final inventory check has succeeded; no model or network work
+        belongs inside this source lease.
+        """
+
+        with self._binding.read_session():
+            yield self
+
     def read_prefix(self, relative: str, *, max_bytes: int) -> bytes:
         return self._binding.read_prefix(relative, max_bytes=max_bytes)
 

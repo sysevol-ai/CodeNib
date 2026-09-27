@@ -67,7 +67,7 @@ from codenib.wiki.quality import (
     section_sentence_redundancy_report,
 )
 from codenib.wiki.sqlite_store import SQLiteWikiStore
-from codenib.wiki.store import WikiStoreError
+from codenib.wiki.store import WikiGenerationBusyError, WikiStoreError
 from codenib.wiki.story import finalize_story_ir, story_quality_report
 
 
@@ -7292,6 +7292,9 @@ def test_agent_wiki_cached_page_tree_reads_store_without_generating(
 
     tree = wiki.cached_page_tree()
 
+    assert wiki.cached_outline() == {
+        "pages": [{"id": "runtime", "title": "Runtime", "children": []}]
+    }
     assert tree == [
         {
             "id": "runtime",
@@ -7367,12 +7370,17 @@ def test_agent_wiki_page_tree_reports_ready_cold_and_degraded_cache_states(tmp_p
     assert tree[1]["cache_state"] == "degraded"
 
 
-def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose():
+@pytest.mark.parametrize(
+    "slot_id",
+    ["overview-story-storyboard", "overview-entry-path", "overview-relation-map"],
+)
+def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose(slot_id):
     legacy = {
         "id": "overview",
         "title": "Overview",
         "markdown": "# Overview\n\nSource-grounded prose.",
         "citations": [{"file": "src/api.py"}],
+        "media_plan_version": 11,
         "story": {
             "beats": [
                 {"section": "Enter", "role": "entry", "evidence": ["E1"]},
@@ -7381,9 +7389,10 @@ def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose():
         },
         "media_slots": [
             {
-                "id": "overview-story-storyboard",
+                "id": slot_id,
                 "kind": "storyboard",
                 "placement": "appendix",
+                "asset": {"uri": "/old-flow.svg"},
             }
         ],
     }
@@ -7431,11 +7440,15 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
     cache_dir = tmp_path / "wiki-cache"
     wiki_store = SQLiteWikiStore(cache_dir / "wiki.sqlite3")
     wiki = AgentWiki(bundle, model="fake-model", store=wiki_store)
+    assert wiki.page_citations("runtime", cached_only=True) is None
+    assert vector_store.calls == []
     wiki._outline = outline
     wiki._generate_page = lambda _meta: (_ for _ in ()).throw(
         AssertionError("graph evidence must not generate prose")
     )
 
+    assert wiki.page_citations("runtime", cached_only=True) is None
+    assert vector_store.calls == []
     citations = wiki.page_citations("runtime")
 
     assert citations == [
@@ -7459,6 +7472,7 @@ def test_agent_wiki_page_citations_never_generate_prose_and_are_cached(tmp_path)
         store=SQLiteWikiStore(cache_dir / "wiki.sqlite3"),
     )
     reloaded._outline = outline
+    assert reloaded.page_citations("runtime", cached_only=True) == citations
     assert reloaded.page_citations("runtime") == citations
     assert vector_store.calls == []
 
@@ -7703,7 +7717,7 @@ def test_agent_wiki_bounds_process_local_generation_wait(tmp_path, monkeypatch):
         0.01,
     )
     try:
-        with pytest.raises(WikiStoreError, match="lock wait timed out"):
+        with pytest.raises(WikiGenerationBusyError, match="lock wait timed out"):
             wiki.page("runtime")
     finally:
         owner.release()

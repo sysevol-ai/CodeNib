@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Dict, List, Optional
 
@@ -373,6 +374,18 @@ class WikiBuilder:
             return tuple()
         root = self._index_root(raw[0][0]) if self._source_reader is None else ""
         prefix = (root + "/") if root else ""
+        # Enumerating a large repository otherwise checks its entire inventory
+        # twice per symbol. Keep exact file authentication, but share the
+        # existing source lease across this bounded local enumeration. The
+        # caller publishes _symbols_cache only after the postflight succeeds.
+        with (
+            self._source_reader.read_session()
+            if self._source_reader is not None
+            else nullcontext()
+        ):
+            return self._hydrate_symbols(raw, prefix)
+
+    def _hydrate_symbols(self, raw: list, prefix: str) -> tuple:
         source_cache: Dict[object, Optional[tuple[str, ...]]] = {}
         syms = []
         for f, name, symbol_type, start, end, content in raw:

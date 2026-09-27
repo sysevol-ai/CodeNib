@@ -65,7 +65,13 @@ their presence in this roadmap is not approval to implement them.
 Status: complete.
 
 Each built-in generation-lock acquisition has a 30-second waiter budget;
-timing out never steals the lock or starts duplicate work. Cache audits and
+timing out never steals the lock or starts duplicate work. A typed busy error
+becomes HTTP 503 with `Retry-After` in the Web runtime. Wiki clients retry at
+most five times while the current owner continues; other storage failures
+remain errors. This covers both process-local and SQLite generation guards;
+the retryable Web behavior is tracked in
+[#800](https://github.com/sysevol-ai/CodeNib/pull/800).
+Cache audits and
 prewarm dry runs copy a quiescent `wiki.sqlite3` into a private temporary
 snapshot after checking the source on both sides of the copy, then inspect only
 that snapshot through SQLite's immutable read-only mode. They reject WAL, SHM,

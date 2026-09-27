@@ -77,7 +77,13 @@ from .quality import (
 )
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
-from .store import WikiStore, WikiStoreCorruptionError, WikiStoredEntry, WikiStoreError
+from .store import (
+    WikiGenerationBusyError,
+    WikiStore,
+    WikiStoreCorruptionError,
+    WikiStoredEntry,
+    WikiStoreError,
+)
 from .story import (
     STORY_BEAT_ROLES,
     STORY_SCHEMA_VERSION,
@@ -228,7 +234,7 @@ def _bounded_generation_lock(lock: Any):
     """
 
     if not lock.acquire(timeout=_GENERATION_LOCK_TIMEOUT_SECONDS):
-        raise WikiStoreError("Wiki generation lock wait timed out")
+        raise WikiGenerationBusyError("Wiki generation lock wait timed out")
     try:
         yield
     finally:
@@ -4577,13 +4583,20 @@ class AgentWiki:
         outline_pages = self.outline().get("pages", [])
         return self._page_tree_refs(outline_pages)
 
-    def cached_page_tree(self) -> Optional[List[dict]]:
-        """Return the cached page tree without generating or publishing data."""
-
+    def cached_outline(self) -> Optional[dict]:
+        """Read outline metadata without generating pages or retrieving evidence."""
         outline = self._outline
         if outline is None:
             outline = self._read_cache("outline")
         if not isinstance(outline, dict) or not isinstance(outline.get("pages"), list):
+            return None
+        return outline
+
+    def cached_page_tree(self) -> Optional[List[dict]]:
+        """Return the cached page tree without generating or publishing data."""
+
+        outline = self.cached_outline()
+        if outline is None:
             return None
         return self._page_tree_refs(outline["pages"])
 
@@ -5149,16 +5162,24 @@ class AgentWiki:
             return None
         return overview_lead(str(page.get("markdown") or ""))
 
-    def page_citations(self, page_id: str) -> Optional[List[dict[str, Any]]]:
-        """Resolve graph seeds for a page without generating its prose."""
+    def page_citations(
+        self, page_id: str, *, cached_only: bool = False
+    ) -> Optional[List[dict[str, Any]]]:
+        """Resolve graph seeds, optionally without outline or evidence work."""
 
-        meta = self._find(page_id)
+        pages = None
+        if cached_only:
+            outline = self._outline or self._read_cache("outline")
+            pages = outline.get("pages") if isinstance(outline, dict) else None
+            if not isinstance(pages, list):
+                return None
+        meta = self._find(page_id, pages)
         if meta is None:
             return None
         if page_id == "overview":
             meta = self._overview_page_meta(
                 meta,
-                self.outline().get("pages", [])[1:],
+                (pages if pages is not None else self.outline().get("pages", []))[1:],
             )
         page_suffix = self._page_cache_suffix(meta)
         page = self._pages.get(page_id) or self._read_cache(page_suffix)
@@ -5169,6 +5190,8 @@ class AgentWiki:
         cached = self._read_cache(evidence_suffix)
         if isinstance(cached, dict) and isinstance(cached.get("citations"), list):
             return cached["citations"]
+        if cached_only:
+            return None
         with self._cache_generation_lock(evidence_suffix):
             cached = self._read_cache(evidence_suffix)
             if isinstance(cached, dict) and isinstance(cached.get("citations"), list):

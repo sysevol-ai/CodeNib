@@ -57,6 +57,44 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
 
 ## Performance & caching (why a page can feel slow)
 
+- **Repository cards** reuse source-derived summaries for the lifetime of a
+  `RepoBundle`. Startup prepares those summaries before accepting requests;
+  replacing an indexed generation gives it a fresh cache. Authenticated source
+  reads still run on the first computation, failures can retry, and a newly
+  cached Wiki lead takes precedence on the next list request. Avoid reading
+  each package manifest again on every `/api/repos` call: each authenticated
+  read verifies the source inventory, which made a 27-repository list take
+  roughly 10 seconds. Warm requests after this fix measured 27–39 ms locally.
+- **Browser repository lists** share an in-flight request and reuse a successful
+  response for 60 seconds across home, Wiki, and Ask navigation. Failed requests
+  are evicted; explicit refresh bypasses the cache. Consumers with an abort
+  signal own an independent request so dialog cancellation cannot cancel page
+  navigation. This cache does not pre-generate cold Wiki pages.
+- **Cold large-repository Wiki loads** batch symbol source reads through the
+  borrowed reader's authenticated session. Keep inventory checks before and
+  after the batch and publish the symbol cache only after successful exit;
+  otherwise per-symbol whole-tree scans can occupy a generator for minutes.
+  Concurrent readers receive 503 with `Retry-After` after a bounded lock wait,
+  and the browser retries at most five times. Validate cold overviews on a
+  large repository as well as cached Requests pages before deploying.
+- **System maps** assign indexed symbols using files in the cached outline,
+  including child-page file assignments. They must work before child prose or
+  citation caches exist, without fanning out retrieval across cold pages.
+  Only authenticated source paths and recorded graph edges contribute. The
+  first area listing a shared file owns its symbols. Concurrent graph readers
+  wait for validation to finish; loading, unavailable graphs, and no recorded
+  cross-area calls have distinct UI states instead of silently hiding the map.
+- **Deployment acceptance** checks cache coverage across the entire page tree
+  and System Map availability for every served repository. Successful Overview
+  requests do not establish that child pages are cached or maps are present.
+  Use `scripts/prewarm_wiki_cache.py --scope all` for full prose coverage;
+  report cold, degraded, and failed pages explicitly while prewarming runs.
+- **Overview illustrations** require an admitted semantic architecture plan.
+  Do not substitute an automatic call-flow or relation image when that plan
+  is missing or invalid: a debug/configuration branch can look like the main
+  system path. Keep indexed System Maps separate. Bump the media-plan version
+  when changing this policy so existing pages drop obsolete derived assets
+  without invalidating cached prose.
 - **Wiki prose is LLM-generated and stored** in
   `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
   (that holds the prebuilt graph + vectors).

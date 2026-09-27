@@ -45,11 +45,72 @@ def test_request_timing_header_and_slow_log_exclude_query(monkeypatch, caplog):
     assert all("secret=query" not in message for message in app_messages)
 
 
+@pytest.mark.parametrize("suffix", ["wiki", "wiki/overview", "wiki-map"])
+def test_busy_wiki_generation_returns_retryable_response(monkeypatch, suffix):
+    from codenib.wiki.store import WikiGenerationBusyError
+
+    def busy(*_args, **_kwargs):
+        raise WikiGenerationBusyError("Wiki generation lock wait timed out")
+
+    monkeypatch.setattr(web_app, "_bundle", lambda _id: SimpleNamespace())
+    monkeypatch.setattr(web_app, "_wiki", busy)
+    response = TestClient(web_app.app).get(f"/api/repos/repo/{suffix}")
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "2"
+    assert response.headers["cache-control"] == "no-store"
+    assert "still being prepared" in response.json()["detail"]
+
+
 def test_web_app_has_no_retained_storage_control_plane() -> None:
     paths = {route.path for route in web_app.app.routes}
 
     assert not any("index-jobs" in path for path in paths)
     assert not hasattr(web_app, "_configured_local_index_runtime")
+
+
+def test_area_map_works_before_pages_or_evidence_are_generated(monkeypatch):
+    import codenib.web.codemap as codemap
+
+    state = {"outline": None}
+
+    class Builder:
+        def cached_outline(self):
+            return state["outline"]
+
+        def page_citations(self, _page_id, *, cached_only=False):
+            pytest.fail("system map must not depend on page citations")
+
+        def page_tree(self):
+            pytest.fail("optional map must not generate a cold outline")
+
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(repo_dir="/repo", base_commit="same-commit"),
+        code_graph=lambda: object(),
+    )
+    monkeypatch.setattr(web_app, "_bundle", lambda _id: bundle)
+    monkeypatch.setattr(web_app, "_wiki", lambda *_args: Builder())
+
+    def build(_graph, areas, **_kw):
+        assert areas == [
+            {"id": "runtime", "title": "runtime", "files": ["runtime.py", "child.py"]}
+        ]
+        return {"available": True}
+
+    monkeypatch.setattr(codemap, "build_area_map", build)
+    assert asyncio.run(web_app.wiki_area_map("repo"))["reason"] == "outline_pending"
+    state["outline"] = {
+        "pages": [
+            {"id": "overview", "files": ["README.md"]},
+            {
+                "id": "runtime",
+                "files": ["runtime.py"],
+                "children": [{"id": "child", "files": ["child.py", "runtime.py"]}],
+            },
+        ]
+    }
+    assert asyncio.run(web_app.wiki_area_map("repo"))["available"] is True
+    bundle.code_graph = lambda: None
+    assert asyncio.run(web_app.wiki_area_map("repo"))["reason"] == "graph_unavailable"
 
 
 def test_lifespan_injects_local_native_authority_resolver(monkeypatch):
@@ -693,6 +754,63 @@ def test_list_repos_keeps_info_and_window_stats_on_one_generation(monkeypatch):
     assert observed[0].base_commit == "old"
     assert observed[0].incremental == "old"
     assert events == ["pin-enter", "stats-old", "pin-exit"]
+
+
+def test_repo_cards_are_warm_after_startup_and_follow_wiki_updates(
+    monkeypatch, tmp_path
+):
+    from codenib.compiler.manifest import RepoManifest
+    from codenib.web.config import RepoEntry
+    from codenib.web.repo_registry import RepoBundle
+
+    reads = []
+
+    class Reader:
+        def captured_relative_path(self, path):
+            return path if path == "package.json" else None
+
+        def read_prefix(self, path, *, max_bytes):
+            reads.append(path)
+            return b'{"description": "A library for making HTTP requests."}'
+
+    bundle = RepoBundle(
+        RepoEntry(
+            instance_id="owner__repo",
+            repo="owner/repo",
+            base_commit="abc123",
+            language="python",
+            repo_dir=str(tmp_path),
+            manifest_path=str(tmp_path / "manifest.json"),
+        ),
+        RepoManifest(repo_path=str(tmp_path)),
+        source_reader=Reader(),
+    )
+    # The startup metadata listing prepares the fallback without an LLM or
+    # opening the optional Wiki store.
+    assert bundle.info().summary == "A library for making HTTP requests."
+    assert reads == ["package.json"]
+    leads = iter([None, "Client dispatches requests through an HTTP adapter."])
+
+    class Registry:
+        @contextmanager
+        def pin_all(self):
+            yield (bundle,)
+
+    monkeypatch.setattr(web_app.app.state, "registry", Registry(), raising=False)
+    monkeypatch.setattr(
+        web_app, "load_config", lambda: SimpleNamespace(edge_labels=False)
+    )
+    monkeypatch.setattr(
+        web_app,
+        "_wiki",
+        lambda *_args: SimpleNamespace(cached_summary=lambda: next(leads)),
+    )
+    monkeypatch.setattr(web_app, "_window_stats_for_bundle", lambda *_args: None)
+    first = asyncio.run(web_app.list_repos())
+    second = asyncio.run(web_app.list_repos())
+    assert first[0].summary == "A library for making HTTP requests."
+    assert second[0].summary == "Client dispatches requests through an HTTP adapter."
+    assert reads == ["package.json"]
 
 
 def test_chat_fails_closed_without_authenticated_source_reader(monkeypatch):

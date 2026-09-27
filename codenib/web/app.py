@@ -50,6 +50,7 @@ from ..wiki.media_generation import (
 from ..wiki.narrator import Narrator
 from ..wiki.repository_visuals import attach_repository_visual, discover_overview_visual
 from ..wiki.sqlite_store import SQLiteWikiStore
+from ..wiki.store import WikiGenerationBusyError
 from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
 from .card_summary import card_summary
@@ -218,6 +219,20 @@ async def add_request_timing(request: Request, call_next):
             duration_ms,
         )
     return response
+
+
+@app.exception_handler(WikiGenerationBusyError)
+async def wiki_generation_busy(
+    _request: Request,
+    _exc: WikiGenerationBusyError,
+) -> JSONResponse:
+    """Let concurrent browsers retry the existing owner's generation."""
+
+    return JSONResponse(
+        status_code=503,
+        headers={"Retry-After": "2", "Cache-Control": "no-store"},
+        content={"detail": "This Wiki page is still being prepared. Retrying shortly."},
+    )
 
 
 @app.exception_handler(RequestValidationError)
@@ -658,11 +673,17 @@ async def list_repos() -> list[RepoInfo]:
                 wiki = await _run_pinned_thread(_wiki, info.id, bundle)
             lead_of = getattr(wiki, "cached_summary", None)
             lead = await asyncio.to_thread(lead_of) if callable(lead_of) else None
-            info.summary = await asyncio.to_thread(
-                card_summary, target, lead, info.description
-            )
+            summary_of = getattr(target, "card_summary", None)
+            if callable(summary_of):
+                info.summary = await _run_pinned_thread(
+                    summary_of, lead, info.description
+                )
+            else:
+                info.summary = await _run_pinned_thread(
+                    card_summary, target, lead, info.description
+                )
         except Exception:  # noqa: BLE001 - a summary must not break the list
-            info.summary = ""
+            info.summary = getattr(info, "summary", "")
         try:
             if bundle is None:
                 info.incremental = await asyncio.to_thread(
@@ -918,39 +939,53 @@ async def wiki_page_graph(repo_id: str, page_id: str) -> dict:
         )
 
 
-_AREA_MAP_CACHE: dict[tuple[str, str], dict] = {}
-
-
 @app.get("/api/repos/{repo_id}/wiki-map")
 async def wiki_area_map(repo_id: str) -> dict:
     """How the wiki's top-level areas call each other in the indexed graph.
 
-    Uses only citations the wiki already resolved, so opening the map never
-    starts page generation.
+    Assign indexed symbols to the files in the cached outline. The map must
+    work before prose exists, without retrieving evidence for every page.
     """
     with _pinned_bundle(repo_id) as bundle:
         entry = getattr(bundle, "entry", None)
-        cache_key = (repo_id, str(getattr(entry, "base_commit", "") or ""))
-        if cache_key in _AREA_MAP_CACHE:
-            return _AREA_MAP_CACHE[cache_key]
         builder = await _run_pinned_thread(_wiki, repo_id, bundle)
-        page_citations = getattr(builder, "page_citations", None)
+        cached_outline = getattr(builder, "cached_outline", None)
+        outline = (
+            await _run_pinned_thread(cached_outline)
+            if callable(cached_outline)
+            else None
+        )
+        if not outline:
+            return {
+                "available": False,
+                "areas": [],
+                "links": [],
+                "reason": "outline_pending",
+            }
         graph = await _run_pinned_thread(bundle.code_graph)
-        if graph is None or not callable(page_citations):
-            return {"available": False, "areas": [], "links": []}
-        tree = await _run_pinned_thread(builder.page_tree)
+        if graph is None:
+            return {
+                "available": False,
+                "areas": [],
+                "links": [],
+                "reason": "graph_unavailable",
+            }
 
         def collect() -> list[dict]:
+            def files(page):
+                yield from page.get("files") or []
+                for child in page.get("children") or []:
+                    yield from files(child)
+
             areas = []
-            for top in tree:
+            for top in outline["pages"]:
                 if top.get("id") == "overview":
                     continue
-                ids = [top["id"]] + [child["id"] for child in top.get("children") or []]
                 areas.append(
                     {
                         "id": top["id"],
                         "title": top.get("title") or top["id"],
-                        "citations": [page_citations(page_id) or [] for page_id in ids],
+                        "files": list(dict.fromkeys(files(top))),
                     }
                 )
             return areas
@@ -958,15 +993,14 @@ async def wiki_area_map(repo_id: str) -> dict:
         areas = await _run_pinned_thread(collect)
         from .codemap import build_area_map
 
-        result = await _run_pinned_thread(
+        # No prose or evidence generation is necessary for this projection.
+        return await _run_pinned_thread(
             build_area_map,
             graph,
             areas,
             repo_dir=getattr(entry, "repo_dir", None),
             source_reader=getattr(bundle, "source_reader", None),
         )
-        _AREA_MAP_CACHE[cache_key] = result
-        return result
 
 
 @app.get("/api/repos/{repo_id}/wiki/{page_id}/boundary")

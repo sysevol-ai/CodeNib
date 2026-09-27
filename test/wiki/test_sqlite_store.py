@@ -30,6 +30,7 @@ from codenib.wiki.sqlite_store import (
     _sqlite_error,
 )
 from codenib.wiki.store import (
+    WikiGenerationBusyError,
     WikiStoreCorruptionError,
     WikiStoreError,
     WikiStoreSchemaError,
@@ -800,7 +801,9 @@ def test_generation_guard_bounds_waiting_without_stealing_the_lock(
         0.01,
     )
     try:
-        with pytest.raises(WikiStoreError, match="lock wait timed out") as caught:
+        with pytest.raises(
+            WikiGenerationBusyError, match="lock wait timed out"
+        ) as caught:
             with store.generation_guard(entry_id):
                 raise AssertionError("a waiter must not steal the generation lock")
         assert isinstance(caught.value.__cause__, FileLockTimeout)
