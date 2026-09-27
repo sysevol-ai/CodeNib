@@ -362,7 +362,8 @@ and $0.025725 explanation are historical measurements, not Wiki generation
 latency or cost. The explanation implementation and its dedicated harness
 are removed in the visitor-Wiki iteration.
 
-Current iteration: implemented and locally verified; deployment remains open.
+Current iteration: implemented and locally verified in
+[#802](https://github.com/sysevol-ai/CodeNib/pull/802); deployment remains open.
 URL entry now uses the existing AgentWiki
 pipeline with user-funded OpenRouter grep/Jev retrieval, a chapter sidebar,
 actual stage/page progress, incremental reading and persisted results. The
@@ -379,6 +380,9 @@ owner race. AgentWiki cache identity survives a fresh temporary source download;
 ready chapters are recovered without another model call. Provider-free browser
 checks cover desktop/mobile creation, progress, stop/resume, read-only sharing
 and refresh with no credential persistence.
+The complete local unit tier passes with **7,351 passed**, 35 skipped and 190
+excluded by marker; the frontend has **138 passing tests**. Production build,
+pre-commit, strict MkDocs and public documentation checks pass.
 
 A real run against `pallets/itsdangerous` at
 `672971d66a2ef9f85151e53283113f33d642dabd` completed **11/11 chapters**, all

@@ -26,7 +26,9 @@ capability degradation.
 
 ## Visitor Wiki iteration
 
-Status: implemented and locally verified; lifecycle: `product`. The public URL entry now consumes
+Status: implemented and locally verified in
+[#802](https://github.com/sysevol-ai/CodeNib/pull/802); lifecycle: `product`.
+The public URL entry now consumes
 AgentWiki instead of maintaining a second repository-explanation generator.
 The short explanation component, source-preview page, overview protocol and
 its dedicated browser harness/tests are removed. Only URL parsing is retained

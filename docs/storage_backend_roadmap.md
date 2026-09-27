@@ -88,7 +88,8 @@ manifests, source captures and published site files remain file artifacts.
 
 ## Visitor Wiki persistence
 
-Status: implemented and locally verified; demo deployment remains open.
+Status: implemented and locally verified in
+[#802](https://github.com/sysevol-ai/CodeNib/pull/802); demo deployment remains open.
 Current product consumer: the public GitHub URL form and
 `codenib.web.visitor_wikis` saved-Wiki routes. The maintainer requested full
 Repo Wiki generation, refresh-safe attempts and link-readable results that
