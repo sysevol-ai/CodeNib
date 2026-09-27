@@ -145,6 +145,7 @@ try {
       calls: 4,
       reported_cost_usd: 0.023,
       page_states: { overview: "ready", pipeline: "running" },
+      skipped_files: [{ path: "assets/diagram.png", size_bytes: 7513866 }],
       history: [
         ...state.history,
         { stage: "outline", page: "", at: Date.now() / 1000 },
@@ -154,6 +155,8 @@ try {
     await page
       .getByRole("heading", { name: "Repository overview", exact: true })
       .waitFor();
+    await page.getByText("Skipped 1 file larger than 4 MiB", { exact: true }).click();
+    assert.ok(await page.getByText("assets/diagram.png", { exact: true }).isVisible());
     await page.screenshot({
       path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-progress.png`,
       fullPage: true,
@@ -230,6 +233,39 @@ try {
       0,
     );
     assert.equal(await page.locator("input[type=password]").count(), 0);
+    // A source rejection before the first chapter must not look like a live run.
+    state = {
+      ...state,
+      status: "partial",
+      stage: "downloading",
+      pages: [],
+      page_states: {},
+      skipped_files: [],
+      calls: 0,
+      reported_cost_usd: 0,
+      message: "The repository archive could not be read safely.",
+    };
+    await page.reload();
+    await page.getByText("Generation stopped", { exact: true }).waitFor();
+    const failure = page.getByRole("alert");
+    assert.ok((await failure.innerText()).includes(state.message));
+    assert.ok((await failure.innerText()).includes("No model calls were made."));
+    assert.equal(await page.locator('[aria-current="step"]').count(), 0);
+    assert.equal(await page.getByText("Your Wiki is taking shape", { exact: true }).count(), 0);
+    const pausedReads = statusReads;
+    await page.waitForTimeout(2300);
+    assert.equal(statusReads, pausedReads, "stopped Wikis stop polling");
+    const refreshed = page.waitForResponse((response) =>
+      response.url().endsWith(`/api/visitor-wikis/${state.id}`),
+    );
+    await page.getByRole("button", { name: "Refresh status" }).click();
+    await refreshed;
+    assert.equal(statusReads, pausedReads + 1);
+    await page.getByText("Generation stopped", { exact: true }).waitFor();
+    await page.screenshot({
+      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-stopped.png`,
+      fullPage: true,
+    });
     assert.equal(posts, 2);
     assert.deepEqual(remote, []);
     assert.deepEqual(errors, []);
@@ -243,6 +279,9 @@ try {
       stops,
       refreshDoesNotGenerate: true,
       completedWikiStopsPolling: true,
+      stoppedWikiShowsReason: true,
+      stoppedWikiStopsPolling: true,
+      skippedFilesVisible: true,
       keysAbsentFromStorage: true,
       readLinkHasNoOwnerAccess: true,
       externalRequests: remote,

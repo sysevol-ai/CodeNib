@@ -256,6 +256,7 @@ class VisitorWikis:
                         "updated_at": now,
                         "pages": [],
                         "page_states": {},
+                        "skipped_files": [],
                         "message": "",
                         "reported_cost_usd": 0.0,
                         "calls": 0,
@@ -362,6 +363,8 @@ class VisitorWikis:
                     with self.prepare(
                         state["repository"], state["commit"], attempt, check, progress
                     ) as (bundle, source):
+                        state["skipped_files"] = getattr(bundle, "skipped_files", [])
+                        self._save(state)
                         wiki = self.wiki_factory(
                             bundle,
                             "openrouter/anthropic/claude-sonnet-4.6",

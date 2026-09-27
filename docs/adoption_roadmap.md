@@ -362,8 +362,9 @@ and $0.025725 explanation are historical measurements, not Wiki generation
 latency or cost. The explanation implementation and its dedicated harness
 are removed in the visitor-Wiki iteration.
 
-Current iteration: implemented and locally verified in
-[#802](https://github.com/sysevol-ai/CodeNib/pull/802); deployment remains open.
+Current iteration: merged in
+[#802](https://github.com/sysevol-ai/CodeNib/pull/802), deployed at `63cb8374`
+with visitor generation enabled and public desktop/mobile entry checks passing.
 URL entry now uses the existing AgentWiki
 pipeline with user-funded OpenRouter grep/Jev retrieval, a chapter sidebar,
 actual stage/page progress, incremental reading and persisted results. The
@@ -396,8 +397,17 @@ All 11 persisted chapters pass desktop/mobile navigation, source-citation and
 refresh acceptance with only same-origin reads and no model request. These are
 one local run's measurements, not a hosted latency guarantee. Source-only
 visitor Wikis do not include the compiler-indexed maps of prepared examples.
-Maintainer-owned deployment must update both backend and frontend and enable
+The deployment updates both backend and frontend and enables
 `CODENIB_VISITOR_WIKI=1`; the published 0.2.4 wheel predates this path.
+Hosted feedback exposed a source admission failure for `AMA-Bench/AMA-Bench`
+at `ddfd319e0be33424288c13806f1eafc63e625b59`: a 7.2 MiB PNG stopped the run
+before any model call, while empty-chapter UI still implied work was pending.
+Oversized files are now skipped before decompression and their paths/sizes
+persist with the attempt. Replaying that source preparation retains 65 files
+and produces 304 chunks without inference. Stopped runs prominently display
+the reason, stop polling, and require an explicit owner retry. Archive path,
+retained-size and member-count limits remain enforced. Hosted paid-generation
+acceptance remains open; source preparation is not evidence of a completed Wiki.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |

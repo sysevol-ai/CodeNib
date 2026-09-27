@@ -5817,6 +5817,11 @@ a.codepanel-name:hover {
 .saved-wiki-heading h1 { font-size: 27px; margin: 12px 0 2px; letter-spacing: -.03em; overflow-wrap: anywhere; }
 .wiki-progress { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 20px 24px; background: var(--bg-surface); margin-bottom: 24px; }
 .wiki-progress.is-running { border-color: var(--accent-border); }
+.wiki-progress.is-paused { border-color: #b45309; }
+.wiki-stopped-message { margin: 16px 0; padding: 16px; border-left: 4px solid #b45309; background: var(--bg-subtle); font-size: 14px; overflow-wrap: anywhere; }
+.wiki-stopped-message p { margin: 8px 0; line-height: 1.6; }
+.wiki-skipped-files { margin: 16px 0; overflow-wrap: anywhere; }
+.wiki-skipped-files ul { max-height: 240px; overflow-y: auto; padding-left: 20px; }
 .wiki-progress-heading, .wiki-progress-foot { display: flex; gap: 8px 20px; flex-wrap: wrap; justify-content: space-between; align-items: center; }
 .wiki-progress-heading { font-size: 14px; }
 .wiki-progress progress { width: 100%; height: 7px; accent-color: var(--accent); display: block; margin: 14px 0; }

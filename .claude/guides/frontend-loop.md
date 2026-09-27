@@ -89,6 +89,11 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   requests do not establish that child pages are cached or maps are present.
   Use `scripts/prewarm_wiki_cache.py --scope all` for full prose coverage;
   report cold, degraded, and failed pages explicitly while prewarming runs.
+- **Visitor Wiki acceptance** includes a source failure before the first
+  chapter. Show the stopped state and reason prominently, remove active/waiting
+  cues, and preserve the owner's explicit retry path. Exercise oversized files
+  beside valid source: skip them without decompression, validate their paths,
+  retain archive bounds, and disclose the omissions in the saved Wiki.
 - **Overview illustrations** require an admitted semantic architecture plan.
   Do not substitute an automatic call-flow or relation image when that plan
   is missing or invalid: a debug/configuration branch can look like the main

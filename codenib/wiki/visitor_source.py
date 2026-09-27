@@ -25,6 +25,7 @@ from .visitor_provider import WikiRunStopped
 REPOSITORY_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}")
 MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_SOURCE_BYTES = 40 * 1024 * 1024
+MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_FILES = 4000
 
 
@@ -93,8 +94,12 @@ def repository_revision(repository: str, check) -> str:
         ) from None
 
 
-def extract_source(payload: bytes, root: Path, check) -> None:
-    """Check every member before writing. Links, traversal and bombs are rejected."""
+def extract_source(payload: bytes, root: Path, check) -> list[dict]:
+    """Validate every path; skip oversized files without decompressing them.
+
+    The expanded-byte budget bounds retained source. The compressed archive and
+    member-count limits still bound the full input, including skipped members.
+    """
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as archive:
             entries = archive.infolist()
@@ -102,7 +107,7 @@ def extract_source(payload: bytes, root: Path, check) -> None:
                 raise WikiRunStopped(
                     "This repository has too many files for hosted generation."
                 )
-            files, total, seen, prefix = [], 0, set(), None
+            files, skipped, total, seen, prefix = [], [], 0, set(), None
             for item in entries:
                 check()
                 path = PurePosixPath(item.filename)
@@ -125,9 +130,9 @@ def extract_source(payload: bytes, root: Path, check) -> None:
                 prefix = parts[0]
                 if item.is_dir():
                     continue
-                if len(parts) < 2 or item.file_size > 4 * 1024 * 1024:
+                if len(parts) < 2:
                     raise WikiRunStopped(
-                        "A repository file exceeds the hosted Wiki limit."
+                        "The repository archive contains an unsupported path."
                     )
                 relative = "/".join(parts[1:])
                 if relative.casefold() in seen:
@@ -135,9 +140,16 @@ def extract_source(payload: bytes, root: Path, check) -> None:
                         "The repository archive contains duplicate paths."
                     )
                 seen.add(relative.casefold())
+                if len(seen) > MAX_FILES:
+                    raise WikiRunStopped(
+                        "This repository has too many files for hosted generation."
+                    )
+                if item.file_size > MAX_FILE_BYTES:
+                    skipped.append({"path": relative, "size_bytes": item.file_size})
+                    continue
                 total += item.file_size
                 files.append((item, relative))
-                if total > MAX_SOURCE_BYTES or len(files) > MAX_FILES:
+                if total > MAX_SOURCE_BYTES:
                     raise WikiRunStopped(
                         "This repository exceeds the hosted Wiki size limit."
                     )
@@ -149,6 +161,7 @@ def extract_source(payload: bytes, root: Path, check) -> None:
                 if len(data) != item.file_size:
                     raise WikiRunStopped("The repository archive failed validation.")
                 target.write_bytes(data)
+            return skipped
     except (zipfile.BadZipFile, OSError, ValueError, RuntimeError):
         raise WikiRunStopped(
             "The repository archive could not be read safely."
@@ -167,7 +180,7 @@ def visitor_source(repository: str, commit: str, attempt_id: str, check, progres
     )
     with tempfile.TemporaryDirectory(prefix="codenib-visitor-wiki-") as directory:
         root = Path(directory)
-        extract_source(payload, root, check)
+        skipped_files = extract_source(payload, root, check)
         progress("analyzing", "")
         with capture_repository_source(root, check_cancelled=check) as binding:
             extensions = extension_to_language_map("chunker")
@@ -180,7 +193,10 @@ def visitor_source(repository: str, commit: str, attempt_id: str, check, progres
             )
             if not languages:
                 raise WikiRunStopped(
-                    "No supported source language was found in this repository."
+                    "No supported source files remain after files larger than "
+                    "4 MiB are skipped. Run CodeNib locally for larger files."
+                    if skipped_files
+                    else "No supported source language was found in this repository."
                 )
             chunks = CodeChunker(
                 language=languages[0],
@@ -227,6 +243,7 @@ def visitor_source(repository: str, commit: str, attempt_id: str, check, progres
                 vector_store=None,
                 bm25=None,
                 wiki_documents=documents,
+                skipped_files=skipped_files,
                 source_reader=binding.borrow_reader(),
                 code_graph=lambda: None,
             )
