@@ -65,6 +65,9 @@ already in flight may finish and incur a charge. Resuming requires the owner
 browser and a newly supplied key. Healthy AgentWiki pages are reused;
 unfinished or quality-rejected pages can be retried. Reading saved pages
 never starts generation or uses the operator's key.
+Completed Wikis stop status polling. A resume request has its own identity
+before its worker starts, so stopping during that wait cancels the pending
+run as well as any active one.
 
 Results persist in `<data_dir>/wiki_cache/visitor_wiki.sqlite3` using the
 Wiki-only `SQLiteWikiStore`. A share link opens `/wiki/<random-id>` for anyone
@@ -112,6 +115,8 @@ with at most two local submissions and a bounded 30-second wait for the
 existing owner. It saves up to 100 attempts; it does not discard user work
 automatically when full. Back up the visitor database with the rest of the
 Wiki data and monitor capacity before increasing adoption traffic. There is
+no saved-attempt allocation until GitHub confirms a public repository and
+immutable commit. Nonexistent and private repositories consume no slots. There is
 no public listing or generic storage/job backend. Limits are 20 MiB compressed,
 40 MiB expanded, 4,000 files and 4 MiB per file. Archives with traversal,
 links or unsupported paths are rejected. GitHub downloads use public access;

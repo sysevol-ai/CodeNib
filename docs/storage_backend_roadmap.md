@@ -104,9 +104,12 @@ authenticated reader retained only for the active generation; manifests and
 retrieval artifacts do not move into this database.
 
 The existing generation guard serializes funded visitor runs across processes.
-A revision check and first publication under the admission guard linearize
-ownership. A stale queued run cannot repeat work or overwrite a later owner's
-progress. Cancellation uses a run-specific envelope. Process death releases
+A revision/request identity check and first publication under the admission
+guard linearize ownership. Admission records the pending request before
+dispatch; cancellation under the same guard covers both active and pending
+requests. A later explicit resume receives a fresh identity. A stale or timed-out
+waiter cannot overwrite the active owner's progress; it updates only its own
+request envelope. Process death releases
 the guard; the owner must explicitly resume with a newly supplied credential.
 Healthy AgentWiki pages remain reusable. Database reads never start work.
 The adjacent class docstring states lock order and recovery ownership.
@@ -119,6 +122,8 @@ test rejects a contender submitted while the original owner is active.
 A real 11-chapter `pallets/itsdangerous` Wiki was persisted and reopened in
 desktop/mobile browsers with no provider call. The original source/credential
 are unnecessary for reading; disabling creation also preserves saved reads.
+Public repository resolution precedes allocation, so nonexistent/private
+repositories consume no saved-attempt slots. Completed readers stop polling.
 The 100-attempt limit does not delete old results automatically. Operators own
 database backup/capacity and must explicitly deploy the new routes.
 

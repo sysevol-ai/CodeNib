@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import hmac
+import secrets
 import threading
 import time
 from collections.abc import Callable
@@ -51,14 +52,18 @@ class VisitorWikis:
 
     Invariant: one process at a time performs funded visitor generation in this
     database. The existing WikiStore generation guard is held for the entire
-    run. Under that guard, matching the submitted revision and publishing its
-    increment is the run's linearization point. A stale queued run does nothing.
+    run. Under that guard, matching the submitted revision and request identity,
+    then publishing its increment, is the run's linearization point. A stale
+    queued run does nothing. Admission records a separate request identity before
+    dispatch; stop cancels both the active and pending identities, so a resumed
+    worker cannot miss a stop or inherit cancellation from an earlier request.
     Process death releases the guard; an explicit owner resume acquires it and
     reuses saved AgentWiki pages. No age-based lock stealing or automatic retry.
 
     Lock order: generation guard, short admission guard, then AgentWiki's
-    ordinary per-entry guards. Creation takes only admission and releases it
-    before dispatch. The in-process
+    ordinary per-entry guards. Creation and cancellation take only admission;
+    it is released before dispatch. A busy waiter updates only its request
+    envelope, never the active owner's progress. The in-process
     mutex only protects thread admission and is never held while acquiring a
     store guard. Cancellation is a separate run-specific Wiki envelope, so it
     cannot overwrite a concurrent page/progress publication.
@@ -98,10 +103,20 @@ class VisitorWikis:
             envelope={"data": state},
         )
 
+    def _pending(self, attempt):
+        entry = self.store.read(f"{_entry(attempt)}:request")
+        return copy.deepcopy(entry.envelope["data"]) if entry else None
+
+    def _save_pending(self, attempt, pending):
+        self.store.publish(
+            entry_id=f"{_entry(attempt)}:request",
+            repository_id=attempt,
+            envelope={"data": pending},
+        )
+
     def status(self, attempt):
         state = self._read(attempt)
         state.pop("owner_hash")
-        state.pop("revision")
         for page in _flatten(state["pages"]):
             status = state["page_states"].get(page["id"])
             page["cache_state"] = (
@@ -113,6 +128,26 @@ class VisitorWikis:
             state["status"] in {"queued", "running"}
             and self.clock() - state["updated_at"] > 180
         )
+        pending = self._pending(attempt)
+        if pending and pending["revision"] == state["revision"]:
+            if pending["status"] == "busy":
+                state["message"] = (
+                    "The resume could not start while another generation is active. "
+                    "Ready chapters are saved; try again shortly."
+                )
+                if state["status"] == "queued":
+                    state.update(status="partial", stage="paused", stalled=False)
+            elif state["status"] != "running" or state["stalled"]:
+                state.update(
+                    status="queued",
+                    stage="queued",
+                    active_page="",
+                    updated_at=pending["at"],
+                    stalled=self.clock() - pending["at"] > 180,
+                    message="Your Wiki generation is waiting to start.",
+                )
+        state.pop("revision")
+        state.pop("request_id", None)
         return state
 
     def page(self, attempt, page_id):
@@ -130,14 +165,25 @@ class VisitorWikis:
             )
 
     def cancel(self, attempt, owner):
-        state = self._read(attempt)
-        self._authorize(state, owner)
-        run_id = state["run_id"] + (state["status"] == "queued")
-        self.store.publish(
-            entry_id=f"{_entry(attempt)}:cancel:{run_id}",
-            repository_id=attempt,
-            envelope={"data": {"cancelled": True}},
-        )
+        with self.store.generation_guard(_ADMISSION):
+            state = self._read(attempt)
+            self._authorize(state, owner)
+            if state["status"] == "complete":
+                return
+            targets = set()
+            if state.get("request_id"):
+                targets.add(state["request_id"])
+            elif state["run_id"]:
+                targets.add(str(state["run_id"]))
+            pending = self._pending(attempt)
+            if pending and pending["revision"] == state["revision"]:
+                targets.add(pending["id"])
+            for request_id in targets:
+                self.store.publish(
+                    entry_id=f"{_entry(attempt)}:cancel:{request_id}",
+                    repository_id=attempt,
+                    envelope={"data": {"cancelled": True}},
+                )
 
     def close(self):
         self._closing.set()
@@ -161,8 +207,21 @@ class VisitorWikis:
             self._recent[client] = now
             self._active.add(attempt)
         try:
-            # Authenticate before allocating durable attempts or downloading source.
+            # Invalid/private repositories must not consume permanent capacity.
+            # Network validation stays outside the short admission guard.
             self.verify(key)
+
+            def check_admission():
+                if self._closing.is_set():
+                    raise WikiRunStopped("The server is stopping; try again shortly.")
+
+            check_admission()
+            commit = (
+                self.resolve(repository, check_admission)
+                if self.store.read(_entry(attempt)) is None
+                else ""
+            )
+            check_admission()
             with self.store.generation_guard(_ADMISSION):
                 existing = self.store.read(_entry(attempt))
                 if existing is not None:
@@ -185,10 +244,11 @@ class VisitorWikis:
                     state = {
                         "id": attempt,
                         "repository": repository,
-                        "commit": "",
+                        "commit": commit,
                         "owner_hash": hashlib.sha256(owner.encode()).hexdigest(),
                         "revision": 0,
                         "run_id": 0,
+                        "request_id": "",
                         "status": "queued",
                         "stage": "queued",
                         "active_page": "",
@@ -204,7 +264,17 @@ class VisitorWikis:
                         "history": [],
                     }
                     self._save(state)
-            self._dispatch(state, key, budget)
+                request_id = secrets.token_hex(16)
+                self._save_pending(
+                    attempt,
+                    {
+                        "id": request_id,
+                        "revision": state["revision"],
+                        "status": "queued",
+                        "at": self.clock(),
+                    },
+                )
+            self._dispatch({**state, "request_id": request_id}, key, budget)
             return self.status(attempt)
         except WikiRunStopped as exc:
             with self._mutex:
@@ -234,10 +304,14 @@ class VisitorWikis:
                     current = self._read(attempt)
                     if current["revision"] != submitted["revision"]:
                         return
+                    pending = self._pending(attempt)
+                    if not pending or pending["id"] != submitted["request_id"]:
+                        return
                     state = current
                     state["revision"] += 1
                     state["run_id"] += 1
                     state.update(
+                        request_id=submitted["request_id"],
                         status="running",
                         stage="connecting",
                         message="",
@@ -259,7 +333,7 @@ class VisitorWikis:
 
                 def check():
                     if self._closing.is_set() or self.store.read(
-                        f"{_entry(attempt)}:cancel:{state['run_id']}"
+                        f"{_entry(attempt)}:cancel:{state['request_id']}"
                     ):
                         raise WikiRunStopped(
                             "Generation stopped. Completed pages are saved."
@@ -394,22 +468,18 @@ class VisitorWikis:
                     state["revision"] += 1
                     self._save(state)
         except WikiGenerationBusyError:
-            # Mark a rejected queued run without racing the next owner. Both
-            # the owner's first revision increment and this transition take
-            # admission; a changed revision always wins over this waiter.
+            # A contender can observe an active owner's revision. It must not
+            # rewrite that owner's state just because its own wait timed out.
             with self.store.generation_guard(_ADMISSION):
                 current = self._read(attempt)
-                if current["revision"] == submitted["revision"]:
-                    current["revision"] += 1
-                    current.update(
-                        status="partial",
-                        stage="paused",
-                        message=(
-                            "Another Wiki is generating. "
-                            "Your attempt is saved; resume shortly."
-                        ),
-                    )
-                    self._save(current)
+                pending = self._pending(attempt)
+                if (
+                    current["revision"] == submitted["revision"]
+                    and pending
+                    and pending["id"] == submitted["request_id"]
+                ):
+                    pending.update(status="busy", at=self.clock())
+                    self._save_pending(attempt, pending)
         finally:
             key = ""
             if provider is not None:

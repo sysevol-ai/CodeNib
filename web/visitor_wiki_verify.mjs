@@ -22,6 +22,7 @@ try {
     let stops = 0;
     const errors = [],
       remote = [];
+    let statusReads = 0;
     const pages = [
       { id: "overview", title: "Overview", children: [] },
       { id: "pipeline", title: "Request pipeline", children: [] },
@@ -112,6 +113,7 @@ try {
           },
         });
       }
+      statusReads++;
       return state
         ? route.fulfill({ json: state })
         : route.fulfill({ status: 404, json: { detail: "Wiki not found" } });
@@ -189,6 +191,9 @@ try {
       reported_cost_usd: 0.046,
     };
     await page.getByText("Your Wiki is ready", { exact: true }).waitFor();
+    const completedReads = statusReads;
+    await page.waitForTimeout(2300);
+    assert.equal(statusReads, completedReads, "completed Wikis stop polling");
     assert.ok(
       (
         await page
@@ -237,6 +242,7 @@ try {
       posts,
       stops,
       refreshDoesNotGenerate: true,
+      completedWikiStopsPolling: true,
       keysAbsentFromStorage: true,
       readLinkHasNoOwnerAccess: true,
       externalRequests: remote,

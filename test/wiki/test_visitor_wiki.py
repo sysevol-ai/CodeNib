@@ -20,6 +20,7 @@ from codenib.storage import SQLiteWikiStore
 from codenib.web.visitor_wikis import router
 from codenib.wiki import visitor_provider, visitor_source
 from codenib.wiki.builder import WikiBuilder
+from codenib.wiki.store import WikiGenerationBusyError
 from codenib.wiki.visitor_provider import VisitorProvider, WikiRunStopped
 from codenib.wiki.visitor_source import extract_source
 from codenib.wiki.visitor_wiki import VisitorWikiError, VisitorWikis
@@ -171,6 +172,70 @@ def test_invalid_credentials_allocate_no_saved_attempt(manager):
     with pytest.raises(VisitorWikiError, match="Invalid"):
         submit(manager)
     assert manager.store.scan() == ()
+
+
+@pytest.mark.parametrize("status", [403, 404])
+def test_invalid_repository_does_not_consume_saved_wiki_capacity(manager, status):
+    def reject(*_):
+        raise WikiRunStopped(f"GitHub returned HTTP {status}.")
+
+    manager.resolve = reject
+    with pytest.raises(VisitorWikiError, match=f"HTTP {status}"):
+        submit(manager)
+    assert manager.store.scan() == ()
+    assert not FakeWiki.produced
+
+
+def test_stop_cancels_dispatched_stalled_resume_before_worker_starts(
+    manager, monkeypatch
+):
+    def interrupt(page):
+        if page == "pipeline":
+            raise WikiRunStopped("Interrupted.")
+
+    FakeWiki.before_page = interrupt
+    submit(manager)
+    # A dead process can leave its last persisted state marked running.
+    state = manager._read(ATTEMPT)
+    state.update(status="running", stage="writing")
+    manager._save(state)
+    FakeWiki.before_page = None
+    queued, downloads = [], []
+
+    @contextmanager
+    def observed_prepare(*args):
+        downloads.append(1)
+        with prepare(*args) as source:
+            yield source
+
+    resumed = VisitorWikis(
+        manager.store,
+        prepare=observed_prepare,
+        resolve=lambda *_: pytest.fail("Must reuse pinned commit"),
+        provider=FakeProvider,
+        verify=lambda _: None,
+        wiki_factory=FakeWiki,
+        clock=lambda: 2000,
+    )
+    assert resumed.status(ATTEMPT)["stalled"]
+    monkeypatch.setattr(
+        VisitorWikis,
+        "_dispatch",
+        lambda _, state, key, budget: queued.append((state, key, budget)),
+    )
+    assert submit(resumed)["status"] == "queued"
+    resumed.cancel(ATTEMPT, OWNER)
+    resumed._run(*queued.pop())
+    assert not downloads
+    assert FakeWiki.produced == ["overview"]
+    assert "stopped" in resumed.status(ATTEMPT)["message"]
+
+    # A later explicit resume gets a fresh identity, not the stopped one's flag.
+    submit(resumed, "later-client")
+    resumed._run(*queued.pop())
+    assert resumed.status(ATTEMPT)["status"] == "complete"
+    assert downloads == [1]
+    assert FakeWiki.produced == ["overview", "pipeline"]
 
 
 def test_quality_rejected_chapter_is_not_published_as_ready(manager, monkeypatch):
@@ -375,7 +440,8 @@ def test_concurrent_stale_owner_cannot_repeat_a_funded_run(manager, monkeypatch)
     first = threading.Thread(target=run, args=(manager, submitted[0]), name="first")
     first.start()
     assert entered.wait(5)
-    during_run = (manager._read(ATTEMPT), KEY, 2)
+    submit(other, "contender")
+    during_run = submitted[1]
     second = threading.Thread(target=run, args=(other, during_run), name="contender")
     second.start()
     assert other_waiting.wait(5)
@@ -386,6 +452,57 @@ def test_concurrent_stale_owner_cannot_repeat_a_funded_run(manager, monkeypatch)
     assert not failures
     assert FakeWiki.produced == ["overview", "pipeline"]
     assert manager.status(ATTEMPT)["status"] == "complete"
+
+
+def test_busy_contender_cannot_overwrite_active_owner_progress(manager, monkeypatch):
+    queued = []
+    monkeypatch.setattr(
+        VisitorWikis,
+        "_dispatch",
+        lambda _, state, key, budget: queued.append((state, key, budget)),
+    )
+    submit(manager)
+    entered, release = threading.Event(), threading.Event()
+
+    def pause(page):
+        if page == "overview":
+            entered.set()
+            assert release.wait(5)
+
+    FakeWiki.before_page = pause
+    first = threading.Thread(target=manager._run, args=queued[0])
+    first.start()
+    assert entered.wait(5)
+    try:
+        other = VisitorWikis(
+            manager.store,
+            prepare=prepare,
+            resolve=lambda *_: COMMIT,
+            provider=FakeProvider,
+            verify=lambda _: None,
+            wiki_factory=FakeWiki,
+        )
+        submit(other, "contender")
+        before = manager._read(ATTEMPT)
+        original_guard = manager.store.generation_guard
+
+        @contextmanager
+        def busy_guard(identity):
+            if identity == "visitor-wiki-generation-v1":
+                raise WikiGenerationBusyError("Existing owner is still active")
+            with original_guard(identity):
+                yield
+
+        monkeypatch.setattr(manager.store, "generation_guard", busy_guard)
+        other._run(*queued[1])
+        assert manager._read(ATTEMPT) == before
+        assert manager.status(ATTEMPT)["status"] == "running"
+    finally:
+        release.set()
+        first.join(5)
+    assert not first.is_alive()
+    assert manager.status(ATTEMPT)["status"] == "complete"
+    assert FakeWiki.produced == ["overview", "pipeline"]
 
 
 def test_real_agent_wiki_cache_survives_fresh_source_download(tmp_path, monkeypatch):

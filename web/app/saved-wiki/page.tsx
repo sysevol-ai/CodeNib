@@ -60,10 +60,12 @@ export default function SavedWikiPage({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    let complete = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
         const value = await loadSavedWiki(id);
+        complete = value.status === "complete";
         if (!cancelled) {
           setWiki(value);
           setError("");
@@ -76,7 +78,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
               : "Could not load the saved Wiki.",
           );
       } finally {
-        if (!cancelled) timer = setTimeout(poll, 2000);
+        if (!cancelled && !complete) timer = setTimeout(poll, 2000);
       }
     };
     void poll();

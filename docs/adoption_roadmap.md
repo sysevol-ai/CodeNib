@@ -376,11 +376,14 @@ explicit owner resume reuses healthy pages without billing them again.
 
 Local acceptance covers archive limits, persistence, cancellation, service
 restart/resume, credential isolation, cost stops and a deterministic competing
-owner race. AgentWiki cache identity survives a fresh temporary source download;
+owner race. Rejected repositories consume no saved-attempt slots; stopping a
+queued resume cancels that request before generation. Completed Wikis stop
+polling, and a timed-out contender cannot overwrite active progress.
+AgentWiki cache identity survives a fresh temporary source download;
 ready chapters are recovered without another model call. Provider-free browser
 checks cover desktop/mobile creation, progress, stop/resume, read-only sharing
 and refresh with no credential persistence.
-The complete local unit tier passes with **7,351 passed**, 35 skipped and 190
+The complete local unit tier passes with **7,355 passed**, 35 skipped and 190
 excluded by marker; the frontend has **138 passing tests**. Production build,
 pre-commit, strict MkDocs and public documentation checks pass.
 
