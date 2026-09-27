@@ -458,6 +458,18 @@ That production-route timing and broader multi-repository prose assessment
 remain open gates. The new form exposes the tested Flash option while retaining
 Sonnet; provider throughput routing cannot guarantee a completion time.
 
+The implementation is tracked in #805, stacked on #804 (which depends on #803).
+The demo backend and frontend were deployed together on 2026-09-27 after the
+existing funded run completed. Local verification passes 1,277 Wiki/web tests
+(one skipped), 142 frontend tests, the production build, strict docs and the
+desktop/mobile browser matrix. Deployment preserves all 27 prepared repositories:
+1,001 ready pages, 19 existing degraded/retryable pages and no cold pages, with
+23/27 System Maps available as before. Public desktop/mobile checks reopen and
+refresh the existing 14-chapter visitor Wiki without inference, and confirm the
+new form selects Flash. Database snapshots and previous frontend assets are
+retained for rollback and already-open tabs. Merge/rebase #803 → #804 → #805
+in dependency order; deployment does not imply these PRs are merged.
+
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |
 | Open home | Paste a GitHub URL, or choose a ready Wiki. Catalog search and local agent setup are secondary. | Catalog metadata and static assets; no model call. |
