@@ -420,7 +420,11 @@ cap was too aggressive: source checks passed while the explanation lost key
 mechanisms and sometimes left a fact under the wrong heading. Detail pages now
 keep the supported argument and short explanatory leads, remove duplicate
 framing/tables/excerpts, and receive one bounded editorial revision when the
-existing call budget allows. Revised plans pass normal source/quality admission.
+existing call budget allows. On new runs, that revision inspects rendered prose
+for repeated claims and helper inventories, not just the JSON plan. Revised
+plans pass normal source/quality admission. The final page receives the same
+newcomer reading rubric as prepared examples; it remains a diagnostic, not a
+replacement for source admission or a guarantee of prose quality.
 Cancellation and unknown charges cannot fall through to another billed call.
 
 The same native architecture component serves prepared and visitor Wikis.
@@ -440,6 +444,10 @@ link. The WikiStore publication envelope is separate from progress so late
 worker saves cannot undo an unpublish. Local publication and browser acceptance
 cover these boundaries without provider calls. My Wikis still uses browser
 recovery access; this iteration does not add accounts or cross-device ownership.
+Completed owner pages explicitly explain that the result is saved in My Wikis
+and still unlisted, with **Publish to Community** as the main action. My Wikis
+cards show unlisted status and a publication hint; the form explains the next
+step before generation. Failed publication stays unlisted and can be retried.
 
 Real workload evidence: the owner's Flash generation of
 `fishmingyu/qrv2-gpu-mode` completed four chapters in **42.76 seconds**, with
@@ -447,16 +455,37 @@ Real workload evidence: the owner's Flash generation of
 were 224/174/259 whitespace-separated words. This proves production-route
 completion speed on one repository, not reader-quality parity with the gallery.
 
-The focused-profile quality comparison freezes that run's commit, outline and
-retrieved evidence. Using DeepSeek's official API, the final four pages pass
-normal grounding/quality gates; Overview is 215 words and the detail pages are
-626/508/514 words. Inspection confirms the n32/n176 section now covers those
-small routes and the n352–n2048 examples appear in their own section; recursive
-composition, numerical constraints and graph-replay boundaries are preserved.
-The three detail pages take 14.3–16.3 seconds in composition plus editorial
-revision, two calls each. Repeated prompts benefit from provider caching. This
-comparison excludes retrieval and is **not** a new OpenRouter end-to-end timing
-result. Broader multi-repository reader-quality assessment remains open.
+The pipeline audit found concrete differences despite both routes using
+`AgentWiki`:
+
+| Surface | Prepared examples | Visitor Wikis |
+| --- | --- | --- |
+| Source retrieval | Prepared BM25/dense artifacts as available, outline anchors and indexed relations | Model-planned grep/Jev plus tree-sitter outline anchors; no compiled relation graph |
+| Search task | Chapter query against the index | New runs use a chapter-specific prompt; old runs used the issue-location prompt |
+| Supporting source | Outline and context can include tests | New chapter search includes tests; the legacy grep filter silently excluded them |
+| Reader assessment | Enabled by default; diagnostic | Enabled for new runs; absent from the two existing saved Wikis |
+| Reading scope | Fuller outline with child chapters | A small chapter list; legacy concise detail claims were also capped |
+
+New attempts pin `wiki_grep_jev_v2` as their retrieval/cache identity. Old
+attempts retain their previous retrieval policy and review budget on resume.
+The ordinary issue-search, MCP and browser-trial defaults remain unchanged.
+A deterministic audit of the pinned Requests source with the same redirect-test
+search produces **0 vs 23** grep candidates and **2 vs 12** writer evidence
+items before/after enabling supporting source. This isolates the filtering bug;
+it includes no model call and does not measure final ranking or prose quality.
+It uses the existing pinned checkout and excludes hosted archive admission.
+
+The prose comparison freezes the existing QR run's commit, outline and retrieved
+evidence and uses DeepSeek's official API. All four newly composed pages pass
+ordinary source/structure checks. The reader rubric gives 7/8, 5/8, 3/8 and 8/8;
+the recursive-panel chapter still fails its failure/boundary explanation. Three
+of four pass the rubric. Re-reviewing the prior focused output also found
+repetition despite passing source checks: extra words alone did not fix quality.
+These are model judgements on one repository, not an independent human grade.
+The comparison excludes retrieval, benefits from warmed provider caching and
+is **not** a new OpenRouter end-to-end timing result. Broader reader-quality
+assessment and the source-only versus indexed-context gap remain open gates.
+Do not claim gallery parity or fabricate indexed calls/System Maps for visitors.
 
 Live feedback still distinguishes model response receipt, worker progress and
 server connectivity, with immediate submit feedback, progressive chapter reads,
@@ -478,7 +507,7 @@ is unchanged: 1,001 ready pages, 19 pre-existing retryable pages, zero cold page
 and 23/27 indexed System Maps available. Database snapshots, service backups and
 prior frontend assets are retained; visitor work was idle before the backend
 restart. The previous concise prose is not automatically rewritten: owners can
-start a new version from generation details with a new funded request.
+start a new version from the result header with a new funded request.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |

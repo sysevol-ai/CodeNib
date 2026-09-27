@@ -64,6 +64,9 @@ they no longer inherit the short Overview's four-claim limit. A bounded model
 revision checks section/topic alignment before the ordinary source/quality
 gates, with a visible review stage. Duplicate framing and long excerpts are
 removed instead of truncating the argument.
+New runs search for chapter coverage, including relevant tests and harnesses,
+and attach the same diagnostic reading assessment used by prepared examples.
+This assessment can flag missing explanations even when citations are valid.
 The model and scope are pinned to the saved attempt. Older Wikis keep their
 original scope and model when resumed, including the earlier concise profile. API clients that omit
 `model` retain the Sonnet default. Prepared examples and their caches are
@@ -100,11 +103,14 @@ run as well as any active one.
 Results persist in `<data_dir>/wiki_cache/visitor_wiki.sqlite3` using the
 Wiki-only `SQLiteWikiStore`. A share link opens `/wiki/<random-id>` for anyone
 who has it. Visitor results start **unlisted** and retain `noindex` headers.
-A completed Wiki offers its owner **Publish to Browse**, explicitly making it
+A completed Wiki offers its owner **Publish to Community**, explicitly making it
 discoverable by other visitors. All chapters must pass source checks. Browse
 combines featured examples with published community Wikis and supports search;
 **My Wikis** and the homepage's **Continue reading** reopen the owner's work.
-The owner can remove a Wiki from Browse while preserving its read link.
+The result page explains that My Wikis and Community are separate and shows a
+publication invitation once generation completes. Unlisted cards in My Wikis
+also point to this action. The owner can choose **Remove from Community** while
+preserving the read link, or **Generate a new version** from the result header.
 Publication and browsing never start model calls. Older results are not listed
 automatically. Generation details collapse once the Wiki is ready. The owner browser stores only
 recent attempt IDs and a separate recovery token; the share link does not

@@ -119,6 +119,11 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   The homepage presents reading progress and useful titles, not attempt IDs or
   storage implementation details. A completed Wiki opens as a reading surface;
   generation diagnostics belong in collapsed details.
+  Use **Publish to Community** consistently. A completed owner page must explain
+  that it is saved in My Wikis but still unlisted, and show the publication action
+  outside collapsed diagnostics. My Wikis cards also indicate unlisted status.
+  Exercise the running-to-complete transition and a failed publication retry;
+  neither completion nor opening the invitation may publish automatically.
 - **Shared architecture presentation** uses the same native SystemArchitecture
   component for gallery and visitor pages. Visitor readers may render a
   source-checked semantic architecture contract without an image asset or

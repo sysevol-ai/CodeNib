@@ -198,6 +198,7 @@ export const wikiStages: Record<string, string> = {
   planning_page: "Drafting and checking this chapter",
   writing: "Assembling this chapter",
   editing: "Reviewing the explanation",
+  reviewing: "Checking the reading experience",
   checking: "Checking citations and saving",
   complete: "Generation finished",
   paused: "Generation paused",

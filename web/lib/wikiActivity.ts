@@ -5,7 +5,8 @@ import { allWikiPages, wikiStages, type SavedWiki } from "./visitorWiki";
 
 const work: Record<string, { description: string; next: string }> = {
   queued: {
-    description: "Waiting for a generation slot before processing your repository.",
+    description:
+      "Waiting for a generation slot before processing your repository.",
     next: "Read the repository source.",
   },
   connecting: {
@@ -21,7 +22,8 @@ const work: Record<string, { description: string; next: string }> = {
     next: "Plan a chapter list from the repository's structure.",
   },
   outline: {
-    description: "Reading repository context and asking the model to propose the chapter list.",
+    description:
+      "Reading repository context and asking the model to propose the chapter list.",
     next: "Find the source evidence for the first chapter.",
   },
   retrieving: {
@@ -29,7 +31,8 @@ const work: Record<string, { description: string; next: string }> = {
     next: "Organize that evidence into a chapter plan.",
   },
   planning_page: {
-    description: "Asking the model to compose this chapter from source evidence and fix unsupported claims.",
+    description:
+      "Asking the model to compose this chapter from source evidence and fix unsupported claims.",
     next: "Turn the supported content into a readable chapter.",
   },
   writing: {
@@ -37,11 +40,18 @@ const work: Record<string, { description: string; next: string }> = {
     next: "Check its source citations, then save the chapter for reading.",
   },
   editing: {
-    description: "Reviewing whether each section explains its topic clearly, with supported examples and design reasons.",
+    description:
+      "Reviewing whether each section explains its topic clearly, with supported examples and design reasons.",
     next: "Assemble the reviewed chapter and check its source citations.",
   },
+  reviewing: {
+    description:
+      "Reading the finished chapter to assess whether it explains the problem, path, decisions and boundaries.",
+    next: "Save the chapter and its reading assessment.",
+  },
   checking: {
-    description: "Checking the chapter against its source before publishing it.",
+    description:
+      "Checking the chapter against its source before publishing it.",
     next: "Save the chapter if it passes, then move to the next one.",
   },
 };
@@ -58,9 +68,11 @@ export function wikiActivity(wiki: SavedWiki, now: number, connected = true) {
   const chapter = pages.find((page) => page.id === wiki.active_page)?.title;
   // Provider accounting also updates updated_at. Only a matching stage event
   // can establish how long this step has been running.
-  const stageStarted = [...wiki.history].reverse().find(
-    (event) => event.stage === wiki.stage && event.page === wiki.active_page,
-  )?.at;
+  const stageStarted = [...wiki.history]
+    .reverse()
+    .find(
+      (event) => event.stage === wiki.stage && event.page === wiki.active_page,
+    )?.at;
   const progressAge = Math.max(0, now - wiki.updated_at);
   const delayed = running && (wiki.stalled || progressAge >= 180);
   const waiting = running && progressAge >= 45;
@@ -79,7 +91,8 @@ export function wikiActivity(wiki: SavedWiki, now: number, connected = true) {
     chapter,
     description: current.description,
     next: current.next,
-    stageAge: stageStarted === undefined ? null : Math.max(0, now - stageStarted),
+    stageAge:
+      stageStarted === undefined ? null : Math.max(0, now - stageStarted),
     progressAge,
     delayed,
     animate: running && connected && !delayed,
