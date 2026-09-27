@@ -84,8 +84,9 @@ export default function WikiGenerationForm({
       </select>
       <p className="small muted">
         Stops new calls when reported spending reaches this amount. A call
-        already in progress can exceed it; your OpenRouter key’s credit limit is
-        the billing cap.
+        already in progress can exceed it. Set a credit limit on your
+        OpenRouter key; include BYOK usage if you also use your own provider
+        keys through OpenRouter.
       </p>
       <label className="wiki-consent">
         <input type="checkbox" required disabled={busy} />

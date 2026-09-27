@@ -83,8 +83,8 @@ class VisitorProvider:
     """Synchronous AgentWiki client; caller owns lifetime, cancellation and save.
 
     Only reported cost and aggregate call counts leave this object. The key is
-    never serialized. A run budget stops subsequent calls; the provider's key
-    credit limit is the hard billing limit for a request already in flight.
+    never serialized. A run budget stops subsequent calls; provider limits
+    control billing separately, including BYOK usage when configured.
     """
 
     cache_identity = "visitor-openrouter-grep-jev-v1"

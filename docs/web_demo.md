@@ -81,9 +81,12 @@ before submission. This differs from the separate browser-owned **Ask trial**,
 whose credential goes directly to OpenRouter. Public source is disclosed to
 OpenRouter and its model providers for the authorized generation. Use a
 [limited inference key](https://openrouter.ai/docs/api_reference/limits):
-the reported-cost budget stops subsequent requests, while the provider key's
-credit limit caps actual spending. An unknown charge stops further calls;
-check provider usage before explicitly resuming.
+the reported-cost budget stops subsequent requests and can be exceeded by an
+in-flight call. Configure a separate credit limit on the key. If the account
+uses its own upstream provider keys through OpenRouter, include BYOK usage in
+that limit (`include_byok_in_limit`); reported OpenRouter charges alone may
+exclude upstream spending. An unknown charge stops further calls; check
+provider usage before explicitly resuming.
 
 ### Enable visitor generation on the demo server
 
