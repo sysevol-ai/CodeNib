@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
+from fastapi import routing
 from fastapi.testclient import TestClient
 
 import codenib.web.app as web_app
@@ -62,8 +63,12 @@ def test_busy_wiki_generation_returns_retryable_response(monkeypatch, suffix):
 
 
 def test_web_app_has_no_retained_storage_control_plane() -> None:
-    paths = {route.path for route in web_app.app.routes}
+    # New FastAPI versions retain included router nodes. Walk the public route
+    # contexts so this guard still inspects all endpoints, including hidden ones.
+    walk_routes = getattr(routing, "iter_route_contexts", iter)
+    paths = {route.path for route in walk_routes(web_app.app.routes)}
 
+    assert "/api/visitor-wikis/{attempt}" in paths
     assert not any("index-jobs" in path for path in paths)
     assert not hasattr(web_app, "_configured_local_index_runtime")
 
