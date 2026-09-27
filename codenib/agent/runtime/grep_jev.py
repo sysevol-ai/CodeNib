@@ -444,10 +444,11 @@ def _source_plan_input(source, query, config, filter_test, budget):
 def grep_planning_context(
     source: RepositorySourceBinding,
     *,
+    include_tests: bool = False,
     check_cancelled: Callable[[], None] = lambda: None,
 ) -> dict[str, Any]:
     """Describe eligible source for the same planner, without source bodies or keys."""
-    config = GrepJevConfig(timeout=30)
+    config = GrepJevConfig(timeout=30, include_tests=include_tests)
     budget = _RequestBudget(config, check_cancelled)
     identity, _, _, _, payload = _source_plan_input(source, "", config, False, budget)
     return {"source_fingerprint": identity.fingerprint, "payload": payload}
@@ -467,6 +468,7 @@ def collect_grep_candidates(
     plan: GrepPlan,
     *,
     timeout: float = 30,
+    include_tests: bool = False,
     check_cancelled: Callable[[], None] = lambda: None,
 ) -> GrepCandidateResult:
     """Run an already planned query without resolving credentials or calling models.
@@ -476,7 +478,7 @@ def collect_grep_candidates(
     The public browser trial uses this boundary after direct provider planning.
     """
     plan = GrepPlan.model_validate(plan.model_dump())
-    config = GrepJevConfig(timeout=timeout)
+    config = GrepJevConfig(timeout=timeout, include_tests=include_tests)
     budget = _RequestBudget(config, check_cancelled)
     return _collect_candidates(source, "", config, False, budget, lambda _: plan)
 

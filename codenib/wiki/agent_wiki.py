@@ -6783,6 +6783,32 @@ class AgentWiki:
                 # the same evidence and ordinary publication checks.
                 try:
                     self._progress("editing", str(meta.get("id") or ""))
+                    reader_context = ""
+                    if self._story_review_enabled:
+                        preview_plan = copy.deepcopy(best_plan)
+                        preview_plan.pop("purpose", None)
+                        preview_plan.pop("map", None)
+                        for section in preview_plan.get("sections", []):
+                            section.pop("excerpt", None)
+                        reader_context = (
+                            "\nRead the rendered draft below before editing. "
+                            "A newcomer should understand the problem, the "
+                            "input-to-result path, the important decision and "
+                            "a concrete boundary or failure case. Choose one "
+                            "representative source-supported path to explain "
+                            "step by step; compare other variants only where "
+                            "their behavior differs. Do not turn a section into "
+                            "one long claim listing every helper. Keep each "
+                            "paragraph about one idea. Remove facts repeated "
+                            "between the thesis, section lead, claims and "
+                            "story transitions; do not merely rephrase them. "
+                            "An extra sentence must teach something new. "
+                            "Keep domain terms; omit documentation-pipeline "
+                            "terms such as evidence pack, admitted or beat. "
+                            "Do not invent a trace or rationale missing from "
+                            "source.\nRendered draft:\n"
+                            + _fact_plan_markdown(preview_plan, evidence, relations)
+                        )
                     edited = complete_plan(
                         "Edit this chapter plan for a reader trying to understand "
                         "the mechanism, not memorize function names. Audit every "
@@ -6797,6 +6823,7 @@ class AgentWiki:
                         "corrected plan as JSON in the same schema, including "
                         "aligned story beats.\nTitle: "
                         + str(meta.get("title", ""))
+                        + reader_context
                         + "\nPlan:\n"
                         + json.dumps(best_plan)
                         + "\nSource evidence:\n"
@@ -7554,6 +7581,8 @@ class AgentWiki:
                     repaired = True
         markdown = _link_evidence_markers(markdown)
         review_started = perf_counter()
+        if self._story_review_enabled:
+            self._progress("reviewing", str(meta.get("id") or ""))
         story_review = self._review_story(markdown)
         review_ms = (perf_counter() - review_started) * 1000
         if story_review is not None:

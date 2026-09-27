@@ -58,6 +58,11 @@ or equate generation consent with catalog publication. Use the shared
 architecture reader for prepared and visitor Wikis. Reduce initial chapter
 breadth before cutting supported mechanisms, rationale or boundaries from prose;
 source-check success alone does not establish reader quality.
+Visitor Wiki search must plan chapter coverage, not reuse an issue-localization
+prompt or silently exclude tests needed by a validation chapter. Keep the same
+reader rubric available on prepared and newly generated visitor pages. Compare
+the same source/outline/evidence when evaluating prose; a longer explanation or
+a green citation check does not establish parity with indexed examples.
 
 ## Storage Scope Guard
 

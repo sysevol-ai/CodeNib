@@ -171,6 +171,7 @@ def test_legacy_resume_keeps_full_scope_and_original_model(manager):
     legacy = manager._read(ATTEMPT)
     legacy.pop("model")
     legacy.pop("scope")
+    legacy.pop("retrieval_identity")
     manager._save(legacy)
     observed = []
 
@@ -191,6 +192,92 @@ def test_legacy_resume_keeps_full_scope_and_original_model(manager):
     )
     assert resumed["status"] == "complete"
     assert observed == [("openrouter/anthropic/claude-sonnet-4.6", False)]
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_resume_pins_wiki_retrieval_and_reader_review(manager, legacy):
+    FakeWiki.before_page = lambda _: (_ for _ in ()).throw(WikiRunStopped("pause"))
+    submit(manager)
+    state = manager._read(ATTEMPT)
+    if legacy:
+        state.pop("retrieval_identity")
+        manager._save(state)
+    observed = []
+
+    class Provider(FakeProvider):
+        def retrieve(self, source, query, limit, **options):
+            observed.append(options)
+            return []
+
+    def factory(bundle, model, **options):
+        observed.append((options["retrieval_identity"], options["story_review"]))
+        options["source_retriever"]("chapter", 12)
+        return FakeWiki(bundle, model, **options)
+
+    manager.provider = Provider
+    manager.wiki_factory = factory
+    FakeWiki.before_page = None
+    resumed = submit(manager, "resume")
+    assert resumed["status"] == "complete"
+    expected = "grep_jev_v1" if legacy else visitor_provider.WIKI_RETRIEVAL_IDENTITY
+    assert observed == [(expected, not legacy), {"wiki_context": not legacy}]
+
+
+@pytest.mark.parametrize("wiki_context", [False, True])
+def test_wiki_search_can_retrieve_test_contracts_without_changing_legacy_route(
+    tmp_path, monkeypatch, wiki_context
+):
+    from codenib.source_fingerprint import capture_repository_source
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "runtime.py").write_text("def run():\n    return True\n")
+    (tmp_path / "tests" / "test_runtime.py").write_text(
+        "def test_reject_invalid_input():\n    assert not False\n"
+    )
+    sent = []
+
+    def complete(messages, **_):
+        sent.extend(messages)
+        return json.dumps(
+            {
+                "actions": [
+                    {
+                        "pattern": "test_reject_invalid_input",
+                        "glob": "tests/*.py",
+                        "case_sensitive": True,
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(
+        VisitorProvider, "complete", lambda _, *a, **k: complete(*a, **k)
+    )
+    monkeypatch.setattr(visitor_provider, "OpenRouterDecisions", lambda **_: None)
+    monkeypatch.setattr(
+        visitor_provider,
+        "decide_code_relevance",
+        lambda _, query, batch: SimpleNamespace(
+            usage={"cost": 0.01},
+            answers={f"node_{index}": SimpleNamespace(score=3) for index, _ in batch},
+        ),
+    )
+    provider = VisitorProvider(KEY, 1, lambda: None, lambda _: None)
+    with capture_repository_source(tmp_path) as source:
+        nodes = provider.retrieve(
+            source, "Validation and tests", 12, wiki_context=wiki_context
+        )
+    payload = json.loads(sent[1]["content"])
+    if wiki_context:
+        assert payload["chapter"] == "Validation and tests" and "issue" not in payload
+        assert sent[0]["content"] == visitor_provider.WIKI_PLANNER_SYSTEM
+        assert [node.file for node in nodes] == ["tests/test_runtime.py"]
+        assert "test_reject_invalid_input" in nodes[0].content
+        assert provider.cost == 0.01
+    else:
+        assert payload["issue"] == "" and payload["query"] == "Validation and tests"
+        assert sent[0]["content"] == visitor_provider.PLANNER_SYSTEM
+        assert nodes == [] and provider.calls == 0
 
 
 def test_cancel_does_not_overwrite_saved_pages(manager):
@@ -414,6 +501,23 @@ def test_unknown_cost_or_cancellation_cannot_trigger_pipeline_fallback(monkeypat
         provider.complete([])
     assert len(calls) == 1
     assert not isinstance(WikiRunStopped(), Exception)
+
+
+def test_reader_review_does_not_swallow_paid_run_stop():
+    from codenib.wiki.agent_wiki import AgentWiki
+
+    class Stopped:
+        def complete(self, *_args, **_kwargs):
+            raise WikiRunStopped("No further funded calls")
+
+    wiki = AgentWiki(
+        SimpleNamespace(entry=SimpleNamespace(repo="owner/repo", language="python")),
+        model="fake-model",
+        llm=Stopped(),
+        story_review=True,
+    )
+    with pytest.raises(WikiRunStopped, match="No further funded calls"):
+        wiki._review_story("Source-checked prose awaiting its reading review.")
 
 
 def test_reported_budget_blocks_following_call(monkeypatch):
