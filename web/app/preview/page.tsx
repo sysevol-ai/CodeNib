@@ -306,7 +306,8 @@ export default function PreviewPage({
                   );
                 })}
             </section>
-            <section className="preview-browser" aria-label="Repository source">
+            <RepositoryExplanation snapshot={snapshot} />
+          <section className="preview-browser" aria-label="Repository source">
               <aside className="preview-files">
                 <h2>Explore the code</h2>
                 <label className="sr-only" htmlFor="preview-filter">
@@ -482,8 +483,7 @@ export default function PreviewPage({
                 )}
               </article>
             </section>
-            <RepositoryExplanation snapshot={snapshot} />
-            <p className="preview-local">
+              <p className="preview-local">
               Want source search inside your coding agent?{" "}
               <a
                 href={AGENT_SETUP_URL}

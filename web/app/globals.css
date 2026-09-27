@@ -5816,7 +5816,7 @@ a.codepanel-name:hover {
 .preview-readme code { font-size: 12px; }
 .preview-readme blockquote { border-left: 3px solid var(--border-strong); margin-left: 0; padding-left: 16px; color: var(--text-secondary); }
 .preview-code { overflow: auto; max-height: 640px; }
-.repository-explanation { margin-top: 24px; padding: 24px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface); }
+.repository-explanation { margin: 24px 0; padding: 24px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--bg-surface); }
 .repository-explanation h2 { font-size: 22px; margin: 0 0 8px; }
 .repository-explanation > p { color: var(--text-secondary); font-size: 14px; }
 .repository-explanation details { margin-top: 18px; }
