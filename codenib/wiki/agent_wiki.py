@@ -26,7 +26,7 @@ import re
 import threading
 from contextlib import contextmanager, nullcontext
 from time import perf_counter, time
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from ..log_utils import get_logger
 from ..repository_summary import readme_summary
@@ -4224,6 +4224,9 @@ class AgentWiki:
         api_base: Optional[str] = None,
         api_key: Optional[str] = None,
         story_review: bool = False,
+        source_retriever: Optional[Callable[[str, int], List[Any]]] = None,
+        retrieval_identity: str = "",
+        progress: Optional[Callable[[str, str], None]] = None,
     ) -> None:
         self._bundle = bundle
         self._model = model
@@ -4236,6 +4239,11 @@ class AgentWiki:
         self._api_base = api_base
         self._api_key = api_key
         self._store = store
+        self._source_retriever = source_retriever
+        self._retrieval_identity = retrieval_identity
+        self._progress = progress or (lambda _stage, _page: None)
+        if source_retriever is not None and not retrieval_identity:
+            raise ValueError("An injected Wiki retriever needs a cache identity")
         self._wb = WikiBuilder(bundle)  # reuse source() + symbol/citation helpers
         self._outline: Optional[Dict[str, Any]] = None
         self._pages: Dict[str, Dict[str, Any]] = {}
@@ -4342,7 +4350,9 @@ class AgentWiki:
             f"{source_identity}/{source_selection_identity}/"
             f"{view_identity}/{suffix}"
         )
-        return raw
+        return raw + (
+            f"/retrieval={self._retrieval_identity}" if self._retrieval_identity else ""
+        )
 
     def _store_entry_id(self, suffix: str) -> str:
         """Return the collision-resistant primary key used by Wiki stores."""
@@ -4532,13 +4542,13 @@ class AgentWiki:
                 return self._outline
             with self._cache_generation_lock("outline"):
                 cached = self._read_cache("outline")
-                if cached and cached.get("pages"):
+                if cached and cached.get("pages") and not cached.get("error"):
                     self._outline = cached
                     return cached
                 data = generate_outline(self._bundle, self._model, llm=self._client())
                 self._normalize(data.get("pages", []), seen=set(), first=True)
                 self._outline = data
-                if data.get("pages"):
+                if data.get("pages") and not data.get("error"):
                     self._write_cache("outline", data)
                 return data
 
@@ -4696,7 +4706,7 @@ class AgentWiki:
             return self._page_evidence_locks.setdefault(cache_suffix, threading.Lock())
 
     def _source_evidence(self, meta: Dict[str, Any]) -> List[EvidenceItem]:
-        """Retrieve source evidence once per page without invoking a model."""
+        """Retrieve source evidence once per page through the selected route."""
 
         cache_suffix = self._page_cache_suffix(meta)
         cached = self._page_evidence.get(cache_suffix)
@@ -5348,8 +5358,14 @@ class AgentWiki:
         pool_k = max(top_k, top_k * 4)
         store = self._bundle.vector_store
         routes: List[tuple[str, List[Any]]] = []
+        if self._source_retriever is not None:
+            routes.append(
+                (self._retrieval_identity, self._source_retriever(query, pool_k))
+            )
         try:
-            if store is not None and hasattr(store, "search_with_content"):
+            if self._source_retriever is not None:
+                pass
+            elif store is not None and hasattr(store, "search_with_content"):
                 routes.append(
                     ("dense", list(store.search_with_content(query, top_k=pool_k)))
                 )
@@ -5358,7 +5374,7 @@ class AgentWiki:
         except Exception as exc:  # noqa: BLE001 - fall back to BM25 below
             logger.warning("wiki retrieve (vector) failed: %s", exc)
         bm25 = self._bundle.bm25
-        if bm25 is not None:
+        if bm25 is not None and self._source_retriever is None:
             try:
                 try:
                     lexical = bm25.search(
@@ -6997,6 +7013,7 @@ class AgentWiki:
 
     def _generate_page(self, meta: Dict[str, Any]) -> dict:
         generation_started = perf_counter()
+        self._progress("retrieving", meta["id"])
         repo_dir = str(getattr(self._bundle.entry, "repo_dir", "") or "").rstrip(os.sep)
         # The project's own name is the last segment of ``owner/name``; a
         # checkout directory such as ``axios_axios`` is not what a README
@@ -7074,7 +7091,9 @@ class AgentWiki:
             plan_meta = {**meta, "entry_path": entry_path}
         evidence = [*evidence, *self._context_evidence(evidence)]
         self._fact_plan_observations.latest = {}
+        self._progress("planning_page", meta["id"])
         plan, plan_warnings = self._fact_plan(plan_meta, evidence, relations)
+        self._progress("writing", meta["id"])
         if overview_context and len(overview_context.get("path") or []) >= 3:
             journey = self._narrated_journey(
                 overview_context["path"],

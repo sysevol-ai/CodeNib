@@ -7,6 +7,7 @@ import { groupByLanguage, primaryLanguage } from "@/lib/landing";
 import RepositoryEntry from "@/components/RepositoryEntry";
 import { AppLink, navigate } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
+import { recentWikis } from "@/lib/visitorWiki";
 
 function repoDescription(r: RepoInfo): ReactNode {
   // `summary` is chosen server-side to be a statement of purpose; the raw
@@ -147,11 +148,15 @@ export default function Landing() {
       <section className="hero">
         <h1>Understand a repo. Start with its URL.</h1>
         <p className="hero-sub">
-          Open a ready Wiki or explore any public repository’s files and README.
-          Get an AI explanation with links to the code when you need it.
+          Paste a GitHub URL to generate a Wiki with chapters and source citations.
+          Watch it take shape, then save the link and share it.
         </p>
         <RepositoryEntry repos={repos} />
       </section>
+      {recentWikis().length > 0 && <section className="recent-wikis landing-catalog" aria-label="Your saved Wikis">
+        <h2>Your saved Wikis</h2><p className="small muted">Recent attempts from this browser. Results are saved on the server.</p>
+        {recentWikis().slice(0, 6).map((item) => <AppLink href={`/wiki/${item.id}`} key={item.id}>{item.repository} <span className="small muted">· {item.id.slice(0, 8)}</span> →</AppLink>)}
+      </section>}
       <section className="landing-catalog" aria-label="Ready repository Wikis">
         <div className="landing-catalog-heading">
           <div>

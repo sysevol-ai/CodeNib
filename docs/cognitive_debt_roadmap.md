@@ -24,6 +24,24 @@ Subtraction must preserve these journeys, source identity, repository-relative
 locations, manifest compatibility, multi-language routing, and explicit
 capability degradation.
 
+## Visitor Wiki iteration
+
+Status: implemented and locally verified in
+[#802](https://github.com/sysevol-ai/CodeNib/pull/802); lifecycle: `product`.
+The public URL entry now consumes
+AgentWiki instead of maintaining a second repository-explanation generator.
+The short explanation component, source-preview page, overview protocol and
+its dedicated browser harness/tests are removed. Only URL parsing is retained
+from that path. Shared Markdown rendering and the existing Wiki generation,
+source authority, grep/Jev operations and WikiStore boundary remain the owners.
+The new adapter owns consent, bounded visitor attempts and progress; it does
+not introduce another index or persistence backend. The obsolete existing-key
+browser explanation adapter and GitHub browser-fetch CSP permission are also
+removed. Real acceptance generated 11 complete chapters and reopened all of
+them on desktop/mobile without generation. Store ownership, restart/resume,
+budget and provider-free browser checks cover the replacement journey.
+Demo deployment remains the maintainer's open gate.
+
 ## Baseline
 
 The 2026-08-24 audit of `main` at

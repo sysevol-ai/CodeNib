@@ -343,7 +343,12 @@ class WikiBuilder:
             if callable(ensure_runtime):
                 ensure_runtime()
         vs = getattr(self._bundle, "vector_store", None)
-        docs = list(getattr(vs, "l2_documents", []) or []) if vs is not None else []
+        # Hosted visitor Wikis enumerate authenticated tree-sitter documents
+        # without constructing a retrieval index. Retrieval remains injected
+        # into AgentWiki; these documents only supply outline/symbol anchors.
+        docs = list(getattr(self._bundle, "wiki_documents", ()) or ())
+        if not docs:
+            docs = list(getattr(vs, "l2_documents", []) or []) if vs is not None else []
         if not docs:
             bm25 = getattr(self._bundle, "bm25", None)
             docs = (

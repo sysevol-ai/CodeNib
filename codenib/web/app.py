@@ -70,6 +70,7 @@ from .schemas import (
     RepoInfo,
     agent_result_to_response,
 )
+from .visitor_wikis import router as visitor_wiki_router
 
 _WIKI_MEDIA_TYPES = {
     ".png": "image/png",
@@ -180,6 +181,9 @@ async def lifespan(app: FastAPI):
         logger.info("Ready: %d repo(s) available", len(registry.list_infos()))
         yield
     finally:
+        visitor_wikis = getattr(app.state, "visitor_wikis", None)
+        if visitor_wikis is not None:
+            visitor_wikis.close()
         try:
             registry.close()
         finally:
@@ -190,6 +194,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
+
+app.include_router(visitor_wiki_router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(

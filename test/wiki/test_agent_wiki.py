@@ -7305,6 +7305,40 @@ def test_agent_wiki_cached_page_tree_reads_store_without_generating(
     ]
 
 
+def test_failed_outline_does_not_prevent_explicit_resume(tmp_path, monkeypatch):
+    bundle = SimpleNamespace(
+        entry=SimpleNamespace(
+            repo="owner/repo",
+            repo_dir=str(tmp_path),
+            instance_id="owner__repo-1",
+            commit_short="abc123",
+            language="python",
+        ),
+        vector_store=None,
+        bm25=None,
+        manifest=SimpleNamespace(languages=["python"], indexes={}),
+    )
+    store = SQLiteWikiStore(tmp_path / "wiki.sqlite3")
+    failed = {
+        "pages": [{"id": "overview", "title": "Overview", "children": []}],
+        "error": "provider unavailable",
+    }
+    ready = {"pages": [{"id": "overview", "title": "Overview", "children": []}]}
+    responses = iter([failed, ready])
+    monkeypatch.setattr(
+        agent_wiki_module, "generate_outline", lambda *_args, **_kw: next(responses)
+    )
+    first = AgentWiki(bundle, "fake-model", store=store, llm=object())
+    assert first.outline()["error"]
+    assert first._read_cache("outline") is None
+
+    # Also recover older entries that persisted a fallback with an error.
+    first._write_cache("outline", failed)
+    resumed = AgentWiki(bundle, "fake-model", store=store, llm=object())
+    assert resumed.outline() == ready
+    assert resumed._read_cache("outline") == ready
+
+
 def test_agent_wiki_page_cache_key_tracks_outline_metadata():
     original = {
         "id": "runtime",

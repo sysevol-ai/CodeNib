@@ -48,6 +48,11 @@ For the adoption, OpenRouter, and Wiki preview program, use
 `docs/adoption_roadmap.md` as the durable objective record. Keep shipping
 CodeGraph capabilities separate from experimental grep/Jev results, and
 update the relevant milestone when its acceptance gates or PR status change.
+The public repository entry must produce a navigable Repo Wiki through the
+existing Wiki pipeline. A source browser or a short AI explanation does not
+satisfy that outcome. Generation progress must reflect actual work; completed
+pages and interrupted attempts must survive refresh. Saved visitor Wikis are
+unlisted, link-readable results, not automatic additions to the home catalog.
 
 ## Storage Scope Guard
 

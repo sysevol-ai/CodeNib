@@ -147,6 +147,8 @@ class OpenRouterDecisions:
     api_key: str | None = field(default=None, repr=False)
     timeout: float = 30.0
     max_retries: int = 2
+    # Hosted, visitor-funded callers must ignore operator netrc/proxy settings.
+    trust_env: bool = True
 
     def __post_init__(self) -> None:
         self.model = self.model.strip().removeprefix("openrouter/")
@@ -193,16 +195,18 @@ class OpenRouterDecisions:
 
         for attempt in range(self.max_retries + 1):
             try:
-                response = requests.post(
-                    "https://openrouter.ai/api/alpha/decisions",
-                    headers={
-                        "Authorization": f"Bearer {key.strip()}",
-                        "X-OpenRouter-Title": "CodeNib",
-                    },
-                    json=payload,
-                    timeout=self.timeout,
-                    allow_redirects=False,
-                )
+                with requests.Session() as session:
+                    session.trust_env = self.trust_env
+                    response = session.post(
+                        "https://openrouter.ai/api/alpha/decisions",
+                        headers={
+                            "Authorization": f"Bearer {key.strip()}",
+                            "X-OpenRouter-Title": "CodeNib",
+                        },
+                        json=payload,
+                        timeout=self.timeout,
+                        allow_redirects=False,
+                    )
                 response.raise_for_status()
                 break
             except requests.HTTPError as exc:

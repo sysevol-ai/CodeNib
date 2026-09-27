@@ -86,6 +86,47 @@ outline/page envelopes, and never starts generation or changes the source
 database. This is a Wiki-domain consumer of the existing boundary; repository
 manifests, source captures and published site files remain file artifacts.
 
+## Visitor Wiki persistence
+
+Status: implemented and locally verified in
+[#802](https://github.com/sysevol-ai/CodeNib/pull/802); demo deployment remains open.
+Current product consumer: the public GitHub URL form and
+`codenib.web.visitor_wikis` saved-Wiki routes. The maintainer requested full
+Repo Wiki generation, refresh-safe attempts and link-readable results that
+stay out of the home catalog. This replaces #801's ephemeral explanation.
+
+`VisitorWikis` injects the existing WikiStore into AgentWiki and stores a small
+progress envelope plus published chapters in a separate
+`visitor_wiki.sqlite3`. The four-method facade, SQLite schema and implementation
+stay unchanged. No generic jobs, leases, index catalog, registry or object
+storage are promoted. Source is a bounded temporary public archive, with an
+authenticated reader retained only for the active generation; manifests and
+retrieval artifacts do not move into this database.
+
+The existing generation guard serializes funded visitor runs across processes.
+A revision/request identity check and first publication under the admission
+guard linearize ownership. Admission records the pending request before
+dispatch; cancellation under the same guard covers both active and pending
+requests. A later explicit resume receives a fresh identity. A stale or timed-out
+waiter cannot overwrite the active owner's progress; it updates only its own
+request envelope. Process death releases
+the guard; the owner must explicitly resume with a newly supplied credential.
+Healthy AgentWiki pages remain reusable. Database reads never start work.
+The adjacent class docstring states lock order and recovery ownership.
+
+Acceptance passed: reopened chapters require zero provider calls; a stopped/restarted
+run reuses already completed chapters; concurrent/stale submissions do not
+repeat generation; provider keys are absent from all persisted envelopes;
+failed quality checks never publish a ready page. A deterministic concurrent
+test rejects a contender submitted while the original owner is active.
+A real 11-chapter `pallets/itsdangerous` Wiki was persisted and reopened in
+desktop/mobile browsers with no provider call. The original source/credential
+are unnecessary for reading; disabling creation also preserves saved reads.
+Public repository resolution precedes allocation, so nonexistent/private
+repositories consume no saved-attempt slots. Completed readers stop polling.
+The 100-attempt limit does not delete old results automatically. Operators own
+database backup/capacity and must explicitly deploy the new routes.
+
 ## Promotion Rule
 
 Each later milestone is demand-gated. A design document, test fixture, or

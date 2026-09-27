@@ -118,6 +118,27 @@ def test_mixed_questions_use_decisions_endpoint_and_preserve_distributions(http)
     assert result.id == "decision-test"
 
 
+def test_visitor_credential_cannot_be_replaced_by_operator_netrc(
+    http, monkeypatch, tmp_path
+):
+    calls, responses = http
+    netrc = tmp_path / "netrc"
+    netrc.write_text("machine openrouter.ai login operator password operator-secret\n")
+    netrc.chmod(0o600)
+    monkeypatch.setenv("NETRC", str(netrc))
+    monkeypatch.setenv("HTTPS_PROXY", "http://operator-proxy.invalid:8080")
+    responses.append(_response({"relevant": {"type": "noul", "noul": 0.8}}))
+
+    OpenRouterDecisions(api_key="visitor-key", trust_env=False).decide(
+        state="source",
+        questions={"relevant": NoulQuestion(instructions="Relevant?")},
+    )
+
+    request, options = calls[0]
+    assert request.headers["Authorization"] == "Bearer visitor-key"
+    assert not options["proxies"]
+
+
 @pytest.mark.parametrize(
     "answer",
     [

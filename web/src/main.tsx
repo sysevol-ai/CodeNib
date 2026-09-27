@@ -8,7 +8,8 @@ import { assetUrl, restoreStaticRoute } from "@/lib/runtime";
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
 const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
 const Landing = lazy(() => import("@/app/page"));
-const PreviewPage = lazy(() => import("@/app/preview/page"));
+const GenerateWikiPage = lazy(() => import("@/app/generate/page"));
+const SavedWikiPage = lazy(() => import("@/app/saved-wiki/page"));
 const AddRepo = lazy(() => import("@/app/add-repo/page"));
 
 function RouteLoading() {
@@ -30,12 +31,15 @@ function App() {
   // Dedicated entry routes precede the prepared Wiki repository id route.
   if (segments[0] === "preview" && segments.length === 3) {
     return (
-      <PreviewPage
+      <GenerateWikiPage
         key={`${segments[1]}/${segments[2]}`}
         owner={segments[1]}
         name={segments[2]}
       />
     );
+  }
+  if (segments[0] === "wiki" && segments.length === 2) {
+    return <SavedWikiPage key={segments[1]} id={segments[1]} />;
   }
   if (segments[0] === "add-repo") {
     return <AddRepo />;
