@@ -126,6 +126,8 @@ export default function RepositoryExplanation({
               : "Could not explain this repository.",
         );
     } finally {
+      // If one parallel source read failed, stop the remaining reads too.
+      abort.abort();
       clearTimeout(timeout);
       if (controller.current === abort) controller.current = null;
       if (generation.current === current) {
