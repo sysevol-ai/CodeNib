@@ -89,6 +89,12 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   requests do not establish that child pages are cached or maps are present.
   Use `scripts/prewarm_wiki_cache.py --scope all` for full prose coverage;
   report cold, degraded, and failed pages explicitly while prewarming runs.
+- **Overview illustrations** require an admitted semantic architecture plan.
+  Do not substitute an automatic call-flow or relation image when that plan
+  is missing or invalid: a debug/configuration branch can look like the main
+  system path. Keep indexed System Maps separate. Bump the media-plan version
+  when changing this policy so existing pages drop obsolete derived assets
+  without invalidating cached prose.
 - **Wiki prose is LLM-generated and stored** in
   `<data_dir>/wiki_cache/wiki.sqlite3` — NOT under `${CODENIB_PREBUILT_DIR}`
   (that holds the prebuilt graph + vectors).

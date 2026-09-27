@@ -7370,12 +7370,17 @@ def test_agent_wiki_page_tree_reports_ready_cold_and_degraded_cache_states(tmp_p
     assert tree[1]["cache_state"] == "degraded"
 
 
-def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose():
+@pytest.mark.parametrize(
+    "slot_id",
+    ["overview-story-storyboard", "overview-entry-path", "overview-relation-map"],
+)
+def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose(slot_id):
     legacy = {
         "id": "overview",
         "title": "Overview",
         "markdown": "# Overview\n\nSource-grounded prose.",
         "citations": [{"file": "src/api.py"}],
+        "media_plan_version": 11,
         "story": {
             "beats": [
                 {"section": "Enter", "role": "entry", "evidence": ["E1"]},
@@ -7384,9 +7389,10 @@ def test_agent_wiki_removes_legacy_page_visuals_without_regenerating_prose():
         },
         "media_slots": [
             {
-                "id": "overview-story-storyboard",
+                "id": slot_id,
                 "kind": "storyboard",
                 "placement": "appendix",
+                "asset": {"uri": "/old-flow.svg"},
             }
         ],
     }

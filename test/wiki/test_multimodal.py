@@ -122,9 +122,7 @@ def test_overview_plans_one_semantic_architecture_visual():
 
 
 def test_call_graph_inputs_never_become_the_architecture_card():
-    # A mermaid block or story beats never become media at all; raw relations
-    # only ever become the labelled relation-map fallback, never the
-    # system-architecture card.
+    # Raw calls and story beats do not establish a system architecture.
     slots = plan_media_slots(
         page_id="overview",
         title="Overview",
@@ -149,10 +147,10 @@ def test_call_graph_inputs_never_become_the_architecture_card():
             }
         ],
     )
-    assert [slot["id"] for slot in slots] == ["overview-relation-map"]
+    assert slots == []
 
 
-def test_recorded_entry_path_is_the_fallback_when_no_architecture_is_admitted():
+def test_recorded_entry_path_does_not_replace_a_missing_architecture():
     flow = {
         "title": "From `dispatch()` to `save()`",
         "steps": [
@@ -161,14 +159,7 @@ def test_recorded_entry_path_is_the_fallback_when_no_architecture_is_admitted():
         ],
     }
     slots = plan_media_slots(page_id="overview", title="Overview", flow=flow)
-    assert [slot["id"] for slot in slots] == ["overview-entry-path"]
-    assert slots[0]["render_contract"]["adapter"] == "flow"
-    assert slots[0]["title"] == "From `dispatch()` to `save()`"
-    assert [node["label"] for node in slots[0]["render_contract"]["data"]["nodes"]] == [
-        "dispatch()",
-        "run()",
-        "save()",
-    ]
+    assert slots == []
 
     # With an admitted architecture the recorded path never becomes a second
     # picture.
@@ -215,13 +206,10 @@ def test_invalid_architecture_plan_is_omitted_instead_of_falling_back_to_calls()
         relations=[{"id": "R1", "source": "dispatch()", "target": "run()"}],
     )
 
-    # The invalid plan is dropped, never repaired from calls; the page falls
-    # back to the labelled relation map instead of an architecture card.
-    assert [slot["id"] for slot in slots] == ["overview-relation-map"]
-    assert all(slot["id"] != "overview-system-architecture" for slot in slots)
+    assert slots == []
 
 
-def test_recorded_relations_are_the_last_fallback_visual():
+def test_architecture_without_role_evidence_does_not_turn_into_a_local_call_flow():
     relations = [
         {
             "id": "R1",
@@ -231,17 +219,22 @@ def test_recorded_relations_are_the_last_fallback_visual():
         {"id": "R2", "source": "src/worker.py:run()", "target": "src/store.py:save()"},
     ]
     slots = plan_media_slots(page_id="overview", title="Overview", relations=relations)
-    assert [slot["id"] for slot in slots] == ["overview-relation-map"]
-    assert slots[0]["render_contract"]["adapter"] == "architecture"
-    assert slots[0]["render_contract"]["evidence"] == ["R1", "R2"]
-    # The recorded entry path outranks the relation map.
+    assert slots == []
     flow = {
         "steps": [
             {"from": "`dispatch()`", "to": "`run()`", "label": "", "evidence": ["R1"]},
             {"from": "`run()`", "to": "`save()`", "label": "", "evidence": ["R2"]},
         ]
     }
+    architecture = _architecture_plan()
+    # Valkey's object-store role had only R references, without the direct E
+    # evidence required to establish a component's architectural responsibility.
+    architecture["components"][2]["evidence"] = ["R2"]
     slots = plan_media_slots(
-        page_id="overview", title="Overview", relations=relations, flow=flow
+        page_id="overview",
+        title="Overview",
+        architecture=architecture,
+        relations=relations,
+        flow=flow,
     )
-    assert [slot["id"] for slot in slots] == ["overview-entry-path"]
+    assert slots == []

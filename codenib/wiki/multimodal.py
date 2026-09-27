@@ -15,15 +15,11 @@ from dataclasses import asdict, dataclass, field
 from itertools import islice
 from typing import Any, Iterable, Literal, Mapping
 
-from .visual_ir import (
-    architecture_contract_from_plan,
-    architecture_contract_from_relations,
-    flow_contract_from_plan,
-)
+from .visual_ir import architecture_contract_from_plan
 
 MediaKind = Literal["diagram", "image", "storyboard", "chart", "video"]
 MediaPlacement = Literal["lead", "section", "aside", "appendix"]
-MEDIA_PLAN_VERSION = 11
+MEDIA_PLAN_VERSION = 12
 
 _MAX_SOURCE_CITATIONS = 6
 
@@ -97,7 +93,7 @@ def plan_media_slots(
     adapters and human-prior configuration to fill the assets later.
     """
 
-    del diagram, story
+    del diagram, story, flow, relations
     if page_id != "overview":
         return []
     structure_contract = _safe_contract(
@@ -105,60 +101,10 @@ def plan_media_slots(
         architecture,
     )
     if structure_contract is None:
-        # No admitted architecture: fall back to the recorded entry path, so
-        # the landing page still opens with one grounded picture of the
-        # system rather than none.
-        flow_contract = _safe_contract(flow_contract_from_plan, flow)
-        if flow_contract is None:
-            # No recorded path either: the page's own static relations are
-            # still a true, cited picture of which components touch which.
-            relation_contract = _safe_contract(
-                architecture_contract_from_relations,
-                list(relations or ()),
-            )
-            if relation_contract is None:
-                return []
-            page_slug = page_id or "page"
-            slot = WikiMediaSlot(
-                id=f"{page_slug}-relation-map",
-                kind="diagram",
-                placement="aside",
-                title=f"{title or page_slug}: recorded relations",
-                purpose=(
-                    "Show the components this page cites and the call sites "
-                    "recorded between them."
-                ),
-                source_citations=_citation_files(citations),
-                prompt=(
-                    "Render the supplied relation contract exactly; every edge "
-                    "is a recorded call site."
-                ),
-                render_contract=relation_contract,
-            )
-            return [slot.to_dict()]
-        page_slug = page_id or "page"
-        flow_title = (
-            str((flow or {}).get("title") or "").strip()
-            if isinstance(flow, Mapping)
-            else ""
-        )
-        slot = WikiMediaSlot(
-            id=f"{page_slug}-entry-path",
-            kind="diagram",
-            placement="aside",
-            title=flow_title or f"{title or page_slug}: how a call moves",
-            purpose=(
-                "Show the recorded call path from the public entry inward, one "
-                "stage per hop, as the index proves it."
-            ),
-            source_citations=_citation_files(citations),
-            prompt=(
-                "Render the supplied flow contract exactly; every arrow is a "
-                "recorded call site."
-            ),
-            render_contract=flow_contract,
-        )
-        return [slot.to_dict()]
+        # A local call chain can be a debug/configuration side path, not a
+        # system overview. Do not fill a rejected architecture's slot with
+        # an unrelated flow or relation image. Indexed maps remain separate.
+        return []
 
     citation_files = _citation_files(citations)
     page_slug = page_id or "page"
