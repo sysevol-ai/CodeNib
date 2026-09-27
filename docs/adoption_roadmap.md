@@ -354,21 +354,34 @@ only the `grep` extra also exports the optional trial with a placeholder HTTPS
 origin. Both exports leave SQLite, configuration and registry bytes unchanged;
 the trial output is acceptance material, not a public deployment.
 
-The public demo must remain useful without authentication or a live LLM.
-The maintainer will deploy `codenib.ai` and `demo.codenib.ai` on their separate
-DGX Spark server later. The reviewed static roots and deployment checks are
-the handoff for that step; production-host acceptance remains pending the
-maintainer's deployment. No additional hosting account or server access is
-needed for this iteration.
+The maintainer has deployed the live Wiki on their separate DGX Spark.
+The onboarding audit found 27 repositories, a catalog-only search box and an
+“add repository” page that led to CLI setup. The next adoption gate is explicit:
+paste a public GitHub URL and see useful repository content before installation,
+authentication or indexing. The source frontend now routes prepared repositories
+to their Wikis and other URLs to a bounded, browser-owned GitHub preview with
+commit-pinned source. An optional existing-key OpenRouter explanation consumes
+only a small verified sample; its result stays in that page session. This is
+separate from full Wiki generation and from the grep/Jev experiment.
+
+Local acceptance opened live Flask source in 0.930 seconds. One explicitly
+authorized browser explanation took 14.078 seconds and OpenRouter reported
+$0.025725. These are individual local observations, not a hosted latency SLA.
+The credential went only to OpenRouter and was absent from browser storage;
+disconnect passed. Provider consent/PKCE remains a separate unverified gate.
+The source-preview contracts, desktop/mobile flow and static-export policy
+are locally checked. Production URL-entry acceptance remains pending deployment
+of this rebuilt frontend on the maintainer's DGX Spark; the published 0.2.4
+wheel does not contain this iteration.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |
-| Open home | Curated repository cards, an example question/task per repository, languages, indexed commit, and a clear “Use with your agent” link. | Static assets; no model call. |
+| Open home | Paste a GitHub URL, or choose a ready Wiki. Catalog search and local agent setup are secondary. | Catalog metadata and static assets; no model call. |
 | Open a repository | Precomputed overview and story Wiki, architecture map and source citations. Choose an example task to inspect its recorded evidence. | Static assets; preserve source/model provenance. |
 | Explore a map or citation | Browser renders exported page boundaries/graphs and navigates to commit-pinned source. | Static data; disclose missing full runtime graph functionality. |
 | Enter a new question | Explain “Connect OpenRouter” and the snippet/cost boundary, or “Run on your machine”. Do not spend the site's key on anonymous requests. | User-authorized provider account; bounded request. |
 | Connect an agent | Copy a tested local setup now. Add remote MCP only after A6 passes. | Local user machine and user's agent/model. |
-| Submit an arbitrary repository | Initially link to local setup or the existing self-owned Pages workflow. | User CPU/CI quota; hosted indexing remains demand-gated. |
+| Submit a public GitHub repository | Open a prepared Wiki by repository identity, or read a pinned tree, README and files directly in the browser. Optional AI explanation uses an existing OpenRouter key. | GitHub public API from the visitor; explicit user-funded inference only. No hosted checkout, index or saved Wiki. |
 
 Implementation boundaries:
 
@@ -451,7 +464,7 @@ The clarified CodeGraph comparison names `colbymchenry/codegraph` and uses its
 pinned source and documented capabilities. OAuth onboarding and the browser
 trial remain opt-in while real provider consent and interactive unlock are
 unverified. The maintainer chose desktop CLI login acceptance first and will
-perform the website deployment on their separate DGX Spark later.
+has deployed the live Wiki on their separate DGX Spark. The URL-entry frontend still requires its own deployment acceptance.
 
 The release used the existing protected environments after explicit maintainer
 approval. TestPyPI admits `main` and production admits `v*` tags; those rules
@@ -477,8 +490,8 @@ in the release harness. Fixture-backed source-only MCP and the public source
 API pass without embedding/model/graph SDKs or billed calls. Baseline formatter
 failures are corrected in a separate commit with unchanged production
 non-import ASTs and 85 focused tests. Public TestPyPI and production publication
-are complete. Real consent remains open; website deployment belongs to the
-maintainer's later DGX Spark rollout.
+are complete. Real consent remains open; the next URL-entry deployment acceptance belongs
+to the maintainer’s DGX Spark rollout.
 
 Record baseline and subsequent counts for documentation-to-install clicks,
 successful local setup, first source-linked query, repeat use, Pages backlink
