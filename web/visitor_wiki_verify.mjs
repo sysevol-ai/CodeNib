@@ -52,6 +52,7 @@ try {
         return route.fulfill({ json: { stopping: true } });
       }
       if (request.method() === "POST") {
+        await new Promise((resolve) => setTimeout(resolve, 400));
         posts++;
         assert.equal(
           request.headers().authorization,
@@ -61,10 +62,13 @@ try {
         const body = request.postDataJSON();
         assert.equal(body.repository, "owner/repo");
         assert.equal(body.budget_usd, 2);
+        assert.equal(body.model, "deepseek/deepseek-v4.1-flash");
         const id = url.pathname.split("/").at(-1);
         state = {
           id,
           repository: "owner/repo",
+          model: body.model,
+          scope: "concise",
           commit: "c".repeat(40),
           status: "running",
           stage: "analyzing",
@@ -137,9 +141,16 @@ try {
     await page
       .getByRole("button", { name: "Generate Wiki", exact: true })
       .click();
+    await page.getByText("Checking your account and repository…", { exact: true }).waitFor();
     await page.getByText("Analyzing source files", { exact: true }).waitFor();
     assert.equal(posts, 1);
     const savedURL = page.url();
+    await page.locator(".wiki-document-skeleton").waitFor();
+    assert.ok(await page.getByLabel("Current agent activity").isVisible());
+    await page.screenshot({
+      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-first-chapter.png`,
+      fullPage: true,
+    });
     state = {
       ...state,
       stage: "planning_page",
@@ -148,6 +159,10 @@ try {
       calls: 4,
       reported_cost_usd: 0.023,
       page_states: { overview: "ready", pipeline: "running" },
+      scope: "concise",
+      source_files: 65,
+      request_active: true,
+      response_chars: 0,
       skipped_files: [{ path: "assets/diagram.png", size_bytes: 7513866 }],
       history: [
         ...state.history,
@@ -160,6 +175,11 @@ try {
       .waitFor();
     const activity = page.getByLabel("Current agent activity");
     await activity.getByText("Working on: Request pipeline", { exact: true }).waitFor();
+    assert.equal(await activity.locator("details").getAttribute("open"), null);
+    await activity.getByText("Waiting for the model to respond…", { exact: true }).waitFor();
+    state = { ...state, response_chars: 512, updated_at: Date.now() / 1000 };
+    await activity.getByText("Receiving the model’s response…", { exact: true }).waitFor();
+    await activity.getByText("Live activity & timing", { exact: true }).click();
     assert.ok((await activity.innerText()).includes("Asking the model to compose"));
     assert.ok(await activity.getByText("Next", { exact: true }).isVisible());
     assert.equal(await activity.locator(".wiki-run-recent li").count(), 3);
@@ -169,8 +189,11 @@ try {
       (element) => getComputedStyle(element).animationName,
     ), "none");
     await page.emulateMedia({ reducedMotion: "no-preference" });
+    await activity.getByText("Live activity & timing", { exact: true }).click();
+    await page.locator(".wiki-progress > details > summary").click();
     await page.getByText("Skipped 1 file larger than 4 MiB", { exact: true }).click();
     assert.ok(await page.getByText("assets/diagram.png", { exact: true }).isVisible());
+    await page.locator(".wiki-progress > details > summary").click();
     assert.equal(await page.getByRole("link", { name: "Read 1 / 2 ready chapters" }).getAttribute("href"), "#saved-wiki-chapters");
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
@@ -185,7 +208,9 @@ try {
     await activity.getByText("No recent progress reported", { exact: true }).waitFor();
     assert.equal(await activity.locator(".is-animated").count(), 0);
     assert.ok((await activity.innerText()).includes("does not confirm that it has stopped"));
+    await activity.getByText("Live activity & timing", { exact: true }).click();
     assert.ok((await activity.innerText()).includes("Checked"));
+    await activity.getByText("Live activity & timing", { exact: true }).click();
     await page.screenshot({
       path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-delayed.png`,
       fullPage: true,
@@ -212,7 +237,7 @@ try {
     statusOffline = true;
     await activity.getByText("Connection interrupted", { exact: true }).waitFor();
     assert.equal(await activity.locator(".is-animated").count(), 0);
-    assert.ok((await activity.innerText()).includes("Reconnecting"));
+    assert.ok((await activity.innerText()).includes("server may still be working"));
     statusOffline = false;
     state = { ...state, updated_at: Date.now() / 1000, calls: 5 };
     await activity.getByText("Generation in progress", { exact: true }).waitFor();
@@ -240,6 +265,7 @@ try {
     await page
       .getByRole("button", { name: "Resume unfinished chapters" })
       .click();
+    await page.getByText("Analyzing source files", { exact: true }).waitFor();
     assert.equal(posts, 2);
     state = {
       ...state,

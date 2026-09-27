@@ -34,7 +34,7 @@ PAGES = [
 
 
 class FakeProvider:
-    def __init__(self, key, budget, check, changed):
+    def __init__(self, key, budget, check, changed, **_kwargs):
         self.key, self.check = key, check
 
     def close(self):
@@ -145,6 +145,52 @@ def test_interrupted_run_reuses_ready_page_after_service_restart(manager):
     )
     assert submit(resumed)["status"] == "complete"
     assert FakeWiki.produced == ["overview", "pipeline"]
+
+
+def test_new_scope_and_model_are_pinned_across_explicit_resume(manager):
+    FakeWiki.before_page = lambda _: (_ for _ in ()).throw(WikiRunStopped("pause"))
+    first = manager.submit(
+        ATTEMPT,
+        "owner/repo",
+        OWNER,
+        KEY,
+        2,
+        "first",
+        model="deepseek/deepseek-v4.1-flash",
+    )
+    assert first["scope"] == "concise"
+    assert first["model"] == "deepseek/deepseek-v4.1-flash"
+    resumed = manager.submit(ATTEMPT, "owner/repo", OWNER, KEY, 2, "second")
+    assert resumed["model"] == first["model"]
+    assert resumed["scope"] == first["scope"]
+
+
+def test_legacy_resume_keeps_full_scope_and_original_model(manager):
+    FakeWiki.before_page = lambda _: (_ for _ in ()).throw(WikiRunStopped("pause"))
+    submit(manager)
+    legacy = manager._read(ATTEMPT)
+    legacy.pop("model")
+    legacy.pop("scope")
+    manager._save(legacy)
+    observed = []
+
+    def factory(bundle, model, **options):
+        observed.append((model, options["concise"]))
+        return FakeWiki(bundle, model, **options)
+
+    manager.wiki_factory = factory
+    FakeWiki.before_page = None
+    resumed = manager.submit(
+        ATTEMPT,
+        "owner/repo",
+        OWNER,
+        KEY,
+        2,
+        "resume",
+        model="deepseek/deepseek-v4.1-flash",
+    )
+    assert resumed["status"] == "complete"
+    assert observed == [("openrouter/anthropic/claude-sonnet-4.6", False)]
 
 
 def test_cancel_does_not_overwrite_saved_pages(manager):
@@ -293,7 +339,10 @@ def test_stale_queued_run_cannot_repeat_generation(manager):
     assert manager.status(ATTEMPT)["status"] == "complete"
 
 
-def test_endpoints_expose_saved_pages_but_never_owner_access(manager, monkeypatch):
+@pytest.mark.parametrize("model", [None, "deepseek/deepseek-v4.1-flash"])
+def test_endpoints_expose_saved_pages_but_never_owner_access(
+    manager, monkeypatch, model
+):
     monkeypatch.setenv("CODENIB_VISITOR_WIKI", "1")
     app = FastAPI()
     app.include_router(router)
@@ -301,14 +350,33 @@ def test_endpoints_expose_saved_pages_but_never_owner_access(manager, monkeypatc
     client = TestClient(app)
     assert client.get("/api/visitor-wikis").json()["enabled"]
     endpoint = f"/api/visitor-wikis/{ATTEMPT}"
+    headers = {"Authorization": f"Bearer {KEY}", "X-Wiki-Owner": OWNER}
+    assert (
+        client.post(
+            endpoint,
+            json={
+                "repository": "owner/repo",
+                "budget_usd": 2.0,
+                "model": "unsupported",
+            },
+            headers=headers,
+        ).status_code
+        == 422
+    )
+    assert not FakeWiki.produced
     response = client.post(
         endpoint,
-        json={"repository": "owner/repo", "budget_usd": 2.0},
-        headers={"Authorization": f"Bearer {KEY}", "X-Wiki-Owner": OWNER},
+        json={
+            "repository": "owner/repo",
+            "budget_usd": 2.0,
+            **({"model": model} if model else {}),
+        },
+        headers=headers,
     )
     assert response.status_code == 202
     status = client.get(endpoint)
     assert status.json()["status"] == "complete"
+    assert status.json()["model"] == (model or "anthropic/claude-sonnet-4.6")
     assert status.headers["Cache-Control"] == "no-store"
     assert status.headers["X-Robots-Tag"] == "noindex, nofollow"
     assert (
@@ -336,7 +404,7 @@ def test_unknown_cost_or_cancellation_cannot_trigger_pipeline_fallback(monkeypat
     calls = []
     monkeypatch.setattr(
         visitor_provider,
-        "provider_json",
+        "provider_stream",
         lambda *_: calls.append(1) or {"usage": {}, "choices": []},
     )
     provider = VisitorProvider(KEY, 1, lambda: None, lambda _: None)
@@ -352,7 +420,7 @@ def test_reported_budget_blocks_following_call(monkeypatch):
     calls, updates = [], []
     monkeypatch.setattr(
         visitor_provider,
-        "provider_json",
+        "provider_stream",
         lambda *_: calls.append(1)
         or {
             "usage": {"cost": 0.3},
@@ -618,6 +686,16 @@ def test_real_agent_wiki_cache_survives_fresh_source_download(tmp_path, monkeypa
                 retrieval_identity="grep_jev_v1",
             )
             identities.append(wiki._cache_identity("outline"))
+            concise = AgentWiki(
+                bundle,
+                "unused",
+                store=store,
+                concise=True,
+                source_retriever=lambda *_: [],
+                retrieval_identity="grep_jev_v1",
+            )
+            assert concise._cache_identity("outline") != wiki._cache_identity("outline")
+            assert concise.cached_outline() is None
             if iteration == 0:
                 wiki._write_cache("outline", outline)
                 meta = wiki._overview_page_meta(outline["pages"][0], [])

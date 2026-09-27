@@ -96,7 +96,13 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   retain archive bounds, and disclose the omissions in the saved Wiki.
 - **Generation waiting feedback** explains the actual work and next step,
   including that chapter planning already composes and checks model-authored
-  claims. Keep time in the step, time since worker progress and successful
+  claims. A submitted form needs immediate visible feedback. Keep the current
+  activity in the reading area, compact it when prose is available, and fold
+  diagnostics into details instead of pushing the result below several panels.
+  Prefer a concise first Wiki with progressively readable chapters. Distinguish
+  waiting for a provider from receiving its stream using real receipt counts;
+  do not publish unvalidated draft prose or reasoning. Keep time in the step,
+  time since worker progress and successful
   status polling separate. A responding status endpoint does not prove the
   worker is advancing. Test delayed progress, disconnected polling, recovery,
   reduced motion and stopped/completed states on desktop and mobile. Never

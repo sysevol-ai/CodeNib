@@ -11,6 +11,7 @@ from codenib.source_fingerprint import capture_repository_source
 from codenib.wiki.builder import Symbol
 from codenib.wiki.outline import (
     _apply_outline_summary_rewrites,
+    _concise_outline,
     _fallback_outline,
     _flagged_outline_summaries,
     _merge_outlines,
@@ -23,6 +24,26 @@ from codenib.wiki.outline import (
     _validate_outline,
     generate_outline,
 )
+
+
+def test_concise_outline_bounds_work_without_discarding_child_source_hints():
+    pages = [{"id": "overview", "files": ["README.md"], "children": []}]
+    pages += [
+        {
+            "id": f"area-{i}",
+            "files": [f"area{i}.py"],
+            "children": [
+                {"id": f"detail-{i}", "files": [f"detail{i}.py"], "children": []}
+            ],
+        }
+        for i in range(8)
+    ]
+    compact = _concise_outline({"pages": pages})
+    assert len(compact["pages"]) == 5
+    assert compact["pages"][0]["id"] == "overview"
+    assert all(not page["children"] for page in compact["pages"])
+    assert compact["pages"][1]["files"] == ["area0.py", "detail0.py"]
+    assert len(pages) == 9 and pages[1]["children"]
 
 
 def _source_paths(root):

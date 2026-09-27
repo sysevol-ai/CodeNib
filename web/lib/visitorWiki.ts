@@ -23,6 +23,12 @@ export interface SavedWiki {
   budget_usd: number;
   stalled: boolean;
   history: Array<{ stage: string; page: string; at: number }>;
+  model?: string;
+  scope?: "concise";
+  source_files?: number;
+  request_active?: boolean;
+  response_chars?: number;
+  request_started_at?: number;
 }
 
 export interface WikiAttempt {
@@ -136,6 +142,7 @@ export const startWiki = (
   attempt: WikiAttempt,
   key: string,
   budget: number,
+  model = "anthropic/claude-sonnet-4.6",
 ) => {
   rememberWikiAttempt(attempt);
   return request<SavedWiki>(`/${attempt.id}`, {
@@ -148,6 +155,7 @@ export const startWiki = (
     body: JSON.stringify({
       repository: attempt.repository,
       budget_usd: budget,
+      model,
     }),
   });
 };

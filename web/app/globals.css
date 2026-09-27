@@ -5842,13 +5842,6 @@ a.codepanel-name:hover {
 .wiki-run-recent ol { list-style: none; padding: 0; margin: 0; }
 .wiki-run-recent li { display: flex; align-items: baseline; gap: 12px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
 .wiki-run-recent time { flex-shrink: 0; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-@media (min-width: 960px) {
-  .wiki-run-activity { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); column-gap: 24px; }
-  .wiki-run-status, .wiki-run-description, .wiki-run-timing, .wiki-run-explanation { grid-column: 1; }
-  .wiki-run-recent { grid-column: 2; grid-row: 1 / span 4; border-left: 1px solid var(--border-subtle); padding-left: 24px; }
-  .wiki-run-recent h3 { margin-top: 0; }
-  .wiki-run-explanation { margin-bottom: 0; }
-}
 @media (prefers-reduced-motion: reduce) { .wiki-run-pulse.is-animated i { animation: none; transform: none; opacity: 1; } }
 @media (max-width: 480px) { .wiki-run-activity { padding: 14px; } .wiki-run-timing { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wiki-run-timing > div:last-child { grid-column: 1 / -1; } }
 .wiki-progress.is-paused { border-color: #b45309; }
@@ -5910,3 +5903,32 @@ a.codepanel-name:hover {
 .saved-wiki progress::-webkit-progress-bar { background: var(--bg-subtle); }
 .saved-wiki progress::-webkit-progress-value { background: var(--accent); border-radius: 8px; transition: width .3s; }
 .saved-wiki progress::-moz-progress-bar { background: var(--accent); }
+
+/* Generation stays with the reading surface; diagnostics are opt-in. */
+.saved-wiki-content > .wiki-run-activity { margin: 0 0 24px; padding: 16px 18px; }
+.wiki-run-elapsed { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; font-weight: 400; }
+.wiki-run-description { margin: 10px 0; }
+.wiki-run-facts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; color: var(--text-secondary); }
+.wiki-run-details { margin-top: 12px; font-size: 12px; }
+.wiki-run-details summary { cursor: pointer; color: var(--text-secondary); }
+.wiki-run-details .wiki-run-next { margin-top: 14px; }
+.wiki-stream-state { color: var(--accent); font-size: 12px; }
+.wiki-starting { display: flex; align-items: flex-start; gap: 12px; margin-top: 20px; color: var(--accent); font-size: 13px; }
+.wiki-starting .wiki-run-pulse { margin-top: 6px; }
+.wiki-starting p { color: var(--text-secondary); margin: 6px 0 0; }
+.wiki-document-skeleton { max-width: 480px; padding: 8px 0 18px; }
+.wiki-document-skeleton span { display: block; height: 9px; background: var(--border-subtle); border-radius: 3px; margin: 14px 0; }
+.wiki-document-skeleton span:first-child { width: 38%; height: 14px; margin-bottom: 24px; }
+.wiki-document-skeleton span:last-child { width: 68%; }
+.wiki-document-skeleton.is-animated { animation: wiki-document-breathe 2s ease-in-out infinite; }
+@keyframes wiki-document-breathe { 0%, 100% { opacity: .45; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wiki-document-skeleton.is-animated { animation: none; } }
+
+.wiki-run-activity.is-compact .wiki-work-explanation, .wiki-run-activity.is-compact .wiki-run-facts { display: none; }
+.wiki-progress > details { margin-top: 12px; }
+@media (max-width: 760px) {
+  .saved-wiki-nav { display: flex; overflow-x: auto; gap: 8px; max-height: none; padding-bottom: 4px; }
+  .saved-wiki-nav h2 { display: none; }
+  .saved-wiki-chapter { width: auto; min-width: 100px; max-width: 210px; flex-shrink: 0; border: 1px solid var(--border-subtle); }
+  .saved-wiki-content > .wiki-run-activity { padding: 12px; }
+}

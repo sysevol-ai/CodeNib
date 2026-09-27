@@ -11,6 +11,7 @@ import re
 import threading
 from importlib.util import find_spec
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,6 +32,9 @@ class GenerateWiki(BaseModel):
         pattern=r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$"
     )
     budget_usd: float = Field(ge=0.25, le=5)
+    model: Literal["anthropic/claude-sonnet-4.6", "deepseek/deepseek-v4.1-flash"] = (
+        "anthropic/claude-sonnet-4.6"
+    )
 
 
 def _enabled():
@@ -98,6 +102,7 @@ async def generate(
             header[7:],
             payload.budget_usd,
             request.client.host if request.client else "unknown",
+            payload.model,
         )
     except (VisitorWikiError, WikiGenerationBusyError) as exc:
         raise HTTPException(409, str(exc)) from None

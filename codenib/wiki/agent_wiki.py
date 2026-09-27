@@ -4227,6 +4227,7 @@ class AgentWiki:
         source_retriever: Optional[Callable[[str, int], List[Any]]] = None,
         retrieval_identity: str = "",
         progress: Optional[Callable[[str, str], None]] = None,
+        concise: bool = False,
     ) -> None:
         self._bundle = bundle
         self._model = model
@@ -4242,6 +4243,7 @@ class AgentWiki:
         self._source_retriever = source_retriever
         self._retrieval_identity = retrieval_identity
         self._progress = progress or (lambda _stage, _page: None)
+        self._concise = concise
         if source_retriever is not None and not retrieval_identity:
             raise ValueError("An injected Wiki retriever needs a cache identity")
         self._wb = WikiBuilder(bundle)  # reuse source() + symbol/citation helpers
@@ -4350,8 +4352,14 @@ class AgentWiki:
             f"{source_identity}/{source_selection_identity}/"
             f"{view_identity}/{suffix}"
         )
-        return raw + (
-            f"/retrieval={self._retrieval_identity}" if self._retrieval_identity else ""
+        return (
+            raw
+            + ("/concise-v1" if self._concise else "")
+            + (
+                f"/retrieval={self._retrieval_identity}"
+                if self._retrieval_identity
+                else ""
+            )
         )
 
     def _store_entry_id(self, suffix: str) -> str:
@@ -4545,7 +4553,10 @@ class AgentWiki:
                 if cached and cached.get("pages") and not cached.get("error"):
                     self._outline = cached
                     return cached
-                data = generate_outline(self._bundle, self._model, llm=self._client())
+                options = {"concise": True} if self._concise else {}
+                data = generate_outline(
+                    self._bundle, self._model, llm=self._client(), **options
+                )
                 self._normalize(data.get("pages", []), seen=set(), first=True)
                 self._outline = data
                 if data.get("pages") and not data.get("error"):
@@ -6397,6 +6408,16 @@ class AgentWiki:
             phase: str,
             max_tokens: int,
         ) -> str:
+            if self._concise:
+                content += (
+                    "\nReader scope: a concise, source-grounded introduction. "
+                    "Aim for 180-300 words of rendered prose in 2-3 sections, "
+                    "with at most two claims per section. Prioritize the main "
+                    "entry, mechanism and result. Omit optional scan tables, "
+                    "code excerpts and secondary implementation details. "
+                    "Keep all required evidence, story and architecture fields; "
+                    "brevity must not remove source support."
+                )
             call_started = perf_counter()
             metrics["model_calls"] += 1
             if phase == "initial":
@@ -7122,7 +7143,7 @@ class AgentWiki:
         plan = _normalize_plan_support(plan, evidence, relations)
         plan = _renderable_plan(plan, evidence, relations)
         dense_sections = meta.get("id") == "overview"
-        if dense_sections:
+        if dense_sections or self._concise:
             plan = _apply_overview_editorial_budget(plan)
             # ``journey`` here is the call path the index recorded from the
             # public entry inward (``_entry_path``), narrated one admitted
