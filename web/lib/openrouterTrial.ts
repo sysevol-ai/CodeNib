@@ -1,14 +1,6 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  OVERVIEW_SCHEMA,
-  OVERVIEW_SYSTEM,
-  validateOverview,
-  type OverviewInput,
-  type RepositoryOverview,
-} from "./repositoryOverview";
-
 /** Direct provider requests. No key is returned to UI state or sent to CodeNib. */
 const OPENROUTER = "https://openrouter.ai";
 const QUERY_LIMIT = 0.1;
@@ -401,33 +393,6 @@ export class OpenRouterTrialSession {
       : null;
   }
 
-  async useExistingKey(
-    value: string,
-  ): Promise<{ settingsUrl: string; remaining: number | null }> {
-    const key = value.trim();
-    if (!/^[\x21-\x7e]{1,1024}$/.test(key))
-      throw new Error("Enter a valid OpenRouter inference key.");
-    this.disconnect();
-    const generation = this.#generation;
-    const controller = new AbortController();
-    this.#controller = controller;
-    const timer = setTimeout(() => controller.abort(), 30000);
-    try {
-      const hash = [...(await digest(key))]
-        .map((byte) => byte.toString(16).padStart(2, "0"))
-        .join("");
-      const remaining = await this.#rememberKey(
-        key,
-        generation,
-        controller.signal,
-      );
-      return { settingsUrl: `${OPENROUTER}/keys/${hash}`, remaining };
-    } finally {
-      clearTimeout(timer);
-      if (this.#controller === controller) this.#controller = null;
-    }
-  }
-
   async acceptGrant(
     nonce: string,
     code: string,
@@ -688,55 +653,4 @@ export class OpenRouterTrialSession {
     });
   }
 
-  async explainRepository(input: OverviewInput): Promise<RepositoryOverview> {
-    if (
-      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repository) ||
-      !/^[a-f0-9]{40}$/.test(input.commit) ||
-      !input.sources.length ||
-      input.sources.length > 5 ||
-      JSON.stringify(input).length > 40000
-    )
-      throw new Error(
-        "Load a bounded repository source sample before requesting an overview.",
-      );
-    return this.#run(async (call) => {
-      const data = await call(
-        "/api/v1/chat/completions",
-        "repository overview",
-        {
-          model: "anthropic/claude-sonnet-4.6",
-          messages: [
-            { role: "system", content: OVERVIEW_SYSTEM },
-            { role: "user", content: JSON.stringify(input) },
-          ],
-          temperature: 0,
-          max_tokens: 1800,
-          reasoning: { enabled: false },
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: "repository_overview",
-              strict: true,
-              schema: OVERVIEW_SCHEMA,
-            },
-          },
-          provider: { require_parameters: true },
-        },
-      );
-      if (!Array.isArray(data.choices) || data.choices.length !== 1)
-        throw new Error("OpenRouter returned an incomplete overview.");
-      const choice = record(data.choices[0]);
-      if (choice.finish_reason !== "stop")
-        throw new Error("OpenRouter returned an incomplete overview.");
-      let value: unknown;
-      try {
-        value = JSON.parse(text(record(choice.message).content, 20000));
-      } catch {
-        throw new Error(
-          "OpenRouter returned an invalid overview; no automatic retry.",
-        );
-      }
-      return validateOverview(value, input);
-    });
-  }
 }

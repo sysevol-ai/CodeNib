@@ -42,58 +42,99 @@ not change that intentional local behavior.
     Diagrams are no longer the graph surface — the live, clickable Cytoscape
     graph is.
 
-## Open a public repository from its URL
+## Generate and save a Wiki from a GitHub URL
 
-The current source frontend leads with a GitHub URL form. Enter `owner/repo`
-or paste a repository URL. A matching prepared repository opens its Wiki;
-another public repository opens `/preview/owner/repo`. This path is independent
-of the repository catalog loading and does not require a local install,
-checkout, embedding model, API key or server-side indexing job.
+Enter `owner/repo` or paste a public GitHub repository URL. Prepared examples
+open immediately. Other repositories open the Wiki generation form; this
+replaces the earlier source-browser and short-explanation experiment.
 
-The browser reads GitHub's public metadata, default-branch commit, file tree
-and README, then lets the visitor browse folders and source. All source links
-use the captured commit. File reads check the Git blob hash before displaying
-UTF-8 text. README HTML and external images are not rendered. Large trees
-fall back to folder browsing, files over 256 KiB link out to GitHub, and long
-text previews are bounded. Private repositories are unsupported. GitHub's
-unauthenticated rate limits apply to the visitor's connection; a rate-limit
-error offers a route back to the prepared Wikis. No GitHub token is collected.
+The visitor supplies an **OpenRouter inference key**, chooses a run budget,
+and explicitly authorizes generation and link-readable persistence. The
+server uses the existing AgentWiki outline, chapter planning, writing and
+source-checking pipeline. Source selection uses model-planned grep and Jev
+through OpenRouter, without BM25, embeddings, GPU setup or executing the
+submitted repository. The default branch is pinned to an immutable commit.
+These source-only Wikis do not have compiler-indexed dependency maps; the
+prepared examples retain their existing graphs and visual evidence.
 
-An optional **AI explanation** accepts an existing OpenRouter inference key.
-The password input is cleared on connection. The key stays in a private,
-ten-minute browser session and is sent only to OpenRouter; it is not written
-to browser storage, a URL or the CodeNib API. Disconnecting, navigating away
-or reloading ends the local connection; it does not revoke the provider key.
-A separate **Explain repository** action sends up to five verified public
-source excerpts (at most 160 lines and 5,000 characters per file) to
-`anthropic/claude-sonnet-4.6` through OpenRouter. The page shows the reported
-cost and commit-pinned references. Cancellation and uncertain provider cost
-stop further calls; no billed call retries automatically. Set a provider key
-credit limit for a billing cap: the browser's reported-cost stop cannot cap
-an in-flight call.
+The generation page shows actual stages, the current chapter, completed
+chapters, recent activity and reported spending. Chapters become readable as
+they are saved. Reloading or closing the tab does not cancel the server run.
+A stop request takes effect at the next safe boundary; a provider request
+already in flight may finish and incur a charge. Resuming requires the owner
+browser and a newly supplied key. Healthy AgentWiki pages are reused;
+unfinished or quality-rejected pages can be retried. Reading saved pages
+never starts generation or uses the operator's key.
 
-This explanation is an AI interpretation of a source sample. Citation checks
-validate file identity and line ranges, not the truth of every model claim.
-It does not generate or save a full Wiki, build a typed call graph, run the
-grep/Jev retrieval experiment, or spend the operator's model credentials.
-Existing Wiki generation and Ask retain their configured operator behavior.
+Results persist in `<data_dir>/wiki_cache/visitor_wiki.sqlite3` using the
+Wiki-only `SQLiteWikiStore`. A share link opens `/wiki/<random-id>` for anyone
+who has it. Visitor results are **unlisted**, excluded from the repository
+catalog, and returned with `noindex` headers. The owner browser stores only
+recent attempt IDs and a separate recovery token; the share link does not
+contain that token. Clearing browser storage loses resume/stop access, but
+the saved read link still works. There is no account recovery in this version.
 
-This URL entry is newer than the 0.2.4 wheel. Build `web/` from the current
-checkout using the production instructions below. Preserve your demo's
-backend configuration and reverse proxy; serve the rebuilt `web/dist` from
-the same frontend deployment. If your host sets a Content Security Policy,
-allow `https://api.github.com` and `https://openrouter.ai` in `connect-src`.
-The static exporter includes those origins when it emits the browser-trial
-policy. Static Wiki browsing itself still needs no external requests; the
-visitor explicitly opens a GitHub preview or explanation to use them.
+The OpenRouter key is sent over HTTPS to this CodeNib server and then only
+to OpenRouter. It stays in the active run's memory, never in the Wiki database,
+browser storage, URLs or application logs. The password input is cleared
+before submission. This differs from the separate browser-owned **Ask trial**,
+whose credential goes directly to OpenRouter. Public source is disclosed to
+OpenRouter and its model providers for the authorized generation. Use a
+[limited inference key](https://openrouter.ai/docs/api_reference/limits):
+the reported-cost budget stops subsequent requests, while the provider key's
+credit limit caps actual spending. An unknown charge stops further calls;
+check provider usage before explicitly resuming.
 
-For offline browser acceptance after `npm run build`, run a preview server
-on port 4179 and execute `node web/preview_verify.mjs http://127.0.0.1:4179`
-from the repository root. Provider and GitHub responses are fixtures; this
-check makes no paid calls. It covers desktop/mobile URL entry, source links,
-README isolation, key clearing, one explicit explanation, refresh and rate
-limits. Refreshing `/preview/owner/repo` must also resolve the SPA entry at
-the deployment's base path.
+### Enable visitor generation on the demo server
+
+This feature needs the current backend and frontend source; the published
+0.2.4 wheel predates it. In the same environment that runs the demo:
+
+```bash
+pip install -e '.[grep]'
+export CODENIB_VISITOR_WIKI=1
+```
+
+Restart the existing `codenib-web` service with that environment and rebuild
+and deploy `web/dist` using the production instructions below. Keep HTTPS
+and the existing `/api` proxy. The SPA fallback must serve both
+`/preview/owner/repo` and `/wiki/<id>` on refresh. `GET /api/visitor-wikis`
+reports whether creation is enabled. Static exports link to the live demo
+for creation; their prepared Wiki pages remain readable offline.
+Disabling `CODENIB_VISITOR_WIKI` stops new generation requests while keeping
+already saved Wikis readable.
+
+The initial service admits one active generation per shared Wiki database,
+with at most two local submissions and a bounded 30-second wait for the
+existing owner. It saves up to 100 attempts; it does not discard user work
+automatically when full. Back up the visitor database with the rest of the
+Wiki data and monitor capacity before increasing adoption traffic. There is
+no public listing or generic storage/job backend. Limits are 20 MiB compressed,
+40 MiB expanded, 4,000 files and 4 MiB per file. Archives with traversal,
+links or unsupported paths are rejected. GitHub downloads use public access;
+private repositories and private GitHub tokens are unsupported.
+
+Each run has a reported-cost budget of $0.25–$5, a 160-call ceiling and a
+30-minute cooperative time budget. The server checks cancellation between
+source/model operations; an in-flight provider request has its own timeout.
+One submission per client address per minute limits admission. Configure
+trusted proxy addresses on the existing server correctly instead of trusting
+arbitrary forwarded headers. Interrupted workers do not restart themselves:
+the owner explicitly resumes with a new key, keeping already saved chapters.
+
+For offline browser acceptance, start the frontend on port 4179 and run
+`node web/visitor_wiki_verify.mjs http://127.0.0.1:4179`. This uses provider-free
+API fixtures to check URL entry, consent, real-state progress rendering,
+reading while generation continues, refresh, sharing, owner-only resume,
+credential clearing, and desktop/mobile layout.
+
+One local real-provider acceptance generated all 11 chapters of
+`pallets/itsdangerous` at commit `672971d66a2ef9f85151e53283113f33d642dabd`.
+The first chapter was readable after 170 seconds; completion took 643 seconds
+and 45 calls, with $0.8387 reported by OpenRouter. All chapters passed the
+source/quality gates and subsequent desktop/mobile browsing used no model
+calls. This is a measured example, not a completion-time or price guarantee
+for other repositories.
 
 ## Prerequisites
 

@@ -463,7 +463,8 @@ def test_trial_export_pins_its_endpoint_csp_and_callback_assets(
     index = (setup.output / "index.html").read_text()
     assert "Content-Security-Policy" in index
     assert "script-src &#x27;self&#x27;" in index
-    assert "connect-src &#x27;self&#x27; https://api.github.com " in index
+    assert "connect-src &#x27;self&#x27; https://openrouter.ai " in index
+    assert "https://api.github.com" not in index
     assert f"https://openrouter.ai {origin.rstrip('/')}" in index
     assert "unsafe-eval" not in index
     redirect = (setup.output / "404.html").read_text()

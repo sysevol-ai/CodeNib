@@ -181,6 +181,8 @@ export default function Markdown({
   onCite,
   repoId,
   onPageLink,
+  allowRemoteImages = true,
+  pageBasePath,
 }: {
   children: string;
   /** When provided (with onCite), inline code naming a citation becomes a clickable chip. */
@@ -194,6 +196,9 @@ export default function Markdown({
   repoId?: string;
   /** Switch wiki pages in place instead of routing through the app shell. */
   onPageLink?: (pageId: string) => void;
+  allowRemoteImages?: boolean;
+  /** App-relative reader route for saved visitor Wikis. */
+  pageBasePath?: string;
 }) {
   return (
     <div className="markdown">
@@ -204,8 +209,8 @@ export default function Markdown({
           img({ alt, ...props }) {
             // Exported illustrations are shown through validated media slots.
             // Markdown from a cached page must not load a remote/live image.
-            return isStaticRuntime()
-              ? <span className="muted">{alt || "Illustration"} (not included in this export)</span>
+            return isStaticRuntime() || !allowRemoteImages
+              ? <span className="muted">{alt || "Illustration"} ({isStaticRuntime() ? "not included in this export" : "external image omitted"})</span>
               : <img alt={alt || ""} {...props} />;
           },
           a({ href, children, ...rest }) {
@@ -235,14 +240,14 @@ export default function Markdown({
               }
             }
             const pageMatch = WIKI_PAGE_LINK_RE.exec(String(href || ""));
-            if (pageMatch && repoId) {
+            if (pageMatch && (repoId || pageBasePath)) {
               let pageId = pageMatch[1];
               try {
                 pageId = decodeURIComponent(pageId);
               } catch {
                 // Keep the raw id; the page lookup will report it as missing.
               }
-              const target = `/${encodeURIComponent(repoId)}?p=${encodeURIComponent(pageId)}`;
+              const target = `${pageBasePath || `/${encodeURIComponent(repoId!)}`}?p=${encodeURIComponent(pageId)}`;
               return (
                 <AppLink
                   href={target}

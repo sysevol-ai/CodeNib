@@ -27,8 +27,8 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | --- | --- | --- |
 | Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs, merged in #785. | Published 0.2.4 installation guides use the package; promote OAuth setup after actual provider-consent acceptance. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
-| OpenRouter | Shared grep/Jev configuration and local PKCE are merged in #782/#783. The opt-in browser trial uses direct provider calls and a short in-memory credential; real-source browser retrieval acceptance uses provider fixtures. Published 0.2.4 CLI retrieval and the #801 browser explanation also pass with the maintainer’s existing OpenRouter key. Real Linux SecretService and macOS/Windows vault round trips pass with fake entries. | The maintainer chose desktop CLI consent acceptance first; interactive unlock and hosted browser acceptance remain. |
-| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | The maintainer deployed the live Wiki. URL entry and browser-owned source preview in #801 pass locally and await frontend deployment; actual PKCE consent remains unverified. Live operator browsing/Ask can still intentionally generate. |
+| OpenRouter | Shared grep/Jev configuration and local PKCE are merged in #782/#783. The opt-in browser trial uses direct provider calls and a short in-memory credential; real-source browser retrieval acceptance uses provider fixtures. Published 0.2.4 CLI retrieval and an 11-chapter visitor Wiki pass with the maintainer’s existing OpenRouter key. Real Linux SecretService and macOS/Windows vault round trips pass with fake entries. | The maintainer chose desktop CLI consent acceptance first; interactive unlock and hosted browser acceptance remain. |
+| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | The maintainer deployed the live Wiki. The #801 short-explanation path is superseded by full visitor Wiki generation, persistence and progress; actual PKCE consent remains unverified. Live operator browsing/Ask can still intentionally generate. |
 | Live Wiki cache and maps | Runtime fixes in [#800](https://github.com/sysevol-ai/CodeNib/pull/800) batch authenticated source reads, retry busy generators, and build System Maps from cached outline files plus indexed references before child prose exists. Overview illustrations require admitted architecture plans; unrelated call-flow fallbacks are omitted. Deployed desktop/mobile checks pass, with maps available for 23/27 repositories. After full prewarming, the 2026-09-26 audit reports 1,001 ready pages, 19 degraded pages, and no cold pages across 1,020 entries. | jq/MicroPython graph artifacts fail captured-source validation; Axios/Preact graph coverage lacks usable cross-area implementation references. Repair these four index artifacts and resolve the 19 page-quality failures before declaring the whole demo ready. These data-quality gates remain separate from the runtime fixes. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
@@ -312,7 +312,7 @@ Acceptance: the GIF contains actual tool output with usable source locations;
 clean-repo two-command setup verified; user bench defaults never trigger
 billed calls without an explicit opt-in; paired results include failures.
 
-### A5 — Turn the Wiki demo into a preview and activation path
+### A5 — Generate complete Repo Wikis and activate coding agents
 
 Status: story browsing is merged in
 [#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
@@ -355,25 +355,42 @@ origin. Both exports leave SQLite, configuration and registry bytes unchanged;
 the trial output is acceptance material, not a public deployment.
 
 The maintainer has deployed the live Wiki on their separate DGX Spark.
-The onboarding audit found 27 repositories, a catalog-only search box and an
-“add repository” page that led to CLI setup. The next adoption gate is explicit:
-paste a public GitHub URL and see useful repository content before installation,
-authentication or indexing. The source frontend in [#801](https://github.com/sysevol-ai/CodeNib/pull/801)
-now routes prepared repositories
-to their Wikis and other URLs to a bounded, browser-owned GitHub preview with
-commit-pinned source. An optional existing-key OpenRouter explanation consumes
-only a small verified sample; its result stays in that page session. This is
-separate from full Wiki generation and from the grep/Jev experiment.
+The acceptance target is a complete, navigable Repo Wiki from an arbitrary
+public GitHub URL. #801's bounded source preview and optional one-call
+explanation did not meet that target. Its 0.930-second Flask source preview
+and $0.025725 explanation are historical measurements, not Wiki generation
+latency or cost. The explanation implementation and its dedicated harness
+are removed in the visitor-Wiki iteration.
 
-Local acceptance opened live Flask source in 0.930 seconds. One explicitly
-authorized browser explanation took 14.078 seconds and OpenRouter reported
-$0.025725. These are individual local observations, not a hosted latency SLA.
-The credential went only to OpenRouter and was absent from browser storage;
-disconnect passed. Provider consent/PKCE remains a separate unverified gate.
-The source-preview contracts, desktop/mobile flow and static-export policy
-are locally checked. Production URL-entry acceptance remains pending deployment
-of this rebuilt frontend on the maintainer's DGX Spark; the published 0.2.4
-wheel does not contain this iteration.
+Current iteration: implemented and locally verified; deployment remains open.
+URL entry now uses the existing AgentWiki
+pipeline with user-funded OpenRouter grep/Jev retrieval, a chapter sidebar,
+actual stage/page progress, incremental reading and persisted results. The
+maintainer authorized link-readable, unlisted server persistence. Visitors
+explicitly consent to that publication and to a server-memory credential for
+one bounded generation run; the browser-owned Ask trial is unchanged.
+The visitor Wiki database uses the existing WikiStore facade. Temporary
+source is bounded and never executed. Refresh reads saved state, while an
+explicit owner resume reuses healthy pages without billing them again.
+
+Local acceptance covers archive limits, persistence, cancellation, service
+restart/resume, credential isolation, cost stops and a deterministic competing
+owner race. AgentWiki cache identity survives a fresh temporary source download;
+ready chapters are recovered without another model call. Provider-free browser
+checks cover desktop/mobile creation, progress, stop/resume, read-only sharing
+and refresh with no credential persistence.
+
+A real run against `pallets/itsdangerous` at
+`672971d66a2ef9f85151e53283113f33d642dabd` completed **11/11 chapters**, all
+passing source/quality gates: **45 calls**, **$0.838654398** reported by
+OpenRouter, first readable chapter in **about 170 seconds**, full completion in
+**643.23 seconds**. The $2 run limit was not reached; no charges were unknown.
+All 11 persisted chapters pass desktop/mobile navigation, source-citation and
+refresh acceptance with only same-origin reads and no model request. These are
+one local run's measurements, not a hosted latency guarantee. Source-only
+visitor Wikis do not include the compiler-indexed maps of prepared examples.
+Maintainer-owned deployment must update both backend and frontend and enable
+`CODENIB_VISITOR_WIKI=1`; the published 0.2.4 wheel predates this path.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |
@@ -382,14 +399,14 @@ wheel does not contain this iteration.
 | Explore a map or citation | Browser renders exported page boundaries/graphs and navigates to commit-pinned source. | Static data; disclose missing full runtime graph functionality. |
 | Enter a new question | Explain “Connect OpenRouter” and the snippet/cost boundary, or “Run on your machine”. Do not spend the site's key on anonymous requests. | User-authorized provider account; bounded request. |
 | Connect an agent | Copy a tested local setup now. Add remote MCP only after A6 passes. | Local user machine and user's agent/model. |
-| Submit a public GitHub repository | Open a prepared Wiki by repository identity, or read a pinned tree, README and files directly in the browser. Optional AI explanation uses an existing OpenRouter key. | GitHub public API from the visitor; explicit user-funded inference only. No hosted checkout, index or saved Wiki. |
+| Submit a public GitHub repository | Open a prepared Wiki, or explicitly generate a complete Wiki with chapter progress and saved links. | Bounded temporary public source on the server; user-funded OpenRouter; unlisted Wiki-only persistence. |
 
 Implementation boundaries:
 
 - Separate public-preview mode from the existing local Wiki server. A local
   user may intentionally configure their own backend model; do not break it
   by globally disabling Ask or generation.
-- Public navigation must not invoke outline generation, Wiki generation,
+- Reading public pages must not invoke outline generation, Wiki generation,
   an LLM fallback, or graph label generation. Missing precomputed pages show
   a useful unavailable state. Offline generation runs with an explicit
   operator budget and a versioned input/model/prompt identity.
@@ -402,7 +419,9 @@ Implementation boundaries:
   implicitly hit Spark or start model work.
 - Distinguish public examples, session-specific Ask results, and saved
   operator-generated Wiki content. A visitor's key must not silently finance
-  shared Wiki generation or persist its result across users.
+  shared Wiki generation or persist its result across users. Visitor-created
+  Wikis are a separate, explicitly consented link-readable publication; their
+  credentials stay in the active server run and are never saved.
 - Check desktop/mobile, empty/error/auth/budget states and keyboard/source
   navigation. Test the static build with backend access blocked.
 

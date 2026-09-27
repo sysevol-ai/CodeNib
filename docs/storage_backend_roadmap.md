@@ -86,6 +86,41 @@ outline/page envelopes, and never starts generation or changes the source
 database. This is a Wiki-domain consumer of the existing boundary; repository
 manifests, source captures and published site files remain file artifacts.
 
+## Visitor Wiki persistence
+
+Status: implemented and locally verified; demo deployment remains open.
+Current product consumer: the public GitHub URL form and
+`codenib.web.visitor_wikis` saved-Wiki routes. The maintainer requested full
+Repo Wiki generation, refresh-safe attempts and link-readable results that
+stay out of the home catalog. This replaces #801's ephemeral explanation.
+
+`VisitorWikis` injects the existing WikiStore into AgentWiki and stores a small
+progress envelope plus published chapters in a separate
+`visitor_wiki.sqlite3`. The four-method facade, SQLite schema and implementation
+stay unchanged. No generic jobs, leases, index catalog, registry or object
+storage are promoted. Source is a bounded temporary public archive, with an
+authenticated reader retained only for the active generation; manifests and
+retrieval artifacts do not move into this database.
+
+The existing generation guard serializes funded visitor runs across processes.
+A revision check and first publication under the admission guard linearize
+ownership. A stale queued run cannot repeat work or overwrite a later owner's
+progress. Cancellation uses a run-specific envelope. Process death releases
+the guard; the owner must explicitly resume with a newly supplied credential.
+Healthy AgentWiki pages remain reusable. Database reads never start work.
+The adjacent class docstring states lock order and recovery ownership.
+
+Acceptance passed: reopened chapters require zero provider calls; a stopped/restarted
+run reuses already completed chapters; concurrent/stale submissions do not
+repeat generation; provider keys are absent from all persisted envelopes;
+failed quality checks never publish a ready page. A deterministic concurrent
+test rejects a contender submitted while the original owner is active.
+A real 11-chapter `pallets/itsdangerous` Wiki was persisted and reopened in
+desktop/mobile browsers with no provider call. The original source/credential
+are unnecessary for reading; disabling creation also preserves saved reads.
+The 100-attempt limit does not delete old results automatically. Operators own
+database backup/capacity and must explicitly deploy the new routes.
+
 ## Promotion Rule
 
 Each later milestone is demand-gated. A design document, test fixture, or

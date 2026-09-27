@@ -773,7 +773,7 @@ def _copy_frontend(
                 if trial_api_base:
                     policy = (
                         "default-src 'self'; script-src 'self'; script-src-attr 'none'; "
-                        "connect-src 'self' https://api.github.com "
+                        "connect-src 'self' "
                         f"https://openrouter.ai {trial_api_base}; "
                         "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
                         "font-src 'self' data:; object-src 'none'; frame-src 'none'; "

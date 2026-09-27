@@ -60,7 +60,7 @@ export default function RepositoryEntry({
             required
           />
           <button className="btn-primary" type="submit">
-            Open repository <span aria-hidden>→</span>
+            Open Wiki <span aria-hidden>→</span>
           </button>
         </div>
         <p
@@ -69,7 +69,7 @@ export default function RepositoryEntry({
           role={error ? "alert" : undefined}
         >
           {error ||
-            "No install or key to browse. Add your OpenRouter key only if you want an AI explanation."}
+            "Open a ready Wiki instantly, or generate and save one with your OpenRouter account. No install or embeddings."}
         </p>
       </form>
       <div className="repository-examples">

@@ -1,0 +1,467 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+import { useEffect, useRef, useState } from "react";
+import Header from "@/components/Header";
+import Markdown from "@/components/Markdown";
+import WikiGenerationForm from "@/components/WikiGenerationForm";
+import {
+  shouldWithholdWikiPage,
+  type Citation,
+  type WikiPage,
+  type WikiPageRef,
+} from "@/lib/api";
+import { AppLink } from "@/lib/router";
+import { withBasePath } from "@/lib/runtime";
+import {
+  allWikiPages,
+  loadSavedWiki,
+  loadSavedWikiPage,
+  recentWikis,
+  stopWiki,
+  wikiStages,
+  type SavedWiki,
+} from "@/lib/visitorWiki";
+
+function chapterRows(
+  pages: WikiPageRef[],
+  depth = 0,
+): Array<WikiPageRef & { depth: number }> {
+  return pages.flatMap((page) => [
+    { ...page, depth },
+    ...chapterRows(page.children, depth + 1),
+  ]);
+}
+
+export default function SavedWikiPage({ id }: { id: string }) {
+  const [wiki, setWiki] = useState<SavedWiki | null>(null);
+  const [error, setError] = useState("");
+  const [active, setActive] = useState(
+    () => new URLSearchParams(window.location.search).get("p") || "overview",
+  );
+  const [page, setPage] = useState<WikiPage | null>(null);
+  const [pageError, setPageError] = useState("");
+  const [citation, setCitation] = useState<Citation | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [copyMessage, setCopyMessage] = useState("");
+  const [stopping, setStopping] = useState(false);
+  const [showResume, setShowResume] = useState(false);
+  const [, tick] = useState(0);
+  const sourcePanel = useRef<HTMLDivElement>(null);
+  const owner = recentWikis().find((item) => item.id === id);
+
+  useEffect(() => {
+    const robots = document.createElement("meta");
+    robots.name = "robots";
+    robots.content = "noindex, nofollow";
+    document.head.append(robots);
+    return () => robots.remove();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        const value = await loadSavedWiki(id);
+        if (!cancelled) {
+          setWiki(value);
+          setError("");
+        }
+      } catch (reason) {
+        if (!cancelled)
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Could not load the saved Wiki.",
+          );
+      } finally {
+        if (!cancelled) timer = setTimeout(poll, 2000);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [id, refresh]);
+  const ready = wiki?.page_states[active] === "ready";
+  useEffect(() => {
+    let cancelled = false;
+    setPage(null);
+    setPageError("");
+    setCitation(null);
+    if (ready)
+      loadSavedWikiPage(id, active)
+        .then((value) => {
+          if (!cancelled) setPage(value);
+        })
+        .catch((reason) => {
+          if (!cancelled)
+            setPageError(
+              reason instanceof Error
+                ? reason.message
+                : "Could not load this chapter.",
+            );
+        });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, active, ready, refresh]);
+  const running = wiki?.status === "running" || wiki?.status === "queued";
+  useEffect(() => {
+    if (!running) {
+      setStopping(false);
+      return;
+    }
+    const timer = setInterval(() => tick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [running]);
+  const pages = allWikiPages(wiki?.pages || []);
+  const completed = pages.filter(
+    (item) => wiki?.page_states[item.id] === "ready",
+  ).length;
+  const current = pages.find((item) => item.id === wiki?.active_page);
+  const selected = pages.find((item) => item.id === active);
+  function pick(pageId: string) {
+    setActive(pageId);
+    history.replaceState(
+      null,
+      "",
+      `${withBasePath(`/wiki/${id}`)}?p=${encodeURIComponent(pageId)}`,
+    );
+  }
+  function cite(index: number) {
+    setCitation(page?.citations[index] || null);
+    setTimeout(
+      () =>
+        sourcePanel.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        }),
+      0,
+    );
+  }
+  const stageIndex = !wiki
+    ? -1
+    : wiki.status === "complete"
+      ? 4
+      : ["queued", "connecting", "downloading"].includes(wiki.stage)
+        ? 0
+        : wiki.stage === "analyzing"
+          ? 1
+          : wiki.stage === "outline"
+            ? 2
+            : 3;
+  return (
+    <>
+      <Header />
+      <div className="saved-wiki">
+        <div className="saved-wiki-heading">
+          <div>
+            <AppLink href="/">← All repositories</AppLink>
+            <h1>
+              {wiki?.repository || owner?.repository || "Saved Repo Wiki"}
+            </h1>
+            {wiki?.commit && (
+              <a
+                className="small mono muted"
+                href={`https://github.com/${wiki.repository}/tree/${wiki.commit}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {wiki.commit.slice(0, 8)} ↗
+              </a>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  new URL(withBasePath(`/wiki/${id}`), location.origin).href,
+                );
+                setCopyMessage("Link copied");
+              } catch {
+                setCopyMessage(
+                  "Copy the address from your browser to share this Wiki.",
+                );
+              }
+            }}
+          >
+            Share Wiki ↗
+          </button>
+        </div>
+        {copyMessage && (
+          <p role="status" className="small">
+            {copyMessage}
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="trial-error">
+            {error}
+          </p>
+        )}
+        {!wiki && !error && <p role="status">Opening your saved Wiki…</p>}
+        {wiki && (
+          <section
+            className={`wiki-progress ${running ? "is-running" : ""}`}
+            aria-label="Wiki generation progress"
+          >
+            <div className="wiki-progress-heading">
+              <div>
+                <strong>
+                  {wiki.status === "complete"
+                    ? "Your Wiki is ready"
+                    : wiki.status === "partial"
+                      ? "Generation paused"
+                      : wikiStages[wiki.stage] || "Generating Wiki"}
+                </strong>
+                {current && running && <span> · {current.title}</span>}
+              </div>
+              <span className="small">
+                {completed}
+                {pages.length ? ` / ${pages.length}` : ""} chapters ready
+              </span>
+            </div>
+            <ol
+              className="wiki-generation-steps"
+              aria-label="Current generation stage"
+            >
+              {[
+                "Read repository",
+                "Analyze source",
+                "Plan chapters",
+                "Generate & save",
+              ].map((label, index) => (
+                <li
+                  key={label}
+                  className={
+                    index < stageIndex
+                      ? "done"
+                      : index === stageIndex
+                        ? "active"
+                        : ""
+                  }
+                  aria-current={index === stageIndex ? "step" : undefined}
+                >
+                  <span>{index < stageIndex ? "✓" : index + 1}</span>
+                  {label}
+                </li>
+              ))}
+            </ol>
+            {pages.length > 0 && (
+              <progress
+                value={completed}
+                max={pages.length}
+                aria-label="Saved Wiki chapters"
+              />
+            )}
+            <div className="wiki-progress-foot">
+              <span>
+                Saved on this server · ${wiki.reported_cost_usd.toFixed(4)}{" "}
+                reported · {wiki.calls} model calls
+              </span>
+              {running && (
+                <span>
+                  {Math.max(0, Math.floor(Date.now() / 1000 - wiki.updated_at))}
+                  s since last update
+                </span>
+              )}
+              {owner && running && !stopping && (
+                <button
+                  className="btn-ghost"
+                  onClick={async () => {
+                    try {
+                      await stopWiki(owner);
+                      setStopping(true);
+                    } catch {
+                      setError("Could not stop generation. Please try again.");
+                    }
+                  }}
+                >
+                  Stop generation
+                </button>
+              )}
+              {stopping && (
+                <span role="status">Stopping after the current request…</span>
+              )}
+            </div>
+            {wiki.message && <p role="status">{wiki.message}</p>}
+            {wiki.unreported_call_cost && (
+              <p className="small">
+                The reported total excludes an in-flight or unreported request.
+                Check OpenRouter usage before resuming.
+              </p>
+            )}
+            {wiki.stalled && (
+              <p role="status">
+                No recent progress was received. Saved chapters remain
+                available. You can request a resume; an existing generator keeps
+                ownership until it stops.
+              </p>
+            )}
+            <p className="small muted">
+              Each finished chapter is saved. You can close this tab and return
+              with the link. Anyone with the link can read it; it stays off the
+              homepage.
+            </p>
+            <details>
+              <summary>Generation activity</summary>
+              <ol className="wiki-activity">
+                {wiki.history.slice(-12).map((event, index) => (
+                  <li key={`${event.at}-${index}`}>
+                    <time>
+                      {new Date(event.at * 1000).toLocaleTimeString()}
+                    </time>{" "}
+                    {wikiStages[event.stage] || event.stage}
+                    {event.page &&
+                      ` · ${pages.find((item) => item.id === event.page)?.title || event.page}`}
+                  </li>
+                ))}
+              </ol>
+            </details>
+          </section>
+        )}
+        {owner &&
+          (wiki?.status === "partial" || wiki?.stalled || (!wiki && error)) && (
+            <div className="wiki-resume">
+              {!showResume ? (
+                <button
+                  className="btn-primary"
+                  onClick={() => setShowResume(true)}
+                >
+                  Continue unfinished chapters
+                </button>
+              ) : (
+                <WikiGenerationForm
+                  attempt={owner}
+                  resume
+                  onStarted={() => {
+                    setShowResume(false);
+                    setRefresh((value) => value + 1);
+                  }}
+                />
+              )}
+            </div>
+          )}
+        {wiki && (
+          <div className="saved-wiki-layout">
+            <nav className="saved-wiki-nav" aria-label="Wiki chapters">
+              <h2>Chapters</h2>
+              {pages.length === 0 ? (
+                <p className="small muted">
+                  The chapter list appears as soon as planning finishes.
+                </p>
+              ) : (
+                chapterRows(wiki.pages).map((item) => {
+                  const state = wiki.page_states[item.id] || "pending";
+                  return (
+                    <button
+                      key={item.id}
+                      className={`saved-wiki-chapter ${active === item.id ? "active" : ""}`}
+                      style={{ paddingLeft: 12 + Math.min(item.depth, 3) * 16 }}
+                      onClick={() => pick(item.id)}
+                      aria-current={active === item.id ? "page" : undefined}
+                    >
+                      <span>{item.title}</span>
+                      <span className={`chapter-state ${state}`}>
+                        {state === "ready"
+                          ? "Ready"
+                          : state === "running"
+                            ? "Generating"
+                            : state === "needs_review"
+                              ? "Needs review"
+                              : "Pending"}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </nav>
+            <main className="saved-wiki-content">
+              {pageError && (
+                <p role="alert" className="trial-error">
+                  {pageError}{" "}
+                  <button onClick={() => setRefresh((value) => value + 1)}>
+                    Retry loading
+                  </button>
+                </p>
+              )}
+              {page && !shouldWithholdWikiPage(page) ? (
+                <>
+                  <Markdown
+                    citations={page.citations}
+                    relations={page.evidence?.relations}
+                    onCite={cite}
+                    onPageLink={pick}
+                    allowRemoteImages={false}
+                    pageBasePath={`/wiki/${id}`}
+                  >
+                    {page.markdown}
+                  </Markdown>
+                  <div className="page-provenance source-checked">
+                    <span>Evidence-linked Wiki chapter</span>
+                    <span>{page.citations.length} source references</span>
+                  </div>
+                  <details className="saved-wiki-sources">
+                    <summary>Sources for this chapter</summary>
+                    {page.citations.map((item, index) => (
+                      <button key={index} onClick={() => cite(index)}>
+                        {item.file}:{item.start_line}–{item.end_line}
+                      </button>
+                    ))}
+                  </details>
+                </>
+              ) : (
+                !pageError && (
+                  <div className="wiki-chapter-pending" role="status">
+                    <h2>{selected?.title || "Your Wiki is taking shape"}</h2>
+                    <p>
+                      {ready
+                        ? "Loading this chapter…"
+                        : wiki.page_states[active] === "needs_review"
+                          ? "This chapter did not pass source checks. Its draft is withheld; the owner can resume to retry it."
+                          : running
+                            ? "This chapter will appear here as soon as it is generated and saved. You can read any ready chapter in the sidebar."
+                            : "This chapter has not been completed. The owner can continue generation without rebuilding ready chapters."}
+                    </p>
+                  </div>
+                )
+              )}
+              {citation && (
+                <div className="saved-wiki-source" ref={sourcePanel}>
+                  <div>
+                    <strong>
+                      {citation.file}:{citation.start_line}–{citation.end_line}
+                    </strong>
+                    <button
+                      className="btn-ghost"
+                      aria-label="Close source"
+                      onClick={() => setCitation(null)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <a
+                    href={`https://github.com/${wiki.repository}/blob/${wiki.commit}/${(citation.file || "").split("/").map(encodeURIComponent).join("/")}${citation.start_line ? `#L${citation.start_line}${citation.end_line ? `-L${citation.end_line}` : ""}` : ""}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Open pinned source on GitHub ↗
+                  </a>
+                  {citation.content && (
+                    <pre>
+                      <code>{citation.content}</code>
+                    </pre>
+                  )}
+                </div>
+              )}
+            </main>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
