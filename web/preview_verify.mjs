@@ -276,6 +276,16 @@ try {
       ),
       false,
     );
+    await page.goto(base);
+    await page
+      .getByRole("link", { name: "owner/ready", exact: true })
+      .waitFor();
+    await page
+      .getByLabel("Public GitHub repository")
+      .fill("https://github.com/OWNER/ready.git");
+    await page.getByLabel("Public GitHub repository").press("Enter");
+    await page.waitForURL("**/ready-wiki");
+    assert.equal(modelCalls, 1);
     reports.push({
       viewport: mobile ? "mobile" : "desktop",
       firstResultMs,
@@ -284,6 +294,7 @@ try {
       noOperatorModelCalls: true,
       noCredentialStorage: true,
       sourceLinksPinned: true,
+      preparedWikiRouting: true,
     });
     await context.close();
   }

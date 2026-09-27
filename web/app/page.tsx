@@ -89,7 +89,6 @@ export default function Landing() {
   const [repoAttempt, setRepoAttempt] = useState(0);
 
   useEffect(() => {
-    const controller = new AbortController();
     setError(null);
     setLoading(true);
     let active = true;
@@ -106,7 +105,8 @@ export default function Landing() {
         }
         if (!active) return;
         try {
-          const rs = await fetchRepos({ signal: controller.signal });
+          // Keep the shared catalog cache introduced with the cold-load fix.
+          const rs = await fetchRepos();
           if (!active) return;
           setRepos(rs);
           setError(null);
@@ -127,7 +127,6 @@ export default function Landing() {
     });
     return () => {
       active = false;
-      controller.abort();
     };
   }, [staticRuntime, repoAttempt]);
 
