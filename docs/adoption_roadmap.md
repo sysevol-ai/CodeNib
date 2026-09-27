@@ -463,8 +463,22 @@ server connectivity, with immediate submit feedback, progressive chapter reads,
 45-second waiting explanation and stopped animation after 180 seconds without
 progress. The extra editorial pass reports its actual review stage. Refresh and
 reconnect remain read-only, and existing paid runs must drain before deployment.
-The review chain is #803 → #804 → #805 → the community iteration; restack it in
-that order before merging. Deployment does not imply the stack is merged.
+The review chain is #803 → #804 → #805 →
+[#806](https://github.com/sysevol-ai/CodeNib/pull/806); restack it in that order
+before merging. Deployment does not imply the stack is merged.
+
+The community iteration is deployed to the demo as of 2026-09-27. Acceptance
+passes 1,283 Wiki/web unit tests (one skipped), 142 frontend tests, production
+build, strict docs and the provider-free desktop/mobile publication and waiting
+matrices. Public browser checks render the existing visitor architecture with
+seven roles and pinned-source navigation, keep completed diagnostics collapsed,
+preserve unlisted visibility and refresh without mutations. The two existing
+visitor Wikis and all 27 prepared repositories remain readable. Cache coverage
+is unchanged: 1,001 ready pages, 19 pre-existing retryable pages, zero cold pages
+and 23/27 indexed System Maps available. Database snapshots, service backups and
+prior frontend assets are retained; visitor work was idle before the backend
+restart. The previous concise prose is not automatically rewritten: owners can
+start a new version from generation details with a new funded request.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |

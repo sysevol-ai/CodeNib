@@ -89,7 +89,8 @@ manifests, source captures and published site files remain file artifacts.
 ## Visitor Wiki persistence
 
 Status: #802 and the #803–#805 visitor fixes are deployed. The community
-discovery iteration adds explicit owner publication through the same Wiki store.
+discovery iteration in [#806](https://github.com/sysevol-ai/CodeNib/pull/806) is
+also deployed and adds explicit owner publication through the same Wiki store.
 Current product consumer: the public GitHub URL form and
 `codenib.web.visitor_wikis` saved-Wiki routes. The maintainer requested full
 Repo Wiki generation, refresh-safe attempts and link-readable results that
@@ -115,6 +116,8 @@ share links. Public listing reads this namespace without creating attempts or
 using provider credentials. No generic catalog abstraction or schema migration
 is introduced. Acceptance covers wrong-owner rejection, partial/invalid-page
 rejection, restart persistence and stale progress writes after unpublish.
+Deployment preserved both existing visitor Wikis without publishing either;
+public desktop/mobile reads and the unchanged prepared-cache audit pass.
 
 The existing generation guard serializes funded visitor runs across processes.
 A revision/request identity check and first publication under the admission
