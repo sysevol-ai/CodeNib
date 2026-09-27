@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Header from "@/components/Header";
-import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { groupByLanguage, primaryLanguage } from "@/lib/landing";
 import RepositoryEntry from "@/components/RepositoryEntry";
@@ -257,7 +256,7 @@ export default function Landing() {
             Read the experiment
           </a>
         </p>
-        <a href={AGENT_SETUP_URL} target="_blank" rel="noreferrer">
+        <a href="https://docs.codenib.ai/guides/grep-jev/" target="_blank" rel="noreferrer">
           Use CodeNib with your agent →
         </a>
       </section>

@@ -7,7 +7,6 @@ import Header from "@/components/Header";
 import RepositoryEntry from "@/components/RepositoryEntry";
 import RepositoryExplanation from "@/components/RepositoryExplanation";
 import HighlightedCode from "@/components/HighlightedCode";
-import { AGENT_SETUP_URL } from "@/components/AgentSetup";
 import { AppLink } from "@/lib/router";
 import {
   loadRepositoryPreview,
@@ -486,7 +485,7 @@ export default function PreviewPage({
               <p className="preview-local">
               Want source search inside your coding agent?{" "}
               <a
-                href={AGENT_SETUP_URL}
+                href="https://docs.codenib.ai/guides/grep-jev/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
