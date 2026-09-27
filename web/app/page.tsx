@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Header from "@/components/Header";
-import { AGENT_SETUP_URL } from "@/components/AgentSetup";
-import { fetchRepos, fetchWikiAreaMap, repoRelative, type RepoInfo } from "@/lib/api";
+import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { groupByLanguage, primaryLanguage } from "@/lib/landing";
-import { splitSymbolLabel } from "@/lib/symbols";
+import RepositoryEntry from "@/components/RepositoryEntry";
 import { AppLink, navigate } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 
@@ -20,37 +19,6 @@ function repoDescription(r: RepoInfo): ReactNode {
     ) : (
       <span key={index}>{part}</span>
     ),
-  );
-}
-
-interface Proof {
-  repoId: string;
-  repo: string;
-  commit: string;
-  from: string;
-  to: string;
-  file: string;
-  line: number | null;
-}
-
-/** One real recorded call, shown as the reason to trust the pages. */
-function HeroProof({ proof }: { proof: Proof }) {
-  return (
-    <AppLink className="hero-proof" href={`/${proof.repoId}`}>
-      <span className="hero-proof-label">A recorded call</span>
-      <span className="hero-proof-body">
-        <code>{proof.from}</code> calls <code>{proof.to}</code>
-        {proof.file && (
-          <span className="hero-proof-site mono">
-            {proof.file}
-            {proof.line != null ? `:${proof.line}` : ""}
-          </span>
-        )}
-      </span>
-      <span className="hero-proof-repo">
-        in {proof.repo} at <span className="mono">{proof.commit}</span> →
-      </span>
-    </AppLink>
   );
 }
 
@@ -107,7 +75,8 @@ function RepoCard({ r }: { r: RepoInfo }) {
 }
 
 const repoRetryDelays = [0, 1000, 2000, 4000, 8000];
-const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const sleep = (ms: number) =>
+  new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export default function Landing() {
   const staticRuntime = isStaticRuntime();
@@ -115,9 +84,10 @@ export default function Landing() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [proof, setProof] = useState<Proof | null>(null);
 
-  const loadRepos = () => {
+  const [repoAttempt, setRepoAttempt] = useState(0);
+
+  useEffect(() => {
     setError(null);
     setLoading(true);
     let active = true;
@@ -128,11 +98,13 @@ export default function Landing() {
       for (let attempt = 0; attempt < delays.length; attempt += 1) {
         const delay = delays[attempt];
         if (delay > 0) {
-          if (active) setError("Connecting to backend; retrying repository list...");
+          if (active)
+            setError("Connecting to backend; retrying repository list...");
           await sleep(delay);
         }
         if (!active) return;
         try {
+          // Keep the shared catalog cache introduced with the cold-load fix.
           const rs = await fetchRepos();
           if (!active) return;
           setRepos(rs);
@@ -143,49 +115,19 @@ export default function Landing() {
         }
       }
       if (!active) return;
-      setError(lastError instanceof Error ? lastError.message : String(lastError));
+      setError(
+        lastError instanceof Error ? lastError.message : String(lastError),
+      );
     };
 
-    run()
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
+    run().finally(() => {
+      if (!active) return;
+      setLoading(false);
+    });
     return () => {
       active = false;
     };
-  };
-
-  useEffect(() => {
-    return loadRepos();
-  }, []);
-
-  // The strongest recorded call between two areas of a small, familiar repo.
-  useEffect(() => {
-    const pickRepo = repos.find((r) => r.id === "psf__requests") ?? repos[0];
-    if (!pickRepo) return;
-    let active = true;
-    fetchWikiAreaMap(pickRepo.id)
-      .then((map) => {
-        const link = map.links[0];
-        if (!active || !link?.example) return;
-        const anchor = link.example.anchor;
-        const file = anchor ? repoRelative(anchor.file) ?? anchor.file : "";
-        setProof({
-          repoId: pickRepo.id,
-          repo: pickRepo.repo,
-          commit: pickRepo.commit_short,
-          from: splitSymbolLabel(link.example.source).symbol,
-          to: splitSymbolLabel(link.example.target).symbol,
-          file: file.split("/").pop() || file,
-          line: anchor?.line ?? null,
-        });
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [repos]);
+  }, [staticRuntime, repoAttempt]);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -195,7 +137,7 @@ export default function Landing() {
         r.repo.toLowerCase().includes(needle) ||
         r.id.toLowerCase().includes(needle) ||
         (r.language || "").toLowerCase().includes(needle) ||
-        (r.summary || "").toLowerCase().includes(needle)
+        (r.summary || "").toLowerCase().includes(needle),
     );
   }, [repos, q]);
 
@@ -203,85 +145,93 @@ export default function Landing() {
     <div className="landing">
       <Header />
       <section className="hero">
-        <h1>Find the right code. Trace the calls.</h1>
+        <h1>Understand a repo. Start with its URL.</h1>
         <p className="hero-sub">
-          Browse source-linked Wiki pages and recorded code relationships.
-          Bring the same tools to your own coding agent.
+          Open a ready Wiki or explore any public repository’s files and README.
+          Get an AI explanation with links to the code when you need it.
         </p>
-        <p className="hero-evidence">
-          <strong>71.4% code-block Recall@5</strong> in our 100-issue grep + Jev experiment,
-          up from 58.6% before reranking.{" "}
-          <a href="https://codenib.ai/blogs/jev-model-grep-reranking/" target="_blank" rel="noreferrer">Read the experiment</a>
-        </p>
-        <div className="preview-actions">
-          <a className="btn-primary" href={AGENT_SETUP_URL} target="_blank" rel="noreferrer">Use with your agent →</a>
-          <a href="https://docs.codenib.ai/github_pages/" target="_blank" rel="noreferrer">Publish a Wiki for your repo</a>
-        </div>
-        {staticRuntime && <p className="preview-label">Precomputed pages · No account needed to browse</p>}
-        {proof && <HeroProof proof={proof} />}
-        <div className="search-box">
-          <span className="search-icon" aria-hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-          </span>
-          <input
-            type="search"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && filtered.length > 0) {
-                navigate(`/${filtered[0].id}`);
-              }
-            }}
-            placeholder="Search repositories (press Enter to open)"
-            aria-label="Search repositories"
-          />
+        <RepositoryEntry repos={repos} />
+      </section>
+      <section className="landing-catalog" aria-label="Ready repository Wikis">
+        <div className="landing-catalog-heading">
+          <div>
+            <h2>Go deeper with a ready Wiki</h2>
+            <p className="small muted">
+              Source-linked explanations and recorded code relationships.
+            </p>
+          </div>
+          <div className="search-box">
+            <span className="search-icon" aria-hidden>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+            </span>
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && filtered.length > 0) {
+                  navigate(`/${filtered[0].id}`);
+                }
+              }}
+              placeholder="Filter ready Wikis…"
+              aria-label="Filter ready Wikis"
+            />
+          </div>
         </div>
       </section>
-
-      {!staticRuntime && (
-        <div className="landing-actions">
-          <AppLink className="add-repo-link" href="/add-repo" aria-label="Index your own repository">
-            + Index your own repository
-          </AppLink>
-        </div>
-      )}
 
       {error && (
         <div className="repo-grid">
           <div className="empty">
             <p>
-              {staticRuntime ? (
-                "Static Wiki data is unavailable."
-              ) : (
-                <>Backend unavailable — start it with <code>codenib-web</code> after building an index.</>
-              )}
+              Ready Wikis are temporarily unavailable. You can still paste a
+              public GitHub URL above.
             </p>
-            {!staticRuntime && <p className="small muted">Request failed: {error}</p>}
-            <button type="button" className="codegraph-fit" onClick={loadRepos}>
+            <button type="button" className="codegraph-fit" onClick={() => setRepoAttempt(value => value + 1)}>
               Retry
             </button>
           </div>
         </div>
       )}
       {!error && loading && repos.length === 0 && (
-        <div className="repo-grid"><div className="empty">Loading repositories…</div></div>
+        <div className="repo-grid">
+          <div className="empty">Loading repositories…</div>
+        </div>
       )}
       {!error && !loading && repos.length === 0 && (
-        <div className="repo-grid"><div className="empty">No repositories found.</div></div>
+        <div className="repo-grid">
+          <div className="empty">No repositories found.</div>
+        </div>
       )}
       {q.trim() ? (
         <div className="repo-grid">
-          {filtered.length === 0 && <p className="empty">No matching repositories. Try a project name or language.</p>}
+          {filtered.length === 0 && (
+            <p className="empty">
+              No matching repositories. Try a project name or language.
+            </p>
+          )}
           {filtered.map((r) => (
             <RepoCard key={r.id} r={r} />
           ))}
         </div>
       ) : (
         groupByLanguage(repos).map((group) => (
-          <section className="repo-group" key={group.language} aria-label={`${group.language} repositories`}>
+          <section
+            className="repo-group"
+            key={group.language}
+            aria-label={`${group.language} repositories`}
+          >
             <h2 className="repo-group-title">
               {group.language} <span>{group.repos.length}</span>
             </h2>
@@ -293,9 +243,32 @@ export default function Landing() {
           </section>
         ))
       )}
+      <section className="landing-agent">
+        <h2>Bring source context to your coding agent</h2>
+        <p>
+          <strong>71.4% code-block Recall@5</strong> in our 100-issue grep + Jev
+          experiment, up from 58.6% before reranking.{" "}
+          <a
+            href="https://codenib.ai/blogs/jev-model-grep-reranking/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Read the experiment
+          </a>
+        </p>
+        <a href="https://docs.codenib.ai/guides/grep-jev/" target="_blank" rel="noreferrer">
+          Use CodeNib with your agent →
+        </a>
+      </section>
       <footer className="preview-footer">
-        <a href="https://codenib.ai/" target="_blank" rel="noreferrer">Generated by CodeNib</a>
-        {staticRuntime && <span>Precomputed Wiki · Source and model provenance in the export</span>}
+        <a href="https://codenib.ai/" target="_blank" rel="noreferrer">
+          Generated by CodeNib
+        </a>
+        {staticRuntime && (
+          <span>
+            Precomputed Wiki · Source and model provenance in the export
+          </span>
+        )}
       </footer>
     </div>
   );

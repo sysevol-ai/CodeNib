@@ -27,8 +27,8 @@ Using the caller's agent to plan grep is a separate, unevaluated variant.
 | --- | --- | --- |
 | Agent setup | Released `codegraph init` prepares typed graphs. Source-only `codenib init` now connects OpenRouter and registers grep/Jev through native Claude Code/Codex CLIs, merged in #785. | Published 0.2.4 installation guides use the package; promote OAuth setup after actual provider-consent acceptance. |
 | Retrieval evidence | Historical research scores 58.62% → 71.40% Recall@5. Fresh product evaluation in merged [#787](https://github.com/sysevol-ai/CodeNib/pull/787) scores 48.37% → 65.57%, counting one failed case as zero across all 100 attempts. | Keep the two runs distinct; neither measures Claude Code token savings. The multiline correction is separately tracked in #792. |
-| OpenRouter | Shared grep/Jev configuration and local PKCE are merged in #782/#783. The opt-in browser trial uses direct provider calls and a short in-memory credential; real-source browser acceptance uses provider fixtures. Real Linux SecretService and macOS/Windows vault round trips pass with fake entries. | The maintainer chose desktop CLI consent acceptance first; interactive unlock and hosted browser acceptance remain. |
-| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | Producer fixes #789/#790/#791 and reviewed browser trial #796 are merged; actual consent and deployment remain. Live operator browsing/Ask can still intentionally generate. |
+| OpenRouter | Shared grep/Jev configuration and local PKCE are merged in #782/#783. The opt-in browser trial uses direct provider calls and a short in-memory credential; real-source browser retrieval acceptance uses provider fixtures. Published 0.2.4 CLI retrieval and the #801 browser explanation also pass with the maintainer’s existing OpenRouter key. Real Linux SecretService and macOS/Windows vault round trips pass with fake entries. | The maintainer chose desktop CLI consent acceptance first; interactive unlock and hosted browser acceptance remain. |
+| Wiki demo | Source-grounded stories/graphs and static cached-story publication are merged in #772/#784. The real 15-page Requests corpus passes offline desktop/mobile browsing. An opt-in browser trial adds source-linked grep/Jev results without an operator key. | The maintainer deployed the live Wiki. URL entry and browser-owned source preview in #801 pass locally and await frontend deployment; actual PKCE consent remains unverified. Live operator browsing/Ask can still intentionally generate. |
 | Live Wiki cache and maps | Runtime fixes in [#800](https://github.com/sysevol-ai/CodeNib/pull/800) batch authenticated source reads, retry busy generators, and build System Maps from cached outline files plus indexed references before child prose exists. Overview illustrations require admitted architecture plans; unrelated call-flow fallbacks are omitted. Deployed desktop/mobile checks pass, with maps available for 23/27 repositories. After full prewarming, the 2026-09-26 audit reports 1,001 ready pages, 19 degraded pages, and no cold pages across 1,020 entries. | jq/MicroPython graph artifacts fail captured-source validation; Axios/Preact graph coverage lacks usable cross-area implementation references. Repair these four index artifacts and resolve the 19 page-quality failures before declaring the whole demo ready. These data-quality gates remain separate from the runtime fixes. |
 | Static distribution | Static export and reusable Pages workflow exist; #784 verifies cached stories, citations, page maps and CodeNib backlinks without a backend. A 15-page public repository is locally curated. | The no-embedding workflow default is released in 0.2.4; the maintainer will deploy the static roots on DGX Spark later. |
 | MCP protocol | [#780](https://github.com/sysevol-ai/CodeNib/pull/780) merged as `bcd2c730` after all executed CI passed; its squash message was verified. [#779](https://github.com/sysevol-ai/CodeNib/issues/779) is closed. | Released in 0.2.4; the public PyPI wheel passes installed modern and legacy MCP identity checks. |
@@ -354,21 +354,35 @@ only the `grep` extra also exports the optional trial with a placeholder HTTPS
 origin. Both exports leave SQLite, configuration and registry bytes unchanged;
 the trial output is acceptance material, not a public deployment.
 
-The public demo must remain useful without authentication or a live LLM.
-The maintainer will deploy `codenib.ai` and `demo.codenib.ai` on their separate
-DGX Spark server later. The reviewed static roots and deployment checks are
-the handoff for that step; production-host acceptance remains pending the
-maintainer's deployment. No additional hosting account or server access is
-needed for this iteration.
+The maintainer has deployed the live Wiki on their separate DGX Spark.
+The onboarding audit found 27 repositories, a catalog-only search box and an
+“add repository” page that led to CLI setup. The next adoption gate is explicit:
+paste a public GitHub URL and see useful repository content before installation,
+authentication or indexing. The source frontend in [#801](https://github.com/sysevol-ai/CodeNib/pull/801)
+now routes prepared repositories
+to their Wikis and other URLs to a bounded, browser-owned GitHub preview with
+commit-pinned source. An optional existing-key OpenRouter explanation consumes
+only a small verified sample; its result stays in that page session. This is
+separate from full Wiki generation and from the grep/Jev experiment.
+
+Local acceptance opened live Flask source in 0.930 seconds. One explicitly
+authorized browser explanation took 14.078 seconds and OpenRouter reported
+$0.025725. These are individual local observations, not a hosted latency SLA.
+The credential went only to OpenRouter and was absent from browser storage;
+disconnect passed. Provider consent/PKCE remains a separate unverified gate.
+The source-preview contracts, desktop/mobile flow and static-export policy
+are locally checked. Production URL-entry acceptance remains pending deployment
+of this rebuilt frontend on the maintainer's DGX Spark; the published 0.2.4
+wheel does not contain this iteration.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |
-| Open home | Curated repository cards, an example question/task per repository, languages, indexed commit, and a clear “Use with your agent” link. | Static assets; no model call. |
+| Open home | Paste a GitHub URL, or choose a ready Wiki. Catalog search and local agent setup are secondary. | Catalog metadata and static assets; no model call. |
 | Open a repository | Precomputed overview and story Wiki, architecture map and source citations. Choose an example task to inspect its recorded evidence. | Static assets; preserve source/model provenance. |
 | Explore a map or citation | Browser renders exported page boundaries/graphs and navigates to commit-pinned source. | Static data; disclose missing full runtime graph functionality. |
 | Enter a new question | Explain “Connect OpenRouter” and the snippet/cost boundary, or “Run on your machine”. Do not spend the site's key on anonymous requests. | User-authorized provider account; bounded request. |
 | Connect an agent | Copy a tested local setup now. Add remote MCP only after A6 passes. | Local user machine and user's agent/model. |
-| Submit an arbitrary repository | Initially link to local setup or the existing self-owned Pages workflow. | User CPU/CI quota; hosted indexing remains demand-gated. |
+| Submit a public GitHub repository | Open a prepared Wiki by repository identity, or read a pinned tree, README and files directly in the browser. Optional AI explanation uses an existing OpenRouter key. | GitHub public API from the visitor; explicit user-funded inference only. No hosted checkout, index or saved Wiki. |
 
 Implementation boundaries:
 
@@ -451,7 +465,7 @@ The clarified CodeGraph comparison names `colbymchenry/codegraph` and uses its
 pinned source and documented capabilities. OAuth onboarding and the browser
 trial remain opt-in while real provider consent and interactive unlock are
 unverified. The maintainer chose desktop CLI login acceptance first and will
-perform the website deployment on their separate DGX Spark later.
+has deployed the live Wiki on their separate DGX Spark. The URL-entry frontend still requires its own deployment acceptance.
 
 The release used the existing protected environments after explicit maintainer
 approval. TestPyPI admits `main` and production admits `v*` tags; those rules
@@ -477,8 +491,8 @@ in the release harness. Fixture-backed source-only MCP and the public source
 API pass without embedding/model/graph SDKs or billed calls. Baseline formatter
 failures are corrected in a separate commit with unchanged production
 non-import ASTs and 85 focused tests. Public TestPyPI and production publication
-are complete. Real consent remains open; website deployment belongs to the
-maintainer's later DGX Spark rollout.
+are complete. Real consent remains open; the next URL-entry deployment acceptance belongs
+to the maintainer’s DGX Spark rollout.
 
 Record baseline and subsequent counts for documentation-to-install clicks,
 successful local setup, first source-linked query, repeat use, Pages backlink

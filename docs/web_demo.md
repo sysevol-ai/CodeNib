@@ -42,6 +42,59 @@ not change that intentional local behavior.
     Diagrams are no longer the graph surface — the live, clickable Cytoscape
     graph is.
 
+## Open a public repository from its URL
+
+The current source frontend leads with a GitHub URL form. Enter `owner/repo`
+or paste a repository URL. A matching prepared repository opens its Wiki;
+another public repository opens `/preview/owner/repo`. This path is independent
+of the repository catalog loading and does not require a local install,
+checkout, embedding model, API key or server-side indexing job.
+
+The browser reads GitHub's public metadata, default-branch commit, file tree
+and README, then lets the visitor browse folders and source. All source links
+use the captured commit. File reads check the Git blob hash before displaying
+UTF-8 text. README HTML and external images are not rendered. Large trees
+fall back to folder browsing, files over 256 KiB link out to GitHub, and long
+text previews are bounded. Private repositories are unsupported. GitHub's
+unauthenticated rate limits apply to the visitor's connection; a rate-limit
+error offers a route back to the prepared Wikis. No GitHub token is collected.
+
+An optional **AI explanation** accepts an existing OpenRouter inference key.
+The password input is cleared on connection. The key stays in a private,
+ten-minute browser session and is sent only to OpenRouter; it is not written
+to browser storage, a URL or the CodeNib API. Disconnecting, navigating away
+or reloading ends the local connection; it does not revoke the provider key.
+A separate **Explain repository** action sends up to five verified public
+source excerpts (at most 160 lines and 5,000 characters per file) to
+`anthropic/claude-sonnet-4.6` through OpenRouter. The page shows the reported
+cost and commit-pinned references. Cancellation and uncertain provider cost
+stop further calls; no billed call retries automatically. Set a provider key
+credit limit for a billing cap: the browser's reported-cost stop cannot cap
+an in-flight call.
+
+This explanation is an AI interpretation of a source sample. Citation checks
+validate file identity and line ranges, not the truth of every model claim.
+It does not generate or save a full Wiki, build a typed call graph, run the
+grep/Jev retrieval experiment, or spend the operator's model credentials.
+Existing Wiki generation and Ask retain their configured operator behavior.
+
+This URL entry is newer than the 0.2.4 wheel. Build `web/` from the current
+checkout using the production instructions below. Preserve your demo's
+backend configuration and reverse proxy; serve the rebuilt `web/dist` from
+the same frontend deployment. If your host sets a Content Security Policy,
+allow `https://api.github.com` and `https://openrouter.ai` in `connect-src`.
+The static exporter includes those origins when it emits the browser-trial
+policy. Static Wiki browsing itself still needs no external requests; the
+visitor explicitly opens a GitHub preview or explanation to use them.
+
+For offline browser acceptance after `npm run build`, run a preview server
+on port 4179 and execute `node web/preview_verify.mjs http://127.0.0.1:4179`
+from the repository root. Provider and GitHub responses are fixtures; this
+check makes no paid calls. It covers desktop/mobile URL entry, source links,
+README isolation, key clearing, one explicit explanation, refresh and rate
+limits. Refreshing `/preview/owner/repo` must also resolve the SPA entry at
+the deployment's base path.
+
 ## Prerequisites
 
 - A CodeNib source checkout with development dependencies (`make dev`).

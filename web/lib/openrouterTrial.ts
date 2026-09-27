@@ -1,6 +1,14 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  OVERVIEW_SCHEMA,
+  OVERVIEW_SYSTEM,
+  validateOverview,
+  type OverviewInput,
+  type RepositoryOverview,
+} from "./repositoryOverview";
+
 /** Direct provider requests. No key is returned to UI state or sent to CodeNib. */
 const OPENROUTER = "https://openrouter.ai";
 const QUERY_LIMIT = 0.1;
@@ -354,6 +362,72 @@ export class OpenRouterTrialSession {
     return { url: `${OPENROUTER}/auth?${query}`, nonce };
   }
 
+  // Credential publication happens only after metadata verification and the
+  // generation/abort checks. Disconnect owns invalidation; an old request
+  // cannot install a key after a later connection attempt starts.
+  async #rememberKey(
+    key: string,
+    generation: number,
+    signal: AbortSignal,
+  ): Promise<number | null> {
+    const metadata = record(
+      (
+        await readJSON(
+          `${OPENROUTER}/api/v1/key`,
+          { headers: { Authorization: `Bearer ${key}` } },
+          signal,
+          32768,
+        )
+      ).data,
+    );
+    if (
+      metadata.is_management_key !== false ||
+      (metadata.is_provisioning_key !== undefined &&
+        metadata.is_provisioning_key !== false)
+    )
+      throw new Error("OpenRouter did not verify a normal inference key.");
+    active(signal);
+    if (generation !== this.#generation)
+      throw new Error("Authorization was cancelled.");
+    this.#key = key;
+    this.#expires = Date.now() + 600000;
+    this.#expiryTimer = setTimeout(() => this.disconnect(), 600000);
+    this.#usage = { reportedCost: 0, unknownCost: false, calls: [] };
+    const remaining = metadata.limit_remaining;
+    return typeof remaining === "number" &&
+      Number.isFinite(remaining) &&
+      remaining >= 0
+      ? remaining
+      : null;
+  }
+
+  async useExistingKey(
+    value: string,
+  ): Promise<{ settingsUrl: string; remaining: number | null }> {
+    const key = value.trim();
+    if (!/^[\x21-\x7e]{1,1024}$/.test(key))
+      throw new Error("Enter a valid OpenRouter inference key.");
+    this.disconnect();
+    const generation = this.#generation;
+    const controller = new AbortController();
+    this.#controller = controller;
+    const timer = setTimeout(() => controller.abort(), 30000);
+    try {
+      const hash = [...(await digest(key))]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      const remaining = await this.#rememberKey(
+        key,
+        generation,
+        controller.signal,
+      );
+      return { settingsUrl: `${OPENROUTER}/keys/${hash}`, remaining };
+    } finally {
+      clearTimeout(timer);
+      if (this.#controller === controller) this.#controller = null;
+    }
+  }
+
   async acceptGrant(
     nonce: string,
     code: string,
@@ -397,39 +471,12 @@ export class OpenRouterTrialSession {
         .map((byte) => byte.toString(16).padStart(2, "0"))
         .join("");
       settingsUrl = `${OPENROUTER}/keys/${hash}`;
-      const metadata = record(
-        (
-          await readJSON(
-            `${OPENROUTER}/api/v1/key`,
-            { headers: { Authorization: `Bearer ${key}` } },
-            controller.signal,
-            32768,
-          )
-        ).data,
+      const remaining = await this.#rememberKey(
+        key,
+        generation,
+        controller.signal,
       );
-      if (
-        metadata.is_management_key !== false ||
-        (metadata.is_provisioning_key !== undefined &&
-          metadata.is_provisioning_key !== false)
-      )
-        throw new Error("OpenRouter did not verify a normal inference key.");
-      active(controller.signal);
-      if (generation !== this.#generation)
-        throw new Error("Authorization was cancelled.");
-      this.#key = key;
-      this.#expires = Date.now() + 600000;
-      this.#expiryTimer = setTimeout(() => this.disconnect(), 600000);
-      this.#usage = { reportedCost: 0, unknownCost: false, calls: [] };
-      const remaining = metadata.limit_remaining;
-      return {
-        settingsUrl,
-        remaining:
-          typeof remaining === "number" &&
-          Number.isFinite(remaining) &&
-          remaining >= 0
-            ? remaining
-            : null,
-      };
+      return { settingsUrl, remaining };
     } catch (reason) {
       const message =
         reason instanceof Error ? reason.message : "Authorization failed.";
@@ -440,13 +487,20 @@ export class OpenRouterTrialSession {
     }
   }
 
-  async retrieve(
-    context: TrialContext,
-    query: string,
-  ): Promise<TrialCandidate[]> {
+  /** One operation owns the controller and cost ledger. The busy flag is set
+   * synchronously before its first await; cancellation blocks later calls and
+   * unknown provider cost blocks reuse until the user reconnects. */
+  async #run<T>(
+    operation: (
+      call: (
+        path: string,
+        stage: string,
+        payload: RecordValue,
+      ) => Promise<RecordValue>,
+      signal: AbortSignal,
+    ) => Promise<T>,
+  ): Promise<T> {
     if (this.#busy) throw new Error("A query is already running.");
-    if (!query.trim() || query.length > 16000)
-      throw new Error("Enter a question of at most 16,000 characters.");
     if (!this.#key || Date.now() >= this.#expires) {
       this.disconnect();
       throw new Error("Connect OpenRouter to start this query.");
@@ -502,6 +556,21 @@ export class OpenRouterTrialSession {
       return data;
     };
     try {
+      return await operation(modelCall, controller.signal);
+    } finally {
+      clearTimeout(timer);
+      if (this.#controller === controller) this.#controller = null;
+      this.#busy = false;
+    }
+  }
+
+  async retrieve(
+    context: TrialContext,
+    query: string,
+  ): Promise<TrialCandidate[]> {
+    if (!query.trim() || query.length > 16000)
+      throw new Error("Enter a question of at most 16,000 characters.");
+    return this.#run(async (modelCall, signal) => {
       const protocol = context.protocol;
       const planned = await modelCall("/api/v1/chat/completions", "planning", {
         model: protocol.planner_model,
@@ -548,7 +617,7 @@ export class OpenRouterTrialSession {
             plan,
           }),
         },
-        controller.signal,
+        signal,
         3 * 1024 * 1024,
       );
       const candidates = candidatesFrom(data, context);
@@ -614,12 +683,60 @@ export class OpenRouterTrialSession {
           node.score = answer.score / 3;
         }
       }
-      active(controller.signal);
+      active(signal);
       return candidates.sort((a, b) => b.score - a.score).slice(0, 5);
-    } finally {
-      clearTimeout(timer);
-      if (this.#controller === controller) this.#controller = null;
-      this.#busy = false;
-    }
+    });
+  }
+
+  async explainRepository(input: OverviewInput): Promise<RepositoryOverview> {
+    if (
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(input.repository) ||
+      !/^[a-f0-9]{40}$/.test(input.commit) ||
+      !input.sources.length ||
+      input.sources.length > 5 ||
+      JSON.stringify(input).length > 40000
+    )
+      throw new Error(
+        "Load a bounded repository source sample before requesting an overview.",
+      );
+    return this.#run(async (call) => {
+      const data = await call(
+        "/api/v1/chat/completions",
+        "repository overview",
+        {
+          model: "anthropic/claude-sonnet-4.6",
+          messages: [
+            { role: "system", content: OVERVIEW_SYSTEM },
+            { role: "user", content: JSON.stringify(input) },
+          ],
+          temperature: 0,
+          max_tokens: 1800,
+          reasoning: { enabled: false },
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "repository_overview",
+              strict: true,
+              schema: OVERVIEW_SCHEMA,
+            },
+          },
+          provider: { require_parameters: true },
+        },
+      );
+      if (!Array.isArray(data.choices) || data.choices.length !== 1)
+        throw new Error("OpenRouter returned an incomplete overview.");
+      const choice = record(data.choices[0]);
+      if (choice.finish_reason !== "stop")
+        throw new Error("OpenRouter returned an incomplete overview.");
+      let value: unknown;
+      try {
+        value = JSON.parse(text(record(choice.message).content, 20000));
+      } catch {
+        throw new Error(
+          "OpenRouter returned an invalid overview; no automatic retry.",
+        );
+      }
+      return validateOverview(value, input);
+    });
   }
 }

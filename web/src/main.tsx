@@ -8,6 +8,7 @@ import { assetUrl, restoreStaticRoute } from "@/lib/runtime";
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
 const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
 const Landing = lazy(() => import("@/app/page"));
+const PreviewPage = lazy(() => import("@/app/preview/page"));
 const AddRepo = lazy(() => import("@/app/add-repo/page"));
 
 function RouteLoading() {
@@ -26,8 +27,16 @@ function App() {
     return <Landing />;
   }
 
-  // Guidance for running CodeNib on your own code. Checked before the repo
-  // route because it is a page, not a repository id.
+  // Dedicated entry routes precede the prepared Wiki repository id route.
+  if (segments[0] === "preview" && segments.length === 3) {
+    return (
+      <PreviewPage
+        key={`${segments[1]}/${segments[2]}`}
+        owner={segments[1]}
+        name={segments[2]}
+      />
+    );
+  }
   if (segments[0] === "add-repo") {
     return <AddRepo />;
   }
@@ -58,5 +67,5 @@ createRoot(root).render(
     <Suspense fallback={<RouteLoading />}>
       <App />
     </Suspense>
-  </StrictMode>
+  </StrictMode>,
 );
