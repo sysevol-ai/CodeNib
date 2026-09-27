@@ -59,7 +59,15 @@ prepared examples retain their existing graphs and visual evidence.
 
 The generation page shows actual stages, the current chapter, completed
 chapters, recent activity and reported spending. Chapters become readable as
-they are saved. Reloading or closing the tab does not cancel the server run.
+they are saved. During generation, the activity card explains the current work
+and next step, with separate elapsed-step, last-progress and server-connection
+times. After 45 seconds without progress it explains the wait; after 180 seconds
+(or a server-reported stall) it stops the activity animation and reports missing
+progress without claiming the worker has stopped. A failed status request has
+a separate reconnecting state. Successful polling is not worker progress.
+The animation respects reduced-motion preferences. Step times come from actual
+stage events, not cost updates, and no completion estimate is invented.
+Reloading or closing the tab does not cancel the server run.
 A stop request takes effect at the next safe boundary; a provider request
 already in flight may finish and incur a charge. Resuming requires the owner
 browser and a newly supplied key. Healthy AgentWiki pages are reused;

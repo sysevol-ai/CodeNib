@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
+import WikiRunActivity from "@/components/WikiRunActivity";
 import {
   shouldWithholdWikiPage,
   type Citation,
@@ -46,6 +47,8 @@ export default function SavedWikiPage({ id }: { id: string }) {
   const [copyMessage, setCopyMessage] = useState("");
   const [stopping, setStopping] = useState(false);
   const [showResume, setShowResume] = useState(false);
+  const [checkedAt, setCheckedAt] = useState(0);
+  const [statusConnected, setStatusConnected] = useState(false);
   const [, tick] = useState(0);
   const sourcePanel = useRef<HTMLDivElement>(null);
   const owner = recentWikis().find((item) => item.id === id);
@@ -69,14 +72,18 @@ export default function SavedWikiPage({ id }: { id: string }) {
         if (!cancelled) {
           setWiki(value);
           setError("");
+          setCheckedAt(Date.now() / 1000);
+          setStatusConnected(true);
         }
       } catch (reason) {
-        if (!cancelled)
+        if (!cancelled) {
+          setStatusConnected(false);
           setError(
             reason instanceof Error
               ? reason.message
               : "Could not load the saved Wiki.",
           );
+        }
       } finally {
         if (!cancelled && !settled) timer = setTimeout(poll, 2000);
       }
@@ -123,7 +130,6 @@ export default function SavedWikiPage({ id }: { id: string }) {
   const completed = pages.filter(
     (item) => wiki?.page_states[item.id] === "ready",
   ).length;
-  const current = pages.find((item) => item.id === wiki?.active_page);
   const selected = pages.find((item) => item.id === active);
   function pick(pageId: string) {
     setActive(pageId);
@@ -213,7 +219,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
           >
             <div className="wiki-progress-heading">
               <div>
-                <strong>
+                <strong role="status">
                   {wiki.status === "complete"
                     ? "Your Wiki is ready"
                     : wiki.status === "partial"
@@ -222,13 +228,25 @@ export default function SavedWikiPage({ id }: { id: string }) {
                         : "Generation paused"
                       : wikiStages[wiki.stage] || "Generating Wiki"}
                 </strong>
-                {current && running && <span> · {current.title}</span>}
               </div>
-              <span className="small">
-                {completed}
-                {pages.length ? ` / ${pages.length}` : ""} chapters ready
-              </span>
+              {completed > 0 ? (
+                <a className="small" href="#saved-wiki-chapters">
+                  Read {completed} / {pages.length} ready chapters ↓
+                </a>
+              ) : (
+                <span className="small">
+                  0{pages.length ? ` / ${pages.length}` : ""} chapters ready
+                </span>
+              )}
             </div>
+            {running && (
+              <WikiRunActivity
+                wiki={wiki}
+                now={Date.now() / 1000}
+                checkedAt={checkedAt}
+                connected={statusConnected}
+              />
+            )}
             {wiki.status === "partial" && (
               <div className="wiki-stopped-message" role="alert">
                 <strong>{wiki.message || "This run stopped before finishing."}</strong>
@@ -285,14 +303,8 @@ export default function SavedWikiPage({ id }: { id: string }) {
             <div className="wiki-progress-foot">
               <span>
                 Saved on this server · ${wiki.reported_cost_usd.toFixed(4)}{" "}
-                reported · {wiki.calls} model calls
+                reported · {wiki.calls} model requests sent
               </span>
-              {running && (
-                <span>
-                  {Math.max(0, Math.floor(Date.now() / 1000 - wiki.updated_at))}
-                  s since last update
-                </span>
-              )}
               {owner && running && !stopping && (
                 <button
                   className="btn-ghost"
@@ -328,17 +340,10 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 </ul>
               </details>
             )}
-            {wiki.unreported_call_cost && (
+            {wiki.unreported_call_cost && !running && (
               <p className="small">
                 The reported total excludes an in-flight or unreported request.
                 Check OpenRouter usage before resuming.
-              </p>
-            )}
-            {wiki.stalled && (
-              <p role="status">
-                No recent progress was received. Saved chapters remain
-                available. You can request a resume; an existing generator keeps
-                ownership until it stops.
               </p>
             )}
             <p className="small muted">
@@ -386,7 +391,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
             </div>
           )}
         {wiki && (
-          <div className="saved-wiki-layout">
+          <div className="saved-wiki-layout" id="saved-wiki-chapters">
             <nav className="saved-wiki-nav" aria-label="Wiki chapters">
               <h2>Chapters</h2>
               {pages.length === 0 ? (
@@ -465,7 +470,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
                         : wiki.page_states[active] === "needs_review"
                           ? "This chapter did not pass source checks. Its draft is withheld; the owner can resume to retry it."
                           : running
-                            ? "This chapter will appear here as soon as it is generated and saved. You can read any ready chapter in the sidebar."
+                            ? completed === 0
+                              ? "The first chapter appears after writing and source checks finish. The agent's current work is shown above; no chapter is ready to read yet."
+                              : "This chapter is still being prepared. You can read any ready chapter in the sidebar while generation continues."
                             : "This chapter has not been completed. The owner can continue generation without rebuilding ready chapters."}
                     </p>
                   </div>

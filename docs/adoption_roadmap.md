@@ -406,8 +406,34 @@ Oversized files are now skipped before decompression and their paths/sizes
 persist with the attempt. Replaying that source preparation retains 65 files
 and produces 304 chunks without inference. Stopped runs prominently display
 the reason, stop polling, and require an explicit owner retry. Archive path,
-retained-size and member-count limits remain enforced. Hosted paid-generation
-acceptance remains open; source preparation is not evidence of a completed Wiki.
+retained-size and member-count limits remain enforced. The owner's hosted retry
+subsequently completed **14/14 chapters**, all passing the existing grounding
+and quality gates: **58 calls**, **$1.177581516** reported cost, no unknown charge,
+and **886.09 seconds** from retry start to completion. This establishes hosted
+completion for this pinned repository; source preparation alone did not.
+
+Waiting feedback now explains the current operation and next step, shows recent
+stage events without opening a log, and separates time in the step from worker
+progress and successful status polling. Chapter planning is labeled as drafting
+and checking because it already composes model-authored claims. After 45 seconds
+without progress the UI explains the wait; at 180 seconds it stops the animation
+without declaring the worker dead. Disconnected polling has a separate state,
+and reconnecting never submits generation. Ready chapters have a direct reading
+link. Local acceptance passes 142 frontend tests, production build, strict docs,
+and desktop/mobile running, delayed, offline/recovery and reduced-motion checks.
+Read-only browser checks against the live attempt also pass while it runs.
+The frontend is deployed independently of the #803 backend; its process and
+active visitor run stayed intact during cutover. Public desktop/mobile Overview
+and refresh checks pass, without submitting a generation request.
+
+Observed latency remains a separate gate: the visitor path uses Sonnet 4.6 for
+generation and source-search planning, with Jev ranking and no BM25 or embedding
+index. In this hosted run, ordinary completed chapters spent about 34–60 seconds
+in model composition and 3–5 seconds in retrieval; Overview spent about 90 seconds
+overall, including one model repair. Chapters currently run sequentially.
+Evaluate DeepSeek V4.1 Flash on the same pinned source for first-chapter latency,
+total latency, cost and grounding quality before changing the default. Model
+throughput advertised by a provider is not an end-to-end Wiki timing result.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |

@@ -5817,6 +5817,40 @@ a.codepanel-name:hover {
 .saved-wiki-heading h1 { font-size: 27px; margin: 12px 0 2px; letter-spacing: -.03em; overflow-wrap: anywhere; }
 .wiki-progress { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 20px 24px; background: var(--bg-surface); margin-bottom: 24px; }
 .wiki-progress.is-running { border-color: var(--accent-border); }
+.wiki-run-activity { margin: 18px 0; padding: 18px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--bg-subtle); }
+.wiki-run-activity.is-waiting { border-color: #b45309; }
+.wiki-run-status { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 13px; }
+.wiki-run-activity.is-waiting .wiki-run-status { color: #b45309; }
+[data-theme="dark"] .wiki-run-activity.is-waiting { border-color: #fbbf24; }
+[data-theme="dark"] .wiki-run-activity.is-waiting .wiki-run-status { color: #fbbf24; }
+.wiki-run-pulse { display: flex; gap: 3px; align-items: center; width: 28px; }
+.wiki-run-pulse i { display: block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .5; }
+.wiki-run-pulse.is-animated i { animation: wiki-run-pulse 1.5s ease-in-out infinite; }
+.wiki-run-pulse.is-animated i:nth-child(2) { animation-delay: .18s; }
+.wiki-run-pulse.is-animated i:nth-child(3) { animation-delay: .36s; }
+@keyframes wiki-run-pulse { 0%, 100% { opacity: .3; transform: scale(.8); } 50% { opacity: 1; transform: scale(1); } }
+.wiki-run-description { margin: 14px 0; font-size: 14px; line-height: 1.65; }
+.wiki-run-description p { margin: 4px 0; }
+.wiki-run-chapter { font-weight: 650; }
+.wiki-run-next { color: var(--text-secondary); }
+.wiki-run-next > span { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; margin-right: 5px; }
+.wiki-run-timing { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px 0; margin: 0; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+.wiki-run-timing dt { font-size: 11px; color: var(--text-secondary); margin-bottom: 5px; }
+.wiki-run-timing dd { margin: 0; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wiki-run-explanation { font-size: 12px; color: var(--text-secondary); line-height: 1.65; margin: 12px 0; }
+.wiki-run-recent h3 { margin: 16px 0 8px; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; }
+.wiki-run-recent ol { list-style: none; padding: 0; margin: 0; }
+.wiki-run-recent li { display: flex; align-items: baseline; gap: 12px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
+.wiki-run-recent time { flex-shrink: 0; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+@media (min-width: 960px) {
+  .wiki-run-activity { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); column-gap: 24px; }
+  .wiki-run-status, .wiki-run-description, .wiki-run-timing, .wiki-run-explanation { grid-column: 1; }
+  .wiki-run-recent { grid-column: 2; grid-row: 1 / span 4; border-left: 1px solid var(--border-subtle); padding-left: 24px; }
+  .wiki-run-recent h3 { margin-top: 0; }
+  .wiki-run-explanation { margin-bottom: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .wiki-run-pulse.is-animated i { animation: none; transform: none; opacity: 1; } }
+@media (max-width: 480px) { .wiki-run-activity { padding: 14px; } .wiki-run-timing { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wiki-run-timing > div:last-child { grid-column: 1 / -1; } }
 .wiki-progress.is-paused { border-color: #b45309; }
 .wiki-stopped-message { margin: 16px 0; padding: 16px; border-left: 4px solid #b45309; background: var(--bg-subtle); font-size: 14px; overflow-wrap: anywhere; }
 .wiki-stopped-message p { margin: 8px 0; line-height: 1.6; }
@@ -5834,6 +5868,7 @@ a.codepanel-name:hover {
 .wiki-activity li { padding: 4px 0; }
 .wiki-activity time { display: inline-block; min-width: 95px; font-variant-numeric: tabular-nums; }
 .saved-wiki-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 32px; }
+.saved-wiki-layout { scroll-margin-top: 90px; }
 .saved-wiki-nav { align-self: start; position: sticky; top: 88px; max-height: calc(100vh - 110px); overflow: auto; }
 .saved-wiki-nav h2 { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .1em; margin: 0 0 12px; }
 .saved-wiki-chapter { border: 0; text-align: left; display: flex; flex-direction: column; gap: 4px; background: none; color: var(--text-secondary); font: inherit; font-size: 13px; padding: 10px 12px; width: 100%; border-radius: 6px; cursor: pointer; }
