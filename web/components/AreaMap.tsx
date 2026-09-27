@@ -107,7 +107,7 @@ export default function AreaMap({
       <figcaption className="area-map-head">
         <span className="boundary-kicker">System map</span>
         <span className="boundary-meta">
-          Recorded calls between the areas of this wiki, from the index
+          {map.links.length > 0 ? "Recorded calls between the areas of this wiki, from the index" : "Indexed source areas; no cross-area calls were found"}
           {commit ? ` at ${commit}` : ""}
         </span>
       </figcaption>

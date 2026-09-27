@@ -163,6 +163,19 @@ def page(attempt: str, page_id: str, request: Request, response: Response):
     return result
 
 
+@router.get("/{attempt}/graphs/{page_id}")
+def graphs(attempt: str, page_id: str, request: Request, response: Response):
+    if not re.fullmatch(r"[a-z0-9_-]{1,160}", page_id):
+        raise HTTPException(400, "Invalid Wiki page.")
+    try:
+        result = _manager(request).graphs(_token(attempt), page_id)
+    except VisitorWikiError as exc:
+        raise HTTPException(404, str(exc)) from None
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return result
+
+
 @router.post("/{attempt}/stop")
 def stop(attempt: str, request: Request):
     try:

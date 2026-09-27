@@ -396,7 +396,7 @@ OpenRouter, first readable chapter in **about 170 seconds**, full completion in
 All 11 persisted chapters pass desktop/mobile navigation, source-citation and
 refresh acceptance with only same-origin reads and no model request. These are
 one local run's measurements, not a hosted latency guarantee. Source-only
-visitor Wikis do not include the compiler-indexed maps of prepared examples.
+visitor Wikis from that run predate the bounded Python graph path below.
 The deployment updates both backend and frontend and enables
 `CODENIB_VISITOR_WIKI=1`; the published 0.2.4 wheel predates this path.
 Hosted feedback exposed a source admission failure for `AMA-Bench/AMA-Bench`
@@ -431,8 +431,13 @@ The same native architecture component serves prepared and visitor Wikis.
 Existing saved semantic architecture plans become visible without another model
 call or source download, with source buttons on roles and connections. These
 remain model-authored, source-grounded architecture explanations, not the
-compiler-indexed System Maps available on prepared examples. Completed Wiki
-pages collapse generation diagnostics and lead with readable content.
+compiler-indexed maps. Hosted Python generation now also runs the existing
+SCIP indexer against a source-only scratch copy before planning; indexed
+relations are available to AgentWiki. It saves the same bounded graph/source
+projections used by the prepared reader. CodeGraph opens without a model call
+and has pinned source previews. System Map displays indexed chapter regions
+even when no cross-chapter calls are recorded, with an explicit explanation.
+Completed Wiki pages collapse generation diagnostics and lead with readable content.
 
 Browse presents featured and explicitly published community Wikis, plus the
 owner's My Wikis collection. The homepage uses Continue reading cards with
@@ -460,7 +465,7 @@ The pipeline audit found concrete differences despite both routes using
 
 | Surface | Prepared examples | Visitor Wikis |
 | --- | --- | --- |
-| Source retrieval | Prepared BM25/dense artifacts as available, outline anchors and indexed relations | Model-planned grep/Jev plus tree-sitter outline anchors; no compiled relation graph |
+| Source retrieval | Prepared BM25/dense artifacts as available, outline anchors and indexed relations | Model-planned grep/Jev and tree-sitter anchors; bounded SCIP relations for Python when indexing succeeds |
 | Search task | Chapter query against the index | New runs use a chapter-specific prompt; old runs used the issue-location prompt |
 | Supporting source | Outline and context can include tests | New chapter search includes tests; the legacy grep filter silently excluded them |
 | Reader assessment | Enabled by default; diagnostic | Enabled for new runs; absent from the two existing saved Wikis |
@@ -484,8 +489,38 @@ repetition despite passing source checks: extra words alone did not fix quality.
 These are model judgements on one repository, not an independent human grade.
 The comparison excludes retrieval, benefits from warmed provider caching and
 is **not** a new OpenRouter end-to-end timing result. Broader reader-quality
-assessment and the source-only versus indexed-context gap remain open gates.
-Do not claim gallery parity or fabricate indexed calls/System Maps for visitors.
+assessment, non-Python hosted graph coverage, and runtime/embedded-kernel
+relationships remain open gates. Do not claim gallery parity or invent edges.
+
+The regenerated QR Wiki at commit `527ec55cfffeed8eefa5e1500c80d00265e99721`
+exposed a separate render failure: the label “Compact `(H, tau)` artifact” contained inline
+code typography and caused the whole architecture contract to be rejected.
+The deterministic repair now flattens inline typography inside prose role labels
+while still rejecting labels that consist only of source symbols or paths. The
+existing six-role plan renders without rewriting prose or using a model. Missing
+architecture and graph failures are explicit in the reader instead of silent
+omissions behind a ready chapter.
+
+A same-commit source/graph probe took **3.29 seconds**, including download,
+chunking, indexing and four reader projections, with no model call. SCIP emitted
+365 nodes and 1,345 edges; these include containment and references, not 1,345
+calls. Four bounded chapter CodeGraphs are available. No direct cross-chapter
+connections were found for the cited symbols; the three System Map regions
+therefore have no invented arrows. Python indexing is capped at 60 seconds and
+16 MiB of SCIP output; cancellation terminates the owned child process. It uses
+only captured Python source, an empty external-package environment, and no
+repository configuration, package installation or repository execution.
+Unsupported languages, missing tools, timeout and projection failure leave the
+source-checked prose available and display the missing graph coverage.
+
+The existing QR result was supplemented under the generation guard, preserving
+all four page envelopes, cost accounting and publication state. No visitor key
+is reused and old results are never automatically published. Tests cover the
+reported typography case, exact reference/source previews, isolated indexing,
+stop/timeout cleanup, and read-only persisted graph routes. The Wiki/Web/grep
+unit tier passes **1,348 tests**, with one skip; frontend tests pass **142**.
+The prepared cache audit preserves 1,001 ready and 19 pre-existing retryable
+pages across 27 repositories, with 23 existing System Maps available.
 
 Live feedback still distinguishes model response receipt, worker progress and
 server connectivity, with immediate submit feedback, progressive chapter reads,
