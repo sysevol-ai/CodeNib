@@ -4228,6 +4228,7 @@ class AgentWiki:
         retrieval_identity: str = "",
         progress: Optional[Callable[[str, str], None]] = None,
         concise: bool = False,
+        focused: bool = False,
     ) -> None:
         self._bundle = bundle
         self._model = model
@@ -4244,6 +4245,7 @@ class AgentWiki:
         self._retrieval_identity = retrieval_identity
         self._progress = progress or (lambda _stage, _page: None)
         self._concise = concise
+        self._focused = focused
         if source_retriever is not None and not retrieval_identity:
             raise ValueError("An injected Wiki retriever needs a cache identity")
         self._wb = WikiBuilder(bundle)  # reuse source() + symbol/citation helpers
@@ -4355,6 +4357,7 @@ class AgentWiki:
         return (
             raw
             + ("/concise-v1" if self._concise else "")
+            + ("/focused-v1" if self._focused else "")
             + (
                 f"/retrieval={self._retrieval_identity}"
                 if self._retrieval_identity
@@ -4553,7 +4556,7 @@ class AgentWiki:
                 if cached and cached.get("pages") and not cached.get("error"):
                     self._outline = cached
                     return cached
-                options = {"concise": True} if self._concise else {}
+                options = {"concise": True} if self._concise or self._focused else {}
                 data = generate_outline(
                     self._bundle, self._model, llm=self._client(), **options
                 )
@@ -6418,6 +6421,25 @@ class AgentWiki:
                     "Keep all required evidence, story and architecture fields; "
                     "brevity must not remove source support."
                 )
+            elif self._focused:
+                content += (
+                    "\nReader scope: a focused guide with a small chapter list, "
+                    "but complete explanations within each chapter. Explain the "
+                    "entry, central mechanism, data handed between stages, "
+                    "source-supported design reasons, result and constraints. "
+                    "Use 3-4 complementary sections and roughly 350-550 words "
+                    "when the evidence supports that depth; Overview stays "
+                    "shorter with its semantic architecture. Every section's "
+                    "claims must answer its heading. If a section compares "
+                    "several variants, name the comparison in its heading, "
+                    "rather than naming just one variant. Omit purpose, map "
+                    "and excerpts. A brief section lead may explain the "
+                    "mechanism before precise implementation claims. "
+                    "Avoid a list of function names and repeated introductions. "
+                    "Preserve relevant contracts, examples "
+                    "and tradeoffs rather than cutting the explanation to a "
+                    "fixed claim count. Do not invent reasons absent from source."
+                )
             call_started = perf_counter()
             metrics["model_calls"] += 1
             if phase == "initial":
@@ -6750,6 +6772,57 @@ class AgentWiki:
         if best_plan.get("sections"):
             for key, value in sticky_blocks.items():
                 best_plan.setdefault(key, value)
+            if (
+                self._focused
+                and meta.get("id") != "overview"
+                and not _hard_plan_warnings(best_warnings)
+                and metrics["model_calls"] < _MAX_FACT_PLAN_MODEL_CALLS
+            ):
+                # Source admission cannot detect a supported fact filed under
+                # the wrong heading. Review the admitted argument once, using
+                # the same evidence and ordinary publication checks.
+                try:
+                    self._progress("editing", str(meta.get("id") or ""))
+                    edited = complete_plan(
+                        "Edit this chapter plan for a reader trying to understand "
+                        "the mechanism, not memorize function names. Audit every "
+                        "section: its heading must describe ALL of its claims. "
+                        "Move misplaced examples to the section they explain, "
+                        "or broaden the heading when it is a real comparison. "
+                        "Keep source-supported design reasons, data handoffs, "
+                        "outputs and boundaries. Remove repeated framing and "
+                        "unrelated symbol inventories. Keep essential explanation "
+                        "in a short lead where a list of calls alone is unclear. "
+                        "Do not add facts beyond the evidence. Return the complete "
+                        "corrected plan as JSON in the same schema, including "
+                        "aligned story beats.\nTitle: "
+                        + str(meta.get("title", ""))
+                        + "\nPlan:\n"
+                        + json.dumps(best_plan)
+                        + "\nSource evidence:\n"
+                        + self._evidence_context(evidence)
+                        + "\nRelations:\n"
+                        + self._relations_context(relations),
+                        phase="editorial",
+                        max_tokens=3800,
+                    )
+                    candidate, edit_errors = parse_fact_plan(edited, allowed)
+                    candidate = _normalize_plan_support(candidate, evidence, relations)
+                    candidate = _renderable_plan(candidate, evidence, relations)
+                    edit_warnings = _plan_quality_warnings(
+                        meta, candidate, evidence, relations
+                    )
+                    if (
+                        candidate.get("sections")
+                        and not edit_errors
+                        and not _hard_plan_warnings(edit_warnings)
+                    ):
+                        best_plan, best_warnings = candidate, edit_warnings
+                except Exception as exc:  # noqa: BLE001 - preserve admitted plan
+                    logger.debug(
+                        "Focused Wiki editorial revision unavailable: %s",
+                        type(exc).__name__,
+                    )
             finish_metrics()
             return best_plan, best_warnings
 
@@ -7150,6 +7223,13 @@ class AgentWiki:
             # sentence per stage. It is deterministic structure, not the
             # model-planned code-entity sequence the plan prompt forbids, and
             # it complements the semantic ``architecture`` visual.
+        elif self._focused:
+            # Cut duplicated presentation, not the supported argument. The
+            # old concise pass retained only four claims even on detail pages.
+            plan.pop("purpose", None)
+            plan.pop("map", None)
+            for section in plan.get("sections", []):
+                section.pop("excerpt", None)
         plan = finalize_story_ir(
             plan,
             available_ids=[item.id for item in (*evidence, *relations)],

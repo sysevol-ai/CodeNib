@@ -403,7 +403,8 @@ export interface WikiVisualQuality {
 
 /**
  * Planned media slots are internal generation metadata, not reader content.
- * Only expose slots that actually have a materialized asset in the Wiki UI.
+ * Asset previews require materialization. The native SystemArchitecture reader
+ * separately renders an admitted architecture contract without a remote asset.
  */
 export function materializedWikiMediaSlots(
   slots: WikiMediaSlot[] | null | undefined,

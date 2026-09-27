@@ -8956,3 +8956,83 @@ def test_concrete_override_follows_the_subclass_header_reference():
         vid["a.py:HTTP"],
     )
     assert AgentWiki._concrete_override(raw, vid["a.py:HTTP.send()"]) is None
+
+
+@pytest.mark.parametrize("edit", ["valid", "unsupported", "cancelled"])
+def test_focused_editorial_revision_keeps_source_admission_and_call_bounds(
+    monkeypatch, edit
+):
+    from codenib.wiki.visitor_provider import WikiRunStopped
+
+    evidence = [
+        EvidenceItem(
+            id="E1",
+            file="router.py",
+            start_line=1,
+            end_line=5,
+            symbol="Router.run",
+            kind="method",
+            content=(
+                "def run(request):\n    if request is None:\n"
+                "        raise ValueError('missing request')\n"
+                "    return dispatch(request)"
+            ),
+        )
+    ]
+    initial = {
+        "thesis": {
+            "statement": "`Router.run()` returns `dispatch(request)`",
+            "evidence": ["E1"],
+        },
+        "sections": [
+            {
+                "title": "Request handling",
+                "claims": [
+                    {
+                        "role": "contract",
+                        "statement": (
+                            "`Router.run()` raises `ValueError` "
+                            "when `request` is None"
+                        ),
+                        "evidence": ["E1"],
+                    }
+                ],
+            }
+        ],
+    }
+    calls = []
+
+    class LLM:
+        def complete(self, messages, **_):
+            calls.append(messages)
+            if len(calls) == 1:
+                return json.dumps(initial)
+            if edit == "cancelled":
+                raise WikiRunStopped("Stopped by owner")
+            revised = json.loads(json.dumps(initial))
+            revised["sections"][0]["title"] = "Missing request boundary"
+            if edit == "unsupported":
+                revised["sections"][0]["claims"][0][
+                    "statement"
+                ] = "`Router.run()` invokes `socket.send()` to upload secrets"
+            return json.dumps(revised)
+
+    # Isolate editorial revision from narrative-density scoring; actual source
+    # admission still removes the deliberately unsupported edited claim.
+    monkeypatch.setattr(agent_wiki_module, "_plan_quality_warnings", lambda *_: [])
+    wiki = AgentWiki(
+        SimpleNamespace(entry=SimpleNamespace(repo="owner/repo", language="python")),
+        "fake",
+        llm=LLM(),
+        focused=True,
+    )
+    if edit == "cancelled":
+        with pytest.raises(WikiRunStopped):
+            wiki._fact_plan({"id": "routing", "title": "Routing"}, evidence, [])
+    else:
+        result, _ = wiki._fact_plan({"id": "routing", "title": "Routing"}, evidence, [])
+        assert result["sections"][0]["title"] == (
+            "Missing request boundary" if edit == "valid" else "Request handling"
+        )
+        assert "socket.send" not in json.dumps(result)
+    assert len(calls) == 2

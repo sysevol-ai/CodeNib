@@ -57,15 +57,21 @@ submitted repository. The default branch is pinned to an immutable commit.
 The form selects **DeepSeek V4.1 Flash** by default and also offers Claude
 Sonnet 4.6. That selection controls writing and source-search planning; Jev
 still ranks evidence. OpenRouter routes Flash toward higher-throughput
-providers, whose availability and speed can vary. New runs create a concise
-Overview and a few core chapters (at most five, without nested chapters),
-keeping source citations and the existing grounding/quality checks.
+providers, whose availability and speed can vary. New runs create a focused
+Overview and a few core chapters (at most five, without nested chapters).
+Detail chapters retain supported mechanisms, design reasons and boundaries;
+they no longer inherit the short Overview's four-claim limit. A bounded model
+revision checks section/topic alignment before the ordinary source/quality
+gates, with a visible review stage. Duplicate framing and long excerpts are
+removed instead of truncating the argument.
 The model and scope are pinned to the saved attempt. Older Wikis keep their
-original full outline and Sonnet model when resumed. API clients that omit
+original scope and model when resumed, including the earlier concise profile. API clients that omit
 `model` retain the Sonnet default. Prepared examples and their caches are
 unaffected by this visitor-only default.
-These source-only Wikis do not have compiler-indexed dependency maps; the
-prepared examples retain their existing graphs and visual evidence.
+Source-checked semantic architecture diagrams use the same native reader as
+prepared examples. Saved architecture contracts render directly, without image
+generation, source re-download or another model call. These source-only Wikis
+still do not have the compiler-indexed dependency maps of prepared examples.
 
 Submitting immediately shows that the account and repository are being checked.
 The generation page shows actual stages, the current chapter, completed
@@ -93,8 +99,14 @@ run as well as any active one.
 
 Results persist in `<data_dir>/wiki_cache/visitor_wiki.sqlite3` using the
 Wiki-only `SQLiteWikiStore`. A share link opens `/wiki/<random-id>` for anyone
-who has it. Visitor results are **unlisted**, excluded from the repository
-catalog, and returned with `noindex` headers. The owner browser stores only
+who has it. Visitor results start **unlisted** and retain `noindex` headers.
+A completed Wiki offers its owner **Publish to Browse**, explicitly making it
+discoverable by other visitors. All chapters must pass source checks. Browse
+combines featured examples with published community Wikis and supports search;
+**My Wikis** and the homepage's **Continue reading** reopen the owner's work.
+The owner can remove a Wiki from Browse while preserving its read link.
+Publication and browsing never start model calls. Older results are not listed
+automatically. Generation details collapse once the Wiki is ready. The owner browser stores only
 recent attempt IDs and a separate recovery token; the share link does not
 contain that token. Clearing browser storage loses resume/stop access, but
 the saved read link still works. There is no account recovery in this version.

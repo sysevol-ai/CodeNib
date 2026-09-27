@@ -72,11 +72,11 @@ export default function GenerateWikiPage({
     <>
       <Header />
       <main className="generate-wiki-page">
-        <AppLink href="/">← All repositories</AppLink>
+        <AppLink href="/browse">← Browse Wikis</AppLink>
         <p className="hero-eyebrow">YOUR REPOSITORY, YOUR WIKI</p>
         <h1>{repo?.slug || "Invalid repository URL"}</h1>
         <p className="generate-lead">
-          A complete, navigable Wiki — built from your repository’s source.
+          A source-linked guide to the architecture and ideas behind this repository.
         </p>
         <ol className="wiki-generation-steps" aria-label="Generation stages">
           <li>
@@ -125,19 +125,11 @@ export default function GenerateWikiPage({
           />
         )}
         <p className="small muted">
-          Uses the repository’s default branch, pinned to a commit. No install,
-          GPU or embeddings. Your Wiki is saved on this server and stays out of
-          the public catalog.
+          Built from a snapshot of the default branch. Share the link when it is
+          ready, or publish to Browse so others can discover it.
         </p>
         {previous.length > 0 && (
-          <section className="recent-wikis">
-            <h2>Your earlier attempts</h2>
-            {previous.slice(0, 4).map((item) => (
-              <AppLink key={item.id} href={`/wiki/${item.id}`}>
-                Open saved Wiki · {item.id.slice(0, 8)} →
-              </AppLink>
-            ))}
-          </section>
+          <AppLink href="/browse?tab=mine">Open your existing Wikis →</AppLink>
         )}
       </main>
     </>

@@ -37,6 +37,11 @@ class GenerateWiki(BaseModel):
     )
 
 
+class WikiPublication(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    published: bool
+
+
 def _enabled():
     if os.environ.get("CODENIB_VISITOR_WIKI", "").lower() not in {"1", "true", "yes"}:
         return False
@@ -108,6 +113,30 @@ async def generate(
         raise HTTPException(409, str(exc)) from None
     response.headers["Cache-Control"] = "no-store"
     return state
+
+
+@router.get("/public")
+def public_wikis(request: Request, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return _manager(request).public_wikis()
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return []
+        raise
+
+
+@router.post("/{attempt}/publication")
+def publish_wiki(
+    attempt: str, payload: WikiPublication, request: Request, response: Response
+):
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return _manager(request).publish_wiki(
+            _token(attempt), _owner(request), payload.published
+        )
+    except (VisitorWikiError, WikiGenerationBusyError) as exc:
+        raise HTTPException(409, str(exc)) from None
 
 
 @router.get("/{attempt}")

@@ -36,6 +36,10 @@ const work: Record<string, { description: string; next: string }> = {
     description: "Assembling the chapter's explanation and supporting visuals.",
     next: "Check its source citations, then save the chapter for reading.",
   },
+  editing: {
+    description: "Reviewing whether each section explains its topic clearly, with supported examples and design reasons.",
+    next: "Assemble the reviewed chapter and check its source citations.",
+  },
   checking: {
     description: "Checking the chapter against its source before publishing it.",
     next: "Save the chapter if it passes, then move to the next one.",

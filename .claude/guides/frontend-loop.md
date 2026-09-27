@@ -99,8 +99,11 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   claims. A submitted form needs immediate visible feedback. Keep the current
   activity in the reading area, compact it when prose is available, and fold
   diagnostics into details instead of pushing the result below several panels.
-  Prefer a concise first Wiki with progressively readable chapters. Distinguish
-  waiting for a provider from receiving its stream using real receipt counts;
+  Prefer a focused chapter list with progressively readable chapters; preserve
+  each chapter's supported mechanism, rationale and boundaries. A hard claim
+  cap made visitor prose shallower than gallery pages despite passing source
+  checks. Compare the actual explanation and heading alignment, not only gates.
+  Distinguish waiting for a provider from receiving its stream using real receipt counts;
   do not publish unvalidated draft prose or reasoning. Keep time in the step,
   time since worker progress and successful
   status polling separate. A responding status endpoint does not prove the
@@ -109,6 +112,17 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   invent progress percentages, token activity or completion estimates; refresh
   and reconnect must remain read-only. Deploy a frontend-only fix independently
   when restarting the backend would interrupt a visitor's funded generation.
+- **Community discovery** reuses WikiStore for explicit owner publication only.
+  Old link-only Wikis stay out of Browse. Public cards expose a bounded summary,
+  repository/commit and chapter count, never owner recovery tokens or keys.
+  Verify publish, cross-browser discovery, unpublish and retained share links.
+  The homepage presents reading progress and useful titles, not attempt IDs or
+  storage implementation details. A completed Wiki opens as a reading surface;
+  generation diagnostics belong in collapsed details.
+- **Shared architecture presentation** uses the same native SystemArchitecture
+  component for gallery and visitor pages. Visitor readers may render a
+  source-checked semantic architecture contract without an image asset or
+  another model call. This does not fabricate compiler-indexed System Maps.
 - **Overview illustrations** require an admitted semantic architecture plan.
   Do not substitute an automatic call-flow or relation image when that plan
   is missing or invalid: a debug/configuration branch can look like the main
