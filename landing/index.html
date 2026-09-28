@@ -38,6 +38,9 @@ SPDX-License-Identifier: Apache-2.0
 
 /* Tokens: white, matching the demo's light UI */
 :root {
+  /* Read by the shared example component (shadow DOM) for its type. */
+  --font-geist-sans: "Geist";
+  --font-geist-mono: "Geist Mono";
   --bg: #ffffff;
   --surface: #ffffff;
   --subtle: #f8fafc;
@@ -98,9 +101,11 @@ header {
 
 /* ---- hero ---- */
 .hero { position: relative; padding: 48px 0 0; }
-.hero-grid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-areas: "intro example" "entry example"; column-gap: 40px; align-items: center; }
-.hero-copy { grid-area: intro; align-self: end; }
-.hero-entry { grid-area: entry; align-self: start; }
+/* The copy starts level with the example's heading and the entry ends level
+   with the example's foot, so both columns share their top and bottom. */
+.hero-grid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-rows: auto 1fr; grid-template-areas: "intro example" "entry example"; column-gap: 40px; }
+.hero-copy { grid-area: intro; align-self: start; padding-top: 22px; }
+.hero-entry { grid-area: entry; align-self: end; }
 .hero h1 {
   font-size: clamp(2.2rem, 3.5vw, 3.2rem);
   font-weight: 640; letter-spacing: -0.035em; line-height: 1.06;
@@ -120,6 +125,12 @@ header {
 .repo-entry button { font: inherit; font-size: 13px; border: 0; cursor: pointer; padding: 12px; }
 .repo-entry p { font-size: 11px; color: var(--ink-2); margin-top: 10px; }
 .hero .browse-wikis { display: inline-block; font-size: 14px; margin-top: 20px; color: var(--accent); }
+.ready-wikis { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 40px; }
+.ready-wikis > span { flex-basis: 100%; margin-bottom: 4px; color: var(--ink-3); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.ready-wikis a { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 500; }
+.ready-wikis a span { color: var(--ink-3); font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; }
+.ready-wikis a:hover { border-color: var(--accent); color: var(--accent); text-decoration: none; }
+.ready-wikis a.more { color: var(--accent); }
 codenib-explorer { display: block; min-width: 0; min-height: 530px; grid-area: example; }
 .agent-handoff { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; }
 .agent-handoff .setup { margin-top: 0; }
@@ -224,7 +235,8 @@ footer { border-top: 1px solid var(--line); }
   .nav { gap: 16px; }
   .nav a.gh { display: none; }
   .hero { padding-top: 24px; }
-  .hero-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "example" "entry"; gap: 20px; }
+  .hero-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "intro" "example" "entry"; gap: 20px; }
+  .hero-copy { padding-top: 0; }
   .hero h1 { font-size: 32px; }
   .hero p.sub { font-size: 15px; margin-top: 14px; }
   .hero .try-note { margin-top: 12px; }
@@ -270,6 +282,18 @@ footer { border-top: 1px solid var(--line); }
         <h1>Understand a repo.<br>Follow the code.</h1>
         <p class="sub">Explore how a repository works, see the code behind each explanation, and keep going with a complete Wiki.</p>
         <p class="try-note">Try the example. No account or API key needed.</p>
+        <div class="ready-wikis" aria-label="Ready Wikis">
+          <span>Ready to read, no setup</span>
+          <a href="https://demo.codenib.ai/psf__requests">requests <span>Python</span></a>
+          <a href="https://demo.codenib.ai/tokio-rs__tokio">tokio <span>Rust</span></a>
+          <a href="https://demo.codenib.ai/caddyserver__caddy">caddy <span>Go</span></a>
+          <a href="https://demo.codenib.ai/gin-gonic__gin">gin <span>Go</span></a>
+          <a href="https://demo.codenib.ai/sharkdp__bat">bat <span>Rust</span></a>
+          <a href="https://demo.codenib.ai/fmtlib__fmt">fmt <span>C++</span></a>
+          <a href="https://demo.codenib.ai/sympy__sympy">sympy <span>Python</span></a>
+          <a href="https://demo.codenib.ai/nushell__nushell">nushell <span>Rust</span></a>
+          <a class="more" href="https://demo.codenib.ai/browse">All Wikis →</a>
+        </div>
       </div>
       <codenib-explorer><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
       <div class="hero-entry">

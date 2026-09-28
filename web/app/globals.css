@@ -6106,8 +6106,9 @@ a.codepanel-name:hover {
   padding: 48px 40px 56px;
   text-align: left;
 }
-.first-visit-intro { min-width: 0; grid-area: intro; align-self: end; }
-.first-visit-entry { min-width: 0; grid-area: entry; align-self: start; }
+.landing .hero.first-visit-hero { grid-template-rows: auto 1fr; align-items: stretch; }
+.first-visit-intro { min-width: 0; grid-area: intro; align-self: start; padding-top: 22px; }
+.first-visit-entry { min-width: 0; grid-area: entry; align-self: end; }
 .landing .first-visit-hero .first-visit-intro p { text-align: left; }
 .landing .first-visit-hero h1 { font-size: clamp(34px, 3.5vw, 50px); line-height: 1.12; letter-spacing: -.04em; margin: 14px 0 20px; }
 .first-visit-eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
@@ -6732,7 +6733,7 @@ a.codepanel-name:hover {
 /* The poster adapts to its own width, not the window's: the rails decide how
    much room it gets. */
 @container (max-width: 760px) {
-  .poster-head {
+  .repo-poster:not(.is-hero) .poster-head {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
       "eyebrow"
@@ -6951,7 +6952,7 @@ a.codepanel-name:hover {
   font-size: 20px;
 }
 /* Title and numbers share a row only when the poster is wide enough. */
-@container (min-width: 761px) {
+@container (min-width: 600px) {
   .repo-poster.is-hero .poster-head {
     grid-template-areas:
       "eyebrow eyebrow"
@@ -6959,7 +6960,15 @@ a.codepanel-name:hover {
     padding-top: 20px;
   }
 }
-@container (max-width: 760px) {
+@container (max-width: 599px) {
+  .repo-poster.is-hero .poster-head {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "eyebrow"
+      "title"
+      "stats";
+    padding: 18px 18px 4px;
+  }
   .repo-poster.is-hero .poster-stats {
     margin: 10px 0 6px;
   }
