@@ -13,6 +13,7 @@ export interface SavedWiki {
   active_page: string;
   pages: WikiPageRef[];
   page_states: Record<string, "running" | "pending" | "ready" | "needs_review">;
+  skipped_files?: Array<{ path: string; size_bytes: number }>;
   message: string;
   created_at: number;
   updated_at: number;

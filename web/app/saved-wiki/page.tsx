@@ -60,12 +60,12 @@ export default function SavedWikiPage({ id }: { id: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    let complete = false;
+    let settled = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
         const value = await loadSavedWiki(id);
-        complete = value.status === "complete";
+        settled = value.status === "complete" || value.status === "partial";
         if (!cancelled) {
           setWiki(value);
           setError("");
@@ -78,7 +78,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
               : "Could not load the saved Wiki.",
           );
       } finally {
-        if (!cancelled && !complete) timer = setTimeout(poll, 2000);
+        if (!cancelled && !settled) timer = setTimeout(poll, 2000);
       }
     };
     void poll();
@@ -208,7 +208,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
         {!wiki && !error && <p role="status">Opening your saved Wiki…</p>}
         {wiki && (
           <section
-            className={`wiki-progress ${running ? "is-running" : ""}`}
+            className={`wiki-progress ${running ? "is-running" : wiki.status === "partial" ? "is-paused" : ""}`}
             aria-label="Wiki generation progress"
           >
             <div className="wiki-progress-heading">
@@ -217,7 +217,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
                   {wiki.status === "complete"
                     ? "Your Wiki is ready"
                     : wiki.status === "partial"
-                      ? "Generation paused"
+                      ? completed === 0
+                        ? "Generation stopped"
+                        : "Generation paused"
                       : wikiStages[wiki.stage] || "Generating Wiki"}
                 </strong>
                 {current && running && <span> · {current.title}</span>}
@@ -227,6 +229,26 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 {pages.length ? ` / ${pages.length}` : ""} chapters ready
               </span>
             </div>
+            {wiki.status === "partial" && (
+              <div className="wiki-stopped-message" role="alert">
+                <strong>{wiki.message || "This run stopped before finishing."}</strong>
+                <p>
+                  {completed === 0
+                    ? "No chapters were saved. Generation is no longer running."
+                    : "Ready chapters are saved. Generation is no longer running."}
+                  {wiki.calls === 0 && !wiki.unreported_call_cost &&
+                    " No model calls were made."}
+                </p>
+                <p>
+                  {owner
+                    ? "Resolve the issue above, then retry using your OpenRouter key."
+                    : "The owner can retry from the browser that started this Wiki."}
+                </p>
+                <button className="btn-ghost" onClick={() => setRefresh((value) => value + 1)}>
+                  Refresh status
+                </button>
+              </div>
+            )}
             <ol
               className="wiki-generation-steps"
               aria-label="Current generation stage"
@@ -242,11 +264,11 @@ export default function SavedWikiPage({ id }: { id: string }) {
                   className={
                     index < stageIndex
                       ? "done"
-                      : index === stageIndex
+                      : index === stageIndex && running
                         ? "active"
                         : ""
                   }
-                  aria-current={index === stageIndex ? "step" : undefined}
+                  aria-current={index === stageIndex && running ? "step" : undefined}
                 >
                   <span>{index < stageIndex ? "✓" : index + 1}</span>
                   {label}
@@ -290,7 +312,22 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 <span role="status">Stopping after the current request…</span>
               )}
             </div>
-            {wiki.message && <p role="status">{wiki.message}</p>}
+            {wiki.message && wiki.status !== "partial" && <p role="status">{wiki.message}</p>}
+            {!!wiki.skipped_files?.length && (
+              <details className="wiki-skipped-files">
+                <summary>
+                  Skipped {wiki.skipped_files.length} {wiki.skipped_files.length === 1 ? "file" : "files"} larger than 4 MiB
+                </summary>
+                <p>These files are excluded from this Wiki. The remaining source is used for generation.</p>
+                <ul>
+                  {wiki.skipped_files.map((file) => (
+                    <li key={file.path}>
+                      <code>{file.path}</code> · {(file.size_bytes / 1024 / 1024).toFixed(1)} MiB
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {wiki.unreported_call_cost && (
               <p className="small">
                 The reported total excludes an in-flight or unreported request.
@@ -334,7 +371,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
                   className="btn-primary"
                   onClick={() => setShowResume(true)}
                 >
-                  Continue unfinished chapters
+                  {completed === 0 ? "Retry generation" : "Continue unfinished chapters"}
                 </button>
               ) : (
                 <WikiGenerationForm
@@ -354,7 +391,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
               <h2>Chapters</h2>
               {pages.length === 0 ? (
                 <p className="small muted">
-                  The chapter list appears as soon as planning finishes.
+                  {running
+                    ? "The chapter list appears as soon as planning finishes."
+                    : "No chapters were generated."}
                 </p>
               ) : (
                 chapterRows(wiki.pages).map((item) => {
@@ -419,7 +458,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
               ) : (
                 !pageError && (
                   <div className="wiki-chapter-pending" role="status">
-                    <h2>{selected?.title || "Your Wiki is taking shape"}</h2>
+                    <h2>{selected?.title || (running ? "Your Wiki is taking shape" : "No chapters saved yet")}</h2>
                     <p>
                       {ready
                         ? "Loading this chapter…"

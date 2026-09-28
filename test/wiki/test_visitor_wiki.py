@@ -174,6 +174,34 @@ def test_invalid_credentials_allocate_no_saved_attempt(manager):
     assert manager.store.scan() == ()
 
 
+def test_source_failure_is_persisted_before_any_model_call(manager):
+    @contextmanager
+    def failed_source(*args):
+        args[-1]("downloading", "")
+        raise WikiRunStopped("The repository archive could not be read safely.")
+        yield  # pragma: no cover
+
+    manager.prepare = failed_source
+    state = submit(manager)
+    assert state["status"] == "partial"
+    assert state["message"] == "The repository archive could not be read safely."
+    assert state["calls"] == 0 and state["reported_cost_usd"] == 0
+    assert state["pages"] == []
+    assert VisitorWikis(manager.store).status(ATTEMPT)["message"] == state["message"]
+
+
+def test_skipped_files_remain_visible_in_saved_wiki(manager):
+    skipped = [{"path": "assets/diagram.png", "size_bytes": 7513866}]
+
+    @contextmanager
+    def source(*_args):
+        yield SimpleNamespace(skipped_files=skipped), None
+
+    manager.prepare = source
+    assert submit(manager)["status"] == "complete"
+    assert VisitorWikis(manager.store).status(ATTEMPT)["skipped_files"] == skipped
+
+
 @pytest.mark.parametrize("status", [403, 404])
 def test_invalid_repository_does_not_consume_saved_wiki_capacity(manager, status):
     def reject(*_):
@@ -363,6 +391,61 @@ def archive(path, text=b"hello", mode=None):
 def test_archive_rejects_escape_links_and_git(path, mode, tmp_path):
     with pytest.raises(WikiRunStopped):
         extract_source(archive(path, mode=mode), tmp_path, lambda: None)
+    assert not list(tmp_path.iterdir())
+
+
+def test_source_skips_large_files_without_reading_or_losing_small_source(monkeypatch):
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("repo/assets/diagram.png", b"x" * 7513866)
+        archive.writestr("repo/large.py", b"x" * (visitor_source.MAX_FILE_BYTES + 1))
+        archive.writestr("repo/main.py", b"def run():\n    return 1\n")
+    monkeypatch.setattr(visitor_source, "github_bytes", lambda *_: payload.getvalue())
+    original_read = zipfile.ZipFile.read
+
+    def small_only(self, name, *args, **kwargs):
+        assert name.filename == "repo/main.py", "Large members must not be inflated"
+        return original_read(self, name, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "read", small_only)
+    with visitor_source.visitor_source(
+        "owner/repo", COMMIT, ATTEMPT, lambda: None, lambda *_: None
+    ) as (bundle, source):
+        assert bundle.skipped_files == [
+            {"path": "assets/diagram.png", "size_bytes": 7513866},
+            {"path": "large.py", "size_bytes": visitor_source.MAX_FILE_BYTES + 1},
+        ]
+        assert list(source.borrow_reader().file_paths) == ["main.py"]
+        assert WikiBuilder(bundle)._symbols()[0].file == "main.py"
+
+
+@pytest.mark.parametrize(
+    "path,mode", [("repo/../bad.png", None), ("repo/image.png", stat.S_IFLNK | 0o777)]
+)
+def test_skipped_large_members_still_require_safe_paths(
+    tmp_path, monkeypatch, path, mode
+):
+    monkeypatch.setattr(visitor_source, "MAX_FILE_BYTES", 1)
+    with pytest.raises(WikiRunStopped, match="unsupported path"):
+        extract_source(archive(path, b"large", mode), tmp_path, lambda: None)
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("limit", ["bytes", "files", "duplicates"])
+def test_skipping_large_members_preserves_archive_bounds(tmp_path, monkeypatch, limit):
+    monkeypatch.setattr(visitor_source, "MAX_FILE_BYTES", 8)
+    monkeypatch.setattr(
+        visitor_source, "MAX_SOURCE_BYTES", 6 if limit == "bytes" else 100
+    )
+    monkeypatch.setattr(visitor_source, "MAX_FILES", 1 if limit == "files" else 10)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as zipped:
+        zipped.writestr("repo/large.png", b"x" * 20)
+        zipped.writestr("repo/main.py", b"x" * 7)
+        if limit == "duplicates":
+            zipped.writestr("repo/LARGE.png", b"x")
+    with pytest.raises(WikiRunStopped):
+        extract_source(payload.getvalue(), tmp_path, lambda: None)
     assert not list(tmp_path.iterdir())
 
 

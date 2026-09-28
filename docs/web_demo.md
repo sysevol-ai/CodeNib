@@ -118,9 +118,18 @@ Wiki data and monitor capacity before increasing adoption traffic. There is
 no saved-attempt allocation until GitHub confirms a public repository and
 immutable commit. Nonexistent and private repositories consume no slots. There is
 no public listing or generic storage/job backend. Limits are 20 MiB compressed,
-40 MiB expanded, 4,000 files and 4 MiB per file. Archives with traversal,
+40 MiB of retained source and 4,000 files. Files larger than 4 MiB are skipped
+without decompression; the saved Wiki lists their paths and sizes so readers
+can see what was excluded. Remaining source files continue through generation.
+Every archive path is validated, including skipped files. Archives with traversal,
 links or unsupported paths are rejected. GitHub downloads use public access;
 private repositories and private GitHub tokens are unsupported.
+
+If generation stops before the first chapter, the saved page prominently shows
+the reason, confirms that work has stopped, and offers the owner a retry.
+Stopped pages stop polling; refreshing status only reads the saved attempt.
+Retry requires a newly supplied key and explicit consent, and never starts
+automatically just because the page is reopened.
 
 Each run has a reported-cost budget of $0.25–$5, a 160-call ceiling and a
 30-minute cooperative time budget. The server checks cancellation between
