@@ -84,7 +84,8 @@ all first-screen links work; quickstart remains exactly two commands.
 
 #### First-visit activation
 
-Status: implemented locally on `feat/first-visit-explorer`, stacked after #808
+Status: implemented and locally accepted in
+[#809](https://github.com/sysevol-ai/CodeNib/pull/809), stacked after #808
 and its #803 → #804 → #805 → #806 → #807 dependencies. This iteration gives
 the marketing and live Wiki homepages one shared, self-contained Requests
 question. Four source-pinned symbols and three indexed occurrence anchors
@@ -119,7 +120,8 @@ refresh, sharing and polling checks pass on desktop and mobile after correcting
 their stale pre-#808 graph-response fixture; the paused-run failure reproduced
 on the unchanged dependency tip as well. The acceptance criteria are unchanged.
 
-Open gates: PR reconciliation and public acceptance; enable hosted
+Open gates: merge/restack the dependency chain and deploy with public acceptance;
+enable hosted
 measurement only with the matching collector and log-retention policy; establish
 a baseline and observe 5–8 unfamiliar users before claiming improved conversion.
 Arbitrary-repository cost/latency, broader question examples and per-Wiki social
