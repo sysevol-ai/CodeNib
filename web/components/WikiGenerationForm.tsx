@@ -49,14 +49,34 @@ export default function WikiGenerationForm({
           ? "Ready chapters are reused. Only unfinished chapters need generation."
           : "Start with an Overview and a few core chapters, with source citations. Read each chapter as soon as it is ready."}
       </p>
-      {!resume && <>
-        <label htmlFor="wiki-generation-model">Writing model</label>
-        <select id="wiki-generation-model" value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}>
-          <option value="deepseek/deepseek-v4.1-flash">DeepSeek V4.1 Flash · try the faster option</option>
-          <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
-        </select>
-        <p className="small muted">Flash offers lower-cost generation. Speed varies by OpenRouter provider.</p>
-      </>}
+      {!resume && (
+        <p className="small muted">
+          Your Wiki will appear in My Wikis. When it is ready, you can choose
+          Publish to Community to share it with other readers.
+        </p>
+      )}
+      {!resume && (
+        <>
+          <label htmlFor="wiki-generation-model">Writing model</label>
+          <select
+            id="wiki-generation-model"
+            value={model}
+            disabled={busy}
+            onChange={(event) => setModel(event.target.value)}
+          >
+            <option value="deepseek/deepseek-v4.1-flash">
+              DeepSeek V4.1 Flash · try the faster option
+            </option>
+            <option value="anthropic/claude-sonnet-4.6">
+              Claude Sonnet 4.6
+            </option>
+          </select>
+          <p className="small muted">
+            Flash offers lower-cost generation. Speed varies by OpenRouter
+            provider.
+          </p>
+        </>
+      )}
       <label htmlFor="wiki-generation-key">OpenRouter inference key</label>
       <input
         id="wiki-generation-key"
@@ -93,9 +113,9 @@ export default function WikiGenerationForm({
       </select>
       <p className="small muted">
         Stops new calls when reported spending reaches this amount. A call
-        already in progress can exceed it. Set a credit limit on your
-        OpenRouter key; include BYOK usage if you also use your own provider
-        keys through OpenRouter.
+        already in progress can exceed it. Set a credit limit on your OpenRouter
+        key; include BYOK usage if you also use your own provider keys through
+        OpenRouter.
       </p>
       <label className="wiki-consent">
         <input type="checkbox" required disabled={busy} />
@@ -113,10 +133,19 @@ export default function WikiGenerationForm({
             ? "Resume unfinished chapters"
             : "Generate Wiki"}
       </button>
-      {busy && <div className="wiki-starting" role="status">
-        <span className="wiki-run-pulse is-animated" aria-hidden="true"><i /><i /><i /></span>
-        <div><strong>Checking your account and repository…</strong><p>Your Wiki opens when the server accepts this run.</p></div>
-      </div>}
+      {busy && (
+        <div className="wiki-starting" role="status">
+          <span className="wiki-run-pulse is-animated" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <div>
+            <strong>Checking your account and repository…</strong>
+            <p>Your Wiki opens when the server accepts this run.</p>
+          </div>
+        </div>
+      )}
       {error && (
         <p role="alert" className="trial-error">
           {error}{" "}

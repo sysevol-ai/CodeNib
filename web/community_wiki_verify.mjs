@@ -16,6 +16,8 @@ const reports = [];
 try {
   for (const mobile of [false, true]) {
     let published = false,
+      completed = false,
+      failNextPublication = true,
       mutations = 0;
     const errors = [],
       outbound = [];
@@ -66,6 +68,13 @@ try {
         assert.equal(request.headers()["x-wiki-owner"], owner);
         assert.equal(request.headers().authorization, undefined);
         mutations++;
+        if (failNextPublication) {
+          failNextPublication = false;
+          return route.fulfill({
+            status: 409,
+            json: { detail: "Publication failed. Please try again." },
+          });
+        }
         published = request.postDataJSON().published;
         return route.fulfill({ json: { published } });
       }
@@ -75,8 +84,8 @@ try {
             id,
             repository: card.repository,
             commit,
-            status: "complete",
-            stage: "complete",
+            status: completed ? "complete" : "running",
+            stage: completed ? "complete" : "checking",
             active_page: "",
             pages: [{ id: "overview", title: "Overview", children: [] }],
             page_states: { overview: "ready" },
@@ -227,6 +236,17 @@ try {
       .waitFor();
     assert.equal(await page.locator(".wiki-system-path-step").count(), 4);
     assert.equal(
+      await page
+        .getByRole("button", { name: "Publish to Community", exact: true })
+        .count(),
+      0,
+    );
+    completed = true;
+    await page
+      .getByRole("heading", { name: "Your Wiki is ready to share" })
+      .waitFor();
+    await page.getByText("Saved in My Wikis.", { exact: false }).waitFor();
+    assert.equal(
       await page.locator(".wiki-progress").getAttribute("open"),
       null,
     );
@@ -252,15 +272,24 @@ try {
     });
     assert.equal(mutations, 0, "opening a Wiki must not publish it");
     await page
-      .getByRole("button", { name: "Publish to Browse", exact: true })
+      .getByRole("button", { name: "Publish to Community", exact: true })
       .click();
     await page
-      .getByText("Published — everyone can now find this Wiki in Browse.", {
+      .getByRole("alert")
+      .filter({ hasText: "Publication failed. Please try again." })
+      .waitFor();
+    assert.equal(published, false);
+    await page
+      .getByRole("button", { name: "Publish to Community", exact: true })
+      .click();
+    await page
+      .getByText("Published — everyone can now find this Wiki in Community.", {
         exact: true,
       })
       .waitFor();
-    assert.equal(mutations, 1);
-    await page.getByRole("link", { name: "View in Browse" }).click();
+    assert.equal(mutations, 2);
+    assert.equal(await page.getByRole("alert").count(), 0);
+    await page.getByRole("link", { name: "View in Community" }).click();
     await page
       .getByRole("link", { name: "Open owner/fastqueue wiki" })
       .waitFor();
@@ -298,19 +327,21 @@ try {
       .getByRole("heading", { name: "From request to durable result" })
       .waitFor();
     assert.equal(
-      await reader.getByRole("button", { name: "Remove from Browse" }).count(),
+      await reader
+        .getByRole("button", { name: "Remove from Community" })
+        .count(),
       0,
     );
     assert.equal(await reader.locator('input[type="password"]').count(), 0);
     assert.equal(
       mutations,
-      1,
+      2,
       "public discovery/read must not mutate or generate",
     );
     await page.goto(`${base}/wiki/${id}`);
-    await page.getByRole("button", { name: "Remove from Browse" }).click();
+    await page.getByRole("button", { name: "Remove from Community" }).click();
     await page
-      .getByText("Removed from Browse. Your share link still works.", {
+      .getByText("Removed from Community. Your share link still works.", {
         exact: true,
       })
       .waitFor();
@@ -333,6 +364,8 @@ try {
       sharedArchitecture: true,
       sourcesClickable: true,
       publicationRequiresOwnerAction: true,
+      completionInvitation: true,
+      failedPublicationRetry: true,
       crossBrowserDiscovery: true,
       unpublishPreservesReadLink: true,
       modelRequests: 0,

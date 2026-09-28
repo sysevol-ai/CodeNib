@@ -5953,7 +5953,22 @@ a.codepanel-name:hover {
 .wiki-catalog-skeleton span { display: block; height: 12px; margin: 12px 0; border-radius: 3px; background: var(--border-subtle); }
 .wiki-catalog-skeleton span:first-child { width: 60%; }
 .wiki-catalog-skeleton span:last-child { width: 40%; }
-.wiki-publication { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 0 0 20px; font-size: 13px; color: var(--text-secondary); }
+.wiki-publication { display: flex; gap: 20px; align-items: center; margin: 0 0 20px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; font-size: 13px; color: var(--text-secondary); }
+.wiki-publication.is-invitation { background: var(--accent-soft); border-color: var(--accent); }
+.wiki-publication-copy { flex: 1; min-width: 0; }
+.wiki-publication-copy h2 { margin: 0 0 6px; color: var(--text); font-size: 16px; }
+.wiki-publication-copy p { margin: 0; line-height: 1.6; max-width: 66ch; }
+.wiki-publication-copy .trial-error { margin-top: 10px; }
+.wiki-publication-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.wiki-publication-actions > * { white-space: nowrap; }
+.wiki-publication-actions .btn-primary { display: inline-flex; justify-content: center; align-items: center; min-height: 38px; padding: 9px 14px; background: var(--accent); color: var(--accent-contrast); border-color: var(--accent); font-weight: 600; }
+.wiki-publication-actions .btn-primary:disabled { opacity: .65; cursor: wait; }
+.library-publish-hint { display: block; margin-top: 12px; font-size: 12px; color: var(--accent); }
+.saved-wiki-new-version { margin: 8px 0 0; }
+@media (max-width: 720px) {
+  .wiki-publication { align-items: stretch; flex-direction: column; gap: 14px; padding: 16px; }
+  .wiki-publication-actions .btn-primary { width: 100%; text-align: center; }
+}
 .wiki-system-evidence { border: 0; background: transparent; padding: 5px 0; font-size: 11px; color: var(--accent); cursor: pointer; text-align: left; }
 .saved-wiki-content .wiki-system-architecture { margin: 28px 0; }
 .saved-wiki-content .wiki-system-architecture h3 { margin-top: 0; }

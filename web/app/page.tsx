@@ -178,9 +178,17 @@ function LibraryCard({ item }: { item: LibraryWiki }) {
             : "Open to check progress"}
         </span>
         {wiki?.published && (
-          <span className="wiki-community-label">Published</span>
+          <span className="wiki-community-label">In Community</span>
+        )}
+        {wiki?.status === "complete" && !wiki.published && (
+          <span className="wiki-community-label">Unlisted</span>
         )}
       </div>
+      {wiki?.status === "complete" && !wiki.published && (
+        <span className="library-publish-hint">
+          Open to publish to Community →
+        </span>
+      )}
       <span className="repo-card-go" aria-hidden>
         →
       </span>
@@ -420,7 +428,7 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
               {needle
                 ? "Try a repository name, language, or topic."
                 : tab === "community"
-                  ? "Finish a Wiki, then choose Publish to Browse. It will appear here for everyone."
+                  ? "Open a completed Wiki in My Wikis and choose Publish to Community. Other readers will be able to discover it here."
                   : "Create a Wiki from a public GitHub repository, or explore a featured project."}
             </p>
             {!needle && (

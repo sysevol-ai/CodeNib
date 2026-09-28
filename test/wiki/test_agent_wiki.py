@@ -9025,6 +9025,7 @@ def test_focused_editorial_revision_keeps_source_admission_and_call_bounds(
         "fake",
         llm=LLM(),
         focused=True,
+        story_review=True,
     )
     if edit == "cancelled":
         with pytest.raises(WikiRunStopped):

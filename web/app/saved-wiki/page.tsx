@@ -52,6 +52,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
   const [stopping, setStopping] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publicationError, setPublicationError] = useState("");
   const [checkedAt, setCheckedAt] = useState(0);
   const [statusConnected, setStatusConnected] = useState(false);
   const [, tick] = useState(0);
@@ -184,6 +185,15 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 {wiki.commit.slice(0, 8)} ↗
               </a>
             )}
+            {owner && wiki?.status === "complete" && (
+              <p className="small saved-wiki-new-version">
+                <AppLink
+                  href={`/preview/${wiki.repository.split("/").map(encodeURIComponent).join("/")}`}
+                >
+                  Generate a new version →
+                </AppLink>
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -205,52 +215,76 @@ export default function SavedWikiPage({ id }: { id: string }) {
           </button>
         </div>
         {wiki?.status === "complete" && (
-          <div className="wiki-publication">
-            <span>
-              {wiki.published
-                ? "Published in the community"
-                : "Anyone with the link can read this Wiki"}
-            </span>
-            {owner && (
-              <button
-                className={wiki.published ? "btn-ghost" : "btn-primary"}
-                disabled={publishing}
-                onClick={async () => {
-                  setPublishing(true);
-                  try {
-                    const result = await publishWiki(owner, !wiki.published);
-                    setWiki((current) =>
-                      current
-                        ? { ...current, published: result.published }
-                        : current,
-                    );
-                    setCopyMessage(
-                      result.published
-                        ? "Published — everyone can now find this Wiki in Browse."
-                        : "Removed from Browse. Your share link still works.",
-                    );
-                  } catch (reason) {
-                    setError(
-                      reason instanceof Error
-                        ? reason.message
-                        : "Could not update publication.",
-                    );
-                  } finally {
-                    setPublishing(false);
-                  }
-                }}
-              >
-                {publishing
-                  ? "Updating…"
-                  : wiki.published
-                    ? "Remove from Browse"
-                    : "Publish to Browse"}
-              </button>
-            )}
-            {wiki.published && (
-              <AppLink href="/browse?tab=community">View in Browse →</AppLink>
-            )}
-          </div>
+          <section
+            className={`wiki-publication ${owner && !wiki.published ? "is-invitation" : ""}`}
+            aria-label="Community publication"
+          >
+            <div className="wiki-publication-copy">
+              <h2>
+                {wiki.published
+                  ? "Published in Community"
+                  : owner
+                    ? "Your Wiki is ready to share"
+                    : "Shared by link"}
+              </h2>
+              <p>
+                {wiki.published
+                  ? "Readers can discover this Wiki in Community."
+                  : owner
+                    ? "Saved in My Wikis. Publish it to Community so other readers can discover it. Until then, only people with its link can open it."
+                    : "Anyone with this link can read the Wiki. It is not listed in Community."}
+              </p>
+              {publicationError && (
+                <p role="alert" className="trial-error">
+                  {publicationError}
+                </p>
+              )}
+            </div>
+            <div className="wiki-publication-actions">
+              {wiki.published && (
+                <AppLink className="btn-primary" href="/browse?tab=community">
+                  View in Community →
+                </AppLink>
+              )}
+              {owner && (
+                <button
+                  className={wiki.published ? "btn-ghost" : "btn-primary"}
+                  disabled={publishing}
+                  onClick={async () => {
+                    setPublishing(true);
+                    setPublicationError("");
+                    try {
+                      const result = await publishWiki(owner, !wiki.published);
+                      setWiki((current) =>
+                        current
+                          ? { ...current, published: result.published }
+                          : current,
+                      );
+                      setCopyMessage(
+                        result.published
+                          ? "Published — everyone can now find this Wiki in Community."
+                          : "Removed from Community. Your share link still works.",
+                      );
+                    } catch (reason) {
+                      setPublicationError(
+                        reason instanceof Error
+                          ? reason.message
+                          : "Could not update publication.",
+                      );
+                    } finally {
+                      setPublishing(false);
+                    }
+                  }}
+                >
+                  {publishing
+                    ? "Updating…"
+                    : wiki.published
+                      ? "Remove from Community"
+                      : "Publish to Community"}
+                </button>
+              )}
+            </div>
+          </section>
         )}
         {copyMessage && (
           <p role="status" className="small">
@@ -366,15 +400,6 @@ export default function SavedWikiPage({ id }: { id: string }) {
                   ? ` · ${wiki.skipped_files.length} file(s) skipped`
                   : ""}
               </summary>
-              {owner && wiki.status === "complete" && (
-                <p>
-                  <AppLink
-                    href={`/preview/${wiki.repository.split("/").map(encodeURIComponent).join("/")}`}
-                  >
-                    Generate a new version →
-                  </AppLink>
-                </p>
-              )}
               {!!wiki.skipped_files?.length && (
                 <details className="wiki-skipped-files">
                   <summary>

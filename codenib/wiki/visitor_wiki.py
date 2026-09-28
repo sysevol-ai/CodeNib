@@ -25,7 +25,13 @@ from ..storage import WikiStore
 from .agent_wiki import AgentWiki
 from .multimodal import plan_media_slots
 from .store import WikiGenerationBusyError
-from .visitor_provider import WIKI_MODELS, VisitorProvider, WikiRunStopped, verify_key
+from .visitor_provider import (
+    WIKI_MODELS,
+    WIKI_RETRIEVAL_IDENTITY,
+    VisitorProvider,
+    WikiRunStopped,
+    verify_key,
+)
 from .visitor_source import repository_revision, visitor_source
 
 _ATTEMPTS = "visitor-wiki-attempts-v1"
@@ -358,6 +364,7 @@ class VisitorWikis:
                         "history": [],
                         "model": model,
                         "scope": "focused",
+                        "retrieval_identity": WIKI_RETRIEVAL_IDENTITY,
                     }
                     self._save(state)
                 request_id = secrets.token_hex(16)
@@ -467,15 +474,20 @@ class VisitorWikis:
                             getattr(bundle, "manifest", None), "languages", []
                         )
                         self._save(state)
+                        retrieval_identity = state.get(
+                            "retrieval_identity", "grep_jev_v1"
+                        )
+                        wiki_context = retrieval_identity == WIKI_RETRIEVAL_IDENTITY
                         wiki = self.wiki_factory(
                             bundle,
                             f"openrouter/{model}",
                             store=self.store,
                             llm=provider,
                             source_retriever=lambda query, limit: provider.retrieve(
-                                source, query, limit
+                                source, query, limit, wiki_context=wiki_context
                             ),
-                            retrieval_identity="grep_jev_v1",
+                            retrieval_identity=retrieval_identity,
+                            story_review=wiki_context,
                             progress=progress,
                             concise=state.get("scope") == "concise",
                             focused=state.get("scope") == "focused",
