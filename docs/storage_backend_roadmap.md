@@ -115,7 +115,10 @@ backfills; graph summaries publish after page projections. Reads never index or
 call a model. The QR backfill preserved page envelopes, accounting and unlisted
 visibility. No facade, database schema, generic job, or storage registry changes
 are needed. Timeout and cancellation release the owned indexer process before
-removing its source.
+removing its source. The graph projections shipped in
+[#808](https://github.com/sysevol-ai/CodeNib/pull/808); deployment preserved all
+three saved visitor Wikis and their publication state. The database facade and
+SQLite schema remain unchanged.
 
 Community publication is a separate Wiki-owned envelope containing only the
 repository, commit, bounded summary, chapter count, language and publication time.

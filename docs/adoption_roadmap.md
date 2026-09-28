@@ -535,7 +535,15 @@ The review chain is #803 → #804 → #805 →
 [#808](https://github.com/sysevol-ai/CodeNib/pull/808); restack it in that order
 before merging. Deployment does not imply the stack is merged.
 
-The community and visitor-quality fixes are deployed as of 2026-09-27.
+The community, visitor-quality and #808 graph fixes are deployed as of
+2026-09-27. The reported QR result now renders its saved six-role architecture,
+three indexed chapter regions, and four CodeGraphs at its original URL. Public
+desktop/mobile checks pass without provider calls. The graph-node preview,
+pinned source link and map-failure retry were also exercised. The three saved
+visitor Wikis were preserved, with no automatic publication or prose rewrite.
+The main services run `ba27c81b`; the verified staging services were drained and
+removed after cutover, and the previous asset hashes and database snapshots are
+retained for recovery.
 Acceptance passes 1,341 Wiki/web/grep-MCP unit tests (one skipped), 142 frontend
 tests, production build, strict docs and the provider-free desktop/mobile
 publication and waiting matrices. Publication acceptance includes the completion
