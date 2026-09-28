@@ -94,6 +94,15 @@ npm run dev            # = `next dev`; binds :3000 (no port flag anywhere)
   cues, and preserve the owner's explicit retry path. Exercise oversized files
   beside valid source: skip them without decompression, validate their paths,
   retain archive bounds, and disclose the omissions in the saved Wiki.
+- **Generation waiting feedback** explains the actual work and next step,
+  including that chapter planning already composes and checks model-authored
+  claims. Keep time in the step, time since worker progress and successful
+  status polling separate. A responding status endpoint does not prove the
+  worker is advancing. Test delayed progress, disconnected polling, recovery,
+  reduced motion and stopped/completed states on desktop and mobile. Never
+  invent progress percentages, token activity or completion estimates; refresh
+  and reconnect must remain read-only. Deploy a frontend-only fix independently
+  when restarting the backend would interrupt a visitor's funded generation.
 - **Overview illustrations** require an admitted semantic architecture plan.
   Do not substitute an automatic call-flow or relation image when that plan
   is missing or invalid: a debug/configuration branch can look like the main

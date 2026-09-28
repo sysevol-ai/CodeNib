@@ -23,6 +23,7 @@ try {
     const errors = [],
       remote = [];
     let statusReads = 0;
+    let statusOffline = false;
     const pages = [
       { id: "overview", title: "Overview", children: [] },
       { id: "pipeline", title: "Request pipeline", children: [] },
@@ -114,6 +115,8 @@ try {
         });
       }
       statusReads++;
+      if (statusOffline)
+        return route.fulfill({ status: 503, json: { detail: "Status temporarily unavailable" } });
       return state
         ? route.fulfill({ json: state })
         : route.fulfill({ status: 404, json: { detail: "Wiki not found" } });
@@ -155,12 +158,66 @@ try {
     await page
       .getByRole("heading", { name: "Repository overview", exact: true })
       .waitFor();
+    const activity = page.getByLabel("Current agent activity");
+    await activity.getByText("Working on: Request pipeline", { exact: true }).waitFor();
+    assert.ok((await activity.innerText()).includes("Asking the model to compose"));
+    assert.ok(await activity.getByText("Next", { exact: true }).isVisible());
+    assert.equal(await activity.locator(".wiki-run-recent li").count(), 3);
+    assert.equal(await activity.locator(".is-animated").count(), 1);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    assert.equal(await activity.locator(".wiki-run-pulse i").first().evaluate(
+      (element) => getComputedStyle(element).animationName,
+    ), "none");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.getByText("Skipped 1 file larger than 4 MiB", { exact: true }).click();
     assert.ok(await page.getByText("assets/diagram.png", { exact: true }).isVisible());
+    assert.equal(await page.getByRole("link", { name: "Read 1 / 2 ready chapters" }).getAttribute("href"), "#saved-wiki-chapters");
+    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({
       path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-progress.png`,
       fullPage: true,
     });
+    state = { ...state, updated_at: Date.now() / 1000 - 50 };
+    await activity.getByText("Waiting for the next update", { exact: true }).waitFor();
+    assert.ok((await activity.innerText()).includes("operation has not reported a new result"));
+    // Successful status polls must not reset worker progress age.
+    state = { ...state, updated_at: Date.now() / 1000 - 185 };
+    await activity.getByText("No recent progress reported", { exact: true }).waitFor();
+    assert.equal(await activity.locator(".is-animated").count(), 0);
+    assert.ok((await activity.innerText()).includes("does not confirm that it has stopped"));
+    assert.ok((await activity.innerText()).includes("Checked"));
+    await page.screenshot({
+      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-delayed.png`,
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Toggle color theme" }).click();
+    const contrast = await activity.evaluate((element) => {
+      const luminance = (color) => {
+        const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map((value) => {
+          const channel = value / 255;
+          return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        });
+        return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+      };
+      const text = luminance(getComputedStyle(element.querySelector(".wiki-run-status")).color);
+      const background = luminance(getComputedStyle(element).backgroundColor);
+      return (Math.max(text, background) + 0.05) / (Math.min(text, background) + 0.05);
+    });
+    assert.ok(contrast >= 4.5, "delayed status must remain legible in dark mode");
+    await page.screenshot({
+      path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-dark-delayed.png`,
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Toggle color theme" }).click();
+    statusOffline = true;
+    await activity.getByText("Connection interrupted", { exact: true }).waitFor();
+    assert.equal(await activity.locator(".is-animated").count(), 0);
+    assert.ok((await activity.innerText()).includes("Reconnecting"));
+    statusOffline = false;
+    state = { ...state, updated_at: Date.now() / 1000, calls: 5 };
+    await activity.getByText("Generation in progress", { exact: true }).waitFor();
+    assert.equal(await activity.locator(".is-animated").count(), 1);
+    assert.equal(posts, 1, "status reconnect must not submit another funded run");
     await page.reload();
     await page
       .getByRole("heading", { name: "Repository overview", exact: true })
@@ -194,6 +251,7 @@ try {
       reported_cost_usd: 0.046,
     };
     await page.getByText("Your Wiki is ready", { exact: true }).waitFor();
+    assert.equal(await page.getByLabel("Current agent activity").count(), 0);
     const completedReads = statusReads;
     await page.waitForTimeout(2300);
     assert.equal(statusReads, completedReads, "completed Wikis stop polling");
@@ -281,6 +339,10 @@ try {
       completedWikiStopsPolling: true,
       stoppedWikiShowsReason: true,
       stoppedWikiStopsPolling: true,
+      liveActivityExplainsWork: true,
+      staleProgressIsNotServerConnectivity: true,
+      reconnectDoesNotGenerate: true,
+      reducedMotionRespected: true,
       skippedFilesVisible: true,
       keysAbsentFromStorage: true,
       readLinkHasNoOwnerAccess: true,
