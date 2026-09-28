@@ -55,6 +55,7 @@ from ..wiki.story import derive_story_from_markdown
 from ..wiki.visual_ir import page_visual_contract_report
 from .card_summary import card_summary
 from .config import load_config
+from .experience import router as experience_router
 from .index_status import build_repo_index_status
 from .native_authority import authorize_local_manifest_vector
 from .ports import argparse_tcp_port
@@ -196,6 +197,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 
 app.include_router(visitor_wiki_router)
+app.include_router(experience_router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(

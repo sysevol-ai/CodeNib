@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "@/app/globals.css";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
 import { assetUrl, restoreStaticRoute } from "@/lib/runtime";
+import { startExperienceEvents } from "@/lib/experience";
 
 const AskPage = lazy(() => import("@/app/[repoId]/ask/page"));
 const WikiPageView = lazy(() => import("@/app/[repoId]/page"));
@@ -11,6 +12,7 @@ const Landing = lazy(() => import("@/app/page"));
 const GenerateWikiPage = lazy(() => import("@/app/generate/page"));
 const SavedWikiPage = lazy(() => import("@/app/saved-wiki/page"));
 const AddRepo = lazy(() => import("@/app/add-repo/page"));
+const RepositoryRoute = lazy(() => import("@/components/RepositoryRoute"));
 
 function RouteLoading() {
   return (
@@ -25,6 +27,8 @@ function App() {
   const location = useBrowserLocation();
   const segments = routeSegments(location.pathname);
   if (segments.length === 0) {
+    const repo = new URLSearchParams(location.search).get("repo");
+    if (repo) return <RepositoryRoute key={repo} input={repo} />;
     return <Landing />;
   }
   if (segments[0] === "browse" && segments.length === 1) {
@@ -49,9 +53,16 @@ function App() {
   }
 
   const repoId = segments[0];
-  if (segments[1] === "ask") {
+  // Legacy Wiki ids retain /ask. GitHub owner/repo aliases include repos
+  // named "ask"; GitHub owner names cannot contain the legacy '__' separator.
+  if (segments[1] === "ask" && (repoId.includes("__") || segments.length !== 2)) {
     const query = new URLSearchParams(location.search).get("q") ?? "";
     return <AskPage repoId={repoId} query={query} />;
+  }
+  if (segments.length === 2) {
+    return <RepositoryRoute key={segments.join("/")} input={segments.join("/")}
+      page={new URLSearchParams(location.search).get("p") || undefined}
+      askQuery={segments[1] === "ask" ? new URLSearchParams(location.search).get("q") || "" : undefined} />;
   }
   const pageId = new URLSearchParams(location.search).get("p") || "overview";
   return (
@@ -64,6 +75,7 @@ function App() {
 }
 
 restoreStaticRoute();
+startExperienceEvents();
 
 const root = document.getElementById("root");
 if (!root) {

@@ -5,6 +5,7 @@ import Header from "@/components/Header";
 import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { primaryLanguage } from "@/lib/landing";
 import RepositoryEntry from "@/components/RepositoryEntry";
+import FirstVisitExplorer from "@/components/FirstVisitExplorer";
 import { AppLink, useBrowserLocation } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import {
@@ -310,16 +311,21 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
           </AppLink>
         </section>
       ) : (
-        <section className="hero">
-          <h1>Understand a repo. Start with its URL.</h1>
-          <p className="hero-sub">
-            Explore its architecture, follow the source, and share what you
-            discover.
-          </p>
-          <RepositoryEntry repos={repos} />
-          <AppLink className="browse-entry" href="/browse">
-            Browse existing Wikis →
-          </AppLink>
+        <section className={`hero ${!staticRuntime ? "first-visit-hero" : ""}`}>
+          <div className="first-visit-intro">
+            <p className="first-visit-eyebrow">FROM THE BIG PICTURE TO THE SOURCE</p>
+            <h1>Understand a repo.<br />Follow the code.</h1>
+            <p className="hero-sub">
+              Explore how a repository works, see the code behind each explanation,
+              and keep going with a complete Wiki.
+            </p>
+            {!staticRuntime && <p className="first-visit-invitation">Try the example. No account or API key needed.</p>}
+          </div>
+          {!staticRuntime && <FirstVisitExplorer />}
+          <div className="first-visit-entry">
+            <RepositoryEntry repos={repos} />
+            <AppLink className="browse-entry" href="/browse">Explore ready Wikis →</AppLink>
+          </div>
         </section>
       )}
       {!browse && mine.length > 0 && (

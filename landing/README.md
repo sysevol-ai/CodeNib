@@ -8,9 +8,66 @@ Run it locally from the repository root:
 python -m http.server 7870 --directory landing
 ```
 
-Deploy `landing/` as the document root for `codenib.ai`. The homepage preview
-uses local recorded-session media. Loading it makes no request to the live
-Wiki service; visiting a Wiki is an explicit link.
+Deploy `landing/` as the document root for `codenib.ai`. The homepage offers
+the same interactive Requests example as the Wiki homepage. Its four source
+excerpts and three recorded call sites are bundled with the site; exploring it
+makes no request to the live Wiki service or a model. Visiting a Wiki is an
+explicit link. The repository form needs the matching Wiki frontend's `?repo=`
+resolver; deploy that frontend before publishing the new marketing form.
+
+The example is one selected call path, not a runtime trace or a whole-repository
+architecture. `assets/explore/requests.js` records the full source commit,
+index projection endpoint, excerpt ranges and SHA-256 values. To verify it
+against the same prepared Requests index, without generating any prose:
+
+```bash
+python scripts/build_first_visit_example.py --api-base http://127.0.0.1:8001 --check
+node scripts/highlight_first_visit_example.mjs --check
+node scripts/render_first_visit_share.mjs
+```
+
+Remove `--check` only when deliberately updating the evidence. Review the
+commit, selected symbols, graph anchors and ranges together. Source excerpts
+are from Requests under Apache-2.0; its pinned license URL is in the artifact.
+After changing excerpts, regenerate their syntax asset with
+`node scripts/highlight_first_visit_example.mjs` using the installed Web
+dependencies. It uses the Wiki's existing highlight.js Python grammar, preserves
+the excerpt text, and adds no browser dependency or network request. The source
+pane keeps its height across selections; long code scrolls inside the pane.
+The renderer produces the real example's 1200×630 homepage sharing image.
+Repository-specific social images remain a separate task.
+
+Provider-free desktop/mobile, keyboard, routing, sharing and event checks:
+
+```bash
+node web/first_visit_verify.mjs http://127.0.0.1:3012 http://127.0.0.1:7882
+```
+
+For first-party funnel counts, explicitly enable both
+`CODENIB_EXPERIENCE_EVENTS=1` on the API and `experienceEvents: true` in the
+hosted Wiki's `runtime-config.js`. Static Wiki exports never enable collection.
+The marketing host may separately proxy `/api/experience-events` to this API
+and set `<meta name="codenib-experience-endpoint" content="/api/experience-events">`.
+Without that opt-in, neither site sends analytics. Do Not Track and Global
+Privacy Control suppress collection. Keep deployment settings outside source
+defaults; retain ordinary service logs according to the operator's policy.
+
+The payload contains only a fixed event name, `landing`/`wiki`, and a random
+tab-session identifier. No cookies, URLs, input, source, prompts or keys are
+sent. Events are deduplicated per tab session; the collector accepts at most
+120 events per minute per worker. This is an intentionally small first-party
+baseline, not an analytics platform. To count observed steps from service logs:
+
+```bash
+journalctl --user -u codenib-demo-backend --since today --no-pager \
+  | python scripts/summarize_experience.py
+```
+
+Report counts and the observation window before interpreting ratios. These
+are partial tab-session observations, not unique people: origins have separate
+sessions, privacy controls and blocked requests omit visits, and reopening a
+saved Wiki can produce a read without a generation event. A ready first chapter
+is a browser observation, not proof of a successful coding-agent query.
 
 The 15-second CLI replay is rendered from selected fields of
 `assets/demos/codegraph-claude.json`, an actual CodeGraph/Claude Code run.

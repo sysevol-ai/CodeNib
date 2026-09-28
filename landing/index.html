@@ -7,11 +7,14 @@ SPDX-License-Identifier: Apache-2.0
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeNib: Find the Right Code. Trace the Calls.</title>
-<meta name="description" content="Source context and typed graph navigation for Claude Code and Codex. Local MCP setup, multilingual support, and reproducible retrieval results.">
-<meta property="og:title" content="CodeNib: Find the Right Code. Trace the Calls.">
-<meta property="og:description" content="71.4% code-block Recall@5 in our 100-issue grep → Jev experiment. Explore the evidence and connect your own repository.">
-<meta property="og:image" content="https://codenib.ai/assets/demos/codegraph-claude.png">
+<title>CodeNib: Understand a Repo. Follow the Code.</title>
+<meta name="description" content="Explore how a repository works, follow real calls to their source, and keep going with a complete Wiki. Try the interactive example without an account.">
+<meta property="og:title" content="CodeNib: Understand a Repo. Follow the Code.">
+<meta property="og:description" content="A real question, an interactive code path, and the source behind it. Explore a repository Wiki, then bring that context to your coding agent.">
+<meta property="og:image" content="https://codenib.ai/assets/explore/requests-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CodeNib's Requests example: follow indexed calls and inspect their source.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://codenib.ai/">
 <meta name="twitter:card" content="summary_large_image">
@@ -94,10 +97,12 @@ header {
 .btn-lg { font-size: 15.5px; padding: 12px 24px; }
 
 /* ---- hero ---- */
-.hero { position: relative; padding: 72px 0 0; }
-.hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: center; }
+.hero { position: relative; padding: 48px 0 0; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-areas: "intro example" "entry example"; column-gap: 40px; align-items: center; }
+.hero-copy { grid-area: intro; align-self: end; }
+.hero-entry { grid-area: entry; align-self: start; }
 .hero h1 {
-  font-size: clamp(2.5rem, 5.6vw, 4rem);
+  font-size: clamp(2.2rem, 3.5vw, 3.2rem);
   font-weight: 640; letter-spacing: -0.035em; line-height: 1.06;
   max-width: 17ch;
 }
@@ -106,6 +111,18 @@ header {
   max-width: 54ch;
 }
 .hero .ctas { display: flex; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.hero-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: var(--accent); margin-bottom: 14px; }
+.hero .try-note { font-size: 13px; margin-top: 20px; color: var(--ink-2); }
+.repo-entry { margin-top: 28px; }
+.repo-entry label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.repo-entry-row { display: flex; gap: 8px; }
+.repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 13px; padding: 12px; border: 1px solid #cbd5e1; border-radius: 8px; }
+.repo-entry button { font: inherit; font-size: 13px; border: 0; cursor: pointer; padding: 12px; }
+.repo-entry p { font-size: 11px; color: var(--ink-2); margin-top: 10px; }
+.hero .browse-wikis { display: inline-block; font-size: 14px; margin-top: 20px; color: var(--accent); }
+codenib-explorer { display: block; min-width: 0; min-height: 530px; grid-area: example; }
+.agent-handoff { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: center; }
+.agent-handoff .setup { margin-top: 0; }
 
 /* Static product preview: visiting the landing page never loads the demo. */
 .frame {
@@ -206,8 +223,13 @@ footer { border-top: 1px solid var(--line); }
 @media (max-width: 860px) {
   .nav { gap: 16px; }
   .nav a.gh { display: none; }
-  .hero { padding-top: 56px; }
-  .hero-grid { grid-template-columns: 1fr; gap: 36px; }
+  .hero { padding-top: 24px; }
+  .hero-grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "example" "entry"; gap: 20px; }
+  .hero h1 { font-size: 32px; }
+  .hero p.sub { font-size: 15px; margin-top: 14px; }
+  .hero .try-note { margin-top: 12px; }
+  .repo-entry { margin-top: 0; }
+  .agent-handoff { grid-template-columns: 1fr; }
   .bento { grid-template-columns: 1fr; }
   .latest-card { grid-template-columns: 1fr; }
   .latest-copy { padding: 30px 28px; }
@@ -243,19 +265,36 @@ footer { border-top: 1px solid var(--line); }
 <main>
   <div class="hero">
     <div class="wrap hero-grid">
-      <div>
-        <h1 class="rise">Find the right code.<br>Trace the calls.</h1>
-        <p class="sub rise d1">Source context and typed graph navigation for Claude Code and Codex, across languages.</p>
-        <p class="evidence rise d1">
-          <strong>71.4% code-block Recall@5.</strong>
-          Model-planned grep → Jev on 100 real issues.<br>
-          +12.8 points over the same grep candidates without reranking.<br>
-          <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
-        </p>
-        <div class="ctas rise d2">
-          <a class="btn btn-primary btn-lg" href="#get-started">Use with your agent</a>
-          <a class="btn btn-ghost btn-lg" href="https://demo.codenib.ai">Browse a Wiki</a>
-        </div>
+      <div class="hero-copy">
+        <p class="hero-eyebrow">FROM THE BIG PICTURE TO THE SOURCE</p>
+        <h1>Understand a repo.<br>Follow the code.</h1>
+        <p class="sub">Explore how a repository works, see the code behind each explanation, and keep going with a complete Wiki.</p>
+        <p class="try-note">Try the example. No account or API key needed.</p>
+      </div>
+      <codenib-explorer><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
+      <div class="hero-entry">
+        <form class="repo-entry" action="https://demo.codenib.ai/" method="get">
+          <label for="repository">Explore your own repository</label>
+          <div class="repo-entry-row">
+            <input id="repository" name="repo" placeholder="https://github.com/owner/repo" type="text" inputmode="url" maxlength="2048" autocomplete="off" spellcheck="false" required>
+            <button class="btn btn-primary" type="submit">Open Wiki →</button>
+          </div>
+          <p>Ready Wikis open instantly. A new Wiki uses your OpenRouter account; you review the cost limit before starting.</p>
+        </form>
+        <a class="browse-wikis" href="https://demo.codenib.ai/browse">Explore ready Wikis →</a>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <div class="wrap agent-handoff">
+      <div class="setup" id="get-started">
+        <h2>Take that context to your coding agent.</h2>
+        <p>Explore your own checkout with Claude Code or Codex.</p>
+        <pre><code>python -m pip install "codenib[graph,mcp]"
+codenib codegraph init /path/to/your/repo</code></pre>
+        <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
+        <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
       </div>
       <figure class="frame rise d2">
         <div class="frame-bar"><span>Requests · Claude Code + CodeNib</span><span>15-second replay</span></div>
@@ -267,16 +306,7 @@ footer { border-top: 1px solid var(--line); }
         <figcaption class="preview-caption" id="agent-demo-caption">Real CLI output, replayed with waits condensed. <a class="text-link" href="https://docs.codenib.ai/codegraph/#recorded-agent-session">Transcript and sources</a>.</figcaption>
       </figure>
     </div>
-    <div class="wrap">
-      <div class="setup" id="get-started">
-        <h2>Two commands. Your repository, your agent.</h2>
-        <pre><code>python -m pip install "codenib[graph,mcp]"
-codenib codegraph init /path/to/your/repo</code></pre>
-        <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
-        <p><a class="text-link" href="https://docs.codenib.ai/codegraph/">Setup and language prerequisites</a> · Ask your agent to start with <code>explore_context</code>.</p>
-      </div>
-    </div>
-  </div>
+  </section>
 
   <section>
     <div class="wrap">
@@ -300,6 +330,11 @@ codenib codegraph init /path/to/your/repo</code></pre>
         </div>
       </div>
       <p class="section-sub reveal">Share a Wiki from your own repository with the existing <a class="text-link" href="https://docs.codenib.ai/github_pages/">GitHub Pages workflow</a>.</p>
+      <p class="evidence">
+        <strong>71.4% code-block Recall@5.</strong>
+        Model-planned grep → Jev on 100 real issues. +12.8 points over the same grep candidates without reranking.<br>
+        <a href="https://docs.codenib.ai/evaluation/grep_jev/">Experimental result · Method and limitations</a>
+      </p>
     </div>
   </section>
 
@@ -334,6 +369,8 @@ codenib codegraph init /path/to/your/repo</code></pre>
     </div>
   </div>
 </main>
+<script type="module" src="assets/explore/repo-explorer.js"></script>
+<script type="module" src="assets/explore/landing-entry.js"></script>
 
 <footer>
   <div class="wrap foot">

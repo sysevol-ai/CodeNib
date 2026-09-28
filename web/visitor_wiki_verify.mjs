@@ -10,6 +10,7 @@ const output = process.argv[3] || "/tmp/codenib-visitor-wiki-browser";
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const reports = [];
+let lastPage;
 try {
   for (const mobile of [false, true]) {
     const context = await browser.newContext({
@@ -42,6 +43,15 @@ try {
         return route.fulfill({ json: { enabled: true } });
       if (url.pathname === "/api/visitor-wikis/public")
         return route.fulfill({ json: [] });
+      // Saved graphs are fetched when a run stops/completes. The status
+      // envelope is not a graph response; keep this fixture on the #808 API.
+      if (url.pathname.includes("/graphs/"))
+        return route.fulfill({ json: {
+          commit: "c".repeat(40),
+          coverage: { available: false, note: "No index in this provider-free fixture." },
+          system_map: { available: false, areas: [], links: [] },
+          code_graph: { available: false, nodes: [], edges: [] },
+        } });
       if (url.pathname.endsWith("/stop")) {
         assert.ok(request.headers()["x-wiki-owner"]);
         assert.equal(request.headers().authorization, undefined);
@@ -128,10 +138,11 @@ try {
         : route.fulfill({ status: 404, json: { detail: "Wiki not found" } });
     });
     const page = await context.newPage();
+    lastPage = page;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(base);
     await page
-      .getByLabel("Public GitHub repository")
+      .getByLabel("Explore your own repository")
       .fill("https://github.com/owner/repo");
     await page.getByRole("button", { name: "Open Wiki" }).click();
     await page.getByLabel("OpenRouter inference key").waitFor();
@@ -386,6 +397,12 @@ try {
     JSON.stringify(reports, null, 2),
   );
   console.log(JSON.stringify(reports));
+} catch (error) {
+  if (lastPage && !lastPage.isClosed()) {
+    await lastPage.screenshot({ path: `${output}/failure.png`, fullPage: true });
+    await fs.writeFile(`${output}/failure.txt`, await lastPage.locator("body").innerText());
+  }
+  throw error;
 } finally {
   await browser.close();
 }
