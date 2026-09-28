@@ -247,4 +247,7 @@ def visitor_source(repository: str, commit: str, attempt_id: str, check, progres
                 source_reader=binding.borrow_reader(),
                 code_graph=lambda: None,
             )
+            from .visitor_graph import build_visitor_graph
+
+            build_visitor_graph(bundle, check, progress)
             yield bundle, binding

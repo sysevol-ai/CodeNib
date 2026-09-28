@@ -106,6 +106,20 @@ storage are promoted. Source is a bounded temporary public archive, with an
 authenticated reader retained only for the active generation; manifests and
 retrieval artifacts do not move into this database.
 
+The visitor graph reader also saves bounded, commit-bound System Map and
+CodeGraph JSON projections with source previews as Wiki-owned envelopes. These
+are reader output, not a retained graph/index artifact. SCIP files and its
+source-only scratch copy are temporary and removed when indexing exits. The
+existing generation guard owns both normal generation and explicit operator
+backfills; graph summaries publish after page projections. Reads never index or
+call a model. The QR backfill preserved page envelopes, accounting and unlisted
+visibility. No facade, database schema, generic job, or storage registry changes
+are needed. Timeout and cancellation release the owned indexer process before
+removing its source. The graph projections shipped in
+[#808](https://github.com/sysevol-ai/CodeNib/pull/808); deployment preserved all
+three saved visitor Wikis and their publication state. The database facade and
+SQLite schema remain unchanged.
+
 Community publication is a separate Wiki-owned envelope containing only the
 repository, commit, bounded summary, chapter count, language and publication time.
 Its atomic write is the visibility point; the existing admission guard serializes

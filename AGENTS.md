@@ -63,6 +63,10 @@ prompt or silently exclude tests needed by a validation chapter. Keep the same
 reader rubric available on prepared and newly generated visitor pages. Compare
 the same source/outline/evidence when evaluating prose; a longer explanation or
 a green citation check does not establish parity with indexed examples.
+A ready chapter must not silently hide a rejected architecture or unavailable
+code index: display explicit visual coverage. Hosted graph views must come from
+the pinned compiler/source artifacts, never model-authored arrows. Keep source
+previews self-contained so opening a saved graph cannot trigger provider calls.
 
 ## Storage Scope Guard
 

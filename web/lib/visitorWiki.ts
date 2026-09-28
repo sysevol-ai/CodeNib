@@ -1,7 +1,12 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import type { WikiPage, WikiPageRef } from "./api";
+import type {
+  CodemapResponse,
+  WikiAreaMap,
+  WikiPage,
+  WikiPageRef,
+} from "./api";
 import { apiBase, isStaticRuntime } from "./runtime";
 
 export interface SavedWiki {
@@ -31,6 +36,20 @@ export interface SavedWiki {
   request_active?: boolean;
   response_chars?: number;
   request_started_at?: number;
+}
+
+export interface SavedWikiGraphs {
+  commit: string;
+  coverage: {
+    available: boolean;
+    reason?: string | null;
+    note: string;
+    files?: number;
+    nodes?: number;
+    edges?: number;
+  };
+  system_map: WikiAreaMap;
+  code_graph: CodemapResponse;
 }
 
 export interface WikiAttempt {
@@ -146,6 +165,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const wikiGenerationAvailable = () => request<{ enabled: boolean }>("");
 export const loadPublicWikis = () => request<PublicWiki[]>("/public");
+export const loadSavedWikiGraphs = (id: string, page: string) =>
+  request<SavedWikiGraphs>(
+    `/${encodeURIComponent(id)}/graphs/${encodeURIComponent(page)}`,
+  );
 export const publishWiki = (attempt: WikiAttempt, published: boolean) =>
   request<{ published: boolean }>(`/${attempt.id}/publication`, {
     method: "POST",
@@ -193,6 +216,8 @@ export const wikiStages: Record<string, string> = {
   connecting: "Connecting to your model account",
   downloading: "Downloading the repository",
   analyzing: "Analyzing source files",
+  indexing: "Indexing code relationships",
+  saving_graphs: "Saving System Map and CodeGraph",
   outline: "Planning the Wiki chapters",
   retrieving: "Finding relevant source",
   planning_page: "Drafting and checking this chapter",

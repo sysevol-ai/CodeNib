@@ -26,6 +26,16 @@ const work: Record<string, { description: string; next: string }> = {
       "Reading repository context and asking the model to propose the chapter list.",
     next: "Find the source evidence for the first chapter.",
   },
+  indexing: {
+    description:
+      "Building a source index for the System Map and CodeGraph. No model request is needed for this step.",
+    next: "Plan the Wiki using the source and indexed relationships.",
+  },
+  saving_graphs: {
+    description:
+      "Saving the code relationships and source previews alongside your chapters.",
+    next: "Open the completed Wiki and its maps.",
+  },
   retrieving: {
     description: "Searching and ranking source evidence for this chapter.",
     next: "Organize that evidence into a chapter plan.",

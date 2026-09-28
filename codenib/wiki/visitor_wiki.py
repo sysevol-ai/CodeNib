@@ -180,6 +180,83 @@ class VisitorWikis:
         )
         return page
 
+    def graphs(self, attempt, page_id):
+        state = self._read(attempt)
+        if page_id not in {page["id"] for page in _flatten(state["pages"])}:
+            raise VisitorWikiError("This Wiki chapter was not found.")
+        entry = self.store.read(f"{_entry(attempt)}:graphs")
+        page = self.store.read(f"{_entry(attempt)}:graph:{page_id}")
+        return {
+            "commit": state["commit"],
+            **(
+                copy.deepcopy(entry.envelope["data"])
+                if entry
+                else {
+                    "coverage": {
+                        "available": False,
+                        "reason": "not_indexed",
+                        "note": "This Wiki was generated without a code index.",
+                    },
+                    "system_map": {"available": False, "areas": [], "links": []},
+                }
+            ),
+            "code_graph": (
+                copy.deepcopy(page.envelope["data"])
+                if page
+                else {"available": False, "nodes": [], "edges": [], "mermaid": ""}
+            ),
+        }
+
+    def save_graph_views(self, state, bundle, check):
+        """Save Wiki projections while the existing generation guard is held.
+
+        Publish the summary last. Reads never index, use a model, or change
+        visibility. Operator backfills hold the same guard and pin the same
+        commit as generation; page prose is untouched.
+        """
+        from .visitor_graph import wiki_graph_views
+
+        pages = [
+            self.page(state["id"], p["id"])
+            for p in _flatten(state["pages"])
+            if state["page_states"].get(p["id"]) == "ready"
+        ]
+        try:
+            summary, views = wiki_graph_views(bundle, state["pages"], pages, check)
+        except Exception as exc:
+            logger.warning(
+                "Visitor Wiki graph projection failed (%s)", type(exc).__name__
+            )
+            summary, views = {
+                "coverage": {
+                    "available": False,
+                    "reason": "projection_failed",
+                    "note": (
+                        "The code maps could not be saved. "
+                        "Completed chapters remain available."
+                    ),
+                },
+                "system_map": {"available": False, "areas": [], "links": []},
+            }, {}
+        summary.update(
+            commit=state["commit"],
+            source_fingerprint=getattr(
+                getattr(bundle, "manifest", None), "source_fingerprint", None
+            ),
+        )
+        for page_id, view in views.items():
+            check()
+            self.store.publish(
+                entry_id=f"{_entry(state['id'])}:graph:{page_id}",
+                repository_id=state["id"],
+                envelope={"data": view},
+            )
+        self.store.publish(
+            entry_id=f"{_entry(state['id'])}:graphs",
+            repository_id=state["id"],
+            envelope={"data": summary},
+        )
+
     def public_wikis(self):
         return sorted(
             (
@@ -543,6 +620,8 @@ class VisitorWikis:
                                 "ready" if valid else "needs_review"
                             )
                             self._save(state)
+                        progress("saving_graphs", "")
+                        self.save_graph_views(state, bundle, check)
                         complete = all(
                             state["page_states"].get(page["id"]) == "ready"
                             for page in pages

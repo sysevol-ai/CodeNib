@@ -61,6 +61,7 @@ function SourcePeek({
   repoFullName,
   sourceUrl,
   commit,
+  localOnly = false,
 }: {
   repoId: string;
   source: PeekSource;
@@ -69,6 +70,7 @@ function SourcePeek({
   repoFullName?: string;
   sourceUrl?: string | null;
   commit?: string;
+  localOnly?: boolean;
 }) {
   const peekRef = useRef<HTMLDivElement>(null);
   const isNode = source.kind === "node";
@@ -117,7 +119,7 @@ function SourcePeek({
       setEdgeLabel("idle");
       return;
     }
-    if (isStaticRuntime()) {
+    if (localOnly || isStaticRuntime()) {
       setEdgeLabel("");
       return;
     }
@@ -152,7 +154,7 @@ function SourcePeek({
       cancelled = true;
       ctrl.abort();
     };
-  }, [source, repoId, commit]);
+  }, [source, repoId, commit, localOnly]);
 
   useEffect(() => {
     if (isExternal || hasNoSingleFile) return; // nothing single to fetch
@@ -167,6 +169,11 @@ function SourcePeek({
       setCode(embedded.content);
       setStart(embedded.start_line || 1);
       setState("ok");
+      return;
+    }
+    if (localOnly) {
+      setCode("");
+      setState("err");
       return;
     }
     // Node peeks use the indexed symbol span, plus a little context around it.
@@ -196,6 +203,7 @@ function SourcePeek({
     hasNoSingleFile,
     commit,
     embedded,
+    localOnly,
   ]);
 
   return (
@@ -308,6 +316,7 @@ export default function GraphView({
   repoFullName,
   sourceUrl,
   commit,
+  localOnly = false,
 }: {
   repoId: string;
   data: CodemapResponse;
@@ -318,6 +327,7 @@ export default function GraphView({
   repoFullName?: string;
   sourceUrl?: string | null;
   commit?: string;
+  localOnly?: boolean;
 }) {
   const [peek, setPeek] = useState<PeekSource | null>(null);
   // In the explore graph, "Focus in graph" centers + expands the node in place
@@ -373,7 +383,7 @@ export default function GraphView({
             data={data}
             variant={variant}
             focusRequest={focusReq}
-            repoId={repoId}
+            repoId={localOnly ? undefined : repoId}
             onNodeClick={openNodeSource}
             onEdgeClick={openEdgeSource}
           />
@@ -389,6 +399,7 @@ export default function GraphView({
           repoFullName={repoFullName}
           sourceUrl={sourceUrl}
           commit={commit}
+          localOnly={localOnly}
         />
       )}
     </>

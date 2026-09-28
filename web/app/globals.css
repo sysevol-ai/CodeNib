@@ -5993,3 +5993,9 @@ a.codepanel-name:hover {
   .browse-tabs { gap: 0; flex-wrap: nowrap; }
   .browse-tabs a { padding: 8px; font-size: 12px; white-space: nowrap; flex: 1; text-align: center; }
 }
+
+.saved-wiki-maps { margin: 28px 0; padding-top: 20px; border-top: 1px solid var(--border); }
+.saved-wiki-map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.saved-wiki-map-heading h2 { margin: 0; font-size: 18px; }
+.saved-wiki-codegraph { margin-top: 18px; min-width: 0; }
+.wiki-visual-unavailable { border-left: 3px solid #d89c46; padding: 10px 14px; font-size: 13px; }

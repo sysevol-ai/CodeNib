@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture from "@/components/SystemArchitecture";
+import SavedWikiMaps from "@/components/SavedWikiMaps";
 import { splitWikiMarkdown } from "@/lib/wikiPresentation";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
 import WikiRunActivity from "@/components/WikiRunActivity";
@@ -580,6 +581,20 @@ export default function SavedWikiPage({ id }: { id: string }) {
                     <span>Evidence-linked Wiki chapter</span>
                     <span>{page.citations.length} source references</span>
                   </div>
+                  {active === "overview" && !architecture && (
+                    <p className="wiki-visual-unavailable" role="status">
+                      The architecture diagram could not be validated. This
+                      chapter's source-checked text is available; the diagram is
+                      missing.
+                    </p>
+                  )}
+                  <SavedWikiMaps
+                    id={id}
+                    pageId={active}
+                    repository={wiki.repository}
+                    complete={!running}
+                    onPick={pick}
+                  />
                   <details className="saved-wiki-sources">
                     <summary>Sources for this chapter</summary>
                     {page.citations.map((item, index) => (

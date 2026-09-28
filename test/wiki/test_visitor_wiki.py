@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from codenib.storage import SQLiteWikiStore
 from codenib.web.visitor_wikis import router
-from codenib.wiki import visitor_provider, visitor_source
+from codenib.wiki import visitor_graph, visitor_provider, visitor_source
 from codenib.wiki.builder import WikiBuilder
 from codenib.wiki.store import WikiGenerationBusyError
 from codenib.wiki.visitor_provider import VisitorProvider, WikiRunStopped
@@ -85,6 +85,12 @@ def prepare(*_args):
     yield SimpleNamespace(), None
 
 
+@pytest.fixture(autouse=True)
+def local_index_only(monkeypatch):
+    """Source preparation tests must not start an installed compiler tool."""
+    monkeypatch.setattr(visitor_graph, "resolve_command", lambda _: None)
+
+
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     FakeWiki.produced, FakeWiki.before_page = [], None
@@ -109,6 +115,7 @@ def test_full_wiki_saved_and_reopened_without_source_key_or_generation(manager):
     assert state["status"] == "complete"
     assert state["page_states"] == {"overview": "ready", "pipeline": "ready"}
     assert FakeWiki.produced == ["overview", "pipeline"]
+
     reopened = VisitorWikis(manager.store)
     assert [p["id"] for p in reopened.status(ATTEMPT)["pages"]] == [
         "overview",
@@ -122,6 +129,43 @@ def test_full_wiki_saved_and_reopened_without_source_key_or_generation(manager):
     assert KEY not in encoded and OWNER not in encoded
     assert "owner_hash" not in state
     assert submit(manager, "another-client")["status"] == "complete"
+    assert FakeWiki.produced == ["overview", "pipeline"]
+
+
+def test_graph_get_survives_restart_without_generation_or_publication(
+    manager, monkeypatch
+):
+    submit(manager)
+    before = {
+        entry.entry_id: entry.envelope
+        for entry in manager.store.scan()
+        if not entry.entry_id.endswith(":graphs")
+    }
+    summary = {
+        "coverage": {"available": True, "note": "fixture"},
+        "system_map": {"available": False, "areas": [], "links": []},
+    }
+    view = {"available": True, "nodes": [{"id": "n0"}], "edges": [], "mermaid": ""}
+    monkeypatch.setattr(
+        visitor_graph, "wiki_graph_views", lambda *_: (summary, {"overview": view})
+    )
+    with manager.store.generation_guard("visitor-wiki-generation-v1"):
+        manager.save_graph_views(
+            manager._read(ATTEMPT), SimpleNamespace(), lambda: None
+        )
+    for entry_id, envelope in before.items():
+        assert manager.store.read(entry_id).envelope == envelope
+    app = FastAPI()
+    app.include_router(router)
+    app.state.visitor_wikis = VisitorWikis(manager.store)
+    client = TestClient(app)
+    first = client.get(f"/api/visitor-wikis/{ATTEMPT}/graphs/overview")
+    assert first.status_code == 200
+    assert first.json()["code_graph"] == view
+    assert first.json()["commit"] == COMMIT
+    assert first.headers["Cache-Control"] == "no-store"
+    assert client.get(f"/api/visitor-wikis/{ATTEMPT}/graphs/missing").status_code == 404
+    assert manager.status(ATTEMPT)["published"] is False
     assert FakeWiki.produced == ["overview", "pipeline"]
 
 
@@ -624,6 +668,7 @@ def test_skipping_large_members_preserves_archive_bounds(tmp_path, monkeypatch, 
 def test_real_source_preparation_enumerates_symbols_without_bm25_or_embeddings(
     tmp_path, monkeypatch
 ):
+    monkeypatch.setattr(visitor_graph, "resolve_command", lambda _: None)
     monkeypatch.setattr(
         visitor_source,
         "github_bytes",
