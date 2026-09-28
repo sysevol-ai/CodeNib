@@ -146,7 +146,6 @@ def build_visitor_graph(bundle, check, progress):
 
 def wiki_graph_views(bundle, tree, pages, check):
     """Project the same graph and source into the existing reader contracts."""
-    from ..web.codemap import build_codemap
     from ..web.static_export import _area_map, _embed_page_graph_sources, _page_graph
     from .builder import WikiBuilder
 
@@ -175,15 +174,7 @@ def wiki_graph_views(bundle, tree, pages, check):
     views = {}
     for page in pages:
         check()
-        if page["id"] == "overview":
-            view = build_codemap(
-                graph,
-                max_nodes=80,
-                repo_dir=bundle.entry.repo_dir,
-                source_reader=bundle.source_reader,
-            )
-        else:
-            view = _page_graph(bundle, page)
+        view = _page_graph(bundle, page)
         views[page["id"]] = _embed_page_graph_sources(builder, view)
     check()
     return {"coverage": coverage, "system_map": _area_map(bundle, tree, pages)}, views

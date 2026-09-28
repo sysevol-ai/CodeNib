@@ -135,6 +135,7 @@ def test_saved_projection_preserves_real_edges_and_embeds_pinned_source(tmp_path
                 ],
             }
         )
+    pages[0]["citations"] = [p["citations"][0] for p in pages[1:]]
     with capture_repository_source(tmp_path) as source:
         bundle = SimpleNamespace(
             source_reader=source.borrow_reader(),

@@ -504,7 +504,9 @@ omissions behind a ready chapter.
 A same-commit source/graph probe took **3.29 seconds**, including download,
 chunking, indexing and four reader projections, with no model call. SCIP emitted
 365 nodes and 1,345 edges; these include containment and references, not 1,345
-calls. Four bounded chapter CodeGraphs are available. No direct cross-chapter
+calls. Four bounded chapter CodeGraphs are available. The initial Overview view is
+limited to its cited symbols and shared bridges (12 nodes / 5 edges), rather
+than a large neighbourhood dominated by uncited implementation helpers. No direct cross-chapter
 connections were found for the cited symbols; the three System Map regions
 therefore have no invented arrows. Python indexing is capped at 60 seconds and
 16 MiB of SCIP output; cancellation terminates the owned child process. It uses
@@ -529,7 +531,8 @@ progress. The extra editorial pass reports its actual review stage. Refresh and
 reconnect remain read-only, and existing paid runs must drain before deployment.
 The review chain is #803 → #804 → #805 →
 [#806](https://github.com/sysevol-ai/CodeNib/pull/806) →
-[#807](https://github.com/sysevol-ai/CodeNib/pull/807); restack it in that order
+[#807](https://github.com/sysevol-ai/CodeNib/pull/807) →
+[#808](https://github.com/sysevol-ai/CodeNib/pull/808); restack it in that order
 before merging. Deployment does not imply the stack is merged.
 
 The community and visitor-quality fixes are deployed as of 2026-09-27.
