@@ -450,3 +450,80 @@ export function posterMode(
   const isolated = shown.size - linked.size;
   return { mode: linked.size >= 3 && isolated * 2 <= linked.size ? "network" : "atlas", linked };
 }
+
+export interface ThumbLayout {
+  dots: Array<{ id: string; x: number; y: number; r: number }>;
+  lines: Array<{ key: string; d: string; width: number }>;
+}
+
+/**
+ * A catalog card's small map: areas as dots sized by symbols, the strongest
+ * recorded references as curves. Sparse indexes get a row of dots, the
+ * thumbnail's version of the atlas.
+ */
+export function thumbLayout(
+  areas: PosterArea[],
+  links: PosterLink[],
+  width: number,
+  height: number,
+): ThumbLayout {
+  const shown = areas.filter((area) => area.symbols > 0);
+  if (shown.length === 0) return { dots: [], lines: [] };
+  const ids = shown.map((area) => area.id);
+  const known = new Set(ids);
+  const valid = links.filter(
+    (link) => known.has(link.source) && known.has(link.target) && link.source !== link.target,
+  );
+  const maxSymbols = Math.max(...shown.map((area) => area.symbols));
+  const symbols = new Map(shown.map((area) => [area.id, area.symbols]));
+  const padX = 22;
+  const padY = 16;
+  const at = new Map<string, { x: number; y: number }>();
+  let maxR = 9;
+
+  if (posterMode(areas, links).mode === "atlas") {
+    const row = [...shown].sort((a, b) => b.symbols - a.symbols);
+    const step = row.length > 1 ? (width - padX * 2) / (row.length - 1) : 0;
+    maxR = Math.min(maxR, row.length > 1 ? step / 2 - 1 : maxR);
+    row.forEach((area, index) =>
+      at.set(area.id, { x: row.length > 1 ? padX + step * index : width / 2, y: height / 2 }),
+    );
+  } else {
+    const { columns } = layoutAreas(ids, valid, { maxDrawn: 12, maxColumns: 5 });
+    const tallest = Math.max(...columns.map((column) => column.length));
+    if (tallest > 1) maxR = Math.min(maxR, (height - padY * 2) / (tallest - 1) / 2 - 1);
+    columns.forEach((column, i) => {
+      const x = columns.length === 1 ? width / 2 : padX + ((width - padX * 2) * i) / (columns.length - 1);
+      // A long column zig-zags so its dots and curves don't read as a comb.
+      const stagger = column.length > 4 ? Math.min(12, (width - padX * 2) / columns.length / 4) : 0;
+      column.forEach((id, j) => {
+        const y = column.length === 1 ? height / 2 : padY + ((height - padY * 2) * j) / (column.length - 1);
+        const nudge = i === 0 ? stagger * (j % 2) : i === columns.length - 1 ? -stagger * (j % 2) : stagger * (j % 2 ? 1 : -1);
+        at.set(id, { x: x + nudge, y });
+      });
+    });
+  }
+
+  const dots = ids.map((id) => ({
+    id,
+    ...at.get(id)!,
+    r: Math.max(2, Math.min(maxR, 2 + (maxR - 2) * Math.sqrt(symbols.get(id)! / maxSymbols))),
+  }));
+  const chosen = [...valid].sort((a, b) => b.weight - a.weight).slice(0, 12);
+  const heaviest = Math.max(1, ...chosen.map((link) => link.weight));
+  const lines = chosen.map((link) => {
+    const a = at.get(link.source)!;
+    const b = at.get(link.target)!;
+    const dx = Math.max(12, Math.abs(b.x - a.x) * 0.5);
+    const d =
+      Math.abs(a.x - b.x) < 1
+        ? `M ${a.x} ${a.y} C ${a.x + 28} ${a.y}, ${b.x + 28} ${b.y}, ${b.x} ${b.y}`
+        : `M ${a.x} ${a.y} C ${a.x + Math.sign(b.x - a.x) * dx} ${a.y}, ${b.x - Math.sign(b.x - a.x) * dx} ${b.y}, ${b.x} ${b.y}`;
+    return {
+      key: `${link.source}\u0000${link.target}`,
+      d,
+      width: 0.6 + 1.8 * (Math.log(1 + link.weight) / Math.log(1 + heaviest)),
+    };
+  });
+  return { dots, lines };
+}
