@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import evidence from "./requests.js";
+import syntax from "./requests-highlight.js";
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -9,6 +10,10 @@ const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
 const symbol = (node) => node.symbol.split(".").at(-1);
 const sourceUrl = (file, line, end = line) =>
   `https://github.com/${evidence.repository}/blob/${evidence.commit}/${file}#L${line}-L${end}`;
+const nodeNote = (node, index) => index === 3
+  ? "Hostname check shown. The full method also handles scheme and port changes."
+  : `Excerpt from ${node.symbol}. Open GitHub to see the surrounding method.`;
+const edgeNote = (edge) => `Indexed call at line ${edge.anchor.line}. This is a selected path, not the whole runtime flow.`;
 
 /** One small, source-pinned preview shared by the static site and Wiki app.
  * All exploration is local. No source, graph, or inference API is contacted.
@@ -44,8 +49,17 @@ class RepoExplorer extends HTMLElement {
         </div>
         <section class="source" id="example-source" aria-label="Selected source excerpt">
           <div class="source-head"><span class="source-label"></span><a class="source-link" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a></div>
-          <pre tabindex="0" aria-label="Source code"><code class="source-code"></code></pre>
-          <p class="source-note" role="status"></p>
+          <div class="source-scroll" tabindex="0" role="region" aria-label="Source code">
+            <div class="source-code">
+              <span class="line-highlight" aria-hidden="true" hidden></span>
+              <div class="line-numbers" aria-hidden="true"></div>
+              <pre><code class="syntax"></code></pre>
+            </div>
+          </div>
+          <div class="source-note" role="status">
+            ${evidence.nodes.map((node, index) => `<p data-note="node-${index}" aria-hidden="true">${escape(nodeNote(node, index))}</p>`).join("")}
+            ${evidence.edges.map((edge, index) => `<p data-note="edge-${index}" aria-hidden="true">${escape(edgeNote(edge))}</p>`).join("")}
+          </div>
         </section>
         <footer>
           <a class="wiki-link" href="${escape(wiki)}">Read the full Wiki <span aria-hidden="true">→</span></a>
@@ -105,15 +119,21 @@ class RepoExplorer extends HTMLElement {
     });
     root.querySelector(".source-label").textContent = `sessions.py:${highlight || node.start_line}`;
     root.querySelector(".source-link").href = sourceUrl(node.file, highlight || node.start_line, highlight || end);
-    root.querySelector(".source-code").innerHTML = lines.map((line, offset) => {
+    root.querySelector(".line-numbers").innerHTML = lines.map((line, offset) => {
       const number = node.start_line + offset;
-      return `<span class="code-line${number === highlight ? " selected" : ""}"><span class="line-number" aria-hidden="true">${number}</span><span>${escape(line.slice(indent))}</span></span>`;
+      return `<span class="code-line${number === highlight ? " selected" : ""}">${number}</span>`;
     }).join("");
-    root.querySelector(".source-note").textContent = edge
-      ? `Indexed call at line ${highlight}. This is a selected path, not the whole runtime flow.`
-      : index === 3
-        ? "Hostname check shown. The full method also handles scheme and port changes."
-        : `Excerpt from ${node.symbol}. Open GitHub to see the surrounding method.`;
+    root.querySelector(".syntax").innerHTML = syntax[node.id]?.sha256 === node.sha256
+      ? syntax[node.id].html : escape(lines.map(line => line.slice(indent)).join("\n"));
+    const band = root.querySelector(".line-highlight");
+    band.hidden = highlight === undefined;
+    band.style.setProperty("--selected-row", highlight === undefined ? 0 : highlight - node.start_line);
+    root.querySelectorAll("[data-note]").forEach(note => {
+      note.setAttribute("aria-hidden", String(note.dataset.note !== `${kind}-${index}`));
+    });
+    // Reset only the source pane. Scrolling an element into view can move the
+    // whole page and displace the controls the visitor is currently clicking.
+    root.querySelector(".source-scroll").scrollTo({ top: 0, left: 0, behavior: "instant" });
     if (interacted) this.report("example_source_open");
   }
 }

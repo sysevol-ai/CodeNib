@@ -22,12 +22,18 @@ against the same prepared Requests index, without generating any prose:
 
 ```bash
 python scripts/build_first_visit_example.py --api-base http://127.0.0.1:8001 --check
+node scripts/highlight_first_visit_example.mjs --check
 node scripts/render_first_visit_share.mjs
 ```
 
 Remove `--check` only when deliberately updating the evidence. Review the
 commit, selected symbols, graph anchors and ranges together. Source excerpts
 are from Requests under Apache-2.0; its pinned license URL is in the artifact.
+After changing excerpts, regenerate their syntax asset with
+`node scripts/highlight_first_visit_example.mjs` using the installed Web
+dependencies. It uses the Wiki's existing highlight.js Python grammar, preserves
+the excerpt text, and adds no browser dependency or network request. The source
+pane keeps its height across selections; long code scrolls inside the pane.
 The renderer produces the real example's 1200×630 homepage sharing image.
 Repository-specific social images remain a separate task.
 

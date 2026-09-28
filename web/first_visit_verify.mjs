@@ -14,6 +14,52 @@ const browser = await chromium.launch();
 const repo = { id: "psf__requests", repo: "psf/requests", language: "python", languages: ["python"], base_commit: evidence.commit, commit_short: evidence.commit.slice(0, 8), file_count: 22, capabilities: {} };
 const reports = [];
 
+async function selectionLayout(page) {
+  return page.evaluate(() => {
+    const host = document.querySelector("codenib-explorer");
+    const root = host.shadowRoot;
+    const bounds = element => {
+      const rect = element.getBoundingClientRect();
+      return [rect.x, rect.y, rect.width, rect.height];
+    };
+    return [scrollX, scrollY, ...[host, root.querySelector(".flow"), root.querySelector(".source"),
+      root.querySelector("footer"), document.querySelector("h1")].flatMap(bounds)];
+  });
+}
+
+async function assertStableSelection(page, explorer) {
+  // Keep every flow control visible, including on a scrolled mobile page.
+  await explorer.locator(".flow").evaluate(element => window.scrollTo({
+    top: scrollY + element.getBoundingClientRect().top - 150, behavior: "instant",
+  }));
+  const before = await selectionLayout(page);
+  for (const index of [3, 0, 1, 2]) {
+    await explorer.locator(`[data-node="${index}"]`).click();
+    const after = await selectionLayout(page);
+    assert.ok(after.every((value, i) => Math.abs(value - before[i]) < 1), `node ${index} moved the page or resized the example`);
+    const lines = evidence.nodes[index].content.trimEnd().split("\n");
+    const indent = Math.min(...lines.filter(line => line.trim()).map(line => line.match(/^ */)[0].length));
+    assert.equal(await explorer.locator(".syntax").textContent(), lines.map(line => line.slice(indent)).join("\n"));
+  }
+  const plainColor = await explorer.locator(".syntax").evaluate(element => getComputedStyle(element).color);
+  for (const token of ["keyword", "string", "comment"]) {
+    const color = await explorer.locator(`.hljs-${token}`).first().evaluate(element => getComputedStyle(element).color);
+    assert.notEqual(color, plainColor, `${token} must have visible syntax color`);
+  }
+  for (const index of [0, 1, 2]) {
+    await explorer.locator(`[data-edge="${index}"]`).click();
+    const after = await selectionLayout(page);
+    assert.ok(after.every((value, i) => Math.abs(value - before[i]) < 1), `edge ${index} moved the page or resized the example`);
+    const band = await explorer.locator(".line-highlight").boundingBox();
+    const line = await explorer.locator(".code-line.selected").boundingBox();
+    assert.ok(Math.abs(band.y - line.y) < 1, "call highlight must align with its line number");
+  }
+  await explorer.locator(".source-scroll").evaluate(element => element.scrollTo({ top: 100, left: 100 }));
+  await explorer.locator('[data-node="0"]').click();
+  assert.deepEqual(await explorer.locator(".source-scroll").evaluate(element => [element.scrollTop, element.scrollLeft]), [0, 0]);
+  await explorer.locator('[data-edge="2"]').click();
+}
+
 async function fixtures(context, { metrics = false, unavailable = false } = {}) {
   const writes = [];
   await context.route("**/runtime-config.js", route => route.fulfill({
@@ -40,7 +86,7 @@ async function fixtures(context, { metrics = false, unavailable = false } = {}) 
 try {
   for (const [site, base] of [["landing", landing], ["wiki", wiki]]) {
     for (const width of [1440, 390, 320]) {
-      const context = await browser.newContext({ viewport: { width, height: 960 }, reducedMotion: "reduce" });
+      const context = await browser.newContext({ viewport: { width, height: 960 }, reducedMotion: "no-preference" });
       const writes = await fixtures(context);
       const page = await context.newPage(), errors = [], remote = [];
       page.on("pageerror", error => errors.push(error.message));
@@ -48,6 +94,7 @@ try {
       await page.goto(base, { waitUntil: "networkidle" });
       const explorer = page.locator("codenib-explorer");
       await explorer.locator(".node").first().waitFor();
+      await page.evaluate(() => document.fonts.ready);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       assert.ok((await explorer.boundingBox()).y < (width === 1440 ? 200 : 450), "example must precede the mobile repository form");
       for (let index = 0; index < 3; index++) {
@@ -63,11 +110,16 @@ try {
       assert.match(await explorer.locator(".source-code").innerText(), /old_parsed.hostname != new_parsed.hostname/);
       await explorer.locator('[data-edge="2"]').click();
       assert.match(await explorer.locator(".source-code").innerText(), /del headers\["Authorization"\]/);
+      await assertStableSelection(page, explorer);
+      if (width === 390) {
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        await assertStableSelection(page, explorer);
+      }
       await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async value => { window.copiedExample = value; } } }));
       await explorer.getByRole("button", { name: "Copy example link" }).click();
       assert.equal(await page.evaluate(() => window.copiedExample), `${base}/#requests-auth`);
       assert.match(await explorer.locator(".share-status").innerText(), /copied/);
-      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
       await page.screenshot({ path: `${output}/${site}-${width}.png` });
       if (site === "wiki" && width === 390) {
         await page.getByRole("button", { name: "Toggle color theme" }).click();
@@ -76,7 +128,7 @@ try {
       assert.deepEqual(errors, []);
       assert.deepEqual(remote, []);
       assert.deepEqual(writes, []);
-      reports.push({ site, width, sourceLinks: 3, keyboard: true, overflow: false, errors });
+      reports.push({ site, width, sourceLinks: 3, keyboard: true, stableSelection: true, syntaxColors: true, overflow: false, errors });
       await context.close();
     }
   }

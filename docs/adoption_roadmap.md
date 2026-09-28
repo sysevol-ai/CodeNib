@@ -106,7 +106,10 @@ Wiki social previews remain open.
 
 Local acceptance passes all three source links, keyboard operation, 1440/390/320
 pixel layouts, dark mode, reduced motion, catalog-outage exploration, aliases,
-refresh and Back navigation. The Web unit surface has 608 passing tests and one
+refresh and Back navigation. Syntax-colored excerpts retain their exact source
+text and aligned call highlights. Switching nodes/calls keeps the card, adjacent
+heading and page scroll position stable; long source scrolls inside a fixed-height
+pane. The Web unit surface has 608 passing tests and one
 skip; all 142 frontend tests pass. Production build, strict MkDocs and the
 public-doc boundary pass. Opt-in measurement records fixed events only, with
 tab-session deduplication, privacy-signal suppression and a bounded log collector

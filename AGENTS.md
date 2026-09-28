@@ -72,6 +72,9 @@ commit, indexed relationship anchors and exact excerpts. Label a selected call
 path as such; do not present it as a complete architecture or runtime trace.
 Keep the marketing and Wiki example in one shared asset, and keep source-only
 previews separate from claims about arbitrary-repository graph coverage.
+Switching first-visit nodes or calls must keep the surrounding layout and page
+scroll position stable. Preserve syntax coloring and source-line alignment;
+scroll long excerpts only inside the source pane.
 
 ## Storage Scope Guard
 
