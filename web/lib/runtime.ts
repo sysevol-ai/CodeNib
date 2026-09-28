@@ -6,6 +6,7 @@ declare global {
       basePath?: string;
       dataBase?: string;
       trialApiBase?: string;
+      experienceEvents?: boolean;
     };
   }
 }

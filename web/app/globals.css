@@ -5999,3 +5999,45 @@ a.codepanel-name:hover {
 .saved-wiki-map-heading h2 { margin: 0; font-size: 18px; }
 .saved-wiki-codegraph { margin-top: 18px; min-width: 0; }
 .wiki-visual-unavailable { border-left: 3px solid #d89c46; padding: 10px 14px; font-size: 13px; }
+
+/* First visit: the example remains usable while the catalog connects. */
+.landing .hero.first-visit-hero {
+  display: grid;
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  grid-template-areas: "intro example" "entry example";
+  column-gap: 40px;
+  row-gap: 0;
+  align-items: center;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 48px 40px 56px;
+  text-align: left;
+}
+.first-visit-intro { min-width: 0; grid-area: intro; align-self: end; }
+.first-visit-entry { min-width: 0; grid-area: entry; align-self: start; }
+.landing .first-visit-hero .first-visit-intro p { text-align: left; }
+.landing .first-visit-hero h1 { font-size: clamp(34px, 3.5vw, 50px); line-height: 1.12; letter-spacing: -.04em; margin: 14px 0 20px; }
+.first-visit-eyebrow { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+.landing .first-visit-hero .hero-sub { max-width: 40ch; font-size: 17px; line-height: 1.65; margin: 0; }
+.first-visit-invitation { font-size: 13px; color: var(--text-secondary); margin: 20px 0 28px; }
+.first-visit-hero .repository-entry { margin: 0; }
+.first-visit-hero .repository-entry-row input { padding: 12px; font-size: 13px; }
+.first-visit-hero .repository-entry-row button { padding: 12px; font-size: 13px; }
+.first-visit-hero .repository-entry p { font-size: 11px; }
+.first-visit-hero .repository-examples { display: none; }
+.first-visit-explorer { min-height: 530px; grid-area: example; }
+.repository-route { max-width: 760px; margin: 64px auto; padding: 0 24px; }
+@media (max-width: 1000px) {
+  .landing .hero.first-visit-hero { grid-template-columns: minmax(0, 1fr); grid-template-areas: "intro" "example" "entry"; max-width: 740px; padding: 24px 24px 40px; gap: 20px; }
+  .landing .first-visit-hero h1 { font-size: 38px; }
+  .first-visit-entry .repository-entry { margin-top: 0; }
+  .first-visit-invitation { margin-bottom: 12px; }
+  .first-visit-hero .repository-entry-row { flex-direction: row; }
+  .first-visit-hero .browse-entry { margin-top: 8px; }
+}
+@media (max-width: 420px) {
+  .landing .hero.first-visit-hero { padding-inline: 16px; }
+  .landing .first-visit-hero h1 { font-size: 32px; margin: 10px 0 14px; }
+  .landing .first-visit-hero .hero-sub { font-size: 15px; }
+  .first-visit-invitation { margin: 12px 0 0; }
+}

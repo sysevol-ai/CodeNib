@@ -192,6 +192,14 @@ try {
             ],
           },
         });
+      if (url.pathname.includes("/graphs/")) {
+        return route.fulfill({ json: {
+          commit: "c".repeat(40),
+          coverage: { available: false, note: "No index in this provider-free fixture." },
+          system_map: { available: false, areas: [], links: [] },
+          code_graph: { available: false, nodes: [], edges: [] },
+        } });
+      }
       if (url.pathname.startsWith("/api/"))
         throw new Error(
           `Unexpected API request ${request.method()} ${url.pathname}`,

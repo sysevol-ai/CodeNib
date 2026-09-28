@@ -18,8 +18,9 @@ function currentLocation(): BrowserLocation {
   };
 }
 
-export function navigate(href: string): void {
-  window.history.pushState(null, "", withBasePath(href));
+export function navigate(href: string, replace = false): void {
+  if (replace) window.history.replaceState(null, "", withBasePath(href));
+  else window.history.pushState(null, "", withBasePath(href));
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
@@ -65,5 +66,8 @@ export function routeSegments(pathname: string): string[] {
   return pathname
     .split("/")
     .filter(Boolean)
-    .map((part) => decodeURIComponent(part));
+    .map((part) => {
+      try { return decodeURIComponent(part); }
+      catch { return part; }
+    });
 }

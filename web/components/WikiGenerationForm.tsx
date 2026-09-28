@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { startWiki, type WikiAttempt } from "@/lib/visitorWiki";
+import { recordExperience } from "@/lib/experience";
 
 export default function WikiGenerationForm({
   attempt,
@@ -18,6 +19,7 @@ export default function WikiGenerationForm({
   const [error, setError] = useState("");
   const [budget, setBudget] = useState(2);
   const [model, setModel] = useState("deepseek/deepseek-v4.1-flash");
+  useEffect(() => { recordExperience("generation_form_view"); }, []);
   return (
     <form
       className="wiki-generation-form"
@@ -31,6 +33,7 @@ export default function WikiGenerationForm({
         setError("");
         try {
           await startWiki(attempt, key, budget, model);
+          recordExperience("generation_start");
           onStarted();
         } catch (reason) {
           setError(

@@ -54,7 +54,8 @@ published-package recording and paired token comparison remain open;
 production grep/Jev authorization remains in A2/A3.
 
 - Rewrite README and website around finding source context for coding agents.
-  Put the verified 71.4% Recall@5 result in the first screen with its dataset,
+  Lead the website with a usable, source-pinned example and a clear Wiki entry.
+  Keep the verified 71.4% Recall@5 result below the first interaction, with its dataset,
   comparator (+12.8 percentage points), experiment label, and public method.
   Never substitute issue resolution rate, token savings, or a Spark latency.
 - Keep README Quickstart to installation and `codegraph init`. Link advanced
@@ -80,6 +81,50 @@ production grep/Jev authorization remains in A2/A3.
 Acceptance: strict docs build and public-link audit; published claims traced
 to committed results; desktop/mobile inspection of the actual landing page;
 all first-screen links work; quickstart remains exactly two commands.
+
+#### First-visit activation
+
+Status: implemented locally on `feat/first-visit-explorer`, stacked after #808
+and its #803 → #804 → #805 → #806 → #807 dependencies. This iteration gives
+the marketing and live Wiki homepages one shared, self-contained Requests
+question. Four source-pinned symbols and three indexed occurrence anchors
+are clickable without an account, model call, graph request or live source
+fetch. Mobile reading starts with that example before the repository form.
+The example leads into the full existing Wiki and keeps the local-agent setup
+and authentic CLI recording available. The research metric is supporting
+evidence below the first interaction, not the product's opening promise.
+
+The natural `/owner/repo` route and marketing `?repo=` form resolve against
+the ready catalog before offering the existing visitor Wiki generation flow.
+Aliases replace browser history, retain chapter links, and expose retry on
+catalog failure. They do not infer a missing Wiki from a failed catalog read.
+Generation remains explicitly user-funded; this change does not claim free
+arbitrary-repository generation, new graph coverage or faster first chapters.
+Example links and a rendered homepage social card are available; individual
+Wiki social previews remain open.
+
+Local acceptance passes all three source links, keyboard operation, 1440/390/320
+pixel layouts, dark mode, reduced motion, catalog-outage exploration, aliases,
+refresh and Back navigation. The Web unit surface has 607 passing tests and one
+skip; all 142 frontend tests pass. Production build, strict MkDocs and the
+public-doc boundary pass. Opt-in measurement records fixed events only, with
+tab-session deduplication, privacy-signal suppression and a bounded log collector.
+Events exclude user input, URLs, source and credentials. Counts are partial
+observations, separate by origin; source clicking and Wiki reading are leading
+indicators, while a successful own-repository agent query remains activation.
+
+The production frontend also opens the real cached Requests redirect chapter
+from the example with read-only requests. Existing visitor stop/resume,
+refresh, sharing and polling checks pass on desktop and mobile after correcting
+their stale pre-#808 graph-response fixture; the paused-run failure reproduced
+on the unchanged dependency tip as well. The acceptance criteria are unchanged.
+
+Open gates: PR reconciliation and public acceptance; enable hosted
+measurement only with the matching collector and log-retention policy; establish
+a baseline and observe 5–8 unfamiliar users before claiming improved conversion.
+Arbitrary-repository cost/latency, broader question examples and per-Wiki social
+previews need separate evidence. Existing generation, consent, corpus-quality
+and non-Python graph gates remain in A3/A5.
 
 ### A2 — Ship grep → Jev as a bounded product route
 

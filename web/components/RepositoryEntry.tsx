@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import type { RepoInfo } from "@/lib/api";
 import { parseGitHubRepository, previewPath } from "@/lib/githubPreview";
 import { AppLink, navigate } from "@/lib/router";
+import { recordExperience } from "@/lib/experience";
 
 export function repositoryDestination(
   input: string,
@@ -31,16 +32,19 @@ export default function RepositoryEntry({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          const destination = repositoryDestination(value, repos);
-          if (!destination) {
+          const repo = parseGitHubRepository(value);
+          if (!repo) {
             setError("Paste a public GitHub URL or enter owner/repo.");
             return;
           }
           setError("");
-          navigate(destination);
+          recordExperience("repository_submit");
+          // A still-loading catalog is not evidence that a Wiki is missing.
+          // The alias resolver shares the in-flight catalog request first.
+          navigate(`/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`);
         }}
       >
-        <label htmlFor={id}>Public GitHub repository</label>
+        <label htmlFor={id}>Explore your own repository</label>
         <div className="repository-entry-row">
           <input
             id={id}
@@ -69,7 +73,7 @@ export default function RepositoryEntry({
           role={error ? "alert" : undefined}
         >
           {error ||
-            "Open a ready Wiki instantly, or generate and save one with your OpenRouter account. No install or embeddings."}
+            "Ready Wikis open instantly. A new Wiki uses your OpenRouter account; you review the cost limit before starting."}
         </p>
       </form>
       <div className="repository-examples">

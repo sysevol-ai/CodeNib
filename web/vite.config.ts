@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
@@ -23,6 +23,9 @@ export default defineConfig({
   server: {
     allowedHosts,
     proxy: apiProxy,
+    fs: {
+      allow: [searchForWorkspaceRoot(__dirname), path.resolve(__dirname, "../landing/assets/explore")],
+    },
   },
   preview: {
     allowedHosts,

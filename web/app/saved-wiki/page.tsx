@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useRef, useState } from "react";
+import { recordExperience } from "@/lib/experience";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture from "@/components/SystemArchitecture";
@@ -110,7 +111,10 @@ export default function SavedWikiPage({ id }: { id: string }) {
     if (ready)
       loadSavedWikiPage(id, active)
         .then((value) => {
-          if (!cancelled) setPage(value);
+          if (!cancelled) {
+            setPage(value);
+            recordExperience("first_chapter_read");
+          }
         })
         .catch((reason) => {
           if (!cancelled)
