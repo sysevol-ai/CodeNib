@@ -1198,7 +1198,7 @@ export default function CodeGraph({
             color: palette.text,
             // Size by importance (PageRank percentile): core symbols read bigger.
             "font-size": "mapData(importance, 0, 1, 13, 17)",
-            "font-family": "system-ui, -apple-system, Segoe UI, sans-serif",
+            "font-family": "Geist, system-ui, -apple-system, Segoe UI, sans-serif",
             "text-valign": "center",
             "text-halign": "center",
             "text-wrap": "wrap",

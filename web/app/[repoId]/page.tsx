@@ -14,6 +14,8 @@ import Markdown from "@/components/Markdown";
 import SystemArchitecture, { type ArchitectureJourney } from "@/components/SystemArchitecture";
 import PageBoundaryCard from "@/components/PageBoundary";
 import AreaMap from "@/components/AreaMap";
+import RepoPoster from "@/components/RepoPoster";
+import { ghFileUrl } from "@/lib/github";
 import AskBar from "@/components/AskBar";
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime, mediaAssetUrl } from "@/lib/runtime";
@@ -79,20 +81,6 @@ function stripGeneratedDiagrams(
     .trimEnd();
 }
 
-// Link a repo-relative source path to the exact blob on GitHub at the indexed commit.
-function ghFileUrl(
-  repo: string | undefined,
-  sourceUrl: string | null | undefined,
-  commit: string | undefined,
-  file: string,
-  start?: number | null,
-  end?: number | null
-): string | null {
-  if (!repo) return null;
-  const lines = start ? `#L${start}${end && end !== start ? `-L${end}` : ""}` : "";
-  const root = (sourceUrl || `https://github.com/${repo}`).replace(/\/+$/, "");
-  return `${root}/blob/${commit || "HEAD"}/${file}${lines}`;
-}
 
 function TocTree({
   pages,
@@ -120,7 +108,9 @@ function TocTree({
             onClick={() => onPick(p.id)}
           >
             <span className="toc-label">{p.title}</span>
-            {p.cache_state && (
+            {p.cache_state && p.cache_state !== "ready" && (
+              // Ready is the normal state; only pages that still need work
+              // carry a marker, so the marker means something.
               <span
                 className={`toc-cache-state ${p.cache_state}`}
                 aria-label={cacheLabels[p.cache_state]}
@@ -135,6 +125,18 @@ function TocTree({
       ))}
     </ul>
   );
+}
+
+/** The Overview's first prose paragraph: no heading, reader-question quote,
+ *  or list, which the poster has no room for. */
+function posterLead(markdown: string): string {
+  const paragraphs = markdown.replace(/\r\n?/g, "\n").split(/\n\s*\n/);
+  return (
+    paragraphs.find((block) => {
+      const text = block.trim();
+      return text && !/^(#|>|[-*]\s|\d+\.\s|```|\|)/.test(text);
+    }) ?? ""
+  ).trim();
 }
 
 function flattenPages(pages: WikiPageRef[]): WikiPageRef[] {
@@ -808,11 +810,26 @@ export default function WikiPageView({
     page && activeId === "overview" && hasArchitecture
       ? extractJourney(wikiMarkdown.body)
       : { journey: null, rest: wikiMarkdown.body };
+  // The Overview opens on the poster: areas, recorded references and the
+  // traced path, drawn from the index. It replaces the lead paragraph, the
+  // compact area map and the architecture card's own copy of the path.
+  const showPoster =
+    activeId === "overview" &&
+    !!page &&
+    !withheldByQualityGuard &&
+    !!areaMap &&
+    areaMap.reason !== "outline_pending" &&
+    areaMap.areas.filter((area) => area.symbols > 0).length >= 2;
+  const posterJourney =
+    activeId === "overview"
+      ? lifted.journey ?? extractJourney(wikiMarkdown.body).journey
+      : null;
   const trace = lifted.journey
     ? {
         journey: lifted.journey,
         citations: page?.citations,
         onPick: pick,
+        showPath: !showPoster,
         renderText: (markdown: string) => (
           <Markdown
             citations={page?.citations}
@@ -899,7 +916,7 @@ export default function WikiPageView({
         }
       />
 
-      <div className="wiki-grid">
+      <div className={`wiki-grid${showPoster ? " has-poster" : ""}`}>
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
         <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
@@ -947,10 +964,22 @@ export default function WikiPageView({
         </aside>
 
         <main className="wiki-main">
+          {showPoster && areaMap && (
+            <RepoPoster
+              repoId={repoId}
+              repo={repo}
+              map={areaMap}
+              pages={pages}
+              journey={posterJourney}
+              lead={posterLead(wikiMarkdown.lead)}
+              onPick={pick}
+              onOpenGraph={hasGraph ? () => openGraph() : undefined}
+            />
+          )}
           <div className="wiki-content" ref={contentRef}>
               {page && !withheldByQualityGuard && (
                 <div className="wiki-story">
-                  {wikiMarkdown.lead && (
+                  {wikiMarkdown.lead && !showPoster && (
                     <Markdown
                       citations={page.citations}
                       relations={page.evidence?.relations}
@@ -963,7 +992,7 @@ export default function WikiPageView({
                       {wikiMarkdown.lead}
                     </Markdown>
                   )}
-                  {activeId === "overview" && (
+                  {activeId === "overview" && !showPoster && (
                     areaMap?.available ? (
                       <AreaMap map={areaMap} commit={repo?.commit_short} onPick={pick} />
                     ) : (
@@ -1033,16 +1062,19 @@ export default function WikiPageView({
                   }`}
                   role="status"
                 >
-                  <span className="provenance-state">
+                  <span
+                    className="provenance-state"
+                    title={page.generation?.model ? `Model: ${page.generation.model}` : undefined}
+                  >
                     {generationMode === "offline"
-                      ? "Index-derived page"
+                      ? "Built from the index"
                       : withheldByQualityGuard
-                        ? "Explanation withheld by quality guard"
+                        ? "Explanation withheld: it did not pass source checks"
                         : sourceChecked
-                          ? "Evidence-linked generation"
+                          ? "Written by a model, every claim linked to source"
                           : page.generation?.fallback
-                            ? "Index-derived fallback"
-                            : "Generated, evidence review needed"}
+                            ? "Built from the index"
+                            : "Written by a model, not yet checked against source"}
                   </span>
                   {page.grounding && (
                     // The reader gets counts they can check; the pipeline's
@@ -1069,12 +1101,9 @@ export default function WikiPageView({
                         ` · ${Math.round(page.grounding.citation_coverage * 100)}% of blocks sourced`}
                     </span>
                   )}
-                  {page.generation?.model && (
-                    <span className="provenance-model mono">{page.generation.model}</span>
-                  )}
                 </div>
               )}
-              {hasPageGraph && (
+              {hasPageGraph && activeId !== "overview" && (
                 <details
                   className="subsystem-map"
                   open={pageGraphOpen}
@@ -1293,20 +1322,6 @@ export default function WikiPageView({
           ) : (
             <div className="muted small">—</div>
           )}
-          {repo && (
-            <button
-              className="refresh-wiki"
-              title="Re-fetch this wiki page"
-              onClick={() => {
-                fetchWikiTree(repoId).then((t) => setPages(t.pages)).catch(() => {});
-                fetchWikiPage(repoId, activeId, { refresh: true })
-                  .then(setPage)
-                  .catch(() => {});
-              }}
-            >
-              Refresh this wiki
-            </button>
-          )}
         </aside>
       </div>
 
@@ -1412,6 +1427,7 @@ export default function WikiPageView({
       {repo && canAsk && (
         <AskBar
           repoId={repoId} repo={repo.repo} collapsible browserTrial={browserTrial}
+          compact={showPoster}
         />
       )}
       {staticRuntime && (
