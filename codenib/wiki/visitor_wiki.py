@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import hmac
+import re
 import secrets
 import threading
 import time
@@ -22,11 +23,13 @@ from ..agent.runtime.grep_jev import PLANNER_MODEL
 from ..log_utils import get_logger
 from ..storage import WikiStore
 from .agent_wiki import AgentWiki
+from .multimodal import plan_media_slots
 from .store import WikiGenerationBusyError
 from .visitor_provider import WIKI_MODELS, VisitorProvider, WikiRunStopped, verify_key
 from .visitor_source import repository_revision, visitor_source
 
 _ATTEMPTS = "visitor-wiki-attempts-v1"
+_PUBLIC = "visitor-wiki-publications-v1"
 _ADMISSION = "visitor-wiki-admission-v1"
 _GENERATION = "visitor-wiki-generation-v1"
 _MAX_ATTEMPTS = 100
@@ -149,6 +152,10 @@ class VisitorWikis:
                 )
         state.pop("revision")
         state.pop("request_id", None)
+        publication = self.store.read(f"{_entry(attempt)}:publication")
+        state["published"] = bool(
+            publication and publication.envelope["data"].get("published")
+        )
         return state
 
     def page(self, attempt, page_id):
@@ -156,7 +163,88 @@ class VisitorWikis:
         entry = self.store.read(f"{_entry(attempt)}:page:{page_id}")
         if entry is None:
             raise VisitorWikiError("This page is not ready yet.")
-        return entry.envelope["data"]
+        page = copy.deepcopy(entry.envelope["data"])
+        # Render the saved, validated architecture directly. This needs neither
+        # an image provider nor the temporary source checkout removed on exit.
+        page["media_slots"] = plan_media_slots(
+            page_id=page_id,
+            title=page.get("title", page_id),
+            citations=page.get("citations", []),
+            architecture=page.get("architecture"),
+        )
+        return page
+
+    def public_wikis(self):
+        return sorted(
+            (
+                copy.deepcopy(entry.envelope["data"])
+                for entry in self.store.scan(repository_ids=[_PUBLIC])
+                if entry.envelope["data"].get("published") is True
+            ),
+            key=lambda item: item["published_at"],
+            reverse=True,
+        )
+
+    def publish_wiki(self, attempt, owner, published):
+        """Owner opt-in only; an atomic Wiki envelope is the visibility point.
+
+        The admission guard serializes owner publication changes. Publication
+        has its own envelope so progress writes cannot undo an unpublish. No
+        model call or public catalog write occurs during ordinary generation.
+        """
+        with self.store.generation_guard(_ADMISSION):
+            state = self._read(attempt)
+            self._authorize(state, owner)
+            card = {"id": attempt, "published": False}
+            if published:
+                if state["status"] != "complete" or not state["page_states"]:
+                    raise VisitorWikiError(
+                        "Finish generating this Wiki before publishing."
+                    )
+                for page_id, status in state["page_states"].items():
+                    page = self.page(attempt, page_id)
+                    if (
+                        status != "ready"
+                        or page.get("grounding", {}).get("valid") is not True
+                        or page.get("quality", {}).get("valid") is False
+                        or page.get("generation", {}).get("mode") == "degraded"
+                    ):
+                        raise VisitorWikiError(
+                            "All chapters must pass source checks before publishing."
+                        )
+                overview = self.page(attempt, "overview")
+                paragraphs = re.split(r"\n\s*\n", overview["markdown"])
+                lead = next(
+                    (
+                        p
+                        for p in paragraphs
+                        if p.strip() and not p.lstrip().startswith(("#", ">", "```"))
+                    ),
+                    "",
+                )
+                lead = re.sub(r"\[E\d+\]\(#evidence-E\d+\)", "", lead)
+                lead = re.sub(r"\[([^]]+)\]\([^)]+\)", r"\1", lead)
+                summary = re.sub(
+                    r"\s+", " ", lead.replace("`", "").replace("**", "")
+                ).strip()[:360]
+                previous = self.store.read(f"{_entry(attempt)}:publication")
+                prior = previous.envelope["data"] if previous else {}
+                card = {
+                    "id": attempt,
+                    "published": True,
+                    "repository": state["repository"],
+                    "commit": state["commit"],
+                    "summary": summary,
+                    "chapters": len(state["page_states"]),
+                    "languages": state.get("languages", []),
+                    "published_at": prior.get("published_at", self.clock()),
+                }
+            self.store.publish(
+                entry_id=f"{_entry(attempt)}:publication",
+                repository_id=_PUBLIC,
+                envelope={"data": card},
+            )
+        return {"published": published}
 
     def _authorize(self, state, owner):
         digest = hashlib.sha256(owner.encode()).hexdigest()
@@ -269,7 +357,7 @@ class VisitorWikis:
                         "budget_usd": budget,
                         "history": [],
                         "model": model,
-                        "scope": "concise",
+                        "scope": "focused",
                     }
                     self._save(state)
                 request_id = secrets.token_hex(16)
@@ -375,6 +463,9 @@ class VisitorWikis:
                         state["source_files"] = getattr(
                             getattr(bundle, "manifest", None), "file_count", None
                         )
+                        state["languages"] = getattr(
+                            getattr(bundle, "manifest", None), "languages", []
+                        )
                         self._save(state)
                         wiki = self.wiki_factory(
                             bundle,
@@ -387,6 +478,7 @@ class VisitorWikis:
                             retrieval_identity="grep_jev_v1",
                             progress=progress,
                             concise=state.get("scope") == "concise",
+                            focused=state.get("scope") == "focused",
                         )
                         progress("outline", "")
                         outline = wiki.outline()

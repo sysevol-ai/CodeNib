@@ -5932,3 +5932,49 @@ a.codepanel-name:hover {
   .saved-wiki-chapter { width: auto; min-width: 100px; max-width: 210px; flex-shrink: 0; border: 1px solid var(--border-subtle); }
   .saved-wiki-content > .wiki-run-activity { padding: 12px; }
 }
+
+/* A single collection for curated guides and explicitly published visitor Wikis. */
+.browse-entry, .browse-more { display: inline-block; margin-top: 24px; font-size: 14px; }
+.browse-intro { position: relative; padding-top: 54px; padding-bottom: 32px; }
+.browse-intro h1 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.04em; margin: 10px 0; }
+.browse-intro p { color: var(--text-secondary); max-width: 640px; line-height: 1.7; }
+.browse-intro > .btn-outline { position: absolute; right: 0; top: 72px; }
+.browse-eyebrow { font-size: 11px; letter-spacing: .14em; color: var(--text-muted); font-weight: 700; }
+.browse-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.browse-tabs a { padding: 9px 14px; color: var(--text-secondary); border-radius: 6px; font-size: 14px; }
+.browse-tabs a[aria-current="page"] { color: var(--accent); background: var(--accent-subtle); font-weight: 650; }
+.landing-catalog > .repo-grid { max-width: none; padding: 0; margin-top: 22px; }
+.wiki-continue { margin-bottom: 36px; }
+.wiki-continue .repo-card { min-height: 142px; }
+.wiki-community-label { color: var(--accent); }
+.browse-empty { padding: 54px 24px; text-align: center; border: 1px dashed var(--border-subtle); border-radius: 12px; margin-top: 24px; }
+.browse-empty h2 { font-size: 20px; }
+.browse-empty p { color: var(--text-secondary); font-size: 14px; margin: 12px 0 22px; }
+.wiki-catalog-skeleton span { display: block; height: 12px; margin: 12px 0; border-radius: 3px; background: var(--border-subtle); }
+.wiki-catalog-skeleton span:first-child { width: 60%; }
+.wiki-catalog-skeleton span:last-child { width: 40%; }
+.wiki-publication { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin: 0 0 20px; font-size: 13px; color: var(--text-secondary); }
+.wiki-system-evidence { border: 0; background: transparent; padding: 5px 0; font-size: 11px; color: var(--accent); cursor: pointer; text-align: left; }
+.saved-wiki-content .wiki-system-architecture { margin: 28px 0; }
+.saved-wiki-content .wiki-system-architecture h3 { margin-top: 0; }
+@media (max-width: 720px) {
+  .browse-intro > .btn-outline { position: static; margin-top: 12px; }
+  .browse-tabs a { font-size: 13px; padding: 8px 10px; }
+  .browse-intro { padding-top: 28px; }
+  .header-right .agent-setup-link { display: none; }
+}
+@media (max-width: 480px) {
+  .header-right > a[href="https://docs.codenib.ai"] { display: none; }
+}
+.wiki-progress.is-complete { padding: 12px 0; border: 0; background: transparent; }
+.wiki-progress.is-complete > summary { font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.wiki-progress.is-complete[open] > summary { margin-bottom: 16px; }
+.landing > .landing-catalog { width: 100%; }
+.browse-intro > .btn-outline { right: 24px; }
+.browse-tabs a[aria-current="page"] { background: var(--accent-soft); }
+.landing-catalog .search-box input { padding-left: 16px; }
+.browse-intro { padding-top: 28px; padding-bottom: 12px; margin-bottom: 8px; }
+@media (max-width: 480px) {
+  .browse-tabs { gap: 0; flex-wrap: nowrap; }
+  .browse-tabs a { padding: 8px; font-size: 12px; white-space: nowrap; flex: 1; text-align: center; }
+}

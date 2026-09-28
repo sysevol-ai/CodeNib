@@ -88,12 +88,15 @@ manifests, source captures and published site files remain file artifacts.
 
 ## Visitor Wiki persistence
 
-Status: implemented and locally verified in
-[#802](https://github.com/sysevol-ai/CodeNib/pull/802); demo deployment remains open.
+Status: #802 and the #803–#805 visitor fixes are deployed. The community
+discovery iteration in [#806](https://github.com/sysevol-ai/CodeNib/pull/806) is
+also deployed and adds explicit owner publication through the same Wiki store.
 Current product consumer: the public GitHub URL form and
 `codenib.web.visitor_wikis` saved-Wiki routes. The maintainer requested full
 Repo Wiki generation, refresh-safe attempts and link-readable results that
-stay out of the home catalog. This replaces #801's ephemeral explanation.
+start outside the public catalog. The subsequent Browse request authorizes an
+owner opt-in to community publication, not automatic listing of existing work.
+This replaces #801's ephemeral explanation.
 
 `VisitorWikis` injects the existing WikiStore into AgentWiki and stores a small
 progress envelope plus published chapters in a separate
@@ -102,6 +105,19 @@ stay unchanged. No generic jobs, leases, index catalog, registry or object
 storage are promoted. Source is a bounded temporary public archive, with an
 authenticated reader retained only for the active generation; manifests and
 retrieval artifacts do not move into this database.
+
+Community publication is a separate Wiki-owned envelope containing only the
+repository, commit, bounded summary, chapter count, language and publication time.
+Its atomic write is the visibility point; the existing admission guard serializes
+owner publication changes. Keeping it separate from progress means a late worker
+save cannot resurrect an unpublished card. Only a completed, source-checked Wiki
+may be listed. Unpublish writes an unlisted marker while preserving chapters and
+share links. Public listing reads this namespace without creating attempts or
+using provider credentials. No generic catalog abstraction or schema migration
+is introduced. Acceptance covers wrong-owner rejection, partial/invalid-page
+rejection, restart persistence and stale progress writes after unpublish.
+Deployment preserved both existing visitor Wikis without publishing either;
+public desktop/mobile reads and the unchanged prepared-cache audit pass.
 
 The existing generation guard serializes funded visitor runs across processes.
 A revision/request identity check and first publication under the admission

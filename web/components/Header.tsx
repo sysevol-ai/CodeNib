@@ -80,6 +80,7 @@ export default function Header({
       </AppLink>
       {center}
       <div className="header-right">
+        <AppLink className="header-link" href="/browse">Browse</AppLink>
         <a className="header-link agent-setup-link" href={AGENT_SETUP_URL} target="_blank" rel="noreferrer">
           Use with your agent
         </a>

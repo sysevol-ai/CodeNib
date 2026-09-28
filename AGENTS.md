@@ -51,8 +51,13 @@ update the relevant milestone when its acceptance gates or PR status change.
 The public repository entry must produce a navigable Repo Wiki through the
 existing Wiki pipeline. A source browser or a short AI explanation does not
 satisfy that outcome. Generation progress must reflect actual work; completed
-pages and interrupted attempts must survive refresh. Saved visitor Wikis are
-unlisted, link-readable results, not automatic additions to the home catalog.
+pages and interrupted attempts must survive refresh. Saved visitor Wikis start as
+unlisted, link-readable results. An explicit owner publication may add a
+completed, source-checked Wiki to Browse; never retroactively list older results
+or equate generation consent with catalog publication. Use the shared
+architecture reader for prepared and visitor Wikis. Reduce initial chapter
+breadth before cutting supported mechanisms, rationale or boundaries from prose;
+source-check success alone does not establish reader quality.
 
 ## Storage Scope Guard
 

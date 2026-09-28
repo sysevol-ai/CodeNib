@@ -27,7 +27,7 @@ export default function WikiRunActivity({ wiki, now, checkedAt, connected, compa
       </div>
       <div className="wiki-run-facts">
         {wiki.source_files != null && <span>✓ {wiki.source_files} repository files prepared</span>}
-        {wiki.scope === "concise" && <span>Overview + core chapters</span>}
+        {(wiki.scope === "concise" || wiki.scope === "focused") && <span>Overview + core chapters</span>}
       </div>
       {activity.tone === "waiting" && <p className="wiki-run-explanation">{activity.explanation}</p>}
       <details className="wiki-run-details">

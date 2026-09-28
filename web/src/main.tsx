@@ -27,6 +27,9 @@ function App() {
   if (segments.length === 0) {
     return <Landing />;
   }
+  if (segments[0] === "browse" && segments.length === 1) {
+    return <Landing browse />;
+  }
 
   // Dedicated entry routes precede the prepared Wiki repository id route.
   if (segments[0] === "preview" && segments.length === 3) {

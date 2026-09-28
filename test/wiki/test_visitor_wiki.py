@@ -158,7 +158,7 @@ def test_new_scope_and_model_are_pinned_across_explicit_resume(manager):
         "first",
         model="deepseek/deepseek-v4.1-flash",
     )
-    assert first["scope"] == "concise"
+    assert first["scope"] == "focused"
     assert first["model"] == "deepseek/deepseek-v4.1-flash"
     resumed = manager.submit(ATTEMPT, "owner/repo", OWNER, KEY, 2, "second")
     assert resumed["model"] == first["model"]
@@ -695,6 +695,24 @@ def test_real_agent_wiki_cache_survives_fresh_source_download(tmp_path, monkeypa
                 retrieval_identity="grep_jev_v1",
             )
             assert concise._cache_identity("outline") != wiki._cache_identity("outline")
+            focused = AgentWiki(
+                bundle,
+                "unused",
+                store=store,
+                focused=True,
+                source_retriever=lambda *_: [],
+                retrieval_identity="grep_jev_v1",
+            )
+            assert (
+                len(
+                    {
+                        focused._cache_identity("outline"),
+                        concise._cache_identity("outline"),
+                        wiki._cache_identity("outline"),
+                    }
+                )
+                == 3
+            )
             assert concise.cached_outline() is None
             if iteration == 0:
                 wiki._write_cache("outline", outline)
@@ -703,3 +721,97 @@ def test_real_agent_wiki_cache_survives_fresh_source_download(tmp_path, monkeypa
             else:
                 assert wiki.cached_page("overview") == page
     assert identities[0] == identities[1]
+
+
+def test_publication_is_explicit_owner_only_and_survives_restart(manager):
+    submit(manager)
+    assert manager.public_wikis() == []
+    assert manager.status(ATTEMPT)["published"] is False
+    with pytest.raises(VisitorWikiError):
+        manager.publish_wiki(ATTEMPT, "d" * 64, True)
+    assert manager.public_wikis() == []
+    before = manager._read(ATTEMPT)
+    assert manager.publish_wiki(ATTEMPT, OWNER, True) == {"published": True}
+    reopened = VisitorWikis(manager.store)
+    cards = reopened.public_wikis()
+    assert len(cards) == 1
+    assert cards[0]["repository"] == "owner/repo"
+    assert cards[0]["chapters"] == 2
+    assert set(cards[0]) == {
+        "id",
+        "published",
+        "repository",
+        "commit",
+        "summary",
+        "chapters",
+        "languages",
+        "published_at",
+    }
+    assert KEY not in json.dumps(cards) and OWNER not in json.dumps(cards)
+    assert reopened.status(ATTEMPT)["published"] is True
+    reopened.publish_wiki(ATTEMPT, OWNER, False)
+    # A late progress-envelope write cannot resurrect public visibility.
+    manager._save(before)
+    assert manager.public_wikis() == []
+    assert manager.status(ATTEMPT)["published"] is False
+    assert manager.page(ATTEMPT, "overview")["markdown"]
+    assert FakeWiki.produced == ["overview", "pipeline"]
+
+
+def test_publication_rejects_partial_and_quality_rejected_pages(manager):
+    FakeWiki.before_page = lambda _: (_ for _ in ()).throw(WikiRunStopped("pause"))
+    submit(manager)
+    with pytest.raises(VisitorWikiError, match="Finish"):
+        manager.publish_wiki(ATTEMPT, OWNER, True)
+    FakeWiki.before_page = None
+    submit(manager, "resume")
+    page = manager.page(ATTEMPT, "pipeline")
+    page["quality"]["valid"] = False
+    manager.store.publish(
+        entry_id=f"visitor:{ATTEMPT}:page:pipeline",
+        repository_id=ATTEMPT,
+        envelope={"data": page},
+    )
+    with pytest.raises(VisitorWikiError, match="source checks"):
+        manager.publish_wiki(ATTEMPT, OWNER, True)
+    assert manager.public_wikis() == []
+
+
+def test_public_catalog_endpoint_needs_no_key_and_never_lists_unpublished(manager):
+    app = FastAPI()
+    app.include_router(router)
+    app.state.visitor_wikis = manager
+    client = TestClient(app)
+    submit(manager)
+    endpoint = f"/api/visitor-wikis/{ATTEMPT}/publication"
+    assert client.get("/api/visitor-wikis/public").json() == []
+    assert client.post(endpoint, json={"published": True}).status_code == 400
+    assert (
+        client.post(
+            endpoint, json={"published": True}, headers={"X-Wiki-Owner": "d" * 64}
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            endpoint, json={"published": "true"}, headers={"X-Wiki-Owner": OWNER}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            endpoint, json={"published": True}, headers={"X-Wiki-Owner": OWNER}
+        ).status_code
+        == 200
+    )
+    result = client.get("/api/visitor-wikis/public")
+    assert result.status_code == 200 and result.json()[0]["id"] == ATTEMPT
+    assert result.headers["cache-control"] == "no-store"
+    assert (
+        client.post(
+            endpoint, json={"published": False}, headers={"X-Wiki-Owner": OWNER}
+        ).status_code
+        == 200
+    )
+    assert client.get("/api/visitor-wikis/public").json() == []
+    assert client.get(f"/api/visitor-wikis/{ATTEMPT}/pages/overview").status_code == 200

@@ -40,6 +40,8 @@ try {
       const request = route.request();
       if (url.pathname === "/api/visitor-wikis")
         return route.fulfill({ json: { enabled: true } });
+      if (url.pathname === "/api/visitor-wikis/public")
+        return route.fulfill({ json: [] });
       if (url.pathname.endsWith("/stop")) {
         assert.ok(request.headers()["x-wiki-owner"]);
         assert.equal(request.headers().authorization, undefined);
@@ -276,6 +278,7 @@ try {
       active_page: "",
       reported_cost_usd: 0.046,
     };
+    await page.getByText("2 chapters ready · Generation details", { exact: true }).click();
     await page.getByText("Your Wiki is ready", { exact: true }).waitFor();
     assert.equal(await page.getByLabel("Current agent activity").count(), 0);
     const completedReads = statusReads;

@@ -24,7 +24,9 @@ export interface SavedWiki {
   stalled: boolean;
   history: Array<{ stage: string; page: string; at: number }>;
   model?: string;
-  scope?: "concise";
+  scope?: "concise" | "focused";
+  published?: boolean;
+  languages?: string[];
   source_files?: number;
   request_active?: boolean;
   response_chars?: number;
@@ -35,6 +37,17 @@ export interface WikiAttempt {
   id: string;
   owner: string;
   repository: string;
+}
+
+export interface PublicWiki {
+  id: string;
+  repository: string;
+  commit: string;
+  summary: string;
+  chapters: number;
+  languages: string[];
+  published_at: number;
+  published: boolean;
 }
 
 const STORAGE = "codenib-wiki-attempts-v1";
@@ -132,6 +145,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const wikiGenerationAvailable = () => request<{ enabled: boolean }>("");
+export const loadPublicWikis = () => request<PublicWiki[]>("/public");
+export const publishWiki = (attempt: WikiAttempt, published: boolean) =>
+  request<{ published: boolean }>(`/${attempt.id}/publication`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Wiki-Owner": attempt.owner,
+    },
+    body: JSON.stringify({ published }),
+  });
 export const loadSavedWiki = (id: string) =>
   request<SavedWiki>(`/${encodeURIComponent(id)}`);
 export const loadSavedWikiPage = (id: string, page: string) =>
@@ -174,6 +197,7 @@ export const wikiStages: Record<string, string> = {
   retrieving: "Finding relevant source",
   planning_page: "Drafting and checking this chapter",
   writing: "Assembling this chapter",
+  editing: "Reviewing the explanation",
   checking: "Checking citations and saving",
   complete: "Generation finished",
   paused: "Generation paused",

@@ -4,10 +4,13 @@
 import { useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
+import SystemArchitecture from "@/components/SystemArchitecture";
+import { splitWikiMarkdown } from "@/lib/wikiPresentation";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
 import WikiRunActivity from "@/components/WikiRunActivity";
 import {
   shouldWithholdWikiPage,
+  isSourceCheckedWikiPage,
   type Citation,
   type WikiPage,
   type WikiPageRef,
@@ -19,6 +22,7 @@ import {
   loadSavedWiki,
   loadSavedWikiPage,
   recentWikis,
+  publishWiki,
   stopWiki,
   wikiStages,
   type SavedWiki,
@@ -47,6 +51,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
   const [copyMessage, setCopyMessage] = useState("");
   const [stopping, setStopping] = useState(false);
   const [showResume, setShowResume] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [checkedAt, setCheckedAt] = useState(0);
   const [statusConnected, setStatusConnected] = useState(false);
   const [, tick] = useState(0);
@@ -118,6 +123,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
     };
   }, [id, active, ready, refresh]);
   const running = wiki?.status === "running" || wiki?.status === "queued";
+  const ProgressPanel = wiki?.status === "complete" ? "details" : "section";
   useEffect(() => {
     if (!running) {
       setStopping(false);
@@ -131,6 +137,14 @@ export default function SavedWikiPage({ id }: { id: string }) {
     (item) => wiki?.page_states[item.id] === "ready",
   ).length;
   const selected = pages.find((item) => item.id === active);
+  const architecture = isSourceCheckedWikiPage(page)
+    ? page?.media_slots?.find(
+        (slot) =>
+          slot.render_contract?.adapter === "architecture" &&
+          slot.render_contract.provenance === "architecture-plan",
+      )
+    : undefined;
+  const prose = splitWikiMarkdown(page?.markdown || "");
   function pick(pageId: string) {
     setActive(pageId);
     history.replaceState(
@@ -156,9 +170,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
       <div className="saved-wiki">
         <div className="saved-wiki-heading">
           <div>
-            <AppLink href="/">← All repositories</AppLink>
+            <AppLink href="/browse">← Browse Wikis</AppLink>
             <h1>
-              {wiki?.repository || owner?.repository || "Saved Repo Wiki"}
+              {wiki?.repository || owner?.repository || "Repository Wiki"}
             </h1>
             {wiki?.commit && (
               <a
@@ -190,6 +204,54 @@ export default function SavedWikiPage({ id }: { id: string }) {
             Share Wiki ↗
           </button>
         </div>
+        {wiki?.status === "complete" && (
+          <div className="wiki-publication">
+            <span>
+              {wiki.published
+                ? "Published in the community"
+                : "Anyone with the link can read this Wiki"}
+            </span>
+            {owner && (
+              <button
+                className={wiki.published ? "btn-ghost" : "btn-primary"}
+                disabled={publishing}
+                onClick={async () => {
+                  setPublishing(true);
+                  try {
+                    const result = await publishWiki(owner, !wiki.published);
+                    setWiki((current) =>
+                      current
+                        ? { ...current, published: result.published }
+                        : current,
+                    );
+                    setCopyMessage(
+                      result.published
+                        ? "Published — everyone can now find this Wiki in Browse."
+                        : "Removed from Browse. Your share link still works.",
+                    );
+                  } catch (reason) {
+                    setError(
+                      reason instanceof Error
+                        ? reason.message
+                        : "Could not update publication.",
+                    );
+                  } finally {
+                    setPublishing(false);
+                  }
+                }}
+              >
+                {publishing
+                  ? "Updating…"
+                  : wiki.published
+                    ? "Remove from Browse"
+                    : "Publish to Browse"}
+              </button>
+            )}
+            {wiki.published && (
+              <AppLink href="/browse?tab=community">View in Browse →</AppLink>
+            )}
+          </div>
+        )}
         {copyMessage && (
           <p role="status" className="small">
             {copyMessage}
@@ -202,10 +264,16 @@ export default function SavedWikiPage({ id }: { id: string }) {
         )}
         {!wiki && !error && <p role="status">Opening your saved Wiki…</p>}
         {wiki && (
-          <section
-            className={`wiki-progress ${running ? "is-running" : wiki.status === "partial" ? "is-paused" : ""}`}
+          <ProgressPanel
+            className={`wiki-progress ${running ? "is-running" : wiki.status === "partial" ? "is-paused" : "is-complete"}`}
             aria-label="Wiki generation progress"
           >
+            {wiki.status === "complete" && (
+              <summary>
+                {completed} {completed === 1 ? "chapter" : "chapters"} ready ·
+                Generation details
+              </summary>
+            )}
             <div className="wiki-progress-heading">
               <div>
                 <strong role="status">
@@ -230,12 +298,15 @@ export default function SavedWikiPage({ id }: { id: string }) {
             </div>
             {wiki.status === "partial" && (
               <div className="wiki-stopped-message" role="alert">
-                <strong>{wiki.message || "This run stopped before finishing."}</strong>
+                <strong>
+                  {wiki.message || "This run stopped before finishing."}
+                </strong>
                 <p>
                   {completed === 0
                     ? "No chapters were saved. Generation is no longer running."
                     : "Ready chapters are saved. Generation is no longer running."}
-                  {wiki.calls === 0 && !wiki.unreported_call_cost &&
+                  {wiki.calls === 0 &&
+                    !wiki.unreported_call_cost &&
                     " No model calls were made."}
                 </p>
                 <p>
@@ -243,7 +314,10 @@ export default function SavedWikiPage({ id }: { id: string }) {
                     ? "Resolve the issue above, then retry using your OpenRouter key."
                     : "The owner can retry from the browser that started this Wiki."}
                 </p>
-                <button className="btn-ghost" onClick={() => setRefresh((value) => value + 1)}>
+                <button
+                  className="btn-ghost"
+                  onClick={() => setRefresh((value) => value + 1)}
+                >
                   Refresh status
                 </button>
               </div>
@@ -257,8 +331,11 @@ export default function SavedWikiPage({ id }: { id: string }) {
             )}
             <div className="wiki-progress-foot">
               <span>
-                {wiki.model === "deepseek/deepseek-v4.1-flash" ? "DeepSeek V4.1 Flash" : "Claude Sonnet 4.6"} · ${wiki.reported_cost_usd.toFixed(4)}{" "}
-                reported · {wiki.calls} model requests sent
+                {wiki.model === "deepseek/deepseek-v4.1-flash"
+                  ? "DeepSeek V4.1 Flash"
+                  : "Claude Sonnet 4.6"}{" "}
+                · ${wiki.reported_cost_usd.toFixed(4)} reported · {wiki.calls}{" "}
+                model requests sent
               </span>
               {owner && running && !stopping && (
                 <button
@@ -279,33 +356,56 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 <span role="status">Stopping after the current request…</span>
               )}
             </div>
-            {wiki.message && wiki.status !== "partial" && <p role="status">{wiki.message}</p>}
+            {wiki.message && wiki.status !== "partial" && (
+              <p role="status">{wiki.message}</p>
+            )}
             <details>
-              <summary>Generation activity{wiki.skipped_files?.length ? ` · ${wiki.skipped_files.length} file(s) skipped` : ""}</summary>
-            {!!wiki.skipped_files?.length && (
-              <details className="wiki-skipped-files">
-                <summary>
-                  Skipped {wiki.skipped_files.length} {wiki.skipped_files.length === 1 ? "file" : "files"} larger than 4 MiB
-                </summary>
-                <p>These files are excluded from this Wiki. The remaining source is used for generation.</p>
-                <ul>
-                  {wiki.skipped_files.map((file) => (
-                    <li key={file.path}>
-                      <code>{file.path}</code> · {(file.size_bytes / 1024 / 1024).toFixed(1)} MiB
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {wiki.unreported_call_cost && !running && (
-              <p className="small">
-                The reported total excludes an in-flight or unreported request.
-                Check OpenRouter usage before resuming.
+              <summary>
+                Generation activity
+                {wiki.skipped_files?.length
+                  ? ` · ${wiki.skipped_files.length} file(s) skipped`
+                  : ""}
+              </summary>
+              {owner && wiki.status === "complete" && (
+                <p>
+                  <AppLink
+                    href={`/preview/${wiki.repository.split("/").map(encodeURIComponent).join("/")}`}
+                  >
+                    Generate a new version →
+                  </AppLink>
+                </p>
+              )}
+              {!!wiki.skipped_files?.length && (
+                <details className="wiki-skipped-files">
+                  <summary>
+                    Skipped {wiki.skipped_files.length}{" "}
+                    {wiki.skipped_files.length === 1 ? "file" : "files"} larger
+                    than 4 MiB
+                  </summary>
+                  <p>
+                    These files are excluded from this Wiki. The remaining
+                    source is used for generation.
+                  </p>
+                  <ul>
+                    {wiki.skipped_files.map((file) => (
+                      <li key={file.path}>
+                        <code>{file.path}</code> ·{" "}
+                        {(file.size_bytes / 1024 / 1024).toFixed(1)} MiB
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {wiki.unreported_call_cost && !running && (
+                <p className="small">
+                  The reported total excludes an in-flight or unreported
+                  request. Check OpenRouter usage before resuming.
+                </p>
+              )}
+              <p className="small muted">
+                Saved as you go. Return with this link; it stays off the
+                homepage.
               </p>
-            )}
-            <p className="small muted">
-              Saved as you go. Return with this link; it stays off the homepage.
-            </p>
 
               <ol className="wiki-activity">
                 {wiki.history.slice(-12).map((event, index) => (
@@ -320,7 +420,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 ))}
               </ol>
             </details>
-          </section>
+          </ProgressPanel>
         )}
         {owner &&
           (wiki?.status === "partial" || wiki?.stalled || (!wiki && error)) && (
@@ -330,7 +430,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
                   className="btn-primary"
                   onClick={() => setShowResume(true)}
                 >
-                  {completed === 0 ? "Retry generation" : "Continue unfinished chapters"}
+                  {completed === 0
+                    ? "Retry generation"
+                    : "Continue unfinished chapters"}
                 </button>
               ) : (
                 <WikiGenerationForm
@@ -381,15 +483,15 @@ export default function SavedWikiPage({ id }: { id: string }) {
               )}
             </nav>
             <main className="saved-wiki-content">
-            {running && (
-              <WikiRunActivity
-                wiki={wiki}
-                compact={!!page}
-                now={Date.now() / 1000}
-                checkedAt={checkedAt}
-                connected={statusConnected}
-              />
-            )}
+              {running && (
+                <WikiRunActivity
+                  wiki={wiki}
+                  compact={!!page}
+                  now={Date.now() / 1000}
+                  checkedAt={checkedAt}
+                  connected={statusConnected}
+                />
+              )}
 
               {pageError && (
                 <p role="alert" className="trial-error">
@@ -409,8 +511,46 @@ export default function SavedWikiPage({ id }: { id: string }) {
                     allowRemoteImages={false}
                     pageBasePath={`/wiki/${id}`}
                   >
-                    {page.markdown}
+                    {architecture ? prose.lead : page.markdown}
                   </Markdown>
+                  {architecture && (
+                    <>
+                      <SystemArchitecture
+                        key={`${id}:${active}`}
+                        slot={architecture}
+                        onEvidence={(ids) => {
+                          const sources = ids.flatMap((value) =>
+                            value.startsWith("R")
+                              ? page.evidence?.relations.find(
+                                  (item) => item.id === value,
+                                )?.anchors || []
+                              : [value],
+                          );
+                          const index = sources
+                            .map((value) =>
+                              /^E\d+$/.test(value)
+                                ? Number(value.slice(1)) - 1
+                                : -1,
+                            )
+                            .find(
+                              (value) =>
+                                value >= 0 && value < page.citations.length,
+                            );
+                          if (index != null) cite(index);
+                        }}
+                      />
+                      <Markdown
+                        citations={page.citations}
+                        relations={page.evidence?.relations}
+                        onCite={cite}
+                        onPageLink={pick}
+                        allowRemoteImages={false}
+                        pageBasePath={`/wiki/${id}`}
+                      >
+                        {prose.body}
+                      </Markdown>
+                    </>
+                  )}
                   <div className="page-provenance source-checked">
                     <span>Evidence-linked Wiki chapter</span>
                     <span>{page.citations.length} source references</span>
@@ -426,9 +566,28 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 </>
               ) : (
                 !pageError && (
-                  <div className="wiki-chapter-pending" role="status" aria-busy={running || ready}>
-                    {(running || ready) && <div className={`wiki-document-skeleton ${running && !wiki.stalled && statusConnected ? "is-animated" : ""}`} aria-hidden="true"><span /><span /><span /><span /></div>}
-                    <h2>{selected?.title || (running ? "Your Wiki is taking shape" : "No chapters saved yet")}</h2>
+                  <div
+                    className="wiki-chapter-pending"
+                    role="status"
+                    aria-busy={running || ready}
+                  >
+                    {(running || ready) && (
+                      <div
+                        className={`wiki-document-skeleton ${running && !wiki.stalled && statusConnected ? "is-animated" : ""}`}
+                        aria-hidden="true"
+                      >
+                        <span />
+                        <span />
+                        <span />
+                        <span />
+                      </div>
+                    )}
+                    <h2>
+                      {selected?.title ||
+                        (running
+                          ? "Your Wiki is taking shape"
+                          : "No chapters saved yet")}
+                    </h2>
                     <p>
                       {ready
                         ? "Loading this chapter…"
