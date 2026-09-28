@@ -18,11 +18,12 @@ import threading
 import time
 from collections.abc import Callable
 
+from ..agent.runtime.grep_jev import PLANNER_MODEL
 from ..log_utils import get_logger
 from ..storage import WikiStore
 from .agent_wiki import AgentWiki
 from .store import WikiGenerationBusyError
-from .visitor_provider import VisitorProvider, WikiRunStopped, verify_key
+from .visitor_provider import WIKI_MODELS, VisitorProvider, WikiRunStopped, verify_key
 from .visitor_source import repository_revision, visitor_source
 
 _ATTEMPTS = "visitor-wiki-attempts-v1"
@@ -188,7 +189,11 @@ class VisitorWikis:
     def close(self):
         self._closing.set()
 
-    def submit(self, attempt, repository, owner, key, budget, client):
+    def submit(
+        self, attempt, repository, owner, key, budget, client, model=PLANNER_MODEL
+    ):
+        if model not in WIKI_MODELS:
+            raise VisitorWikiError("Unsupported Wiki model.")
         now = self.clock()
         with self._mutex:
             if (
@@ -263,6 +268,8 @@ class VisitorWikis:
                         "unreported_call_cost": False,
                         "budget_usd": budget,
                         "history": [],
+                        "model": model,
+                        "scope": "concise",
                     }
                     self._save(state)
                 request_id = secrets.token_hex(16)
@@ -353,7 +360,8 @@ class VisitorWikis:
                     self._save(state)
 
                 progress("connecting", "")
-                provider = self.provider(key, budget, check, usage)
+                model = state.get("model", PLANNER_MODEL)
+                provider = self.provider(key, budget, check, usage, model=model)
                 key = ""
                 try:
                     check()
@@ -364,10 +372,13 @@ class VisitorWikis:
                         state["repository"], state["commit"], attempt, check, progress
                     ) as (bundle, source):
                         state["skipped_files"] = getattr(bundle, "skipped_files", [])
+                        state["source_files"] = getattr(
+                            getattr(bundle, "manifest", None), "file_count", None
+                        )
                         self._save(state)
                         wiki = self.wiki_factory(
                             bundle,
-                            "openrouter/anthropic/claude-sonnet-4.6",
+                            f"openrouter/{model}",
                             store=self.store,
                             llm=provider,
                             source_retriever=lambda query, limit: provider.retrieve(
@@ -375,6 +386,7 @@ class VisitorWikis:
                             ),
                             retrieval_identity="grep_jev_v1",
                             progress=progress,
+                            concise=state.get("scope") == "concise",
                         )
                         progress("outline", "")
                         outline = wiki.outline()

@@ -539,6 +539,7 @@ def generate_outline(
     max_tokens: int = 16000,
     *,
     llm: Any = None,
+    concise: bool = False,
 ) -> Dict[str, Any]:
     """Produce a conceptual wiki page tree for *bundle* using *model*.
 
@@ -567,6 +568,9 @@ def generate_outline(
     languages = ", ".join(getattr(bundle.manifest, "languages", []) or [])
 
     breadth_pages, breadth_children = _outline_breadth(core_files, len(symbols))
+    if concise:
+        breadth_pages, breadth_children = "3-5", "0"
+        max_tokens = min(max_tokens, 4000)
     prompt = _OUTLINE_PROMPT.format(
         repo=getattr(bundle.entry, "repo", "this repository"),
         languages=languages or "unknown",
@@ -589,6 +593,15 @@ def generate_outline(
         communities=_graph_communities(bundle),
         views=_view_summary(bundle),
     )
+    if concise:
+        prompt += (
+            "\nCONCISE READER SCOPE overrides the breadth/depth guidance above: "
+            "Return Overview and 2-4 core chapters, at most 5 pages TOTAL. "
+            "Every children array must be empty. Focus on the main entry, "
+            "central mechanism and output; this is an introduction, not an "
+            "exhaustive manual. Group related capabilities rather than giving "
+            "each adapter, environment, helper or example its own chapter."
+        )
 
     try:
         if llm is None:
@@ -613,11 +626,17 @@ def generate_outline(
         fallback_files=files,
         documented_files=documented_files,
     )
-    required_pages = _required_top_level_pages(len(files))
+    if concise:
+        data = _concise_outline(data)
+    required_pages = (
+        min(3, _required_top_level_pages(len(files)))
+        if concise
+        else _required_top_level_pages(len(files))
+    )
     initial_pages = len(data.get("pages") or [])
     initial_warnings = _outline_plan_warnings(data, documented_files)
-    should_retry = (
-        initial_pages < required_pages or len(files) > 12 or bool(initial_warnings)
+    should_retry = initial_pages < required_pages or (
+        not concise and (len(files) > 12 or bool(initial_warnings))
     )
     refined = False
     plan_repairs = (
@@ -655,6 +674,8 @@ def generate_outline(
                 fallback_files=files,
                 documented_files=documented_files,
             )
+            if concise:
+                repaired = _concise_outline(repaired)
             merged = _validate_outline(
                 _merge_outlines(data, repaired),
                 source_paths,
@@ -662,6 +683,8 @@ def generate_outline(
                 fallback_files=files,
                 documented_files=documented_files,
             )
+            if concise:
+                merged = _concise_outline(merged)
             best_candidate = max(
                 (repaired, merged),
                 key=lambda candidate: _outline_score(
@@ -720,7 +743,11 @@ def generate_outline(
         fallback["raw"] = data.get("raw")
         return fallback
     data["mode"] = "generated"
-    warnings = _outline_plan_warnings(data, documented_files)
+    warnings = (
+        _outline_quality_warnings(data)
+        if concise
+        else _outline_plan_warnings(data, documented_files)
+    )
     data["quality"] = {
         "required_top_level_pages": required_pages,
         "top_level_pages": len(data["pages"]),
@@ -729,6 +756,24 @@ def generate_outline(
         "warnings": warnings,
     }
     return data
+
+
+def _concise_outline(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Bound introductory scope and fold child source hints into their parent."""
+    result = copy.deepcopy(data)
+    pages = result.get("pages") or []
+    pages.sort(key=lambda page: page.get("id") != "overview")
+    for page in pages[:5]:
+
+        def files_in(item):
+            yield from item.get("files") or []
+            for child in item.get("children") or []:
+                yield from files_in(child)
+
+        page["files"] = list(dict.fromkeys(files_in(page)))
+        page["children"] = []
+    result["pages"] = pages[:5]
+    return result
 
 
 def _required_top_level_pages(salient_file_count: int) -> int:

@@ -54,14 +54,28 @@ server uses the existing AgentWiki outline, chapter planning, writing and
 source-checking pipeline. Source selection uses model-planned grep and Jev
 through OpenRouter, without BM25, embeddings, GPU setup or executing the
 submitted repository. The default branch is pinned to an immutable commit.
+The form selects **DeepSeek V4.1 Flash** by default and also offers Claude
+Sonnet 4.6. That selection controls writing and source-search planning; Jev
+still ranks evidence. OpenRouter routes Flash toward higher-throughput
+providers, whose availability and speed can vary. New runs create a concise
+Overview and a few core chapters (at most five, without nested chapters),
+keeping source citations and the existing grounding/quality checks.
+The model and scope are pinned to the saved attempt. Older Wikis keep their
+original full outline and Sonnet model when resumed. API clients that omit
+`model` retain the Sonnet default. Prepared examples and their caches are
+unaffected by this visitor-only default.
 These source-only Wikis do not have compiler-indexed dependency maps; the
 prepared examples retain their existing graphs and visual evidence.
 
+Submitting immediately shows that the account and repository are being checked.
 The generation page shows actual stages, the current chapter, completed
-chapters, recent activity and reported spending. Chapters become readable as
-they are saved. During generation, the activity card explains the current work
-and next step, with separate elapsed-step, last-progress and server-connection
-times. After 45 seconds without progress it explains the wait; after 180 seconds
+chapters and reported spending. Chapters become readable as they are saved.
+Activity lives inside the reading area and becomes compact once a chapter is
+available; detailed timing and recent events expand on demand. Stream receipt
+distinguishes waiting for a model from receiving its response. Only counts leave
+the provider adapter: draft prose and model reasoning are never published.
+Elapsed-step, last-progress and server-connection times remain separate.
+After 45 seconds without progress it explains the wait; after 180 seconds
 (or a server-reported stall) it stops the activity animation and reports missing
 progress without claiming the worker has stopped. A failed status request has
 a separate reconnecting state. Successful polling is not worker progress.

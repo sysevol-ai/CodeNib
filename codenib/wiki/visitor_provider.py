@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from typing import Any, Callable
 
 from ..agent.decision_rerank import RELEVANCE_CRITERIA, decide_code_relevance
@@ -20,6 +21,72 @@ from ..agent.runtime.grep_jev import (
     grep_planning_context,
 )
 from ..llm.decisions import OpenRouterDecisions
+
+FLASH_MODEL = "deepseek/deepseek-v4.1-flash"
+WIKI_MODELS = (FLASH_MODEL, PLANNER_MODEL)
+
+
+def provider_stream(key, payload, received, check):
+    """Consume content deltas; publish counts, never unvalidated prose/reasoning.
+
+    Stream receipt is not a successful or paid completion. Only a terminal
+    response with reported usage can clear the provider's unknown-charge flag.
+    """
+    import requests
+
+    content, usage, finish = [], None, None
+    size = 0
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}"},
+                json={
+                    **payload,
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                },
+                timeout=(10, 90),
+                allow_redirects=False,
+                stream=True,
+            ) as response:
+                if response.status_code != 200:
+                    raise WikiRunStopped(
+                        f"OpenRouter returned HTTP {response.status_code}. "
+                        "Completed pages are saved; no automatic retry."
+                    )
+                for line in response.iter_lines(chunk_size=512):
+                    check()
+                    size += len(line)
+                    if size > 2 * 1024 * 1024:
+                        raise WikiRunStopped("OpenRouter response exceeded the limit.")
+                    if not line.startswith(b"data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == b"[DONE]":
+                        break
+                    event = json.loads(data)
+                    if event.get("error"):
+                        raise WikiRunStopped(
+                            "OpenRouter stream failed; no automatic retry."
+                        )
+                    if event.get("usage") is not None:
+                        usage = event["usage"]
+                    for choice in event.get("choices", []):
+                        finish = choice.get("finish_reason") or finish
+                        delta = choice.get("delta", {}).get("content")
+                        if isinstance(delta, str) and delta:
+                            content.append(delta)
+                            received(len(delta))
+        return {
+            "usage": usage,
+            "choices": [
+                {"finish_reason": finish, "message": {"content": "".join(content)}}
+            ],
+        }
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        raise WikiRunStopped("OpenRouter stream failed; no automatic retry.") from None
 
 
 class WikiRunStopped(BaseException):
@@ -95,6 +162,8 @@ class VisitorProvider:
         budget: float,
         check: Callable[[], None],
         changed: Callable[[dict], None],
+        *,
+        model: str = PLANNER_MODEL,
     ):
         self._key = key
         self.budget = budget
@@ -103,6 +172,13 @@ class VisitorProvider:
         self.cost = 0.0
         self.calls = 0
         self.unknown = False
+        if model not in WIKI_MODELS:
+            raise ValueError("Unsupported Wiki model")
+        self.model = model
+        self.response_chars = 0
+        self.request_active = False
+        self.request_started_at = 0.0
+        self._last_receipt = 0.0
 
     def close(self):
         self._key = ""
@@ -113,6 +189,9 @@ class VisitorProvider:
             "calls": self.calls,
             "unreported_call_cost": self.unknown,
             "budget_usd": self.budget,
+            "response_chars": self.response_chars,
+            "request_active": self.request_active,
+            "request_started_at": self.request_started_at,
         }
 
     def before(self):
@@ -121,7 +200,18 @@ class VisitorProvider:
             raise WikiRunStopped("Run budget reached. Completed pages are saved.")
         self.unknown = True
         self.calls += 1
+        self.response_chars = 0
+        self.request_active = True
+        self.request_started_at = time.time()
+        self._last_receipt = 0.0
         self.changed(self.usage())
+
+    def received(self, count):
+        self.response_chars += count
+        now = time.monotonic()
+        if now - self._last_receipt >= 0.5:
+            self._last_receipt = now
+            self.changed(self.usage())
 
     def record(self, usage: Any):
         cost = usage.get("cost") if isinstance(usage, dict) else None
@@ -136,13 +226,14 @@ class VisitorProvider:
             )
         self.cost += cost
         self.unknown = False
+        self.request_active = False
         self.changed(self.usage())
         self.check()
 
     def complete(self, messages: list[dict], **options) -> str:
         self.before()
         payload = {
-            "model": PLANNER_MODEL,
+            "model": self.model,
             "messages": messages,
             "temperature": options.get("temperature", 0.2),
             "max_tokens": min(16000, options.get("max_tokens", 4096)),
@@ -151,7 +242,9 @@ class VisitorProvider:
         if "response_format" in options:
             payload["response_format"] = options["response_format"]
             payload["provider"] = {"require_parameters": True}
-        body = provider_json(self._key, "/api/v1/chat/completions", payload)
+        if self.model == FLASH_MODEL:
+            payload.setdefault("provider", {})["sort"] = "throughput"
+        body = provider_stream(self._key, payload, self.received, self.check)
         self.record(body.get("usage"))
         try:
             choice = body["choices"][0]

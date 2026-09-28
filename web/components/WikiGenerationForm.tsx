@@ -17,6 +17,7 @@ export default function WikiGenerationForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [budget, setBudget] = useState(2);
+  const [model, setModel] = useState("deepseek/deepseek-v4.1-flash");
   return (
     <form
       className="wiki-generation-form"
@@ -29,7 +30,7 @@ export default function WikiGenerationForm({
         setBusy(true);
         setError("");
         try {
-          await startWiki(attempt, key, budget);
+          await startWiki(attempt, key, budget, model);
           onStarted();
         } catch (reason) {
           setError(
@@ -46,8 +47,16 @@ export default function WikiGenerationForm({
       <p>
         {resume
           ? "Ready chapters are reused. Only unfinished chapters need generation."
-          : "Get a chapter-by-chapter Wiki with source citations. Read the first chapter while the rest are generated."}
+          : "Start with an Overview and a few core chapters, with source citations. Read each chapter as soon as it is ready."}
       </p>
+      {!resume && <>
+        <label htmlFor="wiki-generation-model">Writing model</label>
+        <select id="wiki-generation-model" value={model} disabled={busy} onChange={(event) => setModel(event.target.value)}>
+          <option value="deepseek/deepseek-v4.1-flash">DeepSeek V4.1 Flash · try the faster option</option>
+          <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
+        </select>
+        <p className="small muted">Flash offers lower-cost generation. Speed varies by OpenRouter provider.</p>
+      </>}
       <label htmlFor="wiki-generation-key">OpenRouter inference key</label>
       <input
         id="wiki-generation-key"
@@ -104,6 +113,10 @@ export default function WikiGenerationForm({
             ? "Resume unfinished chapters"
             : "Generate Wiki"}
       </button>
+      {busy && <div className="wiki-starting" role="status">
+        <span className="wiki-run-pulse is-animated" aria-hidden="true"><i /><i /><i /></span>
+        <div><strong>Checking your account and repository…</strong><p>Your Wiki opens when the server accepts this run.</p></div>
+      </div>}
       {error && (
         <p role="alert" className="trial-error">
           {error}{" "}

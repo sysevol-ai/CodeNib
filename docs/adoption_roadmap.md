@@ -412,28 +412,63 @@ and quality gates: **58 calls**, **$1.177581516** reported cost, no unknown char
 and **886.09 seconds** from retry start to completion. This establishes hosted
 completion for this pinned repository; source preparation alone did not.
 
-Waiting feedback now explains the current operation and next step, shows recent
-stage events without opening a log, and separates time in the step from worker
-progress and successful status polling. Chapter planning is labeled as drafting
-and checking because it already composes model-authored claims. After 45 seconds
-without progress the UI explains the wait; at 180 seconds it stops the animation
-without declaring the worker dead. Disconnected polling has a separate state,
-and reconnecting never submits generation. Ready chapters have a direct reading
-link. Local acceptance passes 142 frontend tests, production build, strict docs,
-and desktop/mobile running, delayed, offline/recovery and reduced-motion checks.
-Read-only browser checks against the live attempt also pass while it runs.
-The frontend is deployed independently of the #803 backend; its process and
-active visitor run stayed intact during cutover. Public desktop/mobile Overview
-and refresh checks pass, without submitting a generation request.
+Generation now starts with a concise, source-checked Wiki: Overview plus a few
+core chapters, at most five flat pages, with short claims and no redundant
+summaries or large code excerpts. The generation form selects DeepSeek V4.1
+Flash and offers Sonnet 4.6; model and scope remain pinned on resume. Existing
+saved Wikis preserve their full scope and original model. The concise cache
+namespace is separate; prepared examples keep their existing caches.
 
-Observed latency remains a separate gate: the visitor path uses Sonnet 4.6 for
-generation and source-search planning, with Jev ranking and no BM25 or embedding
-index. In this hosted run, ordinary completed chapters spent about 34–60 seconds
-in model composition and 3–5 seconds in retrieval; Overview spent about 90 seconds
-overall, including one model repair. Chapters currently run sequentially.
-Evaluate DeepSeek V4.1 Flash on the same pinned source for first-chapter latency,
-total latency, cost and grounding quality before changing the default. Model
-throughput advertised by a provider is not an end-to-end Wiki timing result.
+Feedback appears immediately after submission and inside the reading area
+while the first chapter is being prepared. Ready chapters become readable
+progressively. Detailed history/timing is collapsed by default; actual content
+receipt counts distinguish a model still waiting from a model responding.
+No draft prose or reasoning is published. After 45 seconds without progress
+we explain the wait; after 180 seconds the animation stops without declaring
+the worker dead. Disconnected polling remains separate from worker progress.
+Refresh and reconnect cannot submit a funded request. Desktop/mobile acceptance
+covers the first empty result, running, delayed, disconnected/reconnected,
+stopped/completed, dark theme and reduced-motion states.
+
+The 2026-09-27 bounded model experiment used the same pinned AMA-Bench source,
+saved outline and frozen chapter evidence. Historical Sonnet composition times
+were compared with new DeepSeek official-API requests (`deepseek-flash`, V4.1);
+this is not a simultaneous OpenRouter A/B or a complete retrieval benchmark.
+All three chapters passed the existing grounding and quality gates:
+
+| Chapter | Historical Sonnet model time | Flash model time | Sonnet words | Concise Flash words |
+| --- | ---: | ---: | ---: | ---: |
+| Overview | 84.6 s | 12.5 s | 198 | 164 |
+| Memory methods | 37.1 s | 6.6 s | 464 | 171 |
+| Evaluation and scoring | 45.1 s | 7.6 s | 815 | 194 |
+
+The Flash time column uses the original full writing profile. The separate
+concise rerun took 5.9–6.2 seconds per chapter, with warmed input caching; model,
+profile and cache effects must not be conflated. Initial full-profile Flash
+requests used four calls, with an estimated $0.00942 total from token usage and
+[DeepSeek's off-peak rates](https://api-docs.deepseek.com/quick_start/pricing/).
+That is an estimate, not an OpenRouter-reported charge.
+
+A further concise run included outline creation and model-planned grep:
+four of four chapters passed, the first was readable after 17.7 seconds,
+and completion took 47.1 seconds / 11 calls (estimated $0.0134). Jev ranking
+was omitted because no OpenRouter credential was available. This establishes
+model/profile viability, **not production OpenRouter/Jev end-to-end latency**.
+That production-route timing and broader multi-repository prose assessment
+remain open gates. The new form exposes the tested Flash option while retaining
+Sonnet; provider throughput routing cannot guarantee a completion time.
+
+The implementation is tracked in #805, stacked on #804 (which depends on #803).
+The demo backend and frontend were deployed together on 2026-09-27 after the
+existing funded run completed. Local verification passes 1,277 Wiki/web tests
+(one skipped), 142 frontend tests, the production build, strict docs and the
+desktop/mobile browser matrix. Deployment preserves all 27 prepared repositories:
+1,001 ready pages, 19 existing degraded/retryable pages and no cold pages, with
+23/27 System Maps available as before. Public desktop/mobile checks reopen and
+refresh the existing 14-chapter visitor Wiki without inference, and confirm the
+new form selects Flash. Database snapshots and previous frontend assets are
+retained for rollback and already-open tabs. Merge/rebase #803 → #804 → #805
+in dependency order; deployment does not imply these PRs are merged.
 
 | User action | New behavior | Who pays / data boundary |
 | --- | --- | --- |
@@ -442,7 +477,7 @@ throughput advertised by a provider is not an end-to-end Wiki timing result.
 | Explore a map or citation | Browser renders exported page boundaries/graphs and navigates to commit-pinned source. | Static data; disclose missing full runtime graph functionality. |
 | Enter a new question | Explain “Connect OpenRouter” and the snippet/cost boundary, or “Run on your machine”. Do not spend the site's key on anonymous requests. | User-authorized provider account; bounded request. |
 | Connect an agent | Copy a tested local setup now. Add remote MCP only after A6 passes. | Local user machine and user's agent/model. |
-| Submit a public GitHub repository | Open a prepared Wiki, or explicitly generate a complete Wiki with chapter progress and saved links. | Bounded temporary public source on the server; user-funded OpenRouter; unlisted Wiki-only persistence. |
+| Submit a public GitHub repository | Open a prepared Wiki, or explicitly generate a concise Wiki with chapter progress and saved links. | Bounded temporary public source on the server; user-funded OpenRouter; unlisted Wiki-only persistence. |
 
 Implementation boundaries:
 

@@ -150,17 +150,6 @@ export default function SavedWikiPage({ id }: { id: string }) {
       0,
     );
   }
-  const stageIndex = !wiki
-    ? -1
-    : wiki.status === "complete"
-      ? 4
-      : ["queued", "connecting", "downloading"].includes(wiki.stage)
-        ? 0
-        : wiki.stage === "analyzing"
-          ? 1
-          : wiki.stage === "outline"
-            ? 2
-            : 3;
   return (
     <>
       <Header />
@@ -239,14 +228,6 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 </span>
               )}
             </div>
-            {running && (
-              <WikiRunActivity
-                wiki={wiki}
-                now={Date.now() / 1000}
-                checkedAt={checkedAt}
-                connected={statusConnected}
-              />
-            )}
             {wiki.status === "partial" && (
               <div className="wiki-stopped-message" role="alert">
                 <strong>{wiki.message || "This run stopped before finishing."}</strong>
@@ -267,32 +248,6 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 </button>
               </div>
             )}
-            <ol
-              className="wiki-generation-steps"
-              aria-label="Current generation stage"
-            >
-              {[
-                "Read repository",
-                "Analyze source",
-                "Plan chapters",
-                "Generate & save",
-              ].map((label, index) => (
-                <li
-                  key={label}
-                  className={
-                    index < stageIndex
-                      ? "done"
-                      : index === stageIndex && running
-                        ? "active"
-                        : ""
-                  }
-                  aria-current={index === stageIndex && running ? "step" : undefined}
-                >
-                  <span>{index < stageIndex ? "✓" : index + 1}</span>
-                  {label}
-                </li>
-              ))}
-            </ol>
             {pages.length > 0 && (
               <progress
                 value={completed}
@@ -302,7 +257,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
             )}
             <div className="wiki-progress-foot">
               <span>
-                Saved on this server · ${wiki.reported_cost_usd.toFixed(4)}{" "}
+                {wiki.model === "deepseek/deepseek-v4.1-flash" ? "DeepSeek V4.1 Flash" : "Claude Sonnet 4.6"} · ${wiki.reported_cost_usd.toFixed(4)}{" "}
                 reported · {wiki.calls} model requests sent
               </span>
               {owner && running && !stopping && (
@@ -325,6 +280,8 @@ export default function SavedWikiPage({ id }: { id: string }) {
               )}
             </div>
             {wiki.message && wiki.status !== "partial" && <p role="status">{wiki.message}</p>}
+            <details>
+              <summary>Generation activity{wiki.skipped_files?.length ? ` · ${wiki.skipped_files.length} file(s) skipped` : ""}</summary>
             {!!wiki.skipped_files?.length && (
               <details className="wiki-skipped-files">
                 <summary>
@@ -347,12 +304,9 @@ export default function SavedWikiPage({ id }: { id: string }) {
               </p>
             )}
             <p className="small muted">
-              Each finished chapter is saved. You can close this tab and return
-              with the link. Anyone with the link can read it; it stays off the
-              homepage.
+              Saved as you go. Return with this link; it stays off the homepage.
             </p>
-            <details>
-              <summary>Generation activity</summary>
+
               <ol className="wiki-activity">
                 {wiki.history.slice(-12).map((event, index) => (
                   <li key={`${event.at}-${index}`}>
@@ -427,6 +381,16 @@ export default function SavedWikiPage({ id }: { id: string }) {
               )}
             </nav>
             <main className="saved-wiki-content">
+            {running && (
+              <WikiRunActivity
+                wiki={wiki}
+                compact={!!page}
+                now={Date.now() / 1000}
+                checkedAt={checkedAt}
+                connected={statusConnected}
+              />
+            )}
+
               {pageError && (
                 <p role="alert" className="trial-error">
                   {pageError}{" "}
@@ -462,7 +426,8 @@ export default function SavedWikiPage({ id }: { id: string }) {
                 </>
               ) : (
                 !pageError && (
-                  <div className="wiki-chapter-pending" role="status">
+                  <div className="wiki-chapter-pending" role="status" aria-busy={running || ready}>
+                    {(running || ready) && <div className={`wiki-document-skeleton ${running && !wiki.stalled && statusConnected ? "is-animated" : ""}`} aria-hidden="true"><span /><span /><span /><span /></div>}
                     <h2>{selected?.title || (running ? "Your Wiki is taking shape" : "No chapters saved yet")}</h2>
                     <p>
                       {ready
@@ -471,7 +436,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
                           ? "This chapter did not pass source checks. Its draft is withheld; the owner can resume to retry it."
                           : running
                             ? completed === 0
-                              ? "The first chapter appears after writing and source checks finish. The agent's current work is shown above; no chapter is ready to read yet."
+                              ? "The first chapter appears after writing and source checks finish. Keep this page open to watch it arrive."
                               : "This chapter is still being prepared. You can read any ready chapter in the sidebar while generation continues."
                             : "This chapter has not been completed. The owner can continue generation without rebuilding ready chapters."}
                     </p>
