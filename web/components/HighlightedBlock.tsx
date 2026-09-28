@@ -14,7 +14,13 @@ export default function HighlightedBlock({
   highlightLines?: Set<number>;
 }) {
   const [copied, setCopied] = useState(false);
-  const marked = highlightLines && highlightLines.size > 0;
+  const lineCount = text.replace(/\n$/, "").split("\n").length;
+  // A mark is only a mark when most lines are not marked; an excerpt with
+  // nearly every line tinted reads as a selection, not as a pointer.
+  const marked =
+    highlightLines != null &&
+    highlightLines.size > 0 &&
+    highlightLines.size <= Math.max(1, Math.floor(lineCount / 2));
   // With marked lines the block is rendered line by line so each line can
   // carry its own background; a short excerpt loses little from per-line
   // highlighting, and the marks are what the reader was sent here to see.

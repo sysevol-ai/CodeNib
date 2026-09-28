@@ -44,6 +44,8 @@ export interface ArchitectureJourney {
   citations?: Citation[];
   renderText: (markdown: string) => ReactNode;
   onPick?: (pageId: string) => void;
+  /** False when the page already shows the path elsewhere (the poster). */
+  showPath?: boolean;
 }
 
 export default function SystemArchitecture({
@@ -173,7 +175,7 @@ export default function SystemArchitecture({
                         className="wiki-system-connection-line"
                         aria-hidden="true"
                       />
-                      <span>{connection.label}</span>
+                      <span>{inlineCode(connection.label)}</span>
                       {onEvidence && (
                         <button
                           type="button"
@@ -217,7 +219,7 @@ export default function SystemArchitecture({
                     </button>
                   )}
                   {supportingConnection(node.id) && (
-                    <small>{supportingConnection(node.id)}</small>
+                    <small>{inlineCode(supportingConnection(node.id)!)}</small>
                   )}
                 </article>
               ))}
@@ -250,7 +252,7 @@ export default function SystemArchitecture({
           )}
         </aside>
       </div>
-      {trace && stages.length > 0 && (
+      {trace && trace.showPath !== false && stages.length > 0 && (
         <div className="wiki-system-trace">
           <div className="wiki-system-section-label">
             <span>Traced call path, recorded in the index</span>

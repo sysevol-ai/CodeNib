@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { repoRelative, type BoundaryRow, type PageBoundary as Boundary } from "@/lib/api";
 import { splitSymbolLabel } from "@/lib/symbols";
+import { breakableCode } from "@/lib/breakable";
 
 function Site({ row }: { row: BoundaryRow }) {
   const anchor = row.anchors[0];
@@ -58,16 +59,16 @@ function Side({
                   disabled={!onFocus}
                   title={onFocus ? `Open ${far} in the dependency map` : row.symbol}
                 >
-                  <code>{far}</code>
+                  <code>{breakableCode(far)}</code>
                 </button>
                 <span className="boundary-link">
                   {direction === "in" ? (
                     <>
-                      {row.call ? "calls" : "reads"} <code>{near}</code>
+                      {row.call ? "calls" : "reads"} <code>{breakableCode(near)}</code>
                     </>
                   ) : (
                     <>
-                      {row.call ? "called by" : "read by"} <code>{near}</code>
+                      {row.call ? "called by" : "read by"} <code>{breakableCode(near)}</code>
                     </>
                   )}
                 </span>

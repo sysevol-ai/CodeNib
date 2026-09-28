@@ -65,7 +65,7 @@ function themeVariables(): Record<string, string> {
   const token = (name: string, fallback: string) =>
     css.getPropertyValue(name).trim() || fallback;
   return {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontFamily: "\"Geist Mono\", ui-monospace, SFMono-Regular, Menlo, monospace",
     fontSize: "13px",
     primaryColor: token("--accent-soft", "#eff6ff"),
     primaryBorderColor: token("--accent-border", "#bfdbfe"),

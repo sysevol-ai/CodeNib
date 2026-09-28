@@ -18,6 +18,7 @@ export default function AskBar({
   collapsible = false,
   inline = false,
   browserTrial = false,
+  compact = false,
 }: {
   repoId: string;
   repo: string;
@@ -27,6 +28,8 @@ export default function AskBar({
   collapsible?: boolean;
   inline?: boolean;
   browserTrial?: boolean;
+  /** Collapse to an icon; for pages whose content runs under the corner. */
+  compact?: boolean;
 }) {
   const [q, setQ] = useState(defaultValue);
   const [expanded, setExpanded] = useState(!collapsible);
@@ -61,7 +64,7 @@ export default function AskBar({
 
   if (collapsible && !expanded) {
     return (
-      <div className="askbar askbar-collapsed">
+      <div className={`askbar askbar-collapsed${compact ? " askbar-compact" : ""}`}>
         <button
           className="askbar-trigger"
           type="button"
@@ -80,7 +83,7 @@ export default function AskBar({
           <span className="askbar-icon" aria-hidden>
             ✦
           </span>
-          <span>
+          <span className="askbar-label">
             {browserTrial ? "Find code with OpenRouter" : "Ask this repository"}
           </span>
         </button>

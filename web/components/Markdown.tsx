@@ -5,6 +5,7 @@ import {
   isValidElement,
   lazy,
   Suspense,
+  useState,
   type ReactElement,
   type ReactNode,
 } from "react";
@@ -16,6 +17,7 @@ import { isStaticRuntime } from "@/lib/runtime";
 import { matchCitation, lineLabel } from "@/lib/citations";
 import { callPaths, parseFlowchart } from "@/lib/flowchart";
 import CallChain from "./CallChain";
+import { breakableCode } from "@/lib/breakable";
 import {
   repoRelative,
   type Citation,
@@ -51,9 +53,52 @@ function isCitationElement(child: ReactNode): boolean {
   );
 }
 
+/** Resolves a citation link (`#evidence-E3`) to the file it points at. */
+type CitationFileResolver = (href: string) => string;
+
+function citationHref(child: ReactNode): string {
+  return isValidElement<{ href?: string }>(child) ? String(child.props.href || "") : "";
+}
+
+/** A paragraph's sources, folded into one quiet marker: the first file and a
+ *  count. The full list, each entry still opening its source, is one click
+ *  away. Six `file.py:a-b` strings after every sentence read as noise. */
+function CiteGroup({
+  items,
+  fileOf,
+}: {
+  items: ReactNode[];
+  fileOf?: CitationFileResolver;
+}) {
+  const [open, setOpen] = useState(false);
+  const files = Array.from(
+    new Set(items.map((item) => fileOf?.(citationHref(item)) || "").filter(Boolean)),
+  );
+  const label = files[0] || "source";
+  const more = items.length - 1;
+  return (
+    <span className={`cite-group${open ? " open" : ""}`}>
+      <button
+        type="button"
+        className="cite-group-toggle"
+        aria-expanded={open}
+        title={open ? "Hide sources" : `${items.length} source${items.length === 1 ? "" : "s"}: ${files.join(", ")}`}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="cite-group-file">{label}</span>
+        {more > 0 && <span className="cite-group-more">+{more}</span>}
+      </button>
+      {open && <span className="cite-group-list">{items}</span>}
+    </span>
+  );
+}
+
 /** Move the trailing run of citations into one group so they read as a
  *  reference list at the end of the block rather than as words in it. */
-function groupTrailingCitations(children: ReactNode): ReactNode {
+function groupTrailingCitations(
+  children: ReactNode,
+  fileOf?: CitationFileResolver,
+): ReactNode {
   const items = Children.toArray(children);
   let end = items.length;
   while (end > 0) {
@@ -67,10 +112,19 @@ function groupTrailingCitations(children: ReactNode): ReactNode {
   const tail = items.slice(end).filter(isCitationElement);
   if (tail.length === 0) return children;
   const body = items.slice(0, end);
+  if (tail.length === 1) {
+    // One source is short enough to show as it is, line number included.
+    return (
+      <>
+        {body}
+        <span className="cite-group" data-single="">{tail}</span>
+      </>
+    );
+  }
   return (
     <>
       {body}
-      <span className="cite-group">{tail}</span>
+      <CiteGroup items={tail} fileOf={fileOf} />
     </>
   );
 }
@@ -165,7 +219,7 @@ function CiteChip({
           : `Jump to ${text} in the code panel`
       }
     >
-      <code>{text}</code>
+      <code>{breakableCode(text)}</code>
       {loc && <span className="cite-chip-loc">:{loc}</span>}
     </button>
   );
@@ -200,6 +254,20 @@ export default function Markdown({
   /** App-relative reader route for saved visitor Wikis. */
   pageBasePath?: string;
 }) {
+  const citationFileOf: CitationFileResolver = (href) => {
+    const m = /^#evidence-([ER])(\d+)$/.exec(href);
+    if (!m) return "";
+    let path = "";
+    if (m[1] === "E") {
+      path = citations?.[Number(m[2]) - 1]?.file || "";
+    } else {
+      const anchor = relations?.find((r) => r.id === `R${m[2]}`)?.anchors?.[0] || "";
+      const at = anchor.lastIndexOf(":");
+      path = at > 0 ? anchor.slice(0, at) : anchor;
+    }
+    const shown = repoRelative(path) ?? path;
+    return shown.split("/").pop() || shown;
+  };
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -299,10 +367,10 @@ export default function Markdown({
             return <ResponsiveTable>{children}</ResponsiveTable>;
           },
           p({ children }) {
-            return <p>{groupTrailingCitations(children)}</p>;
+            return <p>{groupTrailingCitations(children, citationFileOf)}</p>;
           },
           li({ children }) {
-            return <li>{groupTrailingCitations(children)}</li>;
+            return <li>{groupTrailingCitations(children, citationFileOf)}</li>;
           },
           pre({ children }) {
             const codeEl = (Array.isArray(children) ? children[0] : children) as
@@ -384,7 +452,11 @@ export default function Markdown({
                 );
               }
             }
-            return <code className={className}>{children}</code>;
+            return (
+              <code className={className}>
+                {inline ? breakableCode(text) : children}
+              </code>
+            );
           },
         }}
       >
