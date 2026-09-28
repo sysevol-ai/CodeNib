@@ -21,6 +21,7 @@ import {
   tracedHops,
   type PosterEdge,
 } from "@/lib/posterLayout";
+import { AppLink } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import { splitSymbolLabel } from "@/lib/symbols";
 import type { Journey } from "@/lib/wikiPresentation";
@@ -206,6 +207,7 @@ export default function RepoPoster({
   lead,
   onPick,
   onOpenGraph,
+  variant = "page",
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -215,7 +217,11 @@ export default function RepoPoster({
   lead?: string;
   onPick?: (pageId: string) => void;
   onOpenGraph?: () => void;
+  /** "hero": the home page's live map, with a compact heading and a link
+   *  into the Wiki instead of the page's export controls. */
+  variant?: "page" | "hero";
 }) {
+  const hero = variant === "hero";
   const pageArea = useMemo(() => areaOfPage(pages), [pages]);
   const stages = journey?.stages ?? [];
   const stageAreas = useMemo(
@@ -443,7 +449,7 @@ export default function RepoPoster({
 
   return (
     <section
-      className={`repo-poster${exporting ? " is-exporting" : ""}`}
+      className={`repo-poster${hero ? " is-hero" : ""}${exporting ? " is-exporting" : ""}`}
       ref={rootRef}
       aria-label={`System map of ${repo?.repo || repoId}`}
     >
@@ -462,7 +468,7 @@ export default function RepoPoster({
           <span className="poster-owner">{owner}</span>
           {name}
         </h2>
-        {lead && <p className="poster-lead">{leadNodes(lead)}</p>}
+        {lead && !hero && <p className="poster-lead">{leadNodes(lead)}</p>}
         <dl className="poster-stats">
           <div><dt>areas</dt><dd>{number.format(totals.areas)}</dd></div>
           <div><dt>symbols</dt><dd>{number.format(totals.symbols)}</dd></div>
@@ -771,6 +777,13 @@ export default function RepoPoster({
             to each area. No model drew this map.
           </span>
         )}
+        {hero ? (
+          <span className="poster-actions">
+            <AppLink className="poster-link" href={`/${encodeURIComponent(repoId)}`}>
+              Open the {repo?.repo || repoId} Wiki →
+            </AppLink>
+          </span>
+        ) : (
         <span className="poster-actions poster-no-export">
           <button type="button" className="poster-link" onClick={exportImage} disabled={exporting}>
             {exporting ? "Saving…" : "Download image"}
@@ -781,6 +794,7 @@ export default function RepoPoster({
             </button>
           )}
         </span>
+        )}
         <span className="poster-brand" aria-hidden>
           <b>CodeNib</b> · {typeof window !== "undefined" ? window.location.host : "demo.codenib.ai"}/{repoId}
         </span>

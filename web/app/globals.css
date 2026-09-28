@@ -6031,7 +6031,7 @@ a.codepanel-name:hover {
 .browse-intro { position: relative; padding-top: 54px; padding-bottom: 32px; }
 .browse-intro h1 { font-size: clamp(30px, 4vw, 44px); letter-spacing: -.04em; margin: 10px 0; }
 .browse-intro p { color: var(--text-secondary); max-width: 640px; line-height: 1.7; }
-.browse-intro > .btn-outline { position: absolute; right: 0; top: 72px; }
+.browse-intro > .btn-outline { position: absolute; right: var(--wiki-gutter); top: 72px; }
 .browse-eyebrow { font-size: 11px; letter-spacing: .14em; color: var(--text-muted); font-weight: 700; }
 .browse-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .browse-tabs a { padding: 9px 14px; color: var(--text-secondary); border-radius: 6px; font-size: 14px; }
@@ -6767,5 +6767,413 @@ a.codepanel-name:hover {
     bottom: auto;
     width: auto;
     margin: 8px 8px 12px;
+  }
+}
+
+/* --- Home: one dark stage for the live map and the worked example ---------
+   Every section sits on the header's gutter, so the brand, the headline, the
+   map's right edge and the catalog share the same two edges. The two rows
+   use the same column split, so the intro columns and the right-hand
+   objects line up down the page. */
+.home-stage {
+  --h-bg: #070b14;
+  --h-text: #e6edf7;
+  --h-soft: #b6c2d4;
+  --h-muted: #8a97ab;
+  --h-line: rgba(148, 163, 184, 0.16);
+  --h-line-strong: rgba(148, 163, 184, 0.32);
+  --h-accent: #60a5fa;
+  --h-trace: #22d3ee;
+  position: relative;
+  display: grid;
+  gap: clamp(56px, 7vw, 96px);
+  padding: clamp(40px, 5vw, 64px) var(--wiki-gutter) clamp(56px, 6vw, 88px);
+  overflow: hidden;
+  color: var(--h-text);
+  background:
+    radial-gradient(1100px 520px at 78% -8%, rgba(59, 130, 246, 0.24), transparent 62%),
+    radial-gradient(900px 420px at -6% 64%, rgba(34, 211, 238, 0.1), transparent 60%),
+    var(--h-bg);
+}
+.home-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: linear-gradient(to bottom, #000 0, #000 70%, transparent 100%);
+}
+.home-hero,
+.home-example {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  column-gap: clamp(32px, 4.5vw, 72px);
+  align-items: stretch;
+}
+.home-hero-intro {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  min-width: 0;
+  padding-top: 4px;
+}
+.home-eyebrow {
+  margin: 0;
+  color: var(--h-trace);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.home-hero h1 {
+  margin: 18px 0 22px;
+  color: #fff;
+  font-size: clamp(40px, 3.9vw, 64px);
+  font-weight: 650;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  text-wrap: balance;
+}
+.home-example h2 {
+  margin: 16px 0 16px;
+  color: #fff;
+  font-size: clamp(28px, 2.8vw, 40px);
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.home-sub {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--h-soft);
+  font-size: 17px;
+  line-height: 1.65;
+}
+.home-entry .repository-entry {
+  width: 100%;
+  margin: 0;
+}
+.home-entry .repository-entry label {
+  color: var(--h-text);
+}
+.home-entry .repository-entry-row input {
+  border-color: var(--h-line-strong);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--h-text);
+}
+.home-entry .repository-entry-row input::placeholder {
+  color: #64748b;
+}
+.home-entry .repository-entry-row .btn-primary {
+  border-color: #3b82f6;
+  background: #2563eb;
+  color: #fff;
+}
+.home-entry .repository-entry .small.muted {
+  color: var(--h-muted);
+  font-size: 12px;
+}
+.home-entry .repository-examples {
+  display: none;
+}
+.home-entry .browse-entry {
+  margin-top: 6px;
+  color: var(--h-accent);
+}
+.home-map {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+.home-map-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.home-map-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--h-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--h-soft);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.home-map-tab span {
+  color: var(--h-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+.home-map-tab:hover {
+  border-color: var(--h-line-strong);
+  color: var(--h-text);
+}
+.home-map-tab.is-active {
+  border-color: rgba(34, 211, 238, 0.6);
+  background: rgba(34, 211, 238, 0.08);
+  color: #fff;
+}
+.home-map-tab:focus-visible {
+  outline: 2px solid var(--h-trace);
+  outline-offset: 2px;
+}
+/* The live map sits on the stage: no outer margin, a softer frame. */
+.repo-poster.is-hero {
+  max-width: none;
+  margin: 0;
+  border-color: rgba(148, 163, 184, 0.18);
+  background:
+    radial-gradient(700px 260px at 90% -10%, rgba(59, 130, 246, 0.16), transparent 62%),
+    rgba(7, 11, 20, 0.72);
+  box-shadow: 0 40px 80px -40px rgba(0, 0, 0, 0.8);
+}
+.repo-poster.is-hero .poster-title {
+  margin: 8px 0 4px;
+  font-size: 30px;
+}
+.repo-poster.is-hero .poster-stats {
+  grid-template-columns: repeat(4, auto);
+  gap: 18px;
+  margin: 0;
+}
+.repo-poster.is-hero .poster-stats dd {
+  font-size: 20px;
+}
+/* Title and numbers share a row only when the poster is wide enough. */
+@container (min-width: 761px) {
+  .repo-poster.is-hero .poster-head {
+    grid-template-areas:
+      "eyebrow eyebrow"
+      "title stats";
+    padding-top: 20px;
+  }
+}
+@container (max-width: 760px) {
+  .repo-poster.is-hero .poster-stats {
+    margin: 10px 0 6px;
+  }
+}
+.repo-poster.is-hero .poster-step-area {
+  display: none;
+}
+/* One row of steps: the hero shows the path, the Wiki explains it. */
+.repo-poster.is-hero .poster-steps {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+}
+.repo-poster.is-hero .poster-step {
+  gap: 2px;
+  padding: 8px 10px;
+}
+.repo-poster.is-hero .poster-step code {
+  font-size: 11px;
+}
+.repo-poster.is-hero .poster-trace {
+  padding-bottom: 16px;
+}
+.home-map-placeholder {
+  display: grid;
+  min-height: 520px;
+  place-items: center;
+  color: var(--h-muted);
+  font-size: 13px;
+}
+/* Top-aligned with the example it introduces, and kept in view beside it. */
+.home-example-intro {
+  position: sticky;
+  top: calc(var(--top-h) + 32px);
+  align-self: start;
+  min-width: 0;
+  padding-top: 24px;
+}
+.home-ready {
+  display: grid;
+  gap: 10px;
+}
+.home-ready-label {
+  color: var(--h-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.home-ready-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.home-ready-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--h-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--h-text);
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.home-ready-chip span {
+  color: var(--h-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.home-ready-chip:hover {
+  border-color: rgba(96, 165, 250, 0.6);
+  background: rgba(96, 165, 250, 0.08);
+  text-decoration: none;
+}
+.home-ready-chip.is-more {
+  color: var(--h-accent);
+}
+.home-stage + .landing-catalog .landing-catalog-heading,
+.home-stage + .wiki-continue .landing-catalog-heading {
+  border-top: 0;
+  padding-top: 8px;
+}
+/* The shared example is a shadow-DOM component themed through these
+   properties; on the stage it takes the stage's dark palette. */
+.home-example .first-visit-explorer {
+  --bg-surface: rgba(10, 15, 28, 0.9);
+  --bg-muted: rgba(255, 255, 255, 0.03);
+  --border-subtle: rgba(148, 163, 184, 0.2);
+  --text-primary: #e6edf7;
+  --text-secondary: #94a3b8;
+  --accent: #60a5fa;
+  --accent-soft: rgba(96, 165, 250, 0.12);
+  grid-area: auto;
+  min-height: 0;
+}
+/* The catalog uses the same gutter and no centred cap, so its edges are the
+   header's edges too. */
+.landing .landing-catalog,
+.landing .landing-agent {
+  max-width: none;
+  margin: 32px 0;
+  padding-inline: var(--wiki-gutter);
+}
+.landing .landing-catalog .repo-grid {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+.landing .preview-footer {
+  padding-inline: var(--wiki-gutter);
+}
+@media (max-width: 1000px) {
+  .home-hero,
+  .home-example {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 32px;
+  }
+  .home-hero-intro {
+    gap: 28px;
+  }
+  .home-example-intro {
+    position: static;
+    padding-top: 0;
+  }
+  .repo-poster.is-hero .poster-stats {
+    grid-template-columns: repeat(4, auto);
+  }
+}
+@media (max-width: 520px) {
+  .home-hero h1 {
+    font-size: 38px;
+  }
+  .home-sub {
+    font-size: 16px;
+  }
+  .home-entry .repository-entry-row {
+    flex-direction: column;
+  }
+}
+
+/* Catalog cards open on the repository's own map, drawn small. */
+.map-thumb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 104px;
+  margin: -16px -18px 14px;
+  overflow: hidden;
+  border-bottom: 1px solid #1a2436;
+  border-radius: 11px 11px 0 0;
+  background:
+    radial-gradient(260px 120px at 80% -20%, rgba(59, 130, 246, 0.22), transparent 70%),
+    #070b14;
+}
+.map-thumb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+.map-thumb svg {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.map-thumb-line {
+  fill: none;
+  stroke: rgba(96, 165, 250, 0.4);
+}
+.map-thumb-flow {
+  fill: none;
+  stroke: rgba(191, 219, 254, 0.7);
+  stroke-dasharray: 1 8;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.repo-card:hover .map-thumb-flow,
+.repo-card:focus-visible .map-thumb-flow {
+  opacity: 1;
+  animation: poster-flow 1.6s linear infinite;
+}
+.map-thumb-dot {
+  fill: #0d1424;
+  stroke: #60a5fa;
+  stroke-width: 1.2;
+}
+.repo-card:hover .map-thumb-dot {
+  stroke: #22d3ee;
+}
+.map-thumb-loading {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(96, 165, 250, 0.1) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: map-thumb-sweep 1.4s ease-in-out infinite;
+}
+@keyframes map-thumb-sweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+.map-thumb-empty {
+  position: relative;
+  color: #5b6679;
+  font-size: 11px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .repo-card:hover .map-thumb-flow,
+  .map-thumb-loading {
+    animation: none;
   }
 }

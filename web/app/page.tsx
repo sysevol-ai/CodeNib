@@ -6,6 +6,8 @@ import { fetchRepos, type RepoInfo } from "@/lib/api";
 import { primaryLanguage } from "@/lib/landing";
 import RepositoryEntry from "@/components/RepositoryEntry";
 import FirstVisitExplorer from "@/components/FirstVisitExplorer";
+import HomeMap from "@/components/HomeMap";
+import MapThumb from "@/components/MapThumb";
 import { AppLink, useBrowserLocation } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import {
@@ -55,6 +57,7 @@ function RepoCard({ r }: { r: RepoInfo }) {
       href={`/${r.id}`}
       aria-label={`Open ${r.repo} wiki`}
     >
+      {!isStaticRuntime() && <MapThumb repoId={r.id} />}
       <div className="repo-card-title">{r.repo}</div>
       <div className="repo-card-desc">{repoDescription(r)}</div>
       <div className="repo-card-footer">
@@ -310,6 +313,55 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
             Create a Wiki →
           </AppLink>
         </section>
+      ) : !staticRuntime ? (
+        <div className="home-stage">
+          <section className="home-hero" aria-label="CodeNib Wiki">
+            <div className="home-hero-intro">
+              <div>
+                <p className="home-eyebrow">From the big picture to the source</p>
+                <h1>Understand a repo.<br />Follow the code.</h1>
+                <p className="home-sub">
+                  Every repository here is mapped from its code index: its parts,
+                  the calls between them, and the path a request takes through
+                  them. Follow any line down to the source.
+                </p>
+              </div>
+              {repos.length > 0 && (
+                <div className="home-ready">
+                  <span className="home-ready-label">Ready to read, no setup</span>
+                  <div className="home-ready-list">
+                    {repos.slice(0, 9).map((repo) => (
+                      <AppLink key={repo.id} className="home-ready-chip" href={`/${encodeURIComponent(repo.id)}`}>
+                        {repo.repo.split("/").pop()}
+                        <span>{primaryLanguage(repo)}</span>
+                      </AppLink>
+                    ))}
+                    {repos.length > 9 && (
+                      <AppLink className="home-ready-chip is-more" href="/browse">
+                        +{repos.length - 9} more
+                      </AppLink>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="home-entry">
+                <RepositoryEntry repos={repos} />
+              </div>
+            </div>
+            <HomeMap repos={repos} />
+          </section>
+          <section className="home-example" aria-label="Try a real example">
+            <div className="home-example-intro">
+              <p className="home-eyebrow">From the map to the line</p>
+              <h2>Ask one question. Land on the exact lines.</h2>
+              <p className="home-sub">
+                Each step is a call the index recorded. Click one to read the source
+                it points at. No account or API key needed.
+              </p>
+            </div>
+            <FirstVisitExplorer />
+          </section>
+        </div>
       ) : (
         <section className={`hero ${!staticRuntime ? "first-visit-hero" : ""}`}>
           <div className="first-visit-intro">

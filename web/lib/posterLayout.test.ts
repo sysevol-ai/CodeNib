@@ -9,6 +9,7 @@ import {
   layoutPoster,
   nodeWidth,
   posterMode,
+  thumbLayout,
   tracedHops,
   wrapTitle,
 } from "./posterLayout";
@@ -190,5 +191,27 @@ describe("layoutAtlas", () => {
         expect(apart).toBe(true);
       }
     }
+  });
+});
+
+describe("thumbLayout", () => {
+  it("places every non-empty area inside the thumbnail", () => {
+    const thumb = thumbLayout(areas, links, 320, 104);
+    expect(thumb.dots.map((dot) => dot.id).sort()).toEqual(["lifecycle", "response", "session", "utils"]);
+    for (const dot of thumb.dots) {
+      expect(dot.x - dot.r).toBeGreaterThanOrEqual(0);
+      expect(dot.x + dot.r).toBeLessThanOrEqual(320);
+      expect(dot.y - dot.r).toBeGreaterThanOrEqual(0);
+      expect(dot.y + dot.r).toBeLessThanOrEqual(104);
+    }
+    expect(thumb.lines.length).toBe(links.length);
+  });
+
+  it("lays a sparse index out as one row of dots, biggest first", () => {
+    const thumb = thumbLayout(areas, [], 320, 104);
+    expect(new Set(thumb.dots.map((dot) => dot.y)).size).toBe(1);
+    const leftmost = [...thumb.dots].sort((a, b) => a.x - b.x)[0];
+    expect(leftmost.id).toBe("lifecycle");
+    expect(thumb.lines).toEqual([]);
   });
 });
