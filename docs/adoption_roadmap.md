@@ -106,10 +106,11 @@ Wiki social previews remain open.
 
 Local acceptance passes all three source links, keyboard operation, 1440/390/320
 pixel layouts, dark mode, reduced motion, catalog-outage exploration, aliases,
-refresh and Back navigation. The Web unit surface has 607 passing tests and one
+refresh and Back navigation. The Web unit surface has 608 passing tests and one
 skip; all 142 frontend tests pass. Production build, strict MkDocs and the
 public-doc boundary pass. Opt-in measurement records fixed events only, with
-tab-session deduplication, privacy-signal suppression and a bounded log collector.
+tab-session deduplication, privacy-signal suppression and a bounded log collector
+that stops reading uploads as soon as its 256-byte limit is exceeded.
 Events exclude user input, URLs, source and credentials. Counts are partial
 observations, separate by origin; source clicking and Wiki reading are leading
 indicators, while a successful own-repository agent query remains activation.

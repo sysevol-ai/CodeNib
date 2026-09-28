@@ -41,9 +41,11 @@ class ExperienceEvent(BaseModel):
 async def experience_event(request: Request):
     if os.environ.get("CODENIB_EXPERIENCE_EVENTS") != "1":
         return Response(status_code=204)
-    payload = await request.body()
-    if len(payload) > 256:
-        return Response(status_code=413)
+    payload = bytearray()
+    async for chunk in request.stream():
+        if len(payload) + len(chunk) > 256:
+            return Response(status_code=413)
+        payload.extend(chunk)
     try:
         event = ExperienceEvent.model_validate_json(payload)
     except ValidationError:

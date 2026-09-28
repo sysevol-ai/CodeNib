@@ -3,11 +3,13 @@
 
 """The optional funnel collector never accepts free-form visitor content."""
 
+import asyncio
 import logging
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from codenib.web import experience
 
@@ -68,3 +70,20 @@ def test_collector_bounds_payload_and_log_volume(collector, monkeypatch, caplog)
     assert len(experience._recent) == 120
     monkeypatch.setattr(experience, "monotonic", lambda: 160)
     assert collector.post("/api/experience-events", json=EVENT).status_code == 204
+
+
+def test_collector_stops_reading_oversized_stream(collector, caplog):
+    chunks = iter([b"x" * 200, b"x" * 100])
+
+    async def receive():
+        chunk = next(chunks, None)
+        assert chunk is not None, "Oversized uploads must not be drained into memory"
+        return {"type": "http.request", "body": chunk, "more_body": True}
+
+    response = asyncio.run(
+        experience.experience_event(
+            Request({"type": "http", "method": "POST", "headers": []}, receive)
+        )
+    )
+    assert response.status_code == 413
+    assert not any("experience_event" in r.message for r in caplog.records)
