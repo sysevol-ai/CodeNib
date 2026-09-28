@@ -84,9 +84,11 @@ all first-screen links work; quickstart remains exactly two commands.
 
 #### First-visit activation
 
-Status: implemented and locally accepted in
-[#809](https://github.com/sysevol-ai/CodeNib/pull/809), stacked after #808
-and its #803 → #804 → #805 → #806 → #807 dependencies. This iteration gives
+Status: the first-visit frontend is publicly deployed at
+[codenib.ai](https://codenib.ai/) and [demo.codenib.ai](https://demo.codenib.ai/)
+from `2fc8e451` as of 2026-09-28. Its implementation in
+[#809](https://github.com/sysevol-ai/CodeNib/pull/809) remains unmerged, stacked
+after #808 and its #803 → #804 → #805 → #806 → #807 dependencies. This gives
 the marketing and live Wiki homepages one shared, self-contained Requests
 question. Four source-pinned symbols and three indexed occurrence anchors
 are clickable without an account, model call, graph request or live source
@@ -118,15 +120,24 @@ Events exclude user input, URLs, source and credentials. Counts are partial
 observations, separate by origin; source clicking and Wiki reading are leading
 indicators, while a successful own-repository agent query remains activation.
 
-The production frontend also opens the real cached Requests redirect chapter
+Public desktop/mobile acceptance passes source syntax and stable selection,
+the marketing repository form's handoff to the prepared Wiki, natural paths,
+chapter refresh, the new-repository generation form, homepage social-image
+bytes/content type, and the existing blog index. Browsers report no page errors
+or failed resources, and verification sends no generation requests. The live
+generation API remains on `c7782a9a` without a process restart; the four saved
+visitor attempts remain complete. The old frontend and static release remain
+available through the deployment's rollback record. The optional event collector
+is not deployed or enabled; both public frontend collection switches remain off.
+
+The production frontend opens the real cached Requests redirect chapter
 from the example with read-only requests. Existing visitor stop/resume,
 refresh, sharing and polling checks pass on desktop and mobile after correcting
 their stale pre-#808 graph-response fixture; the paused-run failure reproduced
 on the unchanged dependency tip as well. The acceptance criteria are unchanged.
 
-Open gates: merge/restack the dependency chain and deploy with public acceptance;
-enable hosted
-measurement only with the matching collector and log-retention policy; establish
+Open gates: merge/restack the dependency chain; deploy and enable hosted
+measurement with the matching collector and log-retention policy; establish
 a baseline and observe 5–8 unfamiliar users before claiming improved conversion.
 Arbitrary-repository cost/latency, broader question examples and per-Wiki social
 previews need separate evidence. Existing generation, consent, corpus-quality
