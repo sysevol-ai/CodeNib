@@ -78,6 +78,65 @@ def test_indexer_only_receives_source_and_empty_environment(tmp_path, monkeypatc
     assert "extends" in (tmp_path / "pyrightconfig.json").read_text()
 
 
+def graph_bundle(source):
+    return SimpleNamespace(
+        source_reader=source.borrow_reader(),
+        code_graph=lambda: None,
+        entry=SimpleNamespace(base_commit="c" * 40),
+    )
+
+
+def test_packages_below_the_root_reach_the_indexer(tmp_path, monkeypatch, caplog):
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "pkg" / "caller.py").write_text("def caller():\n    return 1\n")
+    seen = {}
+
+    def run(command, root, check):
+        seen["files"] = sorted(
+            p.relative_to(root).as_posix() for p in root.rglob("*.py")
+        )
+        seen["config"] = json.loads((root / "pyrightconfig.json").read_text())
+        return False
+
+    monkeypatch.setattr(
+        visitor_graph, "resolve_command", lambda _: "/fixture/scip-python"
+    )
+    monkeypatch.setattr(visitor_graph, "_run_index", run)
+    visitor_graph.logger.addHandler(caplog.handler)
+    try:
+        with capture_repository_source(tmp_path) as source:
+            bundle = graph_bundle(source)
+            visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
+    finally:
+        visitor_graph.logger.removeHandler(caplog.handler)
+    assert seen["files"] == ["src/pkg/caller.py"]
+    # A "**/*.py" include made Pyright index root-level files only.
+    assert seen["config"]["include"] == ["."]
+    assert bundle.graph_coverage["reason"] == "index_failed"
+    assert "Visitor Wiki code indexing failed (indexer failed)" in caplog.text
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(
+    visitor_graph.resolve_command("scip-python") is None,
+    reason="scip-python is not installed",
+)
+def test_real_indexer_builds_a_graph_for_a_src_layout(tmp_path):
+    package = tmp_path / "src" / "pkg"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "callee.py").write_text("def callee():\n    return 1\n")
+    (package / "caller.py").write_text(
+        "from .callee import callee\n\n\ndef caller():\n    return callee()\n"
+    )
+    with capture_repository_source(tmp_path) as source:
+        bundle = graph_bundle(source)
+        visitor_graph.build_visitor_graph(bundle, lambda: None, lambda *_: None)
+    coverage = bundle.graph_coverage
+    assert coverage["available"], coverage
+    assert coverage["files"] == 3 and coverage["edges"] >= 1
+
+
 @pytest.mark.parametrize("timeout", [False, True])
 def test_indexing_stop_and_timeout_kill_owned_process(tmp_path, monkeypatch, timeout):
     processes = []

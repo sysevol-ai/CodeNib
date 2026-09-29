@@ -257,6 +257,48 @@ class VisitorWikis:
             envelope={"data": summary},
         )
 
+    def missing_graph_views(self, reasons=("index_failed", "not_indexed")):
+        """Saved Wikis with ready pages whose code maps are missing for *reasons*."""
+        found = []
+        for entry in self.store.scan(repository_ids=[_ATTEMPTS]):
+            state = entry.envelope["data"]
+            if not state.get("commit") or "ready" not in state["page_states"].values():
+                continue
+            graphs = self.store.read(f"{_entry(state['id'])}:graphs")
+            reason = (
+                graphs.envelope["data"]["coverage"].get("reason")
+                if graphs
+                else "not_indexed"
+            )
+            if reason in reasons:
+                found.append(
+                    {
+                        "id": state["id"],
+                        "repository": state["repository"],
+                        "reason": reason,
+                    }
+                )
+        return found
+
+    def backfill_graph_views(self, attempt, check=lambda: None):
+        """Rebuild one saved Wiki's code maps at its pinned commit.
+
+        An operator repair for Wikis saved while indexing could not run. It
+        holds the generation guard, downloads the saved commit again and
+        replaces only the graph entries. Pages, prose and cost are untouched,
+        and no model is called.
+        """
+        with self.store.generation_guard(_GENERATION):
+            state = self._read(attempt)
+            if not state.get("commit"):
+                raise VisitorWikiError("This saved Wiki has no pinned commit.")
+            with self.prepare(
+                state["repository"], state["commit"], attempt, check, lambda *_: None
+            ) as (bundle, _source):
+                self.save_graph_views(state, bundle, check)
+        saved = self.store.read(f"{_entry(attempt)}:graphs")
+        return copy.deepcopy(saved.envelope["data"]["coverage"])
+
     def public_wikis(self):
         return sorted(
             (

@@ -169,6 +169,48 @@ def test_graph_get_survives_restart_without_generation_or_publication(
     assert FakeWiki.produced == ["overview", "pipeline"]
 
 
+def test_backfill_rebuilds_only_missing_code_maps(manager, monkeypatch):
+    failed = {
+        "coverage": {"available": False, "reason": "index_failed"},
+        "system_map": {"available": False, "areas": [], "links": []},
+    }
+    monkeypatch.setattr(visitor_graph, "wiki_graph_views", lambda *_: (failed, {}))
+    submit(manager)
+    assert manager.missing_graph_views() == [
+        {"id": ATTEMPT, "repository": "owner/repo", "reason": "index_failed"}
+    ]
+    before = {
+        entry.entry_id: entry.envelope
+        for entry in manager.store.scan()
+        if ":graph" not in entry.entry_id
+    }
+    prepared = []
+
+    @contextmanager
+    def pinned(repository, commit, *_args):
+        prepared.append((repository, commit))
+        yield SimpleNamespace(), None
+
+    summary = {
+        "coverage": {"available": True, "files": 3, "nodes": 9, "edges": 4},
+        "system_map": {"available": True, "areas": [], "links": []},
+    }
+    view = {"available": True, "nodes": [{"id": "n0"}], "edges": [], "mermaid": ""}
+    monkeypatch.setattr(
+        visitor_graph, "wiki_graph_views", lambda *_: (summary, {"overview": view})
+    )
+    manager.prepare = pinned
+    coverage = manager.backfill_graph_views(ATTEMPT)
+
+    assert coverage["available"] and coverage["edges"] == 4
+    assert prepared == [("owner/repo", COMMIT)]
+    assert manager.graphs(ATTEMPT, "overview")["code_graph"] == view
+    assert manager.missing_graph_views() == []
+    for entry_id, envelope in before.items():
+        assert manager.store.read(entry_id).envelope == envelope
+    assert FakeWiki.produced == ["overview", "pipeline"]
+
+
 def test_interrupted_run_reuses_ready_page_after_service_restart(manager):
     def stop_at_second(page):
         if page == "pipeline":
