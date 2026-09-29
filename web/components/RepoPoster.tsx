@@ -108,7 +108,7 @@ function EdgeCallout({
   edge: PosterEdge;
   link: WikiAreaLink | undefined;
   titles: Map<string, string>;
-  repoId: string;
+  repoId: string | null;
   repo: RepoInfo | null;
   onClose: () => void;
 }) {
@@ -116,7 +116,7 @@ function EdgeCallout({
   const [slice, setSlice] = useState<SourceSlice | null>(null);
   useEffect(() => {
     setSlice(null);
-    if (!anchor?.file || anchor.line == null || isStaticRuntime()) return;
+    if (!repoId || !anchor?.file || anchor.line == null || isStaticRuntime()) return;
     let cancelled = false;
     fetchSource(repoId, anchor.file, Math.max(1, anchor.line - 2), anchor.line + 3, repo?.base_commit)
       .then((value) => {
@@ -209,6 +209,8 @@ export default function RepoPoster({
   onOpenGraph,
   variant = "page",
   brandHost,
+  brandLabel,
+  sourceRepoId,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -223,6 +225,10 @@ export default function RepoPoster({
   variant?: "page" | "hero" | "card";
   /** Host named in the image watermark; the current host by default. */
   brandHost?: string;
+  /** Replaces "host/repo id" in the watermark (a saved Wiki's repository). */
+  brandLabel?: string;
+  /** Prepared repository whose /source serves call-site lines; null skips it. */
+  sourceRepoId?: string | null;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -682,7 +688,7 @@ export default function RepoPoster({
             edge={selectedEdge}
             link={linkOf.get(edgeKey(selectedEdge))}
             titles={titles}
-            repoId={repoId}
+            repoId={sourceRepoId === undefined ? repoId : sourceRepoId}
             repo={repo}
             onClose={() => setSelected(null)}
           />
@@ -801,7 +807,9 @@ export default function RepoPoster({
         </span>
         )}
         <span className="poster-brand" aria-hidden>
-          <b>CodeNib</b> · {brandHost ?? (typeof window !== "undefined" ? window.location.host : "demo.codenib.ai")}/{repoId}
+          <b>CodeNib</b> ·{" "}
+          {brandLabel ??
+            `${brandHost ?? (typeof window !== "undefined" ? window.location.host : "demo.codenib.ai")}/${repoId}`}
         </span>
       </footer>
     </section>
