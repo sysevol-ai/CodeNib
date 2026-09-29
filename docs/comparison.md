@@ -25,6 +25,25 @@ model. “No key” excludes the agent's own subscription or API credentials.
 | [CodeGraph (colbymchenry/codegraph)](https://github.com/colbymchenry/codegraph) | Yes; telemetry opt-out | No model or API key for indexing/search | Typed AST-derived symbol and relationship graph | [20+ languages and templates; upstream matrix](https://github.com/colbymchenry/codegraph/blob/ba3c21e50d9129d2f5f3843ec3728868ae6d47a1/README.md#supported-languages) | File watcher, incremental changed-file sync and reconnect catch-up |
 | [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Hosted service | No user key/authentication for public MCP | Wiki structure, contents and generated answers | Public indexed repositories; no per-language graph matrix in this contract | Service-managed; local file-level update contract not documented |
 
+### What an agent can ask
+
+Checked on 2026-09-28 against the same upstream sources plus
+[Serena's tool list](https://oraios.github.io/serena/01-about/035_tools.html).
+
+| Tool | Ask in plain language | Callers/callees beyond one hop | Relationships resolved by |
+| --- | --- | --- | --- |
+| grep / file reads | No; literal or regex | No | Text match |
+| CodeNib CodeGraph | Yes; `explore_context` returns ranked source anchors (BM25; embeddings optional) | Yes; one `dependency_subgraph` call, depth ≤ 8 | SCIP/LSP indexers (compiler-resolved) |
+| Serena | No; `find_symbol` by name, `search_for_pattern` by regex | One level per `find_referencing_symbols` call | Live language server or JetBrains IDE |
+| CodeGraph (colbymchenry) | Yes; FTS5 full-text search behind `codegraph_explore` | Yes; `codegraph_explore` returns call paths; `impact --depth` on the CLI | Tree-sitter AST extraction in a Rust kernel |
+| DeepWiki public MCP | Yes; `ask_question` returns generated answers | No structured caller/callee tool | Generated Wiki |
+
+CodeNib and CodeGraph both answer plain-language questions and multi-hop
+caller queries locally. The practical difference is how edges are resolved:
+CodeNib builds them from SCIP/LSP indexers that resolve imports and types,
+while CodeGraph extracts them from syntax trees. This is a method difference,
+not a measured precision comparison.
+
 “CodeGraph” here means `colbymchenry/codegraph`, a separate project from
 CodeNib's CodeGraph route. Its row was checked at revision
 [`ba3c21e`](https://github.com/colbymchenry/codegraph/tree/ba3c21e50d9129d2f5f3843ec3728868ae6d47a1),

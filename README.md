@@ -36,7 +36,7 @@ SPDX-License-Identifier: Apache-2.0
 
 <p align="center">
   <a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">
-    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.png" alt="Play a recorded CodeGraph setup and Claude Code explore_context call on Requests, returning source references for authentication during redirects" width="100%">
+    <img src="https://raw.githubusercontent.com/sysevol-ai/CodeNib/main/landing/assets/demos/codegraph-claude.png" alt="Play a recorded Claude Code session on Requests: explore_context finds where authentication is stripped on redirects, then one dependency_subgraph call traces the four-hop caller chain from the public API" width="100%">
   </a>
 </p>
 <p align="center"><a href="https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.mp4">▶ Watch the 15-second replay</a> · real CLI output · waits condensed ·
@@ -81,18 +81,19 @@ above. Language toolchain and project prerequisites vary.
 
 ## How it compares
 
-“Local” and “key” describe the repository tool, excluding the agent's model.
+What an agent can ask each tool, checked against upstream docs on 2026-09-28.
 This compares capabilities, not benchmark scores.
 
-| Tool | Local processing | Tool needs a model/key | Graph / navigation | Languages | Updates |
-| --- | --- | --- | --- | --- | --- |
-| grep / read | Yes | No | Text and files | Any text | Current files |
-| **CodeNib CodeGraph** | Yes | No | Typed SCIP/LSP graph | [14 chunkers / 12 graph entries](https://docs.codenib.ai/language_capabilities/) | Reuse unchanged views; rebuild changed views |
-| [Serena](https://github.com/oraios/serena) | Yes | No retrieval model | LSP/IDE symbol navigation and editing | [Backend matrix](https://oraios.github.io/serena/01-about/020_programming-languages.html) | Backend-managed project state |
-| [CodeGraph (colbymchenry)](https://github.com/colbymchenry/codegraph) | Yes; telemetry opt-out | No | Typed AST-derived graph | [20+; upstream matrix](https://github.com/colbymchenry/codegraph/blob/ba3c21e50d9129d2f5f3843ec3728868ae6d47a1/README.md#supported-languages) | File watcher and incremental sync |
-| [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Hosted | No user key | Wiki and generated answers | Public indexed repos | Service-managed |
+| Tool | Ask in plain language | Callers/callees beyond one hop | Relationships resolved by | Runs |
+| --- | --- | --- | --- | --- |
+| grep / read | No; literal or regex | No | Text match | Local |
+| **CodeNib CodeGraph** | Yes; ranked source anchors (`explore_context`) | Yes; one call, depth ≤ 8 (`dependency_subgraph`) | SCIP/LSP indexers (compiler-resolved) | Local |
+| [Serena](https://github.com/oraios/serena) | No; symbol name or regex | One level per call (`find_referencing_symbols`) | Live language server or IDE | Local |
+| [CodeGraph (colbymchenry)](https://github.com/colbymchenry/codegraph) | Yes; FTS5 full-text (`codegraph_explore`) | Yes; call paths in `codegraph_explore` | Tree-sitter AST extraction | Local; telemetry opt-out |
+| [DeepWiki public MCP](https://docs.devin.ai/work-with-devin/deepwiki-mcp) | Yes; generated answers (`ask_question`) | No structured graph tools | Generated Wiki | Hosted |
 
-[Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).
+None of these repository tools needs its own model or API key; your agent
+uses its own model. [Detailed comparison, sources and boundaries](https://docs.codenib.ai/comparison/).
 CodeNib 0.2.4 also includes an optional [grep → Jev route](https://docs.codenib.ai/guides/grep-jev/)
 using OpenRouter for planning and reranking; selected code goes to remote
 models. Authorization previews remain opt-in. The historical research result
