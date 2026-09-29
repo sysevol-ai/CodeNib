@@ -346,6 +346,11 @@ export default function Landing({ browse = false }: { browse?: boolean }) {
               )}
               <div className="home-entry">
                 <RepositoryEntry repos={repos} />
+                <p className="home-url-tip">
+                  Or replace <code>github.com</code> with{" "}
+                  <code>{typeof window !== "undefined" ? window.location.host : "demo.codenib.ai"}</code>{" "}
+                  in any repository URL.
+                </p>
               </div>
             </div>
             <HomeMap repos={repos} />
