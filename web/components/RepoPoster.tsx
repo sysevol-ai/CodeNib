@@ -208,6 +208,7 @@ export default function RepoPoster({
   onPick,
   onOpenGraph,
   variant = "page",
+  brandHost,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -219,9 +220,13 @@ export default function RepoPoster({
   onOpenGraph?: () => void;
   /** "hero": the home page's live map, with a compact heading and a link
    *  into the Wiki instead of the page's export controls. */
-  variant?: "page" | "hero";
+  variant?: "page" | "hero" | "card";
+  /** Host named in the image watermark; the current host by default. */
+  brandHost?: string;
 }) {
-  const hero = variant === "hero";
+  // "card": the static 1200x630 link-preview image; no motion, no controls.
+  const card = variant === "card";
+  const hero = variant === "hero" || card;
   const pageArea = useMemo(() => areaOfPage(pages), [pages]);
   const stages = journey?.stages ?? [];
   const stageAreas = useMemo(
@@ -369,7 +374,7 @@ export default function RepoPoster({
   // asked for less motion.
   useEffect(() => {
     const node = rootRef.current;
-    if (!node || played.current || timeline.length === 0) return;
+    if (!node || played.current || timeline.length === 0 || card) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting) && !played.current) {
@@ -449,7 +454,7 @@ export default function RepoPoster({
 
   return (
     <section
-      className={`repo-poster${hero ? " is-hero" : ""}${exporting ? " is-exporting" : ""}`}
+      className={`repo-poster${hero ? " is-hero" : ""}${card ? " is-card" : ""}${exporting ? " is-exporting" : ""}`}
       ref={rootRef}
       aria-label={`System map of ${repo?.repo || repoId}`}
     >
@@ -796,7 +801,7 @@ export default function RepoPoster({
         </span>
         )}
         <span className="poster-brand" aria-hidden>
-          <b>CodeNib</b> · {typeof window !== "undefined" ? window.location.host : "demo.codenib.ai"}/{repoId}
+          <b>CodeNib</b> · {brandHost ?? (typeof window !== "undefined" ? window.location.host : "demo.codenib.ai")}/{repoId}
         </span>
       </footer>
     </section>

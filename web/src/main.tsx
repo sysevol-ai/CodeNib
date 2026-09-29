@@ -14,6 +14,7 @@ const GenerateWikiPage = lazy(() => import("@/app/generate/page"));
 const SavedWikiPage = lazy(() => import("@/app/saved-wiki/page"));
 const AddRepo = lazy(() => import("@/app/add-repo/page"));
 const RepositoryRoute = lazy(() => import("@/components/RepositoryRoute"));
+const ShareCardPage = lazy(() => import("@/app/share-card/page"));
 
 function RouteLoading() {
   return (
@@ -31,6 +32,9 @@ function App() {
     const repo = new URLSearchParams(location.search).get("repo");
     if (repo) return <RepositoryRoute key={repo} input={repo} />;
     return <Landing />;
+  }
+  if (segments[0] === "share-card" && segments.length <= 2) {
+    return <ShareCardPage key={segments[1] ?? "site"} repoId={segments[1]} />;
   }
   if (segments[0] === "browse" && segments.length === 1) {
     return <Landing browse />;

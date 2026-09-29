@@ -71,6 +71,7 @@ from .schemas import (
     RepoInfo,
     agent_result_to_response,
 )
+from .share import router as share_router
 from .visitor_wikis import router as visitor_wiki_router
 
 _WIKI_MEDIA_TYPES = {
@@ -198,6 +199,7 @@ app = FastAPI(title="CodeNib Code QA", lifespan=lifespan)
 
 app.include_router(visitor_wiki_router)
 app.include_router(experience_router)
+app.include_router(share_router)
 
 app.add_middleware(RequestBodyLimitMiddleware)
 app.add_middleware(
