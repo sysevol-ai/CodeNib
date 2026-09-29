@@ -69,15 +69,14 @@ jobs:
           python -m pip install \
             --index-url "$CODENIB_CI_TORCH_INDEX_URL" \
             "torch==$CODENIB_CI_TORCH_VERSION"
-          pip install -e ".[test]"
+          pip install -e ".[test,grep]"
 
       - name: Prewarm tree-sitter parsers
         uses: ./.github/actions/prewarm-parsers
 
-      - name: Install ripgrep for source retrieval tests
+      - name: Verify bundled ripgrep for source retrieval tests
+        shell: bash -l {0}
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y --no-install-recommends ripgrep
           rg --version
 
       - name: Run unit tests
