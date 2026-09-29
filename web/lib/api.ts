@@ -1,3 +1,4 @@
+import type { SourceDefinition } from "./sourceExcerpt";
 import { apiBase, isStaticRuntime, staticDataUrl } from "./runtime";
 
 export const API_BASE = apiBase();
@@ -459,6 +460,8 @@ export interface SourceSlice {
   start_line: number;
   end_line: number;
   content: string;
+  /** Signature of the definition the slice starts inside, when it does. */
+  definition?: SourceDefinition;
 }
 
 export async function fetchWikiTree(

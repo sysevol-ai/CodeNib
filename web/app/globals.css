@@ -1169,6 +1169,8 @@ pre {
   overflow-x: auto;
   font-size: 13px;
   line-height: 1.6;
+  /* Go and C indent with tabs; eight columns push excerpts off screen. */
+  tab-size: 4;
 }
 .code-block pre code.hljs {
   background: transparent;
@@ -4455,6 +4457,9 @@ a.codepanel-name:hover {
   color: var(--accent);
   font-weight: 700;
 }
+.hl-gutter-gap {
+  letter-spacing: 0.1em;
+}
 .hl-gutter {
   position: relative;
   z-index: 1;
@@ -4477,6 +4482,7 @@ a.codepanel-name:hover {
   padding: 10px 14px;
   background: transparent;
   overflow: visible;
+  tab-size: 4;
 }
 .hl-pre code.hljs {
   display: block;
@@ -5024,6 +5030,27 @@ a.codepanel-name:hover {
 .code-block-marked .code-line.is-marked {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+/* A source excerpt shows real file lines: its definition's signature, a gap
+   row for the lines skipped, then the lines the section is about. */
+.code-block-numbered .code-line {
+  display: block;
+  margin: 0 -16px;
+  padding: 0 16px;
+}
+.code-ln {
+  display: inline-block;
+  min-width: 3ch;
+  margin-right: 14px;
+  color: var(--text-muted);
+  text-align: right;
+  user-select: none;
+}
+.code-line.is-gap {
+  color: var(--text-muted);
+  letter-spacing: 0.2em;
+  user-select: none;
 }
 
 /* The notice under an excerpt reads as a caption, not a paragraph. */

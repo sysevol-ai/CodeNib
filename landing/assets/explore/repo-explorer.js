@@ -3,6 +3,7 @@
 
 import evidence from "./requests.js";
 import syntax from "./requests-highlight.js";
+import { excerptRows } from "./excerpt-rows.js";
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -109,9 +110,8 @@ class RepoExplorer extends HTMLElement {
     const edge = kind === "edge" ? evidence.edges[index] : null;
     const node = edge ? evidence.nodes.find((item) => item.id === edge.source) : evidence.nodes[index];
     const highlight = edge?.anchor.line;
-    const lines = node.content.trimEnd().split("\n");
-    const indent = Math.min(...lines.filter(line => line.trim()).map(line => line.match(/^ */)[0].length));
-    const end = node.start_line + lines.length - 1;
+    const rows = excerptRows(node);
+    const end = rows.numbers.at(-1);
     root.querySelectorAll("[data-node], [data-edge]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset[kind] === String(index)));
       button.classList.toggle("connected", Boolean(edge && button.dataset.node !== undefined &&
@@ -119,15 +119,14 @@ class RepoExplorer extends HTMLElement {
     });
     root.querySelector(".source-label").textContent = `sessions.py:${highlight || node.start_line}`;
     root.querySelector(".source-link").href = sourceUrl(node.file, highlight || node.start_line, highlight || end);
-    root.querySelector(".line-numbers").innerHTML = lines.map((line, offset) => {
-      const number = node.start_line + offset;
-      return `<span class="code-line${number === highlight ? " selected" : ""}">${number}</span>`;
-    }).join("");
+    root.querySelector(".line-numbers").innerHTML = rows.numbers.map((number) =>
+      `<span class="code-line${number === highlight ? " selected" : ""}${number === null ? " gap" : ""}">${number ?? "⋯"}</span>`,
+    ).join("");
     root.querySelector(".syntax").innerHTML = syntax[node.id]?.sha256 === node.sha256
-      ? syntax[node.id].html : escape(lines.map(line => line.slice(indent)).join("\n"));
+      ? syntax[node.id].html : escape(rows.lines.join("\n"));
     const band = root.querySelector(".line-highlight");
     band.hidden = highlight === undefined;
-    band.style.setProperty("--selected-row", highlight === undefined ? 0 : highlight - node.start_line);
+    band.style.setProperty("--selected-row", highlight === undefined ? 0 : rows.numbers.indexOf(highlight));
     root.querySelectorAll("[data-note]").forEach(note => {
       note.setAttribute("aria-hidden", String(note.dataset.note !== `${kind}-${index}`));
     });

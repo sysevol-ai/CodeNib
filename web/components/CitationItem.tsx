@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import HighlightedCode from "@/components/HighlightedCode";
-import { fetchSource, repoRelative, type Citation } from "@/lib/api";
+import { fetchSource, repoRelative, type Citation, type SourceSlice } from "@/lib/api";
 
 /** A code reference backing an answer / wiki page; expands to show the source. */
 export default function CitationItem({ repoId, c }: { repoId: string; c: Citation }) {
   const [src, setSrc] = useState<string | null>(c.content ?? null);
+  const [slice, setSlice] = useState<SourceSlice | null>(null);
   const [open, setOpen] = useState(false);
   const rel = repoRelative(c.file);
   async function toggle() {
@@ -19,6 +20,7 @@ export default function CitationItem({ repoId, c }: { repoId: string; c: Citatio
           c.end_line ?? undefined
         );
         setSrc(s.content);
+        setSlice(s);
       } catch {
         setSrc("// source unavailable");
       }
@@ -36,7 +38,8 @@ export default function CitationItem({ repoId, c }: { repoId: string; c: Citatio
         <HighlightedCode
           code={src ?? c.content ?? ""}
           file={rel}
-          startLine={c.start_line ?? 1}
+          startLine={slice?.start_line ?? c.start_line ?? 1}
+          definition={slice?.definition}
         />
       )}
     </div>

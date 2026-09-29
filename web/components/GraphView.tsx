@@ -3,6 +3,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { EdgeClickInfo, GraphNodeInfo } from "@/components/CodeGraph";
 import HighlightedCode from "@/components/HighlightedCode";
+import type { SourceDefinition } from "@/lib/sourceExcerpt";
 import HierarchyMap from "@/components/HierarchyMap";
 import SystemMap from "@/components/SystemMap";
 import {
@@ -84,6 +85,7 @@ function SourcePeek({
   const [idx, setIdx] = useState(0);
   const [code, setCode] = useState("");
   const [start, setStart] = useState(1);
+  const [definition, setDefinition] = useState<SourceDefinition | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "err">("loading");
   // Short LLM phrase describing how the source uses the target (edge peeks only).
   // Fetched on-demand; the server returns "" when the feature is disabled.
@@ -168,6 +170,7 @@ function SourcePeek({
     if (embedded?.content && repoRelative(embedded.file) === rel) {
       setCode(embedded.content);
       setStart(embedded.start_line || 1);
+      setDefinition(null);
       setState("ok");
       return;
     }
@@ -187,6 +190,7 @@ function SourcePeek({
         if (cancelled) return;
         setCode(s.content || "");
         setStart(s.start_line || Math.max(1, line - before));
+        setDefinition(s.definition ?? null);
         setState("ok");
       })
       .catch(() => !cancelled && setState("err"));
@@ -295,6 +299,7 @@ function SourcePeek({
           code={code}
           file={rel}
           startLine={start}
+          definition={definition}
           highlightLine={line}
           highlightEnd={isNode ? nodeEnd ?? line : undefined}
         />

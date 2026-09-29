@@ -4,14 +4,14 @@
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
 import evidence from "../landing/assets/explore/requests.js";
+import { excerptRows } from "../landing/assets/explore/excerpt-rows.js";
 
 const require = createRequire(new URL("../web/package.json", import.meta.url));
 const hljs = require("highlight.js/lib/core");
 hljs.registerLanguage("python", require("highlight.js/lib/languages/python"));
 const fragments = Object.fromEntries(evidence.nodes.map(node => {
-  const lines = node.content.trimEnd().split("\n");
-  const indent = Math.min(...lines.filter(line => line.trim()).map(line => line.match(/^ */)[0].length));
-  const code = lines.map(line => line.slice(indent)).join("\n");
+  // The same rows the page draws: signature, gap row, excerpt.
+  const code = excerptRows(node).lines.join("\n");
   return [node.id, { sha256: node.sha256, html: hljs.highlight(code, { language: "python" }).value }];
 }));
 const output = `// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors

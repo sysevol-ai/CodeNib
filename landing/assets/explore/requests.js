@@ -16,9 +16,13 @@ export default {
       "title": "Send the request",
       "file": "src/requests/sessions.py",
       "definition_line": 752,
+      "definition": {
+        "start_line": 752,
+        "content": "    def send(self, request: PreparedRequest, **kwargs: Any) -> Response:\n"
+      },
       "start_line": 800,
       "content": "\n        # Resolve redirects if allowed.\n        if allow_redirects:\n            # Redirect resolving generator.\n            gen = self.resolve_redirects(r, request, **kwargs)\n            history = [resp for resp in gen]\n        else:\n            history = []\n\n",
-      "sha256": "c9c7a447bb5f1e044d7a7e09b1b2d524e3537e77ca1a73fd6246730ca7eaea6b"
+      "sha256": "48e65e8387e4b863597ea765376792f5825bac07fc53148e0593ae787b42df3f"
     },
     {
       "id": "n0",
@@ -26,9 +30,13 @@ export default {
       "title": "Follow the redirect",
       "file": "src/requests/sessions.py",
       "definition_line": 186,
+      "definition": {
+        "start_line": 186,
+        "content": "    def resolve_redirects(\n"
+      },
       "start_line": 270,
       "content": "\n            # Rebuild auth and proxy information.\n            proxies = self.rebuild_proxies(prepared_request, proxies)\n            self.rebuild_auth(prepared_request, resp)\n\n            # A failed tell() sets `_body_position` to `object()`. This non-None\n",
-      "sha256": "e786da6f80064f1bdf455f82ccfd67ed7e9dd61daee5151a972ce73d9c5e86ec"
+      "sha256": "0b3e56ade969727277f61574f2cc06cdccf69499a57e1e20f8f190482d8a894c"
     },
     {
       "id": "n1",
@@ -36,9 +44,13 @@ export default {
       "title": "Rebuild credentials",
       "file": "src/requests/sessions.py",
       "definition_line": 309,
+      "definition": {
+        "start_line": 309,
+        "content": "    def rebuild_auth(\n        self, prepared_request: PreparedRequest, response: Response\n    ) -> None:\n"
+      },
       "start_line": 320,
       "content": "        headers = prepared_request.headers\n        original_url = original_request.url\n        url = prepared_request.url\n\n        if \"Authorization\" in headers and self.should_strip_auth(original_url, url):\n            # If we get redirected to a new host, we should strip out any\n            # authentication headers.\n            del headers[\"Authorization\"]\n\n        # .netrc might have more auth for us on our new host.\n        new_auth = get_netrc_auth(url) if self.trust_env else None\n        if new_auth is not None:\n            prepared_request.prepare_auth(new_auth)\n",
-      "sha256": "aa54a34b5857e0090804ce234d656d6b256e6f636856b80abccd860a06552872"
+      "sha256": "915fa5869eff1da7fa1629a1f548862826fecfb050a661e6f99ed980184ff30d"
     },
     {
       "id": "n3",

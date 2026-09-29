@@ -69,7 +69,9 @@ from .quality import duplicate_prose_blocks as _duplicate_prose_blocks
 from .quality import leading_code_subject as _leading_code_subject
 from .quality import narrative_density_report as _narrative_density_report
 from .quality import page_quality_report as _page_quality_report
-from .quality import parse_story_review
+from .quality import (
+    parse_story_review,
+)
 from .quality import prose_terms as _prose_terms
 from .quality import redundancy_terms as _redundancy_terms
 from .quality import (
@@ -77,6 +79,7 @@ from .quality import (
 )
 from .quality import section_synthesis_report as _section_synthesis_report
 from .quality import sentence_boundary_count as _sentence_boundary_count
+from .source_excerpt import EXCERPT_VERSION, anchor_excerpts
 from .store import (
     WikiGenerationBusyError,
     WikiStore,
@@ -5241,7 +5244,9 @@ class AgentWiki:
         """
 
         if self._serve_from_memory(page_id, retry_degraded_now):
-            page = self._refresh_media_plan(self._pages[page_id])
+            page = self._refresh_source_excerpts(
+                self._refresh_media_plan(self._pages[page_id])
+            )
             self._pages[page_id] = page
             return page
         meta = self._find(page_id)
@@ -5255,7 +5260,9 @@ class AgentWiki:
         cache_suffix = self._page_cache_suffix(meta)
         with _bounded_generation_lock(self._page_generation_lock(page_id)):
             if self._serve_from_memory(page_id, retry_degraded_now):
-                page = self._refresh_media_plan(self._pages[page_id], meta)
+                page = self._refresh_source_excerpts(
+                    self._refresh_media_plan(self._pages[page_id], meta)
+                )
                 self._pages[page_id] = page
                 return page
             with self._cache_generation_lock(cache_suffix):
@@ -5269,7 +5276,9 @@ class AgentWiki:
                     and not force_retry
                     and not self._cached_page_needs_regeneration(cached)
                 ):
-                    refreshed = self._refresh_media_plan(cached, meta)
+                    refreshed = self._refresh_source_excerpts(
+                        self._refresh_media_plan(cached, meta)
+                    )
                     if refreshed is not cached:
                         cached = refreshed
                         self._write_cache(cache_suffix, cached)
@@ -5291,6 +5300,7 @@ class AgentWiki:
                         relations=(page.get("evidence") or {}).get("relations") or (),
                     )
                 page["media_plan_version"] = MEDIA_PLAN_VERSION
+                self._anchor_source_excerpts(page)
                 self._record_page_retry(page, previous=cached)
                 self._pages[page_id] = page
                 self._write_cache(cache_suffix, page)
@@ -5313,6 +5323,47 @@ class AgentWiki:
         if retry_degraded_now and self._cached_page_needs_operator_retry(page):
             return False
         return not self._cached_page_needs_regeneration(page)
+
+    def _refresh_source_excerpts(self, page: Dict[str, Any]) -> Dict[str, Any]:
+        """Return *page* with anchored excerpts, as a new dict when it changed.
+
+        Cached pages are upgraded on read without regenerating prose; a new
+        dict tells the caller to write the cache back.
+        """
+
+        if page.get("excerpt_version") == EXCERPT_VERSION:
+            return page
+        refreshed = dict(page)
+        self._anchor_source_excerpts(refreshed)
+        return refreshed if "excerpt_version" in refreshed else page
+
+    def _anchor_source_excerpts(self, page: Dict[str, Any]) -> None:
+        """Anchor code excerpts to real lines and their definition's signature.
+
+        Only the code fences change, read from the pinned source. A failure
+        leaves the page as it was, to be retried on a later read.
+        """
+
+        if page.get("excerpt_version") == EXCERPT_VERSION:
+            return
+
+        def read_lines(file: str, start: int, end: int) -> Optional[List[str]]:
+            source = self._wb.source(file, start, end)
+            if not source or source.get("start_line") != start:
+                return None
+            return source["content"].splitlines()
+
+        markdown = page.get("markdown")
+        items = (page.get("evidence") or {}).get("items") or []
+        if isinstance(markdown, str) and items:
+            try:
+                page["markdown"] = anchor_excerpts(markdown, items, read_lines)
+            except Exception as exc:  # noqa: BLE001 - never lose a page to this
+                logger.warning(
+                    "Source excerpt anchoring failed (%s)", type(exc).__name__
+                )
+                return
+        page["excerpt_version"] = EXCERPT_VERSION
 
     @staticmethod
     def _refresh_media_plan(
