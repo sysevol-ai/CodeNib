@@ -350,10 +350,13 @@ export function layoutAtlas(areas: PosterArea[], width: number): AtlasLayout {
   const shown = areas.filter((area) => area.symbols > 0).sort(
     (a, b) => b.symbols - a.symbols || a.id.localeCompare(b.id),
   );
+  // A handful of areas needs less room than a dozen; tall empty cells read
+  // as a missing picture.
+  const few = shown.length <= 4 ? 180 + 24 * shown.length : Infinity;
   const height = Math.round(
     width < VERTICAL_BELOW
-      ? Math.max(320, Math.min(640, width * 1.15))
-      : Math.max(280, Math.min(460, width * 0.42)),
+      ? Math.max(Math.min(320, few), Math.min(640, width * 1.15, few * 1.6))
+      : Math.max(Math.min(280, few), Math.min(460, width * 0.42, few)),
   );
   const total = shown.reduce((sum, area) => sum + area.symbols, 0) || 1;
   // Inset like the map's boxes so the cells line up with the heading above.

@@ -7,13 +7,15 @@ import Header from "@/components/Header";
 import Markdown from "@/components/Markdown";
 import SystemArchitecture from "@/components/SystemArchitecture";
 import SavedWikiMaps from "@/components/SavedWikiMaps";
-import { splitWikiMarkdown } from "@/lib/wikiPresentation";
+import RepoPoster from "@/components/RepoPoster";
+import { extractJourney, splitWikiMarkdown } from "@/lib/wikiPresentation";
 import WikiGenerationForm from "@/components/WikiGenerationForm";
 import WikiRunActivity from "@/components/WikiRunActivity";
 import {
   shouldWithholdWikiPage,
   isSourceCheckedWikiPage,
   type Citation,
+  type RepoInfo,
   type WikiPage,
   type WikiPageRef,
 } from "@/lib/api";
@@ -24,7 +26,9 @@ import {
   loadSavedWiki,
   loadSavedWikiPage,
   loadWikiModels,
+  loadSavedWikiGraphs,
   wikiModelLabel,
+  type SavedWikiGraphs,
   type WikiModelCatalog,
   recentWikis,
   publishWiki,
@@ -158,6 +162,40 @@ export default function SavedWikiPage({ id }: { id: string }) {
       )
     : undefined;
   const prose = splitWikiMarkdown(page?.markdown || "");
+  // The Overview opens on the same poster as a prepared Wiki, drawn from the
+  // system map saved with this Wiki.
+  const [overviewMaps, setOverviewMaps] = useState<SavedWikiGraphs | null>(null);
+  const complete = wiki?.status === "complete";
+  useEffect(() => {
+    let cancelled = false;
+    setOverviewMaps(null);
+    if (complete)
+      loadSavedWikiGraphs(id, "overview")
+        .then((value) => {
+          if (!cancelled) setOverviewMaps(value);
+        })
+        .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [id, complete]);
+  const showPoster =
+    active === "overview" &&
+    !!page &&
+    !!wiki &&
+    !shouldWithholdWikiPage(page) &&
+    !!overviewMaps?.coverage.available &&
+    overviewMaps.system_map.areas.filter((area) => area.symbols > 0).length >= 2;
+  const posterRepo = wiki
+    ? ({
+        id: wiki.repository,
+        repo: wiki.repository,
+        commit_short: wiki.commit.slice(0, 8),
+        base_commit: wiki.commit,
+        source_url: `https://github.com/${wiki.repository}`,
+        file_count: wiki.source_files ?? 0,
+      } as RepoInfo)
+    : null;
   function pick(pageId: string) {
     setActive(pageId);
     history.replaceState(
@@ -226,7 +264,12 @@ export default function SavedWikiPage({ id }: { id: string }) {
             Share Wiki ↗
           </button>
         </div>
-        {wiki?.status === "complete" && (
+        {wiki?.status === "complete" && !owner && !wiki.published && (
+          <p className="saved-wiki-visibility">
+            Shared by link · not listed in Community
+          </p>
+        )}
+        {wiki?.status === "complete" && (owner || wiki.published) && (
           <section
             className={`wiki-publication ${owner && !wiki.published ? "is-invitation" : ""}`}
             aria-label="Community publication"
@@ -538,6 +581,20 @@ export default function SavedWikiPage({ id }: { id: string }) {
               )}
               {page && !shouldWithholdWikiPage(page) ? (
                 <>
+                  {showPoster && wiki && overviewMaps && (
+                    <RepoPoster
+                      repoId={wiki.repository}
+                      repo={posterRepo}
+                      map={overviewMaps.system_map}
+                      pages={wiki.pages}
+                      journey={extractJourney(prose.body).journey}
+                      lead={prose.lead.replace(/^#\s[^\n]*\n+/, "").split(/\n\s*\n/)[0]}
+                      onPick={pick}
+                      brandLabel={wiki.repository}
+                      sourceRepoId={null}
+                    />
+                  )}
+                  {!(showPoster && architecture) && (
                   <Markdown
                     citations={page.citations}
                     relations={page.evidence?.relations}
@@ -546,8 +603,13 @@ export default function SavedWikiPage({ id }: { id: string }) {
                     allowRemoteImages={false}
                     pageBasePath={`/wiki/${id}`}
                   >
-                    {architecture ? prose.lead : page.markdown}
+                    {showPoster
+                      ? prose.body
+                      : architecture
+                        ? prose.lead
+                        : page.markdown}
                   </Markdown>
+                  )}
                   {architecture && (
                     <>
                       <SystemArchitecture
@@ -598,6 +660,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
                     </p>
                   )}
                   <SavedWikiMaps
+                    hideSystemMap={showPoster}
                     id={id}
                     pageId={active}
                     repository={wiki.repository}

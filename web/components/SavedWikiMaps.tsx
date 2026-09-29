@@ -13,12 +13,15 @@ export default function SavedWikiMaps({
   repository,
   complete,
   onPick,
+  hideSystemMap = false,
 }: {
   id: string;
   pageId: string;
   repository: string;
   complete: boolean;
   onPick: (page: string) => void;
+  /** The page already opens on the poster drawn from the same map. */
+  hideSystemMap?: boolean;
 }) {
   const [maps, setMaps] = useState<SavedWikiGraphs | null>(null);
   const [error, setError] = useState("");
@@ -43,6 +46,7 @@ export default function SavedWikiMaps({
   return (
     <section className="saved-wiki-maps" aria-label="Code maps">
       {pageId === "overview" &&
+        !hideSystemMap &&
         maps?.coverage.available &&
         maps.system_map.areas.length > 0 && (
           <AreaMap
@@ -54,7 +58,9 @@ export default function SavedWikiMaps({
       <div className="saved-wiki-map-heading">
         <h2>
           {pageId === "overview"
-            ? "System Map & CodeGraph"
+            ? hideSystemMap
+              ? "CodeGraph"
+              : "System Map & CodeGraph"
             : "Chapter CodeGraph"}
         </h2>
         {maps?.code_graph.available && (

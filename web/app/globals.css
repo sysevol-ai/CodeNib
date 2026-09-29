@@ -7296,3 +7296,55 @@ a.codepanel-name:hover {
   font-size: 22px;
   line-height: 1.5;
 }
+
+/* --- Saved visitor Wikis read like prepared ones ------------------------
+   Same gutter as the header, the same left rail width, an open reading
+   column (no card), prose at a reading measure, and a chapter marker only
+   when a chapter still needs work. */
+.saved-wiki {
+  max-width: none;
+  padding: 24px var(--wiki-gutter) 80px;
+}
+.saved-wiki-layout {
+  grid-template-columns: var(--rail-left) minmax(0, 1fr);
+  column-gap: 28px;
+}
+.saved-wiki-content {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.saved-wiki-content .markdown {
+  max-width: none;
+}
+.saved-wiki-content .markdown > :is(p, ul, ol, blockquote, h1, h2, h3) {
+  max-width: 76ch;
+}
+.saved-wiki-content > .repo-poster {
+  max-width: 1100px;
+  margin: 0 0 40px;
+}
+.saved-wiki-chapter .chapter-state.ready {
+  display: none;
+}
+.saved-wiki-visibility {
+  margin: -8px 0 24px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+@media (max-width: 820px) {
+  .saved-wiki-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Supporting roles and boundaries keep their natural heights side by side;
+   stretching the shorter column spread its cards apart. */
+.wiki-system-context {
+  align-items: start;
+}
+.wiki-system-supporting,
+.wiki-system-boundaries {
+  align-content: start;
+}

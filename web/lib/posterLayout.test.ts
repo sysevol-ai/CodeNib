@@ -215,3 +215,15 @@ describe("thumbLayout", () => {
     expect(thumb.lines).toEqual([]);
   });
 });
+
+describe("layoutAtlas height", () => {
+  it("gives a few areas a shorter canvas than many", () => {
+    const three = layoutAtlas(areas.slice(0, 3), 900);
+    const many = layoutAtlas(
+      Array.from({ length: 10 }, (_, i) => ({ id: `a${i}`, title: `Area ${i}`, symbols: 10 + i, files: 1 })),
+      900,
+    );
+    expect(three.height).toBeLessThan(many.height);
+    expect(three.height).toBeLessThanOrEqual(252);
+  });
+});
