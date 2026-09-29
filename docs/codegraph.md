@@ -165,37 +165,42 @@ codenib codegraph init . --rebuild
 The homepage's 15-second clip replays actual CLI output from
 [Requests v2.32.5](https://github.com/psf/requests/tree/b25c87d7cb8d6a18a37fa12442b5f883f9e41741).
 It shows `codenib codegraph init . --agent claude`, then a real Claude Code
-`explore_context` call about authentication during redirects. The returned
-source anchors point to
-[`should_strip_auth`, lines 127–157](https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/src/requests/sessions.py#L127-L157)
+session that makes two calls. `explore_context` answers a plain-language
+question about authentication during redirects with source anchors at
+[`rebuild_auth`, lines 282–300](https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/src/requests/sessions.py#L282-L300)
 and
-[`rebuild_auth`, lines 282–300](https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/src/requests/sessions.py#L282-L300).
+[`should_strip_auth`, lines 127–157](https://github.com/psf/requests/blob/b25c87d7cb8d6a18a37fa12442b5f883f9e41741/src/requests/sessions.py#L127-L157).
+One `dependency_subgraph` call with `direction="impact"` and depth 4 then
+returns the caller chain `Session.request()` → `Session.send()` →
+`resolve_redirects()` → `rebuild_auth()`, plus the entry points
+`requests.request()` in `api.py` and seven `Session` HTTP-verb methods.
+A language server's call hierarchy answers one level per request.
 
-The recording uses a wheel built from CodeNib main commit
-[`28910cc9`](https://github.com/sysevol-ai/CodeNib/commit/28910cc9a4324de0adb714b98729165679b5386a),
-including the MCP version fix not yet present in PyPI 0.2.3. The Python 3.11
-environment installs `[graph,mcp]` with MCP SDK 2.2 and reuses an installed
-`scip-python`. Setup took 14.0 seconds and the agent call 11.3 seconds on this
-one run. Installation and provider setup are outside the clip; waits are
-condensed. This is an edited CLI transcript, not a recording of Claude's
-interactive UI, a cold-start benchmark or evidence of token savings.
+The recording runs CodeNib main commit
+[`f7060886`](https://github.com/sysevol-ai/CodeNib/commit/f70608869ff4fff982a43da8f6a776fd9decbc18)
+from a source checkout in an existing `[graph,mcp]` environment with an
+installed `scip-python`. Client registration and index state used an isolated
+home directory. The agent call took 14.1 seconds on this one run.
+Installation and provider setup are outside the clip; waits are condensed.
+This is an edited CLI transcript, not a recording of Claude's interactive UI,
+a cold-start benchmark or evidence of token savings.
 
-Claude Code 2.1.283 uses `anthropic/claude-sonnet-4.6` through
+Claude Code 2.1.284 uses `anthropic/claude-sonnet-4.6` through
 [OpenRouter's documented gateway](https://openrouter.ai/docs/cookbook/coding-agents/claude-code-integration).
 The local CodeGraph route makes no model call; the agent sends its prompt and
-returned source to its model. The run used isolated client/state directories,
-one allowed read-only MCP tool, disabled built-in tools, no session persistence,
-a three-turn limit and a $0.20 application budget. Source and existing user
-profiles stayed unchanged. Claude's $0.06085215 cost estimate uses list prices;
+returned source to its model. The run allowed only the two CodeNib tools,
+disabled built-in tools, kept no session, and set a four-turn limit and a
+$0.30 application budget. It used three turns. Source and existing user
+profiles stayed unchanged. Claude's $0.0778 cost estimate uses list prices;
 it is not a provider billing receipt.
 
 The [recorded transcript and metadata](https://github.com/sysevol-ai/CodeNib/blob/main/landing/assets/demos/codegraph-claude.json)
-retain the exact prompt, tool input, selected source excerpts, full answer,
-usage and source identities. The answer correctly identifies both function
-ranges but approximates the deletion as line 292; the exact deletion is at
-line 295. The clip shows the verified function anchors. Regenerate the media
-without model calls using `node scripts/render_agent_demo.mjs` after installing
-the Web development dependencies, Playwright Chromium and ffmpeg.
+retain the exact prompt, tool inputs, selected anchors, the dependency result,
+the full answer, usage and source identities. Every cited line is a definition
+line at the pinned source; the `Authorization` header is deleted at line 295.
+Regenerate the media without model calls using
+`node scripts/render_agent_demo.mjs` after installing the Web development
+dependencies, Playwright Chromium and ffmpeg.
 
 ## Safe uninstall
 

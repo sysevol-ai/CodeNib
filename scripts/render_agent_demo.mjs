@@ -29,14 +29,34 @@ try {
     h1{font:500 29px Mono;margin:0;color:#fff}pre{font:20px/1.58 Mono;margin:0;white-space:pre-wrap;flex:1}
     footer{border-top:1px solid #26374b;padding-top:17px;font:14px Mono;color:#9bb0c7}
   </style><main><header><span>CodeNib → Claude Code</span><span>Requests · Python</span></header>
-  <h1></h1><pre></pre><footer>Recorded CLI excerpts · waits condensed · CodeNib main ${record.codenib_commit.slice(0,8)}</footer></main></html>`);
+  <h1></h1><pre></pre><footer>Recorded CLI excerpts · waits condensed · psf/requests ${record.source_commit.slice(0,8)} · CodeNib main ${record.codenib_commit.slice(0,8)}</footer></main></html>`);
   await page.evaluate(() => document.fonts.ready);
-  const anchors = record.source_anchors.slice().sort((a,b) => a.start_line-b.start_line);
-  const query = record.tool_input.query;
+  const short = name => name.split(":").pop();
+  // Keep Class.method() when it fits; otherwise show the method alone.
+  const label = name => short(name).length <= 24 ? short(name) : short(name).split(".").pop();
+  const tool = call => call.tool_name.split("__").pop();
+  const [explore, trace] = record.tool_calls;
+  const anchors = record.source_anchors.slice().sort((a,b) => b.start_line-a.start_line);
+  const graph = record.dependency_result;
+  // The root is the queried symbol, located by the explore_context anchors.
+  const lines = new Map([
+    ...anchors.map(a => [a.symbol, `${a.file.split("/").pop()}:${a.start_line}`]),
+    ...graph.nodes.map(node => [node.name, `${node.file.split("/").pop()}:${node.line}`]),
+  ]);
+  const callers = name => graph.edges.filter(edge => edge.target === name).map(edge => edge.source);
+  // Walk the recorded impact edges while each symbol has a single caller.
+  const chain = [graph.root];
+  while (callers(chain.at(-1)).length === 1) chain.push(callers(chain.at(-1))[0]);
+  const entries = callers(chain.at(-1)).map(label);
+  const verbs = entries.filter(name => name.startsWith("Session."));
+  const others = callers(chain.at(-1)).filter(name => !verbs.includes(label(name)));
+  const entryLine = `${others.map(name => `${lines.get(name).padEnd(16)}${label(name)}`).join("\n  ")}\n  ${"sessions.py".padEnd(16)}${verbs.length} Session verbs: ${verbs.slice(0, 2).map(v => v.split(".").pop()).join(", ")}, …`;
+  const rows = chain.slice().reverse().map((name, depth) =>
+    `  ${lines.get(name).padEnd(16)}${" ".repeat(depth * 2)}└ ${label(name)}`);
   const scenes = [
     {title:"1 / 3   Connect your repository", text:`$ ${record.setup_command}\n\n${record.setup_output_excerpt.join("\n")}`},
-    {title:"2 / 3   Ask Claude Code", text:`Recorded prompt (excerpt):\n${record.prompt.split(" Cite files")[0]}\n\nRecorded MCP call:\nexplore_context\n\n  query: ${JSON.stringify(query)}`},
-    {title:"3 / 3   Follow the source references", text:`Recorded MCP response (selected anchors):\n\n${anchors.map(a => `${a.file}:${a.start_line}–${a.end_line}\n  ${a.symbol.split(":")[1]}\n  source verified: ${a.source_verified}`).join("\n\n")}\n\nPinned source: psf/requests @ ${record.source_commit.slice(0,8)}`},
+    {title:"2 / 3   Ask in plain language", text:`Recorded prompt (excerpt):\n${record.prompt.split(" Cite files")[0]}\n\nRecorded MCP calls:\n${tool(explore)}(${JSON.stringify(explore.tool_input.query)})\n${tool(trace)}(${JSON.stringify(trace.tool_input.symbol)}, ${trace.tool_input.direction}, depth ${trace.tool_input.depth})`},
+    {title:"3 / 3   Where it happens, and who reaches it", text:`${tool(explore)} → source anchors\n${anchors.map(a => `  ${`${lines.get(a.symbol)}–${a.end_line}`.padEnd(20)}${label(a.symbol)}`).join("\n")}\n\n${tool(trace)} → ${chain.length}-hop caller chain, one call\n  ${entryLine}\n${rows.join("\n")}`},
   ];
   for (const [index, scene] of scenes.entries()) {
     await page.evaluate(scene => {
