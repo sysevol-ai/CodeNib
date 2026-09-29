@@ -21,9 +21,9 @@ from ..agent.runtime.grep_jev import (
     grep_planning_context,
 )
 from ..llm.decisions import OpenRouterDecisions
+from .visitor_models import WIKI_MODELS, wiki_model
 
 FLASH_MODEL = "deepseek/deepseek-v4.1-flash"
-WIKI_MODELS = (FLASH_MODEL, PLANNER_MODEL)
 
 WIKI_RETRIEVAL_IDENTITY = "wiki_grep_jev_v2"
 WIKI_PLANNER_SYSTEM = """Plan source searches for a chapter of a developer Wiki.
@@ -252,13 +252,18 @@ class VisitorProvider:
 
     def complete(self, messages: list[dict], **options) -> str:
         self.before()
+        # Send only parameters the chosen model accepts: with
+        # require_parameters an unsupported one leaves no provider to route to.
+        accepts = wiki_model(self.model)
         payload = {
             "model": self.model,
             "messages": messages,
-            "temperature": options.get("temperature", 0.2),
             "max_tokens": min(16000, options.get("max_tokens", 4096)),
-            "reasoning": {"enabled": False},
         }
+        if accepts is None or accepts.temperature:
+            payload["temperature"] = options.get("temperature", 0.2)
+        if accepts is None or accepts.reasoning:
+            payload["reasoning"] = {"enabled": False}
         if "response_format" in options:
             payload["response_format"] = options["response_format"]
             payload["provider"] = {"require_parameters": True}
