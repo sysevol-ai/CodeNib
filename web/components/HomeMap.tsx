@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 
 import RepoPoster from "@/components/RepoPoster";
+import "./HomeMap.css";
 import {
   fetchWikiAreaMap,
   fetchWikiPage,

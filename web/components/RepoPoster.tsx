@@ -3,6 +3,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import "./RepoPoster.css";
+
 import {
   fetchSource,
   type RepoInfo,
@@ -13,7 +15,6 @@ import {
 } from "@/lib/api";
 import { breakableCode } from "@/lib/breakable";
 import { ghFileUrl } from "@/lib/github";
-import { highlightSource } from "@/lib/highlight";
 import {
   layoutAtlas,
   layoutPoster,
@@ -114,10 +115,16 @@ function EdgeCallout({
 }) {
   const anchor = link?.example.anchor ?? null;
   const [slice, setSlice] = useState<SourceSlice | null>(null);
+  // The highlighter is loaded with the first source excerpt, so pages that
+  // never show one (the codenib.ai hero) do not carry it.
+  const [highlight, setHighlight] = useState<((code: string, language?: string) => string) | null>(null);
   useEffect(() => {
     setSlice(null);
     if (!repoId || !anchor?.file || anchor.line == null || isStaticRuntime()) return;
     let cancelled = false;
+    void import("@/lib/highlight").then((module) => {
+      if (!cancelled) setHighlight(() => module.highlightSource);
+    });
     fetchSource(repoId, anchor.file, Math.max(1, anchor.line - 2), anchor.line + 3, repo?.base_commit)
       .then((value) => {
         if (!cancelled) setSlice(value);
@@ -181,7 +188,11 @@ function EdgeCallout({
                 return (
                   <span key={at} className={`poster-code-line${at === anchor.line ? " is-anchor" : ""}`}>
                     <span className="poster-code-no">{at}</span>
-                    <span dangerouslySetInnerHTML={{ __html: highlightSource(line, language) || " " }} />
+                    {highlight ? (
+                      <span dangerouslySetInnerHTML={{ __html: highlight(line, language) || " " }} />
+                    ) : (
+                      <span>{line || " "}</span>
+                    )}
                   </span>
                 );
               })}
@@ -211,6 +222,7 @@ export default function RepoPoster({
   brandHost,
   brandLabel,
   sourceRepoId,
+  wikiHref,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -229,6 +241,9 @@ export default function RepoPoster({
   brandLabel?: string;
   /** Prepared repository whose /source serves call-site lines; null skips it. */
   sourceRepoId?: string | null;
+  /** Absolute Wiki address for the hero link, when the poster is shown on
+   *  another site (codenib.ai); the app's own route otherwise. */
+  wikiHref?: string;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
@@ -790,9 +805,15 @@ export default function RepoPoster({
         )}
         {hero ? (
           <span className="poster-actions">
-            <AppLink className="poster-link" href={`/${encodeURIComponent(repoId)}`}>
-              Open the {repo?.repo || repoId} Wiki →
-            </AppLink>
+            {wikiHref ? (
+              <a className="poster-link" href={wikiHref}>
+                Open the {repo?.repo || repoId} Wiki →
+              </a>
+            ) : (
+              <AppLink className="poster-link" href={`/${encodeURIComponent(repoId)}`}>
+                Open the {repo?.repo || repoId} Wiki →
+              </AppLink>
+            )}
           </span>
         ) : (
         <span className="poster-actions poster-no-export">
