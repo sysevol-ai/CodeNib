@@ -54,3 +54,23 @@ export function parseGitHubRepository(input: string): GitHubRepo | null {
 export function previewPath(repo: GitHubRepo): string {
   return `/preview/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}`;
 }
+
+/** GitHub's own sub-pages that still name one repository. */
+const GITHUB_REPOSITORY_PAGES = ["tree", "blob", "issues", "pull", "pulls"];
+
+/**
+ * A GitHub address pasted after this site's domain, as route segments:
+ * `/github.com/owner/repo`, `/https://github.com/owner/repo`, or
+ * `/owner/repo/tree/main`. Returns the text to resolve, or null for any
+ * other route.
+ */
+export function githubPathInput(segments: string[]): string | null {
+  if (segments.length < 3) return null;
+  const [first, ...rest] = segments;
+  if (/^https?:$/i.test(first)) return `${first}//${rest.join("/")}`;
+  if (/^(?:www\.)?github\.com$/i.test(first)) return segments.join("/");
+  if (!first.includes("__") && GITHUB_REPOSITORY_PAGES.includes(segments[2])) {
+    return segments.join("/");
+  }
+  return null;
+}

@@ -2,6 +2,7 @@ import { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 
 import "@/app/globals.css";
+import { githubPathInput } from "@/lib/githubPreview";
 import { routeSegments, useBrowserLocation } from "@/lib/router";
 import { assetUrl, restoreStaticRoute } from "@/lib/runtime";
 import { startExperienceEvents } from "@/lib/experience";
@@ -50,6 +51,12 @@ function App() {
   }
   if (segments[0] === "add-repo") {
     return <AddRepo />;
+  }
+
+  // A GitHub URL pasted after the domain resolves like the entry form.
+  const pastedGitHub = githubPathInput(segments);
+  if (pastedGitHub) {
+    return <RepositoryRoute key={pastedGitHub} input={pastedGitHub} />;
   }
 
   const repoId = segments[0];

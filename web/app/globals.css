@@ -7192,3 +7192,18 @@ a.codepanel-name:hover {
 .wiki-generation-form #wiki-generation-model {
   width: 100%;
 }
+
+.home-url-tip {
+  margin: 4px 0 0;
+  color: var(--h-muted);
+  font-size: 13px;
+}
+.home-url-tip code {
+  padding: 1px 6px;
+  border: 1px solid var(--h-line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--h-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
