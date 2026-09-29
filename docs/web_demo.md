@@ -444,6 +444,37 @@ opens or refreshes a nested route such as `/<repo>/ask`. Static export removes
 that document base and rewrites the same assets to its configured Pages mount,
 so sub-path exports remain portable.
 
+### Link previews
+
+The Wiki is a single-page app, so a link-preview crawler (X, Slack,
+Discord, LinkedIn and others) that does not run JavaScript would see no
+title or image. The backend answers those crawlers from
+`/api/share-page?path=<route>` with the page's Open Graph and Twitter tags,
+and serves 1200x630 card images from `/api/share-cards/<name>.png`.
+`CODENIB_PUBLIC_ORIGIN` (default `https://demo.codenib.ai`) sets the
+absolute URLs in those tags.
+
+Cards are rendered ahead of time from the running frontend into
+`<data_dir>/share_cards/`: `_site.png` for the home page and one PNG per
+prepared repository. Re-render after rebuilding an index, because the card
+shows that index's map.
+
+```bash
+cd web
+node scripts/render-share-cards.mjs http://127.0.0.1:3000 <data_dir>/share_cards
+```
+
+The ingress sends only link-preview agents, and never `/api/*`, to the tags
+page. People and search engines keep the app. With Caddy:
+
+```caddyfile
+@linkpreview {
+    not path /api/*
+    header_regexp User-Agent "(?i)(twitterbot|facebookexternalhit|facebookcatalog|slackbot|linkedinbot|discordbot|telegrambot|whatsapp|skypeuripreview|redditbot|embedly|pinterest|mastodon|iframely|vkshare|bluesky|quora link preview|slack-imgproxy)"
+}
+rewrite @linkpreview /api/share-page?path={http.request.uri.path}&{http.request.uri.query}
+```
+
 ### What the loading states mean
 
 - The route-level `Loading CodeNib…` is a lazily loaded frontend chunk. A

@@ -23,7 +23,7 @@ export const HOME_MAP_REPOS: Array<{ id: string; label: string; language: string
   { id: "fmtlib__fmt", label: "fmt", language: "C++" },
 ];
 
-interface Loaded {
+export interface Loaded {
   id: string;
   map: WikiAreaMap;
   pages: WikiPageRef[];
@@ -32,7 +32,8 @@ interface Loaded {
 
 const cache = new Map<string, Promise<Loaded>>();
 
-function load(id: string): Promise<Loaded> {
+/** Map, page tree and traced path of one prepared repository, shared. */
+export function loadRepoMap(id: string): Promise<Loaded> {
   let pending = cache.get(id);
   if (!pending) {
     pending = Promise.all([
@@ -66,7 +67,7 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
   useEffect(() => {
     let cancelled = false;
     setFailed(false);
-    load(selected)
+    loadRepoMap(selected)
       .then((value) => {
         if (!cancelled) setLoaded(value);
       })
@@ -82,7 +83,7 @@ export default function HomeMap({ repos }: { repos: RepoInfo[] }) {
   useEffect(() => {
     if (!loaded) return;
     const timer = window.setTimeout(() => {
-      for (const item of available) if (item.id !== selected) void load(item.id).catch(() => {});
+      for (const item of available) if (item.id !== selected) void loadRepoMap(item.id).catch(() => {});
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [loaded?.id]);

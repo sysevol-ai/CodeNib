@@ -7207,3 +7207,92 @@ a.codepanel-name:hover {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+
+/* --- Link-preview card (rendered to PNG, never linked) ------------------ */
+.share-card {
+  display: flex;
+  gap: 28px;
+  box-sizing: border-box;
+  padding: 28px;
+  overflow: hidden;
+  color: #e6edf7;
+  background:
+    radial-gradient(900px 420px at 85% -10%, rgba(59, 130, 246, 0.26), transparent 62%),
+    radial-gradient(700px 300px at -5% 110%, rgba(34, 211, 238, 0.12), transparent 60%),
+    #070b14;
+}
+.share-card-intro {
+  display: flex;
+  flex: 0 0 390px;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 0 12px 8px;
+}
+.share-card-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 650;
+}
+.share-card-brand img {
+  width: 26px;
+  height: 26px;
+}
+.share-card-intro h1 {
+  margin: 36px 0 0;
+  color: #fff;
+  font-size: 42px;
+  font-weight: 650;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+}
+.share-card-intro p {
+  margin: 0;
+  color: #b6c2d4;
+  font-size: 19px;
+  line-height: 1.5;
+}
+.share-card-url {
+  margin-top: auto;
+  color: #22d3ee;
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+.share-card-map {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+.repo-poster.is-card .poster-play,
+.repo-poster.is-card .poster-actions,
+.repo-poster.is-card .poster-no-export {
+  display: none;
+}
+.repo-poster.is-card .poster-brand {
+  display: inline;
+}
+.repo-poster.is-card .poster-edge-flow {
+  animation: none;
+}
+.share-card-plain {
+  display: grid;
+  gap: 16px;
+  align-content: center;
+  height: 574px;
+  padding: 0 40px;
+}
+.share-card-plain h1 {
+  margin: 0;
+  color: #fff;
+  font-size: 56px;
+  letter-spacing: -0.04em;
+}
+.share-card-plain p {
+  margin: 0;
+  color: #b6c2d4;
+  font-size: 22px;
+  line-height: 1.5;
+}
