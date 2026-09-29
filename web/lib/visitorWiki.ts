@@ -178,6 +178,48 @@ export const publishWiki = (attempt: WikiAttempt, published: boolean) =>
     },
     body: JSON.stringify({ published }),
   });
+export interface WikiModelChoice {
+  id: string;
+  label: string;
+  provider: string;
+  /** USD per million prompt tokens. */
+  input_usd: number;
+  /** USD per million completion tokens. */
+  output_usd: number;
+  context: number;
+  /** A full Wiki has been generated with this model through CodeNib. */
+  tested: boolean;
+}
+
+export interface WikiModelCatalog {
+  default: string;
+  prices: "live" | "recorded";
+  models: WikiModelChoice[];
+}
+
+/** Used until the server's list arrives, and if it cannot be reached. */
+export const FALLBACK_WIKI_MODELS: WikiModelCatalog = {
+  default: "deepseek/deepseek-v4.1-flash",
+  prices: "recorded",
+  models: [
+    { id: "deepseek/deepseek-v4.1-flash", label: "DeepSeek V4.1 Flash", provider: "DeepSeek", input_usd: 0.3, output_usd: 1.2, context: 1048576, tested: true },
+    { id: "anthropic/claude-sonnet-4.6", label: "Claude Sonnet 4.6", provider: "Anthropic", input_usd: 3, output_usd: 15, context: 1000000, tested: true },
+  ],
+};
+
+let modelCatalog: Promise<WikiModelCatalog> | null = null;
+export const loadWikiModels = (): Promise<WikiModelCatalog> => {
+  modelCatalog ??= request<WikiModelCatalog>("/models").catch((error) => {
+    modelCatalog = null;
+    throw error;
+  });
+  return modelCatalog;
+};
+
+/** A model id as readers know it; unknown ids are shown as they are. */
+export const wikiModelLabel = (id: string, catalog?: WikiModelCatalog | null) =>
+  (catalog ?? FALLBACK_WIKI_MODELS).models.find((model) => model.id === id)?.label ?? id;
+
 export const loadSavedWiki = (id: string) =>
   request<SavedWiki>(`/${encodeURIComponent(id)}`);
 export const loadSavedWikiPage = (id: string, page: string) =>

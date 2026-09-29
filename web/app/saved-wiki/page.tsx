@@ -23,6 +23,9 @@ import {
   allWikiPages,
   loadSavedWiki,
   loadSavedWikiPage,
+  loadWikiModels,
+  wikiModelLabel,
+  type WikiModelCatalog,
   recentWikis,
   publishWiki,
   stopWiki,
@@ -50,6 +53,10 @@ export default function SavedWikiPage({ id }: { id: string }) {
   const [pageError, setPageError] = useState("");
   const [citation, setCitation] = useState<Citation | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [modelCatalog, setModelCatalog] = useState<WikiModelCatalog | null>(null);
+  useEffect(() => {
+    loadWikiModels().then(setModelCatalog).catch(() => {});
+  }, []);
   const [copyMessage, setCopyMessage] = useState("");
   const [stopping, setStopping] = useState(false);
   const [showResume, setShowResume] = useState(false);
@@ -370,9 +377,7 @@ export default function SavedWikiPage({ id }: { id: string }) {
             )}
             <div className="wiki-progress-foot">
               <span>
-                {wiki.model === "deepseek/deepseek-v4.1-flash"
-                  ? "DeepSeek V4.1 Flash"
-                  : "Claude Sonnet 4.6"}{" "}
+                {wikiModelLabel(wiki.model ?? "anthropic/claude-sonnet-4.6", modelCatalog)}{" "}
                 · ${wiki.reported_cost_usd.toFixed(4)} reported · {wiki.calls}{" "}
                 model requests sent
               </span>

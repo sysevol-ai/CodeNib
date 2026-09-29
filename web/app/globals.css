@@ -7186,3 +7186,9 @@ a.codepanel-name:hover {
     animation: none;
   }
 }
+
+/* The model list spans the form like the key field, so the two controls
+   share both edges. */
+.wiki-generation-form #wiki-generation-model {
+  width: 100%;
+}

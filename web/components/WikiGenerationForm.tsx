@@ -2,8 +2,32 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useEffect, useRef, useState } from "react";
-import { startWiki, type WikiAttempt } from "@/lib/visitorWiki";
+import {
+  FALLBACK_WIKI_MODELS,
+  loadWikiModels,
+  startWiki,
+  type WikiAttempt,
+  type WikiModelCatalog,
+  type WikiModelChoice,
+} from "@/lib/visitorWiki";
 import { recordExperience } from "@/lib/experience";
+
+const usd = (value: number) => `$${value.toFixed(2).replace(/\.00$/, "")}`;
+
+function contextLabel(tokens: number) {
+  return tokens >= 1_000_000
+    ? `${Math.round(tokens / 100_000) / 10}M`
+    : `${Math.round(tokens / 1000)}K`;
+}
+
+/** Choices grouped by the company that makes the model, in listed order. */
+function byProvider(models: WikiModelChoice[]) {
+  const groups = new Map<string, WikiModelChoice[]>();
+  for (const model of models) {
+    groups.set(model.provider, [...(groups.get(model.provider) ?? []), model]);
+  }
+  return [...groups.entries()];
+}
 
 export default function WikiGenerationForm({
   attempt,
@@ -18,8 +42,25 @@ export default function WikiGenerationForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [budget, setBudget] = useState(2);
-  const [model, setModel] = useState("deepseek/deepseek-v4.1-flash");
+  const [catalog, setCatalog] = useState<WikiModelCatalog>(FALLBACK_WIKI_MODELS);
+  const [model, setModel] = useState(FALLBACK_WIKI_MODELS.default);
   useEffect(() => { recordExperience("generation_form_view"); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    loadWikiModels()
+      .then((value) => {
+        if (cancelled || value.models.length === 0) return;
+        setCatalog(value);
+        setModel((current) =>
+          value.models.some((choice) => choice.id === current) ? current : value.default,
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const chosen = catalog.models.find((choice) => choice.id === model);
   return (
     <form
       className="wiki-generation-form"
@@ -67,17 +108,27 @@ export default function WikiGenerationForm({
             disabled={busy}
             onChange={(event) => setModel(event.target.value)}
           >
-            <option value="deepseek/deepseek-v4.1-flash">
-              DeepSeek V4.1 Flash · try the faster option
-            </option>
-            <option value="anthropic/claude-sonnet-4.6">
-              Claude Sonnet 4.6
-            </option>
+            {byProvider(catalog.models).map(([provider, models]) => (
+              <optgroup key={provider} label={provider}>
+                {models.map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.label} · {usd(choice.input_usd)} in / {usd(choice.output_usd)} out
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
-          <p className="small muted">
-            Flash offers lower-cost generation. Speed varies by OpenRouter
-            provider.
-          </p>
+          {chosen && (
+            <p className="small muted wiki-model-note">
+              {usd(chosen.input_usd)} per million input tokens and{" "}
+              {usd(chosen.output_usd)} per million output tokens,{" "}
+              {contextLabel(chosen.context)} context
+              {catalog.prices === "live" ? ", current OpenRouter prices" : ""}.{" "}
+              {chosen.tested
+                ? "Complete Wikis have been generated with this model."
+                : "Not yet tested with CodeNib. If a chapter fails, the run stops and finished chapters are kept."}
+            </p>
+          )}
         </>
       )}
       <label htmlFor="wiki-generation-key">OpenRouter inference key</label>
