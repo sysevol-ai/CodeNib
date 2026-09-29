@@ -1,0 +1,49 @@
+/* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* The repository switcher above the hero map, on the demo home and on
+   codenib.ai. Colors come from the stage's --h-* properties. */
+.home-map {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  align-content: start;
+}
+.home-map-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.home-map-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--h-line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--h-soft);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.home-map-tab span {
+  color: var(--h-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+.home-map-tab:hover {
+  border-color: var(--h-line-strong);
+  color: var(--h-text);
+}
+.home-map-tab.is-active {
+  border-color: rgba(34, 211, 238, 0.6);
+  background: rgba(34, 211, 238, 0.08);
+  color: #fff;
+}
+.home-map-tab:focus-visible {
+  outline: 2px solid var(--h-trace);
+  outline-offset: 2px;
+}

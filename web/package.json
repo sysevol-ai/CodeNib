@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:landing": "vite build --config vite.landing.config.ts",
+    "capture:landing-maps": "node scripts/capture-landing-maps.mjs",
     "preview": "vite preview",
     "test": "vitest run"
   },
