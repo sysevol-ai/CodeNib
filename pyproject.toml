@@ -101,6 +101,9 @@ semantic = [
     "numpy>=1.24.0",
     "openai>=1.0.0",
     "sentence-transformers>=2.3.0",
+    # The pinned CodeRankEmbed model calls get_extended_attention_mask,
+    # removed in Transformers 5.17. Keep full/test aligned with this bound.
+    "transformers<5.17",
 ]
 semantic-remote = [
     "faiss-cpu>=1.7.0",
@@ -138,6 +141,7 @@ full = [
     "protobuf>=3.20.0",
     "requests>=2.25.0",
     "sentence-transformers>=2.3.0",
+    "transformers<5.17",
 ]
 dev = [
     "black>=22.3.0",
@@ -171,11 +175,11 @@ test = [
     "pytest-xdist>=3.0.0",
     "requests>=2.25.0",
     "sentence-transformers>=2.3.0",
-    # Lets the serving endpoint tests run in the default tier. torch and
-    # transformers are deliberately *not* here: the only test that needs the
-    # model runtime is marked `slow`.
+    # Lets the serving endpoint tests run in the default tier; tests that
+    # exercise the model runtime are marked `slow`.
     "sse-starlette>=2.0.0",
     "tomli>=1.1.0; python_version < '3.11'",
+    "transformers<5.17",
 ]
 
 [dependency-groups]
