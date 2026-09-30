@@ -380,9 +380,11 @@ Status: navigable visitor Wikis, incremental reading and explicit community
 publication are on `main`. Function declarations in landing/demo excerpts
 ([#821](https://github.com/sysevol-ai/CodeNib/pull/821)) and nested Python indexing
 with saved-map backfill ([#820](https://github.com/sysevol-ai/CodeNib/pull/820))
-are merged. Upfront source admission with saved-map catalog thumbnails
-([#822](https://github.com/sysevol-ai/CodeNib/pull/822)) is awaiting merge;
-deployment acceptance for all three changes remains open. Landing now
+and upfront source admission with saved-map catalog thumbnails
+([#822](https://github.com/sysevol-ai/CodeNib/pull/822)) are merged and deployed
+at `c7eb07e0` on both `codenib.ai` and `demo.codenib.ai`. Public desktop/mobile
+acceptance passes for declarations, saved maps, thumbnails and source rejection.
+Landing now
 states the hosted size limits; the generation form checks the actual archive
 without an API key, saved attempt, index or model call, and gates key entry on
 the result. Limits/languages come from the production source constants and
@@ -392,10 +394,14 @@ owner opt-in publication and the separate Featured collection.
 The SGLang default branch at `8854857a991e06b3ef9c4caeae34c94fc3588336`
 fails the actual 20 MiB hosted archive download check before model calls.
 The public smolagents Wiki at `227ef5e49ddd82339295939072f0223249aa8d38`
-still reports `index_failed` on the deployed service. Repairing that saved
-map and verifying declarations, thumbnails and source rejection on both live
-sites remain deployment acceptance gates. This batch makes no paid generation
-calls and does not claim broader hosted graph-language coverage.
+now has four System Map regions and three links, survives refresh, and displays
+its saved map on the Community card. All six eligible missing visitor maps
+are backfilled; all 106 pre-existing non-graph envelopes remain unchanged.
+Desktop/mobile public SGLang checks reject the oversized archive before key
+entry or submission, send no credentials and save no browser/server attempt.
+This batch makes no paid generation calls. Broader hosted graph-language
+coverage, large-repository admission and the existing prepared-corpus quality
+gates remain outside these fixes.
 
 The source-excerpt correction in
 [#821](https://github.com/sysevol-ai/CodeNib/pull/821) is merged as `7db7fea8`.
@@ -405,7 +411,8 @@ signatures retain the `def` line; highlight ranges are bounded by actual excerpt
 length. Cached prepared pages upgrade through a versioned, model-free refresh
 without regenerating prose. Saved visitor pages derive declarations from their
 saved citation source without a download or stored-prose write. Live
-desktop/mobile declaration checks remain a deployment gate.
+desktop/mobile checks pass for all four bundled landing/demo excerpts and
+the cached Requests redirect chapter.
 
 Story browsing is merged in
 [#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
@@ -539,10 +546,11 @@ indexes the captured scratch root and rebuilds saved graphs at each Wiki's
 pinned commit, under the existing generation guard, without model calls or
 changes to prose, cost or visibility. The operator dry run reuses the private
 read-only maintenance snapshot and leaves source database/lock files untouched.
-At the saved smolagents commit, a production-database copy now has 75 indexed
-files, 2,544 symbols, 6,636 edges, four map regions and three links; all 106
-non-graph envelopes remain unchanged. Applying and checking that repair on the
-live result remains an explicit deployment acceptance gate.
+At the saved smolagents commit, the live result now has 75 indexed files,
+2,544 symbols, 6,636 edges, four map regions and three links. The same guarded
+repair restored the other five eligible visitor maps. All 106 non-graph
+envelopes remain unchanged, including prose, cost and visibility; public
+desktop/mobile reading, refresh and Community thumbnail checks pass.
 
 Browse presents featured and explicitly published community Wikis, plus the
 owner's My Wikis collection. The homepage uses Continue reading cards with
