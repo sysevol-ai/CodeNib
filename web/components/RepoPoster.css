@@ -527,6 +527,7 @@
   display: block;
   padding: 0 12px 0 0;
   white-space: pre;
+  tab-size: 4;
 }
 .poster-code-line.is-anchor {
   background: rgba(34, 211, 238, 0.1);
@@ -538,6 +539,10 @@
   padding-right: 1em;
   color: #4b5669;
   text-align: right;
+  user-select: none;
+}
+.poster-code-line.is-gap {
+  color: #4b5669;
   user-select: none;
 }
 .poster-code .hljs-keyword,

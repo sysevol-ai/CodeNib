@@ -11,11 +11,17 @@ when changing the featured source commit; the public preview is self-contained.
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from codenib.wiki.source_excerpt import signature_span  # noqa: E402
+
 COMMIT = "f361ead047be5cb873174218582f7d8b9fcd9f49"
 FILE = "src/requests/sessions.py"
 STEPS = [
@@ -38,7 +44,10 @@ def capture(api_base):
     nodes = []
     for symbol, title, start, end in STEPS:
         node = next(n for n in graph["nodes"] if n["name"] == f"{FILE}:{symbol}")
-        query = urlencode(dict(file=FILE, start=start, end=end, commit=COMMIT))
+        # Reviewed windows are exact: the server must not widen them.
+        query = urlencode(
+            dict(file=FILE, start=start, end=end, commit=COMMIT, definition="false")
+        )
         source = read(f"repos/psf__requests/source?{query}")
         if (
             source["file"] != FILE
@@ -47,6 +56,26 @@ def capture(api_base):
             or len(source["content"].splitlines()) != end - start + 1
         ):
             raise ValueError("Source range does not match the reviewed excerpt")
+        # A window below the definition shows the signature above a gap row,
+        # so the step never opens on a body without its function.
+        definition = None
+        if node["line"] < start:
+            query = urlencode(
+                dict(
+                    file=FILE,
+                    start=node["line"],
+                    end=min(node["line"] + 11, start - 1),
+                    commit=COMMIT,
+                    definition="false",
+                )
+            )
+            head = read(f"repos/psf__requests/source?{query}")["content"].splitlines()
+            offset, length = signature_span(head)
+            definition = dict(
+                start_line=node["line"] + offset,
+                content="".join(f"{line}\n" for line in head[offset : offset + length]),
+            )
+        shown = (definition["content"] if definition else "") + source["content"]
         nodes.append(
             dict(
                 id=node["id"],
@@ -54,9 +83,10 @@ def capture(api_base):
                 title=title,
                 file=FILE,
                 definition_line=node["line"],
+                **({"definition": definition} if definition else {}),
                 start_line=start,
                 content=source["content"],
-                sha256=hashlib.sha256(source["content"].encode()).hexdigest(),
+                sha256=hashlib.sha256(shown.encode()).hexdigest(),
             )
         )
     edges = []

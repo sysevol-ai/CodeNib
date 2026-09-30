@@ -23,6 +23,7 @@ import {
   type Citation,
   type WikiRelationItem,
 } from "@/lib/api";
+import { parseSegmentStarts } from "@/lib/sourceExcerpt";
 
 // Mermaid (~1MB) is only needed when a diagram actually appears; load it on
 // demand so it never weighs down pages that have none (wiki strips diagrams).
@@ -431,6 +432,7 @@ export default function Markdown({
                   text={text}
                   language={lang}
                   highlightLines={parseHighlightLines(meta)}
+                  segmentStarts={parseSegmentStarts(meta)}
                 />
               </Suspense>
             );

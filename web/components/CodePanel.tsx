@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import HighlightedCode from "@/components/HighlightedCode";
+import type { SourceDefinition } from "@/lib/sourceExcerpt";
 import { fetchSource, repoRelative, type Citation } from "@/lib/api";
 import { codeRefs } from "@/lib/citations";
 import { sourceIndexAtThreshold } from "@/lib/sourceNavigation";
@@ -29,6 +30,7 @@ function Fragment({
   const rel = repoRelative(c.file);
   const [code, setCode] = useState("");
   const [start, setStart] = useState(c.start_line ?? 1);
+  const [definition, setDefinition] = useState<SourceDefinition | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
 
@@ -44,6 +46,7 @@ function Fragment({
           if (cancelled) return;
           setCode(s.content || "");
           setStart(s.start_line || c.start_line || 1);
+          setDefinition(s.definition ?? null);
         })
         .catch(() => {
           if (cancelled) return;
@@ -89,7 +92,7 @@ function Fragment({
           Source preview is unavailable.{gh ? " Open the source link above." : ""}
         </p>
       ) : (
-        <HighlightedCode code={code} file={rel} startLine={start} />
+        <HighlightedCode code={code} file={rel} startLine={start} definition={definition} />
       )}
     </div>
   );

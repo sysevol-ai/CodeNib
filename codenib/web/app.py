@@ -72,6 +72,7 @@ from .schemas import (
     agent_result_to_response,
 )
 from .share import router as share_router
+from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
 
 _WIKI_MEDIA_TYPES = {
@@ -1060,10 +1061,17 @@ async def source(
     start: int | None = None,
     end: int | None = None,
     commit: str | None = None,
+    definition: bool = True,
 ) -> dict:
-    """Read source from the commit that produced the active graph payload."""
+    """Read source from the commit that produced the active graph payload.
+
+    A slice that starts inside a function also carries that function's
+    signature as ``definition``, so a cropped window never loses it.
+    """
     with _pinned_bundle(repo_id) as bundle:
         result = None
+        current = False
+        source_reader = None
         if commit:
             window = _commit_window(repo_id, bundle)
             entry = window.resolve(commit) if window.available else None
@@ -1087,6 +1095,7 @@ async def source(
                     )
                 source_reader = getattr(bundle, "source_reader", None)
                 if source_reader is not None:
+                    current = True
                     result = await _run_pinned_thread(
                         bound_source_slice,
                         source_reader,
@@ -1097,6 +1106,7 @@ async def source(
         else:
             source_reader = getattr(bundle, "source_reader", None)
             if source_reader is not None:
+                current = True
                 result = await _run_pinned_thread(
                     bound_source_slice,
                     source_reader,
@@ -1106,7 +1116,25 @@ async def source(
                 )
         if result is None:
             raise HTTPException(status_code=404, detail=f"File not found: {file!r}")
+        if current and definition:
+            result = await _run_pinned_thread(
+                _with_definition, bundle, source_reader, result
+            )
         return result
+
+
+def _with_definition(bundle, source_reader, result: dict) -> dict:
+    """Attach the enclosing definition's signature; never fail the slice."""
+    try:
+        graph = bundle.code_graph()
+    except Exception:  # noqa: BLE001 - a slice without a graph stays plain
+        return result
+
+    def read_lines(first: int, last: int):
+        piece = bound_source_slice(source_reader, result["file"], first, last)
+        return piece["content"].splitlines() if piece else None
+
+    return attach_definition(result, graph, read_lines)
 
 
 @app.get("/api/repos/{repo_id}/commits")

@@ -24,6 +24,7 @@ import {
 } from "@/lib/posterLayout";
 import { AppLink } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
+import { excerptRows, GAP } from "@/lib/sourceExcerpt";
 import { splitSymbolLabel } from "@/lib/symbols";
 import type { Journey } from "@/lib/wikiPresentation";
 
@@ -141,7 +142,9 @@ function EdgeCallout({
     anchor?.file && repo
       ? ghFileUrl(repo.repo, repo.source_url, repo.base_commit, anchor.file, anchor.line)
       : null;
-  const lines = slice ? slice.content.replace(/\n$/, "").split("\n") : [];
+  const rows = slice
+    ? excerptRows(slice.content, slice.start_line, slice.definition)
+    : { lines: [], numbers: [] };
   const language = anchor?.file?.split(".").pop() || "";
 
   return (
@@ -181,13 +184,16 @@ function EdgeCallout({
               </a>
             )}
           </div>
-          {lines.length > 0 && (
+          {rows.lines.length > 0 && (
             <pre>
-              {lines.map((line, index) => {
-                const at = slice!.start_line + index;
+              {rows.lines.map((line, index) => {
+                const at = rows.numbers[index];
                 return (
-                  <span key={at} className={`poster-code-line${at === anchor.line ? " is-anchor" : ""}`}>
-                    <span className="poster-code-no">{at}</span>
+                  <span
+                    key={index}
+                    className={`poster-code-line${at === anchor.line ? " is-anchor" : ""}${at == null ? " is-gap" : ""}`}
+                  >
+                    <span className="poster-code-no">{at ?? GAP}</span>
                     {highlight ? (
                       <span dangerouslySetInnerHTML={{ __html: highlight(line, language) || " " }} />
                     ) : (
