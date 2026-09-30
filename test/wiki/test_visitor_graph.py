@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -102,6 +103,7 @@ def test_packages_below_the_root_reach_the_indexer(tmp_path, monkeypatch, caplog
         visitor_graph, "resolve_command", lambda _: "/fixture/scip-python"
     )
     monkeypatch.setattr(visitor_graph, "_run_index", run)
+    caplog.set_level(logging.WARNING, logger=visitor_graph.logger.name)
     visitor_graph.logger.addHandler(caplog.handler)
     try:
         with capture_repository_source(tmp_path) as source:
