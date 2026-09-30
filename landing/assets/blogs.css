@@ -224,7 +224,7 @@ pre,
 
 .index-hero h1 {
   max-width: 13ch;
-  font-size: clamp(2.65rem, 6vw, 4.9rem);
+  font-size: clamp(2.4rem, 4.4vw, 3.4rem);
   font-weight: 650;
   letter-spacing: -0.045em;
   line-height: 1.01;
@@ -348,9 +348,14 @@ pre,
 }
 
 /* Article */
-.article-head {
-  padding: 78px 0 46px;
-  text-align: center;
+/* The head shares the body's reading column (same width, same side padding)
+   so the title, meta and deck start on the same left edge as the prose. */
+.article-head,
+.article-head.wrap {
+  width: min(100%, 780px);
+  margin: 0 auto;
+  padding: 72px 28px 40px;
+  text-align: left;
 }
 
 .article-head .back {
@@ -367,30 +372,25 @@ pre,
 }
 
 .article-head .post-meta {
-  justify-content: center;
+  justify-content: flex-start;
 }
 
-.article-head h1 {
-  max-width: 960px;
-  margin: 24px auto 0;
-  font-size: clamp(2.55rem, 6.2vw, 5rem);
-  font-weight: 650;
-  letter-spacing: -0.05em;
-  line-height: 1.01;
-}
-
+.article-head h1,
 .article-head h1.technical-title {
-  max-width: 1080px;
-  font-size: clamp(2.4rem, 5.2vw, 4.2rem);
-  line-height: 1.04;
+  max-width: none;
+  margin: 20px 0 0;
+  font-size: clamp(1.95rem, 3.4vw, 2.6rem);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
 .article-head .deck {
-  max-width: 750px;
-  margin: 24px auto 0;
+  max-width: none;
+  margin: 18px 0 0;
   color: var(--ink-2);
-  font-size: clamp(1.08rem, 2.2vw, 1.32rem);
-  line-height: 1.55;
+  font-size: clamp(1.05rem, 1.6vw, 1.18rem);
+  line-height: 1.6;
 }
 
 .hero-figure {
@@ -452,13 +452,13 @@ pre,
 }
 
 .article-body h2 {
-  margin: 62px 0 20px;
+  margin: 56px 0 18px;
   scroll-margin-top: 88px;
   color: var(--ink);
-  font-size: clamp(1.75rem, 3.8vw, 2.4rem);
+  font-size: clamp(1.4rem, 2.4vw, 1.75rem);
   font-weight: 640;
-  letter-spacing: -0.035em;
-  line-height: 1.14;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .article-body h3 {
@@ -932,8 +932,9 @@ pre,
     border-left: 0;
   }
 
-  .article-head {
-    padding-top: 58px;
+  .article-head,
+  .article-head.wrap {
+    padding-top: 52px;
   }
 }
 
@@ -977,12 +978,14 @@ pre,
     padding: 14px;
   }
 
-  .article-head h1 {
-    font-size: clamp(2.4rem, 12vw, 3.4rem);
+  .article-head,
+  .article-head.wrap {
+    padding-inline: 20px;
   }
 
+  .article-head h1,
   .article-head h1.technical-title {
-    font-size: clamp(2.2rem, 9.8vw, 2.9rem);
+    font-size: clamp(1.7rem, 7.4vw, 2.1rem);
   }
 
   .hero-figure {
