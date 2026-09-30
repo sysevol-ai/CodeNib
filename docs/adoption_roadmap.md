@@ -501,6 +501,18 @@ and has pinned source previews. System Map displays indexed chapter regions
 even when no cross-chapter calls are recorded, with an explicit explanation.
 Completed Wiki pages collapse generation diagnostics and lead with readable content.
 
+Nested Python source indexing and saved-map repair are implemented in
+[#820](https://github.com/sysevol-ai/CodeNib/pull/820), pending merge/deployment.
+The old Pyright include pattern indexed no files in `src/` layouts. The repair
+indexes the captured scratch root and rebuilds saved graphs at each Wiki's
+pinned commit, under the existing generation guard, without model calls or
+changes to prose, cost or visibility. The operator dry run reuses the private
+read-only maintenance snapshot and leaves source database/lock files untouched.
+At the saved smolagents commit, a production-database copy now has 75 indexed
+files, 2,544 symbols, 6,636 edges, four map regions and three links; all 106
+non-graph envelopes remain unchanged. Applying and checking that repair on the
+live result remains an explicit deployment acceptance gate.
+
 Browse presents featured and explicitly published community Wikis, plus the
 owner's My Wikis collection. The homepage uses Continue reading cards with
 chapter status, removing attempt IDs and storage-oriented copy. Only the owner

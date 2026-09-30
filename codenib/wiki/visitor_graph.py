@@ -18,14 +18,20 @@ import tempfile
 import time
 from pathlib import Path
 
+from ..log_utils import get_logger
 from ..toolchains import managed_path, resolve_command
 
 _INDEX_SECONDS = 60
 _MAX_INDEX_BYTES = 16 * 1024 * 1024
+logger = get_logger(__name__)
 _COVERAGE_NOTE = (
     "Python source relationships from SCIP. External packages, dynamic calls "
     "and kernels embedded in strings are not resolved."
 )
+
+
+class _IndexUnusable(Exception):
+    """A fixed, content-free reason the compiler index cannot be used."""
 
 
 def _run_index(command, directory, check):
@@ -104,9 +110,10 @@ def build_visitor_graph(bundle, check, progress):
                     target.write_bytes(
                         reader.read_prefix(path, max_bytes=4 * 1024 * 1024)
                     )
-            (root / "pyrightconfig.json").write_text(
-                '{"include":["**/*.py","**/*.pyi"],"exclude":[]}\n'
-            )
+            # Pyright matches an include glob such as "**/*.py" against
+            # root-level files only, so a src/ or package layout indexed
+            # nothing. The scratch root holds only captured Python source.
+            (root / "pyrightconfig.json").write_text('{"include":["."],"exclude":[]}\n')
             indexer = SCIPPythonIndexer(
                 root, scratch / "index", decoder_backend="serial"
             )
@@ -114,16 +121,16 @@ def build_visitor_graph(bundle, check, progress):
             command = indexer._build_index_command(project_name="visitor-wiki")
             command.extend(["--project-version", bundle.entry.base_commit])
             if not _run_index(command, root, check):
-                raise ValueError("indexer failed")
+                raise _IndexUnusable("indexer failed")
             check()
             if not 0 < indexer.index_file.stat().st_size <= _MAX_INDEX_BYTES:
-                raise ValueError("index size limit")
+                raise _IndexUnusable("index size limit")
             if not indexer.decode_index():
-                raise ValueError("invalid index")
+                raise _IndexUnusable("invalid index")
             graph = indexer.process_index()
             check()
             if graph is None or graph.graph.vcount() <= 1:
-                raise ValueError("empty graph")
+                raise _IndexUnusable("empty graph")
             bundle.code_graph = lambda: graph
             coverage.update(
                 available=True,
@@ -137,7 +144,12 @@ def build_visitor_graph(bundle, check, progress):
             reason="timeout",
             note="Code indexing reached its 60-second limit. The Wiki text is still available.",
         )
-    except Exception:
+    except Exception as exc:
+        # Our own reasons are fixed strings; other errors log their type only.
+        logger.warning(
+            "Visitor Wiki code indexing failed (%s)",
+            exc if isinstance(exc, _IndexUnusable) else type(exc).__name__,
+        )
         coverage.update(
             reason="index_failed",
             note="Code indexing could not finish. The Wiki text is still available.",
