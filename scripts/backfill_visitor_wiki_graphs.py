@@ -53,12 +53,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     if not path.is_file():
         parser.error(f"no visitor Wiki store at {path}")
-    wikis = VisitorWikis(SQLiteWikiStore(path))
     reasons = tuple(args.reason) or ("index_failed", "not_indexed")
+    if args.dry_run:
+        # Reuse maintenance's private immutable snapshot. Constructing a normal
+        # store would initialize WAL/schema state and create source lock files.
+        with SQLiteWikiStore._read_only_snapshot(path) as snapshot:
+            missing = VisitorWikis(snapshot).missing_graph_views(reasons)
+    else:
+        wikis = VisitorWikis(SQLiteWikiStore(path))
+        missing = wikis.missing_graph_views(reasons)
     targets = [
-        found
-        for found in wikis.missing_graph_views(reasons)
-        if not args.attempt or found["id"] in args.attempt
+        found for found in missing if not args.attempt or found["id"] in args.attempt
     ]
     failed = 0
     for found in targets:
