@@ -107,6 +107,9 @@ A completed Wiki offers its owner **Publish to Community**, explicitly making it
 discoverable by other visitors. All chapters must pass source checks. Browse
 combines featured examples with published community Wikis and supports search;
 **My Wikis** and the homepage's **Continue reading** reopen the owner's work.
+Community and My Wikis cards use the saved System Map for their thumbnail,
+with the same layout as featured examples. Browsing these cards reads saved
+graph projections; it never downloads source, indexes code or calls a model.
 The result page explains that My Wikis and Community are separate and shows a
 publication invitation once generation completes. Unlisted cards in My Wikis
 also point to this action. The owner can choose **Remove from Community** while
@@ -151,19 +154,43 @@ Disabling `CODENIB_VISITOR_WIKI` stops new generation requests while keeping
 already saved Wikis readable.
 
 The initial service admits one active generation per shared Wiki database,
-with at most two local submissions and a bounded 30-second wait for the
+with at most two local source checks/submissions and a bounded 30-second wait for the
 existing owner. It saves up to 100 attempts; it does not discard user work
 automatically when full. Back up the visitor database with the rest of the
 Wiki data and monitor capacity before increasing adoption traffic. There is
 no saved-attempt allocation until GitHub confirms a public repository and
 immutable commit. Nonexistent and private repositories consume no slots. There is
-no public listing or generic storage/job backend. Limits are 20 MiB compressed,
-40 MiB of retained source and 4,000 files. Files larger than 4 MiB are skipped
+no generic storage/job backend. Limits are 20 MiB compressed,
+40 MiB of retained files and 4,000 files (including skipped files), with at most
+8,000 archive entries including directories and 50,000 analyzed code sections.
+Files larger than 4 MiB are skipped
 without decompression; the saved Wiki lists their paths and sizes so readers
 can see what was excluded. Remaining source files continue through generation.
 Every archive path is validated, including skipped files. Archives with traversal,
 links or unsupported paths are rejected. GitHub downloads use public access;
 private repositories and private GitHub tokens are unsupported.
+
+The landing entry and generation form show these limits before submission.
+`GET /api/visitor-wikis` exposes the limits and source languages from the same
+constants and language registry used for generation. The generation form first
+calls `GET /api/visitor-wikis/check?repository=owner/repo`, without an inference
+key or owner token. This checks an actual immutable default-branch archive
+through the generation source preparation path, including skipped files,
+supported languages and analyzed code sections. It neither runs the indexer
+nor creates a saved attempt or calls a model. Rejections identify the failed
+limit and offer local generation; the key input and Generate Wiki button stay
+disabled until a check succeeds. Checks share the two source slots with
+submissions, retain them through temporary-source cleanup, and have a separate
+one-check-per-client-per-minute rate limit. Concurrent browser readers share
+an in-flight check; a later explicit check inspects the current branch again.
+Each check has a 60-second cooperative budget. Generation rechecks its own
+snapshot before model calls; passing a source check does not guarantee model
+completion within the visitor's budget or run deadline.
+
+Hosted System Map and CodeGraph cover Python source only. Other supported
+source languages can still produce a Wiki. An unavailable index, its 60-second
+timeout, or absent cross-chapter references can leave a map unavailable; these
+conditions do not imply that Wiki prose is unavailable.
 
 If generation stops before the first chapter, the saved page prominently shows
 the reason, confirms that work has stopped, and offers the owner a retry.

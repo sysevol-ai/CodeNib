@@ -1,7 +1,7 @@
 # Adoption and distribution roadmap
 
 Owner: CodeNib product, retrieval, and documentation maintainers.
-Reviewed: 2026-09-26. Status: active.
+Reviewed: 2026-09-29. Status: active.
 
 ## Outcome and product decision
 
@@ -376,6 +376,26 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Generate complete Repo Wikis and activate coding agents
 
+Status: navigable visitor Wikis, incremental reading and explicit community
+publication are on `main`. The current hosted-feedback correction batch is
+pending merge/deployment: function declarations in landing/demo excerpts
+([#821](https://github.com/sysevol-ai/CodeNib/pull/821)), nested Python indexing
+and saved-map backfill ([#820](https://github.com/sysevol-ai/CodeNib/pull/820)),
+and upfront source admission with saved-map catalog thumbnails. Landing now
+states the hosted size limits; the generation form checks the actual archive
+without an API key, saved attempt, index or model call, and gates key entry on
+the result. Limits/languages come from the production source constants and
+registry. Community and My Wikis cards read their saved System Map, retaining
+owner opt-in publication and the separate Featured collection.
+
+The SGLang default branch at `8854857a991e06b3ef9c4caeae34c94fc3588336`
+fails the actual 20 MiB hosted archive download check before model calls.
+The public smolagents Wiki at `227ef5e49ddd82339295939072f0223249aa8d38`
+still reports `index_failed` on the deployed service. Repairing that saved
+map and verifying declarations, thumbnails and source rejection on both live
+sites remain deployment acceptance gates. This batch makes no paid generation
+calls and does not claim broader hosted graph-language coverage.
+
 The source-excerpt correction in
 [#821](https://github.com/sysevol-ai/CodeNib/pull/821) is pending merge/deployment.
 Landing and Wiki excerpts retain a function declaration above cropped body
@@ -386,7 +406,7 @@ without regenerating prose. Saved visitor pages derive declarations from their
 saved citation source without a download or stored-prose write. Live
 desktop/mobile declaration checks remain a deployment gate.
 
-Status: story browsing is merged in
+Story browsing is merged in
 [#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
 publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784)
 as `ae4225f9`, not yet deployed. A real 15-page Requests corpus exports from SQLite

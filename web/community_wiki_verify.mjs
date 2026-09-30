@@ -13,6 +13,15 @@ const id = "a".repeat(64),
   owner = "b".repeat(64),
   commit = "c".repeat(40);
 const reports = [];
+const systemMap = {
+  available: true,
+  areas: [
+    { id: "overview", title: "Queue", symbols: 20, files: 2 },
+    { id: "worker", title: "Worker", symbols: 15, files: 1 },
+  ],
+  links: [{ source: "overview", target: "worker", weight: 3, calls: 2,
+    example: { source: "handle", target: "work", anchor: null } }],
+};
 try {
   for (const mobile of [false, true]) {
     let published = false,
@@ -64,6 +73,14 @@ try {
         return route.fulfill({ json: published ? [card] : [] });
       if (url.pathname === "/api/visitor-wikis")
         return route.fulfill({ json: { enabled: true } });
+      if (url.pathname === "/api/visitor-wikis/models")
+        return route.fulfill({ status: 503, json: { detail: "Fixture uses recorded model prices." } });
+      if (url.pathname === "/api/repos/psf__requests/wiki-map")
+        return route.fulfill({ json: systemMap });
+      if (url.pathname === "/api/repos/psf__requests/wiki")
+        return route.fulfill({ json: { pages: [{ id: "overview", title: "Overview", children: [] }] } });
+      if (url.pathname === "/api/repos/psf__requests/wiki/overview")
+        return route.fulfill({ json: { id: "overview", title: "Overview", markdown: "# Requests\n\nHTTP for humans.", citations: [], media_slots: [] } });
       if (url.pathname.endsWith("/publication")) {
         assert.equal(request.headers()["x-wiki-owner"], owner);
         assert.equal(request.headers().authorization, undefined);
@@ -195,8 +212,8 @@ try {
       if (url.pathname.includes("/graphs/")) {
         return route.fulfill({ json: {
           commit: "c".repeat(40),
-          coverage: { available: false, note: "No index in this provider-free fixture." },
-          system_map: { available: false, areas: [], links: [] },
+          coverage: { available: true, note: "Source relationships in this provider-free fixture." },
+          system_map: systemMap,
           code_graph: { available: false, nodes: [], edges: [] },
         } });
       }
@@ -227,6 +244,7 @@ try {
     await page
       .getByRole("link", { name: "Open psf/requests wiki", exact: true })
       .waitFor();
+    await page.getByRole("link", { name: "Open psf/requests wiki", exact: true }).locator(".map-thumb svg circle").first().waitFor();
     assert.equal(
       await page
         .getByRole("link", { name: "Open owner/fastqueue wiki", exact: true })
@@ -238,6 +256,7 @@ try {
       .getByRole("heading", { name: "Share the first community Wiki" })
       .waitFor();
     await page.getByRole("link", { name: "My Wikis", exact: true }).click();
+    await page.getByRole("link", { name: "Open owner/fastqueue wiki", exact: true }).locator(".map-thumb svg circle").first().waitFor();
     await page.getByRole("link", { name: "Open owner/fastqueue wiki" }).click();
     await page
       .getByRole("heading", { name: "From request to durable result" })
@@ -301,6 +320,7 @@ try {
     await page
       .getByRole("link", { name: "Open owner/fastqueue wiki" })
       .waitFor();
+    await page.getByRole("link", { name: "Open owner/fastqueue wiki", exact: true }).locator(".map-thumb svg circle").first().waitFor();
     await page.getByLabel("Search Wikis").fill("persistent");
     assert.equal(
       await page
@@ -375,6 +395,7 @@ try {
       completionInvitation: true,
       failedPublicationRetry: true,
       crossBrowserDiscovery: true,
+      preparedAndSavedMapThumbnails: true,
       unpublishPreservesReadLink: true,
       modelRequests: 0,
       mutations,

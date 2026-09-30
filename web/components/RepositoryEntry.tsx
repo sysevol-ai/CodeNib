@@ -6,6 +6,7 @@ import type { RepoInfo } from "@/lib/api";
 import { parseGitHubRepository, previewPath } from "@/lib/githubPreview";
 import { AppLink, navigate } from "@/lib/router";
 import { recordExperience } from "@/lib/experience";
+import WikiRepositoryRules from "./WikiRepositoryRules";
 
 export function repositoryDestination(
   input: string,
@@ -76,6 +77,7 @@ export default function RepositoryEntry({
             "Ready Wikis open instantly. A new Wiki uses your OpenRouter account; you review the cost limit before starting."}
         </p>
       </form>
+      <WikiRepositoryRules />
       <div className="repository-examples">
         <span className="small muted">
           {repos.length ? "Ready Wikis:" : "Try a repository:"}

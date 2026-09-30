@@ -33,7 +33,7 @@ from .visitor_provider import (
     WikiRunStopped,
     verify_key,
 )
-from .visitor_source import repository_revision, visitor_source
+from .visitor_source import check_repository, repository_revision, visitor_source
 
 _ATTEMPTS = "visitor-wiki-attempts-v1"
 _PUBLIC = "visitor-wiki-publications-v1"
@@ -78,6 +78,13 @@ class VisitorWikis:
     mutex only protects thread admission and is never held while acquiring a
     store guard. Cancellation is a separate run-specific Wiki envelope, so it
     cannot overwrite a concurrent page/progress publication.
+
+    Repository checks share the two in-process source slots with submissions.
+    Admission linearizes when _active is updated under _mutex. A synchronous
+    check owns its slot through temporary-source cleanup even if its HTTP client
+    disconnects; no check state survives process exit. Checking and generation
+    have separate per-client rate keys, so a check permits an immediate funded
+    submission. Neither holds _mutex while performing source or store I/O.
     """
 
     def __init__(
@@ -89,12 +96,14 @@ class VisitorWikis:
         provider=VisitorProvider,
         verify=verify_key,
         wiki_factory=AgentWiki,
+        inspect_repository=check_repository,
         clock: Callable[[], float] = time.time,
     ):
         self.store = store
         self.prepare, self.resolve = prepare, resolve
         self.provider, self.verify, self.wiki_factory = provider, verify, wiki_factory
         self.clock = clock
+        self.inspect_repository = inspect_repository
         self._mutex = threading.Lock()
         self._active: set[str] = set()
         self._recent: dict[str, float] = {}
@@ -426,28 +435,54 @@ class VisitorWikis:
     def close(self):
         self._closing.set()
 
+    def _admit_source(self, token, client):
+        now = self.clock()
+        with self._mutex:
+            if (
+                self._closing.is_set()
+                or token in self._active
+                or len(self._active) >= 2
+            ):
+                raise VisitorWikiError(
+                    "The Wiki service is busy. Try again shortly; "
+                    "no new model call was started."
+                )
+            self._recent = {ip: at for ip, at in self._recent.items() if now - at < 60}
+            if client in self._recent or len(self._recent) >= 1024:
+                raise VisitorWikiError("Please wait one minute before trying again.")
+            self._recent[client] = now
+            self._active.add(token)
+
+    def check_repository(self, repository, client):
+        token = f"check:{secrets.token_hex(16)}"
+        self._admit_source(token, f"check:{client}")
+        try:
+            deadline = time.monotonic() + 60
+
+            def check():
+                if self._closing.is_set():
+                    raise WikiRunStopped("The server is stopping; try again shortly.")
+                if time.monotonic() >= deadline:
+                    raise WikiRunStopped(
+                        "The repository check timed out. Try again later or run "
+                        "CodeNib locally. No model call was started."
+                    )
+
+            check()
+            return self.inspect_repository(repository, check)
+        except WikiRunStopped as exc:
+            raise VisitorWikiError(str(exc)) from None
+        finally:
+            with self._mutex:
+                self._active.discard(token)
+
     def submit(
         self, attempt, repository, owner, key, budget, client, model=PLANNER_MODEL
     ):
         if model not in WIKI_MODELS:
             raise VisitorWikiError("Unsupported Wiki model.")
         now = self.clock()
-        with self._mutex:
-            if (
-                self._closing.is_set()
-                or attempt in self._active
-                or len(self._active) >= 2
-            ):
-                raise VisitorWikiError(
-                    "Generation is busy. Try again shortly; no new model call was started."
-                )
-            self._recent = {ip: at for ip, at in self._recent.items() if now - at < 60}
-            if client in self._recent or len(self._recent) >= 1024:
-                raise VisitorWikiError(
-                    "Please wait one minute before starting another run."
-                )
-            self._recent[client] = now
-            self._active.add(attempt)
+        self._admit_source(attempt, client)
         try:
             # Invalid/private repositories must not consume permanent capacity.
             # Network validation stays outside the short admission guard.

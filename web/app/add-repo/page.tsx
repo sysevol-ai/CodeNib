@@ -13,8 +13,8 @@ export default function AddRepo() {
         <AppLink href="/">← Ready Wikis</AppLink>
         <h1>Start with a GitHub URL</h1>
         <p className="hero-sub">
-          Explore a public repository’s files and README, then add an AI
-          explanation if you want one.
+          Generate a source-linked Repo Wiki from a public repository. Review
+          the hosted limits before connecting your OpenRouter account.
         </p>
         <RepositoryEntry />
       </main>

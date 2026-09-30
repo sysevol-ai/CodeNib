@@ -4,13 +4,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
   FALLBACK_WIKI_MODELS,
+  checkWikiRepository,
   loadWikiModels,
   startWiki,
   type WikiAttempt,
   type WikiModelCatalog,
   type WikiModelChoice,
+  type WikiRepositoryCheck,
 } from "@/lib/visitorWiki";
 import { recordExperience } from "@/lib/experience";
+import WikiRepositoryRules, { mebibytes } from "./WikiRepositoryRules";
 
 const usd = (value: number) => `$${value.toFixed(2).replace(/\.00$/, "")}`;
 
@@ -44,6 +47,22 @@ export default function WikiGenerationForm({
   const [budget, setBudget] = useState(2);
   const [catalog, setCatalog] = useState<WikiModelCatalog>(FALLBACK_WIKI_MODELS);
   const [model, setModel] = useState(FALLBACK_WIKI_MODELS.default);
+  const [eligibility, setEligibility] = useState<WikiRepositoryCheck | null>(null);
+  const [checkError, setCheckError] = useState("");
+  const [checkRetry, setCheckRetry] = useState(0);
+  const admitted = resume || eligibility?.eligible === true;
+  useEffect(() => {
+    if (resume) return;
+    let active = true;
+    setEligibility(null);
+    setCheckError("");
+    checkWikiRepository(attempt.repository)
+      .then((result) => { if (active) setEligibility(result); })
+      .catch((reason) => {
+        if (active) setCheckError(reason instanceof Error ? reason.message : "Could not check this repository.");
+      });
+    return () => { active = false; };
+  }, [attempt.repository, resume, checkRetry]);
   useEffect(() => { recordExperience("generation_form_view"); }, []);
   useEffect(() => {
     let cancelled = false;
@@ -66,7 +85,7 @@ export default function WikiGenerationForm({
       className="wiki-generation-form"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (busy || !keyInput.current) return;
+        if (busy || !admitted || !keyInput.current) return;
         const key = keyInput.current.value.trim();
         keyInput.current.value = "";
         if (!key) return;
@@ -98,6 +117,28 @@ export default function WikiGenerationForm({
           Your Wiki will appear in My Wikis. When it is ready, you can choose
           Publish to Community to share it with other readers.
         </p>
+      )}
+      <WikiRepositoryRules limits={eligibility?.limits} />
+      {!resume && (
+        <div className="wiki-repository-check" role={eligibility?.eligible === false || checkError ? "alert" : "status"}>
+          {!eligibility && !checkError ? (
+            <p>Checking the repository size and source languages… No API key or model call is needed.</p>
+          ) : (
+            <>
+              <p>{checkError || eligibility?.message}</p>
+              {eligibility?.eligible && <p className="small muted">Checked {eligibility.source_files?.toLocaleString()} source files at <code>{eligibility.commit?.slice(0, 8)}</code>. No model call was made.</p>}
+              {!!eligibility?.skipped_files?.length && (
+                <details>
+                  <summary>{eligibility.skipped_files.length} oversized {eligibility.skipped_files.length === 1 ? "file will" : "files will"} be skipped</summary>
+                  <ul>{eligibility.skipped_files.map((file) => <li key={file.path}><code>{file.path}</code> ({mebibytes(file.size_bytes)})</li>)}</ul>
+                </details>
+              )}
+              {(checkError || eligibility?.eligible === false) && (
+                <p><a href="https://docs.codenib.ai/web_demo/" target="_blank" rel="noopener noreferrer">Run CodeNib locally ↗</a>{" "}<button type="button" className="btn-ghost" onClick={() => setCheckRetry((value) => value + 1)}>Check again</button></p>
+              )}
+            </>
+          )}
+        </div>
       )}
       {!resume && (
         <>
@@ -140,7 +181,7 @@ export default function WikiGenerationForm({
         spellCheck={false}
         required
         maxLength={1024}
-        disabled={busy}
+        disabled={busy || !admitted}
         placeholder="sk-or-…"
       />
       <p className="small muted">
@@ -172,7 +213,7 @@ export default function WikiGenerationForm({
         OpenRouter.
       </p>
       <label className="wiki-consent">
-        <input type="checkbox" required disabled={busy} />
+        <input type="checkbox" required disabled={busy || !admitted} />
         <span>
           I authorize generation using my OpenRouter account. CodeNib keeps my
           key in server memory only while this run is active, sends public
@@ -180,7 +221,7 @@ export default function WikiGenerationForm({
           anyone with its link. The key is never saved.
         </span>
       </label>
-      <button type="submit" className="btn-primary" disabled={busy}>
+      <button type="submit" className="btn-primary" disabled={busy || !admitted}>
         {busy
           ? "Starting generation…"
           : resume

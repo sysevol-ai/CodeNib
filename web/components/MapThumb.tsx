@@ -5,15 +5,21 @@ import { useEffect, useRef, useState } from "react";
 
 import { fetchWikiAreaMap, type WikiAreaMap } from "@/lib/api";
 import { thumbLayout } from "@/lib/posterLayout";
+import { loadSavedWikiGraphs } from "@/lib/visitorWiki";
 
 const maps = new Map<string, Promise<WikiAreaMap>>();
 
-function loadMap(repoId: string): Promise<WikiAreaMap> {
-  let pending = maps.get(repoId);
+function loadMap(repoId?: string, wikiId?: string): Promise<WikiAreaMap> {
+  const key = wikiId ? `wiki:${wikiId}` : `repo:${repoId}`;
+  let pending = maps.get(key);
   if (!pending) {
-    pending = fetchWikiAreaMap(repoId);
-    pending.catch(() => maps.delete(repoId));
-    maps.set(repoId, pending);
+    pending = wikiId
+      ? loadSavedWikiGraphs(wikiId, "overview").then((view) => view.system_map)
+      : fetchWikiAreaMap(repoId!);
+    pending.catch(() => maps.delete(key));
+    // A running Wiki or an operator backfill may acquire its map later.
+    pending.then((value) => { if (!value.available) maps.delete(key); }, () => {});
+    maps.set(key, pending);
   }
   return pending;
 }
@@ -24,7 +30,7 @@ const H = 104;
 /** A catalog card's picture: the repository's areas as dots sized by
  *  symbols and its recorded references as lines, from the same index as the
  *  Overview poster. Loaded when the card scrolls into view. */
-export default function MapThumb({ repoId }: { repoId: string }) {
+export default function MapThumb({ repoId, wikiId }: { repoId: string; wikiId?: never } | { repoId?: never; wikiId: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<WikiAreaMap | null>(null);
   const [failed, setFailed] = useState(false);
@@ -33,8 +39,10 @@ export default function MapThumb({ repoId }: { repoId: string }) {
     const node = ref.current;
     if (!node) return;
     let cancelled = false;
+    setMap(null);
+    setFailed(false);
     const start = () =>
-      loadMap(repoId)
+      loadMap(repoId, wikiId)
         .then((value) => {
           if (!cancelled) setMap(value);
         })
@@ -61,7 +69,7 @@ export default function MapThumb({ repoId }: { repoId: string }) {
       cancelled = true;
       observer.disconnect();
     };
-  }, [repoId]);
+  }, [repoId, wikiId]);
 
   const layout = map ? thumbLayout(map.areas, map.links, W, H) : null;
   const empty = failed || (map != null && (!layout || layout.dots.length === 0));

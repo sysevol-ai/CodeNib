@@ -10,6 +10,11 @@ const output = process.argv[3] || "/tmp/codenib-visitor-wiki-browser";
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const reports = [];
+const limits = {
+  max_archive_bytes: 20 * 1024 * 1024, max_source_bytes: 40 * 1024 * 1024,
+  max_file_bytes: 4 * 1024 * 1024, max_files: 4000, max_archive_entries: 8000,
+  max_chunks: 50000, source_languages: ["python", "typescript"], graph_languages: ["python"],
+};
 let lastPage;
 try {
   for (const mobile of [false, true]) {
@@ -25,6 +30,7 @@ try {
       remote = [];
     let statusReads = 0;
     let statusOffline = false;
+    let checks = 0;
     const pages = [
       { id: "overview", title: "Overview", children: [] },
       { id: "pipeline", title: "Request pipeline", children: [] },
@@ -40,9 +46,25 @@ try {
         return route.continue();
       const request = route.request();
       if (url.pathname === "/api/visitor-wikis")
-        return route.fulfill({ json: { enabled: true } });
+        return route.fulfill({ json: { enabled: true, limits } });
+      if (url.pathname === "/api/visitor-wikis/check") {
+        checks++;
+        assert.equal(request.headers().authorization, undefined);
+        assert.equal(request.headers()["x-wiki-owner"], undefined);
+        const rejected = url.searchParams.get("repository") === "owner/large";
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        return route.fulfill({ json: {
+          eligible: !rejected, limits,
+          commit: "c".repeat(40), source_files: 65, languages: ["python"],
+          message: rejected
+            ? "The repository download exceeds the 20 MiB hosted archive limit. Run CodeNib locally for this repository."
+            : "This snapshot fits the hosted source limits. Generation checks them again before any model call.",
+        } });
+      }
       if (url.pathname === "/api/visitor-wikis/public")
         return route.fulfill({ json: [] });
+      if (url.pathname === "/api/visitor-wikis/models")
+        return route.fulfill({ status: 503, json: { detail: "Fixture uses recorded model prices." } });
       // Saved graphs are fetched when a run stops/completes. The status
       // envelope is not a graph response; keep this fixture on the #808 API.
       if (url.pathname.includes("/graphs/"))
@@ -140,12 +162,21 @@ try {
     const page = await context.newPage();
     lastPage = page;
     page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto(`${base}/preview/owner/large`);
+    await page.getByText("The repository download exceeds the 20 MiB hosted archive limit. Run CodeNib locally for this repository.", { exact: true }).waitFor();
+    assert.ok(await page.getByLabel("OpenRouter inference key").isDisabled());
+    assert.ok(await page.getByRole("button", { name: "Generate Wiki", exact: true }).isDisabled());
+    assert.equal(posts, 0);
+    assert.equal(await page.evaluate(() => localStorage.getItem("codenib-wiki-attempts-v1")), null);
+    await page.screenshot({ path: `${output}/visitor-wiki-${mobile ? "mobile" : "desktop"}-rejected.png`, fullPage: true });
     await page.goto(base);
     await page
       .getByLabel("Explore your own repository")
       .fill("https://github.com/owner/repo");
     await page.getByRole("button", { name: "Open Wiki" }).click();
     await page.getByLabel("OpenRouter inference key").waitFor();
+    await page.getByText("This snapshot fits the hosted source limits. Generation checks them again before any model call.", { exact: true }).waitFor();
+    assert.equal(checks, 2);
     assert.equal(posts, 0);
     await page
       .getByLabel("OpenRouter inference key")
@@ -373,6 +404,8 @@ try {
     assert.equal(overflow, false);
     reports.push({
       mobile,
+      repositoryChecks: checks,
+      oversizedRepositoryRejectedBeforeKey: true,
       posts,
       stops,
       refreshDoesNotGenerate: true,
