@@ -82,6 +82,7 @@
   line-height: 1.04;
   letter-spacing: -0.035em;
   color: #fff;
+  overflow-wrap: anywhere;
 }
 .poster-owner {
   color: var(--p-dim);

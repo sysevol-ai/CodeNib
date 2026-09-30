@@ -498,6 +498,7 @@ export default function RepoPoster({
         </div>
         <h2 className="poster-title">
           <span className="poster-owner">{owner}</span>
+          <wbr />
           {name}
         </h2>
         {lead && !hero && <p className="poster-lead">{leadNodes(lead)}</p>}
