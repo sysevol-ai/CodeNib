@@ -377,11 +377,12 @@ billed calls without an explicit opt-in; paired results include failures.
 ### A5 — Generate complete Repo Wikis and activate coding agents
 
 Status: navigable visitor Wikis, incremental reading and explicit community
-publication are on `main`. The current hosted-feedback correction batch is
-pending merge/deployment: function declarations in landing/demo excerpts
-([#821](https://github.com/sysevol-ai/CodeNib/pull/821)), nested Python indexing
-and saved-map backfill ([#820](https://github.com/sysevol-ai/CodeNib/pull/820)),
-and upfront source admission with saved-map catalog thumbnails. Landing now
+publication are on `main`. Function declarations in landing/demo excerpts
+([#821](https://github.com/sysevol-ai/CodeNib/pull/821)) and nested Python indexing
+with saved-map backfill ([#820](https://github.com/sysevol-ai/CodeNib/pull/820))
+are merged. Upfront source admission with saved-map catalog thumbnails
+([#822](https://github.com/sysevol-ai/CodeNib/pull/822)) is awaiting merge;
+deployment acceptance for all three changes remains open. Landing now
 states the hosted size limits; the generation form checks the actual archive
 without an API key, saved attempt, index or model call, and gates key entry on
 the result. Limits/languages come from the production source constants and
@@ -397,7 +398,7 @@ sites remain deployment acceptance gates. This batch makes no paid generation
 calls and does not claim broader hosted graph-language coverage.
 
 The source-excerpt correction in
-[#821](https://github.com/sysevol-ai/CodeNib/pull/821) is pending merge/deployment.
+[#821](https://github.com/sysevol-ai/CodeNib/pull/821) is merged as `7db7fea8`.
 Landing and Wiki excerpts retain a function declaration above cropped body
 lines, with an explicit gap and real file line numbers. Long decorated Python
 signatures retain the `def` line; highlight ranges are bounded by actual excerpt
@@ -532,7 +533,7 @@ even when no cross-chapter calls are recorded, with an explicit explanation.
 Completed Wiki pages collapse generation diagnostics and lead with readable content.
 
 Nested Python source indexing and saved-map repair are implemented in
-[#820](https://github.com/sysevol-ai/CodeNib/pull/820), pending merge/deployment.
+[#820](https://github.com/sysevol-ai/CodeNib/pull/820), merged as `20b24233`.
 The old Pyright include pattern indexed no files in `src/` layouts. The repair
 indexes the captured scratch root and rebuilds saved graphs at each Wiki's
 pinned commit, under the existing generation guard, without model calls or
