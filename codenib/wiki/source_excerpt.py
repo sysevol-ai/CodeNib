@@ -61,11 +61,26 @@ def signature_span(lines: Sequence[str]) -> tuple[int, int]:
         offset += 1
     if offset >= len(lines):
         return 0, 0
+    name_line = offset
+    if lines[offset].lstrip().startswith("@"):
+        indentation = len(lines[offset]) - len(lines[offset].lstrip())
+        for index in range(offset + 1, len(lines)):
+            line = lines[index]
+            if len(line) - len(
+                line.lstrip()
+            ) == indentation and line.lstrip().startswith(
+                ("def ", "async def ", "class ")
+            ):
+                name_line = index
+                break
     for index in range(offset, min(len(lines), offset + _MAX_SIGNATURE_LINES)):
         if lines[index].rstrip().endswith((":", "{")):
             length = index - offset + 1
-            return offset, length if length <= _MAX_SHOWN_SIGNATURE else 1
-    return offset, 1
+            if length <= _MAX_SHOWN_SIGNATURE:
+                return offset, length
+            # A collapsed decorated signature must still show the definition.
+            return name_line, 1
+    return name_line, 1
 
 
 def segments(
@@ -132,13 +147,16 @@ def _locate(window: Sequence[str], source: Sequence[str]) -> Optional[list[int]]
     return None
 
 
-def _highlights(info: str) -> list[int]:
+def _highlights(info: str, line_count: int) -> list[int]:
     match = re.search(r"(?:^|\s)hl=([\d,-]+)", info)
     lines: list[int] = []
     for part in (match.group(1) if match else "").split(","):
-        bounds = [int(value) for value in part.split("-") if value.isdigit()]
+        try:
+            bounds = [int(value) for value in part.split("-") if value.isdigit()]
+        except ValueError:
+            continue
         if bounds:
-            lines.extend(range(bounds[0], bounds[-1] + 1))
+            lines.extend(range(max(1, bounds[0]), min(line_count, bounds[-1]) + 1))
     return lines
 
 
@@ -190,7 +208,7 @@ def anchor_excerpts(
         non_blank = [line for line in window if line.strip()]
         marked = [
             first_line + found[index - 1]
-            for index in _highlights(info)
+            for index in _highlights(info, len(non_blank))
             if 0 < index <= len(non_blank)
         ]
         head = f"{language} at={at}"

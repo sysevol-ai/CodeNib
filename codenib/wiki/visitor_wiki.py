@@ -24,6 +24,7 @@ from ..log_utils import get_logger
 from ..storage import WikiStore
 from .agent_wiki import AgentWiki
 from .multimodal import plan_media_slots
+from .source_excerpt import anchor_excerpts
 from .store import WikiGenerationBusyError
 from .visitor_provider import (
     WIKI_MODELS,
@@ -170,6 +171,29 @@ class VisitorWikis:
         if entry is None:
             raise VisitorWikiError("This page is not ready yet.")
         page = copy.deepcopy(entry.envelope["data"])
+
+        # Older visitor outputs have no retained checkout. Anchor their excerpts
+        # from source already saved with each citation, without a download,
+        # model call, or write to the stored prose.
+        def read_saved_lines(file, start, end):
+            for citation in page.get("citations", []):
+                first = citation.get("start_line")
+                content = citation.get("content")
+                if citation.get("file") != file or not isinstance(first, int):
+                    continue
+                if not isinstance(content, str):
+                    continue
+                lines = content.splitlines()
+                offset = start - first
+                if 0 <= offset < len(lines):
+                    return lines[offset : end - first + 1]
+            return None
+
+        page["markdown"] = anchor_excerpts(
+            page["markdown"],
+            page.get("evidence", {}).get("items", []),
+            read_saved_lines,
+        )
         # Render the saved, validated architecture directly. This needs neither
         # an image provider nor the temporary source checkout removed on exit.
         page["media_slots"] = plan_media_slots(

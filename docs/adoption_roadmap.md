@@ -376,6 +376,16 @@ billed calls without an explicit opt-in; paired results include failures.
 
 ### A5 — Generate complete Repo Wikis and activate coding agents
 
+The source-excerpt correction in
+[#821](https://github.com/sysevol-ai/CodeNib/pull/821) is pending merge/deployment.
+Landing and Wiki excerpts retain a function declaration above cropped body
+lines, with an explicit gap and real file line numbers. Long decorated Python
+signatures retain the `def` line; highlight ranges are bounded by actual excerpt
+length. Cached prepared pages upgrade through a versioned, model-free refresh
+without regenerating prose. Saved visitor pages derive declarations from their
+saved citation source without a download or stored-prose write. Live
+desktop/mobile declaration checks remain a deployment gate.
+
 Status: story browsing is merged in
 [#772](https://github.com/sysevol-ai/CodeNib/pull/772) as `f0a4cd00`; static
 publication is merged in [#784](https://github.com/sysevol-ai/CodeNib/pull/784)
