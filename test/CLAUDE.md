@@ -38,8 +38,10 @@ executables and SCIP/Fact/clangd Python gates through `make core-test`) — see
 - Git fixtures that copy or swap `.git` must disable automatic maintenance
   before committing, so transient maintenance files cannot race the snapshot.
 - CodeNib's managed loggers do not propagate to the root logger. Attach
-  `caplog.handler` to the actual logger when asserting its records, so the
-  test does not depend on another test's logging setup.
+  `caplog.handler` to the actual logger and use `caplog.set_level` for the
+  expected severity when asserting its records. Console setup can change
+  capture-handler thresholds; attaching the handler alone still depends on
+  another test's logging setup.
 
 ## Gotchas
 

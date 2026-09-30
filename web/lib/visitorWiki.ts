@@ -121,7 +121,7 @@ export function rememberWikiAttempt(attempt: WikiAttempt): void {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 35000): Promise<T> {
   if (isStaticRuntime())
     throw new Error("Open the live demo to generate a saved Wiki.");
   const url = new URL(
@@ -134,7 +134,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   )
     throw new Error("Wiki generation requires an HTTPS connection.");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 35000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       ...init,
@@ -155,7 +155,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   } catch (error) {
     if (controller.signal.aborted)
       throw new Error(
-        "The server did not respond in time. Your saved Wiki link can recover an accepted attempt.",
+        path.startsWith("/check?")
+          ? "The repository check did not respond in time. No model call was started. Try again later."
+          : "The server did not respond in time. Your saved Wiki link can recover an accepted attempt.",
       );
     throw error;
   } finally {
@@ -163,7 +165,42 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
-export const wikiGenerationAvailable = () => request<{ enabled: boolean }>("");
+export interface WikiGenerationLimits {
+  max_archive_bytes: number;
+  max_source_bytes: number;
+  max_file_bytes: number;
+  max_files: number;
+  max_archive_entries: number;
+  max_chunks: number;
+  source_languages: string[];
+  graph_languages: string[];
+}
+
+export interface WikiRepositoryCheck {
+  eligible: boolean;
+  limits: WikiGenerationLimits;
+  message: string;
+  commit?: string;
+  languages?: string[];
+  source_files?: number;
+  skipped_files?: Array<{ path: string; size_bytes: number }>;
+}
+
+export const wikiGenerationAvailable = () =>
+  request<{ enabled: boolean; limits: WikiGenerationLimits }>("");
+const repositoryChecks = new Map<string, Promise<WikiRepositoryCheck>>();
+export const checkWikiRepository = (repository: string): Promise<WikiRepositoryCheck> => {
+  const key = repository.toLowerCase();
+  let pending = repositoryChecks.get(key);
+  if (!pending) {
+    pending = request<WikiRepositoryCheck>(`/check?${new URLSearchParams({ repository })}`, {}, 95000);
+    repositoryChecks.set(key, pending);
+    // StrictMode and concurrent readers share only active checks. An explicit
+    // later check always inspects the current default-branch snapshot again.
+    pending.then(() => repositoryChecks.delete(key), () => repositoryChecks.delete(key));
+  }
+  return pending;
+};
 export const loadPublicWikis = () => request<PublicWiki[]>("/public");
 export const loadSavedWikiGraphs = (id: string, page: string) =>
   request<SavedWikiGraphs>(

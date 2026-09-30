@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   loadSavedWiki,
+  checkWikiRepository,
   newWikiAttempt,
   recentWikis,
   startWiki,
@@ -53,6 +54,29 @@ it("opening or refreshing a saved Wiki never sends a credential or starts work",
   vi.stubGlobal("fetch", fetch);
   await loadSavedWiki("a".repeat(64));
   await loadSavedWiki("a".repeat(64));
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it("checking a repository sends no credential and stores no attempt", async () => {
+  const fetch = vi.fn(async (url: URL, init: RequestInit) => {
+    expect(url.searchParams.get("repository")).toBe("owner/repo");
+    expect(url.pathname).toBe("/api/visitor-wikis/check");
+    expect(init.headers).toBeUndefined();
+    expect(init.method).toBeUndefined();
+    return new Response(JSON.stringify({ eligible: false, message: "Archive exceeds 20 MiB." }));
+  });
+  vi.stubGlobal("fetch", fetch);
+  expect((await checkWikiRepository("owner/repo")).eligible).toBe(false);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(stored.size).toBe(0);
+});
+
+it("concurrent source checks share one download and a later check is fresh", async () => {
+  const fetch = vi.fn(async () => new Response(JSON.stringify({ eligible: true })));
+  vi.stubGlobal("fetch", fetch);
+  await Promise.all([checkWikiRepository("owner/repo"), checkWikiRepository("OWNER/repo")]);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  await checkWikiRepository("owner/repo");
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 

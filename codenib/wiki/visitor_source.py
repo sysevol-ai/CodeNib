@@ -27,6 +27,21 @@ MAX_ARCHIVE_BYTES = 20 * 1024 * 1024
 MAX_SOURCE_BYTES = 40 * 1024 * 1024
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_FILES = 4000
+MAX_CHUNKS = 50000
+
+
+def generation_limits() -> dict:
+    """The hosted admission rules, shared by source checks and the public UI."""
+    return {
+        "max_archive_bytes": MAX_ARCHIVE_BYTES,
+        "max_source_bytes": MAX_SOURCE_BYTES,
+        "max_file_bytes": MAX_FILE_BYTES,
+        "max_files": MAX_FILES,
+        "max_archive_entries": MAX_FILES * 2,
+        "max_chunks": MAX_CHUNKS,
+        "source_languages": sorted(set(extension_to_language_map("chunker").values())),
+        "graph_languages": ["python"],
+    }
 
 
 def github_bytes(url: str, limit: int, check) -> bytes:
@@ -47,14 +62,21 @@ def github_bytes(url: str, limit: int, check) -> bytes:
                         f"GitHub returned HTTP {response.status_code}. "
                         "Use the current URL of a public repository, or retry later."
                     )
+                size_message = (
+                    f"The repository download exceeds the {limit // (1024 * 1024)} "
+                    "MiB hosted archive limit. Run CodeNib locally for this repository."
+                    if limit == MAX_ARCHIVE_BYTES
+                    else "GitHub's response exceeds the hosted metadata limit."
+                )
+                length = response.headers.get("Content-Length", "")
+                if length.isdigit() and int(length) > limit:
+                    raise WikiRunStopped(size_message)
                 data = bytearray()
                 for chunk in response.iter_content(65536):
                     check()
                     data.extend(chunk)
                     if len(data) > limit:
-                        raise WikiRunStopped(
-                            "This repository exceeds the hosted Wiki size limit."
-                        )
+                        raise WikiRunStopped(size_message)
                 return bytes(data)
     except requests.RequestException:
         raise WikiRunStopped(
@@ -105,7 +127,9 @@ def extract_source(payload: bytes, root: Path, check) -> list[dict]:
             entries = archive.infolist()
             if len(entries) > MAX_FILES * 2:
                 raise WikiRunStopped(
-                    "This repository has too many files for hosted generation."
+                    f"The archive has {len(entries):,} entries, above the hosted "
+                    f"limit of {MAX_FILES * 2:,} (including directories). "
+                    "Run CodeNib locally for this repository."
                 )
             files, skipped, total, seen, prefix = [], [], 0, set(), None
             for item in entries:
@@ -142,7 +166,8 @@ def extract_source(payload: bytes, root: Path, check) -> list[dict]:
                 seen.add(relative.casefold())
                 if len(seen) > MAX_FILES:
                     raise WikiRunStopped(
-                        "This repository has too many files for hosted generation."
+                        f"The repository exceeds the {MAX_FILES:,}-file hosted limit "
+                        "(including skipped files). Run CodeNib locally for this repository."
                     )
                 if item.file_size > MAX_FILE_BYTES:
                     skipped.append({"path": relative, "size_bytes": item.file_size})
@@ -151,7 +176,9 @@ def extract_source(payload: bytes, root: Path, check) -> list[dict]:
                 files.append((item, relative))
                 if total > MAX_SOURCE_BYTES:
                     raise WikiRunStopped(
-                        "This repository exceeds the hosted Wiki size limit."
+                        "Retained files exceed the "
+                        f"{MAX_SOURCE_BYTES // (1024 * 1024)} MiB hosted limit. "
+                        "Run CodeNib locally for this repository."
                     )
             for item, relative in files:
                 check()
@@ -169,7 +196,9 @@ def extract_source(payload: bytes, root: Path, check) -> list[dict]:
 
 
 @contextmanager
-def visitor_source(repository: str, commit: str, attempt_id: str, check, progress):
+def visitor_source(
+    repository: str, commit: str, attempt_id: str, check, progress, *, index_graph=True
+):
     # Temporary source is owned by this run and removed on every exit. Resumes
     # download the same immutable commit; only Wiki outputs survive the call.
     progress("downloading", "")
@@ -206,9 +235,14 @@ def visitor_source(repository: str, commit: str, attempt_id: str, check, progres
                     languages=languages, filter_tests=False, max_file_size_mb=4
                 ),
             ).chunk_repository_source(binding, check_cancelled=check)
-            if len(chunks) > 50000:
+            if not chunks:
                 raise WikiRunStopped(
-                    "This repository has too many symbols for hosted generation."
+                    "No usable source code was found in the supported languages."
+                )
+            if len(chunks) > MAX_CHUNKS:
+                raise WikiRunStopped(
+                    f"Source analysis exceeds the {MAX_CHUNKS:,} code-section hosted "
+                    "limit. Run CodeNib locally for this repository."
                 )
             documents = [
                 SimpleNamespace(
@@ -249,5 +283,34 @@ def visitor_source(repository: str, commit: str, attempt_id: str, check, progres
             )
             from .visitor_graph import build_visitor_graph
 
-            build_visitor_graph(bundle, check, progress)
+            if index_graph:
+                build_visitor_graph(bundle, check, progress)
             yield bundle, binding
+
+
+def check_repository(repository: str, check) -> dict:
+    """Check the actual pinned archive through generation's source path.
+
+    No Wiki, index, provider, or saved attempt is created. Temporary source is
+    removed before returning, including on rejection or cooperative timeout.
+    Generation rechecks its own snapshot; this is not a reservation or a promise
+    that a model will finish within the visitor's budget.
+    """
+    result = {"eligible": False, "limits": generation_limits()}
+    try:
+        commit = repository_revision(repository, check)
+        result["commit"] = commit
+        with visitor_source(
+            repository, commit, "check", check, lambda *_: None, index_graph=False
+        ) as (bundle, _):
+            result.update(
+                eligible=True,
+                languages=bundle.manifest.languages,
+                source_files=bundle.manifest.file_count,
+                skipped_files=bundle.skipped_files,
+                message="This snapshot fits the hosted source limits. "
+                "Generation checks them again before any model call.",
+            )
+    except WikiRunStopped as exc:
+        result["message"] = str(exc)
+    return result

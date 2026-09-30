@@ -135,6 +135,7 @@ function CommunityCard({ wiki }: { wiki: PublicWiki }) {
       href={`/wiki/${wiki.id}`}
       aria-label={`Open ${wiki.repository} wiki`}
     >
+      <MapThumb wikiId={wiki.id} />
       <div className="repo-card-title">{wiki.repository}</div>
       <div className="repo-card-desc">
         {wiki.summary ||
@@ -173,6 +174,7 @@ function LibraryCard({ item }: { item: LibraryWiki }) {
       href={`/wiki/${item.id}`}
       aria-label={`Open ${item.repository} wiki`}
     >
+      <MapThumb wikiId={item.id} />
       <div className="repo-card-title">{item.repository}</div>
       <div className="repo-card-desc">{label}</div>
       <div className="repo-card-footer">

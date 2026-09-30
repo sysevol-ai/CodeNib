@@ -25,4 +25,15 @@ describe("WikiGenerationForm", () => {
     );
     expect(html).not.toContain("<optgroup");
   });
+
+  it("waits for a source check before accepting a key or generation consent", () => {
+    const html = renderToStaticMarkup(<WikiGenerationForm attempt={attempt} onStarted={() => {}} />);
+    expect(html).toContain("Checking the repository size and source languages");
+    expect(html).toMatch(/id="wiki-generation-key"[^>]*disabled/);
+    expect(html).toMatch(/type="checkbox"[^>]*disabled/);
+    expect(html).toMatch(/type="submit"[^>]*disabled/);
+    const resume = renderToStaticMarkup(<WikiGenerationForm attempt={attempt} onStarted={() => {}} resume />);
+    expect(resume).not.toContain("Checking the repository size");
+    expect(resume).not.toMatch(/id="wiki-generation-key"[^>]*disabled/);
+  });
 });

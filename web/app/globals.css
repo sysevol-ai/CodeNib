@@ -6019,6 +6019,16 @@ a.codepanel-name:hover {
 .saved-wiki .btn-outline:hover, .saved-wiki .btn-ghost:hover { color: var(--accent); border-color: var(--accent-border); }
 .wiki-generation-form > .btn-primary, .wiki-resume > .btn-primary { background: var(--accent); color: var(--accent-contrast); padding: 10px 16px; font-weight: 600; }
 .wiki-generation-form button:disabled { cursor: wait; opacity: .6; }
+.wiki-repository-rules { margin: 14px 0; font-size: 13px; color: var(--text-secondary); }
+.wiki-repository-rules summary { cursor: pointer; font-weight: 600; }
+.wiki-repository-rules p { margin: 10px 0; }
+.wiki-repository-rules ul { padding-left: 20px; }
+.wiki-repository-rules li { margin: 5px 0; }
+.wiki-repository-check { margin: 16px 0; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; }
+.wiki-repository-check p { margin: 6px 0; }
+.wiki-repository-check code { overflow-wrap: anywhere; }
+.wiki-repository-check ul { padding-left: 20px; }
+.wiki-repository-check .btn-ghost { font-size: 13px; }
 .saved-wiki progress { appearance: none; border: 0; border-radius: 8px; overflow: hidden; background: var(--bg-subtle); }
 .saved-wiki progress::-webkit-progress-bar { background: var(--bg-subtle); }
 .saved-wiki progress::-webkit-progress-value { background: var(--accent); border-radius: 8px; transition: width .3s; }

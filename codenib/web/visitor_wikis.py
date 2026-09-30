@@ -11,13 +11,15 @@ import re
 import threading
 from importlib.util import find_spec
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ..storage import SQLiteWikiStore
 from ..wiki.store import WikiGenerationBusyError
 from ..wiki.visitor_models import WIKI_MODELS, wiki_model_catalog
+from ..wiki.visitor_source import generation_limits
 from ..wiki.visitor_wiki import VisitorWikiError, VisitorWikis
 from .config import load_config
 
@@ -88,7 +90,33 @@ def _owner(request):
 @router.get("")
 def capabilities(response: Response):
     response.headers["Cache-Control"] = "no-store"
-    return {"enabled": _enabled(), "persistence": "unlisted", "max_budget_usd": 5}
+    return {
+        "enabled": _enabled(),
+        "persistence": "unlisted",
+        "max_budget_usd": 5,
+        "limits": generation_limits(),
+    }
+
+
+@router.get("/check")
+def check_repository(
+    request: Request,
+    response: Response,
+    repository: Annotated[
+        str,
+        Query(pattern=r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}$"),
+    ],
+):
+    """Credential-free source admission check; never allocates a saved Wiki."""
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    manager = _manager(request, for_generation=True)
+    try:
+        return manager.check_repository(
+            repository, request.client.host if request.client else "unknown"
+        )
+    except VisitorWikiError as exc:
+        raise HTTPException(429, str(exc), headers={"Retry-After": "60"}) from None
 
 
 @router.get("/models")
