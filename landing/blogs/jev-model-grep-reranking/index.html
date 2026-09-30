@@ -144,16 +144,13 @@ SPDX-License-Identifier: Apache-2.0
 <h2 id="embedding-paths">Dense and hybrid retrieval on the same 100 issues</h2>
 <p>To test whether an embedding-free path can replace embedding retrieval plus a reranker, we need the complete paths side by side. We added <strong>CodeRankEmbed → Qwen 4B</strong> and <strong>BM25 + CodeRankEmbed → Qwen 4B</strong>, then ran Jev on those same candidate pools. These controls use the same 100 issues, source snapshots, candidate cap, visible code and aligned labels as the BM25/grep comparison.</p>
 <p>Dense retrieval uses <a href="https://huggingface.co/nomic-ai/CodeRankEmbed/blob/3c4b60807d71f79b43f3c4363786d9493691f8b1/README.md">CodeRankEmbed at its pinned revision</a>, its required query instruction, normalized vectors and exact FAISS search. Hybrid takes the top 100 from both BM25 and dense, combines them with the production reciprocal-rank fusion (equal weights, rank constant 60), and retains 100. Both indexes read full chunks; rerankers receive the same 3,000-character limit. We fixed these settings before inspecting the new quality results.</p>
-<div aria-label="Accuracy before and after reranking on all four routes" class="data-table compact" role="region" tabindex="0"><table><caption class="sr-only">Candidate coverage and Recall@5, before and after reranking, on all four routes</caption>
-<thead><tr><th scope="col">Retrieval</th><th scope="col">Coverage</th><th scope="col">Raw R@5</th><th scope="col">Qwen 4B R@5</th><th scope="col">Jev R@5</th></tr></thead>
-<tbody>
-<tr><th scope="row">BM25</th><td>63.78%</td><td>28.78%</td><td>58.30%</td><td>59.35%</td></tr>
-<tr><th scope="row">Dense</th><td>71.98%</td><td>39.75%</td><td>63.40%</td><td>63.05%</td></tr>
-<tr><th scope="row">Hybrid</th><td>75.28%</td><td>32.02%</td><td>65.03%</td><td>67.92%</td></tr>
-<tr><th scope="row">Model-planned grep</th><td>75.83%</td><td>58.62%</td><td>68.07%</td><td>71.40%</td></tr>
-</tbody>
-</table></div>
-<p class="scope-note">Coverage counts targets anywhere in each route's pool of at most 100 candidates. Raw R@5 uses the retrieval order without reranking.</p>
+</div>
+
+<figure class="hero-figure"><img alt="Dot plot of code-block Recall@5 on 100 CodeNib Base issues. BM25 top 100: coverage 63.78%, no reranker 28.78%, Qwen3-Reranker-4B 58.30%, Jev 59.35%. Dense, CodeRankEmbed plus FAISS: coverage 71.98%, no reranker 39.75%, Qwen 4B 63.40%, Jev 63.05%. Hybrid, BM25 plus dense with RRF: coverage 75.28%, no reranker 32.02%, Qwen 4B 65.03%, Jev 67.92%. Model-planned grep: coverage 75.83%, no reranker 58.62%, Qwen 4B 68.07%, Jev 71.40%." height="700" loading="lazy" src="/assets/blogs/jev-accuracy-by-route.svg" width="1600"/><figcaption>Each row is one retrieval route. The hollow circle is Recall@5 in the route's own order, the filled marks are the same candidates after reranking, and the vertical bar is candidate coverage, which no reranker can exceed. Coverage counts targets anywhere in each route's pool of at most 100 candidates.</figcaption><a class="diagram-open" href="/assets/blogs/jev-accuracy-by-route.svg">Open the full-size chart ↗</a></figure>
+
+<div class="article-body">
+
+
 <p>Compared with BM25, grep adds 12.05 percentage points of candidate coverage. Compared with hybrid, the difference is only <strong>0.55 points</strong>. The embedding controls matter. Candidate coverage also differs from final quality: hybrid finds more targets than dense, but its initial order has lower Recall@5.</p>
 <p>For the complete paths, <strong>grep → Jev exceeds dense → Qwen 4B by 8.00 percentage points</strong>, with a paired repository-bootstrap 95% interval of <strong>[+0.91, +15.26]</strong>. Against hybrid → Qwen 4B, the point estimate is <strong>+6.37 points</strong>, but the interval is <strong>[−1.29, +13.87]</strong>. This sample supports an advantage over the measured pure-dense baseline; it does not establish a consistent advantage over hybrid. The intervals are exploratory and do not establish general replacement or equivalence.</p>
 <p>Those are complete-path comparisons, so their gains cannot be credited solely to Jev. Holding the candidate pool fixed, Jev minus Qwen 4B is −0.35 points on dense and +2.88 on hybrid; both intervals cross zero. BM25 → Jev, meanwhile, has a lower Recall@5 point estimate than either embedding → Qwen 4B baseline.</p>
