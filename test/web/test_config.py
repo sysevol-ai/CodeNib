@@ -94,6 +94,45 @@ wiki_media_options:
     }
 
 
+def test_gemini_wiki_media_uses_official_default_endpoint(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+wiki_media_model: gemini-3.1-flash-image
+wiki_media_api_key: secret
+wiki_media_options:
+  provider: gemini
+  aspect_ratio: "16:9"
+  image_size: 1K
+""".lstrip()
+    )
+
+    config = load_config(str(config_path))
+
+    assert config.wiki_media_generation_enabled is True
+    assert config.wiki_media_api_base is None
+    assert config.wiki_media_options == {
+        "provider": "gemini",
+        "aspect_ratio": "16:9",
+        "image_size": "1K",
+    }
+
+
+def test_gemini_wiki_media_requires_explicit_credential(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+wiki_media_model: gemini-3.1-flash-image
+wiki_media_options:
+  provider: gemini
+""".lstrip()
+    )
+
+    config = load_config(str(config_path))
+
+    assert config.wiki_media_generation_enabled is False
+
+
 def test_wiki_visual_facts_config_is_disabled_by_default(tmp_path: Path) -> None:
     config_path = tmp_path / "config.yaml"
     config_path.write_text("wiki_agent: false\n")
