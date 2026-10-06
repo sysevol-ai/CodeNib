@@ -60,7 +60,8 @@ body {
   margin: 0 auto;
 }
 .rv .poster-play,
-.rv .poster-actions {
+.rv .poster-actions,
+.rv.is-short .poster-foot {
   display: none;
 }
 .rv.is-focus .poster-edge,
@@ -265,7 +266,10 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 64px;
+  bottom: 0;
+  padding: 90px 0 64px;
+  /* A scrim, so map text the camera leaves behind never runs under it. */
+  background: linear-gradient(to bottom, rgba(4, 7, 13, 0), rgba(4, 7, 13, 0.92) 55%);
   text-align: center;
   font-size: 34px;
   font-weight: 500;
@@ -314,4 +318,27 @@ body {
   font-weight: 700;
   letter-spacing: -0.01em;
   color: #8a97ab;
+}
+.rv-end.is-short {
+  align-items: center;
+  padding: 0;
+  gap: 44px;
+}
+.rv-end-mark {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  font-size: 96px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.rv-end-mark img {
+  width: 96px;
+  height: 96px;
+}
+.rv-end.is-short .rv-end-url {
+  align-self: center;
+  margin-top: 0;
+  font-size: 38px;
+  padding: 18px 34px;
 }
