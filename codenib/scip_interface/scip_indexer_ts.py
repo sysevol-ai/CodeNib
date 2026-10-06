@@ -462,6 +462,9 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             # A config's implicit include is relative to the config file, not
             # to the extended config. Make the repository surface explicit
             # because this wrapper intentionally lives outside the checkout.
+            # Together these cover every extension TypeScript's implicit
+            # ``**/*`` include accepts once allowJs is on (``*.ts``, ``*.mts``
+            # and ``*.cts`` also match their ``.d.*`` declaration forms).
             "include": [
                 f"{self.project_root.resolve()}/**/*.js",
                 f"{self.project_root.resolve()}/**/*.jsx",
@@ -469,6 +472,8 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                 f"{self.project_root.resolve()}/**/*.cjs",
                 f"{self.project_root.resolve()}/**/*.ts",
                 f"{self.project_root.resolve()}/**/*.tsx",
+                f"{self.project_root.resolve()}/**/*.mts",
+                f"{self.project_root.resolve()}/**/*.cts",
             ],
         }
         project_root = self.project_root.resolve().as_posix().rstrip("/")
@@ -489,20 +494,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             payload["exclude"] = anchored_excludes
         if base_config is not None:
             payload["extends"] = str(base_config.resolve())
-            try:
-                raw_content = base_config.read_text(encoding="utf-8")
-                stripped = re.sub(
-                    r'"(?:[^"\\]|\\.)*"|(/\*.*?\*/|//[^\n]*)',
-                    lambda match: "" if match.group(1) else match.group(0),
-                    raw_content,
-                    flags=re.DOTALL,
-                )
-                stripped = re.sub(r",\s*([}\]])", r"\1", stripped)
-                inherited_config = json.loads(stripped)
-            except (OSError, json.JSONDecodeError):
-                inherited_config = {}
-            if not isinstance(inherited_config, dict):
-                inherited_config = {}
+            inherited_config = self._read_jsonc_object(base_config) or {}
             inherited_excludes = inherited_config.get("exclude")
             if isinstance(inherited_excludes, list):
                 anchored_excludes = []
@@ -527,6 +519,132 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             encoding="utf-8",
         )
         return config_path
+
+    @staticmethod
+    def _read_jsonc_object(path: Path) -> Optional[dict]:
+        """Parse a tsconfig-style JSON-with-comments file into a dict."""
+
+        try:
+            raw_content = path.read_text(encoding="utf-8")
+            stripped = re.sub(
+                r'"(?:[^"\\]|\\.)*"|(/\*.*?\*/|//[^\n]*)',
+                lambda match: "" if match.group(1) else match.group(0),
+                raw_content,
+                flags=re.DOTALL,
+            )
+            stripped = re.sub(r",\s*([}\]])", r"\1", stripped)
+            parsed = json.loads(stripped)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    def _resolve_tsconfig_extends(self, config_dir: Path, spec: str) -> Optional[Path]:
+        """Locate an ``extends`` target the way TypeScript would, or None."""
+
+        if spec.startswith(("./", "../")) or Path(spec).is_absolute():
+            candidate = config_dir / spec
+            candidates = [candidate]
+            if candidate.suffix != ".json":
+                candidates.append(Path(f"{candidate}.json"))
+        else:
+            # Package configs such as ``@tsconfig/node18/tsconfig.json``:
+            # search node_modules from the config up to the checkout root.
+            candidates = []
+            root = self.project_root.resolve()
+            directory = config_dir.resolve()
+            while True:
+                package_path = directory / "node_modules" / spec
+                candidates.extend(
+                    [
+                        package_path,
+                        Path(f"{package_path}.json"),
+                        package_path / "tsconfig.json",
+                    ]
+                )
+                if directory == root or root not in directory.parents:
+                    break
+                directory = directory.parent
+        return next((path for path in candidates if path.is_file()), None)
+
+    def _effective_tsconfig_surface(
+        self,
+        config_path: Path,
+        _stack: tuple = (),
+    ) -> Optional[dict]:
+        """Return the ``include``/``files``/``allowJs`` a config ends up with.
+
+        Follows ``extends`` (string or list, later entries win) so that a
+        repository config inheriting an explicit file list or ``allowJs`` is
+        recognised. Returns None when any config in the chain cannot be
+        located or parsed, so callers can fall back to the conservative path.
+        """
+
+        resolved = config_path.resolve()
+        if resolved in _stack or len(_stack) > 16:
+            return None
+        config = self._read_jsonc_object(config_path)
+        if config is None:
+            return None
+        extends = config.get("extends")
+        if extends is None:
+            bases: list = []
+        elif isinstance(extends, str):
+            bases = [extends]
+        elif isinstance(extends, list):
+            bases = extends
+        else:
+            return None
+        surface: dict = {}
+        for spec in bases:
+            if not isinstance(spec, str):
+                return None
+            base_path = self._resolve_tsconfig_extends(config_path.parent, spec)
+            if base_path is None:
+                return None
+            inherited = self._effective_tsconfig_surface(base_path, (*_stack, resolved))
+            if inherited is None:
+                return None
+            surface.update(inherited)
+        compiler_options = config.get("compilerOptions")
+        if isinstance(compiler_options, dict) and "allowJs" in compiler_options:
+            surface["allowJs"] = compiler_options["allowJs"]
+        for key in ("include", "files"):
+            if key in config:
+                surface[key] = config[key]
+        return surface
+
+    def _read_only_config_needs_wrapper(self) -> bool:
+        """Whether read-only indexing must wrap the repository config.
+
+        Without a root ``tsconfig.json`` the wrapper is required (scip-typescript
+        ignores ``jsconfig.json`` and ``--infer-tsconfig`` writes into the
+        checkout). With one, wrap only when it leaves JavaScript out solely
+        because ``allowJs`` is off: no explicit ``include``/``files`` anywhere
+        in its ``extends`` chain and no project ``references`` (which an
+        extending config would not inherit). Its implicit ``**/*`` include
+        would cover JavaScript once allowJs is on, so the external wrapper
+        (same base config plus allowJs, anchored at the checkout) selects the
+        sources ``_ensure_allow_js`` would, without writing into the checkout.
+        Configs with an explicit include list keep their own surface.
+        """
+
+        tsconfig_path = self.project_root / "tsconfig.json"
+        if not tsconfig_path.is_file():
+            return True
+        root_config = self._read_jsonc_object(tsconfig_path)
+        if root_config is None or root_config.get("references"):
+            return False
+        surface = self._effective_tsconfig_surface(tsconfig_path)
+        if surface is None or surface.get("allowJs") is True:
+            return False
+        if "include" in surface or "files" in surface:
+            return False
+        logger.info(
+            "tsconfig.json in %s leaves allowJs off with an implicit include; "
+            "wrapping it externally so JavaScript sources are indexed",
+            self.project_root,
+        )
+        return True
 
     def _normalize_workspace_kwargs(self, kwargs: dict) -> dict:
         """
@@ -711,7 +829,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
                     "Skipping project dependency installation for read-only "
                     "CodeGraph onboarding"
                 )
-                if not (self.project_root / "tsconfig.json").is_file():
+                if self._read_only_config_needs_wrapper():
                     read_only_tsconfig = self._create_read_only_tsconfig()
                     kwargs["patched_tsconfig"] = str(read_only_tsconfig)
                     kwargs["infer_tsconfig"] = False
