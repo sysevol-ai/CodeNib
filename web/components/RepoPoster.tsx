@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import "./RepoPoster.css";
 
@@ -26,6 +26,7 @@ import { AppLink } from "@/lib/router";
 import { isStaticRuntime } from "@/lib/runtime";
 import { excerptRows, GAP } from "@/lib/sourceExcerpt";
 import { splitSymbolLabel } from "@/lib/symbols";
+import { journeyAreas, traceFrame, traceSteps, type TraceFrame } from "@/lib/traceTimeline";
 import type { Journey } from "@/lib/wikiPresentation";
 
 /** Plain text of a lead sentence: citation handles dropped, code kept. */
@@ -42,20 +43,6 @@ function leadNodes(markdown: string): ReactNode[] {
       <span key={index}>{part}</span>
     ),
   );
-}
-
-/** Top-level area (page id) for every page in the tree. */
-function areaOfPage(pages: WikiPageRef[]): Map<string, string> {
-  const out = new Map<string, string>();
-  const walk = (list: WikiPageRef[], top: string | null) => {
-    for (const page of list) {
-      const area = top ?? page.id;
-      out.set(page.id, area);
-      walk(page.children, area);
-    }
-  };
-  walk(pages, null);
-  return out;
 }
 
 const number = new Intl.NumberFormat("en-US");
@@ -92,13 +79,6 @@ function inlineSvgStyles(root: Element): () => void {
     }
   };
 }
-const DWELL_MS = 950;
-const TRAVEL_MS = 900;
-
-type Step =
-  | { kind: "dwell"; stage: number; ms: number }
-  | { kind: "travel"; stage: number; edge: string; ms: number };
-
 function EdgeCallout({
   edge,
   link,
@@ -229,6 +209,7 @@ export default function RepoPoster({
   brandLabel,
   sourceRepoId,
   wikiHref,
+  at,
 }: {
   repoId: string;
   repo: RepoInfo | null;
@@ -250,16 +231,15 @@ export default function RepoPoster({
   /** Absolute Wiki address for the hero link, when the poster is shown on
    *  another site (codenib.ai); the app's own route otherwise. */
   wikiHref?: string;
+  /** Milliseconds into the traced path. Draws that frame and turns the
+   *  poster's own playback off, so a video renderer can seek it. */
+  at?: number;
 }) {
   // "card": the static 1200x630 link-preview image; no motion, no controls.
   const card = variant === "card";
   const hero = variant === "hero" || card;
-  const pageArea = useMemo(() => areaOfPage(pages), [pages]);
   const stages = journey?.stages ?? [];
-  const stageAreas = useMemo(
-    () => stages.map((stage) => (stage.page ? pageArea.get(stage.page.id) ?? stage.page.id : undefined)),
-    [stages, pageArea],
-  );
+  const stageAreas = useMemo(() => journeyAreas(stages, pages), [stages, pages]);
   const { hops } = useMemo(() => tracedHops(stageAreas), [stageAreas]);
   // Lay out at the canvas's real width so text is drawn at its CSS size
   // instead of being scaled with the drawing.
@@ -344,64 +324,53 @@ export default function RepoPoster({
 
   // One timeline: rest on each stage, travel along the hop when the next
   // stage lives in another area.
-  const timeline = useMemo<Step[]>(() => {
-    const steps: Step[] = [];
-    stages.forEach((_stage, index) => {
-      steps.push({ kind: "dwell", stage: index, ms: DWELL_MS });
-      const here = stageAreas[index];
-      const next = stageAreas[index + 1];
-      if (index + 1 < stages.length && here && next && here !== next) {
-        steps.push({ kind: "travel", stage: index, edge: `${here}\u0000${next}`, ms: TRAVEL_MS });
-      }
-    });
-    return steps;
-  }, [stages, stageAreas]);
+  const timeline = useMemo(() => traceSteps(stageAreas), [stageAreas]);
+  const seeking = at != null;
+  const seekFrame = seeking ? traceFrame(timeline, at) : null;
+
+  // The pulse moves outside React so playback does not re-render the map.
+  const placePulse = (frame: TraceFrame | null) => {
+    const pulse = pulseRef.current;
+    if (!pulse) return;
+    const path = frame?.edge ? pathRefs.current.get(frame.edge) : undefined;
+    if (!frame || !path) {
+      pulse.setAttribute("opacity", "0");
+      return;
+    }
+    const point = path.getPointAtLength(path.getTotalLength() * frame.progress);
+    pulse.setAttribute("cx", String(point.x));
+    pulse.setAttribute("cy", String(point.y));
+    pulse.setAttribute("opacity", "1");
+  };
 
   useEffect(() => {
-    if (!playing || timeline.length === 0) return;
-    let frame = 0;
+    if (!playing || seeking || timeline.length === 0) return;
+    let handle = 0;
     const started = performance.now();
-    const total = timeline.reduce((sum, step) => sum + step.ms, 0);
     const tick = (now: number) => {
-      let t = now - started;
-      if (t >= total) {
+      const frame = traceFrame(timeline, now - started);
+      placePulse(frame);
+      if (!frame) {
         setPlaying(false);
         setActiveStage(null);
-        pulseRef.current?.setAttribute("opacity", "0");
         return;
       }
-      for (const step of timeline) {
-        if (t > step.ms) {
-          t -= step.ms;
-          continue;
-        }
-        const pulse = pulseRef.current;
-        if (step.kind === "dwell") {
-          setActiveStage((current) => (current === step.stage ? current : step.stage));
-          pulse?.setAttribute("opacity", "0");
-        } else {
-          const path = pathRefs.current.get(step.edge);
-          if (path && pulse) {
-            const eased = 0.5 - Math.cos((Math.PI * t) / step.ms) / 2;
-            const point = path.getPointAtLength(path.getTotalLength() * eased);
-            pulse.setAttribute("cx", String(point.x));
-            pulse.setAttribute("cy", String(point.y));
-            pulse.setAttribute("opacity", "1");
-          }
-        }
-        break;
-      }
-      frame = requestAnimationFrame(tick);
+      setActiveStage((current) => (current === frame.stage ? current : frame.stage));
+      handle = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [playing, timeline]);
+    handle = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(handle);
+  }, [playing, seeking, timeline]);
+
+  useLayoutEffect(() => {
+    if (seeking) placePulse(seekFrame);
+  });
 
   // Play once, the first time the poster is on screen, unless the reader
   // asked for less motion.
   useEffect(() => {
     const node = rootRef.current;
-    if (!node || played.current || timeline.length === 0 || card) return;
+    if (!node || played.current || timeline.length === 0 || card || seeking) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting) && !played.current) {
@@ -449,7 +418,8 @@ export default function RepoPoster({
     }
   };
 
-  const focusArea = activeStage != null ? stageAreas[activeStage] ?? null : null;
+  const stageNow = seeking ? seekFrame?.stage ?? null : activeStage;
+  const focusArea = stageNow != null ? stageAreas[stageNow] ?? null : null;
   const litNode = hoverNode ?? focusArea;
   const touches = (edge: PosterEdge, id: string | null) =>
     id != null && (edge.source === id || edge.target === id);
@@ -467,7 +437,7 @@ export default function RepoPoster({
       <g className="poster-node-stages">
         {staged.map(({ index }, i) => (
           <g key={index} transform={`translate(${right - 16 - (staged.length - 1 - i) * 22} 0)`}>
-            <circle r="9" className={activeStage === index ? "is-now" : ""} />
+            <circle r="9" className={stageNow === index ? "is-now" : ""} />
             <text textAnchor="middle" dy="3.5">{index + 1}</text>
           </g>
         ))}
@@ -614,6 +584,8 @@ export default function RepoPoster({
               return (
                 <g
                   key={key}
+                  data-source={edge.source}
+                  data-target={edge.target}
                   className={`poster-edge${edge.traced ? " is-traced" : ""}${dim ? " is-dim" : ""}${hot ? " is-hot" : ""}`}
                 >
                   <path
@@ -653,6 +625,7 @@ export default function RepoPoster({
               return (
                 <g
                   key={node.id}
+                  data-area={node.id}
                   className={`poster-node${lit ? " is-lit" : ""}${dim ? " is-dim" : ""}${
                     focusArea === node.id ? " is-active" : ""
                   }`}
@@ -782,7 +755,7 @@ export default function RepoPoster({
               <li key={stage.index}>
                 <button
                   type="button"
-                  className={`poster-step${activeStage === index ? " is-now" : ""}`}
+                  className={`poster-step${stageNow === index ? " is-now" : ""}`}
                   onMouseEnter={() => !playing && setActiveStage(index)}
                   onMouseLeave={() => !playing && setActiveStage(null)}
                   onClick={() => stage.page && onPick?.(stage.page.id)}
