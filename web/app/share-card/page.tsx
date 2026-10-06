@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { loadRepoMap, type Loaded } from "@/components/HomeMap";
 import RepoPoster from "@/components/RepoPoster";
@@ -11,6 +11,17 @@ import { assetUrl } from "@/lib/runtime";
 const W = 1200;
 const H = 630;
 const SITE_MAP = "psf__requests";
+
+/** A summary's `code` spans as code, not as literal backticks. */
+function summaryNodes(text: string): ReactNode[] {
+  return text.split(/(`[^`]+`)/).map((part, index) =>
+    part.length > 2 && part.startsWith("`") && part.endsWith("`") ? (
+      <code key={index}>{part.slice(1, -1)}</code>
+    ) : (
+      part
+    ),
+  );
+}
 
 /**
  * The 1200x630 image a shared link shows. `web/scripts/render-share-cards.mjs`
@@ -70,6 +81,7 @@ export default function ShareCardPage({ repoId }: { repoId?: string }) {
   }, [done, loaded]);
 
   const hasMap = loaded != null && loaded.map.areas.some((area) => area.symbols > 0);
+  const host = new URLSearchParams(window.location.search).get("host") || "demo.codenib.ai";
   return (
     <div
       className={`share-card${site ? " is-site" : ""}`}
@@ -103,7 +115,7 @@ export default function ShareCardPage({ repoId }: { repoId?: string }) {
           {hasMap ? (
             <RepoPoster
               variant="card"
-              brandHost={new URLSearchParams(window.location.search).get("host") || "demo.codenib.ai"}
+              brandHost={host}
               repoId={id}
               repo={repo}
               map={loaded.map}
@@ -113,7 +125,10 @@ export default function ShareCardPage({ repoId }: { repoId?: string }) {
           ) : (
             <div className="share-card-plain">
               <h1>{repo?.repo || id}</h1>
-              <p>{repo?.summary || repo?.description || "A source-linked Wiki."}</p>
+              <p>{summaryNodes(repo?.summary || repo?.description || "A source-linked Wiki.")}</p>
+              <span className="share-card-url">
+                {host}/{id}
+              </span>
             </div>
           )}
         </div>
