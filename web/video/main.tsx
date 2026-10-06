@@ -1,0 +1,71 @@
+// SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+// Dev-only entry for the system-map film (/video/index.html on the Vite dev
+// server). `?repo=<id>` picks a captured map; `?play` loops it in real time.
+// scripts/render-repo-video.mjs drives window.__video to seek frame by frame.
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
+
+import type { CapturedMap } from "@/landing-hero/LandingMap";
+import captured from "@/landing-hero/maps";
+
+import RepoVideo, { planVideo, type CallSite, type Excerpt } from "./RepoVideo";
+
+declare global {
+  interface Window {
+    __video?: {
+      duration: number;
+      repo: CapturedMap["repo"];
+      site: CallSite;
+      setExcerpt: (excerpt: Excerpt) => void;
+      seek: (t: number) => Promise<void>;
+    };
+  }
+}
+
+const params = new URLSearchParams(window.location.search);
+const id = params.get("repo") || "psf__requests";
+const scene = (captured as CapturedMap[]).find((item) => item.id === id);
+const plan = scene ? planVideo(scene) : null;
+const mount = document.getElementById("video")!;
+
+if (!scene || !plan) {
+  mount.textContent = `No film for ${id}: it needs a traced path with a recorded call between two stages.`;
+} else {
+  const root = createRoot(mount);
+  let t = Number(params.get("t") || 0);
+  let excerpt: Excerpt | null = null;
+  const host = params.get("host") || "demo.codenib.ai";
+  const render = () =>
+    flushSync(() =>
+      root.render(<RepoVideo captured={scene} plan={plan} t={t} excerpt={excerpt} host={host} />),
+    );
+  const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  render();
+  window.__video = {
+    duration: plan.cues.total,
+    repo: scene.repo,
+    site: plan.site,
+    setExcerpt(next) {
+      excerpt = next;
+      render();
+    },
+    async seek(next) {
+      t = next;
+      render();
+      await frame();
+      // A measured layout change re-renders once more; let it paint.
+      await frame();
+    },
+  };
+  if (params.has("play")) {
+    const start = performance.now();
+    const loop = (now: number) => {
+      t = (now - start) % plan.cues.total;
+      render();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+}
