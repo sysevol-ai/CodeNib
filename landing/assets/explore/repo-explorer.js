@@ -15,12 +15,37 @@ const nodeNote = (node, index) => index === 3
   ? "Hostname check shown. The full method also handles scheme and port changes."
   : `Excerpt from ${node.symbol}. Open GitHub to see the surrounding method.`;
 const edgeNote = (edge) => `Indexed call at line ${edge.anchor.line}. This is a selected path, not the whole runtime flow.`;
+// These questions use only the four symbols and three calls in the captured
+// artifact. Request and impact answers describe this path, not full coverage.
+const tasks = {
+  auth: {
+    question: "Why does Requests drop auth on a redirect?",
+    answer: 'A different hostname makes <code>should_strip_auth()</code> return true. The caller removes the <code>Authorization</code> header.',
+    selection: ["edge", 2],
+  },
+  request: {
+    question: "Which functions handle a redirected request?",
+    answer: '<code>Session.send()</code> follows redirects through <code>resolve_redirects()</code>, which calls <code>rebuild_auth()</code> and its destination check. This is the authentication path within a request.',
+    selection: ["node", 0],
+  },
+  impact: {
+    question: "What could change if I edit rebuild_auth()?",
+    answer: '<code>resolve_redirects()</code> calls <code>rebuild_auth()</code> and is reached from <code>Session.send()</code>. Redirect handling in these callers could be affected; these are the callers on this selected path.',
+    selection: ["edge", 1],
+  },
+};
 
 /** One small, source-pinned preview shared by the static site and Wiki app.
  * All exploration is local. No source, graph, or inference API is contacted.
  * The host can observe bounded experience events; none carry user input.
  */
 class RepoExplorer extends HTMLElement {
+  static get observedAttributes() { return ["task"]; }
+
+  attributeChangedCallback() {
+    if (this.shadowRoot) this.showTask();
+  }
+
   connectedCallback() {
     if (this.shadowRoot) return;
     this.id ||= "requests-auth";
@@ -31,9 +56,13 @@ class RepoExplorer extends HTMLElement {
       <article aria-label="Explore a real Requests code path">
         <header>
           <div class="eyebrow"><span class="status-dot"></span> TRY A REAL EXAMPLE <span class="repo">psf/requests</span></div>
-          <h2>Why does Requests drop auth on a redirect?</h2>
-          <p>Follow the calls. Click a step or arrow to inspect its source.</p>
+          <h2 class="example-question"></h2>
+          <p>Click a step or arrow to inspect the source behind this explanation.</p>
         </header>
+        <div class="answer" aria-live="polite">
+          <span class="answer-marker" aria-hidden="true">↳</span>
+          <p></p>
+        </div>
         <div class="flow" role="group" aria-label="Indexed call path">
           ${evidence.nodes.map((node, index) => `
             ${index ? `<button class="edge" data-edge="${index - 1}" aria-label="Show call from ${escape(symbol(evidence.nodes[index - 1]))} to ${escape(symbol(node))}" aria-pressed="false" aria-controls="example-source"><span aria-hidden="true">→</span></button>` : ""}
@@ -43,10 +72,6 @@ class RepoExplorer extends HTMLElement {
               <code>${escape(symbol(node))}</code>
             </button>
           `).join("")}
-        </div>
-        <div class="answer">
-          <span class="answer-marker" aria-hidden="true">↳</span>
-          <p>A different hostname makes <code>should_strip_auth()</code> return true. The caller removes the <code>Authorization</code> header.</p>
         </div>
         <section class="source" id="example-source" aria-label="Selected source excerpt">
           <div class="source-head"><span class="source-label"></span><a class="source-link" target="_blank" rel="noopener noreferrer">Open on GitHub ↗</a></div>
@@ -87,7 +112,7 @@ class RepoExplorer extends HTMLElement {
         root.querySelector(".share-status").textContent = `Copy this link: ${link.href}`;
       }
     });
-    this.select("edge", 2, false);
+    this.showTask();
     this.observer = new IntersectionObserver((entries) => {
       if (entries.some(entry => entry.isIntersecting)) {
         this.report("example_view");
@@ -98,6 +123,15 @@ class RepoExplorer extends HTMLElement {
   }
 
   disconnectedCallback() { this.observer?.disconnect(); }
+
+  showTask() {
+    const name = this.getAttribute("task");
+    const task = Object.hasOwn(tasks, name) ? tasks[name] : tasks.auth;
+    const root = this.shadowRoot;
+    root.querySelector(".example-question").textContent = task.question;
+    root.querySelector(".answer p").innerHTML = task.answer;
+    this.select(...task.selection, false);
+  }
 
   report(event) {
     this.dispatchEvent(new CustomEvent("codenib:experience", {

@@ -7,9 +7,9 @@ SPDX-License-Identifier: Apache-2.0
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CodeNib: Understand a Repo. Follow the Code.</title>
-<meta name="description" content="Explore how a repository works, follow real calls to their source, and keep going with a complete Wiki. Try the interactive example without an account.">
-<meta property="og:title" content="CodeNib: Understand a Repo. Follow the Code.">
+<title>CodeNib: Understand Unfamiliar Code with Evidence.</title>
+<meta name="description" content="Understand unfamiliar code with evidence. Try a Requests question, follow its call path, and inspect the source. Then explore your own repository or connect your agent.">
+<meta property="og:title" content="CodeNib: Understand Unfamiliar Code with Evidence.">
 <meta property="og:description" content="A real question, an interactive code path, and the source behind it. Explore a repository Wiki, then bring that context to your coding agent.">
 <meta property="og:image" content="https://codenib.ai/assets/explore/requests-card.png">
 <meta property="og:image:width" content="1200">
@@ -20,7 +20,6 @@ SPDX-License-Identifier: Apache-2.0
 <meta name="twitter:card" content="summary_large_image">
 <link rel="canonical" href="https://codenib.ai/">
 <link rel="icon" href="assets/codenib-icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/hero-map/hero-map.css">
 <script>document.documentElement.classList.add("js")</script>
 <style>
 /* Fonts: self-hosted Geist (variable) */
@@ -37,22 +36,19 @@ SPDX-License-Identifier: Apache-2.0
   font-display: swap;
 }
 
-/* Tokens: white, matching the demo's light UI */
+/* Light page chrome around the dark evidence example. */
 :root {
   /* Read by the shared example component (shadow DOM) for its type. */
   --font-geist-sans: "Geist";
   --font-geist-mono: "Geist Mono";
-  /* Read by the hero map, which shares its stylesheet with the demo. */
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --bg: #ffffff;
+  --bg: #f8fafc;
   --surface: #ffffff;
-  --subtle: #f8fafc;
+  --subtle: #f1f5f9;
   --line: #e2e8f0;
   --ink: #0f172a;
   --ink-2: #475569;
-  --ink-3: #94a3b8;
-  --accent: #2563eb;
+  --ink-3: #64748b;
+  --accent: #0e7490;
   --accent-ink: #ffffff;
   --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px rgba(15, 23, 42, 0.06);
   --r-box: 16px;   /* containers */
@@ -76,7 +72,7 @@ img { max-width: 100%; height: auto; display: block; }
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
 
 /* ---- nav ---- */
-/* Page chrome only: the hero map has its own header and footer. */
+/* Page chrome only: the example has its own header and footer. */
 body > header {
   position: sticky; top: 0; z-index: 20;
   background: color-mix(in srgb, var(--bg) 82%, transparent);
@@ -99,22 +95,18 @@ body > header {
 }
 .btn:active { transform: translateY(1px) scale(0.99); }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-primary:hover { box-shadow: 0 4px 16px rgba(37, 99, 235, 0.18); transform: translateY(-1px); }
+.btn-primary:hover { box-shadow: 0 4px 16px rgba(14, 116, 144, 0.18); transform: translateY(-1px); }
 .btn-ghost { border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
 .btn-ghost:hover { border-color: var(--ink-3); transform: translateY(-1px); }
 .btn-lg { font-size: 15.5px; padding: 12px 24px; }
 
-/* ---- hero stage ----
-   The demo home's stage (demo.codenib.ai): the live map beside the headline,
-   then the worked example. Both rows share one column split and their tops;
-   the intro column spans the map's height so its entry ends level with it. */
+/* ---- hero: question, explanation, calls, source ---- */
 .stage {
-  --h-text: #e6edf7; --h-soft: #b6c2d4; --h-muted: #8a97ab;
+  --h-text: #e6edf7; --h-soft: #b6c2d4; --h-muted: #a9b8cc;
   --h-line: rgba(148, 163, 184, 0.16); --h-line-strong: rgba(148, 163, 184, 0.32);
   --h-accent: #60a5fa; --h-trace: #22d3ee;
   position: relative; overflow: hidden;
-  display: grid; gap: clamp(56px, 7vw, 96px);
-  padding: clamp(40px, 5vw, 64px) 0 clamp(56px, 6vw, 88px);
+  padding: clamp(28px, 3.5vw, 48px) 0;
   color: var(--h-text);
   background:
     radial-gradient(1100px 520px at 78% -8%, rgba(59, 130, 246, 0.24), transparent 62%),
@@ -132,38 +124,45 @@ body > header {
   display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
   column-gap: clamp(32px, 4.5vw, 72px); align-items: stretch;
 }
-.stage-intro { display: flex; flex-direction: column; justify-content: space-between; gap: 36px; min-width: 0; padding-top: 4px; }
+.stage-intro { min-width: 0; padding-top: 18px; }
 .stage-eyebrow { color: var(--h-trace); font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
-.stage-intro h1 { margin: 18px 0 22px; color: #fff; font-size: clamp(2.5rem, 3.9vw, 3.5rem); font-weight: 650; line-height: 1.04; letter-spacing: -0.045em; text-wrap: balance; }
-.stage-example-intro h2 { margin: 16px 0; color: #fff; font-size: clamp(1.75rem, 2.8vw, 2.5rem); font-weight: 650; line-height: 1.1; letter-spacing: -0.035em; text-wrap: balance; }
+.stage-intro h1 { margin: 16px 0 20px; color: #fff; font-size: clamp(2.4rem, 3.7vw, 3.4rem); font-weight: 650; line-height: 1.08; letter-spacing: -0.045em; text-wrap: balance; }
+.stage-intro h1 span { color: var(--h-trace); }
 .stage-sub { max-width: 46ch; color: var(--h-soft); font-size: 17px; line-height: 1.65; }
-.stage-map { min-width: 0; min-height: 620px; }
-.stage-map img { border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.18); }
-.stage-example-intro { position: sticky; top: 96px; align-self: start; min-width: 0; padding-top: 24px; }
-.ready-wikis { display: flex; flex-wrap: wrap; gap: 6px; }
-.ready-wikis > span { flex-basis: 100%; margin-bottom: 4px; color: var(--h-muted); font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
-.ready-wikis a { display: inline-flex; align-items: baseline; gap: 7px; padding: 6px 12px; border: 1px solid var(--h-line); border-radius: 999px; background: rgba(255, 255, 255, 0.03); color: var(--h-text); font-size: 13px; font-weight: 500; transition: border-color .2s, background .2s; }
-.ready-wikis a span { color: var(--h-muted); font-family: "Geist Mono", ui-monospace, monospace; font-size: 11px; }
-.ready-wikis a:hover { border-color: rgba(96, 165, 250, 0.6); background: rgba(96, 165, 250, 0.08); }
-.ready-wikis a.more { color: var(--h-accent); }
-.repo-entry label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--h-text); }
+.stage-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.stage .btn-primary { background: var(--h-trace); color: #07131d; }
+.stage .btn-ghost { background: transparent; border-color: var(--h-line-strong); color: var(--h-text); }
+.stage-note { margin-top: 12px; color: var(--h-muted); font-size: 13px; }
+.example-tasks { display: grid; gap: 8px; margin-top: 30px; }
+.example-tasks > p { color: var(--h-soft); font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.example-tasks button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 11px 14px; border: 1px solid var(--h-line); border-radius: var(--r-ui); background: rgba(255, 255, 255, 0.03); color: var(--h-soft); font: inherit; font-size: 14px; line-height: 1.45; cursor: pointer; text-align: left; }
+.example-tasks button::after { content: "→"; color: var(--h-trace); }
+.example-tasks button:hover, .example-tasks button[aria-pressed="true"] { border-color: var(--h-trace); background: rgba(34, 211, 238, 0.08); color: #fff; }
+.example-tasks button:focus-visible { outline: 3px solid var(--h-trace); outline-offset: 3px; }
+html:not(.js) .example-tasks { display: none; }
+.stage-evidence { min-width: 0; }
+.repository-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
+.repository-handoff .section-sub { font-size: 16px; }
+.repo-entry { padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); box-shadow: var(--shadow); }
+.repo-entry label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
 .repo-entry-row { display: flex; gap: 8px; }
-.repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 15px; padding: 13px 16px; border: 1px solid var(--h-line-strong); border-radius: 8px; background: rgba(255, 255, 255, 0.04); color: var(--h-text); }
+.repo-entry input { min-width: 0; flex: 1; font: inherit; font-size: 15px; padding: 13px 16px; border: 1px solid #cbd5e1; border-radius: 8px; background: var(--surface); color: var(--ink); }
 .repo-entry input::placeholder { color: #64748b; }
-.repo-entry input:focus-visible { outline: 2px solid var(--h-accent); outline-offset: 2px; }
+.repo-entry input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .repo-entry button { font: inherit; font-size: 15px; font-weight: 600; border: 0; cursor: pointer; padding: 12px 20px; }
-.repo-entry p { font-size: 12px; color: var(--h-muted); margin-top: 10px; }
-.url-tip { margin-top: 4px; color: var(--h-muted); font-size: 13px; }
-.url-tip code { padding: 1px 6px; border: 1px solid var(--h-line); border-radius: 5px; background: rgba(255, 255, 255, 0.04); color: var(--h-text); font-family: "Geist Mono", ui-monospace, monospace; font-size: 12px; }
+.repo-entry button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.repo-entry p { font-size: 13px; color: var(--ink-2); margin-top: 12px; }
+.repo-entry strong { color: var(--ink); }
+.repository-more { margin-top: 20px; font-size: 14px; color: var(--ink-2); }
 /* The shared example (shadow DOM) takes the stage's palette through the
    properties it reads. */
 .stage codenib-explorer {
   display: block; min-width: 0;
   --bg-surface: rgba(10, 15, 28, 0.9); --bg-muted: rgba(255, 255, 255, 0.03);
   --border-subtle: rgba(148, 163, 184, 0.2); --text-primary: #e6edf7;
-  --text-secondary: #94a3b8; --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, 0.12);
+  --text-secondary: #b6c2d4; --accent: #67e8f9; --accent-soft: rgba(34, 211, 238, 0.1);
 }
-.agent-handoff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; align-items: center; }
+.agent-handoff { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 4.5vw, 72px); align-items: start; }
 .agent-handoff .setup { margin-top: 0; }
 
 /* Static product preview: visiting the landing page never loads the demo. */
@@ -178,19 +177,17 @@ body > header {
 }
 .agent-demo { display: block; width: 100%; height: auto; background: #0b1523; }
 .preview-caption { padding: 12px 16px; font-size: 13px; color: var(--ink-2); }
-.evidence { margin-top: 22px; font-size: 14px; color: var(--ink-2); }
-.evidence strong { display: block; font-size: 22px; color: var(--ink); letter-spacing: -.02em; }
+.evidence { margin-top: 24px; padding: 20px 24px; border-left: 3px solid var(--accent); border-radius: 0 var(--r-ui) var(--r-ui) 0; background: var(--subtle); font-size: 14px; color: var(--ink-2); }
+.evidence strong { display: block; font-size: 20px; color: var(--ink); letter-spacing: -.02em; margin-bottom: 4px; }
 .evidence a, .text-link { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
-.setup { margin-top: 40px; padding: 24px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--subtle); }
-.setup h2 { font-size: 20px; }
-.setup pre { overflow-x: auto; margin: 14px 0; padding: 16px; background: var(--ink); color: #f8fafc; border-radius: var(--r-ui); font-size: 13px; }
-.setup p { color: var(--ink-2); font-size: 14px; }
+.setup pre { overflow-x: auto; margin: 20px 0; padding: 18px; background: var(--ink); color: #f8fafc; border-radius: var(--r-ui); font-size: 13px; }
+.setup p { margin-top: 14px; color: var(--ink-2); font-size: 15px; }
 .setup code { font-family: "Geist Mono", ui-monospace, monospace; }
 a:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
 [id] { scroll-margin-top: 84px; }
 
 /* ---- sections ---- */
-main > section { padding: 96px 0 0; }
+main > section { padding: 80px 0 0; }
 h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0.025em; line-height: 1.15; }
 .section-sub { margin-top: 12px; color: var(--ink-2); font-size: 16.5px; max-width: 58ch; }
 
@@ -208,7 +205,7 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
 /* latest article */
 .latest-card {
   display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-  margin-top: 40px; overflow: hidden;
+  margin-top: 28px; overflow: hidden;
   border: 1px solid var(--line); border-radius: var(--r-box);
   background: var(--surface);
   transition: border-color .2s;
@@ -230,13 +227,13 @@ h2 { font-size: clamp(1.7rem, 3vw, 2.3rem); font-weight: 620; letter-spacing: -0
 .latest-card p { margin-top: 14px; color: var(--ink-2); font-size: 15.5px; max-width: 46ch; }
 .latest-more { margin-top: 23px; color: var(--accent); font-size: 14.5px; font-weight: 600; }
 .latest-art {
-  display: flex; align-items: center; min-height: 380px;
+  display: flex; align-items: center; min-height: 320px;
   border-left: 1px solid var(--line); background: var(--subtle); padding: 24px;
 }
 .latest-art img { width: 100%; border: 1px solid #dbe5f1; border-radius: 12px; }
 
 /* final CTA */
-.cta-block { text-align: center; padding: 110px 0; }
+.cta-block { text-align: center; padding: 80px 0; }
 .cta-block h2 { font-size: clamp(2rem, 4vw, 2.9rem); }
 .cta-block .ctas { display: flex; gap: 12px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
 
@@ -266,26 +263,36 @@ body > footer { border-top: 1px solid var(--line); }
   .nav { gap: 16px; }
   .nav a.gh { display: none; }
   .stage-row { grid-template-columns: minmax(0, 1fr); row-gap: 32px; }
-  .stage-intro { gap: 28px; }
-  .stage-map { min-height: 0; }
-  .stage-example-intro { position: static; padding-top: 0; }
+  .stage-intro { display: contents; }
+  .stage-copy { order: 0; }
+  .stage-evidence { order: 1; }
+  .example-tasks { order: 2; margin-top: 0; }
+  .repository-handoff { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .agent-handoff { grid-template-columns: minmax(0, 1fr); }
   .bento { grid-template-columns: 1fr; }
   .latest-card { grid-template-columns: 1fr; }
   .latest-copy { padding: 30px 28px; }
   .latest-art { min-height: 0; border-top: 1px solid var(--line); border-left: 0; }
-  main > section { padding-top: 72px; }
+  main > section { padding-top: 56px; }
 }
 @media (max-width: 540px) {
   .wrap { padding-inline: 18px; }
-  .stage-intro h1 { font-size: 38px; }
+  .stage-intro h1 { font-size: 34px; }
   .stage-sub { font-size: 16px; }
+  .stage-ctas { gap: 8px; }
+  .stage-ctas .btn { font-size: 13px; padding: 10px 12px; }
+  .stage-ctas .btn-primary span { display: none; }
   .repo-entry-row { flex-direction: column; }
+  .repo-entry { padding: 20px; }
+  .cell { padding: 24px; }
   .nav { gap: 12px; }
   .brand img { height: 28px; max-width: 122px; }
   .nav .docs-link { display: none; }
   .nav .btn { padding: 8px 12px; }
   .latest-art { padding: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
 }
 </style>
 </head>
@@ -301,67 +308,65 @@ body > footer { border-top: 1px solid var(--line); }
     <a class="link gh" href="https://github.com/sysevol-ai/CodeNib" aria-label="Source on GitHub">
       <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
     </a>
-    <a class="btn btn-primary" href="#get-started">Use with your agent</a>
+    <a class="link" href="#example-source">Try an example</a>
   </div>
 </header>
 
 <main>
-  <!-- The same stage as the demo home: the live system map first, then the
-       worked example. The map and its data are bundled into
-       assets/hero-map/ (web/vite.landing.config.ts); nothing loads from the
-       demo until the reader follows a link. -->
+  <!-- The existing, source-pinned Requests example is the first experience.
+       Its evidence is bundled locally; following a Wiki link is explicit. -->
   <div class="stage">
     <div class="wrap stage-row">
       <div class="stage-intro">
-        <div>
-          <p class="stage-eyebrow">From the big picture to the source</p>
-          <h1>Understand a repo.<br>Follow the code.</h1>
-          <p class="stage-sub">Every repository is mapped from its code index: its parts, the calls between them, and the path a request takes through them. Follow any line down to the source.</p>
+        <div class="stage-copy">
+          <p class="stage-eyebrow">Get to know the code</p>
+          <h1>Understand unfamiliar code<br><span>with evidence.</span></h1>
+          <p class="stage-sub">Explore how a repository works, follow its call paths, and inspect the source behind each explanation.</p>
+          <div class="stage-ctas">
+            <a class="btn btn-primary btn-lg" href="#example-source">Try an example <span aria-hidden="true">→</span></a>
+            <a class="btn btn-ghost btn-lg" href="#get-started">Use with your agent</a>
+          </div>
+          <p class="stage-note">No account or API key needed for the example.</p>
         </div>
-        <div class="ready-wikis" aria-label="Ready Wikis">
-          <span>Ready to read, no setup</span>
-          <a href="https://demo.codenib.ai/psf__requests">requests <span>Python</span></a>
-          <a href="https://demo.codenib.ai/tokio-rs__tokio">tokio <span>Rust</span></a>
-          <a href="https://demo.codenib.ai/caddyserver__caddy">caddy <span>Go</span></a>
-          <a href="https://demo.codenib.ai/gin-gonic__gin">gin <span>Go</span></a>
-          <a href="https://demo.codenib.ai/sharkdp__bat">bat <span>Rust</span></a>
-          <a href="https://demo.codenib.ai/fmtlib__fmt">fmt <span>C++</span></a>
-          <a href="https://demo.codenib.ai/sympy__sympy">sympy <span>Python</span></a>
-          <a href="https://demo.codenib.ai/nushell__nushell">nushell <span>Rust</span></a>
-          <a class="more" href="https://demo.codenib.ai/browse">All Wikis →</a>
-        </div>
-        <div class="hero-entry">
-          <form class="repo-entry" action="https://demo.codenib.ai/" method="get">
-            <label for="repository">Explore your own repository</label>
-            <div class="repo-entry-row">
-              <input id="repository" name="repo" placeholder="https://github.com/owner/repo" type="text" inputmode="url" maxlength="2048" autocomplete="off" spellcheck="false" required>
-              <button class="btn btn-primary" type="submit">Open Wiki →</button>
-            </div>
-            <p>Ready Wikis open instantly. A new Wiki uses your OpenRouter account; you review the cost limit before starting.</p>
-            <p>Hosted limits: 20 MiB download, 40 MiB retained files, 4,000 files. Files over 4 MiB are skipped. <a href="https://demo.codenib.ai/add-repo">Check repository eligibility before connecting OpenRouter →</a></p>
-          </form>
-          <p class="url-tip">Or replace <code>github.com</code> with <code>demo.codenib.ai</code> in any repository URL.</p>
+        <div class="example-tasks" role="group" aria-label="Choose a code question">
+          <p>Start with a question</p>
+          <button type="button" data-example-task="auth" aria-pressed="true" aria-controls="example-source">Why does a redirect remove authentication?</button>
+          <button type="button" data-example-task="request" aria-pressed="false" aria-controls="example-source">Which functions handle a redirected request?</button>
+          <button type="button" data-example-task="impact" aria-pressed="false" aria-controls="example-source">What could change if I edit rebuild_auth()?</button>
         </div>
       </div>
-      <div id="codenib-hero-map" class="stage-map" data-demo="https://demo.codenib.ai">
-        <noscript><a href="https://demo.codenib.ai/psf__requests"><img src="assets/explore/requests-map.png" width="1200" height="630" alt="System map of psf/requests: five areas, the references recorded between them, and the traced path from request() to HTTPAdapter.build_response()."></a></noscript>
+      <div class="stage-evidence" id="example-source">
+        <codenib-explorer id="requests-auth"><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
+        <noscript><p class="stage-note">A redirect to a different hostname removes the Authorization header. <a href="https://github.com/psf/requests/blob/f361ead047be5cb873174218582f7d8b9fcd9f49/src/requests/sessions.py#L324-L327">Read the exact source on GitHub →</a></p></noscript>
       </div>
-    </div>
-    <div class="wrap stage-row stage-example">
-      <div class="stage-example-intro">
-        <p class="stage-eyebrow">From the map to the line</p>
-        <h2>Ask one question. Land on the exact lines.</h2>
-        <p class="stage-sub">Each step is a call the index recorded. Click one to read the source it points at. No account or API key needed.</p>
-      </div>
-      <codenib-explorer><a href="https://demo.codenib.ai/psf__requests?p=redirects">Explore how Requests handles redirects →</a></codenib-explorer>
     </div>
   </div>
+
+  <section id="your-repository" aria-labelledby="your-repository-title">
+    <div class="wrap repository-handoff">
+      <div>
+        <h2 id="your-repository-title">Now explore your own repository.</h2>
+        <p class="section-sub">Turn a public GitHub repository into a navigable Wiki with explanations and source references. Keep reading as chapters finish, then return to your saved link.</p>
+        <p class="repository-more">Want to keep exploring first? <a class="text-link" href="https://demo.codenib.ai/browse">Browse ready Wikis →</a></p>
+      </div>
+      <form class="repo-entry" action="https://demo.codenib.ai/" method="get">
+        <label for="repository">Public GitHub repository</label>
+        <div class="repo-entry-row">
+          <input id="repository" name="repo" placeholder="https://github.com/owner/repo" type="text" inputmode="url" maxlength="2048" autocomplete="off" spellcheck="false" aria-describedby="repository-cost repository-limits" required>
+          <button class="btn btn-primary" type="submit">Open Wiki →</button>
+        </div>
+        <p id="repository-cost"><strong>Ready Wikis open instantly.</strong> A new Wiki uses your OpenRouter account and credits. Choose a model and a $0.25–$5 spending limit before starting; a provider call already in progress can exceed that limit.</p>
+        <p id="repository-limits"><strong>Hosted limits:</strong> 20 MiB download, 40 MiB retained files, 4,000 files and 50,000 code chunks. Files over 4 MiB are skipped.</p>
+        <p><a class="text-link" href="https://demo.codenib.ai/add-repo">Check repository eligibility before connecting OpenRouter →</a></p>
+      </form>
+    </div>
+  </section>
 
   <section>
     <div class="wrap agent-handoff">
       <div class="setup" id="get-started">
         <h2>Take that context to your coding agent.</h2>
-        <p>Explore your own checkout with Claude Code or Codex.</p>
+        <p>Build a local index for Claude Code or Codex. Find definitions, follow callers and read the source in your own checkout.</p>
         <pre><code>python -m pip install "codenib[graph,mcp]"
 codenib codegraph init /path/to/your/repo</code></pre>
         <p>Python 3.10+, Git, a clean checkout, and Claude Code or Codex. This shipping CodeGraph path runs locally without a model, API key, or GPU for CodeNib; your agent uses its own model. It is separate from the grep/Jev experiment.</p>
@@ -369,7 +374,7 @@ codenib codegraph init /path/to/your/repo</code></pre>
       </div>
       <figure class="frame rise d2">
         <div class="frame-bar"><span>Requests · Claude Code + CodeNib</span><span>15-second replay</span></div>
-        <video class="agent-demo" controls muted playsinline preload="metadata" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup, Claude Code source lookup and caller-chain trace" aria-describedby="agent-demo-caption">
+        <video class="agent-demo" controls muted playsinline preload="none" width="1080" height="608" poster="assets/demos/codegraph-claude.png" aria-label="Recorded CodeGraph setup, Claude Code source lookup and caller-chain trace" aria-describedby="agent-demo-caption">
           <source src="assets/demos/codegraph-claude.webm" type="video/webm">
           <source src="assets/demos/codegraph-claude.mp4" type="video/mp4">
           <img src="assets/demos/codegraph-claude.png" alt="CodeNib finds where Requests strips authentication on redirects and traces the caller chain from the public API">
@@ -441,7 +446,6 @@ codenib codegraph init /path/to/your/repo</code></pre>
   </div>
 </main>
 <script type="module" src="assets/explore/repo-explorer.js"></script>
-<script type="module" src="assets/hero-map/hero-map.js"></script>
 <script type="module" src="assets/explore/landing-entry.js"></script>
 
 <footer>
