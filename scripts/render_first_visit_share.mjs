@@ -31,7 +31,7 @@ try {
     .logo { width: 160px; margin-bottom: 40px; } h1 { font-size: 43px; line-height: 1.12; letter-spacing: -1.6px; margin: 0 0 26px; }
     p { font-size: 22px; line-height: 1.5; color: #475569; max-width: 350px; } .url { font-size: 18px; color: #2563eb; margin-top: 34px; }
     .example { width: 660px; height: 570px; }
-  </style></head><body><main><section><img class="logo" src="assets/codenib-logo.svg" alt="CodeNib"><h1>Understand a repo.<br>Follow the code.</h1><p>A real question.<br>Clickable calls.<br>The source behind them.</p><div class="url">codenib.ai</div></section><div class="example"><codenib-explorer></codenib-explorer></div></main><script type="module" src="assets/explore/repo-explorer.js"></script></body></html>`);
+  </style></head><body><main><section><img class="logo" src="assets/codenib-logo.svg" alt="CodeNib"><h1>Understand unfamiliar code<br>with evidence.</h1><p>A real question.<br>Clickable calls.<br>The source behind them.</p><div class="url">codenib.ai</div></section><div class="example"><codenib-explorer></codenib-explorer></div></main><script type="module" src="assets/explore/repo-explorer.js"></script></body></html>`);
   await page.locator("codenib-explorer .code-line.selected").waitFor();
   await page.waitForLoadState("networkidle");
   await page.locator("codenib-explorer").evaluate(element => {

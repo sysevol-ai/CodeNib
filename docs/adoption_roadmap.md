@@ -84,64 +84,64 @@ all first-screen links work; quickstart remains exactly two commands.
 
 #### First-visit activation
 
-Status: the first-visit frontend is publicly deployed at
-[codenib.ai](https://codenib.ai/) and [demo.codenib.ai](https://demo.codenib.ai/)
-from `2fc8e451` as of 2026-09-28. Its implementation in
-[#809](https://github.com/sysevol-ai/CodeNib/pull/809) remains unmerged, stacked
-after #808 and its #803 → #804 → #805 → #806 → #807 dependencies. This gives
-the marketing and live Wiki homepages one shared, self-contained Requests
-question. Four source-pinned symbols and three indexed occurrence anchors
-are clickable without an account, model call, graph request or live source
-fetch. Mobile reading starts with that example before the repository form.
-The example leads into the full existing Wiki and keeps the local-agent setup
-and authentic CLI recording available. The research metric is supporting
-evidence below the first interaction, not the product's opening promise.
+Status: the shared first-visit surface is merged in
+[#809](https://github.com/sysevol-ai/CodeNib/pull/809) as `7748b3df`; its
+#803 → #808 dependencies are merged. The subsequent map-led marketing hero in
+[#817](https://github.com/sysevol-ai/CodeNib/pull/817) is merged as `0ba5e7ec`.
+The public site still presents the map before the worked question. The current
+`feat/landing-question-first` iteration is local; publication remains open.
 
-The natural `/owner/repo` route and marketing `?repo=` form resolve against
-the ready catalog before offering the existing visitor Wiki generation flow.
-Aliases replace browser history, retain chapter links, and expose retry on
-catalog failure. They do not infer a missing Wiki from a failed catalog read.
-Generation remains explicitly user-funded; this change does not claim free
-arbitrary-repository generation, new graph coverage or faster first chapters.
-Example links and a rendered homepage social card are available; individual
-Wiki social previews remain open.
+The marketing homepage now starts with a complete code-understanding task:
+**question → explanation → indexed calls → source**. The Requests
+redirect/authentication example sits beside concrete value copy and one
+primary “Try an example” action, with local-agent setup as the secondary action.
+Three task choices cover authentication, the redirect request path and callers
+that could be affected by changing `rebuild_auth()`. They use the same four
+source-pinned symbols and three recorded calls, and explicitly limit request
+and impact answers to that selected path. They are neither a runtime trace nor
+an exhaustive impact graph. The evidence stays bundled locally; browsing the
+example makes no model call, graph request or live source fetch.
 
-Local acceptance passes all three source links, keyboard operation, 1440/390/320
-pixel layouts, dark mode, reduced motion, catalog-outage exploration, aliases,
-refresh and Back navigation. Syntax-colored excerpts retain their exact source
-text and aligned call highlights. Switching nodes/calls keeps the card, adjacent
-heading and page scroll position stable; long source scrolls inside a fixed-height
-pane. The Web unit surface has 608 passing tests and one
-skip; all 142 frontend tests pass. Production build, strict MkDocs and the
-public-doc boundary pass. Opt-in measurement records fixed events only, with
-tab-session deduplication, privacy-signal suppression and a bounded log collector
-that stops reading uploads as soon as its 256-byte limit is exceeded.
-Events exclude user input, URLs, source and credentials. Counts are partial
-observations, separate by origin; source clicking and Wiki reading are leading
-indicators, while a successful own-repository agent query remains activation.
+The page order is example, own public repository, local Agent setup, technical
+evidence and documentation. Repository entry shows OpenRouter funding,
+spending-limit behavior and the existing hosted archive/file/chunk limits
+before sending visitors to the existing full Wiki pipeline. It continues to
+resolve prepared Wikis before offering user-funded generation, and makes no
+new arbitrary-repository cost, latency or graph-coverage promise. The Agent
+section explains local indexing and source navigation, distinguishing CodeNib's
+model-free graph route from the agent's own model and the grep/Jev experiment.
 
-Public desktop/mobile acceptance passes source syntax and stable selection,
-the marketing repository form's handoff to the prepared Wiki, natural paths,
-chapter refresh, the new-repository generation form, homepage social-image
-bytes/content type, and the existing blog index. Browsers report no page errors
-or failed resources, and verification sends no generation requests. The live
-generation API remains on `c7782a9a` without a process restart; the four saved
-visitor attempts remain complete. The old frontend and static release remain
-available through the deployment's rollback record. The optional event collector
-is not deployed or enabled; both public frontend collection switches remain off.
+The dark/cyan example remains the visual focus. Hero, repository and Agent
+sections share a content width and column split; typography, card padding,
+contrast and vertical spacing are consistent throughout the page. On phones,
+the default example precedes task choices and the repository form. Both
+`/#example-source` and the existing shared `/#requests-auth` link reach the
+example. The homepage sharing image uses the revised headline and real source.
 
-The production frontend opens the real cached Requests redirect chapter
-from the example with read-only requests. Existing visitor stop/resume,
-refresh, sharing and polling checks pass on desktop and mobile after correcting
-their stale pre-#808 graph-response fixture; the paused-run failure reproduced
-on the unchanged dependency tip as well. The acceptance criteria are unchanged.
+Local acceptance: the focused marketing browser harness checks task answers,
+all source controls, indexed call anchors, keyboard focus, stable source
+selection, section alignment, 1440/1024/860/768/390/320-pixel layouts, repository
+handoff, both fragment links and the no-JavaScript fallback. Those checks pass,
+along with 174 frontend unit tests, the production build, strict MkDocs and the
+public-doc boundary audit. Syntax artifacts match all four captured excerpts.
+The focused log-summary regression passes before, after and duplicate events
+for independent tabs and origins.
 
-Open gates: merge/restack the dependency chain; deploy and enable hosted
-measurement with the matching collector and log-retention policy; establish
-a baseline and observe 5–8 unfamiliar users before claiming improved conversion.
-Arbitrary-repository cost/latency, broader question examples and per-Wiki social
-previews need separate evidence. Existing generation, consent, corpus-quality
-and non-Python graph gates remain in A3/A5.
+Measurement reuses the existing opt-in first-party collector. Inspecting source
+(`example_source_open` / `example_github_open`) followed by `repository_submit`
+or `agent_setup_open` is the marketing funnel; viewing the hero, choosing a
+task or clicking the primary button alone is not activation. Events contain
+only the fixed event, surface and tab-session ID, with deduplication and DNT/GPC
+suppression. The log summary counts a next step only when it is observed after
+the tab's first source event; an earlier setup/submit is excluded. The collector
+remains disabled by default. Observations are
+separate by origin and do not prove a successful own-repository agent query.
+
+Open gates: publish this iteration; explicitly enable hosted measurement with
+the matching collector and log-retention policy; establish a baseline and
+observe 5–8 unfamiliar visitors before claiming better conversion. Broader
+question examples, arbitrary-repository cost/latency, consent, corpus quality
+and non-Python graph coverage retain their existing acceptance gates in A3/A5.
 
 ### A2 — Ship grep → Jev as a bounded product route
 

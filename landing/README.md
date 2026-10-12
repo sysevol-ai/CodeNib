@@ -8,12 +8,25 @@ Run it locally from the repository root:
 python -m http.server 7870 --directory landing
 ```
 
-Deploy `landing/` as the document root for `codenib.ai`. The homepage offers
-the same interactive Requests example as the Wiki homepage. Its four source
-excerpts and three recorded call sites are bundled with the site; exploring it
+Deploy `landing/` as the document root for `codenib.ai`. The homepage leads
+with the same interactive Requests example as the Wiki homepage: a question,
+an explanation, four steps and clickable source. The marketing page offers
+three questions about authentication, request flow and caller impact, all
+bounded to that selected path. Its four source excerpts and three recorded
+call sites are bundled with the site; exploring it
 makes no request to the live Wiki service or a model. Visiting a Wiki is an
 explicit link. The repository form needs the matching Wiki frontend's `?repo=`
 resolver; deploy that frontend before publishing the new marketing form.
+
+Keep the reading order: try the example, explore a public repository, connect
+a local coding agent, then inspect technical evidence and documentation. The
+repository entry must show OpenRouter funding, the spending-limit boundary and
+hosted file/chunk limits before handoff. Keep the example above the repository
+form on phones; task choices follow the example there. `/#example-source` and
+`/#requests-auth` both reach the example. Hero, repository and agent sections
+share their content edges and column split; preserve those alignments when
+changing copy. Local Agent setup makes no CodeNib model call; the user's
+agent still uses its own model.
 
 The example is one selected call path, not a runtime trace or a whole-repository
 architecture. `assets/explore/requests.js` records the full source commit,
@@ -43,6 +56,13 @@ Provider-free desktop/mobile, keyboard, routing, sharing and event checks:
 node web/first_visit_verify.mjs http://127.0.0.1:3012 http://127.0.0.1:7882
 ```
 
+For the marketing page's task choices, source selection, alignment, repository
+handoff, legacy anchors, no-JavaScript fallback and opt-in event behavior:
+
+```bash
+node web/landing_verify.mjs http://127.0.0.1:7870 /tmp/codenib-landing
+```
+
 For first-party funnel counts, explicitly enable both
 `CODENIB_EXPERIENCE_EVENTS=1` on the API and `experienceEvents: true` in the
 hosted Wiki's `runtime-config.js`. Static Wiki exports never enable collection.
@@ -62,6 +82,13 @@ baseline, not an analytics platform. To count observed steps from service logs:
 journalctl --user -u codenib-demo-backend --since today --no-pager \
   | python scripts/summarize_experience.py
 ```
+
+Use source inspection (`example_source_open` / `example_github_open`) followed
+by `repository_submit` or `agent_setup_open` as the marketing funnel. The log
+summary reports both `source_inspection` cohorts using each tab's first event
+positions, and counts the next step only when it appears later in the service
+log. Viewing the hero or switching its question does not count as inspecting
+source. Do not use the primary button's click count alone to claim activation.
 
 Report counts and the observation window before interpreting ratios. These
 are partial tab-session observations, not unique people: origins have separate

@@ -18,18 +18,19 @@ PATTERN = re.compile(
 
 
 def summarize(lines):
-    visits = defaultdict(lambda: defaultdict(set))
-    for line in lines:
+    visits = defaultdict(lambda: defaultdict(dict))
+    for position, line in enumerate(lines):
         match = PATTERN.search(line)
         if match:
             event, surface, visit = match.groups()
-            visits[surface][visit].add(event)
+            visits[surface][visit].setdefault(event, position)
     for surface, sessions in sorted(visits.items()):
         print(f"{surface}: {len(sessions)} observed tab visits")
         for event in (
             "page_view",
             "example_view",
             "example_source_open",
+            "example_github_open",
             "example_wiki_open",
             "example_share",
             "repository_submit",
@@ -47,6 +48,21 @@ def summarize(lines):
             cohort = [seen for seen in sessions.values() if start in seen]
             reached = sum(finish in seen for seen in cohort)
             print(f"  {start} -> {finish}: {reached}/{len(cohort)}")
+        # A meaningful next step must be observed after evidence inspection,
+        # using the first occurrence of either source event in this log stream.
+        # This is a partial, same-origin tab observation, not attribution.
+        source_events = ("example_source_open", "example_github_open")
+        inspected = [
+            (seen, min(seen[event] for event in source_events if event in seen))
+            for seen in sessions.values()
+            if any(event in seen for event in source_events)
+        ]
+        for finish in ("repository_submit", "agent_setup_open"):
+            reached = sum(
+                finish in seen and seen[finish] > source_position
+                for seen, source_position in inspected
+            )
+            print(f"  source_inspection -> {finish}: {reached}/{len(inspected)}")
 
 
 if __name__ == "__main__":
