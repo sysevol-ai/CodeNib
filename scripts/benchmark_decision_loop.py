@@ -570,6 +570,7 @@ def implementation():
         "scripts/benchmark_jev_retrieval.py",
         "codenib/llm/decisions.py",
         "codenib/agent/rerank_agent.py",
+        "codenib/agent/decision_rerank.py",
         "codenib/types.py",
     ]
     return {name: digest(ROOT / name) for name in names}

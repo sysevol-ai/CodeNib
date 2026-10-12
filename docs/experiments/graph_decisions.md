@@ -372,8 +372,12 @@ inputs, exact source lines, unique packing, official scores, novel-only rerankin
 and provider charges. Its 4K/8K/16K/32K offline replays use identical recorded
 scores and pools for all arms; they add no API calls. Native trajectory and
 serving audits live under `verification/context-agent-24-complete/audit.py`.
-The current evaluation/dataset/grep tier passes **508 tests**, with seven optional
-tests deselected. Local tool tests verify
+After integration with `main` at `4232ddfa`, the evaluation/dataset/grep tier passes
+**510 tests**, with seven optional tests deselected. All **three pinned official
+evaluator integration tests** pass. Strict MkDocs, the public-document boundary,
+the dependency lock check and the pinned pre-commit hooks pass. The committed CSV
+and JSON agree on all 24 task IDs, aggregate metrics, eight paired confidence
+intervals and recorded API totals. Local tool tests verify
 multi-hop reading, retained context beyond 4K, exclusion of unseen/truncated
 lines, path confinement, billing failures, stop behavior, function completion,
 source-only preparation and subscription-only authentication/trajectory conversion.

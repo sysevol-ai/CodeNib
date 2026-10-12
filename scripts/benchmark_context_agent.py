@@ -576,6 +576,8 @@ def freeze(output):
         "codenib/eval/benchmarks/contextbench_runner.py",
         "codenib/types.py",
         "codenib/agent/rerank_agent.py",
+        "codenib/agent/decision_rerank.py",
+        "codenib/llm/decisions.py",
         "scripts/benchmark_jev_retrieval.py",
     ]
     names.extend(
