@@ -7,6 +7,12 @@ instances and `synthesize/` generates queries.
 
 ## Conventions
 
+- Keep new benchmark task schemas, loading, selection, and annotation
+  normalization here. Dataset modules must not import `codenib.eval` or invoke
+  benchmark agents/scorers. Benchmark-specific trajectory conversion, scoring,
+  run-directory ownership, and result aggregation belong in `eval/`. ContextBench
+  follows this separation; older combined wrappers are not a template for new
+  adapters. Keep gold annotations separate from the prompt handed to a runtime.
 - **Line-number conversion happens HERE.** `gt_locate.py`'s
   `_chunk_to_code_block()` is the one place that converts the chunker's
   **0-based** `CodeChunk` lines into the **1-based** `CodeLocation` lines emitted
