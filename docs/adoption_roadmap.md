@@ -88,9 +88,10 @@ Status: the shared first-visit surface is merged in
 [#809](https://github.com/sysevol-ai/CodeNib/pull/809) as `7748b3df`; its
 #803 → #808 dependencies are merged. The subsequent map-led marketing hero in
 [#817](https://github.com/sysevol-ai/CodeNib/pull/817) is merged as `0ba5e7ec`.
-The question-first marketing iteration is ready for review in
-[#828](https://github.com/sysevol-ai/CodeNib/pull/828); deployment and live
-acceptance remain open.
+The question-first marketing iteration is merged in
+[#828](https://github.com/sysevol-ai/CodeNib/pull/828) as `99d33164` and published
+to `codenib.ai` with the matching Wiki frontend on 2026-10-12 UTC. Live
+desktop/mobile acceptance passes; hosted measurement remains opt-in and off.
 
 The marketing homepage now starts with a complete code-understanding task:
 **question → explanation → indexed calls → source**. The Requests
@@ -128,6 +129,22 @@ public-doc boundary audit. Syntax artifacts match all four captured excerpts.
 The focused log-summary regression passes before, after and duplicate events
 for independent tabs and origins.
 
+Live acceptance: all six viewport sizes pass the same question, source,
+keyboard, alignment, stable-selection, fragment-link and repository-handoff
+checks against `codenib.ai`, together with no-JavaScript and fixture-backed
+opt-in privacy checks. The production host injects its existing Cloudflare
+analytics script; it does not enable CodeNib's collector. The actual repository
+form also opens the prepared Requests Wiki at 1440 and 390 pixels, where the
+redirect chapter and an indexed source citation are navigable without API
+writes. The served entry module, shared component, stylesheet and sharing PNG
+match the merged release bytes and expected content types; the real title is
+“CodeNib: Understand Unfamiliar Code with Evidence.” Both frontends use the
+same merged commit and the preserved hosted runtime configuration. The new
+frontend passed health and shared-example checks before one Caddy reload
+activated both entry points; the prior frontend and ingress settings are
+retained for operator-owned rollback. The existing Wiki backend reports healthy
+with 27 repositories.
+
 Measurement reuses the existing opt-in first-party collector. Inspecting source
 (`example_source_open` / `example_github_open`) followed by `repository_submit`
 or `agent_setup_open` is the marketing funnel; viewing the hero, choosing a
@@ -138,14 +155,11 @@ the tab's first source event; an earlier setup/submit is excluded. The collector
 remains disabled by default. Observations are
 separate by origin and do not prove a successful own-repository agent query.
 
-Open gates: merge #828 after required checks pass; deploy the static homepage
-and matching Wiki frontend, then verify live source controls, both fragment
-links and the repository handoff on desktop and mobile. Explicitly enable
-hosted measurement with the matching collector and log-retention policy;
-establish a baseline and observe 5–8 unfamiliar visitors before claiming
-better conversion. Broader question examples, arbitrary-repository
-cost/latency, consent, corpus quality and non-Python graph coverage retain
-their existing acceptance gates in A3/A5.
+Open gates: explicitly enable hosted measurement with the matching collector
+and log-retention policy; establish a baseline and observe 5–8 unfamiliar
+visitors before claiming better conversion. Broader question examples,
+arbitrary-repository cost/latency, consent, corpus quality and non-Python graph
+coverage retain their existing acceptance gates in A3/A5.
 
 ### A2 — Ship grep → Jev as a bounded product route
 
