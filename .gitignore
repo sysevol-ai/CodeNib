@@ -54,6 +54,7 @@ web/*.tsbuildinfo
 !docs/experiments/jev_retrieval_results.json
 !docs/experiments/jev_base_results.json
 !docs/experiments/jev_candidates_results.json
+!docs/assets/contextbench_development_summary.json
 .env.local
 web_before
 qa_config.local.yaml

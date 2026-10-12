@@ -1,0 +1,170 @@
+{
+  "status": "Development experiment closed at user request; no SOTA or Pass@1 claim",
+  "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
+  "evaluator_revision": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+  "experiment_checkout": "ba22cbf3",
+  "n": 24,
+  "selection": "3 per language; repository round robin, seeded SHA ordering from a disclosed 100-task development cohort",
+  "selection_seed": "decision-loop-v1-2026-10-11",
+  "aggregation": "Macro mean of per-case line recall, precision, and per-case F1; all 24 cases valid",
+  "csv_sha256": "f56b1671e53b61644232422136c83665ca371a8f1266649e9e46837afd5140b7",
+  "source_audit_sha256": "6324d639b76dfa4c31454e647d767170238c1f5abb357740e9f096d7ade20ddc",
+  "refinement_audit_sha256": "cdb8fff04ff40a3cd22c140f0f6e1c4eee31717dbcf29728cc02eac2603f0234",
+  "native": {
+    "trajectory": {
+      "coverage": 0.575036470230496,
+      "precision": 0.2592115207057013,
+      "f1": 0.29763105066200635,
+      "pred_size": 864.4583333333334
+    },
+    "served_16384": {
+      "coverage": 0.5667523013925625,
+      "precision": 0.2711717963202246,
+      "f1": 0.30810792404141524,
+      "pred_size": 711.1666666666666
+    },
+    "served_32768": {
+      "coverage": 0.5725523977214406,
+      "precision": 0.2605707988676936,
+      "f1": 0.29938378069622085,
+      "pred_size": 819.125
+    },
+    "jiuwen": {
+      "coverage": 0.6446034525436632,
+      "precision": 0.22126277054256563,
+      "f1": 0.2744530198266913,
+      "pred_size": 1248.5
+    }
+  },
+  "refinements": {
+    "context-agent-24-decisions": {
+      "n": 24,
+      "new_api_cost_usd": 0.05940868,
+      "official_records_verified": 48,
+      "budgets": {
+        "16384": {
+          "coverage": 0.5675608222987653,
+          "precision": 0.2708671963038894,
+          "f1": 0.30805696586865594,
+          "pred_size": 713,
+          "paired_vs_jiuwen_coverage": {
+            "mean": -0.07704263024489792,
+            "bootstrap_95_interval": [
+              -0.16175392632266075,
+              -0.007620249285573841
+            ]
+          },
+          "paired_vs_jiuwen_f1": {
+            "mean": 0.03360394604196465,
+            "bootstrap_95_interval": [
+              -0.0072624717189595294,
+              0.0700852075593556
+            ]
+          }
+        },
+        "32768": {
+          "coverage": 0.572390836694878,
+          "precision": 0.2605788415070516,
+          "f1": 0.2993655504984362,
+          "pred_size": 816.8333333333334,
+          "paired_vs_jiuwen_coverage": {
+            "mean": -0.07221261584878519,
+            "bootstrap_95_interval": [
+              -0.1581802514487706,
+              -0.002821601301097763
+            ]
+          },
+          "paired_vs_jiuwen_f1": {
+            "mean": 0.02491253067174497,
+            "bootstrap_95_interval": [
+              -0.01268052435993165,
+              0.05934338898791191
+            ]
+          }
+        }
+      }
+    },
+    "context-agent-24-functions": {
+      "n": 24,
+      "new_api_cost_usd": 0,
+      "official_records_verified": 48,
+      "budgets": {
+        "16384": {
+          "coverage": 0.649655599153197,
+          "precision": 0.23120707231791932,
+          "f1": 0.29058403917533127,
+          "pred_size": 974.5416666666666,
+          "paired_vs_jiuwen_coverage": {
+            "mean": 0.005052146609533847,
+            "bootstrap_95_interval": [
+              -0.07713881550668288,
+              0.07613267425187263
+            ]
+          },
+          "paired_vs_jiuwen_f1": {
+            "mean": 0.016131019348640002,
+            "bootstrap_95_interval": [
+              -0.026237954685028736,
+              0.06163828915163721
+            ]
+          }
+        },
+        "32768": {
+          "coverage": 0.6694525835463115,
+          "precision": 0.21089043050111006,
+          "f1": 0.27423271664009385,
+          "pred_size": 1311.3333333333333,
+          "paired_vs_jiuwen_coverage": {
+            "mean": 0.024849131002648378,
+            "bootstrap_95_interval": [
+              -0.05750791841206794,
+              0.09365735592018688
+            ]
+          },
+          "paired_vs_jiuwen_f1": {
+            "mean": -0.00022030318659744304,
+            "bootstrap_95_interval": [
+              -0.041625051581499116,
+              0.04544025412113992
+            ]
+          }
+        }
+      }
+    }
+  },
+  "native_api_cost_usd": 23.7864,
+  "sdk_smoke": {
+    "n": 1,
+    "model": "claude-opus-5-5",
+    "auth": "Claude Max subscription",
+    "sdk_reported_cost_usd": 0.116873,
+    "actual_bill_usd": null,
+    "recall": 0.4896265560165975,
+    "f1": 0.5267857142857143
+  },
+  "sdk_followup": {
+    "n_selected": 24,
+    "complete": 3,
+    "interrupted": 1,
+    "not_run": 20,
+    "actual_bill_usd": null,
+    "cohort_quality_reported": false
+  },
+  "limitations": [
+    "Development subset only; not representative of official verified 500",
+    "Public reference is a full solver trajectory; our route only retrieves source",
+    "Function completion adds new source at serving stage, not to original Opus observations",
+    "Raw source, prompts, provider identifiers, and credentials are not included in this summary export"
+  ],
+  "uncertainty_method": {
+    "method": "Paired nonparametric percentile bootstrap over task-level differences",
+    "draws": 10000,
+    "numpy_default_rng_seed": 20261011,
+    "quantiles": [
+      0.025,
+      0.975
+    ],
+    "task_order": "CSV row order",
+    "units": "Fractions, not percentage points"
+  }
+}

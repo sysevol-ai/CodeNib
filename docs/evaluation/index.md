@@ -33,6 +33,8 @@ different surfaces. A loader entry means CodeNib can prepare snapshots and
 ground truth; it does not imply that every retrieval route or external policy
 has been evaluated on that dataset. See the separate
 [agent integration matrix](../agent_integrations.md) for policy boundaries.
+The [dataset and evaluation architecture](architecture.md) describes module
+ownership, call paths, and the remaining inconsistencies in older adapters.
 
 | Dataset or benchmark | CodeNib surface | Evaluation use | Validated evidence and boundary |
 | --- | --- | --- | --- |
@@ -42,6 +44,7 @@ has been evaluated on that dataset. See the separate
 | [SWE-bench Multilingual](https://huggingface.co/datasets/SWE-bench/SWE-bench_Multilingual) | `SwebenchMultilingualDataset`, collection, and GT locator | Multilingual source for CodeNib Base and benchmark joins | Dedicated schema and repository preparation; all 182 rows used by the pinned SWE-Explore release join resolve uniquely. |
 | [Loc-Bench v1](https://huggingface.co/datasets/czlll/Loc-Bench_V1) | `LocbenchDataset` | Retrieval and shared localization runners | Dataset, checkout, and location-label adapters are implemented; no paper-wide aggregate is claimed. |
 | [SWE-Explore](https://github.com/Qiushao-E/SWE-Explore-Bench) | `CodeNibSWEExploreExplorer` and compatible 17-metric scorer | Ranked source-region benchmark | Fixed 20-case, seven-language run; 1,020/1,020 real-output metric cells match the pinned official evaluator. [Full validation](swe_explore.md). |
+| [ContextBench](https://github.com/EuniAI/ContextBench) | Pinned dataset loader, native OpenRouter agent runner, unified trajectory export, and official scorer | File, symbol, span, line, and trajectory retrieval metrics | Full/verified configurations with selection, resume, failure accounting, and isolated official scoring. [Run ContextBench](contextbench.md). |
 | [SWE-bench Pro](https://huggingface.co/datasets/ScaleAI/SWE-bench_Pro) | Pinned source join for SWE-Explore | Supplies issue text and commit identity omitted by the released region rows | Join-only boundary: all 215 referenced rows resolve uniquely; this is not a general Pro task runner. |
 | Local JSON | `LocalJsonDataset` | Custom repository/query/location inputs | Schema adapter with inline file and symbol ground truth; reproducibility is owned by the caller's input file. |
 
