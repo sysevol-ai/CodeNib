@@ -122,7 +122,9 @@ reuses `AgentRunner` and completes all 24 tasks: cumulative Recall/F1 is
 57.50%/29.76%, versus 64.46%/27.45% for the matched public leader. Its 32K delivery
 retains 57.26% Recall; $23.7864 in recorded API charges makes this a strong-model
 quality reference, not an ultra-low-cost route. This iteration is closed at the
-user's request; retrieval SOTA was not achieved. The 32-task validation selection
+user's request; implementation and results are under review in
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827). Retrieval SOTA was not
+achieved. The 32-task validation selection
 excludes all 105 prior development IDs and remains unrun, as does the full-500
 quality gate. Paired final decision selection adds essentially no gain at
 16K/32K. Deterministic completion of touched callables reaches 64.97%/29.06% at

@@ -386,8 +386,9 @@ Promotion remains gated on a frozen held-out comparison and actual downstream
 task outcomes, with all explored development IDs disclosed. Establish the strong
 search/read reference before distilling actions or stopping into a cheaper
 decision controller. This work introduces no product retrieval route or
-persistence boundary; no related open ContextBench PR/issue was found during
-read-only reconciliation, and no PR or merge is performed.
+persistence boundary. Implementation and results are under review in
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827); the research iteration
+remains closed and the promotion gates remain open.
 
 ## Earlier graph and fixed-payload evidence
 
