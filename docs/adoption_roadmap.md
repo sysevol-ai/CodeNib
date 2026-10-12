@@ -88,8 +88,9 @@ Status: the shared first-visit surface is merged in
 [#809](https://github.com/sysevol-ai/CodeNib/pull/809) as `7748b3df`; its
 #803 → #808 dependencies are merged. The subsequent map-led marketing hero in
 [#817](https://github.com/sysevol-ai/CodeNib/pull/817) is merged as `0ba5e7ec`.
-The public site still presents the map before the worked question. The current
-`feat/landing-question-first` iteration is local; publication remains open.
+The question-first marketing iteration is ready for review in
+[#828](https://github.com/sysevol-ai/CodeNib/pull/828); deployment and live
+acceptance remain open.
 
 The marketing homepage now starts with a complete code-understanding task:
 **question → explanation → indexed calls → source**. The Requests
@@ -137,11 +138,14 @@ the tab's first source event; an earlier setup/submit is excluded. The collector
 remains disabled by default. Observations are
 separate by origin and do not prove a successful own-repository agent query.
 
-Open gates: publish this iteration; explicitly enable hosted measurement with
-the matching collector and log-retention policy; establish a baseline and
-observe 5–8 unfamiliar visitors before claiming better conversion. Broader
-question examples, arbitrary-repository cost/latency, consent, corpus quality
-and non-Python graph coverage retain their existing acceptance gates in A3/A5.
+Open gates: merge #828 after required checks pass; deploy the static homepage
+and matching Wiki frontend, then verify live source controls, both fragment
+links and the repository handoff on desktop and mobile. Explicitly enable
+hosted measurement with the matching collector and log-retention policy;
+establish a baseline and observe 5–8 unfamiliar visitors before claiming
+better conversion. Broader question examples, arbitrary-repository
+cost/latency, consent, corpus quality and non-Python graph coverage retain
+their existing acceptance gates in A3/A5.
 
 ### A2 — Ship grep → Jev as a bounded product route
 

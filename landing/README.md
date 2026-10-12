@@ -18,6 +18,14 @@ makes no request to the live Wiki service or a model. Visiting a Wiki is an
 explicit link. The repository form needs the matching Wiki frontend's `?repo=`
 resolver; deploy that frontend before publishing the new marketing form.
 
+When changing the shared example component, build the Wiki frontend with
+`cd web && npm run build` from the same commit and deploy its `dist/` alongside
+the static homepage. Preserve the hosted `runtime-config.js`. After publishing,
+verify both example fragment links, the source controls and the repository
+handoff on desktop and mobile, as well as the real page title and asset content
+types described below. Record live acceptance in the first-visit milestone in
+`docs/adoption_roadmap.md`; a merged PR alone does not confirm publication.
+
 Keep the reading order: try the example, explore a public repository, connect
 a local coding agent, then inspect technical evidence and documentation. The
 repository entry must show OpenRouter funding, the spending-limit boundary and
