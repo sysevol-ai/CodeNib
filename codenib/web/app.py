@@ -76,6 +76,8 @@ from .source_definition import attach_definition
 from .visitor_wikis import router as visitor_wiki_router
 
 _WIKI_MEDIA_TYPES = {
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
     ".png": "image/png",
     ".svg": "image/svg+xml",
 }
