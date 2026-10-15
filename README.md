@@ -30,6 +30,7 @@ SPDX-License-Identifier: Apache-2.0
     <a href="https://pypi.org/project/codenib/"><img src="https://img.shields.io/pypi/v/codenib.svg?cacheSeconds=300" alt="PyPI version"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/releases/latest"><img src="https://img.shields.io/github/v/release/sysevol-ai/CodeNib" alt="Latest GitHub Release"></a>
     <a href="https://arxiv.org/abs/2607.25431"><img src="https://img.shields.io/badge/arXiv-2607.25431-b31b1b.svg" alt="arXiv paper"></a>
+    <a href="https://huggingface.co/papers/2607.25431"><img src="https://img.shields.io/badge/Hugging_Face-%231_Paper_of_the_Day-FFD21E.svg?logo=huggingface&amp;logoColor=black" alt="Hugging Face: #1 Paper of the Day"></a>
     <a href="https://github.com/sysevol-ai/CodeNib/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="Apache 2.0 license"></a>
   </p>
 </div>
