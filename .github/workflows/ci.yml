@@ -39,13 +39,13 @@ jobs:
       CODENIB_CI_TMPDIR: ${{ github.workspace }}/../.tmp
       PIP_CACHE_DIR: ${{ github.workspace }}/../.cache/pip
       npm_config_cache: ${{ github.workspace }}/../.cache/npm
-      TMPDIR: ${{ github.workspace }}/../.tmp
-      TMP: ${{ github.workspace }}/../.tmp
-      TEMP: ${{ github.workspace }}/../.tmp
     steps:
       - name: Prepare temp HOME
         run: |
           mkdir -p "$RUNNER_TEMP/home" "$CODENIB_CI_TMPDIR"
+          # Normalize away "..": frozen installers (Miniconda py314) fail when
+          # TMPDIR has it; job env cannot resolve paths, so set TMPDIR here.
+          CODENIB_CI_TMPDIR="$(realpath "$CODENIB_CI_TMPDIR")"
           echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
           echo "TMPDIR=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
           echo "TMP=$CODENIB_CI_TMPDIR" >> "$GITHUB_ENV"
