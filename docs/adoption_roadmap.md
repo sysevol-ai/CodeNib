@@ -150,7 +150,8 @@ reading column from three columns to two after the map response; at 1440 pixels
 the prose width moves from about 701 to 949 pixels. The map also initially uses
 a 960-pixel canvas and then reflows on measurement, adding about 570 pixels of
 height on a 390-pixel phone. Final-state screenshots missed these transitions.
-The `fix/wiki-reading-layout` follow-up keeps the Overview column policy fixed,
+The follow-up in [#830](https://github.com/sysevol-ai/CodeNib/pull/830) keeps the
+Overview column policy fixed,
 publishes prose with its resolved leading map/boundary (including unavailable
 and error outcomes), and measures the map before paint. Local production-build
 regressions pass opening and refreshing at 1440/1024/768/390 pixels with delayed
