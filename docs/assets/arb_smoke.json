@@ -1,0 +1,433 @@
+{
+  "cases": [
+    {
+      "base_commit": "f56522d79e70e19eebad7eb58b651d538ae9330c",
+      "corpus": {
+        "chunks": 160105,
+        "files": 4969,
+        "path": "corpus/v2_code2test/huggingface__transformers/f56522d79e70e19eebad7eb58b651d538ae9330c.chunks.jsonl",
+        "sha256": "3886e3088ae13a401f6e0901454aa68c5304749a73b312a03da941fca9e0c030"
+      },
+      "metrics": {
+        "BCY@16000": 0.5,
+        "BCY@32000": 0.5,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.5,
+        "MRR": 0.25,
+        "Recall@10": 0.5,
+        "Recall@20": 0.5,
+        "Recall@5": 0.5
+      },
+      "ranking_depth": 4969,
+      "repo": "huggingface/transformers",
+      "sample_id": "0a4b3f17ec58d3405b1c9a47",
+      "status": "ok",
+      "task_type": "code2test"
+    },
+    {
+      "base_commit": "c64f8fd68c2e75cc65b88bc0d956547a5f77cab1",
+      "corpus": {
+        "chunks": 12420,
+        "files": 1425,
+        "path": "corpus/v2_code2test/etcd-io__etcd/c64f8fd68c2e75cc65b88bc0d956547a5f77cab1.chunks.jsonl",
+        "sha256": "47f1a98bb390716650ed210ae9a8d5d159c757788da18274e98160d09eb6988b"
+      },
+      "metrics": {
+        "BCY@16000": 0.5,
+        "BCY@32000": 0.5,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.0,
+        "MRR": 0.09090909090909091,
+        "Recall@10": 0.0,
+        "Recall@20": 0.5,
+        "Recall@5": 0.0
+      },
+      "ranking_depth": 1425,
+      "repo": "etcd-io/etcd",
+      "sample_id": "0c60e782db37a60abbcd178d",
+      "status": "ok",
+      "task_type": "code2test"
+    },
+    {
+      "base_commit": "f83d66918fab0c347602b806455bec8d5bbfd00f",
+      "corpus": {
+        "chunks": 115779,
+        "files": 5917,
+        "path": "corpus/v2_comment2context/astral-sh__ruff/f83d66918fab0c347602b806455bec8d5bbfd00f.chunks.jsonl",
+        "sha256": "b9f8a2b7a890eb19342c51e6cc878bc7201a99826382346c8197f7777d9e4f17"
+      },
+      "metrics": {
+        "BCY@16000": 1.0,
+        "BCY@32000": 1.0,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.0,
+        "MRR": 0.16666666666666666,
+        "Recall@10": 1.0,
+        "Recall@20": 1.0,
+        "Recall@5": 0.0
+      },
+      "ranking_depth": 5917,
+      "repo": "astral-sh/ruff",
+      "sample_id": "01323034afde8983e978b8d2",
+      "status": "ok",
+      "task_type": "comment2context"
+    },
+    {
+      "base_commit": "c64f8fd68c2e75cc65b88bc0d956547a5f77cab1",
+      "corpus": {
+        "chunks": 12420,
+        "files": 1425,
+        "path": "corpus/v2_comment2context/etcd-io__etcd/c64f8fd68c2e75cc65b88bc0d956547a5f77cab1.chunks.jsonl",
+        "sha256": "47f1a98bb390716650ed210ae9a8d5d159c757788da18274e98160d09eb6988b"
+      },
+      "metrics": {
+        "BCY@16000": 1.0,
+        "BCY@32000": 1.0,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.3333333333333333,
+        "MRR": 0.3333333333333333,
+        "Recall@10": 1.0,
+        "Recall@20": 1.0,
+        "Recall@5": 0.3333333333333333
+      },
+      "ranking_depth": 1425,
+      "repo": "etcd-io/etcd",
+      "sample_id": "0265037c6c534b98289fe815",
+      "status": "ok",
+      "task_type": "comment2context"
+    },
+    {
+      "base_commit": "688a429d19d8c804447bb889d3635e2c31a5564d",
+      "corpus": {
+        "chunks": 1641,
+        "files": 120,
+        "path": "corpus/v2_trace2code/gin-gonic__gin/688a429d19d8c804447bb889d3635e2c31a5564d.chunks.jsonl",
+        "sha256": "592a51310a3eb1c28bddcf662b34c52e728ec90f5295f3e6b4fcaeac464c5cfd"
+      },
+      "metrics": {
+        "BCY@16000": 0.0,
+        "BCY@32000": 0.0,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.0,
+        "MRR": 0.023255813953488372,
+        "Recall@10": 0.0,
+        "Recall@20": 0.0,
+        "Recall@5": 0.0
+      },
+      "ranking_depth": 120,
+      "repo": "gin-gonic/gin",
+      "sample_id": "035c3b77d35f10df09605eff",
+      "status": "ok",
+      "task_type": "trace2code"
+    },
+    {
+      "base_commit": "fc1c43298de675e5252d0b44f97dc5e204bd4e1e",
+      "corpus": {
+        "chunks": 1418,
+        "files": 122,
+        "path": "corpus/v2_trace2code/gin-gonic__gin/fc1c43298de675e5252d0b44f97dc5e204bd4e1e.chunks.jsonl",
+        "sha256": "ee100aaff65cbd4d9e51c199bbfa5c4f5568890e6f38f34a1bddfddc393330f7"
+      },
+      "metrics": {
+        "BCY@16000": 0.0,
+        "BCY@32000": 1.0,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.0,
+        "MRR": 0.06666666666666667,
+        "Recall@10": 0.0,
+        "Recall@20": 1.0,
+        "Recall@5": 0.0
+      },
+      "ranking_depth": 122,
+      "repo": "gin-gonic/gin",
+      "sample_id": "05041faae6e19b6882e3074a",
+      "status": "ok",
+      "task_type": "trace2code"
+    },
+    {
+      "base_commit": "9f598a31aafb92d675f38f1c8371e4ac76f858bf",
+      "corpus": {
+        "chunks": 1436,
+        "files": 117,
+        "path": "corpus/v2_edit2ripple/gin-gonic__gin/9f598a31aafb92d675f38f1c8371e4ac76f858bf.chunks.jsonl",
+        "sha256": "9978997b1d71afb13c766d1d19294d08386798864e2c004dc9bd5cc2cbf88e33"
+      },
+      "metrics": {
+        "BCY@16000": 0.0,
+        "BCY@32000": 0.0,
+        "BCY@4000": 0.0,
+        "BCY@8000": 0.0,
+        "MRR": 0.047619047619047616,
+        "Recall@10": 0.0,
+        "Recall@20": 0.0,
+        "Recall@5": 0.0
+      },
+      "ranking_depth": 117,
+      "repo": "gin-gonic/gin",
+      "sample_id": "0150e5de390fa7c521175b89",
+      "status": "ok",
+      "task_type": "edit2ripple"
+    },
+    {
+      "base_commit": "db309081bc5c137b2aa15701ef53f7f19788da25",
+      "corpus": {
+        "chunks": 1780,
+        "files": 128,
+        "path": "corpus/v2_edit2ripple/gin-gonic__gin/db309081bc5c137b2aa15701ef53f7f19788da25.chunks.jsonl",
+        "sha256": "bf9ac6a9d689762efaf613286edcebfda8438aa76770f80b78e4dff5720abdbc"
+      },
+      "metrics": {
+        "BCY@16000": 1.0,
+        "BCY@32000": 1.0,
+        "BCY@4000": 1.0,
+        "BCY@8000": 1.0,
+        "MRR": 0.5,
+        "Recall@10": 1.0,
+        "Recall@20": 1.0,
+        "Recall@5": 1.0
+      },
+      "ranking_depth": 128,
+      "repo": "gin-gonic/gin",
+      "sample_id": "02faf838effb2bcebf8d8cca",
+      "status": "ok",
+      "task_type": "edit2ripple"
+    }
+  ],
+  "codenib_implementation_commit": "453614e2be8ff7b33a25faafb35bf555ce7affe8",
+  "dataset_source": {
+    "expected_revision": "5901e1ee3aff048290db72edf9c63bc498b79ea3",
+    "note": "Local hashes bind inputs; use verified release downloads.",
+    "repo": "eyuansu71/agent_retrieval_bench"
+  },
+  "full_preparation": {
+    "by_release": {
+      "v2_code2test": 106,
+      "v2_comment2context": 80,
+      "v2_edit2ripple": 58,
+      "v2_trace2code": 101
+    },
+    "failed": 0,
+    "release_snapshot_pairs": 294,
+    "selected": 345
+  },
+  "implementation": {
+    "files": {
+      "dataset/agent_retrieval_bench.py": "7d61d1e430fe2c5c92b9c5d1ca8b7630e95b415b6a6d6b8a0b171e7add13afa0",
+      "eval/benchmarks/_arb_evaluate.py": "91e2e85d1e79a8ad606879c934148b6f58486cdb16fb77c46a051c6538d902ff",
+      "eval/benchmarks/agent_retrieval_bench.py": "6371b510408653d5eb3ce802aca604a5c178c57029ef794d4f7ff4b4e4f73dea",
+      "eval/benchmarks/agent_retrieval_bench_runner.py": "9acaee91ffa1e8383f0c409defb63d8896ecfc7bd26dfb80be64aaecc03cc9f3",
+      "index/sparse_idx/bm25_index.py": "b7ade7b01787faf3c341380ea09a6461998efcafcf52c8f60ff90358a05954c0"
+    },
+    "packages": {
+      "numpy": "1.26.4",
+      "rank-bm25": "0.2.2"
+    },
+    "python": "3.11.5"
+  },
+  "offline_rescore": {
+    "matched_metric_cells": 64,
+    "packing_details_identical": true
+  },
+  "protocol": {
+    "bcy_budgets": [
+      4000,
+      8000,
+      16000,
+      32000
+    ],
+    "bcy_rank_depth": 20,
+    "bcy_text": "released kind=file chunks",
+    "bcy_tokenizer": "regex_code_tokenizer_v1",
+    "candidate_filter": "all_files",
+    "denominator": "all selected samples; errors contribute zero",
+    "mode": "static-positive",
+    "mrr_ranking": "full supplied file ranking; see per-case ranking_depth"
+  },
+  "release_archives": {
+    "v2_code2test": {
+      "archive_bytes": 443641745,
+      "archive_sha256": "387cdfb25835b176ba27707d43dc31cae6b31514231923af237ad04deef19c0b"
+    },
+    "v2_comment2context": {
+      "archive_bytes": 278591728,
+      "archive_sha256": "be68161844d63c64e687e0c6da1d52434160fafcaf8932a5767fbe64b643b3f5"
+    },
+    "v2_edit2ripple": {
+      "archive_bytes": 128720663,
+      "archive_sha256": "a174196d69b531d176a65c76fea928b3f1c893710baa4efccc48e901ff404b2c"
+    },
+    "v2_trace2code": {
+      "archive_bytes": 39295446,
+      "archive_sha256": "19b252e8cfff42107fedc74005dbb6972f2970af33651ce0c1571546819e41c4"
+    }
+  },
+  "release_input_hashes": {
+    "v2_code2test": {
+      "manifest_sha256": "f967638b34cb66465cb40314d18c2a5869b82be2619dacd2539f31a1a2ee31d3",
+      "samples_sha256": "712b2699d3f963c2f940688ae5248304263c4ecda1b3831b2801c95712a50b85"
+    },
+    "v2_comment2context": {
+      "manifest_sha256": "ae5a7d26f82857fa1715b5fb664c9dee6b80ff269f206feb703023eae665d08a",
+      "samples_sha256": "543267024f7f06127c50664a3a1b8825d3c213e4b12dbbfabf9a3346902ad796"
+    },
+    "v2_edit2ripple": {
+      "manifest_sha256": "3c0f27c502f4eca471fab59452b991bc69187ac64730b5b1db29c1a431a4ca9c",
+      "samples_sha256": "31d97ffe815dda8730149880c0159239a986eceb306e5a5df816dfc420717cef"
+    },
+    "v2_trace2code": {
+      "manifest_sha256": "9fef569ebf06d5a96b788d9b6136dd023a324b3d5e795172faf6f0c696d9498f",
+      "samples_sha256": "9d0ff50155fa4f65c1bbb632abc4f1f11393c50fa7b0a9249e06128b368b6266"
+    }
+  },
+  "retrieval_usage": {
+    "api_cost_usd": 0.0,
+    "model_calls": 0
+  },
+  "scope": "Integration smoke only; not a full benchmark result or leaderboard comparison",
+  "selection": {
+    "limit_per_task": 2,
+    "order": "release then sample id",
+    "releases": [
+      "v2_code2test",
+      "v2_comment2context",
+      "v2_trace2code",
+      "v2_edit2ripple"
+    ],
+    "sample_ids": []
+  },
+  "summary": {
+    "by_task": {
+      "code2test": {
+        "failed": 0,
+        "failure_ids": [],
+        "metrics_all_selected": {
+          "BCY@16000": 0.5,
+          "BCY@32000": 0.5,
+          "BCY@4000": 0.0,
+          "BCY@8000": 0.25,
+          "MRR": 0.17045454545454547,
+          "Recall@10": 0.25,
+          "Recall@20": 0.5,
+          "Recall@5": 0.25
+        },
+        "metrics_valid_only": {
+          "BCY@16000": 0.5,
+          "BCY@32000": 0.5,
+          "BCY@4000": 0.0,
+          "BCY@8000": 0.25,
+          "MRR": 0.17045454545454547,
+          "Recall@10": 0.25,
+          "Recall@20": 0.5,
+          "Recall@5": 0.25
+        },
+        "selected": 2,
+        "valid": 2
+      },
+      "comment2context": {
+        "failed": 0,
+        "failure_ids": [],
+        "metrics_all_selected": {
+          "BCY@16000": 1.0,
+          "BCY@32000": 1.0,
+          "BCY@4000": 0.0,
+          "BCY@8000": 0.16666666666666666,
+          "MRR": 0.25,
+          "Recall@10": 1.0,
+          "Recall@20": 1.0,
+          "Recall@5": 0.16666666666666666
+        },
+        "metrics_valid_only": {
+          "BCY@16000": 1.0,
+          "BCY@32000": 1.0,
+          "BCY@4000": 0.0,
+          "BCY@8000": 0.16666666666666666,
+          "MRR": 0.25,
+          "Recall@10": 1.0,
+          "Recall@20": 1.0,
+          "Recall@5": 0.16666666666666666
+        },
+        "selected": 2,
+        "valid": 2
+      },
+      "edit2ripple": {
+        "failed": 0,
+        "failure_ids": [],
+        "metrics_all_selected": {
+          "BCY@16000": 0.5,
+          "BCY@32000": 0.5,
+          "BCY@4000": 0.5,
+          "BCY@8000": 0.5,
+          "MRR": 0.27380952380952384,
+          "Recall@10": 0.5,
+          "Recall@20": 0.5,
+          "Recall@5": 0.5
+        },
+        "metrics_valid_only": {
+          "BCY@16000": 0.5,
+          "BCY@32000": 0.5,
+          "BCY@4000": 0.5,
+          "BCY@8000": 0.5,
+          "MRR": 0.27380952380952384,
+          "Recall@10": 0.5,
+          "Recall@20": 0.5,
+          "Recall@5": 0.5
+        },
+        "selected": 2,
+        "valid": 2
+      },
+      "trace2code": {
+        "failed": 0,
+        "failure_ids": [],
+        "metrics_all_selected": {
+          "BCY@16000": 0.0,
+          "BCY@32000": 0.5,
+          "BCY@4000": 0.0,
+          "BCY@8000": 0.0,
+          "MRR": 0.04496124031007752,
+          "Recall@10": 0.0,
+          "Recall@20": 0.5,
+          "Recall@5": 0.0
+        },
+        "metrics_valid_only": {
+          "BCY@16000": 0.0,
+          "BCY@32000": 0.5,
+          "BCY@4000": 0.0,
+          "BCY@8000": 0.0,
+          "MRR": 0.04496124031007752,
+          "Recall@10": 0.0,
+          "Recall@20": 0.5,
+          "Recall@5": 0.0
+        },
+        "selected": 2,
+        "valid": 2
+      }
+    },
+    "overall": {
+      "failed": 0,
+      "failure_ids": [],
+      "metrics_all_selected": {
+        "BCY@16000": 0.5,
+        "BCY@32000": 0.625,
+        "BCY@4000": 0.125,
+        "BCY@8000": 0.22916666666666666,
+        "MRR": 0.1848063273935367,
+        "Recall@10": 0.4375,
+        "Recall@20": 0.625,
+        "Recall@5": 0.22916666666666666
+      },
+      "metrics_valid_only": {
+        "BCY@16000": 0.5,
+        "BCY@32000": 0.625,
+        "BCY@4000": 0.125,
+        "BCY@8000": 0.22916666666666666,
+        "MRR": 0.1848063273935367,
+        "Recall@10": 0.4375,
+        "Recall@20": 0.625,
+        "Recall@5": 0.22916666666666666
+      },
+      "selected": 8,
+      "valid": 8
+    }
+  },
+  "upstream_revision": "07014c986f3deadb1548c62b32c0ffbe6a81465d"
+}

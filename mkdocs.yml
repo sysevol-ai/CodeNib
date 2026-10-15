@@ -232,6 +232,7 @@ nav:
           - SWE-Explore Compatibility: evaluation/swe_explore.md
           - ContextBench: evaluation/contextbench.md
           - ContextBench Experiment Results: evaluation/contextbench-results.md
+          - Agent Retrieval Bench: evaluation/agent_retrieval_bench.md
           - SWE-bench Collection: collect_swebench.md
           - Synthesis Pipeline: synthesis_pipeline.md
           - GT Locator: gt_locator.md
