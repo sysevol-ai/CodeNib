@@ -58,3 +58,9 @@ jobs:
 
       - name: Build production frontend
         run: npm run build
+
+      - name: Install browser for reading layout regression
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify reading layout during open and refresh
+        run: node reading_layout_verify.mjs

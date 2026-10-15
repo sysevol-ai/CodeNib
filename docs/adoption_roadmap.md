@@ -145,6 +145,20 @@ activated both entry points; the prior frontend and ingress settings are
 retained for operator-owned rollback. The existing Wiki backend reports healthy
 with 27 repositories.
 
+Wiki refresh stability: opening an Overview currently changes the production
+reading column from three columns to two after the map response; at 1440 pixels
+the prose width moves from about 701 to 949 pixels. The map also initially uses
+a 960-pixel canvas and then reflows on measurement, adding about 570 pixels of
+height on a 390-pixel phone. Final-state screenshots missed these transitions.
+The `fix/wiki-reading-layout` follow-up keeps the Overview column policy fixed,
+publishes prose with its resolved leading map/boundary (including unavailable
+and error outcomes), and measures the map before paint. Local production-build
+regressions pass opening and refreshing at 1440/1024/768/390 pixels with delayed
+page/map/boundary responses, failed visuals and an unavailable map; the same
+regression fails against the deployed version. All 174 frontend tests pass.
+The elapsed indicator covers the visual wait, and Web CI runs the browser
+regression. Publication and live loading-transition acceptance remain open.
+
 Measurement reuses the existing opt-in first-party collector. Inspecting source
 (`example_source_open` / `example_github_open`) followed by `repository_submit`
 or `agent_setup_open` is the marketing funnel; viewing the hero, choosing a
@@ -155,7 +169,8 @@ the tab's first source event; an earlier setup/submit is excluded. The collector
 remains disabled by default. Observations are
 separate by origin and do not prove a successful own-repository agent query.
 
-Open gates: explicitly enable hosted measurement with the matching collector
+Open gates: publish and verify the Wiki refresh-stability follow-up; explicitly
+enable hosted measurement with the matching collector
 and log-retention policy; establish a baseline and observe 5–8 unfamiliar
 visitors before claiming better conversion. Broader question examples,
 arbitrary-repository cost/latency, consent, corpus quality and non-Python graph

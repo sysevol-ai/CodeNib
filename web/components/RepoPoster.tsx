@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import "./RepoPoster.css";
 
@@ -265,9 +265,15 @@ export default function RepoPoster({
   // instead of being scaled with the drawing.
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [canvasWidth, setCanvasWidth] = useState(960);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = canvasRef.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
+    if (!node) return;
+    // Measure the content box before the first paint. The 960px fallback
+    // otherwise paints a short, scaled map before narrow columns reflow it.
+    const style = getComputedStyle(node);
+    const width = node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    setCanvasWidth(Math.round(Math.max(280, width)));
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(([entry]) => {
       const next = Math.round(Math.max(280, entry.contentRect.width));
       setCanvasWidth((current) => (Math.abs(current - next) > 4 ? next : current));

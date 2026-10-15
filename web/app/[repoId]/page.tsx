@@ -470,10 +470,11 @@ export default function WikiPageView({
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
-  const [page, setPage] = useState<WikiPage | null>(null);
+  const [loadedPage, setPage] = useState<WikiPage | null>(null);
   const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
+  const [boundaryReadyFor, setBoundaryReadyFor] = useState<string | null>(null);
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
   const [areaMapError, setAreaMapError] = useState(false);
   const [areaMapAttempt, setAreaMapAttempt] = useState(0);
@@ -497,6 +498,13 @@ export default function WikiPageView({
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Publish the reading surface once its leading visual has resolved, including
+  // an unavailable/error result. Rendering prose first lets a later map or
+  // boundary card insert itself above the reader's current paragraph.
+  const visualReady = activeId === "overview"
+    ? areaMap !== null || areaMapError
+    : boundaryReadyFor === activeId;
+  const page = visualReady && loadedPage?.id === activeId ? loadedPage : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -536,13 +544,6 @@ export default function WikiPageView({
 
   useEffect(() => {
     let cancelled = false;
-    const startedAt = Date.now();
-    const elapsedTimer = window.setInterval(() => {
-      if (!cancelled) {
-        setPageLoadSeconds(Math.floor((Date.now() - startedAt) / 1000));
-      }
-    }, 1000);
-    setPageLoadSeconds(0);
     setPage(null);
     setPageError(null);
     setPageGraph(null);
@@ -555,13 +556,21 @@ export default function WikiPageView({
       .catch(
         (e) =>
           !cancelled && setPageError(e instanceof Error ? e.message : String(e)),
-      )
-      .finally(() => window.clearInterval(elapsedTimer));
+      );
     return () => {
       cancelled = true;
-      window.clearInterval(elapsedTimer);
     };
   }, [repoId, activeId]);
+
+  useEffect(() => {
+    setPageLoadSeconds(0);
+    if (page || pageError) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setPageLoadSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [repoId, activeId, !!page, pageError]);
 
   useEffect(() => {
     if (!page) return;
@@ -664,13 +673,17 @@ export default function WikiPageView({
   // than behind a toggle so the reader meets the code's shape first.
   useEffect(() => {
     setBoundary(null);
+    setBoundaryReadyFor(null);
     if (activeId === "overview") return;
     let cancelled = false;
     fetchWikiBoundary(repoId, activeId)
       .then((b) => {
         if (!cancelled) setBoundary(b);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setBoundaryReadyFor(activeId);
+      });
     return () => {
       cancelled = true;
     };
@@ -916,7 +929,7 @@ export default function WikiPageView({
         }
       />
 
-      <div className={`wiki-grid${showPoster ? " has-poster" : ""}`}>
+      <div className={`wiki-grid${activeId === "overview" ? " is-overview" : ""}`}>
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
         <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
@@ -963,7 +976,7 @@ export default function WikiPageView({
           )}
         </aside>
 
-        <main className="wiki-main">
+        <main className="wiki-main" aria-busy={!page && !pageError}>
           {showPoster && areaMap && (
             <RepoPoster
               repoId={repoId}

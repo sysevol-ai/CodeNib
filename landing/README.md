@@ -71,6 +71,19 @@ handoff, legacy anchors, no-JavaScript fallback and opt-in event behavior:
 node web/landing_verify.mjs http://127.0.0.1:7870 /tmp/codenib-landing
 ```
 
+For the Wiki reading column and shared map's first paint, including delayed,
+unavailable and failed visual responses while opening and refreshing:
+
+```bash
+npm --prefix web run build
+node web/reading_layout_verify.mjs
+```
+
+The verifier starts its own local preview and intercepts every API request with
+fixtures. It uses no repository, model credentials or Wiki database. Keep the
+reading column fixed from the loading state onward; render prose with its
+leading visual and measure responsive maps before their first paint.
+
 For first-party funnel counts, explicitly enable both
 `CODENIB_EXPERIENCE_EVENTS=1` on the API and `experienceEvents: true` in the
 hosted Wiki's `runtime-config.js`. Static Wiki exports never enable collection.

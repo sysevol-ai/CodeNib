@@ -100,6 +100,11 @@ textarea {
   font-family: inherit;
 }
 
+/* Reserve the desktop scrollbar even while the loading message is short. */
+html {
+  scrollbar-gutter: stable;
+}
+
 html,
 body {
   margin: 0;
@@ -6177,13 +6182,13 @@ a.codepanel-name:hover {
    A fixed dark surface in both themes, like the homepage source preview, so
    the map reads as one object rather than another card in the column. --- */
 @media (min-width: 821px) {
-  .wiki-grid.has-poster {
+  .wiki-grid.is-overview {
     grid-template-columns: var(--rail-left) minmax(0, 1fr);
   }
   /* The poster and the cards under it start where the outline ends, the
      same distance from the rail at every width. */
-  .wiki-grid.has-poster .repo-poster,
-  .wiki-grid.has-poster .wiki-content {
+  .wiki-grid.is-overview .repo-poster,
+  .wiki-grid.is-overview .wiki-content {
     margin-left: 0;
   }
 }
@@ -6193,7 +6198,7 @@ a.codepanel-name:hover {
 .wiki-story > .markdown > :is(p, ul, ol, blockquote, h1, h2, h3) {
   max-width: 76ch;
 }
-.wiki-grid.has-poster .wiki-onthispage {
+.wiki-grid.is-overview .wiki-onthispage {
   display: none;
 }
 
