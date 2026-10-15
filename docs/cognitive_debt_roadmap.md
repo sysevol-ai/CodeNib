@@ -164,9 +164,10 @@ the installed package, not another product runtime.
 
 ### Agent Retrieval Bench labs boundary
 
-Status: implemented and locally verified; independent PR pending. Owner:
-retrieval and evaluation maintainers. Lifecycle: `labs`; no stable package re-export or
-product-route dependency.
+Status: implemented and locally verified in
+[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831), open for review.
+Owner: retrieval and evaluation maintainers. Lifecycle: `labs`; no stable
+package re-export or product-route dependency.
 
 The initial surface covers the four positive static releases only. Dataset
 code owns released samples and corpus identity; eval code owns BM25 execution,
@@ -184,8 +185,7 @@ documentation records the protocol, scope, and reproducible smoke receipt.
 Open gates: PR review and CI. A full 345-case retrieval measurement,
 selective/abstention, interactive trajectories, graph/Zoekt/vector adapters,
 and upstream submissions remain subsequent scope decisions. The next proposed
-comparison holds the
-agent model and budgets fixed and tests iterative search with and without
+comparison holds the agent model and budgets fixed and tests iterative search with and without
 graph expansion; full-source access must be distinguished from corpus-only
 retrieval.
 
