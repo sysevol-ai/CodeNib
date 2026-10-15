@@ -146,6 +146,21 @@ def test_serving_entrypoint_uses_optional_dependency_guard() -> None:
     )
 
 
+@pytest.mark.parametrize("args,expected", [(["--help"], 0), (["run"], 2)])
+def test_arb_entrypoint_reports_dataset_extra(monkeypatch, capsys, args, expected):
+    assert _console_scripts()["codenib-arb"] == "codenib._optional_entrypoints:arb_main"
+
+    def raise_missing(_module):
+        raise ModuleNotFoundError("No module named 'datasets'", name="datasets")
+
+    monkeypatch.setattr(_optional_entrypoints, "_load_main", raise_missing)
+    monkeypatch.setattr("sys.argv", ["codenib-arb", *args])
+    assert _optional_entrypoints.arb_main() == expected
+    captured = capsys.readouterr()
+    assert "codenib[datasets]" in captured.out + captured.err
+    assert "Traceback" not in captured.err
+
+
 def test_serving_help_survives_base_install_without_extra(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
