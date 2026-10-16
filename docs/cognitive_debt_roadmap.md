@@ -178,9 +178,10 @@ tier; unit tests make no billed calls.
 
 Outcomes: 345/345 samples and 294 release/snapshot pairs pass preparation;
 8/8 real cases pass retrieval and official scoring, with 64/64 metric cells
-and packing details matching offline rescoring. The related unit tier passes
-452 tests, and seven tests run against the pinned official evaluator. Public
-documentation records the protocol, scope, and reproducible smoke receipt.
+and packing details matching offline rescoring. With both benchmark adapters
+present, the related unit tier passes 1,062 tests and ten integration tests run
+against the pinned ARB and ContextBench evaluators. Public documentation records
+the protocol, scope, and reproducible smoke receipt.
 
 Complete-release counts are enforced before selection; native recovery verifies
 an atomic checkpoint receipt and rebuilds exported predictions. CLI upstream
