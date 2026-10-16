@@ -69,7 +69,14 @@ try {
           "the homepage painted raw source, concatenated line numbers or hidden notes before styles loaded");
         const fallback = page.locator("codenib-explorer > a");
         assert.equal(await fallback.isVisible(), true, "keep a readable fallback while the example loads");
-        if (width !== 320 && !failure) await page.screenshot({ path: `${output}/${width}-${navigation}-pending.png` });
+        if (width !== 320 && !failure) {
+          // Capture the pending frame directly: Playwright's screenshot waits
+          // for fonts, which can wait for the intentionally held module.
+          const capture = await context.newCDPSession(page);
+          const { data } = await capture.send("Page.captureScreenshot", { format: "png" });
+          await fs.writeFile(`${output}/${width}-${navigation}-pending.png`, Buffer.from(data, "base64"));
+          await capture.detach();
+        }
         turn.release();
         await page.waitForLoadState("domcontentloaded");
         if (failure) {

@@ -10,6 +10,8 @@ on:
       - "*"
     paths:
       - "web/**"
+      - "landing/index.html"
+      - "landing/assets/explore/**"
       - ".github/workflows/web.yml"
   push:
     branches:
@@ -17,6 +19,8 @@ on:
       - master
     paths:
       - "web/**"
+      - "landing/index.html"
+      - "landing/assets/explore/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 

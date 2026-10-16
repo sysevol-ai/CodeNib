@@ -138,16 +138,35 @@ form also opens the prepared Requests Wiki at 1440 and 390 pixels, where the
 redirect chapter and an indexed source citation are navigable without API
 writes. The served entry module, shared component, stylesheet and sharing PNG
 match the merged release bytes and expected content types; the real title is
-“CodeNib: Understand Unfamiliar Code with Evidence.” Both frontends use the
-same merged commit and the preserved hosted runtime configuration. The new
+“CodeNib: Understand Unfamiliar Code with Evidence.” Both frontends use a
+matching published source build and the preserved hosted runtime configuration. The new
 frontend passed health and shared-example checks before one Caddy reload
 activated both entry points; the prior frontend and ingress settings are
 retained for operator-owned rollback. The existing Wiki backend reports healthy
 with 27 repositories.
 
+Marketing first paint: [#830](https://github.com/sysevol-ai/CodeNib/pull/830)
+is published to `codenib.ai` on 2026-10-16 (Pacific), using paired build
+`05eeed7c`. The shared example imports its styles as a module dependency and
+installs them synchronously with its shadow markup. Its first painted frame
+has aligned line numbers, syntax colors and one selected source note; a slow
+stylesheet cannot expose concatenated numbers, raw code or every note. The
+readable Wiki fallback stays available if the style dependency fails.
+The focused regression reproduces the original public failure and passes
+locally and on the public homepage at 1440/390/320 pixels, opening and
+refreshing with delayed and failed style dependencies. It samples painted
+frames before releasing the delayed dependency. Web CI runs this regression
+and also triggers for changes to the static homepage and shared example assets.
+The six-width marketing interaction, alignment, source-selection, legacy-link,
+repository-handoff, no-JavaScript and opt-in privacy checks pass locally and
+on the public host; its existing Cloudflare analytics injection remains
+separate from CodeNib's disabled collector. The matching Wiki frontend passes
+real prepared-page, source-opening and shared-example checks at desktop/mobile
+sizes. Served entry and style-module hashes match the published release.
+
 Wiki refresh stability: [#830](https://github.com/sysevol-ai/CodeNib/pull/830)
-is published to `demo.codenib.ai` on 2026-10-15 (Pacific), using frontend build
-`b082f51f`. The reader keeps the Overview column policy fixed,
+is published to `demo.codenib.ai` in the matching `05eeed7c` frontend build.
+The reader keeps the Overview column policy fixed,
 publishes prose with its resolved leading map/boundary (including unavailable
 and error outcomes), and measures the map before paint.
 Optional visuals have a five-second deadline that includes waiting for the
