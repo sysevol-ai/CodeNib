@@ -4,6 +4,7 @@
 import evidence from "./requests.js";
 import syntax from "./requests-highlight.js";
 import { excerptRows } from "./excerpt-rows.js";
+import styles from "./repo-explorer-styles.js";
 
 const escape = (value) => String(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -52,7 +53,7 @@ class RepoExplorer extends HTMLElement {
     const root = this.attachShadow({ mode: "open" });
     const wiki = this.getAttribute("wiki-href") || "https://demo.codenib.ai/psf__requests?p=redirects";
     root.innerHTML = `
-      <link rel="stylesheet" href="${new URL("./repo-explorer.css", import.meta.url).href}">
+      <style>${styles}</style>
       <article aria-label="Explore a real Requests code path">
         <header>
           <div class="eyebrow"><span class="status-dot"></span> TRY A REAL EXAMPLE <span class="repo">psf/requests</span></div>
