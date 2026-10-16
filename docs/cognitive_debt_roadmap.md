@@ -162,6 +162,38 @@ the installed package, not another product runtime.
 
 ## Workstreams
 
+### Agent Retrieval Bench labs boundary
+
+Status: implemented and locally verified in
+[PR #831](https://github.com/sysevol-ai/CodeNib/pull/831).
+Owner: retrieval and evaluation maintainers. Lifecycle: `labs`; no stable
+package re-export or product-route dependency.
+
+The initial surface covers the four positive static releases only. Dataset
+code owns released samples and corpus identity; eval code owns BM25 execution,
+checkpointing, external ranking imports, and the pinned upstream metric bridge.
+This uses the same dataset/eval ownership boundary as ContextBench and adds no
+generic benchmark, storage, or index registry. Official scoring remains an external-checkout test
+tier; unit tests make no billed calls.
+
+Outcomes: 345/345 samples and 294 release/snapshot pairs pass preparation;
+8/8 real cases pass retrieval and official scoring, with 64/64 metric cells
+and packing details matching offline rescoring. With both benchmark adapters
+present, the related unit tier passes 1,062 tests and ten integration tests run
+against the pinned ARB and ContextBench evaluators. Public documentation records
+the protocol, scope, and reproducible smoke receipt.
+
+Complete-release counts are enforced before selection; native recovery verifies
+an atomic checkpoint receipt and rebuilds exported predictions. CLI upstream
+failures use a concise exit code, and hidden evaluator edits are rejected.
+
+Open research gates: a full 345-case retrieval measurement,
+selective/abstention, interactive trajectories, graph/Zoekt/vector adapters,
+and upstream submissions remain subsequent scope decisions. The next proposed
+comparison holds the agent model and budgets fixed and tests iterative search with and without
+graph expansion; full-source access must be distinguished from corpus-only
+retrieval.
+
 ### S0: High-confidence subtraction
 
 Status: in progress.

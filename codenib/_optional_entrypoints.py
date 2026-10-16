@@ -15,6 +15,7 @@ from typing import Callable
 
 _OPTIONAL_IMPORT_ROOTS = {
     "agent,datasets": frozenset({"datasets", "litellm", "openai", "requests"}),
+    "datasets": frozenset({"datasets"}),
     "mcp": frozenset({"mcp"}),
     "serving": frozenset({"numpy", "sse_starlette", "torch", "transformers"}),
     "graph": frozenset({"google", "igraph"}),
@@ -95,6 +96,14 @@ def mcp_main() -> int | None:
     )
 
 
+def arb_main() -> int | None:
+    return _run_optional(
+        "codenib.eval.benchmarks.agent_retrieval_bench_runner",
+        command="codenib-arb",
+        extra="datasets",
+    )
+
+
 def serving_main() -> int | None:
     return _run_optional(
         "codenib.serving.server.api",
@@ -168,6 +177,7 @@ def contextbench_main() -> int | None:
 
 
 __all__ = [
+    "arb_main",
     "contextbench_main",
     "lsp_agent_ab_main",
     "lsp_agent_study_artifacts_main",

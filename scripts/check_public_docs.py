@@ -56,6 +56,7 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/swe_explore_cases.json",
     "assets/contextbench_development_24.csv",
     "assets/contextbench_development_summary.json",
+    "assets/arb_smoke.json",
     "assets/grep_jev_range_audit.json",
     "assets/grep_jev_product_audit.json",
     "assets/grep_jev_product_live.json",
