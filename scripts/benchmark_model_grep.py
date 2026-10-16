@@ -118,11 +118,33 @@ def overview(files: list[tuple]) -> dict:
 
 
 class Planner:
-    def __init__(self, model: str, max_cost_usd: float):
+    def __init__(
+        self,
+        model: str,
+        max_cost_usd: float,
+        *,
+        reasoning_effort: str | None = None,
+        max_tokens: int = 1000,
+        system: str = SYSTEM,
+    ):
+        if reasoning_effort not in (None, "low", "medium", "high", "xhigh", "max"):
+            raise ValueError("Unsupported planner reasoning effort")
+        if type(max_tokens) is not int or max_tokens <= 0:
+            raise ValueError("Planner max_tokens must be a positive integer")
         self.model = model
+        if not isinstance(system, str) or not system.strip():
+            raise ValueError("Planner system prompt must be nonempty")
+        self.system = system
         self.max_cost_usd = max_cost_usd
         self.cost_usd = 0.0
         self.lock = threading.Lock()
+        # Preserve the original Sonnet control unless reasoning is requested.
+        # Reasoning models may reject temperature and disabled reasoning.
+        self.request_parameters = {"model": model, "max_tokens": max_tokens}
+        if reasoning_effort is None:
+            self.request_parameters.update(temperature=0, reasoning={"enabled": False})
+        else:
+            self.request_parameters["reasoning"] = {"effort": reasoning_effort}
 
     def plan(self, payload: dict) -> dict:
         started = time.perf_counter()
@@ -139,7 +161,12 @@ class Planner:
 
     def _plan_once(self, payload: dict) -> dict:
         started = time.perf_counter()
-        record = {"input": payload}
+        record = {
+            "input": payload,
+            "requested_model": self.model,
+            "request_parameters": self.request_parameters,
+            "system": self.system,
+        }
         try:
             with self.lock:
                 if self.cost_usd >= self.max_cost_usd:
@@ -148,14 +175,11 @@ class Planner:
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": "Bearer " + os.environ["OPENROUTER_API_KEY"]},
                 json={
-                    "model": self.model,
+                    **self.request_parameters,
                     "messages": [
-                        {"role": "system", "content": SYSTEM},
+                        {"role": "system", "content": self.system},
                         {"role": "user", "content": json.dumps(payload)},
                     ],
-                    "temperature": 0,
-                    "max_tokens": 1000,
-                    "reasoning": {"enabled": False},
                     "response_format": {
                         "type": "json_schema",
                         "json_schema": {
@@ -166,7 +190,7 @@ class Planner:
                     },
                     "provider": {"require_parameters": True},
                 },
-                timeout=(10, 45),
+                timeout=(10, 60),
                 allow_redirects=False,
             )
             record["http_status"] = response.status_code

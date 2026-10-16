@@ -98,6 +98,50 @@ class before it lands.
 
 ## Target Dependency Direction
 
+ContextBench remains a `labs` workflow: its task loader and annotation schema
+live in `dataset/`, while trajectory conversion, agent-run orchestration, and
+official scoring live in `eval/`. It uses the existing agent runtime and adds
+no product dependency on benchmark labels. The public evaluation architecture
+guide records the remaining older SWE-Explore and client-policy coupling;
+this addition does not complete or claim a package-wide subtraction iteration.
+
+The ContextBench context-serving experiments are also `labs`: the source-only
+`scripts/benchmark_graph_decisions.py`, `scripts/benchmark_context_serving.py`,
+`scripts/benchmark_decision_loop.py`, `scripts/benchmark_context_agent.py` and
+`scripts/benchmark_context_claude.py`
+compose existing retrieval, typed decisions, native agent tools and scoring.
+Their owner, matched controls, receipts and promotion gates live in
+`docs/experiments/graph_decisions.md`. They add no product retriever, model
+registry, persistence boundary or dependency on evaluation labels.
+The 100-task graph cohort has modest planner-dependent gains with graphs on
+48 tasks. Those graph metrics predate the merge-review fix that includes every
+chunk of each seed symbol at hop zero; they have not been recomputed. In the
+24-task graph-free follow-up, Opus feedback expands candidate
+Recall to 55.57% but the old 4K delivery retains only 37.90%. Repacking the same
+scores at 32K delivers 55.11% Recall, with lower F1; output truncation and noise
+are therefore separate measured limitations. The native search/read reference
+reuses `AgentRunner` and completes all 24 tasks: cumulative Recall/F1 is
+57.50%/29.76%, versus 64.46%/27.45% for the matched public leader. Its 32K delivery
+retains 57.26% Recall; $23.7864 in recorded API charges makes this a strong-model
+quality reference, not an ultra-low-cost route. This iteration is closed at the
+user's request; implementation and recorded results are retained through
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827). Retrieval SOTA was not
+achieved. The 32-task validation selection
+excludes all 105 prior development IDs and remains unrun, as does the full-500
+quality gate. Paired final decision selection adds essentially no gain at
+16K/32K. Deterministic completion of touched callables reaches 64.97%/29.06% at
+16K and 66.95%/27.42% at 32K on the development 24; its new reads remain distinct
+from the original Opus trajectory and its intervals do not establish SOTA.
+The requested Claude Max alternative passes an official Agent SDK smoke with
+actual Opus 5.5 and the same three source tools; SDK metering is separated from
+unknown actual billing. Its follow-up batch was stopped with 3 completed,
+1 interrupted and 20 unrun tasks, without a cohort quality claim. No further
+model experiment is scheduled. The public results and sanitized per-case exports
+live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
+remain required before product promotion or distilling the search policy into a
+cheaper controller. Historical fixed payload controls remain experimental inputs,
+not product defaults.
+
 ```text
 source and manifest contracts
   -> view builders and language backends

@@ -128,3 +128,68 @@ def test_planner_retains_rate_limit_and_honors_retry_after(monkeypatch):
     assert result["actions"] == actions
     assert planner.cost_usd == 0.01
     assert "test-key" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("effort", [None, "medium"])
+@pytest.mark.parametrize("custom_system", [None, "Inspect observations and replan."])
+def test_planner_reasoning_request_preserves_plan_contract(
+    monkeypatch, effort, custom_system
+):
+    import json
+
+    from scripts import benchmark_model_grep as benchmark
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    actions = [{"pattern": "symbol", "glob": "**/*", "case_sensitive": True}]
+    sent = []
+
+    def post(_url, **kwargs):
+        sent.append(kwargs["json"])
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps(
+            {
+                "model": "model-pinned-revision",
+                "usage": {"cost": 0.01},
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps({"actions": actions})},
+                    }
+                ],
+            }
+        ).encode()
+        return response
+
+    monkeypatch.setattr(benchmark.requests, "post", post)
+    planner = Planner(
+        "model-alias",
+        1.0,
+        reasoning_effort=effort,
+        max_tokens=4096 if effort else 1000,
+        **({"system": custom_system} if custom_system else {}),
+    )
+    result = planner.plan({"issue": "example"})
+    assert result["actions"] == actions
+    assert result["requested_model"] == "model-alias"
+    assert result["model"] == "model-pinned-revision"
+    assert result["request_parameters"] == planner.request_parameters
+    assert sent[0]["response_format"]["json_schema"]["schema"] == benchmark.SCHEMA
+    assert sent[0]["provider"] == {"require_parameters": True}
+    assert sent[0]["messages"][0]["content"] == (custom_system or benchmark.SYSTEM)
+    assert result["system"] == sent[0]["messages"][0]["content"]
+    if effort:
+        assert "temperature" not in sent[0]
+        assert sent[0]["reasoning"] == {"effort": effort}
+        assert sent[0]["max_tokens"] == 4096
+    else:
+        assert sent[0]["temperature"] == 0
+        assert sent[0]["reasoning"] == {"enabled": False}
+        assert sent[0]["max_tokens"] == 1000
+    assert "test-key" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("max_tokens", [0, -1, True, 1.5])
+def test_planner_rejects_invalid_completion_budget(max_tokens):
+    with pytest.raises(ValueError, match="positive integer"):
+        Planner("model", 1.0, max_tokens=max_tokens)

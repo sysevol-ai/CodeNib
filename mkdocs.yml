@@ -228,7 +228,10 @@ nav:
       - Benchmarks & Evaluation:
           - evaluation/index.md
           - Model-planned grep and Jev: evaluation/grep_jev.md
+          - Dataset and Evaluation Architecture: evaluation/architecture.md
           - SWE-Explore Compatibility: evaluation/swe_explore.md
+          - ContextBench: evaluation/contextbench.md
+          - ContextBench Experiment Results: evaluation/contextbench-results.md
           - SWE-bench Collection: collect_swebench.md
           - Synthesis Pipeline: synthesis_pipeline.md
           - GT Locator: gt_locator.md

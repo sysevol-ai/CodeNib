@@ -68,6 +68,7 @@ codenib-lsp-agent-study-artifacts = "codenib._optional_entrypoints:lsp_agent_stu
 codenib-lsp-agent-study-run = "codenib._optional_entrypoints:lsp_agent_study_run_main"
 codenib-artifact-bundle = "codenib.eval.artifact_bundle:main"
 codenib-swe-explore-benchmark = "codenib.eval.benchmarks.swe_explore_runner:main"
+codenib-contextbench = "codenib._optional_entrypoints:contextbench_main"
 codenib-quality-cost-report = "codenib.eval.reports.quality_cost:main"
 codenib-serve = "codenib._optional_entrypoints:serving_main"
 
