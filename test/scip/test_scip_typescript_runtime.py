@@ -204,6 +204,7 @@ def test_read_only_pipeline_wraps_tsconfig_that_leaves_javascript_out(
     # allowJs and no include, over a plain-JavaScript source tree.
     project = tmp_path / "repo"
     (project / "lib" / "core").mkdir(parents=True)
+    (project / "package.json").write_text('{"name": "axios-fixture"}\n')
     (project / "tsconfig.json").write_text(
         "{\n  // declarations only\n"
         '  "compilerOptions": {"module": "node16", "noEmit": true,},\n}\n',
@@ -238,6 +239,7 @@ def test_read_only_pipeline_wraps_tsconfig_that_leaves_javascript_out(
 def test_read_only_pipeline_wraps_tsconfig_through_local_extends(tmp_path, monkeypatch):
     project = tmp_path / "repo"
     project.mkdir()
+    (project / "package.json").write_text('{"name": "fixture"}\n')
     (project / "tsconfig.base.json").write_text(
         json.dumps({"compilerOptions": {"strict": True}}) + "\n",
         encoding="utf-8",
@@ -291,6 +293,7 @@ def test_read_only_pipeline_keeps_tsconfig_that_defines_its_own_surface(
 ):
     project = tmp_path / "repo"
     project.mkdir()
+    (project / "package.json").write_text('{"name": "fixture"}\n')
     for name, payload in files.items():
         (project / name).write_text(json.dumps(payload) + "\n", encoding="utf-8")
     before = _checkout_snapshot(project)
@@ -349,3 +352,63 @@ def test_static_module_parser_safely_reuses_mixed_language_grammars():
     assert len(js_fingerprint) == 1
     assert ts_fingerprint[0][0] == "import_statement"
     assert js_fingerprint[0][0] == "import_statement"
+
+
+@pytest.mark.parametrize("entry_field", ["main", "exports", "tsconfig"])
+def test_read_only_wrapper_defers_package_config_resolution(
+    tmp_path, monkeypatch, entry_field
+):
+    project = tmp_path / "repo"
+    package = project / "node_modules" / "@scope" / "config"
+    package.mkdir(parents=True)
+    (project / "package.json").write_text('{"name": "fixture"}\n')
+    (project / "tsconfig.json").write_text('{"extends": "@scope/config"}\n')
+    (package / "package.json").write_text(json.dumps({entry_field: "./selected.json"}))
+    (package / "selected.json").write_text('{"include": ["selected/**/*.ts"]}\n')
+    (package / "tsconfig.json").write_text("{}\n")
+    before = _checkout_snapshot(project)
+
+    observed = _capture_read_only_run(tmp_path, monkeypatch, project)
+
+    assert "patched_tsconfig" not in observed
+    assert _checkout_snapshot(project) == before
+
+
+def test_read_only_wrapper_preserves_inherited_excludes(tmp_path, monkeypatch):
+    project = tmp_path / "repo"
+    configs = project / "configs"
+    configs.mkdir(parents=True)
+    (project / "package.json").write_text('{"name": "fixture"}\n')
+    (project / "tsconfig.json").write_text('{"extends": "./configs/base.json"}\n')
+    (configs / "base.json").write_text(
+        '{"exclude": ["../generated/**", "private/**"]}\n'
+    )
+    before = _checkout_snapshot(project)
+
+    observed = _capture_read_only_run(
+        tmp_path, monkeypatch, project, exclude_patterns=["dist/**"]
+    )
+
+    assert observed["config"]["exclude"] == [
+        f"{project}/generated/**",
+        f"{configs}/private/**",
+        f"{project}/dist/**",
+    ]
+    assert _checkout_snapshot(project) == before
+
+
+def test_existing_config_without_manifest_keeps_scip_package_boundary(
+    tmp_path, monkeypatch
+):
+    (tmp_path / "package.json").write_text('{"name": "unrelated-parent"}\n')
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "tsconfig.json").write_text("{}\n")
+    (project / "index.ts").write_text("export const value = 1;\n")
+    before = _checkout_snapshot(project)
+
+    observed = _capture_read_only_run(tmp_path, monkeypatch, project)
+
+    assert "patched_tsconfig" not in observed
+    assert observed["infer_tsconfig"] is False
+    assert _checkout_snapshot(project) == before

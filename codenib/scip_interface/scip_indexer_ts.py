@@ -494,24 +494,17 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             payload["exclude"] = anchored_excludes
         if base_config is not None:
             payload["extends"] = str(base_config.resolve())
-            inherited_config = self._read_jsonc_object(base_config) or {}
-            inherited_excludes = inherited_config.get("exclude")
-            if isinstance(inherited_excludes, list):
-                anchored_excludes = []
-                for raw_pattern in [*inherited_excludes, *self.exclude_patterns]:
-                    pattern = str(raw_pattern).strip()
-                    if not pattern:
-                        continue
-                    candidate = Path(pattern)
-                    anchored = (
-                        candidate.as_posix()
-                        if candidate.is_absolute()
-                        else f"{project_root}/{pattern.lstrip('/')}"
-                    )
-                    if anchored not in anchored_excludes:
-                        anchored_excludes.append(anchored)
-                if anchored_excludes:
-                    payload["exclude"] = anchored_excludes
+            surface = self._effective_tsconfig_surface(base_config)
+            if surface is None:
+                raise ValueError(
+                    "cannot resolve the read-only config's source boundary"
+                )
+            inherited_excludes = surface.get("exclude", [])
+            merged_excludes = list(
+                dict.fromkeys([*inherited_excludes, *anchored_excludes])
+            )
+            if merged_excludes:
+                payload["exclude"] = merged_excludes
         self.output_dir.mkdir(parents=True, exist_ok=True)
         config_path = self.output_dir / self._READ_ONLY_TSCONFIG_NAME
         config_path.write_text(
@@ -539,7 +532,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         return parsed if isinstance(parsed, dict) else None
 
     def _resolve_tsconfig_extends(self, config_dir: Path, spec: str) -> Optional[Path]:
-        """Locate an ``extends`` target the way TypeScript would, or None."""
+        """Resolve an explicit local ``extends`` file, or decline the wrapper."""
 
         if spec.startswith(("./", "../")) or Path(spec).is_absolute():
             candidate = config_dir / spec
@@ -547,23 +540,10 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
             if candidate.suffix != ".json":
                 candidates.append(Path(f"{candidate}.json"))
         else:
-            # Package configs such as ``@tsconfig/node18/tsconfig.json``:
-            # search node_modules from the config up to the checkout root.
-            candidates = []
-            root = self.project_root.resolve()
-            directory = config_dir.resolve()
-            while True:
-                package_path = directory / "node_modules" / spec
-                candidates.extend(
-                    [
-                        package_path,
-                        Path(f"{package_path}.json"),
-                        package_path / "tsconfig.json",
-                    ]
-                )
-                if directory == root or root not in directory.parents:
-                    break
-                directory = directory.parent
+            # Bare packages can select a config through package metadata. Do
+            # not infer their boundary from a fallback tsconfig.json: leave
+            # those projects to TypeScript's own resolver without widening.
+            return None
         return next((path for path in candidates if path.is_file()), None)
 
     def _effective_tsconfig_surface(
@@ -571,7 +551,7 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         config_path: Path,
         _stack: tuple = (),
     ) -> Optional[dict]:
-        """Return the ``include``/``files``/``allowJs`` a config ends up with.
+        """Return effective source selection, with excludes anchored at their origin.
 
         Follows ``extends`` (string or list, later entries win) so that a
         repository config inheriting an explicit file list or ``allowJs`` is
@@ -611,6 +591,15 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         for key in ("include", "files"):
             if key in config:
                 surface[key] = config[key]
+        if "exclude" in config:
+            excludes = config["exclude"]
+            if not isinstance(excludes, list) or any(
+                not isinstance(pattern, str) for pattern in excludes
+            ):
+                return None
+            surface["exclude"] = [
+                str((config_path.parent / pattern).resolve()) for pattern in excludes
+            ]
         return surface
 
     def _read_only_config_needs_wrapper(self) -> bool:
@@ -625,12 +614,19 @@ class SCIPTypeScriptIndexer(SCIPIndexerBase):
         would cover JavaScript once allowJs is on, so the external wrapper
         (same base config plus allowJs, anchored at the checkout) selects the
         sources ``_ensure_allow_js`` would, without writing into the checkout.
-        Configs with an explicit include list keep their own surface.
+        Configs with an explicit include list, package-based extends, or no
+        root package manifest keep their own surface.
         """
 
         tsconfig_path = self.project_root / "tsconfig.json"
         if not tsconfig_path.is_file():
             return True
+        # An external config is passed as SCIP's positional project root.
+        # A checkout-local package manifest stops its symbol-owner lookup at
+        # the repository. Without one, keep the existing directory-based run
+        # rather than attributing sources to an unrelated ancestor package.
+        if not (self.project_root / "package.json").is_file():
+            return False
         root_config = self._read_jsonc_object(tsconfig_path)
         if root_config is None or root_config.get("references"):
             return False
