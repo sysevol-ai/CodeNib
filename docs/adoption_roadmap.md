@@ -145,25 +145,32 @@ activated both entry points; the prior frontend and ingress settings are
 retained for operator-owned rollback. The existing Wiki backend reports healthy
 with 27 repositories.
 
-Wiki refresh stability: opening an Overview currently changes the production
-reading column from three columns to two after the map response; at 1440 pixels
-the prose width moves from about 701 to 949 pixels. The map also initially uses
-a 960-pixel canvas and then reflows on measurement, adding about 570 pixels of
-height on a 390-pixel phone. Final-state screenshots missed these transitions.
-The follow-up in [#830](https://github.com/sysevol-ai/CodeNib/pull/830) keeps the
-Overview column policy fixed,
+Wiki refresh stability: [#830](https://github.com/sysevol-ai/CodeNib/pull/830)
+is published to `demo.codenib.ai` on 2026-10-15 (Pacific), using frontend build
+`b082f51f`. The reader keeps the Overview column policy fixed,
 publishes prose with its resolved leading map/boundary (including unavailable
-and error outcomes), and measures the map before paint. Local production-build
-regressions pass opening and refreshing at 1440/1024/768/390 pixels with delayed
-page/map/boundary responses, failed visuals and an unavailable map; the same
-regression fails against the deployed version. All 176 frontend tests pass.
+and error outcomes), and measures the map before paint.
 Optional visuals have a five-second deadline that includes waiting for the
 outline. Stalled map/boundary requests are aborted; an outline that arrives
 after the deadline cannot insert a map above readable prose. An explicit map
-retry can recover it. Browser coverage also holds each of these requests past
-the deadline and verifies readable, stable prose before releasing late results.
-The elapsed indicator covers the visual wait, and Web CI runs the browser
-regression. Publication and live loading-transition acceptance remain open.
+retry can recover it, and the elapsed indicator covers the visual wait.
+
+Local and public production-build regressions pass all 72 opening/refresh
+combinations: 1440/1024/768/390 pixels, delayed page/map/boundary responses,
+failed visuals, an unavailable map, and stalled map/boundary/outline requests.
+They verify stable painted reading widths and map heights, readable prose at
+the deadline, ignored late results and explicit retry recovery. All 176 frontend
+tests, the production build, strict MkDocs, the public-doc audit and pinned
+pre-commit hooks pass; Web CI runs the browser regression.
+Real prepared Requests Overview and Redirect Resolution pages also pass at
+1440 and 390 pixels with delayed visual requests, stable opening/refresh
+geometry, chapter navigation, source opening and the shared homepage example.
+The actual marketing form opens that Wiki at both widths without API writes.
+Served entry assets and the preserved hosted runtime configuration match the
+published build's SHA-256 hashes and content types. The prior frontend and
+ingress configuration remain available for rollback; prior assets are retained
+for already-open browser tabs. The existing backend remains healthy with 27
+repositories and was not restarted for this frontend publication.
 
 Measurement reuses the existing opt-in first-party collector. Inspecting source
 (`example_source_open` / `example_github_open`) followed by `repository_submit`
@@ -175,8 +182,7 @@ the tab's first source event; an earlier setup/submit is excluded. The collector
 remains disabled by default. Observations are
 separate by origin and do not prove a successful own-repository agent query.
 
-Open gates: publish and verify the Wiki refresh-stability follow-up; explicitly
-enable hosted measurement with the matching collector
+Open gates: explicitly enable hosted measurement with the matching collector
 and log-retention policy; establish a baseline and observe 5–8 unfamiliar
 visitors before claiming better conversion. Broader question examples,
 arbitrary-repository cost/latency, consent, corpus quality and non-Python graph
