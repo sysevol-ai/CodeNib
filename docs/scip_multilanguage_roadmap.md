@@ -44,6 +44,16 @@ native route requires exact `.idx` generation ownership, source-selection
 closure, and parity tests; this is an acceleration gate change, not a language
 support removal.
 
+Read-only JavaScript indexing in [#826](https://github.com/sysevol-ai/CodeNib/pull/826)
+now wraps an existing root TypeScript config only when its implicit source set
+needs `allowJs`, local config inheritance is resolvable, and a checkout-local
+package manifest preserves SCIP symbol ownership. Inherited exclusion patterns
+retain the directory of their declaring config. Explicit source lists, project
+references, package-based inheritance and manifest-less TypeScript projects
+keep the native config path. Focused regression and SCIP/compiler unit checks
+cover these boundaries; this does not promote a backend or regenerate hosted
+graph artifacts.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:
