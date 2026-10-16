@@ -7,6 +7,7 @@
 import copy
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 from filelock import FileLock, Timeout
 
+from codenib.dataset import agent_retrieval_bench as dataset
 from codenib.dataset.agent_retrieval_bench import (
     ARB_RELEASES,
     ARBCase,
@@ -34,7 +36,9 @@ def write_rows(path, rows):
 
 
 @pytest.fixture
-def released_data(tmp_path):
+def released_data(tmp_path, monkeypatch):
+    # Synthetic releases contain one case each; real releases require full counts.
+    monkeypatch.setattr(dataset, "ARB_RELEASE_COUNTS", dict.fromkeys(ARB_RELEASES, 1))
     root = tmp_path / "data"
     gold_by_task = {
         "code2test": {"related_tests": ["tests/check.py"]},
@@ -163,6 +167,17 @@ def test_selection_and_duplicate_samples(released_data):
     path.write_text(path.read_text() * 2)
     with pytest.raises(ValueError, match="duplicate sample"):
         load_cases(released_data)
+
+
+@pytest.mark.parametrize(
+    "selection", [{}, {"limit_per_task": 1}, {"sample_ids": ["code2test"]}]
+)
+def test_complete_release_required_before_selection(
+    released_data, monkeypatch, selection
+):
+    monkeypatch.setitem(dataset.ARB_RELEASE_COUNTS, "v2_code2test", 2)
+    with pytest.raises(ValueError, match="expected 2 samples, got 1"):
+        load_cases(released_data, **selection)
 
 
 @pytest.mark.parametrize(
@@ -338,6 +353,96 @@ def test_one_writer_owns_output(released_data, tmp_path, fake_evaluator):
         assert not (output / "config.json").exists()
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [("ranked_files", ["injected.py"]), ("status", "error"), ("repo", "other/repo")],
+)
+def test_resume_rebuilds_edited_export_from_native_checkpoint(
+    released_data, tmp_path, fake_evaluator, monkeypatch, field, value
+):
+    path, _prepared = prepared_file(released_data, tmp_path)
+    output = tmp_path / "run"
+    runner.execute(path, output, tmp_path)
+    original = runner.load_predictions(output / "predictions.json")
+    modified = copy.deepcopy(original)
+    modified[0][field] = value
+    (output / "predictions.json").write_text(json.dumps(modified))
+    monkeypatch.setattr(
+        runner, "rank_bm25", lambda *args: pytest.fail("completed retrieval rerun")
+    )
+    result = runner.execute(path, output, tmp_path, resume=True)
+    assert result["summary"]["overall"]["valid"] == 4
+    assert runner.load_predictions(output / "predictions.json") == original
+
+
+def test_resume_rejects_modified_native_checkpoint(
+    released_data, tmp_path, fake_evaluator
+):
+    path, _prepared = prepared_file(released_data, tmp_path)
+    output = tmp_path / "run"
+    runner.execute(path, output, tmp_path)
+    checkpoint = json.loads((output / "checkpoint.json").read_text())
+    checkpoint["predictions"][0]["ranked_files"] = ["injected.py"]
+    (output / "checkpoint.json").write_text(json.dumps(checkpoint))
+    with pytest.raises(ValueError, match="integrity receipt"):
+        runner.execute(path, output, tmp_path, resume=True)
+    assert not (output / "results.json").exists()
+
+
+def test_checkpoint_survives_interrupted_public_export(
+    released_data, tmp_path, fake_evaluator, monkeypatch
+):
+    path, _prepared = prepared_file(released_data, tmp_path)
+    output = tmp_path / "run"
+    write = runner.write_json_atomic
+    calls = []
+
+    def interrupt_export(destination, payload):
+        if destination.name == "predictions.json":
+            raise KeyboardInterrupt
+        write(destination, payload)
+
+    def rank(query, corpus):
+        calls.append(query)
+        return [row["path"] for row in corpus]
+
+    monkeypatch.setattr(runner, "rank_bm25", rank)
+    monkeypatch.setattr(runner, "write_json_atomic", interrupt_export)
+    with pytest.raises(KeyboardInterrupt):
+        runner.execute(path, output, tmp_path)
+    assert not (output / "predictions.json").exists()
+    monkeypatch.setattr(runner, "write_json_atomic", write)
+    result = runner.execute(path, output, tmp_path, resume=True)
+    assert result["summary"]["overall"]["valid"] == 4
+    assert len(calls) == 4
+
+
+@pytest.mark.parametrize("exists", [False, True])
+def test_cli_invalid_upstream_exits_without_traceback(
+    released_data, tmp_path, capsys, exists
+):
+    path, _prepared = prepared_file(released_data, tmp_path)
+    checkout = tmp_path / "upstream"
+    if exists:
+        checkout.mkdir()
+    with pytest.raises(SystemExit) as failure:
+        runner.main(
+            [
+                "run",
+                "--prepared",
+                str(path),
+                "--output",
+                str(tmp_path / "run"),
+                "--upstream",
+                str(checkout),
+            ]
+        )
+    assert failure.value.code == 2
+    error = capsys.readouterr().err
+    assert "CalledProcessError" in error
+    assert "Traceback" not in error
+
+
 def test_failed_retrieval_checkpoint_is_not_silently_retried(
     released_data, tmp_path, fake_evaluator, monkeypatch
 ):
@@ -376,6 +481,50 @@ def test_unpinned_or_modified_evaluator_rejected(
     monkeypatch.setattr(arb.subprocess, "check_output", git)
     with pytest.raises(ValueError):
         arb.validate_upstream(tmp_path)
+
+
+@pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
+def test_hidden_evaluator_edits_rejected(tmp_path, monkeypatch, flag):
+    checkout = tmp_path / "upstream"
+    source = checkout / "src/agent_retrieval_bench/bcy_curve.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("original = True\n")
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    subprocess.run(["git", "-C", str(checkout), "add", "."], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        check=True,
+    )
+    revision = subprocess.check_output(
+        ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True
+    ).strip()
+    monkeypatch.setattr(arb, "ARB_UPSTREAM_REVISION", revision)
+    assert arb.validate_upstream(checkout) == checkout
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "update-index",
+            flag,
+            str(source.relative_to(checkout)),
+        ],
+        check=True,
+    )
+    source.write_text("original = False\n")
+    with pytest.raises(ValueError, match="hidden Git index flags"):
+        arb.validate_upstream(checkout)
 
 
 def test_offline_evaluation_no_retrieval_and_no_stale_report(

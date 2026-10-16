@@ -78,15 +78,22 @@ codenib-arb evaluate \
 ```
 
 Each output directory contains `config.json`, `predictions.json`, and
-`results.json`. Retrieval checkpoints after every case. Use the same command
-with `--resume` after interruption; the input and implementation receipts must
-match. Completed successes and failures are retained. Use a new output
-directory to retry failures or change inputs. A directory lock excludes
+`results.json`. Native retrieval also writes `checkpoint.json` after every
+case, atomically binding its predictions to input and integrity hashes. Use the
+same command with `--resume` after interruption; the input and implementation receipts must
+match. Resume verifies the native checkpoint and rebuilds the public prediction
+export from it; edited exports cannot replace native results. Completed successes
+and failures are retained. Use a new output directory to retry failures or change inputs. A directory lock excludes
 concurrent writers; an interrupted rescore removes the previous report before
 starting so an old success cannot be mistaken for a new result.
 
+Preparation checks each selected release against its complete published sample
+count before applying sample IDs or limits, so truncated downloads cannot reduce
+the denominator silently.
+
 The evaluator runs in an isolated subprocess against the clean, pinned ARB
-checkout. It needs no installation in CodeNib's environment. Optionally set
+checkout, rejecting hidden Git index flags as well as ordinary local changes.
+It needs no installation in CodeNib's environment. Optionally set
 `--evaluator-python /tmp/arb-env/bin/python`. Offline rescoring never reruns
 retrieval and does not infer the cost of externally produced predictions.
 

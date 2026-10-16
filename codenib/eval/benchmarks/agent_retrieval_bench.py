@@ -92,6 +92,11 @@ def validate_upstream(checkout: Path) -> Path:
         raise ValueError(f"ARB evaluator must be pinned to {ARB_UPSTREAM_REVISION}")
     if git("status", "--porcelain", "--untracked-files=all", "--", "src"):
         raise ValueError("ARB evaluator source must be clean")
+    if any(
+        not line.startswith("H ")
+        for line in git("ls-files", "-v", "--", "src").splitlines()
+    ):
+        raise ValueError("ARB evaluator source has hidden Git index flags")
     if not (checkout / "src/agent_retrieval_bench/bcy_curve.py").is_file():
         raise ValueError("ARB evaluator package is missing")
     return checkout

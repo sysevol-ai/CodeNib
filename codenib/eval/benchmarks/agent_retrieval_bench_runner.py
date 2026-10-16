@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -215,7 +216,9 @@ def execute(
     Lock acquisition is the ownership linearization point. There are no nested
     locks. The owner atomically replaces checkpoints; the OS releases the lock
     on exit/crash. A subsequent explicit resume owns recovery and requires an
-    identical input/implementation receipt. Recorded failures are retained.
+    identical input/implementation receipt. Each atomic checkpoint replacement
+    commits its predictions and integrity receipt together. Public predictions
+    are derived output, never recovery input. Recorded failures are retained.
     """
     prepared = load_prepared(prepared_path)
     upstream = validate_upstream(upstream)
@@ -235,6 +238,7 @@ def execute(
     with FileLock(str(output / ".run.lock"), timeout=0):
         config_path = output / "config.json"
         predictions_path = output / "predictions.json"
+        checkpoint_path = output / "checkpoint.json"
         result_path = output / "results.json"
         if config_path.exists():
             previous = json.loads(config_path.read_text(encoding="utf-8"))
@@ -252,9 +256,20 @@ def execute(
             predictions = external
             write_json_atomic(predictions_path, predictions)
         else:
-            predictions = (
-                load_predictions(predictions_path) if predictions_path.exists() else []
-            )
+            predictions = []
+            if checkpoint_path.exists():
+                checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+                if (
+                    not isinstance(checkpoint, dict)
+                    or checkpoint.get("config_sha256") != json_digest(config)
+                    or not isinstance(checkpoint.get("predictions"), list)
+                    or checkpoint.get("predictions_sha256")
+                    != json_digest(checkpoint["predictions"])
+                ):
+                    raise ValueError("native checkpoint integrity receipt mismatch")
+                predictions = checkpoint["predictions"]
+            elif predictions_path.exists():
+                raise ValueError("native predictions have no recovery checkpoint")
             completed = prediction_map(predictions, prepared)
             for record in prepared["cases"]:
                 case = ARBCase.from_record(record["release"], record["sample"])
@@ -276,8 +291,18 @@ def execute(
                     prediction["error"] = f"{type(exc).__name__}: {exc}"
                 prediction["retrieval_seconds"] = time.perf_counter() - started
                 predictions.append(prediction)
+                write_json_atomic(
+                    checkpoint_path,
+                    {
+                        "config_sha256": json_digest(config),
+                        "predictions_sha256": json_digest(predictions),
+                        "predictions": predictions,
+                    },
+                )
                 write_json_atomic(predictions_path, predictions)
                 print(f"{case.sample_id}: {prediction['status']}", file=sys.stderr)
+            # Recreate a missing, stale or edited public export from the checkpoint.
+            write_json_atomic(predictions_path, predictions)
         result = evaluate(prepared, predictions, upstream, evaluator_python)
         result["provenance"] = config
         if external is None:
@@ -331,7 +356,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(result["summary"], indent=2))
         return 1 if result["summary"]["overall"]["failed"] else 0
-    except (OSError, ValueError, RuntimeError, Timeout) as exc:
+    except (
+        OSError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+        Timeout,
+    ) as exc:
         parser.exit(2, f"{type(exc).__name__}: {exc}\n")
 
 

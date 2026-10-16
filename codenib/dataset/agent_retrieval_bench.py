@@ -138,11 +138,18 @@ def load_cases(
             contained_path(data_root, f"benchmark/{release}/samples.jsonl")
         )
         release_cases = [ARBCase.from_record(release, row) for row in rows]
-        kept = 0
-        for case in sorted(release_cases, key=lambda item: item.sample_id):
+        for case in release_cases:
             if case.sample_id in seen:
                 raise ValueError(f"duplicate sample id: {case.sample_id}")
             seen.add(case.sample_id)
+        expected = ARB_RELEASE_COUNTS[release]
+        if len(release_cases) != expected:
+            raise ValueError(
+                f"incomplete or unexpected release {release}: "
+                f"expected {expected} samples, got {len(release_cases)}"
+            )
+        kept = 0
+        for case in sorted(release_cases, key=lambda item: item.sample_id):
             if selected and case.sample_id not in selected:
                 continue
             found.add(case.sample_id)
