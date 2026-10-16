@@ -156,7 +156,12 @@ publishes prose with its resolved leading map/boundary (including unavailable
 and error outcomes), and measures the map before paint. Local production-build
 regressions pass opening and refreshing at 1440/1024/768/390 pixels with delayed
 page/map/boundary responses, failed visuals and an unavailable map; the same
-regression fails against the deployed version. All 174 frontend tests pass.
+regression fails against the deployed version. All 176 frontend tests pass.
+Optional visuals have a five-second deadline that includes waiting for the
+outline. Stalled map/boundary requests are aborted; an outline that arrives
+after the deadline cannot insert a map above readable prose. An explicit map
+retry can recover it. Browser coverage also holds each of these requests past
+the deadline and verifies readable, stable prose before releasing late results.
 The elapsed indicator covers the visual wait, and Web CI runs the browser
 regression. Publication and live loading-transition acceptance remain open.
 

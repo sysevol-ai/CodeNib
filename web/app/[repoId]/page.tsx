@@ -52,6 +52,7 @@ import {
 const CodePanel = lazy(() => import("@/components/CodePanel"));
 const Codemap = lazy(() => import("@/components/Codemap"));
 const GraphView = lazy(() => import("@/components/GraphView"));
+const LEADING_VISUAL_WAIT_MS = 5000;
 
 interface Heading {
   id: string;
@@ -478,6 +479,7 @@ export default function WikiPageView({
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
   const [areaMapError, setAreaMapError] = useState(false);
   const [areaMapAttempt, setAreaMapAttempt] = useState(0);
+  const areaMapDeadline = useRef({ repoId, attempt: -1, expiresAt: 0 });
   const [pageGraphOpen, setPageGraphOpen] = useState(false);
   const [pageGraphLoading, setPageGraphLoading] = useState(false);
   const [pageGraphError, setPageGraphError] = useState(false);
@@ -651,21 +653,41 @@ export default function WikiPageView({
     };
   }, [repoId, activeId, pageGraphOpen, pageGraph]);
 
-  // Wait for the outline; fetching earlier can retain an outline_pending map.
+  // Include the outline prerequisite in the visual deadline. Once prose is
+  // released without its map, late responses must not insert one above it.
   useEffect(() => {
+    if (areaMapDeadline.current.repoId !== repoId || areaMapDeadline.current.attempt !== areaMapAttempt) {
+      areaMapDeadline.current = { repoId, attempt: areaMapAttempt, expiresAt: Date.now() + LEADING_VISUAL_WAIT_MS };
+    }
     setAreaMap(null);
     setAreaMapError(false);
-    if (tocLoading) return;
+    const remaining = areaMapDeadline.current.expiresAt - Date.now();
+    if (remaining <= 0) {
+      setAreaMapError(true);
+      return;
+    }
     let cancelled = false;
-    fetchWikiAreaMap(repoId)
-      .then((m) => {
-        if (!cancelled) setAreaMap(m);
-      })
-      .catch(() => {
-        if (!cancelled) setAreaMapError(true);
-      });
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      cancelled = true;
+      controller.abort();
+      setAreaMapError(true);
+    }, remaining);
+    // Fetch only after the outline; earlier calls can retain outline_pending.
+    if (!tocLoading) {
+      fetchWikiAreaMap(repoId, { signal: controller.signal })
+        .then((m) => {
+          if (!cancelled) setAreaMap(m);
+        })
+        .catch(() => {
+          if (!cancelled) setAreaMapError(true);
+        })
+        .finally(() => window.clearTimeout(timer));
+    }
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, [repoId, tocLoading, areaMapAttempt]);
 
@@ -676,16 +698,21 @@ export default function WikiPageView({
     setBoundaryReadyFor(null);
     if (activeId === "overview") return;
     let cancelled = false;
-    fetchWikiBoundary(repoId, activeId)
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), LEADING_VISUAL_WAIT_MS);
+    fetchWikiBoundary(repoId, activeId, { signal: controller.signal })
       .then((b) => {
         if (!cancelled) setBoundary(b);
       })
       .catch(() => {})
       .finally(() => {
+        window.clearTimeout(timer);
         if (!cancelled) setBoundaryReadyFor(activeId);
       });
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, [repoId, activeId]);
 

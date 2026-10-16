@@ -5,6 +5,9 @@
 - Resolve a page's leading map or boundary card before publishing its prose.
   Unavailable visuals and failed requests must also release the loading state;
   the elapsed indicator must cover the complete visible loading period.
+- Bound optional visual waits, including outline prerequisites, and ignore late
+  responses after revealing prose. A stalled visual must not hide a loaded page
+  indefinitely or insert itself above the reader after the fallback.
 - Measure responsive map canvases before the first paint. A later
   `ResizeObserver` remains useful for actual viewport changes.
 - Verify opening and refreshing while page and visual responses arrive in

@@ -47,15 +47,18 @@ try {
   }
   browser = await chromium.launch();
   for (const width of [1440, 1024, 768, 390]) {
-    for (const scenario of ["map-late", "page-late", "boundary-late", "map-error", "boundary-error", "map-unavailable"]) {
-      const overview = scenario.startsWith("map") || scenario === "page-late";
+    for (const scenario of ["map-late", "page-late", "boundary-late", "map-error", "boundary-error", "map-unavailable", "map-stalled", "boundary-stalled", "tree-stalled"]) {
+      const stalled = scenario.endsWith("stalled");
+      const overview = scenario.startsWith("map") || scenario.startsWith("tree") || scenario === "page-late";
       const chapter = overview ? "overview" : "runtime";
       const path = `/api/repos/${repo.id}`;
-      const held = scenario === "page-late" ? `${path}/wiki/overview`
+      const held = scenario === "tree-stalled" ? `${path}/wiki`
+        : scenario === "page-late" ? `${path}/wiki/overview`
         : overview ? `${path}/wiki-map` : `${path}/wiki/runtime/boundary`;
       const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: "reduce" });
       context.setDefaultTimeout(10000);
       const page = await context.newPage(), errors = [], unexpected = [];
+      if (stalled) await page.clock.install();
       page.on("pageerror", error => errors.push(error.message));
       let turn = gate();
       await context.route("**/api/**", async route => {
@@ -99,8 +102,22 @@ try {
         await page.waitForTimeout(180);
         assert.equal(await page.locator(".wiki-story").count(), 0, `${scenario}: prose painted before its leading visual settled`);
         const initial = await page.locator(".wiki-main").boundingBox();
-        turn.release();
+        if (stalled) await page.clock.fastForward(6000);
+        else turn.release();
         await page.locator('.wiki-main[aria-busy="false"] .wiki-story').waitFor();
+        if (stalled) {
+          assert.equal(await page.locator(".repo-poster").count(), 0);
+          const paragraph = page.locator(".wiki-story .markdown p").first();
+          const before = await paragraph.boundingBox();
+          turn.release();
+          await page.waitForTimeout(250);
+          const after = await paragraph.boundingBox();
+          assert.ok(Math.abs(before.y - after.y) < 1, `${scenario}: a late visual displaced readable prose`);
+          if (overview) {
+            await page.getByRole("button", { name: "Retry map" }).click();
+            await page.locator(".repo-poster").waitFor();
+          }
+        }
         await page.waitForTimeout(250);
         const final = await page.locator(".wiki-main").boundingBox();
         assert.ok(Math.abs(initial.width - final.width) < 1 && Math.abs(initial.x - final.x) < 1,

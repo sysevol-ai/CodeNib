@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   fetchEdgeLabel,
+  fetchWikiAreaMap,
+  fetchWikiBoundary,
   fetchWikiTree,
   fetchWikiPage,
   isSourceCheckedWikiPage,
@@ -63,6 +65,28 @@ describe("cold Wiki generation contention", () => {
     await vi.runAllTimersAsync();
     expect(await tree).toEqual({ pages: [{ id: "overview" }] });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("optional Wiki visual deadlines", () => {
+  it.each(["map", "boundary"])("cancels a %s retry without waiting for Retry-After", async (kind) => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchMock = vi.fn().mockResolvedValue(new Response("Preparing", {
+      status: 503, headers: { "Retry-After": "10" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const options = { signal: controller.signal };
+    const request = kind === "map"
+      ? fetchWikiAreaMap("stalled-visual", options)
+      : fetchWikiBoundary("stalled-visual", "runtime", options);
+    const failed = expect(request).rejects.toThrow("Visual deadline");
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort(new Error("Visual deadline"));
+    await failed;
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1]).toEqual(options);
   });
 });
 
