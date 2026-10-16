@@ -28,15 +28,26 @@ def validate_symbol_extraction(extract_defs) -> None:
     gold and prediction sets then misleadingly score 100% symbol coverage.
     Probe the actual extractor, without changing the official metric algorithm.
     """
+    probes = {
+        "py": "def contextbench_probe():\n    return 1\n",
+        "js": "function contextbench_probe() { return 1; }\n",
+        "ts": "function contextbench_probe(): number { return 1; }\n",
+        "go": "package main\nfunc contextbench_probe() int { return 1 }\n",
+        "c": "int contextbench_probe(void) { return 1; }\n",
+        "cpp": "int contextbench_probe() { return 1; }\n",
+        "rs": "fn contextbench_probe() -> i32 { 1 }\n",
+        "java": "class Probe { int contextbench_probe() { return 1; } }\n",
+    }
     with TemporaryDirectory(prefix="contextbench-parser-") as directory:
-        source = Path(directory) / "probe.py"
-        source.write_text("def contextbench_probe():\n    return 1\n")
-        if not extract_defs(str(source)):
-            raise RuntimeError(
-                "official ContextBench symbol extraction failed its known-function "
-                "probe; select a compatible environment with --evaluator-python "
-                "(upstream passes bytes to tree-sitter)"
-            )
+        for suffix, content in probes.items():
+            source = Path(directory) / f"probe.{suffix}"
+            source.write_text(content, encoding="utf-8")
+            if not extract_defs(str(source)):
+                raise RuntimeError(
+                    "official ContextBench symbol extraction failed its known-function "
+                    f"probe for .{suffix}; select a compatible environment with "
+                    "--evaluator-python (upstream passes bytes to tree-sitter)"
+                )
 
 
 def main() -> int:

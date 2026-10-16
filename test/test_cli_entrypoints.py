@@ -278,3 +278,30 @@ def test_wheel_includes_skill_definitions() -> None:
         "*/config.yaml",
         "*/skill.md",
     ]
+
+
+@pytest.mark.parametrize("help_requested", [False, True])
+def test_contextbench_entrypoint_handles_missing_datasets(
+    monkeypatch, capsys, help_requested
+):
+    def missing(_module):
+        raise ModuleNotFoundError("No module named datasets", name="datasets")
+
+    monkeypatch.setattr(_optional_entrypoints, "_load_main", missing)
+    monkeypatch.setattr(
+        "sys.argv",
+        (
+            ["codenib-contextbench", "--help"]
+            if help_requested
+            else ["codenib-contextbench", "prepare"]
+        ),
+    )
+    assert _optional_entrypoints.contextbench_main() == (0 if help_requested else 2)
+    captured = capsys.readouterr()
+    output = captured.out if help_requested else captured.err
+    assert "codenib[agent,datasets]" in output
+    assert "Traceback" not in output
+    assert (
+        _console_scripts()["codenib-contextbench"]
+        == "codenib._optional_entrypoints:contextbench_main"
+    )

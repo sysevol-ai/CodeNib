@@ -106,7 +106,8 @@ Do not install upstream's legacy `tree-sitter==0.20.4` requirements into the
 CodeNib environment. Some `tree-sitter-language-pack` versions can also work,
 but version 1.8.1 expects string input while the pinned upstream extractor sends
 bytes and silently returns empty symbol sets. The command checks extraction of
-a known function before model calls, so incompatible parsers cannot produce
+known functions in all eight dataset languages before model calls, so
+incompatible parsers cannot produce
 misleading perfect symbol scores. Python 3.10/3.11 supports the pinned
 `tree-sitter-languages==1.10.2` wheel.
 

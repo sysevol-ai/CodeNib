@@ -197,13 +197,24 @@ class TracedDecisions(MeasuredDecisions):
     def decide(self, *, state, questions):
         self.spend.check()
         start = len(self.calls)
+        charged = False
         try:
             result = super().decide(state=state, questions=questions)
             self.spend.charge(result.usage)
+            charged = True
             return result
         except Exception:
-            if len(self.calls) > start and "usage" not in self.calls[-1]:
-                self.spend.uncertain = True
+            if len(self.calls) > start and not charged:
+                usage = self.calls[-1].get("usage")
+                if not isinstance(usage, dict):
+                    self.spend.uncertain = True
+                else:
+                    try:
+                        self.spend.charge(usage)
+                    except RuntimeError:
+                        # Preserve the original failure while preventing any
+                        # following call from using an unpriced cost guard.
+                        self.spend.uncertain = True
             raise
         finally:
             if len(self.calls) > start:

@@ -336,3 +336,71 @@ def test_native_source_preparation_keeps_failures_and_rejects_drift(
     (output / "cases/a.json").write_text("changed")
     with pytest.raises(ValueError, match="source record changed"):
         agent.load_inputs(output)
+
+
+@pytest.mark.parametrize("dirty", [False, True])
+def test_completed_repack_audits_snapshot_before_reading(monkeypatch, tmp_path, dirty):
+    prepared, previous = tmp_path / "prepared", tmp_path / "previous"
+    prepared.mkdir()
+    previous.mkdir()
+    (prepared / "manifest.json").write_text("frozen")
+    source = prepared / "source.json"
+    source.write_text(json.dumps({"repo": str(tmp_path / "repo")}))
+    case = SimpleNamespace(instance_id="case", base_commit="a" * 40)
+    manifest = {"cases": [{"instance_id": "case", "source": str(source)}]}
+    parameters = {
+        "model": "anthropic/claude-opus-5.5",
+        "max_tokens": 4096,
+        "reasoning": {"effort": "medium"},
+    }
+    (previous / "config.json").write_text(
+        json.dumps(
+            {
+                "manifest_sha256": agent.digest(prepared / "manifest.json"),
+                "parameters": parameters,
+                "max_turns": 20,
+            }
+        )
+    )
+    (previous / "case.json").write_text(
+        json.dumps(
+            {
+                "instance_id": "case",
+                "status": "ok",
+                "calls": [],
+                "served_16384": {},
+                "served_32768": {},
+            }
+        )
+    )
+    monkeypatch.setattr(agent, "load_inputs", lambda _path: (manifest, {"case": case}))
+    monkeypatch.setattr(agent, "freeze", lambda _path: {})
+    events = []
+
+    def audit(*_args):
+        events.append("audit")
+        if dirty:
+            raise ValueError("snapshot audit failed")
+        return {"clean": True}
+
+    monkeypatch.setattr(agent, "audit_contextbench_snapshot", audit)
+    monkeypatch.setattr(agent, "add_delivery", lambda *_args: events.append("read"))
+    output = tmp_path / "output"
+    agent.run(
+        SimpleNamespace(
+            command="repack",
+            max_turns=20,
+            workers=1,
+            max_cost_usd=1,
+            case_cost_usd=1,
+            prepared=prepared,
+            output=output,
+            resume_from=previous,
+        )
+    )
+    row = json.loads((output / "case.json").read_text())
+    assert row["status"] == ("error" if dirty else "ok")
+    assert events == (["audit"] if dirty else ["audit", "read", "audit"])
+    if dirty:
+        assert "served_16384" not in row and "served_32768" not in row
+    assert (output / "usage.json").is_file()

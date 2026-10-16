@@ -386,7 +386,7 @@ Promotion remains gated on a frozen held-out comparison and actual downstream
 task outcomes, with all explored development IDs disclosed. Establish the strong
 search/read reference before distilling actions or stopping into a cheaper
 decision controller. This work introduces no product retrieval route or
-persistence boundary. Implementation and results are under review in
+persistence boundary. Implementation and recorded results are retained through
 [#827](https://github.com/sysevol-ai/CodeNib/pull/827); the research iteration
 remains closed and the promotion gates remain open.
 
@@ -1395,3 +1395,14 @@ p50/p95 wall latency. A useful next hypothesis is decision-selected seeds or a
 learned expansion gate, but neither is implemented or authorized as a product
 default by this pilot. Existing Jev dense controls are documented in
 [`jev_dense.md`](jev_dense.md); there is no cross-dataset pooled score here.
+
+### Merge-review validation boundary
+
+The recorded graph-cohort scores predate the fix that includes all chunks bound
+to a seed symbol at hop zero. They are historical receipts and were not rerun
+after that correction. This does not change the graph-free follow-up receipts.
+Evaluator startup now probes known functions in all eight dataset languages and
+rejects hidden Git index flags. Completed repacks audit the current source before
+and after reading; Claude batch audit failures retain failure/usage accounting.
+Recorded decision calls with invalid usage block additional calls until reconciled.
+These changes were validated without new model calls.

@@ -231,6 +231,9 @@ def contextbench_evaluator_command(upstream: Path, python: str) -> list[str]:
         upstream, "status", "--porcelain", "--untracked-files=all", "--", "contextbench"
     ):
         raise ValueError("ContextBench evaluator source has local modifications")
+    flags = _git(upstream, "ls-files", "-v", "--", "contextbench")
+    if any(line and line[0] != "H" for line in flags.splitlines()):
+        raise ValueError("ContextBench evaluator source has hidden index flags")
     return [python, str(_WORKER), "--upstream", str(upstream)]
 
 

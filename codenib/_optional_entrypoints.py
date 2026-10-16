@@ -14,6 +14,7 @@ from shlex import quote
 from typing import Callable
 
 _OPTIONAL_IMPORT_ROOTS = {
+    "agent,datasets": frozenset({"datasets", "litellm", "openai", "requests"}),
     "mcp": frozenset({"mcp"}),
     "serving": frozenset({"numpy", "sse_starlette", "torch", "transformers"}),
     "graph": frozenset({"google", "igraph"}),
@@ -158,7 +159,16 @@ def lsp_agent_study_run_main() -> int | None:
     )
 
 
+def contextbench_main() -> int | None:
+    return _run_optional(
+        "codenib.eval.benchmarks.contextbench_runner",
+        command="codenib-contextbench",
+        extra="agent,datasets",
+    )
+
+
 __all__ = [
+    "contextbench_main",
     "lsp_agent_ab_main",
     "lsp_agent_study_artifacts_main",
     "lsp_agent_study_manifest_main",

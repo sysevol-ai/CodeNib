@@ -496,3 +496,41 @@ def test_flat_menu_control_retains_legacy_stop_behavior(tmp_path):
     ).run()
     assert result["stop_reason"] == "model_stop"
     assert "continue_probability" not in result["trace"][0]
+
+
+@pytest.mark.parametrize(
+    "cost", [None, "invalid", float("nan"), float("inf"), -1, True]
+)
+def test_malformed_recorded_usage_blocks_later_calls(monkeypatch, cost):
+    calls = []
+
+    def decide(_self, **_kwargs):
+        calls.append(1)
+        return SimpleNamespace(model="fake", usage={"cost": cost}, answers={})
+
+    monkeypatch.setattr(OpenRouterDecisions, "decide", decide)
+    spend = Spend(1, 1)
+    client = TracedDecisions(spend, lambda: None)
+    with pytest.raises((TypeError, RuntimeError)):
+        client.decide(state={}, questions={})
+    assert "usage" in client.calls[0]
+    assert spend.uncertain
+    with pytest.raises(RuntimeError, match="unpriced"):
+        client.decide(state={}, questions={})
+    assert len(calls) == 1
+
+
+def test_failed_decision_with_valid_receipt_charges_once(monkeypatch):
+    from scripts.benchmark_jev_retrieval import MeasuredDecisions
+
+    def fail_after_receipt(self, **_kwargs):
+        self.calls.append({"usage": {"cost": 0.02}})
+        raise RuntimeError("after receipt")
+
+    monkeypatch.setattr(MeasuredDecisions, "decide", fail_after_receipt)
+    spend = Spend(1, 1)
+    client = TracedDecisions(spend, lambda: None)
+    with pytest.raises(RuntimeError, match="after receipt"):
+        client.decide(state={}, questions={})
+    assert spend.total == 0.02
+    assert not spend.uncertain

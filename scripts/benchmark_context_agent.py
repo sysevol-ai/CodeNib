@@ -786,7 +786,19 @@ def run(args):
             )
             # Offline repair/repacking never changes or replays model calls.
             # Complete source observations remain bound to the original receipt.
-            add_delivery(row, Path(source["repo"]).resolve(), encoder)
+            try:
+                repo = Path(source["repo"]).resolve()
+                row["snapshot_before"] = audit_contextbench_snapshot(
+                    repo, case.base_commit
+                )
+                add_delivery(row, repo, encoder)
+                row["snapshot_after"] = audit_contextbench_snapshot(
+                    repo, case.base_commit
+                )
+            except Exception as exc:
+                row.update(status="error", error=f"{type(exc).__name__}: {exc}")
+                row.pop("served_16384", None)
+                row.pop("served_32768", None)
             write_json(path, row)
             return row
         spend.case_start = spend.total

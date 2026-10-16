@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -366,3 +367,46 @@ def test_official_extractors_find_definitions_in_all_benchmark_languages(tmp_pat
     counts = json.loads(subprocess.check_output(command, text=True, timeout=60))
     assert counts.keys() == sources.keys()
     assert all(count > 0 for count in counts.values())
+
+
+@pytest.mark.parametrize("suffix", ["py", "js", "ts", "go", "c", "cpp", "rs", "java"])
+def test_symbol_probe_rejects_a_single_broken_language(suffix):
+    def extract(path):
+        return [] if Path(path).suffix == f".{suffix}" else [("definition", 0, 1)]
+
+    with pytest.raises(RuntimeError, match=f"probe for .{suffix}"):
+        validate_symbol_extraction(extract)
+
+
+@pytest.mark.parametrize("flag", ["--skip-worktree", "--assume-unchanged"])
+def test_evaluator_rejects_hidden_source_changes(checkout, monkeypatch, flag):
+    repo, _ = checkout
+    (repo / "contextbench").mkdir()
+    (repo / "a.py").rename(repo / "contextbench" / "a.py")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "evaluator fixture",
+        ],
+        check=True,
+    )
+    commit = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    monkeypatch.setattr(runner, "CONTEXTBENCH_UPSTREAM_REVISION", commit)
+    assert runner.contextbench_evaluator_command(repo, "python")
+    subprocess.run(
+        ["git", "-C", str(repo), "update-index", flag, "contextbench/a.py"], check=True
+    )
+    (repo / "contextbench" / "a.py").write_text("changed evaluator")
+    with pytest.raises(ValueError, match="hidden index flags"):
+        runner.contextbench_evaluator_command(repo, "python")

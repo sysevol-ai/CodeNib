@@ -290,3 +290,45 @@ def test_blank_source_gaps_do_not_invalidate_complete_decision_scoring():
     )
     assert [n.node_id for n in ranked] == ["b", "a", "gap"]
     assert [n.score for n in ranked] == [1.0, 0.5, 0.0]
+
+
+def test_split_seed_function_includes_all_root_chunks_before_hopping():
+    graph, nodes = graph_fixture()
+    graph.graph.vs[graph.name_to_vertex["a"]]["end_line"] = 4
+    nodes.append(node("a-tail", 2))
+    selected, trace = expand_candidates(graph, nodes, [0, 3, 2, 1, 4], seeds=1, hops=0)
+    assert selected == [0, 4]
+    assert trace["selected_depths"] == [0, 0]
+    selected, trace = expand_candidates(
+        graph, nodes, [0, 3, 2, 1, 4], seeds=1, hops=0, candidate_limit=1
+    )
+    assert selected == [0]
+    assert trace["candidate_cap_hit"]
+
+
+@pytest.mark.parametrize("command", ["run", "prepare-grep"])
+@pytest.mark.parametrize("budget", ["nan", "inf", "-inf", "0", "-1"])
+def test_graph_cli_rejects_invalid_budget_before_live_work(
+    monkeypatch, command, budget
+):
+    from scripts import benchmark_graph_decisions as experiment
+
+    monkeypatch.setattr(
+        experiment, "run", lambda _args: pytest.fail("billed work started")
+    )
+    monkeypatch.setattr(
+        experiment, "prepare_grep", lambda _args: pytest.fail("billed work started")
+    )
+    with pytest.raises(SystemExit) as exc:
+        experiment.main(
+            [
+                command,
+                "--prepared",
+                "unused",
+                "--output",
+                "unused",
+                "--live",
+                f"--max-cost-usd={budget}",
+            ]
+        )
+    assert exc.value.code == 2

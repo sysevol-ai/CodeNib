@@ -271,14 +271,23 @@ def run(args):
                 row.update(status="error", error=f"{type(exc).__name__}: {exc}")
             if row["status"] not in {"ok", "budget_exhausted"}:
                 stopped = True
-        if repo is not None:
-            row["trajectory"] = native.contextbench_prediction(
-                instance_id=case.instance_id, messages=row["messages"], repo_path=repo
-            )
-            native.add_delivery(row, repo, encoder)
-            row["snapshot_after"] = native.audit_contextbench_snapshot(
-                repo, case.base_commit
-            )
+        if repo is not None and "snapshot_before" in row:
+            try:
+                native.audit_contextbench_snapshot(repo, case.base_commit)
+                row["trajectory"] = native.contextbench_prediction(
+                    instance_id=case.instance_id,
+                    messages=row["messages"],
+                    repo_path=repo,
+                )
+                native.add_delivery(row, repo, encoder)
+                row["snapshot_after"] = native.audit_contextbench_snapshot(
+                    repo, case.base_commit
+                )
+            except Exception as exc:
+                row.update(status="error", error=f"{type(exc).__name__}: {exc}")
+                for key in ("trajectory", "served_16384", "served_32768"):
+                    row.pop(key, None)
+                stopped = True
         row.update(wall_s=time.perf_counter() - started, actual_bill_usd=None)
         write_json(path, row)
         rows.append(row)

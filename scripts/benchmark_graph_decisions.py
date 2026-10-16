@@ -178,6 +178,8 @@ def expand_candidates(
     seen = set(roots)
     frontier = roots
     distances = {i: 0 for i in selected}
+    for root in roots:
+        distances.update((i, 0) for i in reverse.get(root, []))
     rank = {i: r for r, i in enumerate(lexical_order)}
     searcher = RepoDependencySearcher(graph)
     budget = NeighborScanBudget(edge_limit)

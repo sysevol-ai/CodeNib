@@ -75,7 +75,13 @@ def test_subscription_auth_refuses_api_route_and_omits_identity(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "first_status,expected_calls", [("budget_exhausted", 2), ("error", 1)]
+    "first_status,expected_calls",
+    [
+        ("budget_exhausted", 2),
+        ("error", 1),
+        ("snapshot_error", 0),
+        ("post_snapshot_error", 1),
+    ],
 )
 def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     monkeypatch, tmp_path, first_status, expected_calls
@@ -100,16 +106,26 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     monkeypatch.setattr(claude.native, "freeze", lambda path: {})
     monkeypatch.setattr(claude.importlib.metadata, "version", lambda name: "test")
     monkeypatch.setattr(claude.subprocess, "check_output", lambda *a, **kw: "test CLI")
-    monkeypatch.setattr(
-        claude.native, "audit_contextbench_snapshot", lambda *a: {"clean": True}
-    )
+    audits = []
+
+    def audit(*args):
+        audits.append(args)
+        if first_status == "snapshot_error" or (
+            first_status == "post_snapshot_error" and len(audits) > 1
+        ):
+            raise ValueError("snapshot audit failed")
+        return {"clean": True}
+
+    monkeypatch.setattr(claude.native, "audit_contextbench_snapshot", audit)
     monkeypatch.setattr(claude.native, "contextbench_prediction", lambda **kw: {})
     monkeypatch.setattr(claude.native, "add_delivery", lambda *a: None)
     calls = []
 
     async def retrieve(**kwargs):
         calls.append(kwargs["row"]["instance_id"])
-        kwargs["row"]["status"] = first_status if len(calls) == 1 else "ok"
+        kwargs["row"]["status"] = (
+            first_status if len(calls) == 1 and "snapshot" not in first_status else "ok"
+        )
 
     monkeypatch.setattr(claude, "retrieve", retrieve)
     output = tmp_path / "result"
@@ -122,3 +138,11 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     second = json.loads((output / "second.json").read_text())
     assert second["status"] == ("ok" if expected_calls == 2 else "not_run")
     assert second["actual_bill_usd"] is None
+
+    usage = json.loads((output / "usage.json").read_text())
+    assert usage["cases"] == 2
+    if "snapshot" in first_status:
+        first = json.loads((output / "first.json").read_text())
+        assert first["status"] == "error"
+        assert "snapshot audit failed" in first["error"]
+        assert "trajectory" not in first
