@@ -138,12 +138,58 @@ form also opens the prepared Requests Wiki at 1440 and 390 pixels, where the
 redirect chapter and an indexed source citation are navigable without API
 writes. The served entry module, shared component, stylesheet and sharing PNG
 match the merged release bytes and expected content types; the real title is
-“CodeNib: Understand Unfamiliar Code with Evidence.” Both frontends use the
-same merged commit and the preserved hosted runtime configuration. The new
+“CodeNib: Understand Unfamiliar Code with Evidence.” Both frontends use a
+matching published source build and the preserved hosted runtime configuration. The new
 frontend passed health and shared-example checks before one Caddy reload
 activated both entry points; the prior frontend and ingress settings are
 retained for operator-owned rollback. The existing Wiki backend reports healthy
 with 27 repositories.
+
+Marketing first paint: [#830](https://github.com/sysevol-ai/CodeNib/pull/830)
+is published to `codenib.ai` on 2026-10-16 (Pacific), using paired build
+`05eeed7c`. The shared example imports its styles as a module dependency and
+installs them synchronously with its shadow markup. Its first painted frame
+has aligned line numbers, syntax colors and one selected source note; a slow
+stylesheet cannot expose concatenated numbers, raw code or every note. The
+readable Wiki fallback stays available if the style dependency fails.
+The focused regression reproduces the original public failure and passes
+locally and on the public homepage at 1440/390/320 pixels, opening and
+refreshing with delayed and failed style dependencies. It samples painted
+frames before releasing the delayed dependency. Web CI runs this regression
+and also triggers for changes to the static homepage and shared example assets.
+The six-width marketing interaction, alignment, source-selection, legacy-link,
+repository-handoff, no-JavaScript and opt-in privacy checks pass locally and
+on the public host; its existing Cloudflare analytics injection remains
+separate from CodeNib's disabled collector. The matching Wiki frontend passes
+real prepared-page, source-opening and shared-example checks at desktop/mobile
+sizes. Served entry and style-module hashes match the published release.
+
+Wiki refresh stability: [#830](https://github.com/sysevol-ai/CodeNib/pull/830)
+is published to `demo.codenib.ai` in the matching `05eeed7c` frontend build.
+The reader keeps the Overview column policy fixed,
+publishes prose with its resolved leading map/boundary (including unavailable
+and error outcomes), and measures the map before paint.
+Optional visuals have a five-second deadline that includes waiting for the
+outline. Stalled map/boundary requests are aborted; an outline that arrives
+after the deadline cannot insert a map above readable prose. An explicit map
+retry can recover it, and the elapsed indicator covers the visual wait.
+
+Local and public production-build regressions pass all 72 opening/refresh
+combinations: 1440/1024/768/390 pixels, delayed page/map/boundary responses,
+failed visuals, an unavailable map, and stalled map/boundary/outline requests.
+They verify stable painted reading widths and map heights, readable prose at
+the deadline, ignored late results and explicit retry recovery. All 176 frontend
+tests, the production build, strict MkDocs, the public-doc audit and pinned
+pre-commit hooks pass; Web CI runs the browser regression.
+Real prepared Requests Overview and Redirect Resolution pages also pass at
+1440 and 390 pixels with delayed visual requests, stable opening/refresh
+geometry, chapter navigation, source opening and the shared homepage example.
+The actual marketing form opens that Wiki at both widths without API writes.
+Served entry assets and the preserved hosted runtime configuration match the
+published build's SHA-256 hashes and content types. The prior frontend and
+ingress configuration remain available for rollback; prior assets are retained
+for already-open browser tabs. The existing backend remains healthy with 27
+repositories and was not restarted for this frontend publication.
 
 Measurement reuses the existing opt-in first-party collector. Inspecting source
 (`example_source_open` / `example_github_open`) followed by `repository_submit`

@@ -10,6 +10,8 @@ on:
       - "*"
     paths:
       - "web/**"
+      - "landing/index.html"
+      - "landing/assets/explore/**"
       - ".github/workflows/web.yml"
   push:
     branches:
@@ -17,6 +19,8 @@ on:
       - master
     paths:
       - "web/**"
+      - "landing/index.html"
+      - "landing/assets/explore/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 
@@ -58,3 +62,12 @@ jobs:
 
       - name: Build production frontend
         run: npm run build
+
+      - name: Install browser for reading layout regression
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify reading layout during open and refresh
+        run: node reading_layout_verify.mjs
+
+      - name: Verify homepage first paint with delayed and failed styles
+        run: node landing_loading_verify.mjs

@@ -71,6 +71,33 @@ handoff, legacy anchors, no-JavaScript fallback and opt-in event behavior:
 node web/landing_verify.mjs http://127.0.0.1:7870 /tmp/codenib-landing
 ```
 
+For opening and refreshing the actual homepage while the example's style
+dependency is delayed or fails:
+
+```bash
+node web/landing_loading_verify.mjs
+node web/landing_loading_verify.mjs https://codenib.ai /tmp/codenib-landing-live
+```
+
+The first command starts its own local static server. The regression samples
+painted frames at desktop/mobile widths and keeps a readable Wiki link when
+the example cannot load. Shared styles live in `repo-explorer-styles.js` and
+are installed synchronously with the shadow markup; do not replace them with
+an external shadow stylesheet that can expose raw code before it loads.
+
+For the Wiki reading column and shared map's first paint, including delayed,
+unavailable and failed visual responses while opening and refreshing:
+
+```bash
+npm --prefix web run build
+node web/reading_layout_verify.mjs
+```
+
+The verifier starts its own local preview and intercepts every API request with
+fixtures. It uses no repository, model credentials or Wiki database. Keep the
+reading column fixed from the loading state onward; render prose with its
+leading visual and measure responsive maps before their first paint.
+
 For first-party funnel counts, explicitly enable both
 `CODENIB_EXPERIENCE_EVENTS=1` on the API and `experienceEvents: true` in the
 hosted Wiki's `runtime-config.js`. Static Wiki exports never enable collection.

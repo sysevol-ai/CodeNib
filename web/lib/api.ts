@@ -3,17 +3,29 @@ import { apiBase, isStaticRuntime, staticDataUrl } from "./runtime";
 
 export const API_BASE = apiBase();
 
-async function fetchWikiResponse(url: string): Promise<Response> {
+async function fetchWikiResponse(url: string, signal?: AbortSignal): Promise<Response> {
   // Cold outline/page generation has one owner. A bounded server lock wait
   // returns 503 + Retry-After; keep the loading state and read that owner's
   // result instead of turning normal contention into a blank/error page.
   for (let attempt = 0; ; attempt += 1) {
-    const response = await fetch(url);
+    signal?.throwIfAborted();
+    const response = await (signal ? fetch(url, { signal }) : fetch(url));
     const retryAfter = response.headers?.get("Retry-After");
     if (response.status !== 503 || !retryAfter || attempt >= 5) return response;
     const seconds = Number(retryAfter);
     if (!Number.isFinite(seconds) || seconds < 0) return response;
-    await new Promise((resolve) => setTimeout(resolve, Math.min(10, Math.max(1, seconds)) * 1000));
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal?.reason);
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, Math.min(10, Math.max(1, seconds)) * 1000);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+    });
   }
 }
 
@@ -889,11 +901,15 @@ export interface PageBoundary {
 
 // Callers into a page's cited symbols and the calls it makes outward, read
 // straight off the indexed graph with exact call sites.
-export async function fetchWikiBoundary(repoId: string, pageId: string): Promise<PageBoundary> {
+export async function fetchWikiBoundary(
+  repoId: string,
+  pageId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<PageBoundary> {
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "page-boundaries", `${pageId}.json`)
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki/${encodeURIComponent(pageId)}/boundary`;
-  const res = await fetchWikiResponse(url);
+  const res = await fetchWikiResponse(url, options.signal);
   if (!res.ok) throw new Error(`Failed to load page boundary (${res.status})`);
   return res.json();
 }
@@ -927,11 +943,14 @@ export interface WikiAreaMap {
 }
 
 // How the wiki's top-level areas call each other in the indexed graph.
-export async function fetchWikiAreaMap(repoId: string): Promise<WikiAreaMap> {
+export async function fetchWikiAreaMap(
+  repoId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<WikiAreaMap> {
   const url = isStaticRuntime()
     ? staticDataUrl("repos", repoId, "wiki-map.json")
     : `${API_BASE}/api/repos/${encodeURIComponent(repoId)}/wiki-map`;
-  const res = await fetchWikiResponse(url);
+  const res = await fetchWikiResponse(url, options.signal);
   if (!res.ok) throw new Error(`Failed to load area map (${res.status})`);
   return res.json();
 }

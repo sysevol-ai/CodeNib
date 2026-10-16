@@ -1,5 +1,7 @@
 /* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
  * SPDX-License-Identifier: Apache-2.0 */
+// Load with the component module so its first painted frame is already styled.
+export default `
 :host {
   display: block;
   min-width: 0;
@@ -72,3 +74,4 @@ footer { display: flex; justify-content: space-between; gap: 12px; padding: 16px
   footer { padding: 14px 16px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+`;

@@ -52,6 +52,7 @@ import {
 const CodePanel = lazy(() => import("@/components/CodePanel"));
 const Codemap = lazy(() => import("@/components/Codemap"));
 const GraphView = lazy(() => import("@/components/GraphView"));
+const LEADING_VISUAL_WAIT_MS = 5000;
 
 interface Heading {
   id: string;
@@ -470,13 +471,15 @@ export default function WikiPageView({
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [pages, setPages] = useState<WikiPageRef[]>([]);
   const [activeId, setActiveId] = useState<string>(initialPageId);
-  const [page, setPage] = useState<WikiPage | null>(null);
+  const [loadedPage, setPage] = useState<WikiPage | null>(null);
   const [pageLoadSeconds, setPageLoadSeconds] = useState(0);
   const [pageGraph, setPageGraph] = useState<CodemapResponse | null>(null);
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
+  const [boundaryReadyFor, setBoundaryReadyFor] = useState<string | null>(null);
   const [areaMap, setAreaMap] = useState<WikiAreaMap | null>(null);
   const [areaMapError, setAreaMapError] = useState(false);
   const [areaMapAttempt, setAreaMapAttempt] = useState(0);
+  const areaMapDeadline = useRef({ repoId, attempt: -1, expiresAt: 0 });
   const [pageGraphOpen, setPageGraphOpen] = useState(false);
   const [pageGraphLoading, setPageGraphLoading] = useState(false);
   const [pageGraphError, setPageGraphError] = useState(false);
@@ -497,6 +500,13 @@ export default function WikiPageView({
   const [selectedCommit, setSelectedCommit] = useState<string | undefined>(undefined);
   const commitCost = commitEvidence(commits, selectedCommit);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Publish the reading surface once its leading visual has resolved, including
+  // an unavailable/error result. Rendering prose first lets a later map or
+  // boundary card insert itself above the reader's current paragraph.
+  const visualReady = activeId === "overview"
+    ? areaMap !== null || areaMapError
+    : boundaryReadyFor === activeId;
+  const page = visualReady && loadedPage?.id === activeId ? loadedPage : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -536,13 +546,6 @@ export default function WikiPageView({
 
   useEffect(() => {
     let cancelled = false;
-    const startedAt = Date.now();
-    const elapsedTimer = window.setInterval(() => {
-      if (!cancelled) {
-        setPageLoadSeconds(Math.floor((Date.now() - startedAt) / 1000));
-      }
-    }, 1000);
-    setPageLoadSeconds(0);
     setPage(null);
     setPageError(null);
     setPageGraph(null);
@@ -555,13 +558,21 @@ export default function WikiPageView({
       .catch(
         (e) =>
           !cancelled && setPageError(e instanceof Error ? e.message : String(e)),
-      )
-      .finally(() => window.clearInterval(elapsedTimer));
+      );
     return () => {
       cancelled = true;
-      window.clearInterval(elapsedTimer);
     };
   }, [repoId, activeId]);
+
+  useEffect(() => {
+    setPageLoadSeconds(0);
+    if (page || pageError) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setPageLoadSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [repoId, activeId, !!page, pageError]);
 
   useEffect(() => {
     if (!page) return;
@@ -642,21 +653,41 @@ export default function WikiPageView({
     };
   }, [repoId, activeId, pageGraphOpen, pageGraph]);
 
-  // Wait for the outline; fetching earlier can retain an outline_pending map.
+  // Include the outline prerequisite in the visual deadline. Once prose is
+  // released without its map, late responses must not insert one above it.
   useEffect(() => {
+    if (areaMapDeadline.current.repoId !== repoId || areaMapDeadline.current.attempt !== areaMapAttempt) {
+      areaMapDeadline.current = { repoId, attempt: areaMapAttempt, expiresAt: Date.now() + LEADING_VISUAL_WAIT_MS };
+    }
     setAreaMap(null);
     setAreaMapError(false);
-    if (tocLoading) return;
+    const remaining = areaMapDeadline.current.expiresAt - Date.now();
+    if (remaining <= 0) {
+      setAreaMapError(true);
+      return;
+    }
     let cancelled = false;
-    fetchWikiAreaMap(repoId)
-      .then((m) => {
-        if (!cancelled) setAreaMap(m);
-      })
-      .catch(() => {
-        if (!cancelled) setAreaMapError(true);
-      });
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      cancelled = true;
+      controller.abort();
+      setAreaMapError(true);
+    }, remaining);
+    // Fetch only after the outline; earlier calls can retain outline_pending.
+    if (!tocLoading) {
+      fetchWikiAreaMap(repoId, { signal: controller.signal })
+        .then((m) => {
+          if (!cancelled) setAreaMap(m);
+        })
+        .catch(() => {
+          if (!cancelled) setAreaMapError(true);
+        })
+        .finally(() => window.clearTimeout(timer));
+    }
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, [repoId, tocLoading, areaMapAttempt]);
 
@@ -664,15 +695,24 @@ export default function WikiPageView({
   // than behind a toggle so the reader meets the code's shape first.
   useEffect(() => {
     setBoundary(null);
+    setBoundaryReadyFor(null);
     if (activeId === "overview") return;
     let cancelled = false;
-    fetchWikiBoundary(repoId, activeId)
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), LEADING_VISUAL_WAIT_MS);
+    fetchWikiBoundary(repoId, activeId, { signal: controller.signal })
       .then((b) => {
         if (!cancelled) setBoundary(b);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        window.clearTimeout(timer);
+        if (!cancelled) setBoundaryReadyFor(activeId);
+      });
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
     };
   }, [repoId, activeId]);
 
@@ -916,7 +956,7 @@ export default function WikiPageView({
         }
       />
 
-      <div className={`wiki-grid${showPoster ? " has-poster" : ""}`}>
+      <div className={`wiki-grid${activeId === "overview" ? " is-overview" : ""}`}>
         {tocOpen && <div className="toc-scrim" onClick={() => setTocOpen(false)} aria-hidden />}
         <aside className={`wiki-toc ${tocOpen ? "open" : ""}`} data-rail="left">
           <div className="rail-title">{repo ? repo.repo : repoId}</div>
@@ -963,7 +1003,7 @@ export default function WikiPageView({
           )}
         </aside>
 
-        <main className="wiki-main">
+        <main className="wiki-main" aria-busy={!page && !pageError}>
           {showPoster && areaMap && (
             <RepoPoster
               repoId={repoId}
