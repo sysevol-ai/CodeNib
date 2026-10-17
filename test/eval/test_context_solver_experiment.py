@@ -70,9 +70,11 @@ def test_solver_sdk_meter_and_tool_isolation(monkeypatch, tmp_path, meter):
         with pytest.raises(RuntimeError, match="exhausted"):
             model.query(messages)
         assert model.n_calls == 2
+        assert model.budget_exhausted
     else:
         with pytest.raises(ValueError, match="metering"):
             model.query(messages)
+        assert not model.budget_exhausted
     assert options[0]["tools"] == options[0]["allowed_tools"] == []
     assert options[0]["mcp_servers"] == {} and options[0]["strict_mcp_config"]
     assert options[0]["setting_sources"] == []
@@ -126,6 +128,7 @@ def test_solver_retains_terminal_meter_when_stream_fails(
     assert model.cost == 0.4
     assert checkpoints[-1][0]["sdk_reported_cost_usd"] == 0.4
     assert model.calls[0]["input_delivery_confirmed"]
+    assert model.budget_exhausted is result_error
     with pytest.raises(RuntimeError, match="SDK meter exhausted"):
         model.query(messages)
     assert model.n_calls == len(model.calls) == 1
@@ -307,22 +310,32 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
 
 
 @pytest.mark.parametrize(
-    "source,repo,reference_artifacts,imported_provider_route",
+    "source,repo,reference_artifacts,imported_provider_route,failure",
     [
-        ("Verified", "owner/repo", False, False),
-        ("Multi", "fmtlib/fmt", False, False),
-        ("Multi", "fmtlib/fmt", True, False),
-        ("Multi", "fmtlib/fmt", False, True),
-        ("Multi", "google/gson", False, False),
-        ("Multi", "google/gson", True, False),
-        ("Multi", "google/gson", False, True),
-        ("Multi", "ponylang/ponyc", False, False),
-        ("Multi", "ponylang/ponyc", True, False),
-        ("Multi", "ponylang/ponyc", False, True),
+        ("Verified", "owner/repo", False, False, "generic"),
+        ("Multi", "fmtlib/fmt", False, False, "generic"),
+        ("Multi", "fmtlib/fmt", True, False, "generic"),
+        ("Multi", "fmtlib/fmt", False, True, "generic"),
+        ("Multi", "google/gson", False, False, "generic"),
+        ("Multi", "google/gson", True, False, "generic"),
+        ("Multi", "google/gson", False, True, "generic"),
+        ("Multi", "ponylang/ponyc", False, False, "generic"),
+        ("Multi", "ponylang/ponyc", True, False, "generic"),
+        ("Multi", "ponylang/ponyc", False, True, "generic"),
+        ("Multi", "ponylang/ponyc", False, False, "budget"),
+        ("Multi", "ponylang/ponyc", False, False, "budget_unknown_usage"),
+        ("Multi", "ponylang/ponyc", False, False, "budget_export_failure"),
+        ("Multi", "ponylang/ponyc", False, False, "non_budget"),
     ],
 )
-def test_solver_failure_removes_only_owned_container_before_completion(
-    monkeypatch, tmp_path, source, repo, reference_artifacts, imported_provider_route
+def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_container(
+    monkeypatch,
+    tmp_path,
+    source,
+    repo,
+    reference_artifacts,
+    imported_provider_route,
+    failure,
 ):
     import builtins
     import os
@@ -401,6 +414,9 @@ def test_solver_failure_removes_only_owned_container_before_completion(
             removed.append(command[-1])
 
     monkeypatch.setattr(solver.subprocess, "run", execute)
+    commands = []
+    edited = False
+    exported_patch = "PATCH_FROM_COMPLETED_EDIT_NOT_DELIVERED_TO_MODEL"
 
     class Environment:
         def __init__(self, **kwargs):
@@ -410,6 +426,17 @@ def test_solver_failure_removes_only_owned_container_before_completion(
             self.container_id = "owned-container"
 
         def execute(self, command):
+            nonlocal edited
+            commands.append(command)
+            if command == "edit source":
+                edited = True
+                return {"output": "edit done", "returncode": 0}
+            if command == "git add -A && git diff --cached --binary":
+                assert edited
+                return {
+                    "output": exported_patch,
+                    "returncode": int(failure == "budget_export_failure"),
+                }
             if "rev-list" in command:
                 return {"output": "1\nsynthetic\n", "returncode": 0}
             if "for path" in command:
@@ -417,14 +444,60 @@ def test_solver_failure_removes_only_owned_container_before_completion(
             return {"output": "synthetic\ntree\n", "returncode": 0}
 
     agent_runs = []
+    requests = []
+    Assistant = dataclasses.make_dataclass("AssistantMessage", ["content", "model"])
+    Result = dataclasses.make_dataclass(
+        "ResultMessage", ["total_cost_usd", "is_error", "subtype"]
+    )
+
+    async def query(**kwargs):
+        requests.append(kwargs["prompt"])
+        first = len(requests) == 1
+        command = "edit source" if first else "UNEXECUTED_FAILED_REPLY"
+        yield Assistant([{"text": f"```bash\n{command}\n```"}], "fixed-model")
+        if first:
+            yield Result(0.1, False, "success")
+        else:
+            yield Result(
+                None if failure == "budget_unknown_usage" else 0.9,
+                True,
+                (
+                    "error_during_execution"
+                    if failure == "non_budget"
+                    else "error_max_budget_usd"
+                ),
+            )
+            raise RuntimeError("SDK iterator failed after terminal result")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(ClaudeAgentOptions=lambda **kwargs: kwargs, query=query),
+    )
 
     class Agent:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, model, environment, **kwargs):
+            self.model, self.environment = model, environment
             self.messages = []
+            self.config = SimpleNamespace(action_observation_template="output")
+
+        def render_template(self, template, **kwargs):
+            return kwargs["output"]["output"]
 
         def run(self, *args, **kwargs):
             agent_runs.append(True)
-            raise RuntimeError("model failed")
+            if failure == "generic":
+                raise RuntimeError("model failed")
+            self.messages = [
+                {"role": "system", "content": "Shell format"},
+                {"role": "user", "content": "Issue and source"},
+            ]
+            reply = self.model.query(self.messages)
+            self.messages.append({"role": "assistant", "content": reply["content"]})
+            observation = self.environment.execute("edit source")
+            self.messages.append({"role": "user", "content": observation["output"]})
+            self.model.query(self.messages)
+            pytest.fail("The budget/error reply must not reach the solver loop")
 
     monkeypatch.setitem(
         sys.modules, "minisweagent.agents.default", SimpleNamespace(DefaultAgent=Agent)
@@ -453,5 +526,44 @@ def test_solver_failure_removes_only_owned_container_before_completion(
         return
     solver.run(args)
     assert removed == ["owned-container"]
-    assert json.loads((output / "solver.json").read_text())["container_removed"]
+    row = json.loads((output / "solver.json").read_text())
+    assert row["status"] == "error" and row["container_removed"]
     assert bool(agent_runs) is not reference_artifacts
+    predictions = output / "predictions.json"
+    if failure == "generic":
+        assert not predictions.exists() and not requests
+        return
+    assert edited and len(requests) == len(row["calls"]) == 2
+    assert "UNEXECUTED_FAILED_REPLY" not in commands
+    observations = (output / "model-observations.json").read_text()
+    assert exported_patch not in observations
+    assert "UNEXECUTED_FAILED_REPLY" not in observations
+    assert not row.get("native_resolution")
+    if failure == "budget_unknown_usage":
+        assert row["missing_metering_calls"] == 1
+        assert row["sdk_reported_cost_usd"] is None
+        assert "metering" in row["error"]
+    else:
+        assert row["sdk_reported_cost_usd"] == 1.0
+        assert row["missing_metering_calls"] == 0
+        assert "SDK iterator failed" in row["error"]
+    if failure in {"budget", "budget_export_failure"}:
+        assert row["budget_exhausted"]
+        assert row["patch_export_reason"] == "metered_sdk_budget_stop"
+        assert commands[-1] == "git add -A && git diff --cached --binary"
+    else:
+        assert not row.get("budget_exhausted")
+        assert commands[-1] == "edit source"
+    if failure == "budget":
+        assert row["model_patch"] == exported_patch
+        assert json.loads(predictions.read_text()) == [
+            {
+                "instance_id": "native",
+                "model_name_or_path": "fixed-model",
+                "model_patch": exported_patch,
+            }
+        ]
+    else:
+        assert not predictions.exists()
+    if failure == "budget_export_failure":
+        assert "Failed to export" in row["patch_export_error"]

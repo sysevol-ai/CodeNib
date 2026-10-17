@@ -123,12 +123,14 @@ class SubscriptionModel:
         self.max_meter_usd = max_meter_usd
         self.calls, self.checkpoint = calls, checkpoint
         self.cost, self.n_calls = 0.0, 0
+        self.budget_exhausted = False
 
     def get_template_vars(self):
         return {"model_name": self.model, "model_cost": self.cost}
 
     def query(self, messages):
         if self.cost >= self.max_meter_usd:
+            self.budget_exhausted = True
             raise RuntimeError("Solver SDK meter exhausted")
         self.n_calls += 1
         request = {
@@ -205,6 +207,11 @@ class SubscriptionModel:
                 # usage before advancing the stream, while preserving failure.
                 self.cost += meter
                 record["sdk_reported_cost_usd"] = meter
+                if (
+                    terminal["is_error"]
+                    and terminal["subtype"] == "error_max_budget_usd"
+                ):
+                    self.budget_exhausted = True
             self.checkpoint()
         if terminal is None:
             raise ValueError("Missing or invalid solver SDK metering; stop inference")
@@ -252,6 +259,24 @@ def validate_image_snapshot(result, expected_tree):
     if result["returncode"] or len(lines) != 2 or lines[1] != expected_tree:
         raise ValueError("Solver image has different or dirty source")
     return {"commit": lines[0], "tree": lines[1], "matches_selected_tree": True}
+
+
+def export_prediction(args, environment, row):
+    """Save executed edits before cleanup, without adding a model observation."""
+    patch = environment.execute("git add -A && git diff --cached --binary")
+    if patch["returncode"]:
+        raise RuntimeError("Failed to export solver patch")
+    row["model_patch"] = patch["output"]
+    write_json(
+        args.output / "predictions.json",
+        [
+            {
+                "instance_id": row["original_inst_id"],
+                "model_name_or_path": args.model,
+                "model_patch": patch["output"],
+            }
+        ],
+    )
 
 
 def freeze_solver(output, mini_root):
@@ -404,6 +429,11 @@ def run(args):
             "model_requested": args.model,
             "max_turns": args.max_turns,
             "max_meter_usd": args.max_meter_usd,
+            "patch_collection_policy": (
+                "Export executed edits after normal termination or a fully metered "
+                "SDK budget stop. Budget exceptions remain errors; terminal patch "
+                "export is not model-observed source."
+            ),
             "sdk_version": importlib.metadata.version("claude-agent-sdk"),
             "scope": (
                 "Downstream solver; native grading required. Controlled reads/searches "
@@ -481,22 +511,24 @@ def run(args):
             agent = DefaultAgent(model, observed_environment, **config["agent"])
             status, answer = agent.run(case.problem_statement, retrieved_source=context)
             row.update(status=status, answer=answer)
-        patch = environment.execute("git add -A && git diff --cached --binary")
-        if patch["returncode"]:
-            raise RuntimeError("Failed to export solver patch")
-        row["model_patch"] = patch["output"]
-        write_json(
-            args.output / "predictions.json",
-            [
-                {
-                    "instance_id": case.original_inst_id,
-                    "model_name_or_path": args.model,
-                    "model_patch": patch["output"],
-                }
-            ],
-        )
+        row["patch_export_reason"] = "agent_termination"
+        export_prediction(args, environment, row)
     except Exception as exc:
         row.update(status="error", error=f"{type(exc).__name__}: {exc}")
+        if (
+            model is not None
+            and model.budget_exhausted
+            and all("sdk_reported_cost_usd" in call for call in row["calls"])
+        ):
+            # The SDK can raise after its metered budget result, bypassing mini's
+            # normal limit return. Retain the error and already-executed edits;
+            # never execute the failed reply or make a further model request.
+            row["budget_exhausted"] = True
+            row["patch_export_reason"] = "metered_sdk_budget_stop"
+            try:
+                export_prediction(args, environment, row)
+            except Exception as patch_exc:
+                row["patch_export_error"] = f"{type(patch_exc).__name__}: {patch_exc}"
     finally:
         if agent is not None:
             row["messages"] = agent.messages
