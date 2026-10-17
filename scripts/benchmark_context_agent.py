@@ -1373,6 +1373,13 @@ def compare(args):
         and completion_policies == ("definitions", "unseen")
         and left_graph == right_graph
     )
+    empty_fallback_contrast = (
+        not left_graph.get("empty_fallback", False)
+        and right_graph.get("empty_fallback") is True
+        and right_graph.get("policy") == "late_issue_reference_hop"
+        and right_graph.get("source_policy") == "unseen"
+        and {**left_graph, "enabled": True, "empty_fallback": True} == right_graph
+    )
     if completion_policies[0] != completion_policies[1] and not completion_contrast:
         raise ValueError("Paired policies differ in completion_source_policy")
     if completion_contrast:
@@ -1411,13 +1418,19 @@ def compare(args):
         policies in {("functions", "functions"), ("native", "functions")}
         and not left_graph["enabled"]
         and right_graph["enabled"]
-        and {**left_graph, "enabled": True} == right_graph
+        and ({**left_graph, "enabled": True} == right_graph or empty_fallback_contrast)
     ):
         contrast = (
             "directed_graph_over_function_completion"
             if policies[0] == "functions"
             else "functions_and_directed_graph_over_native"
         )
+        if empty_fallback_contrast:
+            contrast = (
+                "late_empty_graph_over_function_completion"
+                if policies[0] == "functions"
+                else "functions_and_late_empty_graph_over_native"
+            )
         if left["config"].get("backend") == "claude-agent-sdk" and (
             right["config"].get("tools")
             != left["config"].get("tools", []) + ["mcp__source__graph_neighbors"]

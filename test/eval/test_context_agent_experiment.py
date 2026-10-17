@@ -618,8 +618,9 @@ def test_graph_source_comparison_keeps_inputs_budgets_and_tools_matched(paired_r
 
 
 @pytest.mark.parametrize("baseline_policy", ["functions", "native"])
+@pytest.mark.parametrize("empty_fallback", [False, True])
 def test_graph_comparison_permits_only_the_declared_tool_difference(
-    paired_runs, monkeypatch, baseline_policy
+    paired_runs, monkeypatch, baseline_policy, empty_fallback
 ):
     graph_dir = paired_runs.output.parent / "graphs"
     graph_dir.mkdir()
@@ -641,18 +642,34 @@ def test_graph_comparison_permits_only_the_declared_tool_difference(
             "prepared": str(graph_dir),
             "manifest_sha256": agent.digest(graph_dir / "manifest.json"),
             "tokens": 2048,
+            "policy": "late_issue_reference_hop",
+            "source_policy": "unseen",
+            "empty_fallback": enabled and empty_fallback,
         }
         if enabled:
             config["tools"].append("mcp__source__graph_neighbors")
         path.write_text(json.dumps(config))
     agent.compare(paired_runs)
-    assert json.loads(paired_runs.output.read_text())["contrast"] == (
+    expected = (
         "directed_graph_over_function_completion"
         if baseline_policy == "functions"
         else "functions_and_directed_graph_over_native"
     )
+    if empty_fallback:
+        expected = (
+            "late_empty_graph_over_function_completion"
+            if baseline_policy == "functions"
+            else "functions_and_late_empty_graph_over_native"
+        )
+    assert json.loads(paired_runs.output.read_text())["contrast"] == expected
     path = paired_runs.candidate / "config.json"
     config = json.loads(path.read_text())
+    for key, value in (("tokens", 4096), ("policy", agent.GRAPH_QUERY_POLICIES[0])):
+        changed = copy.deepcopy(config)
+        changed["graph"][key] = value
+        path.write_text(json.dumps(changed))
+        with pytest.raises(ValueError, match="graph-source controls"):
+            agent.compare(paired_runs)
     config["tools"].append("Bash")
     path.write_text(json.dumps(config))
     with pytest.raises(ValueError, match="Only graph_neighbors"):
