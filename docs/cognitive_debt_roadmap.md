@@ -123,8 +123,8 @@ are therefore separate measured limitations. The native search/read reference
 reuses `AgentRunner` and completes all 24 tasks: cumulative Recall/F1 is
 57.50%/29.76%, versus 64.46%/27.45% for the matched public leader. Its 32K delivery
 retains 57.26% Recall; $23.7864 in recorded API charges makes this a strong-model
-quality reference, not an ultra-low-cost route. This iteration is closed at the
-user's request; implementation and recorded results are retained through
+quality reference, not an ultra-low-cost route. The October 11 iteration is
+complete; implementation and recorded results were merged through
 [#827](https://github.com/sysevol-ai/CodeNib/pull/827). Retrieval SOTA was not
 achieved. The 32-task validation selection
 excludes all 105 prior development IDs and remains unrun, as does the full-500
@@ -136,7 +136,11 @@ The requested Claude Max alternative passes an official Agent SDK smoke with
 actual Opus 5.5 and the same three source tools; SDK metering is separated from
 unknown actual billing. Its follow-up batch was stopped with 3 completed,
 1 interrupted and 20 unrun tasks, without a cohort quality claim. No further
-model experiment is scheduled. The public results and sanitized per-case exports
+model experiment from that closed batch is scheduled. The October 16 follow-up
+adds online function completion and matched native/SDK controls to the same
+source-checkout scripts, retaining `labs` ownership and the existing gates.
+Directed graph navigation and downstream issue-resolution outcomes remain open.
+The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
 cheaper controller. Historical fixed payload controls remain experimental inputs,

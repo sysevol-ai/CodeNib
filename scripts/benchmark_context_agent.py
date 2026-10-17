@@ -14,7 +14,9 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import math
 import os
+import random
 import re
 import sys
 import threading
@@ -33,7 +35,7 @@ import tiktoken
 from litellm import ModelResponse
 
 from codenib.agent.agent_types import ToolCallRecord
-from codenib.agent.runner import AgentRunner
+from codenib.agent.runner import _MAX_RESULT_CHARS, AgentRunner
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.code_chunker import CodeChunker
 from codenib.dataset.contextbench import load_contextbench_cases
@@ -215,7 +217,9 @@ class OpenRouterToolChat:
         return result
 
 
-def retrieve(*, repo, query, chat, max_turns=20):
+def retrieve(
+    *, repo, query, chat, max_turns=20, source_policy="native", completion_tokens=2048
+):
     """Only source tools and the original issue enter the shared native loop."""
     registry = SkillRegistry()
     runner = AgentRunner(
@@ -232,14 +236,14 @@ def retrieve(*, repo, query, chat, max_turns=20):
         # Opus 5.5 endpoints support auto/none but reject forced tool_choice.
         first_turn_tool_choice="auto",
     )
-    for tool_id, argument in (
-        ("read", "file_path"),
-        ("grep", "path"),
-        ("glob", "path"),
-    ):
+    for tool_id in ("read", "grep", "glob"):
         tool = runner.tool_registry.get(tool_id)
-        tool.executor_fn = _bind_source_tool(
-            tool.executor_fn, repo=repo.resolve(), path_argument=argument
+        tool.executor_fn = bind_context_source_tool(
+            tool.executor_fn,
+            repo=repo.resolve(),
+            tool_id=tool_id,
+            source_policy=source_policy,
+            completion_tokens=completion_tokens,
         )
     execute = runner._execute_tool_call
 
@@ -448,6 +452,118 @@ def complete_observed_functions(nodes, repo, max_function_lines=1500):
     return additions, skipped
 
 
+def bind_context_source_tool(
+    execute, *, repo, tool_id, source_policy="native", completion_tokens=2048
+):
+    """Complete touched callables inside a real tool response, before inference.
+
+    Keep original observations first. Add only exact, novel physical lines from
+    callables touched by this response; never recursively expand additions. Each
+    callable's missing lines must fit both the extra-token budget and the native
+    runner's response limit in full. No annotation or reference patch is read.
+    This stateless wrapper also works with exact tool-response replay and the SDK.
+    """
+    if source_policy not in {"native", "functions"}:
+        raise ValueError("Unknown source policy")
+    if not 1 <= completion_tokens <= 8192:
+        raise ValueError("completion_tokens must be in [1, 8192]")
+    confined = _bind_source_tool(
+        execute,
+        repo=repo.resolve(),
+        path_argument="file_path" if tool_id == "read" else "path",
+    )
+    if source_policy == "native" or tool_id == "glob":
+        return confined
+    encoder = tiktoken.get_encoding("cl100k_base")
+
+    def completed(**arguments):
+        original = confined(**arguments)
+        if (
+            original.lstrip().startswith("Error")
+            or len(original) >= _MAX_RESULT_CHARS
+            or (
+                tool_id == "grep"
+                and arguments.get("output_mode", "content") != "content"
+            )
+        ):
+            return original
+        messages = [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "source",
+                        "function": {
+                            "name": tool_id,
+                            "arguments": json.dumps(arguments),
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "source", "content": original},
+        ]
+        nodes = observed_nodes(messages, repo)
+        try:
+            additions, skipped = complete_observed_functions(nodes, repo)
+        except Exception as exc:
+            notice = f"\n[CodeNib completion unavailable: {type(exc).__name__}]"
+            return (
+                original + notice
+                if len(original + notice) <= _MAX_RESULT_CHARS
+                else original
+            )
+        seen = {
+            (node.file, line)
+            for node in nodes
+            for line in range(node.start_line, node.end_line + 1)
+        }
+        extra = ""
+        for node in additions:
+            lines = []
+            novel = set()
+            for number, content in enumerate(
+                node.content.splitlines(), node.start_line
+            ):
+                if (node.file, number) in seen:
+                    continue
+                prefix = (
+                    f"{number + 1:6d} | "
+                    if tool_id == "read"
+                    else f"{node.file}:{number + 1}: "
+                )
+                lines.append(prefix + content)
+                novel.add((node.file, number))
+            if not lines:
+                continue
+            candidate = extra + "\n[CodeNib function completion]\n" + "\n".join(lines)
+            if (
+                len(encoder.encode(candidate, disallowed_special=()))
+                > completion_tokens
+                or len(original + candidate) > _MAX_RESULT_CHARS - 100
+            ):
+                skipped.append({"file": node.file})
+                continue
+            extra = candidate
+            seen.update(novel)
+        if skipped:
+            notice = (
+                f"\n[CodeNib: {len(skipped)} callable(s) not completed "
+                "within source/output limits.]"
+            )
+            if len(original + extra + notice) <= _MAX_RESULT_CHARS:
+                extra += notice
+        return original + extra
+
+    return completed
+
+
+def source_policy_arguments(parser):
+    parser.add_argument(
+        "--source-policy", choices=("native", "functions"), default="native"
+    )
+    parser.add_argument("--completion-tokens", type=int, default=2048)
+
+
 def refine(args):
     """Paired serving-only refinement of a fixed, complete native trajectory."""
     decisions = args.method in {"decisions", "functions_decisions"}
@@ -599,10 +715,11 @@ def prepare(args):
     cases = load_contextbench_cases(args.cases)
     args.output.mkdir(parents=True, exist_ok=False)
     (args.output / "selected.jsonl").write_bytes(args.cases.read_bytes())
+    repos_root = getattr(args, "repos_root", None) or args.output / "repos"
     entries = []
     for case in cases:
         try:
-            repo = prepare_contextbench_repo(case, args.output / "repos")
+            repo = prepare_contextbench_repo(case, repos_root)
             source = {
                 "status": "ok",
                 "repo": str(repo.resolve()),
@@ -634,6 +751,7 @@ def prepare(args):
             "cases": entries,
             "implementation": freeze(args.output),
             "cohort": str(args.output.resolve()),
+            "repos_root": str(repos_root.resolve()),
             "scope": (
                 "Frozen selected source snapshots; no chunk corpus, graph, embeddings, "
                 "cached grep seed or model calls. Failed preparation stays selected."
@@ -671,6 +789,13 @@ def run(args):
         raise ValueError("max_turns must be in [1, 40]")
     if not 1 <= args.workers <= 4:
         raise ValueError("workers must be in [1, 4]")
+    source_policy = getattr(args, "source_policy", "native")
+    completion_tokens = getattr(args, "completion_tokens", 2048)
+    if (
+        source_policy not in {"native", "functions"}
+        or not 1 <= completion_tokens <= 8192
+    ):
+        raise ValueError("Invalid source policy or completion token budget")
     manifest, cases = load_inputs(args.prepared)
     # Each lane owns a disjoint budget and processes tasks serially. No shared
     # mutable cost counter or lock spans model calls. Unknown usage signals all
@@ -694,6 +819,8 @@ def run(args):
             parent["manifest_sha256"] != digest(args.prepared / "manifest.json")
             or parent["parameters"] != parameters
             or parent["max_turns"] != args.max_turns
+            or parent.get("source_policy", "native") != source_policy
+            or parent.get("completion_tokens", 2048) != completion_tokens
         ):
             raise ValueError("Resume configuration differs from original model policy")
         resume = {
@@ -749,6 +876,8 @@ def run(args):
             "implementation": freeze(args.output),
             "parameters": parameters,
             "max_turns": args.max_turns,
+            "source_policy": source_policy,
+            "completion_tokens": completion_tokens,
             "context_safety_tokens": 120000,
             "max_cost_usd": args.max_cost_usd,
             "case_cost_usd": args.case_cost_usd,
@@ -827,6 +956,8 @@ def run(args):
                 query=case.problem_statement,
                 chat=chat,
                 max_turns=args.max_turns,
+                source_policy=source_policy,
+                completion_tokens=completion_tokens,
             )
             messages = result.messages
             row.update(
@@ -929,7 +1060,9 @@ def evaluate(args):
         report = evaluate_contextbench(
             cases=list(cases.values()),
             predictions=predictions,
-            repos_root=Path(manifest["cohort"]) / "repos",
+            repos_root=Path(
+                manifest.get("repos_root", Path(manifest["cohort"]) / "repos")
+            ),
             output=output,
             command=command,
             timeout=1800,
@@ -955,6 +1088,131 @@ def evaluate(args):
     print(json.dumps(summary, indent=2))
 
 
+def compare(args):
+    """Compare fresh matched runs without dropping failures or mixing runtimes."""
+    runs = []
+    for directory in (args.baseline, args.candidate):
+        config = json.loads((directory / "config.json").read_text())
+        if config.get("resume") or config.get("offline_repack") or "method" in config:
+            raise ValueError("Paired comparison requires fresh online agent runs")
+        prepared = Path(config["prepared"])
+        manifest, cases = load_inputs(prepared)
+        if digest(prepared / "manifest.json") != config["manifest_sha256"]:
+            raise ValueError("Run manifest changed")
+        for name, sha in config["implementation"].items():
+            if digest(directory / "implementation" / name) != sha:
+                raise ValueError("Archived agent implementation changed")
+        report = json.loads(
+            (directory / "evaluation" / "trajectory" / "metrics.json").read_text()
+        )
+        scores = {row["instance_id"]: row for row in report["cases"]}
+        if len(scores) != len(report["cases"]) or set(scores) != set(cases):
+            raise ValueError("Official score identities differ from selected tasks")
+        values, models, statuses = {}, set(), Counter()
+        for key in cases:
+            record = json.loads((directory / f"{key}.json").read_text())
+            if record["instance_id"] != key:
+                raise ValueError("Agent result identity differs")
+            statuses[record["status"]] += 1
+            models.update(
+                call["model"] for call in record["calls"] if call.get("model")
+            )
+            for event in record.get("sdk_events", []):
+                if event["kind"] == "AssistantMessage" and event["data"].get("model"):
+                    models.add(event["data"]["model"])
+            score = scores[key]
+            if "error" in score:
+                recall = precision = 0.0
+            else:
+                line = score["final"]["line"]
+                recall, precision = float(line["coverage"]), float(line["precision"])
+                if not all(
+                    math.isfinite(v) and 0 <= v <= 1 for v in (recall, precision)
+                ):
+                    raise ValueError("Invalid official line metric")
+            values[key] = {
+                "recall": recall,
+                "precision": precision,
+                "f1": (
+                    2 * recall * precision / (recall + precision)
+                    if recall + precision
+                    else 0
+                ),
+            }
+        if len(models) != 1:
+            raise ValueError("Expected one measured model identity per arm")
+        runs.append(
+            {
+                "directory": str(directory.resolve()),
+                "config": config,
+                "values": values,
+                "models": sorted(models),
+                "statuses": dict(statuses),
+                "scoring_failures": sum("error" in row for row in scores.values()),
+                "usage": json.loads((directory / "usage.json").read_text()),
+            }
+        )
+    left, right = runs
+    for key in (
+        "manifest_sha256",
+        "implementation",
+        "backend",
+        "parameters",
+        "model_requested",
+        "max_turns",
+        "completion_tokens",
+        "context_safety_tokens",
+        "max_cost_usd",
+        "case_cost_usd",
+        "workers",
+        "sdk_version",
+        "cli_version",
+        "tools",
+        "max_meter_usd",
+        "case_meter_usd",
+        "case_timeout",
+    ):
+        if left["config"].get(key) != right["config"].get(key):
+            raise ValueError(f"Paired policies differ in {key}")
+    if left["models"] != right["models"]:
+        raise ValueError("Actual model identities differ between arms")
+    if (
+        left["config"].get("source_policy", "native") != "native"
+        or right["config"].get("source_policy") != "functions"
+    ):
+        raise ValueError("Expected native baseline and functions candidate")
+    ids = sorted(left["values"])
+    comparisons = {}
+    for metric in ("recall", "precision", "f1"):
+        differences = [
+            right["values"][i][metric] - left["values"][i][metric] for i in ids
+        ]
+        generator = random.Random(20261016)
+        boot = sorted(
+            mean(generator.choices(differences, k=len(ids))) for _ in range(10000)
+        )
+        comparisons[metric] = {
+            "baseline": mean(left["values"][i][metric] for i in ids),
+            "candidate": mean(right["values"][i][metric] for i in ids),
+            "difference": mean(differences),
+            "paired_bootstrap_95_interval": [boot[249], boot[9749]],
+        }
+    result = {
+        "n": len(ids),
+        "instance_ids": ids,
+        "population": "All selected tasks; scoring failures contribute zero",
+        "metric_scope": "Official cumulative observed trajectory; no Pass@1",
+        "bootstrap": {"draws": 10000, "seed": 20261016, "unit": "task"},
+        "metrics": comparisons,
+        "arms": [{k: v for k, v in run.items() if k != "config"} for run in runs],
+    }
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("x") as stream:
+        json.dump(result, stream, indent=2)
+        stream.write("\n")
+    print(json.dumps({"n": len(ids), "metrics": comparisons}, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -963,6 +1221,9 @@ def main():
     )
     p.add_argument("--cases", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument(
+        "--repos-root", type=Path, help="Reuse audited immutable task checkouts"
+    )
     p = sub.add_parser("run")
     p.add_argument("--prepared", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
@@ -972,6 +1233,13 @@ def main():
     p.add_argument("--max-cost-usd", type=float, default=30)
     p.add_argument("--case-cost-usd", type=float, default=3)
     p.add_argument("--live", action="store_true")
+    source_policy_arguments(p)
+    p = sub.add_parser(
+        "compare", help="Paired online native/functions trajectory metrics"
+    )
+    p.add_argument("--baseline", type=Path, required=True)
+    p.add_argument("--candidate", type=Path, required=True)
+    p.add_argument("--output", type=Path, required=True)
     p = sub.add_parser(
         "repack", help="Repack complete saved trajectories without API calls"
     )
@@ -980,6 +1248,7 @@ def main():
     p.add_argument("--resume-from", type=Path, required=True)
     p.add_argument("--max-turns", type=int, default=20)
     p.set_defaults(workers=4, max_cost_usd=1, case_cost_usd=1, live=False)
+    source_policy_arguments(p)
     p = sub.add_parser("evaluate")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--upstream", type=Path, required=True)
@@ -1004,6 +1273,7 @@ def main():
         "repack": run,
         "refine": refine,
         "evaluate": evaluate,
+        "compare": compare,
     }[args.command](args)
 
 

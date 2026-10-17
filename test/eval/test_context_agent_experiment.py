@@ -199,6 +199,200 @@ def test_grep_format_separator_does_not_discard_seen_source(tmp_path):
     assert nodes[0].content == "value = 1\n    indented = 2"
 
 
+@pytest.mark.parametrize("policy,last_line", [("native", 1), ("functions", 3)])
+def test_function_reads_reach_next_model_turn_and_official_trajectory(
+    monkeypatch, tmp_path, policy, last_line
+):
+    (tmp_path / "a.py").write_text(
+        "def touched():\n    value = helper()\n    return value\n\n"
+        "def helper():\n    return 1\n"
+    )
+    sent = fake_post(
+        monkeypatch,
+        [
+            tool("read", {"file_path": "a.py", "offset": 1, "limit": 1}, "read"),
+            {"role": "assistant", "content": "Found the implementation."},
+            {"role": "assistant", "content": "Reviewed."},
+        ],
+    )
+    result = agent.retrieve(
+        repo=tmp_path,
+        query="Understand touched",
+        chat=chat(),
+        max_turns=4,
+        source_policy=policy,
+    )
+    delivered = next(m["content"] for m in sent[1]["messages"] if m["role"] == "tool")
+    assert ("value = helper()" in delivered) == (policy == "functions")
+    assert "return 1" not in delivered
+    predicted = agent.contextbench_prediction(
+        instance_id="case", messages=result.messages, repo_path=tmp_path
+    )
+    assert predicted["traj_data"]["pred_spans"] == {
+        "a.py": [{"start": 1, "end": last_line}]
+    }
+
+
+def test_function_completion_grep_keeps_file_identity_and_source_limits(tmp_path):
+    (tmp_path / "a.py").write_text("def found():\n    return 3\n")
+    (tmp_path / "b.py").write_text("def other():\n    return 4\n")
+    bound = agent.bind_context_source_tool(
+        lambda **kw: "a.py:1: def found():\nb.py:1: def other():",
+        repo=tmp_path,
+        tool_id="grep",
+        source_policy="functions",
+    )
+    result = bound(path=".", pattern="def")
+    assert "a.py:2:     return 3" in result
+    assert "b.py:2:     return 4" in result
+    messages = [
+        tool("grep", {"pattern": "def"}, "grep"),
+        {"role": "tool", "tool_call_id": "grep", "content": result},
+    ]
+    assert agent.contextbench_prediction(
+        instance_id="case", messages=messages, repo_path=tmp_path
+    )["traj_data"]["pred_spans"] == {
+        "a.py": [{"start": 1, "end": 2}],
+        "b.py": [{"start": 1, "end": 2}],
+    }
+    with pytest.raises(ValueError, match="escapes"):
+        bound(path="..", pattern="def")
+
+
+@pytest.mark.parametrize("budget,huge", [(1, False), (8192, True)])
+def test_function_completion_never_partially_delivers_an_added_callable(
+    tmp_path, budget, huge
+):
+    source = (
+        "def found():\n    value = '"
+        + ("x" * 17000 if huge else "small")
+        + "'\n    return value\n"
+    )
+    (tmp_path / "a.py").write_text(source)
+    bound = agent.bind_context_source_tool(
+        lambda **kw: "1 | def found():",
+        repo=tmp_path,
+        tool_id="read",
+        source_policy="functions",
+        completion_tokens=budget,
+    )
+    result = bound(file_path="a.py")
+    assert "value =" not in result
+    assert "not completed" in result
+    assert len(result) <= agent._MAX_RESULT_CHARS
+
+
+def test_completion_does_not_expand_names_only_or_truncated_source(tmp_path):
+    (tmp_path / "a.py").write_text("def found():\n    return 3\n")
+    for tool_id, text, args in (
+        ("grep", "a.py", {"output_mode": "files_with_matches"}),
+        ("read", "1 | def fou ... [line truncated]", {"file_path": "a.py"}),
+        ("glob", "a.py", {}),
+    ):
+        bound = agent.bind_context_source_tool(
+            lambda text=text, **kw: text,
+            repo=tmp_path,
+            tool_id=tool_id,
+            source_policy="functions",
+        )
+        assert bound(**args) == text
+
+
+@pytest.fixture
+def paired_runs(monkeypatch, tmp_path):
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    (prepared / "manifest.json").write_text("frozen")
+    cases = {key: SimpleNamespace(instance_id=key) for key in ("ok", "failed")}
+    monkeypatch.setattr(agent, "load_inputs", lambda path: ({}, cases))
+    paths = []
+    for policy, recall, precision in (("native", 1, 0.2), ("functions", 0.5, 0.5)):
+        directory = tmp_path / policy
+        (directory / "evaluation" / "trajectory").mkdir(parents=True)
+        config = {
+            "prepared": str(prepared),
+            "manifest_sha256": agent.digest(prepared / "manifest.json"),
+            "implementation": {},
+            "source_policy": policy,
+            "parameters": {"model": "same-model"},
+            "max_turns": 20,
+        }
+        (directory / "config.json").write_text(json.dumps(config))
+        scores = []
+        for key in cases:
+            record = {
+                "instance_id": key,
+                "status": "ok" if key == "ok" else "error",
+                "calls": [{"model": "actual-model"}],
+            }
+            (directory / f"{key}.json").write_text(json.dumps(record))
+            scores.append(
+                {
+                    "instance_id": key,
+                    **(
+                        {
+                            "final": {
+                                "line": {"coverage": recall, "precision": precision}
+                            }
+                        }
+                        if key == "ok"
+                        else {"error": "missing_prediction"}
+                    ),
+                }
+            )
+        (directory / "evaluation" / "trajectory" / "metrics.json").write_text(
+            json.dumps({"cases": scores})
+        )
+        (directory / "usage.json").write_text(json.dumps({"new_api_cost_usd": 1}))
+        paths.append(directory)
+    return SimpleNamespace(
+        baseline=paths[0], candidate=paths[1], output=tmp_path / "comparison.json"
+    )
+
+
+def test_paired_online_comparison_keeps_failures_and_macro_f1(paired_runs):
+    agent.compare(paired_runs)
+    result = json.loads(paired_runs.output.read_text())
+    assert result["n"] == 2
+    assert result["metrics"]["recall"]["baseline"] == 0.5
+    assert result["metrics"]["f1"]["baseline"] == pytest.approx(1 / 6)
+    assert result["metrics"]["f1"]["candidate"] == 0.25
+    assert all(arm["scoring_failures"] == 1 for arm in result["arms"])
+    assert "pass_at_1" not in result
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("backend", "claude-agent-sdk"),
+        ("max_turns", 40),
+        ("implementation", {"changed.py": "other"}),
+    ],
+)
+def test_paired_comparison_rejects_changed_harness_or_budget(paired_runs, field, value):
+    path = paired_runs.candidate / "config.json"
+    config = json.loads(path.read_text())
+    config[field] = value
+    if field == "implementation":
+        archive = paired_runs.candidate / "implementation"
+        archive.mkdir()
+        (archive / "changed.py").write_text("different")
+        config[field]["changed.py"] = agent.digest(archive / "changed.py")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match=f"differ in {field}"):
+        agent.compare(paired_runs)
+    assert not paired_runs.output.exists()
+
+
+def test_paired_comparison_rejects_missing_score_rows(paired_runs):
+    path = paired_runs.candidate / "evaluation" / "trajectory" / "metrics.json"
+    scores = json.loads(path.read_text())
+    scores["cases"].pop()
+    path.write_text(json.dumps(scores))
+    with pytest.raises(ValueError, match="identities"):
+        agent.compare(paired_runs)
+
+
 def test_budget_stop_retains_last_delivered_history_without_new_call(monkeypatch):
     sent = fake_post(monkeypatch, [{"role": "assistant", "content": "done"}])
     client = chat()
