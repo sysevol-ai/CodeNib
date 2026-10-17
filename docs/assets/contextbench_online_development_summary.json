@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 162.32272866,
+    "known_sdk_reported_estimate_usd": 165.21099526,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Completed Claude SDK/Jev,standard Messages and one8-item Batch through known-development Max/Batch route verification. Direct-API SDK307 and standard Messages112 unchanged;4new Max SDK sessions and8 Batch inferences/8free counts recorded separately. Both old32 and new32 sealed. Two historical Max metering gaps unchanged. Excludes historical OpenRouter reference;actual account charges/credit balance unverified.",
+    "scope": "As-of checkpoint in verified500_context_execution: add its accepted fresh Max terminal SDK nominal value once to prior Max113.75041130/mixed162.32272866. Pending sessions excluded, not terminal metering gaps. API total remains59.09398873; no new Batch/count/repair calls. Max nominal is not subscription cash billing. Historical2 Max gaps unchanged; account charges/credit balance unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2803,7 +2803,7 @@
     "jev_rerank_api_cost_usd": 0.025743857999999994,
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
-    "known_claude_max_sdk_estimate_usd": 113.7504113,
+    "known_claude_max_sdk_estimate_usd": 116.6386779,
     "known_anthropic_api_sdk_estimate_usd": 48.57231736,
     "standalone_api_call_count_scope": "1012 Jev decisions;216 retrieval SDK sessions,36 packet-review SDK sessions and55 historical repair SDK queries.112 Messages inference requests and160 free token counts are separate; SDK sessions are not HTTP request counts.",
     "anthropic_api_sdk_sessions": 307,
@@ -2848,7 +2848,10 @@
     "batch_free_token_count_requests": 8,
     "max_batch_development_Max_sdk_sessions": 4,
     "max_batch_development_Max_nominal_sdk_usd": 1.2485557,
-    "unmetered_batch_requests": 0
+    "unmetered_batch_requests": 0,
+    "verified500_native_checkpoint": "2026-10-17T18:16:29+00:00",
+    "verified500_new_Max_nominal_sdk_usd": 2.8882666,
+    "verified500_new_Max_sdk_terminal_sessions": 29
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -23790,7 +23793,7 @@
       "frozen_source_resolved": true
     }
   },
-  "current_priority": "Pure context-agent retrieval, Recall first, F1 and costs reported; preserve prior frozen gates. No new repair/native-harness or official500 calls. Both32 validation cohorts sealed. Known source-identity, pinned-file and quarantined-format audits are complete. Additional default-config candidates still need selected-source readiness and a separate sampling/population protocol.",
+  "current_priority": "Context metrics first: Recall primary, F1 and costs reported. Canonical verified500 context-only execution is running under its own frozen protocol, with known/exposed cases disclosed; all three independent32 cohorts stay sealed. No new repairs/native grading or product promotion.",
   "source_gap_diagnosis": {
     "scope": "Evaluation-only diagnosis of eight disclosed native trajectories. Canonical official paths and scores unchanged. No model calls; no annotation-driven runtime choices.",
     "totals": {
@@ -27432,7 +27435,7 @@
     },
     "consequence": "No untouched C++ or Java remains. Do not recycle either validation cohort or imply that future samples preserve the current language coverage."
   },
-  "latest_context_strategy_status": "Amended pre-label independent32 passes the frozen Recall/source/cost gate: Recall 74.94% to 79.09%, F1 30.13% to 22.32%; repository95 Recall difference [+1.99,+6.85] points. Shared fresh native prefixes,not paired autonomous investigation or repair benefit. Whole32 usage $11.18372580; original local packing failure remains failed. All three32 cohorts sealed. No repair/full500 started.",
+  "latest_context_strategy_status": "Late physical4K source passes amended task-level independent32: Recall74.94% to79.09%, F130.13% to22.32%, repository95 Recall difference [+1.99,+6.85] points. Canonical500 context-only native stage now running; no new quality scores until terminal predictions freeze. It contains known cases, not fresh independent500. No repair-success claim.",
   "preserved_source_cached_ranking": {
     "scope": "Fixed-query actual-source union opportunity only, using shared historical real observations. No new agent behavior, paid calls or independent/leaderboard claim. No retrospective change to earlier failed online or independent gates.",
     "protocol_sha256": "707b197e50de1591e9ca6abfbb0213b7682440d74043e51ab944161f6e5a1428",
@@ -40009,7 +40012,7 @@
     "additional_source_identity_exclusions_beyond32": 0
   },
   "verified500_measured_cost_and_submission_plan": {
-    "scope": "Unpaid planning after amended independent32 terminal scoring. Measured route allocations and arithmetic scenarios,not a representative500 forecast,spend authorization,quota reservation or quality promotion. No source/model/label policy is changed.",
+    "scope": "Historical small-sample arithmetic and formal submission requirements, retained without changing prior estimates. Current canonical500 context-only dispatch protocol and live state are in verified500_context_execution; no quality or repair result is implied.",
     "remaining_authorized_api_usage_usd": 40.90601126999999,
     "unweighted500_arithmetic_only": {
       "api_investigation_plus_candidate_review_usd": 137.94609062499995,
@@ -40126,19 +40129,19 @@
     "per_committed_file_cap_mib": 50,
     "external_links_or_lfs_pointers_suffice": false,
     "open_gates": [
-      "Freeze source-gap handling for all500 positions; retain explicitly unavailable child inputs and official denominators.",
-      "Verify supported Max quota/time and billing behavior; never enable paid extra usage or add an API fallback implicitly.",
-      "Audit every reusable context/profile receipt, freeze fresh native context work, then exact provider counts and complete API reservation within remaining40.90601127. No automatic500dispatch.",
-      "Formal submission only: Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
-      "Formal submission only: Complete original raw trajectories,failed attempts,evaluation and outcome archives committed within official file limits."
+      "Finish all412 native investigations under current Max included-only receipts; retain unknown/error attempts without retry or replacement.",
+      "Before one paid Batch create, complete all444 exact provider token counts and full output-cap/margin/headroom reservation <=40 USD.",
+      "Freeze terminal predictions for all500 positions before reading annotations; report Recall primary plus F1 and complete costs, without a fresh-independent500 claim.",
+      "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
+      "Complete original raw trajectories,failed attempts,evaluation and outcome archives committed within official file limits."
     ],
     "new_model_calls": 0,
     "new_api_cost_usd": 0,
     "official500_started": false,
     "context500_open_gates": [
-      "Freeze source-gap handling for all500 positions; retain explicitly unavailable child inputs and official denominators.",
-      "Verify supported Max quota/time and billing behavior; never enable paid extra usage or add an API fallback implicitly.",
-      "Audit every reusable context/profile receipt, freeze fresh native context work, then exact provider counts and complete API reservation within remaining40.90601127. No automatic500dispatch."
+      "Finish all412 native investigations under current Max included-only receipts; retain unknown/error attempts without retry or replacement.",
+      "Before one paid Batch create, complete all444 exact provider token counts and full output-cap/margin/headroom reservation <=40 USD.",
+      "Freeze terminal predictions for all500 positions before reading annotations; report Recall primary plus F1 and complete costs, without a fresh-independent500 claim."
     ],
     "official_submission_additional_gates": [
       "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
@@ -40936,5 +40939,83 @@
     "native_connectivity_audits_passed": true,
     "new_model_calls": 0,
     "new_api_usage_usd": 0
+  },
+  "verified500_context_execution": {
+    "observed_at_utc": "2026-10-17T18:16:29+00:00",
+    "source_state_sha256": "1fb369980ee105ddcf055942d71a68bc7ffa72fdecdd9d08748269686c5cdbca",
+    "state": "native_running",
+    "native_exec_session_id": 20542,
+    "runtime_commit": "e8f6b67584a64710599c91aac00e31710a61a854",
+    "protocol_sha256": "cf2f2e47869775de32584f73a2572b5c84d350ad2c2b4b0ff7c5581dd1d406b6",
+    "population": 500,
+    "complete_context_pairs_reused": 56,
+    "additional_native_prefixes_reused": 32,
+    "all_native_prefixes_reused": 88,
+    "fresh_native_positions": 412,
+    "new_candidate_consumers": 444,
+    "fresh_native_completed": 29,
+    "fresh_native_accepted": 29,
+    "fresh_native_remaining": 383,
+    "known_new_Max_nominal_sdk_usd": 2.8882666,
+    "new_terminal_metering_gaps": 0,
+    "new_api_usage_usd": 0,
+    "new_paid_Batch_requests": 0,
+    "new_free_count_requests": 0,
+    "new_repair_calls": 0,
+    "new_quality_scores": false,
+    "latest_supported_rate_receipt": {
+      "status": "allowed_warning",
+      "resetsAt": 1792674000,
+      "rateLimitType": "seven_day",
+      "utilization": 0.56,
+      "overageStatus": "rejected",
+      "overageDisabledReason": "org_level_disabled",
+      "isUsingOverage": false,
+      "unifiedWindows": {
+        "five_hour": {
+          "utilization": 0.01,
+          "resetsAt": 1792272000
+        },
+        "seven_day": {
+          "utilization": 0.56,
+          "resetsAt": 1792674000
+        }
+      },
+      "overageEnabled": false
+    },
+    "quota_is_full_run_reservation": false,
+    "api_reserved_for_all444_usd": 40.0,
+    "known_prior_api_usage_usd": 59.09398873,
+    "total_api_ceiling_usd": 100,
+    "already_known_cases_disclosed": true,
+    "fresh_independent500_claim": false,
+    "source_unavailable_gitlink_cases": 3
+  },
+  "verified500_additional_native_prefix_reuse": {
+    "scope": "Metadata/profile/source/code-path audit of every matching original prefix, without new calls, quality scoring, label access or favorable-case selection. Original strict empty advertised-catalog requirement remains failed; separate exact validated-reference catalog equality qualifies all32. All sealed study quality conclusions remain unchanged.",
+    "additional_qualified_prefixes": 32,
+    "complete_pairs_reused": 56,
+    "total_native_prefixes_reused": 88,
+    "fresh_native_positions": 412,
+    "new_candidate_consumers": 444,
+    "native_packet_consumers_omitted": 444,
+    "baseline": "Confirmed cumulative native source already consumed by investigator. All56 original native_packet source unions equal native prefix; new candidate adds one actual final input. Do not claim matched final-review reasoning or repair gain, or credit an unsent native packet.",
+    "new_model_calls": 0,
+    "new_api_usage_usd": 0
+  },
+  "max_included_only_runtime_guard": {
+    "runtime_commit": "e8f6b67584a64710599c91aac00e31710a61a854",
+    "default_enabled": false,
+    "flag": "--max-included-only",
+    "requires": "Existing first-party Max authentication, init apiKeySource=none and supported RateLimitEvent explicitly overageEnabled=false and isUsingOverage=false before accepting model content. Raw events and terminal metering persist before validation.",
+    "does_not_change_sdk_query_options": true,
+    "first_request_may_precede_quota_event": true,
+    "is_provider_billing_cap": false,
+    "changes_account_settings": false,
+    "model_api_fallback": false,
+    "sdk_boundary_tests_passed": 33,
+    "relevant_unit_tests_passed": 132,
+    "integration_tests_deselected": 8,
+    "billed_tests_run": false
   }
 }
