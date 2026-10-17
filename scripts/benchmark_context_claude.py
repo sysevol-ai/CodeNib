@@ -203,6 +203,7 @@ async def retrieve(
     file_map_tokens=0,
     file_source_view=None,
     max_included_only=False,
+    context_tool=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -225,6 +226,14 @@ async def retrieve(
         raise ValueError("File source requires unmodified native source tools")
     if max_included_only and billing_route != "subscription":
         raise ValueError("Included Max usage requires the subscription route")
+    if context_tool is not None and (
+        source_policy != "native"
+        or graph_tool is not None
+        or grep_view is not None
+        or file_map_tokens
+        or file_source_view is not None
+    ):
+        raise ValueError("CodeNib context requires an otherwise native source arm")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -233,6 +242,11 @@ async def retrieve(
     if graph_tool is not None:
         specs.append(graph_tool)
         tool_map[f"mcp__source__{graph_tool.tool_id}"] = graph_tool.tool_id
+    if context_tool is not None:
+        if context_tool.tool_id != "explore_context":
+            raise ValueError("Only the explicit CodeNib context tool is supported")
+        specs.append(context_tool)
+        tool_map["mcp__source__explore_context"] = "explore_context"
     for spec in specs:
         execute = spec.executor_fn
         if spec.tool_id in TOOLS.values():
@@ -294,6 +308,19 @@ async def retrieve(
                 bind(execute)
             )
         )
+    system_prompt = native.retrieval_system_prompt(
+        max_turns,
+        graph_enabled=graph_tool is not None,
+        graph_query_policy=graph_query_policy,
+    )
+    if context_tool is not None:
+        from scripts.contextbench_codenib_context import CONTEXT_GUIDANCE
+
+        system_prompt = system_prompt.replace(
+            "Use grep and glob to locate implementations, then read their actual source.",
+            CONTEXT_GUIDANCE,
+        )
+        row["context_system_prompt"] = system_prompt
     options = ClaudeAgentOptions(
         cli_path=cli,
         cwd=repo,
@@ -301,11 +328,7 @@ async def retrieve(
         effort="medium",
         max_turns=max_turns,
         max_budget_usd=case_meter_usd,
-        system_prompt=native.retrieval_system_prompt(
-            max_turns,
-            graph_enabled=graph_tool is not None,
-            graph_query_policy=graph_query_policy,
-        ),
+        system_prompt=system_prompt,
         tools=[],
         allowed_tools=list(tool_map),
         permission_mode="default",

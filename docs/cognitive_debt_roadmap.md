@@ -498,37 +498,43 @@ official environment score122valid on both sides: native line Recall/F1
 **76.81%/39.00%**, versus openJiuwen+DeepSeek **79.24%/29.65%**. The native
 baseline has lower Recall and higher F1; this is a cross-model/harness comparison,
 not an enhancement gain. It uses CodeNib read/grep/glob and source/trajectory
-adapters, with no indexed graph, vector/BM25 or Jev retrieval. Its late4K packets
-still require actual candidate consumption. No new model/API calls are needed
-for these comparisons.
+adapters, with no indexed graph, vector/BM25 or Jev retrieval. The unstarted443 late4K consumers are cancelled, releasing the $40 reservation.
+No new model/API calls are needed for these comparisons.
 
-Baseline source is already consumed by the investigator. All56old native-packet
-source unions equal those prefixes. The443new candidate inputs plus56reused pairs
-plus1failedzero position account for500, with asymmetric extra calls/tokens/cost
-and no matched final-reasoning/repair claim. Complete exact provider counts,
-full output caps/margin/headroom within the same40USD reservation before one
-Batchcreate. Known API usage stays59.09398873USD under100USD. Freeze all500terminal
-predictions before final all500 scoring and disclose the earlier122-case
-annotation access, operational amendments and
-failed case. Formal native outcomes/raw archives remain later submission gates;
-context research does not wait for repairs. Partial local raw archives now retain243
-ended native attempts (including the original interrupted one) and112 consumed
-standard Messages. The125/65/53native groups are disjoint;796file members at713unique
-member paths round-trip byte-identically,with identical hashes on overlapping
-code/config names. Seven gzip parts total11,568,526bytes,each below50MiB. This is not
-complete500 evidence or a quality result;remaining257native/443Batch/evaluation/
-outcome archives andpublication review stay open. All500evaluator source targets
-match recorded snapshots,including119retained aliases. No model/API/annotation
-work is added. No product lifecycle
-promotion follows.
+Current development must exercise actual CodeNib indexed context before claiming
+core capability benefits. The source-only `benchmark_context_core.py` consumer
+builds vector/symbol-graph views through the existing compiler and registers
+`explore_context_impl` in the actual SDK loop. The adapter returns only exact
+complete projected source lines after content authentication; elided, partial
+or index-only fallback text gets no source credit. No BM25/Jev, generic storage,
+memory framework or explicit Haiku controller is added. **109 focused tests
+pass**. The four-task pilot uses the first already exposed122 case per
+Python/JavaScript/TypeScript/Go, isolated checkouts and cached local Jina
+embeddings. Actual tool consumption and matched Recall/F1/token/cost outcomes
+remain open. Missing graph providers stay explicit; a loaded tool alone is not
+an advantage. Product lifecycle and dependency direction stay unchanged.
+
+The unstarted443 paid consumers remain cancelled. Known API usage stays
+59.09398873USD under100USD, leaving40.90601127USD with the former40USD reservation
+released. Historical calls/costs and all three sealed32 cohorts are retained.
+Native500 remains a frozen control; final scoring must disclose earlier122-case
+annotation access and the original failed case. Formal native outcomes/raw
+submission archives remain later gates; no new repair batch follows.
+Partial archives retain243 ended native attempts (including the interrupted
+one) and112 consumed standard Messages,796members/713unique paths in seven gzip
+parts totaling11,568,526bytes, each below50MiB, round-trip verified. Remaining
+native/control-evaluation/outcome archives and publication review stay open;
+no cancelled443 Batch archive is required. All500 evaluator source targets match
+recorded snapshots, including119retained aliases. This is not complete500
+quality or proof of indexed context gains.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates
 (Python 194, JavaScript 36, TypeScript 40, C 3, Go 18 and Rust 1) and 623 additional
 default-only candidates. Known IDs, original issue identities and exact source
 commits are excluded across aliases. All three validation cohorts stay sealed;
-future independent population choices remain open; current500 completion, exact Batch
-counts/reservation and formal submission gates remain open. No product lifecycle
+future independent population choices remain open; current500 baseline completion,
+actual indexed-context validation and formal submission gates remain open. No product lifecycle
 promotion or dependency-direction change is authorized by these results.
 The earlier untouched-pool inventory predates the122-case interim Gold access;
 refresh exposure metadata before any future independent selection.
