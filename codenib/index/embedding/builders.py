@@ -34,7 +34,7 @@ from ...repository_source_selection import (
 )
 from ._lifecycle import close_vector_after_failure
 from .artifact_integrity import VECTOR_VIEW_UPDATE_MARKER
-from .vector_store import CodeVectorStore
+from .vector_store import CodeVectorStore, _validate_schema_8_code_chunks
 
 if TYPE_CHECKING:
     from ...native_index_authorization import NativeIndexAuthorization
@@ -633,6 +633,13 @@ def build_hierarchical_vector_store(
         build_path: Path,
         build_root: _PrivateBuildDirectory,
     ) -> CodeVectorStore:
+        if schema_8_documents:
+            # Admission covers every requested level before even L0 allocates
+            # a model or embeds. Save still enforces the same byte bound.
+            for level, chunks in chunks_by_level.items():
+                _validate_schema_8_code_chunks(
+                    (chunk._asdict() for chunk in chunks), level=level
+                )
         with build_root.path_operation("vector store initialization"):
             vector_store = CodeVectorStore(
                 embedding_model=embedding_model,
