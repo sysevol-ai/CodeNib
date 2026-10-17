@@ -36,6 +36,7 @@ from codenib.compiler.index_builders import (
 from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
 from codenib.compiler.manifest import RepoManifest
 from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
+from codenib.languages import get_language_spec
 from codenib.mcp.context import ServerContext
 from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
 from codenib.provider_routes import resolve_embedding_artifact_route
@@ -50,6 +51,19 @@ from scripts.contextbench_surface import SurfaceContext
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def index_languages(language):
+    """Translate dataset labels through the registry's chunker surface."""
+    spec = get_language_spec(language)
+    if spec is None or spec.chunker_language is None:
+        raise ValueError(f"No code chunker for dataset language: {language}")
+    chunker_language = spec.chunker_language
+    return (
+        ["javascript", "typescript"]
+        if chunker_language in {"javascript", "typescript"}
+        else [chunker_language]
+    )
 
 
 def prepare_manifest(args, record, repo, languages):
@@ -177,11 +191,7 @@ def run(args):
     ):
         raise ValueError("This pilot requires existing first-party Max inclusion")
     args.output.mkdir(parents=True, exist_ok=False)
-    languages = (
-        ["javascript", "typescript"]
-        if record["language"] in {"javascript", "typescript"}
-        else [record["language"]]
-    )
+    languages = index_languages(record["language"])
     implementation = {
         str(path.relative_to(ROOT)): digest(path)
         for path in [
@@ -193,6 +203,8 @@ def run(args):
             ROOT / "scripts/contextbench_context_hints.py",
             ROOT / "scripts/contextbench_graph_navigation.py",
             ROOT / "scripts/contextbench_surface.py",
+            ROOT / "codenib/code_chunker.py",
+            ROOT / "codenib/index/embedding/builders.py",
         ]
     }
     write_json(
