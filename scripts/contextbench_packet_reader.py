@@ -71,7 +71,9 @@ def validate_packet(repo, context, source_hashes):
             ):
                 raise ValueError("Packet line differs from its captured source")
             points.add((node["file"], number))
-    tokens = len(tiktoken.get_encoding("cl100k_base").encode(context))
+    tokens = len(
+        tiktoken.get_encoding("cl100k_base").encode(context, disallowed_special=())
+    )
     if tokens > 32768:
         raise ValueError("Packet exceeds the frozen 32K token ceiling")
     return {"source_lines": len(points), "tokens": tokens}

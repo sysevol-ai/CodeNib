@@ -85,3 +85,27 @@ def test_source_change_rejects_packet(tmp_path, monkeypatch):
         late.compile_packets(
             repo=tmp_path, commit="pinned", messages=read("a.py", "1 | known", "a")
         )
+
+
+@pytest.mark.parametrize(
+    "literal", ["<|endoftext|>", "<|fim_prefix|>", "<|endofprompt|>"]
+)
+def test_source_tokenizer_markers_remain_literal_data(tmp_path, monkeypatch, literal):
+    """Transformers source previously aborted packing before any consumer call."""
+    import tiktoken
+
+    monkeypatch.setattr(late.native, "audit_contextbench_snapshot", lambda *a: {})
+    (tmp_path / "tokens.py").write_text(f"known\ntoken = {literal!r}\n")
+    messages = read("tokens.py", "1 | known", "known")
+    messages.append(
+        {"role": "assistant", "content": "tokens.py contains the definition"}
+    )
+    result = late.compile_packets(repo=tmp_path, commit="pinned", messages=messages)
+    context = result["contexts"]["late_physical4096"]
+    assert literal in context
+    assert (
+        validate_packet(tmp_path, context, result["source_sha256"])["source_lines"] == 2
+    )
+    assert result["context_tokens"]["late_physical4096"] == len(
+        tiktoken.get_encoding("cl100k_base").encode(context, disallowed_special=())
+    )

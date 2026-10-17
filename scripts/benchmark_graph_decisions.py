@@ -248,14 +248,15 @@ def pack_context(nodes, *, top_k, token_budget, encoder):
                 "content": "".join(visible) + f"{number} | {line}\n",
             }
             text = json.dumps(packed + [proposal], ensure_ascii=False)
-            if len(encoder.encode(text)) > token_budget:
+            # Source can literally contain tokenizer markers; they are data.
+            if len(encoder.encode(text, disallowed_special=())) > token_budget:
                 break
             visible.append(f"{number} | {line}\n")
             seen.add(key)
         if visible:
             packed.append({"file": node.file, "content": "".join(visible)})
     text = json.dumps(packed, ensure_ascii=False)
-    return text, len(encoder.encode(text))
+    return text, len(encoder.encode(text, disallowed_special=()))
 
 
 def prediction(instance_id, context, repo):
