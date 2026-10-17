@@ -218,7 +218,12 @@ async def retrieve(
             )
 
         if spec.tool_id == "grep" and grep_view is not None:
-            execute = grep_view.wrap(execute)
+            execute = grep_view.wrap(
+                execute,
+                observed_source=lambda: native.observed_nodes(
+                    tuple(row["messages"]), repo
+                ),
+            )
         if spec.tool_id == "read" and file_map_tokens:
             execute = mapped_read(
                 execute,

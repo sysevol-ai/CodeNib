@@ -39,7 +39,101 @@ GREP_HINT_DESCRIPTION = (
     "metadata, not source evidence. Use read to inspect a suggested range when "
     "it resolves your current uncertainty. Other output modes are unchanged."
 )
-GREP_POLICIES = ("native", "chunks", "jev", "hints", "jev-hints")
+GREP_NEIGHBOR_DESCRIPTION = (
+    "Content results preserve every original grep match and may append exact "
+    "source lines within 20 lines of those matches. Previously observed lines "
+    "are omitted from the appended source. Use read for additional ranges. "
+    "Other output modes and underlying search limits are unchanged."
+)
+GREP_POLICIES = ("native", "chunks", "jev", "hints", "jev-hints", "neighbors")
+
+
+def render_neighbors(repo, arguments, original, token_budget, encoder, previous=()):
+    """Preserve hits and append novel physical neighbors, nearest distance first.
+
+    Visit every anchor at each distance before increasing the distance, rather
+    than exhausting the first hit's window. Only verified original hits anchor
+    expansion. Hashes bind whole-line replies to immutable source; oversized
+    files and output omissions are explicit. Concurrent tools can repeat lines
+    until their replies enter the observed conversation; there is no hidden read
+    credit or retained per-file cache.
+    """
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "grep",
+                    "function": {"name": "grep", "arguments": json.dumps(arguments)},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "grep", "content": original},
+    ]
+    observations = observed_nodes(messages, repo)
+    anchors = [
+        (n.file, line)
+        for n in observations
+        for line in range(n.start_line + 1, n.end_line + 2)
+    ]
+    seen = {
+        (n.file, line)
+        for n in previous
+        for line in range(n.start_line + 1, n.end_line + 2)
+    }
+    trace = {
+        "radius": 20,
+        "anchors": anchors,
+        "previous_source": [
+            [n.file, n.start_line + 1, n.end_line + 1] for n in previous
+        ],
+        "sources": {},
+        "added_lines": [],
+        "omitted_budget_lines": 0,
+        "skipped_files": [],
+    }
+    sources = {}
+    for file, _ in anchors:
+        if file in sources or file in trace["skipped_files"]:
+            continue
+        path = repo / file
+        if path.stat().st_size > 2 * 1024 * 1024:
+            trace["skipped_files"].append(file)
+            continue
+        data = path.read_bytes()
+        sources[file] = data.decode(errors="replace").splitlines()
+        trace["sources"][file] = hashlib.sha256(data).hexdigest()
+    # Recheck anchors against the captured version, not just an earlier parse.
+    for n in observations:
+        if n.file in sources:
+            expected = sources[n.file][n.start_line : n.end_line + 1]
+            if [s.rstrip() for s in expected] != n.content.split("\n"):
+                raise ValueError("Grep anchor source changed")
+    seen.update(anchors)
+    marker = "\n[CodeNib nearby source: exact lines; original grep limits apply]\n"
+    suffix = marker
+    for distance in range(1, 21):
+        for file, anchor in anchors:
+            for line in (anchor - distance, anchor + distance):
+                identity = (file, line)
+                source = sources.get(file, ())
+                if identity in seen or not 1 <= line <= len(source):
+                    continue
+                seen.add(identity)
+                proposal = suffix + f"{file}:{line}: {source[line - 1]}\n"
+                if (
+                    len(original + proposal) > 15900
+                    or len(encoder.encode(proposal, disallowed_special=()))
+                    > token_budget
+                ):
+                    trace["omitted_budget_lines"] += 1
+                    continue
+                suffix = proposal
+                trace["added_lines"].append(identity)
+    for file, sha in trace["sources"].items():
+        if hashlib.sha256((repo / file).read_bytes()).hexdigest() != sha:
+            raise ValueError("Grep neighbor source changed")
+    return (original + suffix if trace["added_lines"] else original), trace
 
 
 def candidates(repo, arguments, original, limit=40):
@@ -211,6 +305,8 @@ class GrepSourceView:
 
     @property
     def description(self):
+        if self.policy == "neighbors":
+            return GREP_NEIGHBOR_DESCRIPTION
         return (
             GREP_HINT_DESCRIPTION if "hints" in self.policy else GREP_VIEW_DESCRIPTION
         )
@@ -267,7 +363,7 @@ class GrepSourceView:
                 self.checkpoint(self.ledger)
         return [nodes[i] for i in sorted(scores, key=lambda i: (-scores[i], i))]
 
-    def wrap(self, execute):
+    def wrap(self, execute, *, observed_source=lambda: ()):
         def viewed(**arguments):
             original = execute(**arguments)
             if (
@@ -281,6 +377,28 @@ class GrepSourceView:
                 if "hints" in self.policy and len(original) >= 15900:
                     return original
                 try:
+                    if self.policy == "neighbors":
+                        reply, trace = render_neighbors(
+                            self.repo,
+                            arguments,
+                            original,
+                            self.token_budget,
+                            self.encoder,
+                            tuple(observed_source()),
+                        )
+                        trace.update(
+                            arguments=arguments,
+                            original_sha256=hashlib.sha256(
+                                original.encode()
+                            ).hexdigest(),
+                            original=original,
+                            reply=reply,
+                            reply_tokens=len(
+                                self.encoder.encode(reply, disallowed_special=())
+                            ),
+                        )
+                        self.ledger["views"].append(trace)
+                        return reply
                     nodes = candidates(self.repo, arguments, original)
                     if not nodes:
                         return original
