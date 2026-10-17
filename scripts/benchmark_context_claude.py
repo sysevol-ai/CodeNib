@@ -183,6 +183,63 @@ def normalize_event(kind, event, tool_map=None):
     return messages
 
 
+def matching_budget_terminal(result, data):
+    """Recognize only a metered budget result repeated by the SDK exception."""
+    if not isinstance(result, dict) or not isinstance(data, dict):
+        return False
+    if (
+        result.get("subtype") not in {"error_max_turns", "error_max_budget_usd"}
+        or data.get("subtype") != result["subtype"]
+        or data.get("type") != "result"
+        or result.get("is_error") is not True
+        or data.get("is_error") is not True
+        or result.get("api_error_status") is not None
+        or data.get("api_error_status") is not None
+        or result.get("terminal_reason") == "api_error"
+        or data.get("terminal_reason") != result.get("terminal_reason")
+    ):
+        return False
+    for key in ("uuid", "session_id"):
+        if not isinstance(result.get(key), str) or not result[key]:
+            return False
+        if data.get(key) != result[key]:
+            return False
+    fee = result.get("total_cost_usd")
+    return (
+        type(fee) in (int, float)
+        and math.isfinite(fee)
+        and fee >= 0
+        and type(data.get("total_cost_usd")) in (int, float)
+        and data["total_cost_usd"] == fee
+    )
+
+
+async def sdk_messages(stream, *, row, checkpoint, result_error_type):
+    """Keep a typed, matched post-result budget exit for final receipt checks.
+
+    SDK0.2.165 yields the CLI error result, then raises ResultError on its
+    intentional nonzero exit. A matched budget result still has to pass every
+    existing quota/auth/source/meter check in retrieve; this adds no retry.
+    """
+    try:
+        async for message in stream:
+            yield message
+    except Exception as exc:
+        if not isinstance(exc, result_error_type):
+            raise
+        data = getattr(exc, "data", None)
+        verified = matching_budget_terminal(row.get("sdk_result"), data)
+        row["sdk_post_result_error"] = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "data": data,
+            "budget_terminal_verified": verified,
+        }
+        checkpoint()
+        if not verified:
+            raise
+
+
 async def retrieve(
     *,
     repo,
@@ -343,7 +400,13 @@ async def retrieve(
     max_rate_seen = False
     if max_included_only:
         row["max_included_rate_confirmed"] = False
-    async for message in query(prompt=query_text, options=options):
+    stream = sdk_messages(
+        query(prompt=query_text, options=options),
+        row=row,
+        checkpoint=checkpoint,
+        result_error_type=getattr(sys.modules["claude_agent_sdk"], "ResultError", ()),
+    )
+    async for message in stream:
         kind = type(message).__name__
         data = dataclasses.asdict(message)
         row["sdk_events"].append({"kind": kind, "data": data})

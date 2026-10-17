@@ -11,6 +11,107 @@ import pytest
 from scripts import benchmark_context_claude as claude
 
 
+@pytest.mark.parametrize("subtype", ["error_max_turns", "error_max_budget_usd"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        None,
+        "uuid",
+        "session_id",
+        "fee",
+        "api_error",
+        "unexpected",
+        "missing_result",
+        "missing_rate",
+    ],
+)
+def test_sdk_post_result_budget_error_preserves_terminal_validation(
+    monkeypatch, tmp_path, subtype, failure
+):
+    class ResultError(Exception):
+        def __init__(self, data):
+            super().__init__("CLI exited after a budget result")
+            self.data = data
+
+    def event(kind, **fields):
+        return make_dataclass(kind, [(key, object) for key in fields])(**fields)
+
+    result = {
+        "subtype": subtype,
+        "is_error": True,
+        "num_turns": 21,
+        "total_cost_usd": 0.03,
+        "result": None,
+        "session_id": "session",
+        "uuid": "terminal",
+        "api_error_status": None,
+    }
+    row = {"instance_id": "case", "messages": [], "sdk_events": []}
+    checkpoints = []
+
+    async def query(*, prompt, options):
+        yield event(
+            "SystemMessage",
+            subtype="init",
+            data={"tools": options.allowed_tools, "apiKeySource": "none"},
+        )
+        if failure != "missing_rate":
+            yield event(
+                "RateLimitEvent",
+                rate_limit_info={
+                    "status": "allowed",
+                    "raw": {"overageEnabled": False, "isUsingOverage": False},
+                },
+            )
+        if failure != "missing_result":
+            yield event("ResultMessage", **result)
+        data = {"type": "result", **result}
+        if failure in {"uuid", "session_id"}:
+            data[failure] = "different"
+        elif failure == "fee":
+            data["total_cost_usd"] = 0.04
+        elif failure == "api_error":
+            data["api_error_status"] = 429
+        if failure == "unexpected":
+            raise RuntimeError("Unrelated stream failure")
+        raise ResultError(data)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            ResultError=ResultError,
+            tool=lambda name, description, schema: lambda handler: (name, handler),
+        ),
+    )
+    call = claude.retrieve(
+        repo=tmp_path,
+        query_text="Inspect",
+        row=row,
+        checkpoint=lambda: checkpoints.append(json.loads(json.dumps(row))),
+        cli="test",
+        model="test-model",
+        max_turns=20,
+        max_included_only=True,
+    )
+    if failure:
+        with pytest.raises((RuntimeError, ResultError)):
+            asyncio.run(call)
+        assert row["max_included_rate_confirmed"] is False
+    else:
+        asyncio.run(call)
+        assert row["status"] == "budget_exhausted"
+        assert row["max_included_rate_confirmed"] is True
+        assert row["sdk_post_result_error"]["budget_terminal_verified"] is True
+    if failure != "missing_result":
+        assert row["sdk_reported_cost_usd"] == 0.03
+        assert row["sdk_result"]["uuid"] == "terminal"
+        assert any(c.get("sdk_reported_cost_usd") == 0.03 for c in checkpoints)
+
+
 @pytest.mark.parametrize(
     "info",
     [
