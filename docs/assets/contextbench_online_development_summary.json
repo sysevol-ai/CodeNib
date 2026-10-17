@@ -6947,5 +6947,4513 @@
     "known_sdk_reported_estimate_usd": 1.3218016000000001,
     "same_actual_model": true,
     "conclusion": "One unique development task. Retain both arms and any infrastructure or budget failure. It is not independent Pass@1 evidence, a retrieval-quality gate or evidence of graph-source gains. The first-source 24 and independent 32 quality failures remain unchanged."
+  },
+  "completion_source_followup": {
+    "scope": "Source-checkout completion efficiency and fixed-query graph diagnostics on all 24 disclosed development tasks. Not new model results, independent validation, an official quality score or a product promotion.",
+    "implementation_commit": "c2e11085734f9601eef0140813b60f0e96940378",
+    "completion_source_policy": "Explicit unseen option, preserving historical callable selection and budget reservations before removing duplicate lines. Historical definitions remains the default.",
+    "existing_source_attribution": {
+      "scope": "Post-hoc source attribution on all 24 disclosed development tasks. Zero model calls. Fixed existing tool calls cannot establish online policy quality or causal gains.",
+      "protocol_sha256": "5d95b7cf50a64ecb1bae060b2b70a670e1d08b6eb02bfecf9664b42552daff15",
+      "all_frozen_runtime_and_input_hashes_match": true,
+      "n": 24,
+      "categories": {
+        "completion_grep": {
+          "replies": 73,
+          "unique_physical": 4713,
+          "first_exposure_physical": 4502,
+          "first_exposure_annotated": 552,
+          "repeated_line_deliveries": 310,
+          "unique_physical_absent_from_native": 2353,
+          "unique_annotated_absent_from_native": 87
+        },
+        "completion_read": {
+          "replies": 44,
+          "unique_physical": 1639,
+          "first_exposure_physical": 1348,
+          "first_exposure_annotated": 17,
+          "repeated_line_deliveries": 416,
+          "unique_physical_absent_from_native": 1172,
+          "unique_annotated_absent_from_native": 24
+        },
+        "graph": {
+          "replies": 24,
+          "unique_physical": 358,
+          "first_exposure_physical": 358,
+          "first_exposure_annotated": 139,
+          "repeated_line_deliveries": 0,
+          "unique_physical_absent_from_native": 115,
+          "unique_annotated_absent_from_native": 49
+        },
+        "grep": {
+          "replies": 115,
+          "unique_physical": 1130,
+          "first_exposure_physical": 1096,
+          "first_exposure_annotated": 108,
+          "repeated_line_deliveries": 41,
+          "unique_physical_absent_from_native": 408,
+          "unique_annotated_absent_from_native": 15
+        },
+        "read": {
+          "replies": 109,
+          "unique_physical": 10779,
+          "first_exposure_physical": 9950,
+          "first_exposure_annotated": 1020,
+          "repeated_line_deliveries": 829,
+          "unique_physical_absent_from_native": 1170,
+          "unique_annotated_absent_from_native": 60
+        }
+      },
+      "fixed_trace_removal": {
+        "without_grep_completion": {
+          "lost_physical": 3858,
+          "lost_annotated": 410
+        },
+        "without_any_completion": {
+          "lost_physical": 5464,
+          "lost_annotated": 501
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "categories": {
+            "grep": {
+              "replies": 2,
+              "unique_physical": 26,
+              "first_exposure_physical": 26,
+              "first_exposure_annotated": 25,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 1,
+              "unique_annotated_absent_from_native": 1
+            },
+            "completion_grep": {
+              "replies": 1,
+              "unique_physical": 56,
+              "first_exposure_physical": 56,
+              "first_exposure_annotated": 43,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 40,
+              "unique_annotated_absent_from_native": 27
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 3,
+              "unique_physical": 143,
+              "first_exposure_physical": 138,
+              "first_exposure_annotated": 65,
+              "repeated_line_deliveries": 5,
+              "unique_physical_absent_from_native": 103,
+              "unique_annotated_absent_from_native": 30
+            },
+            "completion_read": {
+              "replies": 1,
+              "unique_physical": 4,
+              "first_exposure_physical": 4,
+              "first_exposure_annotated": 4,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 4248,
+            "read": 226
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 56,
+              "lost_annotated": 43
+            },
+            "without_any_completion": {
+              "lost_physical": 60,
+              "lost_annotated": 47
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "categories": {
+            "grep": {
+              "replies": 8,
+              "unique_physical": 109,
+              "first_exposure_physical": 109,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 1,
+              "unique_physical_absent_from_native": 57,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 5,
+              "unique_physical": 234,
+              "first_exposure_physical": 230,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 87,
+              "unique_physical_absent_from_native": 97,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 52,
+              "first_exposure_physical": 52,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 12,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 6,
+              "unique_physical": 385,
+              "first_exposure_physical": 302,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 83,
+              "unique_physical_absent_from_native": 90,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 1,
+              "unique_physical": 101,
+              "first_exposure_physical": 101,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 96,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 25555,
+            "read": 3317
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 201,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 302,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "categories": {
+            "grep": {
+              "replies": 5,
+              "unique_physical": 59,
+              "first_exposure_physical": 52,
+              "first_exposure_annotated": 1,
+              "repeated_line_deliveries": 7,
+              "unique_physical_absent_from_native": 26,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 2,
+              "unique_physical": 161,
+              "first_exposure_physical": 152,
+              "first_exposure_annotated": 2,
+              "repeated_line_deliveries": 9,
+              "unique_physical_absent_from_native": 105,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 4,
+              "unique_physical": 425,
+              "first_exposure_physical": 380,
+              "first_exposure_annotated": 56,
+              "repeated_line_deliveries": 45,
+              "unique_physical_absent_from_native": 30,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 2,
+              "unique_physical": 64,
+              "first_exposure_physical": 64,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 57,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 15819,
+            "read": 3273
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 117,
+              "lost_annotated": 2
+            },
+            "without_any_completion": {
+              "lost_physical": 180,
+              "lost_annotated": 2
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "categories": {
+            "grep": {
+              "replies": 2,
+              "unique_physical": 5,
+              "first_exposure_physical": 5,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 2,
+              "unique_physical": 160,
+              "first_exposure_physical": 160,
+              "first_exposure_annotated": 71,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 49,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 1,
+              "unique_physical": 30,
+              "first_exposure_physical": 30,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 13287
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 160,
+              "lost_annotated": 71
+            },
+            "without_any_completion": {
+              "lost_physical": 160,
+              "lost_annotated": 71
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "categories": {
+            "grep": {
+              "replies": 11,
+              "unique_physical": 111,
+              "first_exposure_physical": 108,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 4,
+              "unique_physical_absent_from_native": 64,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 8,
+              "unique_physical": 598,
+              "first_exposure_physical": 450,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 148,
+              "unique_physical_absent_from_native": 217,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 7,
+              "unique_physical": 1000,
+              "first_exposure_physical": 972,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 28,
+              "unique_physical_absent_from_native": 150,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 3,
+              "unique_physical": 220,
+              "first_exposure_physical": 218,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 2,
+              "unique_physical_absent_from_native": 155,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 35791,
+            "read": 6410
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 438,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 656,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 17,
+              "first_exposure_physical": 16,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 1,
+              "unique_physical_absent_from_native": 1,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 4,
+              "unique_physical": 511,
+              "first_exposure_physical": 502,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 9,
+              "unique_physical_absent_from_native": 15,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 2,
+              "unique_physical": 88,
+              "first_exposure_physical": 88,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 11,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 5813
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 88,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 88,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "categories": {
+            "grep": {
+              "replies": 3,
+              "unique_physical": 40,
+              "first_exposure_physical": 40,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 1,
+              "unique_physical": 320,
+              "first_exposure_physical": 300,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 20,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 1,
+              "unique_physical": 35,
+              "first_exposure_physical": 35,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 7,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 2522
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 35,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 35,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 26,
+              "first_exposure_physical": 26,
+              "first_exposure_annotated": 9,
+              "repeated_line_deliveries": 1,
+              "unique_physical_absent_from_native": 14,
+              "unique_annotated_absent_from_native": 1
+            },
+            "completion_grep": {
+              "replies": 3,
+              "unique_physical": 309,
+              "first_exposure_physical": 309,
+              "first_exposure_annotated": 65,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 227,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 132,
+              "first_exposure_physical": 132,
+              "first_exposure_annotated": 132,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 49,
+              "unique_annotated_absent_from_native": 49
+            },
+            "read": {
+              "replies": 2,
+              "unique_physical": 153,
+              "first_exposure_physical": 38,
+              "first_exposure_annotated": 27,
+              "repeated_line_deliveries": 115,
+              "unique_physical_absent_from_native": 35,
+              "unique_annotated_absent_from_native": 30
+            },
+            "completion_read": {
+              "replies": 2,
+              "unique_physical": 25,
+              "first_exposure_physical": 6,
+              "first_exposure_annotated": 1,
+              "repeated_line_deliveries": 19,
+              "unique_physical_absent_from_native": 21,
+              "unique_annotated_absent_from_native": 19
+            }
+          },
+          "completion_characters": {
+            "grep": 15404,
+            "read": 910
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 309,
+              "lost_annotated": 65
+            },
+            "without_any_completion": {
+              "lost_physical": 315,
+              "lost_annotated": 66
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "categories": {
+            "grep": {
+              "replies": 6,
+              "unique_physical": 38,
+              "first_exposure_physical": 38,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 4,
+              "unique_physical": 231,
+              "first_exposure_physical": 231,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 117,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 5,
+              "unique_physical": 296,
+              "first_exposure_physical": 281,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 15,
+              "unique_physical_absent_from_native": 10,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 3,
+              "unique_physical": 65,
+              "first_exposure_physical": 52,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 13,
+              "unique_physical_absent_from_native": 40,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 28801,
+            "read": 3365
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 211,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 273,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "categories": {
+            "grep": {
+              "replies": 3,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 2,
+              "unique_physical": 400,
+              "first_exposure_physical": 400,
+              "first_exposure_annotated": 20,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 99,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 1,
+              "unique_physical": 5,
+              "first_exposure_physical": 5,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 5,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 15,
+              "first_exposure_physical": 15,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 12,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "read": 143
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 0,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 5,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 26,
+              "first_exposure_physical": 26,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 16,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 1,
+              "unique_physical": 8,
+              "first_exposure_physical": 8,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 4,
+              "unique_physical": 241,
+              "first_exposure_physical": 226,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 15,
+              "unique_physical_absent_from_native": 20,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 682
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 0,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 0,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 76,
+              "first_exposure_physical": 73,
+              "first_exposure_annotated": 1,
+              "repeated_line_deliveries": 4,
+              "unique_physical_absent_from_native": 52,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 2,
+              "unique_physical": 27,
+              "first_exposure_physical": 27,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 27,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 4,
+              "unique_physical": 177,
+              "first_exposure_physical": 169,
+              "first_exposure_annotated": 43,
+              "repeated_line_deliveries": 8,
+              "unique_physical_absent_from_native": 30,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 2401
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 27,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 27,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "categories": {
+            "grep": {
+              "replies": 6,
+              "unique_physical": 122,
+              "first_exposure_physical": 117,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 6,
+              "unique_physical_absent_from_native": 11,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 5,
+              "unique_physical": 305,
+              "first_exposure_physical": 290,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 15,
+              "unique_physical_absent_from_native": 169,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 15,
+              "unique_physical": 707,
+              "first_exposure_physical": 655,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 52,
+              "unique_physical_absent_from_native": 30,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 4,
+              "unique_physical": 175,
+              "first_exposure_physical": 175,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 170,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 23673,
+            "read": 7847
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 289,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 464,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "categories": {
+            "grep": {
+              "replies": 7,
+              "unique_physical": 72,
+              "first_exposure_physical": 72,
+              "first_exposure_annotated": 17,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 20,
+              "unique_annotated_absent_from_native": 1
+            },
+            "completion_grep": {
+              "replies": 3,
+              "unique_physical": 263,
+              "first_exposure_physical": 263,
+              "first_exposure_annotated": 63,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 151,
+              "unique_annotated_absent_from_native": 6
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 7,
+              "unique_physical": 830,
+              "first_exposure_physical": 757,
+              "first_exposure_annotated": 127,
+              "repeated_line_deliveries": 73,
+              "unique_physical_absent_from_native": 101,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 3,
+              "unique_physical": 60,
+              "first_exposure_physical": 38,
+              "first_exposure_annotated": 4,
+              "repeated_line_deliveries": 22,
+              "unique_physical_absent_from_native": 33,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 15403,
+            "read": 2379
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 206,
+              "lost_annotated": 6
+            },
+            "without_any_completion": {
+              "lost_physical": 265,
+              "lost_annotated": 31
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "categories": {
+            "grep": {
+              "replies": 9,
+              "unique_physical": 30,
+              "first_exposure_physical": 25,
+              "first_exposure_annotated": 6,
+              "repeated_line_deliveries": 5,
+              "unique_physical_absent_from_native": 2,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 8,
+              "unique_physical": 442,
+              "first_exposure_physical": 407,
+              "first_exposure_annotated": 85,
+              "repeated_line_deliveries": 51,
+              "unique_physical_absent_from_native": 111,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 16,
+              "first_exposure_physical": 16,
+              "first_exposure_annotated": 2,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 10,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 6,
+              "unique_physical": 789,
+              "first_exposure_physical": 693,
+              "first_exposure_annotated": 90,
+              "repeated_line_deliveries": 96,
+              "unique_physical_absent_from_native": 70,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 4,
+              "unique_physical": 95,
+              "first_exposure_physical": 71,
+              "first_exposure_annotated": 5,
+              "repeated_line_deliveries": 24,
+              "unique_physical_absent_from_native": 59,
+              "unique_annotated_absent_from_native": 5
+            }
+          },
+          "completion_characters": {
+            "grep": 29178,
+            "read": 4663
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 304,
+              "lost_annotated": 68
+            },
+            "without_any_completion": {
+              "lost_physical": 398,
+              "lost_annotated": 73
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 50,
+              "first_exposure_physical": 50,
+              "first_exposure_annotated": 3,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 6,
+              "unique_annotated_absent_from_native": 2
+            },
+            "completion_grep": {
+              "replies": 3,
+              "unique_physical": 314,
+              "first_exposure_physical": 314,
+              "first_exposure_annotated": 2,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 221,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 12,
+              "first_exposure_physical": 12,
+              "first_exposure_annotated": 5,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 5,
+              "unique_physical": 255,
+              "first_exposure_physical": 166,
+              "first_exposure_annotated": 5,
+              "repeated_line_deliveries": 89,
+              "unique_physical_absent_from_native": 11,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 3,
+              "unique_physical": 14,
+              "first_exposure_physical": 14,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 5,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 17172,
+            "read": 782
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 251,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 265,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 84,
+              "first_exposure_physical": 84,
+              "first_exposure_annotated": 14,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 51,
+              "unique_annotated_absent_from_native": 1
+            },
+            "completion_grep": {
+              "replies": 1,
+              "unique_physical": 35,
+              "first_exposure_physical": 35,
+              "first_exposure_annotated": 35,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 2,
+              "unique_physical": 527,
+              "first_exposure_physical": 514,
+              "first_exposure_annotated": 184,
+              "repeated_line_deliveries": 13,
+              "unique_physical_absent_from_native": 96,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 1,
+              "unique_physical": 6,
+              "first_exposure_physical": 6,
+              "first_exposure_annotated": 3,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 3279,
+            "read": 178
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 35,
+              "lost_annotated": 35
+            },
+            "without_any_completion": {
+              "lost_physical": 41,
+              "lost_annotated": 38
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "categories": {
+            "grep": {
+              "replies": 7,
+              "unique_physical": 106,
+              "first_exposure_physical": 101,
+              "first_exposure_annotated": 22,
+              "repeated_line_deliveries": 5,
+              "unique_physical_absent_from_native": 42,
+              "unique_annotated_absent_from_native": 8
+            },
+            "completion_grep": {
+              "replies": 6,
+              "unique_physical": 509,
+              "first_exposure_physical": 509,
+              "first_exposure_annotated": 53,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 357,
+              "unique_annotated_absent_from_native": 23
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 13,
+              "unique_physical": 2188,
+              "first_exposure_physical": 2150,
+              "first_exposure_annotated": 336,
+              "repeated_line_deliveries": 38,
+              "unique_physical_absent_from_native": 189,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 6,
+              "unique_physical": 493,
+              "first_exposure_physical": 445,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 48,
+              "unique_physical_absent_from_native": 428,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 37954,
+            "read": 21374
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 446,
+              "lost_annotated": 23
+            },
+            "without_any_completion": {
+              "lost_physical": 938,
+              "lost_annotated": 41
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "categories": {
+            "grep": {
+              "replies": 3,
+              "unique_physical": 29,
+              "first_exposure_physical": 28,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 1,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 3,
+              "unique_physical": 129,
+              "first_exposure_physical": 129,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 1,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 2,
+              "unique_physical": 204,
+              "first_exposure_physical": 134,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 70,
+              "unique_physical_absent_from_native": 21,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 1,
+              "unique_physical": 11,
+              "first_exposure_physical": 3,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 8,
+              "unique_physical_absent_from_native": 3,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 14162,
+            "read": 428
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 60,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 71,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "categories": {
+            "grep": {
+              "replies": 2,
+              "unique_physical": 13,
+              "first_exposure_physical": 13,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 2,
+              "unique_physical": 100,
+              "first_exposure_physical": 100,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 3,
+              "unique_physical": 214,
+              "first_exposure_physical": 207,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 7,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 2,
+              "unique_physical": 76,
+              "first_exposure_physical": 64,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 12,
+              "unique_physical_absent_from_native": 44,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 5630,
+            "read": 2929
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 88,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 163,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "categories": {
+            "grep": {
+              "replies": 6,
+              "unique_physical": 21,
+              "first_exposure_physical": 21,
+              "first_exposure_annotated": 1,
+              "repeated_line_deliveries": 1,
+              "unique_physical_absent_from_native": 15,
+              "unique_annotated_absent_from_native": 1
+            },
+            "completion_grep": {
+              "replies": 5,
+              "unique_physical": 226,
+              "first_exposure_physical": 226,
+              "first_exposure_annotated": 23,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 185,
+              "unique_annotated_absent_from_native": 23
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 2,
+              "unique_physical": 180,
+              "first_exposure_physical": 152,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 28,
+              "unique_physical_absent_from_native": 40,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 2,
+              "unique_physical": 40,
+              "first_exposure_physical": 26,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 14,
+              "unique_physical_absent_from_native": 19,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 24144,
+            "read": 2131
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 188,
+              "lost_annotated": 23
+            },
+            "without_any_completion": {
+              "lost_physical": 228,
+              "lost_annotated": 23
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "categories": {
+            "grep": {
+              "replies": 5,
+              "unique_physical": 15,
+              "first_exposure_physical": 11,
+              "first_exposure_annotated": 4,
+              "repeated_line_deliveries": 4,
+              "unique_physical_absent_from_native": 2,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 1,
+              "unique_physical": 127,
+              "first_exposure_physical": 127,
+              "first_exposure_annotated": 36,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 131,
+              "first_exposure_physical": 131,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 32,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 6,
+              "unique_physical": 414,
+              "first_exposure_physical": 410,
+              "first_exposure_annotated": 39,
+              "repeated_line_deliveries": 4,
+              "unique_physical_absent_from_native": 10,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 4,
+              "unique_physical": 148,
+              "first_exposure_physical": 19,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 254,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 5587,
+            "read": 8457
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 0,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 144,
+              "lost_annotated": 35
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "categories": {
+            "grep": {
+              "replies": 2,
+              "unique_physical": 33,
+              "first_exposure_physical": 33,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 22,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 1,
+              "unique_physical": 95,
+              "first_exposure_physical": 95,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 88,
+              "unique_annotated_absent_from_native": 0
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 3,
+              "unique_physical": 320,
+              "first_exposure_physical": 307,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 13,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 5782
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 88,
+              "lost_annotated": 0
+            },
+            "without_any_completion": {
+              "lost_physical": 88,
+              "lost_annotated": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "categories": {
+            "grep": {
+              "replies": 4,
+              "unique_physical": 22,
+              "first_exposure_physical": 22,
+              "first_exposure_annotated": 5,
+              "repeated_line_deliveries": 1,
+              "unique_physical_absent_from_native": 6,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_grep": {
+              "replies": 4,
+              "unique_physical": 261,
+              "first_exposure_physical": 261,
+              "first_exposure_annotated": 74,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 173,
+              "unique_annotated_absent_from_native": 8
+            },
+            "graph": {
+              "replies": 1,
+              "unique_physical": 0,
+              "first_exposure_physical": 0,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 0,
+              "unique_annotated_absent_from_native": 0
+            },
+            "read": {
+              "replies": 2,
+              "unique_physical": 70,
+              "first_exposure_physical": 67,
+              "first_exposure_annotated": 28,
+              "repeated_line_deliveries": 3,
+              "unique_physical_absent_from_native": 20,
+              "unique_annotated_absent_from_native": 0
+            },
+            "completion_read": {
+              "replies": 1,
+              "unique_physical": 37,
+              "first_exposure_physical": 37,
+              "first_exposure_annotated": 0,
+              "repeated_line_deliveries": 0,
+              "unique_physical_absent_from_native": 37,
+              "unique_annotated_absent_from_native": 0
+            }
+          },
+          "completion_characters": {
+            "grep": 18747,
+            "read": 2166
+          },
+          "fixed_trace_removal": {
+            "without_grep_completion": {
+              "lost_physical": 261,
+              "lost_annotated": 74
+            },
+            "without_any_completion": {
+              "lost_physical": 298,
+              "lost_annotated": 74
+            }
+          }
+        }
+      ],
+      "model_calls": 0,
+      "quality_score": null
+    },
+    "prepared_graph_fixed_query_replay": {
+      "scope": "Fixed-query graph replay only; annotations checked after retrieving source. Zero model calls, no quality score.",
+      "protocol_sha256": "06fd04a7697dcee51828a58e672a8b26e05e603f59656c408859805a17f67710",
+      "n": 24,
+      "all_frozen_runtime_and_input_hashes_match": true,
+      "historical_graph_responses_reproduced_exactly": true,
+      "totals": {
+        "prior": {
+          "available": 11,
+          "queries": 24,
+          "new_physical_at_delivery": 358,
+          "new_annotated_at_delivery": 139,
+          "new_physical_absent_from_native": 115,
+          "new_annotated_absent_from_native": 49
+        },
+        "composed": {
+          "available": 19,
+          "queries": 24,
+          "new_physical_at_delivery": 932,
+          "new_annotated_at_delivery": 154,
+          "new_physical_absent_from_native": 556,
+          "new_annotated_absent_from_native": 49
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 5
+              },
+              "new_physical_at_delivery": 52,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 12,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 5
+              },
+              "new_physical_at_delivery": 52,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 12,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 4,
+                "source_not_returned": 1
+              },
+              "new_physical_at_delivery": 90,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 88,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 202,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 145,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_not_returned": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 132,
+              "new_annotated_at_delivery": 132,
+              "new_physical_absent_from_native": 49,
+              "new_annotated_absent_from_native": 49
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 132,
+              "new_annotated_at_delivery": 132,
+              "new_physical_absent_from_native": 49,
+              "new_annotated_absent_from_native": 49
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 3
+              },
+              "new_physical_at_delivery": 15,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 12,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 3
+              },
+              "new_physical_at_delivery": 15,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 12,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 1,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 1,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 5
+              },
+              "new_physical_at_delivery": 5,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 3,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 2,
+                "source_not_returned": 2
+              },
+              "new_physical_at_delivery": 99,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 48,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_definition_at_line": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_definition_at_line": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 5
+              },
+              "new_physical_at_delivery": 16,
+              "new_annotated_at_delivery": 2,
+              "new_physical_absent_from_native": 10,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 5
+              },
+              "new_physical_at_delivery": 16,
+              "new_annotated_at_delivery": 2,
+              "new_physical_absent_from_native": 10,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 2
+              },
+              "new_physical_at_delivery": 12,
+              "new_annotated_at_delivery": 5,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 2
+              },
+              "new_physical_at_delivery": 12,
+              "new_annotated_at_delivery": 5,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_returned_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_returned_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 19,
+              "new_annotated_at_delivery": 15,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 131,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 32,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 1
+              },
+              "new_physical_at_delivery": 131,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 32,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "artifacts": {
+            "prior": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_definition_at_line": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "no_returned_neighbors": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "artifacts": {
+            "prior": {
+              "available": false,
+              "queries": 1,
+              "statuses": {
+                "graph_unavailable": 1
+              },
+              "new_physical_at_delivery": 0,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 0,
+              "new_annotated_absent_from_native": 0
+            },
+            "composed": {
+              "available": true,
+              "queries": 1,
+              "statuses": {
+                "source_returned": 2,
+                "source_not_returned": 1
+              },
+              "new_physical_at_delivery": 158,
+              "new_annotated_at_delivery": 0,
+              "new_physical_absent_from_native": 156,
+              "new_annotated_absent_from_native": 0
+            }
+          }
+        }
+      ],
+      "model_calls": 0,
+      "quality_score": null
+    },
+    "validation": {
+      "related_unit_passed": 158,
+      "pinned_integration_passed": 4,
+      "pre_commit": "passed",
+      "model_calls": 0,
+      "budget_refill_regression_reproduced": true
+    },
+    "next_gate": "Change graph query timing or target selection to demonstrate useful source beyond matched native observations before another quality batch. Retain both failed quality gates and the sealed independent 32.",
+    "initial_budget_refill_replay": {
+      "scope": "Fixed-trajectory source replay only; no model calls or new quality score.",
+      "n": 24,
+      "protocol_sha256": "29b8b923ab149ce06301bcdeabb232b9bcca0d46895e7af606c81e081c6aab06",
+      "all_frozen_runtime_and_input_hashes_match": true,
+      "historical_responses_reproduced_exactly": true,
+      "totals": {
+        "lost_physical": 0,
+        "lost_annotated": 0,
+        "added_physical": 63,
+        "added_annotated": 0
+      },
+      "policies": {
+        "definitions": {
+          "source_responses": 234,
+          "changed_responses": 0,
+          "characters": 1008050,
+          "repeated_completion_line_deliveries": 726
+        },
+        "unseen": {
+          "source_responses": 234,
+          "changed_responses": 29,
+          "characters": 974302,
+          "repeated_completion_line_deliveries": 0
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 14190,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 14190,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "policies": {
+            "definitions": {
+              "source_responses": 14,
+              "changed_responses": 0,
+              "characters": 55825,
+              "repeated_completion_line_deliveries": 87
+            },
+            "unseen": {
+              "source_responses": 14,
+              "changed_responses": 1,
+              "characters": 48982,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 47565,
+              "repeated_completion_line_deliveries": 9
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 1,
+              "characters": 46516,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "policies": {
+            "definitions": {
+              "source_responses": 3,
+              "changed_responses": 0,
+              "characters": 15343,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 3,
+              "changed_responses": 0,
+              "characters": 15343,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "policies": {
+            "definitions": {
+              "source_responses": 20,
+              "changed_responses": 0,
+              "characters": 84893,
+              "repeated_completion_line_deliveries": 150
+            },
+            "unseen": {
+              "source_responses": 20,
+              "changed_responses": 3,
+              "characters": 75875,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "policies": {
+            "definitions": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 30123,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 8,
+              "changed_responses": 2,
+              "characters": 31809,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 50,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "policies": {
+            "definitions": {
+              "source_responses": 4,
+              "changed_responses": 0,
+              "characters": 19854,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 4,
+              "changed_responses": 0,
+              "characters": 19854,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 24650,
+              "repeated_completion_line_deliveries": 19
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 2,
+              "characters": 24062,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "policies": {
+            "definitions": {
+              "source_responses": 12,
+              "changed_responses": 0,
+              "characters": 51328,
+              "repeated_completion_line_deliveries": 13
+            },
+            "unseen": {
+              "source_responses": 12,
+              "changed_responses": 1,
+              "characters": 50718,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 18837,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 18837,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 13937,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 13937,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "policies": {
+            "definitions": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 17930,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 17930,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "policies": {
+            "definitions": {
+              "source_responses": 21,
+              "changed_responses": 0,
+              "characters": 81125,
+              "repeated_completion_line_deliveries": 15
+            },
+            "unseen": {
+              "source_responses": 21,
+              "changed_responses": 2,
+              "characters": 80706,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 13,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "policies": {
+            "definitions": {
+              "source_responses": 14,
+              "changed_responses": 0,
+              "characters": 57654,
+              "repeated_completion_line_deliveries": 22
+            },
+            "unseen": {
+              "source_responses": 14,
+              "changed_responses": 1,
+              "characters": 56724,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "policies": {
+            "definitions": {
+              "source_responses": 15,
+              "changed_responses": 0,
+              "characters": 70809,
+              "repeated_completion_line_deliveries": 75
+            },
+            "unseen": {
+              "source_responses": 15,
+              "changed_responses": 3,
+              "characters": 66256,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 31904,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 31904,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 39220,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 39220,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "policies": {
+            "definitions": {
+              "source_responses": 20,
+              "changed_responses": 0,
+              "characters": 174068,
+              "repeated_completion_line_deliveries": 48
+            },
+            "unseen": {
+              "source_responses": 20,
+              "changed_responses": 3,
+              "characters": 172228,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 27979,
+              "repeated_completion_line_deliveries": 8
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 2,
+              "characters": 27714,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "policies": {
+            "definitions": {
+              "source_responses": 5,
+              "changed_responses": 0,
+              "characters": 17372,
+              "repeated_completion_line_deliveries": 12
+            },
+            "unseen": {
+              "source_responses": 5,
+              "changed_responses": 1,
+              "characters": 16788,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 38535,
+              "repeated_completion_line_deliveries": 14
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 2,
+              "characters": 37761,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "policies": {
+            "definitions": {
+              "source_responses": 13,
+              "changed_responses": 0,
+              "characters": 28545,
+              "repeated_completion_line_deliveries": 254
+            },
+            "unseen": {
+              "source_responses": 13,
+              "changed_responses": 4,
+              "characters": 20584,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "policies": {
+            "definitions": {
+              "source_responses": 5,
+              "changed_responses": 0,
+              "characters": 20709,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 5,
+              "changed_responses": 0,
+              "characters": 20709,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 25655,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 1,
+              "characters": 25655,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        }
+      ],
+      "model_calls": 0,
+      "quality_score": null
+    },
+    "initial_downstream_packing": {
+      "scope": "Fixed-source downstream-packing diagnostic, not a solver result or quality score.",
+      "protocol_sha256": "6c9119f0047aff949151ac1985e2313aa2485947257f09b8bfc3459341a71508",
+      "n": 24,
+      "historical_16k_32k_payloads_reproduced_exactly": true,
+      "all_frozen_runtime_and_input_hashes_match": true,
+      "totals": {
+        "16384": {
+          "lost_physical": 14,
+          "lost_annotated": 0,
+          "added_physical": 63,
+          "added_annotated": 0,
+          "before_tokens": 195734,
+          "after_tokens": 196262
+        },
+        "32768": {
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 63,
+          "added_annotated": 0,
+          "before_tokens": 218853,
+          "after_tokens": 219612
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2797,
+              "after_tokens": 2797
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2797,
+              "after_tokens": 2797
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10651,
+              "after_tokens": 10651
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10651,
+              "after_tokens": 10651
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10785,
+              "after_tokens": 10785
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10785,
+              "after_tokens": 10785
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2724,
+              "after_tokens": 2724
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2724,
+              "after_tokens": 2724
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 16373,
+              "after_tokens": 16373
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 19892,
+              "after_tokens": 19892
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 50,
+              "added_annotated": 0,
+              "before_tokens": 8530,
+              "after_tokens": 9058
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 50,
+              "added_annotated": 0,
+              "before_tokens": 8530,
+              "after_tokens": 9058
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5368,
+              "after_tokens": 5368
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5368,
+              "after_tokens": 5368
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7188,
+              "after_tokens": 7188
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7188,
+              "after_tokens": 7188
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7535,
+              "after_tokens": 7535
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7535,
+              "after_tokens": 7535
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4750,
+              "after_tokens": 4750
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4750,
+              "after_tokens": 4750
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3372,
+              "after_tokens": 3372
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3372,
+              "after_tokens": 3372
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4686,
+              "after_tokens": 4686
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4686,
+              "after_tokens": 4686
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "budgets": {
+            "16384": {
+              "lost_physical": 14,
+              "lost_annotated": 0,
+              "added_physical": 13,
+              "added_annotated": 0,
+              "before_tokens": 16380,
+              "after_tokens": 16380
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 13,
+              "added_annotated": 0,
+              "before_tokens": 19586,
+              "after_tokens": 19817
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 15684,
+              "after_tokens": 15684
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 15684,
+              "after_tokens": 15684
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 13720,
+              "after_tokens": 13720
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 13720,
+              "after_tokens": 13720
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7296,
+              "after_tokens": 7296
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7296,
+              "after_tokens": 7296
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 8813,
+              "after_tokens": 8813
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 8813,
+              "after_tokens": 8813
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 16374,
+              "after_tokens": 16374
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 32768,
+              "after_tokens": 32768
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3563,
+              "after_tokens": 3563
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3563,
+              "after_tokens": 3563
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5062,
+              "after_tokens": 5062
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5062,
+              "after_tokens": 5062
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 6023,
+              "after_tokens": 6023
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 6023,
+              "after_tokens": 6023
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7850,
+              "after_tokens": 7850
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7850,
+              "after_tokens": 7850
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5140,
+              "after_tokens": 5140
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5140,
+              "after_tokens": 5140
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5070,
+              "after_tokens": 5070
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5070,
+              "after_tokens": 5070
+            }
+          }
+        }
+      ],
+      "model_calls": 0,
+      "quality_score": null
+    },
+    "initial_implementation_commit": "1d47363e7babc492b4c8ece42363c84bae630115",
+    "unseen_function_replay": {
+      "scope": "Fixed-trajectory source replay only; no model calls or new quality score.",
+      "n": 24,
+      "protocol_sha256": "8788f358fbe2f8e2e2aa98aca32280b590e691b8266943320d316f5970bb1bd4",
+      "all_frozen_runtime_and_input_hashes_match": true,
+      "historical_responses_reproduced_exactly": true,
+      "totals": {
+        "lost_physical": 0,
+        "lost_annotated": 0,
+        "added_physical": 0,
+        "added_annotated": 0
+      },
+      "policies": {
+        "definitions": {
+          "source_responses": 234,
+          "changed_responses": 0,
+          "characters": 1008050,
+          "repeated_completion_line_deliveries": 726
+        },
+        "unseen": {
+          "source_responses": 234,
+          "changed_responses": 20,
+          "characters": 971508,
+          "repeated_completion_line_deliveries": 0
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 14190,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 14190,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "policies": {
+            "definitions": {
+              "source_responses": 14,
+              "changed_responses": 0,
+              "characters": 55825,
+              "repeated_completion_line_deliveries": 87
+            },
+            "unseen": {
+              "source_responses": 14,
+              "changed_responses": 1,
+              "characters": 48982,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 47565,
+              "repeated_completion_line_deliveries": 9
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 1,
+              "characters": 46516,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "policies": {
+            "definitions": {
+              "source_responses": 3,
+              "changed_responses": 0,
+              "characters": 15343,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 3,
+              "changed_responses": 0,
+              "characters": 15343,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "policies": {
+            "definitions": {
+              "source_responses": 20,
+              "changed_responses": 0,
+              "characters": 84893,
+              "repeated_completion_line_deliveries": 150
+            },
+            "unseen": {
+              "source_responses": 20,
+              "changed_responses": 3,
+              "characters": 75875,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "policies": {
+            "definitions": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 30123,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 30123,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "policies": {
+            "definitions": {
+              "source_responses": 4,
+              "changed_responses": 0,
+              "characters": 19854,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 4,
+              "changed_responses": 0,
+              "characters": 19854,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 24650,
+              "repeated_completion_line_deliveries": 19
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 1,
+              "characters": 24062,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "policies": {
+            "definitions": {
+              "source_responses": 12,
+              "changed_responses": 0,
+              "characters": 51328,
+              "repeated_completion_line_deliveries": 13
+            },
+            "unseen": {
+              "source_responses": 12,
+              "changed_responses": 1,
+              "characters": 50718,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 18837,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 18837,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 13937,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 13937,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "policies": {
+            "definitions": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 17930,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 8,
+              "changed_responses": 0,
+              "characters": 17930,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "policies": {
+            "definitions": {
+              "source_responses": 21,
+              "changed_responses": 0,
+              "characters": 81125,
+              "repeated_completion_line_deliveries": 15
+            },
+            "unseen": {
+              "source_responses": 21,
+              "changed_responses": 2,
+              "characters": 79530,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "policies": {
+            "definitions": {
+              "source_responses": 14,
+              "changed_responses": 0,
+              "characters": 57654,
+              "repeated_completion_line_deliveries": 22
+            },
+            "unseen": {
+              "source_responses": 14,
+              "changed_responses": 1,
+              "characters": 56724,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "policies": {
+            "definitions": {
+              "source_responses": 15,
+              "changed_responses": 0,
+              "characters": 70809,
+              "repeated_completion_line_deliveries": 75
+            },
+            "unseen": {
+              "source_responses": 15,
+              "changed_responses": 3,
+              "characters": 66256,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 31904,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 31904,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 39220,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 39220,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "policies": {
+            "definitions": {
+              "source_responses": 20,
+              "changed_responses": 0,
+              "characters": 174068,
+              "repeated_completion_line_deliveries": 48
+            },
+            "unseen": {
+              "source_responses": 20,
+              "changed_responses": 1,
+              "characters": 172228,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 27979,
+              "repeated_completion_line_deliveries": 8
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 1,
+              "characters": 27782,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "policies": {
+            "definitions": {
+              "source_responses": 5,
+              "changed_responses": 0,
+              "characters": 17372,
+              "repeated_completion_line_deliveries": 12
+            },
+            "unseen": {
+              "source_responses": 5,
+              "changed_responses": 1,
+              "characters": 16788,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "policies": {
+            "definitions": {
+              "source_responses": 9,
+              "changed_responses": 0,
+              "characters": 38535,
+              "repeated_completion_line_deliveries": 14
+            },
+            "unseen": {
+              "source_responses": 9,
+              "changed_responses": 1,
+              "characters": 37761,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "policies": {
+            "definitions": {
+              "source_responses": 13,
+              "changed_responses": 0,
+              "characters": 28545,
+              "repeated_completion_line_deliveries": 254
+            },
+            "unseen": {
+              "source_responses": 13,
+              "changed_responses": 3,
+              "characters": 20584,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "policies": {
+            "definitions": {
+              "source_responses": 5,
+              "changed_responses": 0,
+              "characters": 20709,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 5,
+              "changed_responses": 0,
+              "characters": 20709,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "policies": {
+            "definitions": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 25655,
+              "repeated_completion_line_deliveries": 0
+            },
+            "unseen": {
+              "source_responses": 6,
+              "changed_responses": 0,
+              "characters": 25655,
+              "repeated_completion_line_deliveries": 0
+            }
+          },
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        }
+      ],
+      "model_calls": 0,
+      "quality_score": null
+    },
+    "downstream_packing": {
+      "scope": "Fixed-source downstream-packing diagnostic, not a solver result or quality score.",
+      "protocol_sha256": "f56dde37b5cd2735e412306760f2bfaa1aa8aaf8b1305a4099aef9233ce0a74f",
+      "n": 24,
+      "historical_16k_32k_payloads_reproduced_exactly": true,
+      "candidate_16k_32k_payloads_identical_to_historical": true,
+      "all_frozen_runtime_and_input_hashes_match": true,
+      "totals": {
+        "16384": {
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0,
+          "before_tokens": 195734,
+          "after_tokens": 195734
+        },
+        "32768": {
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0,
+          "before_tokens": 218853,
+          "after_tokens": 218853
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2797,
+              "after_tokens": 2797
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2797,
+              "after_tokens": 2797
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10651,
+              "after_tokens": 10651
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10651,
+              "after_tokens": 10651
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10785,
+              "after_tokens": 10785
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 10785,
+              "after_tokens": 10785
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2724,
+              "after_tokens": 2724
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 2724,
+              "after_tokens": 2724
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 16373,
+              "after_tokens": 16373
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 19892,
+              "after_tokens": 19892
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 8530,
+              "after_tokens": 8530
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 8530,
+              "after_tokens": 8530
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5368,
+              "after_tokens": 5368
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5368,
+              "after_tokens": 5368
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7188,
+              "after_tokens": 7188
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7188,
+              "after_tokens": 7188
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7535,
+              "after_tokens": 7535
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7535,
+              "after_tokens": 7535
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4750,
+              "after_tokens": 4750
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4750,
+              "after_tokens": 4750
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3372,
+              "after_tokens": 3372
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3372,
+              "after_tokens": 3372
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4686,
+              "after_tokens": 4686
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 4686,
+              "after_tokens": 4686
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 16380,
+              "after_tokens": 16380
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 19586,
+              "after_tokens": 19586
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 15684,
+              "after_tokens": 15684
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 15684,
+              "after_tokens": 15684
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 13720,
+              "after_tokens": 13720
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 13720,
+              "after_tokens": 13720
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7296,
+              "after_tokens": 7296
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7296,
+              "after_tokens": 7296
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 8813,
+              "after_tokens": 8813
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 8813,
+              "after_tokens": 8813
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 16374,
+              "after_tokens": 16374
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 32768,
+              "after_tokens": 32768
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3563,
+              "after_tokens": 3563
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 3563,
+              "after_tokens": 3563
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5062,
+              "after_tokens": 5062
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5062,
+              "after_tokens": 5062
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 6023,
+              "after_tokens": 6023
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 6023,
+              "after_tokens": 6023
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7850,
+              "after_tokens": 7850
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 7850,
+              "after_tokens": 7850
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5140,
+              "after_tokens": 5140
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5140,
+              "after_tokens": 5140
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "budgets": {
+            "16384": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5070,
+              "after_tokens": 5070
+            },
+            "32768": {
+              "lost_physical": 0,
+              "lost_annotated": 0,
+              "added_physical": 0,
+              "added_annotated": 0,
+              "before_tokens": 5070,
+              "after_tokens": 5070
+            }
+          }
+        }
+      ],
+      "model_calls": 0,
+      "quality_score": null
+    }
   }
 }
