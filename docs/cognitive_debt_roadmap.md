@@ -157,6 +157,11 @@ new independent selection for any revised policy. Reliable directed-graph gains,
 the other native harnesses and full-agent outcomes remain open. The rejected
 policy does not advance to the official 500; no product route or package
 lifecycle is promoted.
+The next source-only development candidate skips already observed graph source
+and requests an early reference hop while dependencies remain unclear. An offline
+replay removes 220 repeated lines without adding source; fresh development
+controls remain required. The solver now retains hashed, confirmed model inputs,
+including actual output truncation, while shell-source attribution stays open.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

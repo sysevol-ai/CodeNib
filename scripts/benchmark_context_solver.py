@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import dataclasses
+import hashlib
 import importlib.metadata
 import json
 import math
@@ -36,6 +37,77 @@ from scripts import benchmark_context_agent as native
 from scripts.benchmark_context_claude import subscription_auth
 from scripts.benchmark_jev_base import digest, write_json
 
+_HISTORY_PREFIX = (
+    "Continue this shell-agent conversation. Return the next assistant reply "
+    "using the required bash format. Commands will be executed by the external "
+    "solver; you have no tools in this model request.\n"
+)
+
+
+def request_digest(request):
+    return hashlib.sha256(
+        json.dumps(request, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+
+
+def model_observations(row):
+    """Export only confirmed model inputs, never unrendered or terminal output.
+
+    A recorded request becomes confirmed when its SDK stream yields an assistant
+    message. A request without that evidence stays explicitly unconfirmed; it
+    may still have consumed usage. mini's final messages can contain submission
+    output that no subsequent model call received, so they are not a substitute.
+    These exact inputs are the raw boundary for future shell-source attribution,
+    not inferred source ranges or a complete ContextBench line-score artifact.
+    """
+    confirmed, missing, unconfirmed = [], [], []
+    for call in row["calls"]:
+        turn = call["turn"]
+        request = call.get("request")
+        if request is None:
+            missing.append(turn)
+            continue
+        if request_digest(request) != call.get("request_sha256"):
+            raise ValueError("Solver model input receipt changed")
+        prompt = request["prompt"]
+        if not prompt.startswith(_HISTORY_PREFIX):
+            raise ValueError("Unknown solver history format")
+        history = json.loads(prompt[len(_HISTORY_PREFIX) :])
+        if not isinstance(history, list) or any(
+            not isinstance(message, dict)
+            or set(message) != {"role", "content"}
+            or message["role"] not in {"user", "assistant"}
+            or not isinstance(message["content"], str)
+            for message in history
+        ):
+            raise ValueError("Invalid solver input history")
+        if not call.get("input_delivery_confirmed"):
+            unconfirmed.append(turn)
+            continue
+        confirmed.append(
+            {
+                "turn": turn,
+                "model": call.get("model"),
+                "request_sha256": call["request_sha256"],
+                "messages": [
+                    {"role": "system", "content": request["system_prompt"]},
+                    *history,
+                ],
+            }
+        )
+    return {
+        "instance_id": row["instance_id"],
+        "confirmed_inputs": confirmed,
+        "missing_input_receipts": missing,
+        "unconfirmed_inputs": unconfirmed,
+        "all_model_inputs_confirmed": bool(confirmed) and not (missing or unconfirmed),
+        "source_attribution": "Pending; no shell source-line credit inferred.",
+        "scope": (
+            "Exact model inputs after output formatting/truncation; terminal output "
+            "is excluded unless a later confirmed model request contains it."
+        ),
+    }
+
 
 class SubscriptionModel:
     """Adapt actual SDK replies to mini SWE-agent's synchronous model boundary."""
@@ -53,13 +125,27 @@ class SubscriptionModel:
         if self.cost >= self.max_meter_usd:
             raise RuntimeError("Solver SDK meter exhausted")
         self.n_calls += 1
-        record = {"turn": self.n_calls, "events": []}
+        request = {
+            "system_prompt": messages[0]["content"],
+            "prompt": _HISTORY_PREFIX
+            + json.dumps(
+                [{"role": m["role"], "content": m["content"]} for m in messages[1:]],
+                ensure_ascii=False,
+            ),
+        }
+        record = {
+            "turn": self.n_calls,
+            "events": [],
+            "request": request,
+            "request_sha256": request_digest(request),
+            "input_delivery_confirmed": False,
+        }
         self.calls.append(record)
         self.checkpoint()
-        response = asyncio.run(asyncio.wait_for(self._query(messages, record), 180))
+        response = asyncio.run(asyncio.wait_for(self._query(record), 180))
         return {"content": response}
 
-    async def _query(self, messages, record):
+    async def _query(self, record):
         from claude_agent_sdk import ClaudeAgentOptions, query
 
         options = ClaudeAgentOptions(
@@ -67,7 +153,7 @@ class SubscriptionModel:
             cwd=self.cwd,
             model=self.model,
             effort="medium",
-            system_prompt=messages[0]["content"],
+            system_prompt=record["request"]["system_prompt"],
             tools=[],
             allowed_tools=[],
             setting_sources=[],
@@ -80,21 +166,15 @@ class SubscriptionModel:
             max_budget_usd=self.max_meter_usd - self.cost,
             extra_args={"no-session-persistence": None},
         )
-        history = [{"role": m["role"], "content": m["content"]} for m in messages[1:]]
-        prompt = (
-            "Continue this shell-agent conversation. Return the next assistant reply "
-            "using the required bash format. Commands will be executed by the external "
-            "solver; you have no tools in this model request.\n"
-            + json.dumps(history, ensure_ascii=False)
-        )
         response, terminal = [], None
-        async for event in query(prompt=prompt, options=options):
+        async for event in query(prompt=record["request"]["prompt"], options=options):
             kind, data = type(event).__name__, dataclasses.asdict(event)
             record["events"].append({"kind": kind, "data": data})
             if kind == "SystemMessage" and data.get("subtype") == "init":
                 if data["data"].get("tools"):
                     raise ValueError("Solver model unexpectedly received local tools")
             if kind == "AssistantMessage":
+                record["input_delivery_confirmed"] = True
                 record["model"] = data.get("model")
                 for block in data["content"]:
                     if "name" in block or "input" in block:
@@ -370,6 +450,7 @@ def run(args):
             environment.container_id = None
             row["container_removed"] = True
             checkpoint()
+    write_json(args.output / "model-observations.json", model_observations(row))
     print(
         json.dumps(
             {

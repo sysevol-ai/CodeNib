@@ -10,6 +10,8 @@ import pytest
 from scripts.benchmark_context_solver import (
     SubscriptionModel,
     delivered_input,
+    model_observations,
+    request_digest,
     validate_image_snapshot,
 )
 
@@ -36,6 +38,10 @@ def test_solver_sdk_meter_and_tool_isolation(monkeypatch, tmp_path, meter):
 
     async def query(**kwargs):
         assert "timestamp" not in kwargs["prompt"]
+        assert model.calls[-1]["request"]["prompt"] == kwargs["prompt"]
+        assert (
+            model.calls[-1]["request"]["system_prompt"] == options[-1]["system_prompt"]
+        )
         yield Assistant([{"text": "```bash\npwd\n```"}], "fixed-model")
         yield Result(meter, False, "success")
 
@@ -70,6 +76,157 @@ def test_solver_sdk_meter_and_tool_isolation(monkeypatch, tmp_path, meter):
     assert options[0]["tools"] == options[0]["allowed_tools"] == []
     assert options[0]["mcp_servers"] == {} and options[0]["strict_mcp_config"]
     assert options[0]["setting_sources"] == []
+    assert model.calls[0]["input_delivery_confirmed"]
+    observed = model_observations({"instance_id": "case", "calls": model.calls})
+    assert observed["confirmed_inputs"][0]["messages"] == [
+        {"role": "system", "content": "Shell format"},
+        {"role": "user", "content": "Issue and source"},
+    ]
+
+
+def test_solver_observations_exclude_unconfirmed_and_unrequested_output():
+    from scripts.benchmark_context_solver import _HISTORY_PREFIX
+
+    request = {
+        "system_prompt": "Shell format",
+        "prompt": _HISTORY_PREFIX
+        + json.dumps(
+            [
+                {"role": "user", "content": "Issue and source"},
+                {"role": "assistant", "content": "```bash\ncat large.py\n```"},
+                {
+                    "role": "user",
+                    "content": (
+                        "<output_head>visible head</output_head>"
+                        "<elided_chars>5000</elided_chars>"
+                        "<output_tail>visible tail</output_tail>"
+                    ),
+                },
+            ]
+        ),
+    }
+    first = {
+        "turn": 1,
+        "request": request,
+        "request_sha256": request_digest(request),
+        "input_delivery_confirmed": True,
+    }
+    row = {
+        "instance_id": "case",
+        "calls": [
+            first,
+            {**first, "turn": 2, "input_delivery_confirmed": False},
+            {"turn": 3},
+        ],
+        "messages": [
+            {"role": "user", "content": "Final submission output never delivered"}
+        ],
+    }
+    result = model_observations(row)
+    assert len(result["confirmed_inputs"]) == 1
+    assert result["unconfirmed_inputs"] == [2] and result["missing_input_receipts"] == [
+        3
+    ]
+    assert not result["all_model_inputs_confirmed"]
+    assert "Final submission" not in json.dumps(result)
+    assert "visible head" in json.dumps(result) and "visible tail" in json.dumps(result)
+    first["request"]["prompt"] += "tampered"
+    with pytest.raises(ValueError, match="receipt changed"):
+        model_observations(row)
+
+
+@pytest.mark.integration
+def test_native_loop_records_rendered_inputs_without_elided_or_terminal_output(
+    monkeypatch, tmp_path
+):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    import yaml
+
+    from scripts.benchmark_context_solver import CONTEXTBENCH_UPSTREAM_REVISION
+
+    checkout = os.environ.get("CONTEXTBENCH_CHECKOUT")
+    if not checkout:
+        pytest.skip("Set CONTEXTBENCH_CHECKOUT to the pinned external checkout")
+    upstream = Path(checkout)
+    assert (
+        subprocess.check_output(
+            ["git", "-C", str(upstream), "rev-parse", "HEAD"], text=True
+        ).strip()
+        == CONTEXTBENCH_UPSTREAM_REVISION
+    )
+    mini = (
+        upstream
+        / "agent-frameworks/mini-swe-agent/multi-poly-pro-verified/mini-swe-agent/src"
+    )
+    monkeypatch.syspath_prepend(str(mini))
+    from minisweagent.agents.default import DefaultAgent
+
+    config = yaml.safe_load(
+        (mini / "minisweagent/config/extra/swebench.yaml").read_text()
+    )["agent"]
+    config.update(
+        system_template="Return one bash action.",
+        instance_template="{{task}}",
+        step_limit=3,
+    )
+    Assistant = dataclasses.make_dataclass("AssistantMessage", ["content", "model"])
+    Result = dataclasses.make_dataclass(
+        "ResultMessage", ["total_cost_usd", "is_error", "subtype"]
+    )
+    requests = []
+
+    async def query(**kwargs):
+        requests.append(kwargs["prompt"])
+        command = "cat large.py" if len(requests) == 1 else "submit"
+        yield Assistant([{"text": f"```bash\n{command}\n```"}], "fixture-model")
+        yield Result(0.01, False, "success")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=lambda **kwargs: kwargs,
+            query=query,
+        ),
+    )
+
+    class Environment:
+        def get_template_vars(self):
+            return {}
+
+        def execute(self, command):
+            return {
+                "returncode": 0,
+                "output": (
+                    "h" * 6000 + "SOURCE_IN_ELIDED_MIDDLE" + "t" * 6000
+                    if command == "cat large.py"
+                    else "COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT\nUNREAD_FINAL_DIFF"
+                ),
+            }
+
+    model = SubscriptionModel(
+        cli="fixture",
+        model="fixture-model",
+        cwd=tmp_path,
+        max_meter_usd=1,
+        calls=[],
+        checkpoint=lambda: None,
+    )
+    agent = DefaultAgent(model, Environment(), **config)
+    status, answer = agent.run("Inspect a large file")
+    assert status == "Submitted" and answer == "UNREAD_FINAL_DIFF"
+    result = model_observations({"instance_id": "case", "calls": model.calls})
+    assert result["all_model_inputs_confirmed"] and len(result["confirmed_inputs"]) == 2
+    delivered = json.dumps(result)
+    assert "output_head" in delivered and "output_tail" in delivered
+    assert (
+        "SOURCE_IN_ELIDED_MIDDLE" not in delivered
+        and "UNREAD_FINAL_DIFF" not in delivered
+    )
+    assert "UNREAD_FINAL_DIFF" in agent.messages[-1]["content"]
 
 
 def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
