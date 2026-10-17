@@ -33,6 +33,13 @@ GREP_VIEW_DESCRIPTION = (
     "search limits are unchanged. Source blocks may contain neighboring lines "
     "that do not themselves match the pattern."
 )
+GREP_HINT_DESCRIPTION = (
+    "Content results preserve every original grep match and may append up to "
+    "three suggested source ranges for this search. Suggestions are navigation "
+    "metadata, not source evidence. Use read to inspect a suggested range when "
+    "it resolves your current uncertainty. Other output modes are unchanged."
+)
+GREP_POLICIES = ("native", "chunks", "jev", "hints", "jev-hints")
 
 
 def candidates(repo, arguments, original, limit=40):
@@ -135,6 +142,30 @@ def render(nodes, token_budget, encoder, *, original_limited=False):
     return text + notice
 
 
+def render_hints(original, nodes, token_budget, encoder):
+    """Keep the raw reply byte-for-byte and append bounded read arguments only."""
+    suffix = "\n[Suggested read ranges; source not yet inspected by this suggestion]\n"
+    hints = []
+    for node in nodes:
+        if node.end_line == node.start_line:
+            continue  # A one-line fallback contains no source beyond the hit.
+        hint = {
+            "file_path": node.file,
+            "offset": node.start_line + 1,
+            "limit": node.end_line - node.start_line + 1,
+        }
+        proposal = suffix + json.dumps(hint, ensure_ascii=False) + "\n"
+        if len(original + proposal) > 15900 or len(
+            encoder.encode(proposal, disallowed_special=())
+        ) > min(512, token_budget):
+            continue
+        suffix = proposal
+        hints.append(hint)
+        if len(hints) == 3:
+            break
+    return (original + suffix if hints else original), hints
+
+
 class GrepSourceView:
     """One case's source-view policy and serialized Jev receipt ledger.
 
@@ -156,7 +187,7 @@ class GrepSourceView:
         max_cost_usd=0.05,
         checkpoint=lambda ledger: None,
     ):
-        if policy not in {"chunks", "jev"} or not 256 <= token_budget <= 8192:
+        if policy not in GREP_POLICIES[1:] or not 256 <= token_budget <= 8192:
             raise ValueError("Invalid grep view or token budget")
         if not math.isfinite(max_cost_usd) or max_cost_usd <= 0:
             raise ValueError("Jev cost guard must be finite and positive")
@@ -178,7 +209,13 @@ class GrepSourceView:
             "unknown_usage_calls": 0,
         }
 
-    def _rank(self, nodes):
+    @property
+    def description(self):
+        return (
+            GREP_HINT_DESCRIPTION if "hints" in self.policy else GREP_VIEW_DESCRIPTION
+        )
+
+    def _rank(self, nodes, query):
         scores = {}
         for start in range(0, len(nodes), 10):
             if self.ledger["cost_usd"] + 0.003 > self.max_cost_usd:
@@ -190,7 +227,7 @@ class GrepSourceView:
             self.checkpoint(self.ledger)
             started = time.perf_counter()
             try:
-                result = decide_code_relevance(self.client, self.query, batch)
+                result = decide_code_relevance(self.client, query, batch)
                 record.update(
                     model=result.model,
                     usage=result.usage,
@@ -241,6 +278,8 @@ class GrepSourceView:
             with self.lock:
                 if self.ledger["failed"]:
                     raise RuntimeError("Jev experiment previously failed")
+                if "hints" in self.policy and len(original) >= 15900:
+                    return original
                 try:
                     nodes = candidates(self.repo, arguments, original)
                     if not nodes:
@@ -250,18 +289,42 @@ class GrepSourceView:
                         "original_sha256": hashlib.sha256(
                             original.encode()
                         ).hexdigest(),
+                        "original": original,
                         "candidates": [n.model_dump() for n in nodes],
                         "candidate_limit_reached": len(nodes) == 40,
                     }
                     self.ledger["views"].append(trace)
-                    ranked = self._rank(nodes) if self.policy == "jev" else nodes
-                    reply = render(
-                        ranked,
-                        self.token_budget,
-                        self.encoder,
-                        original_limited="truncat" in original
-                        or "head_limit=" in original,
+                    query = self.query
+                    if "hints" in self.policy:
+                        query = (
+                            "Choose source ranges to read next for the current search. "
+                            "Prioritize code that answers this search's identifiers or "
+                            "conditions, including supporting behavior and tests. "
+                            "The issue provides context; do not rank only the likely "
+                            "edit site when this search concerns a dependency.\n"
+                            "Issue:\n"
+                            + self.query
+                            + "\nCurrent grep arguments:\n"
+                            + json.dumps(arguments, ensure_ascii=False)
+                        )
+                    trace["ranking_query"] = query
+                    ranked = (
+                        self._rank(nodes, query)
+                        if self.policy in {"jev", "jev-hints"}
+                        else nodes
                     )
+                    if "hints" in self.policy:
+                        reply, trace["suggestions"] = render_hints(
+                            original, ranked, self.token_budget, self.encoder
+                        )
+                    else:
+                        reply = render(
+                            ranked,
+                            self.token_budget,
+                            self.encoder,
+                            original_limited="truncat" in original
+                            or "head_limit=" in original,
+                        )
                     trace.update(
                         order=[node_key(n) for n in ranked],
                         reply=reply,

@@ -86,6 +86,74 @@ def test_same_grep_pool_is_ranked_before_exact_bounded_delivery(monkeypatch, sou
         assert prediction["traj_data"]["pred_spans"]
 
 
+def test_search_hints_preserve_hits_and_add_no_unread_source_credit(
+    monkeypatch, source
+):
+    repo, execute = source
+    queries = []
+
+    def decide(self, **kwargs):
+        queries.append(kwargs["state"]["query"])
+        return decisions(self, **kwargs)
+
+    monkeypatch.setattr(grep.OpenRouterDecisions, "decide", decide)
+    args = {"pattern": "marker", "path": "."}
+    original = execute(**args)
+    views = [
+        grep.GrepSourceView(repo=repo, query="Issue context", policy=policy)
+        for policy in ("hints", "jev-hints")
+    ]
+    replies = [view.wrap(execute)(**args) for view in views]
+    assert len(queries) == 1
+    assert "Issue context" in queries[0] and json.dumps(args) in queries[0]
+    assert views[0].description == views[1].description
+    assert views[0].ledger["calls"] == []
+    assert views[0].ledger["views"][0]["suggestions"][0]["offset"] == 1
+    assert views[1].ledger["views"][0]["suggestions"][0]["offset"] > 1
+    for view, reply in zip(views, replies, strict=True):
+        assert reply.startswith(original + "\n")
+        assert "return helper()" not in reply
+        assert len(view.encoder.encode(reply[len(original) :])) <= 512
+        assert view.ledger["views"][0]["original"] == original
+        assert all(
+            set(hint) == {"file_path", "offset", "limit"}
+            for hint in view.ledger["views"][0]["suggestions"]
+        )
+        predictions = []
+        for text in (original, reply):
+            messages = [
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "id": "g",
+                            "function": {"name": "grep", "arguments": json.dumps(args)},
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "g", "content": text},
+            ]
+            predictions.append(
+                native.contextbench_prediction(
+                    instance_id="case", repo_path=repo, messages=messages
+                )["traj_data"]["pred_spans"]
+            )
+        assert predictions[0] == predictions[1]
+
+
+def test_hint_overflow_preserves_original_without_a_decision(monkeypatch, source):
+    repo, _ = source
+    monkeypatch.setattr(
+        grep.OpenRouterDecisions,
+        "decide",
+        lambda *a, **k: pytest.fail("No room for hints; unexpected billing"),
+    )
+    view = grep.GrepSourceView(repo=repo, query="issue", policy="jev-hints")
+    original = "native reply" * 1600
+    assert view.wrap(lambda **kw: original)(pattern="marker") == original
+    assert view.ledger["calls"] == []
+
+
 def test_non_content_errors_and_confined_paths_never_call_jev(monkeypatch, source):
     repo, execute = source
     monkeypatch.setattr(
@@ -203,8 +271,9 @@ def test_api_route_requires_explicit_first_party_environment(monkeypatch):
 
 
 @pytest.mark.parametrize("missing_usage", [False, True])
+@pytest.mark.parametrize("policy", ["jev", "jev-hints"])
 def test_sdk_observes_ranked_reply_before_next_assistant_turn(
-    monkeypatch, source, missing_usage
+    monkeypatch, source, missing_usage, policy
 ):
     repo, _ = source
 
@@ -214,7 +283,7 @@ def test_sdk_observes_ranked_reply_before_next_assistant_turn(
 
     monkeypatch.setattr(grep.OpenRouterDecisions, "decide", decide)
     view = grep.GrepSourceView(
-        repo=repo, query="target", policy="jev", token_budget=256
+        repo=repo, query="target", policy=policy, token_budget=256
     )
     row = {"messages": [], "sdk_events": []}
 
@@ -241,6 +310,11 @@ def test_sdk_observes_ranked_reply_before_next_assistant_turn(
         reply = await handlers["grep"]({"pattern": "marker", "path": "."})
         if missing_usage:
             assert reply["isError"]
+        elif policy == "jev-hints":
+            text = reply["content"][0]["text"]
+            assert text.startswith(view.ledger["views"][0]["original"])
+            assert '"file_path": "a.py"' in text
+            assert "def target" not in text
         else:
             assert "def target" in reply["content"][0]["text"].splitlines()[0]
         yield event(
@@ -292,5 +366,5 @@ def test_sdk_observes_ranked_reply_before_next_assistant_turn(
     asyncio.run(retrieve())
     assert row["status"] == "ok"
     observed = native.observed_nodes(row["messages"], repo)
-    assert any("def target" in node.content for node in observed)
+    assert any("def target" in node.content for node in observed) == (policy == "jev")
     assert all(node.file == "a.py" for node in observed)

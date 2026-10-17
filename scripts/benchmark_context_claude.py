@@ -41,7 +41,7 @@ from scripts.contextbench_graph_navigation import (
     graph_options,
     load_navigation,
 )
-from scripts.contextbench_grep_rerank import GREP_VIEW_DESCRIPTION, GrepSourceView
+from scripts.contextbench_grep_rerank import GREP_POLICIES, GrepSourceView
 
 TOOLS = {f"mcp__source__{name}": name for name in ("read", "grep", "glob")}
 
@@ -226,7 +226,7 @@ async def retrieve(
 
         schema = tool_to_schema(spec)["function"]
         if spec.tool_id == "grep" and grep_view is not None:
-            schema["description"] = GREP_VIEW_DESCRIPTION + "\n" + schema["description"]
+            schema["description"] = grep_view.description + "\n" + schema["description"]
         sdk_tools.append(
             tool(spec.tool_id, schema["description"], schema["parameters"])(
                 bind(execute)
@@ -319,7 +319,7 @@ def run(args):
     jev_cost_usd = getattr(args, "jev_cost_usd", 0.05)
     if billing_route not in {"subscription", "anthropic-api"}:
         raise ValueError("Unknown billing route")
-    if grep_policy not in {"native", "chunks", "jev"}:
+    if grep_policy not in GREP_POLICIES:
         raise ValueError("Unknown grep view")
     if grep_policy != "native" and source_policy != "native":
         raise ValueError("Matched grep views require native read/source policy")
@@ -329,7 +329,7 @@ def run(args):
         or jev_cost_usd <= 0
     ):
         raise ValueError("Invalid grep budget")
-    if grep_policy == "jev" and not os.environ.get("OPENROUTER_API_KEY"):
+    if grep_policy in {"jev", "jev-hints"} and not os.environ.get("OPENROUTER_API_KEY"):
         raise ValueError("Jev experiments require OPENROUTER_API_KEY")
     if (
         source_policy not in {"native", "functions"}
@@ -576,9 +576,7 @@ def main():
         choices=("subscription", "anthropic-api"),
         default="subscription",
     )
-    parser.add_argument(
-        "--grep-view", choices=("native", "chunks", "jev"), default="native"
-    )
+    parser.add_argument("--grep-view", choices=GREP_POLICIES, default="native")
     parser.add_argument("--grep-tokens", type=int, default=4096)
     parser.add_argument("--jev-cost-usd", type=float, default=0.05)
     parser.add_argument("--max-turns", type=int, default=20)
