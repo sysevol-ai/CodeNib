@@ -1,10 +1,13 @@
 # ContextBench retrieval experiments
 
-The current on-demand indexed-context strategies have **not established a
-Recall-first gain**. Named-symbol source routing has a verified production fix;
-benchmark benefits remain a separate gate. The metadata-after-read development
-iteration is rejected for expansion: line Recall **71.61% → 68.24%**, F1
-**33.68% → 40.60%** on the same four exposed tasks. All four outcomes remain.
+A surface-first indexed-context policy passes its **four-task development
+screen**, with line Recall/F1 **74.02%/42.40%**, versus original native
+**71.61%/33.68%** and a separately frozen native repeat **71.37%/31.76%**.
+All four agents query actual CodeNib surfaces; none uses handle body fetches.
+This is preliminary, exposed development evidence, with no independent or
+leaderboard-gain claim. A separate eight-language dense-only screen remains open.
+Named-symbol source routing has a verified production fix. The earlier
+metadata-after-read policy remains rejected for lower Recall; all outcomes stay.
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
@@ -143,6 +146,71 @@ protocol is frozen before the four actual sessions. No model retry occurs.
 The latest89 relevant tests, pinned hooks, strict MkDocs and public-docs boundary
 checks pass. Further context work must improve useful discovery and demand-driven
 source selection, rather than expand a failed metadata policy.
+
+A separate surface-first adapter at `95cbc503` asks the agent to formulate a
+focused indexed query before broad source investigation. Surface replies contain
+authenticated declarations, locations and snapshot-bound handles. Optional body
+fetches page at200lines, reference confirmed prior tool calls instead of repeating
+source, and reject changed source/manifest identities. Partial oversized lines
+are explicitly unavailable and receive no source credit. This is a source-checkout
+experiment using existing exploration/source APIs, with no new product route or
+persistence. The composed explorer still performs bounded local source reads
+internally; metadata-only model delivery does not establish a source-I/O saving.
+
+The same four exposed development cases are frozen before four fresh sessions
+under protocol `ede991e4`. All4/4 score valid. Each agent makes one actual surface
+query, receiving22 candidates in total; subsequent source reads overlap15 of those
+locations. This is a later-read proxy, not proof that a candidate changed reasoning
+or a patch. All four choose native source tools afterward, with **zero handle body
+fetches**. Body pagination/deduplication therefore have local contract tests, not a
+measured runtime benefit.
+
+One post-hoc native-only repeat is frozen under `884a5f9b` before its four new
+sessions. It repeats all four once, keeps all original controls/results and never
+replaces a native500 record or retries a failed attempt. It is a disclosed
+stability check, not an independent or prospectively paired primary experiment:
+
+| Same four exposed tasks, line task macro | Recall | F1 | Unique source lines | Consumed tool-reply cl100k estimate | Max nominal SDK estimate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Original native | 71.61% | 33.68% | 3,209 | 46,257 | $1.1760282 |
+| One native repeat | 71.37% | 31.76% | 3,236 | 44,480 | $1.1046278 |
+| Surface-first | 74.02% | 42.40% | 2,610 | 37,376 | $1.0091893 |
+
+The frozen development expansion screen passes because surface Recall exceeds
+both native means. Gains remain small-sample and concentrated in Python; the
+optional v0 run already scores73.69% Recall without core use in that case. Do not
+promote this to a repeatable population or causal gain. The candidate uses the
+same Opus5.5/medium/20turn/$0.75guard; all metering and included-Max receipts pass.
+New API usage and repair calls are zero. Source-only preflight validates23
+candidate declarations/2,356metadata tokens over four real indexes with zero
+unread-source credit; those local candidates are never model inputs.
+
+Reported main-model cache counters remain separate from tool-reply estimates.
+Surface versus repeated native cache-creation counters are81,984 versus88,935,
+cache-read counters381,309 versus478,849, and output counters13,795 versus14,812.
+These are cumulative SDK counters, not peak context, physical KV residency or
+converted API bills. Replies append to history; there is no compaction/eviction
+implementation or measured invalidation benefit here.
+
+Latest99 relevant surface/cache/SDK/source/navigation tests and pinned hooks pass.
+Prepared cache reuse requires unchanged before/after source snapshots, the exact
+case/local embedding route, an explicitly non-live producer, no model intent and
+zero SDK events before existing native artifact/source authorization. A new
+`--vector-only` labs option supports a separately declared dense-only ablation;
+it skips graph compilation/loading, without claiming a backend failure. The next
+eight development IDs are selected only by fixed metadata ordering, one per
+language, excluding the four pilot IDs and all three sealed32 cohorts/aliases.
+This arm is separate from the mixed-view four-task pilot, with fresh preparation
+costs retained; it is neither fresh independent validation nor another full500.
+
+A source-only ranking diagnostic on the four actual agent queries compares raw
+inner product, cosine reranking of128 candidates and full cosine without changing
+persisted artifact bytes or original scores. Cached Jina vector norms vary from
+approximately10.93 to14.76; focused-query top candidates are mostly unchanged.
+The [current author usage examples](https://huggingface.co/jinaai/jina-embeddings-v2-base-code)
+normalize vectors or compute cosine. This is a hypothesis to check separately,
+not evidence that every raw-IP configuration is a product defect or a measured
+quality improvement. No additional model/Gold/API calls occur in that diagnostic.
 
 The user-requested interim report prospectively changes the annotation schedule:
 these122 actual-source predictions were sealed before their selected Gold was
