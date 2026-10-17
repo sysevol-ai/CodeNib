@@ -116,7 +116,7 @@
       "actual_bill_usd": null
     }
   },
-  "conclusion": "Initial native/functions trial shows no demonstrated gain. Targeted-hop graph trial passes the declared development selection gate, with both paired intervals crossing zero. The subsequent frozen independent 32-task validation rejects the candidate; see contextbench_independent_summary.json. No product or leaderboard claim.",
+  "conclusion": "The original independent 32-task validation rejects the targeted-hop policy. The later early-hop/unseen-source development trial also fails its declared gate because no graph tool calls occur; no new independent or full-500 run is justified. Solver input receipts are now explicit, while shell-source attribution and other native harnesses remain open.",
   "cost_scope": "SDK metering estimates are not paid receipts. Actual account billing is unknown. No separate API-key inference in these arms.",
   "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle.",
   "implementation_commit": "a853d8d1",
@@ -1540,5 +1540,638 @@
       }
     ],
     "conclusion": "All 220 graph-returned physical lines were already observed in the targeted-hop development trial. Grep completion contributes most new completion lines and most newly observed annotated lines; no causal claim that removing it improves an online agent. Next development gates must measure useful novel source. Do not tune on the completed independent 32."
+  },
+  "early_unseen_development_trial": {
+    "n": 8,
+    "scope": "Development selection only; eight disclosed tasks, no use of the completed independent 32 for tuning.",
+    "implementation_commit": "768785a421d2630ff31a75c3b387df319726bd75",
+    "protocol": {
+      "scope": "Development selection only; eight disclosed tasks, no use of the completed independent 32 for tuning.",
+      "implementation_commit": "768785a421d2630ff31a75c3b387df319726bd75",
+      "selection_sha256": "3f271fffc1394591c485e4eee5e2501e39e07e0e6146263392ee8ab0e889f568",
+      "arms": {
+        "native": {
+          "source_policy": "native",
+          "graph_navigation": false
+        },
+        "functions": {
+          "source_policy": "functions",
+          "graph_navigation": false
+        },
+        "functions_graph": {
+          "source_policy": "functions",
+          "graph_navigation": true
+        }
+      },
+      "graph_source_policy": "unseen",
+      "graph_policy": "early_reference_hop_before_expanding_reads",
+      "model": "claude-opus-5-5",
+      "max_turns": 20,
+      "completion_tokens": 2048,
+      "graph_tokens": 2048,
+      "max_meter_usd_per_arm": 10,
+      "case_meter_usd": 3,
+      "case_timeout_seconds": 600,
+      "billing_route": "existing_claude_max",
+      "additional_API_spending_ceiling_usd": 100,
+      "automatic_API_fallback": false,
+      "primary_contrast": "functions_graph minus native, complete route; both completion and graph policy change.",
+      "secondary_contrasts": [
+        "functions minus native",
+        "functions_graph minus functions"
+      ],
+      "metrics": "All eight selected tasks retained, official macro per-task cumulative observed line Recall, precision, F1.",
+      "uncertainty": {
+        "method": "paired task bootstrap",
+        "draws": 10000,
+        "seed": 20261016,
+        "secondary_multiplicity": "Exploratory; no adjusted significance claim."
+      },
+      "development_gate": {
+        "all_tasks_complete_and_scored": true,
+        "graph_supplies_at_least_one_previously_unseen_annotated_line": true,
+        "primary_recall_point_increased": true,
+        "primary_f1_point_not_lower": true
+      },
+      "scope_of_passing": "Development candidate selection only; requires further development breadth and a new independent validation protocol before promotion.",
+      "policy_changes_after_start": "None. No benchmark labels, reference patches or score feedback enter model prompts."
+    },
+    "protocol_sha256": "c11ee7dc2fd58dab22c548929d42edeb5a89d02a89205689141bff70dec24a4b",
+    "implementation": {
+      "scripts/benchmark_context_agent.py": "c1691033bd8d5654e2d4187b9442a1c0da0df02ce66d346c6cd94988e641a8b6",
+      "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+      "scripts/contextbench_graph_navigation.py": "48c509b47f82933ab59186ec35ad13221926baecd5dda9ba203ab5944cc54292",
+      "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+      "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+      "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+      "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+      "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+      "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+      "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+      "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+      "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+      "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+      "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+      "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+      "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+      "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+      "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+      "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+      "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+      "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+      "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+      "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+      "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+      "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+      "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+      "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+      "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+      "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+      "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+      "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+      "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+      "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+      "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+      "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+      "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+      "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+      "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+    },
+    "source_manifest_sha256": "73233491d39de65c36aff7ab290610f47f06ec2b3b294ed77e117c7fc27345bc",
+    "graph_manifest_sha256": "883db1e8dbef3b81597e23bbc9ff4286ce611e66fb9d524cd6d7bbf2898aaa92",
+    "sdk_version": "0.2.165",
+    "cli_version": "2.1.301 (Claude Code)",
+    "arms": {
+      "native": {
+        "scores": {
+          "trajectory": {
+            "recall": 0.3915030969331417,
+            "precision": 0.35742942488383506,
+            "f1": 0.3426867221995677,
+            "official_valid": 8
+          },
+          "served_16384": {
+            "recall": 0.3908931172102317,
+            "precision": 0.3570917327364308,
+            "f1": 0.34220720930451654,
+            "official_valid": 8
+          },
+          "served_32768": {
+            "recall": 0.3908931172102317,
+            "precision": 0.3570917327364308,
+            "f1": 0.34220720930451654,
+            "official_valid": 8
+          }
+        },
+        "usage": {
+          "billing_route": "existing_claude_subscription",
+          "actual_bill_usd": null,
+          "sdk_reported_cost_usd": 2.0107074,
+          "missing_metering_cases": 0,
+          "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+          "statuses": {
+            "ok": 8
+          },
+          "cases": 8
+        },
+        "values": {
+          "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+            "recall": 0.44398340248962653,
+            "precision": 0.5095238095238095,
+            "f1": 0.4745011086474501
+          },
+          "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+            "recall": 0.25510204081632654,
+            "precision": 0.07363770250368189,
+            "f1": 0.11428571428571428
+          },
+          "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+            "recall": 0.3323593864134405,
+            "precision": 0.3415915915915916,
+            "f1": 0.33691225472047387
+          },
+          "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5240506329113924,
+            "f1": 0.530089628681178
+          },
+          "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+            "recall": 0.4791666666666667,
+            "precision": 0.8582089552238806,
+            "f1": 0.6149732620320856
+          },
+          "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+            "recall": 0.15100316789862725,
+            "precision": 0.20634920634920634,
+            "f1": 0.174390243902439
+          },
+          "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+            "recall": 0.35456110154905335,
+            "precision": 0.18181818181818182,
+            "f1": 0.24037339556592766
+          },
+          "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+            "recall": 0.5795795795795796,
+            "precision": 0.16425531914893618,
+            "f1": 0.25596816976127323
+          }
+        },
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "statuses": {
+          "ok": 8
+        }
+      },
+      "functions": {
+        "scores": {
+          "trajectory": {
+            "recall": 0.43971001609480276,
+            "precision": 0.3157302037855129,
+            "f1": 0.3402071174334975,
+            "official_valid": 8
+          },
+          "served_16384": {
+            "recall": 0.4348301362149229,
+            "precision": 0.3282325517377529,
+            "f1": 0.3480307588668886,
+            "official_valid": 8
+          },
+          "served_32768": {
+            "recall": 0.43971001609480276,
+            "precision": 0.3157607276933164,
+            "f1": 0.3402397946124174,
+            "official_valid": 8
+          }
+        },
+        "usage": {
+          "billing_route": "existing_claude_subscription",
+          "actual_bill_usd": null,
+          "sdk_reported_cost_usd": 2.6665744,
+          "missing_metering_cases": 0,
+          "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+          "statuses": {
+            "ok": 8
+          },
+          "cases": 8
+        },
+        "values": {
+          "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+            "recall": 0.5684647302904564,
+            "precision": 0.5805084745762712,
+            "f1": 0.5744234800838575
+          },
+          "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+            "recall": 0.30612244897959184,
+            "precision": 0.0664451827242525,
+            "f1": 0.10919017288444041
+          },
+          "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+            "recall": 0.293644996347699,
+            "precision": 0.21157894736842106,
+            "f1": 0.245946772713368
+          },
+          "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5240506329113924,
+            "f1": 0.530089628681178
+          },
+          "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+            "recall": 0.5041666666666667,
+            "precision": 0.42086956521739133,
+            "f1": 0.4587677725118484
+          },
+          "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+            "recall": 0.2787750791974657,
+            "precision": 0.4012158054711246,
+            "f1": 0.32897196261682243
+          },
+          "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+            "recall": 0.35456110154905335,
+            "precision": 0.17591801878736124,
+            "f1": 0.2351598173515982
+          },
+          "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+            "recall": 0.6756756756756757,
+            "precision": 0.14525500322788895,
+            "f1": 0.23910733262486714
+          }
+        },
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "statuses": {
+          "ok": 8
+        }
+      },
+      "functions_graph": {
+        "scores": {
+          "trajectory": {
+            "recall": 0.4403295826632678,
+            "precision": 0.3641481052549322,
+            "f1": 0.36600887131592075,
+            "official_valid": 8
+          },
+          "served_16384": {
+            "recall": 0.4390387048663659,
+            "precision": 0.3789737299241462,
+            "f1": 0.37570271984183523,
+            "official_valid": 8
+          },
+          "served_32768": {
+            "recall": 0.4403295826632678,
+            "precision": 0.36421733552978586,
+            "f1": 0.3660735713640091,
+            "official_valid": 8
+          }
+        },
+        "usage": {
+          "billing_route": "existing_claude_subscription",
+          "actual_bill_usd": null,
+          "sdk_reported_cost_usd": 2.5889262000000004,
+          "missing_metering_cases": 0,
+          "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+          "statuses": {
+            "ok": 8
+          },
+          "cases": 8
+        },
+        "values": {
+          "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+            "recall": 0.5684647302904564,
+            "precision": 0.9013157894736842,
+            "f1": 0.6972010178117047
+          },
+          "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+            "recall": 0.20408163265306123,
+            "precision": 0.04561003420752566,
+            "f1": 0.07455731593662629
+          },
+          "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+            "recall": 0.506208911614317,
+            "precision": 0.414721723518851,
+            "f1": 0.45592105263157895
+          },
+          "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5348837209302325,
+            "f1": 0.5355756791720568
+          },
+          "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+            "recall": 0.45625,
+            "precision": 0.36622073578595316,
+            "f1": 0.40630797773654914
+          },
+          "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+            "recall": 0.27983104540654696,
+            "precision": 0.3566621803499327,
+            "f1": 0.31360946745562124
+          },
+          "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+            "recall": 0.3769363166953528,
+            "precision": 0.1543340380549683,
+            "f1": 0.219
+          },
+          "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+            "recall": 0.5945945945945946,
+            "precision": 0.13943661971830987,
+            "f1": 0.22589845978322876
+          }
+        },
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "statuses": {
+          "ok": 8
+        }
+      }
+    },
+    "comparisons": {
+      "primary": {
+        "n": 8,
+        "contrast": "functions_and_directed_graph_over_native",
+        "bootstrap": {
+          "draws": 10000,
+          "seed": 20261016,
+          "unit": "task"
+        },
+        "metrics": {
+          "recall": {
+            "baseline": 0.3915030969331417,
+            "candidate": 0.4403295826632678,
+            "difference": 0.048826485730126074,
+            "paired_bootstrap_95_interval": [
+              -0.0011230693365482658,
+              0.1045021972724606
+            ]
+          },
+          "precision": {
+            "baseline": 0.35742942488383506,
+            "candidate": 0.3641481052549322,
+            "difference": 0.006718680371097125,
+            "paired_bootstrap_95_interval": [
+              -0.1621506413003429,
+              0.1613752447606018
+            ]
+          },
+          "f1": {
+            "baseline": 0.3426867221995677,
+            "candidate": 0.36600887131592075,
+            "difference": 0.023322149116353025,
+            "paired_bootstrap_95_interval": [
+              -0.06443609944957052,
+              0.11033728202662997
+            ]
+          }
+        }
+      },
+      "functions": {
+        "n": 8,
+        "contrast": "online_function_completion",
+        "bootstrap": {
+          "draws": 10000,
+          "seed": 20261016,
+          "unit": "task"
+        },
+        "metrics": {
+          "recall": {
+            "baseline": 0.3915030969331417,
+            "candidate": 0.43971001609480276,
+            "difference": 0.04820691916166102,
+            "paired_bootstrap_95_interval": [
+              0.008583414495576633,
+              0.08894867264493111
+            ]
+          },
+          "precision": {
+            "baseline": 0.35742942488383506,
+            "candidate": 0.3157302037855129,
+            "difference": -0.04169922109832213,
+            "paired_bootstrap_95_interval": [
+              -0.17407796356605812,
+              0.06318871158103542
+            ]
+          },
+          "f1": {
+            "baseline": 0.3426867221995677,
+            "candidate": 0.3402071174334975,
+            "difference": -0.002479604766070209,
+            "paired_bootstrap_95_interval": [
+              -0.06517423287420498,
+              0.061700439910588045
+            ]
+          }
+        }
+      },
+      "graph": {
+        "n": 8,
+        "contrast": "directed_graph_over_function_completion",
+        "bootstrap": {
+          "draws": 10000,
+          "seed": 20261016,
+          "unit": "task"
+        },
+        "metrics": {
+          "recall": {
+            "baseline": 0.43971001609480276,
+            "candidate": 0.4403295826632678,
+            "difference": 0.0006195665684650548,
+            "paired_bootstrap_95_interval": [
+              -0.05348209344063262,
+              0.07001725962972317
+            ]
+          },
+          "precision": {
+            "baseline": 0.3157302037855129,
+            "candidate": 0.3641481052549322,
+            "difference": 0.04841790146941925,
+            "paired_bootstrap_95_interval": [
+              -0.027301128762629214,
+              0.14744926064798108
+            ]
+          },
+          "f1": {
+            "baseline": 0.3402071174334975,
+            "candidate": 0.36600887131592075,
+            "difference": 0.025801753882423232,
+            "paired_bootstrap_95_interval": [
+              -0.024539212355341955,
+              0.09151877074392979
+            ]
+          }
+        }
+      }
+    },
+    "development_gate": {
+      "protocol_sha256": "c11ee7dc2fd58dab22c548929d42edeb5a89d02a89205689141bff70dec24a4b",
+      "analysis_sha256": "738022ae4f72fee6a02f65bd3642b1982c7b90eb3e3a5144c2b964dd66d0890d",
+      "gates": {
+        "all_tasks_complete_and_scored": true,
+        "graph_supplies_at_least_one_previously_unseen_annotated_line": false,
+        "primary_recall_point_increased": true,
+        "primary_f1_point_not_lower": true
+      },
+      "passed": false,
+      "graph_adoption": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {}
+        }
+      ],
+      "primary_metrics": {
+        "recall": {
+          "baseline": 0.3915030969331417,
+          "candidate": 0.4403295826632678,
+          "difference": 0.048826485730126074,
+          "paired_bootstrap_95_interval": [
+            -0.0011230693365482658,
+            0.1045021972724606
+          ]
+        },
+        "precision": {
+          "baseline": 0.35742942488383506,
+          "candidate": 0.3641481052549322,
+          "difference": 0.006718680371097125,
+          "paired_bootstrap_95_interval": [
+            -0.1621506413003429,
+            0.1613752447606018
+          ]
+        },
+        "f1": {
+          "baseline": 0.3426867221995677,
+          "candidate": 0.36600887131592075,
+          "difference": 0.023322149116353025,
+          "paired_bootstrap_95_interval": [
+            -0.06443609944957052,
+            0.11033728202662997
+          ]
+        }
+      },
+      "scope": "Development selection gate only; no independent quality or leaderboard claim."
+    },
+    "solver_pair": {
+      "protocol": {
+        "scope": "Fresh paired development solver and model-input receipt check. Same disclosed Python development task; not independent evidence or best-of selection.",
+        "selection": "First CSV-ordered development task, also the only Verified task in this eight-task cohort. Selected before new retrieval scores.",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "original_inst_id": "pylint-dev__pylint-4604",
+        "arms": [
+          "native",
+          "functions_graph"
+        ],
+        "implementation_commit": "54a8f15f8f23c66cf2540dc0ce030ccaa3c5826c",
+        "image_id": "sha256:b5fac9ce8ae7da0c6ad028bce73932b257eb44656985e4f7c7d73d7dfc60dcf7",
+        "source_tree": "05a6b93fcb973fb72fe368b7d43eee00ed6635da",
+        "source_commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+        "reference_check_sha256": "8b5ccd94047435d0ef0fbb0b7fbfb5aa400254ddaa30c5ac657ed2f5e6e5e0e7",
+        "model": "claude-opus-5-5",
+        "context_budget": 16384,
+        "max_turns": 30,
+        "max_meter_usd_per_arm": 3,
+        "native_dataset_sha256": "d92ef4dadc6482fc80a961e1a3a313713c78567721bb11b96dda6dab621ed71f",
+        "failure_handling": "One attempt per arm, no grading feedback or reference patch supplied; stop on unknown metering or SDK errors. Keep all failures.",
+        "billing": "Existing Claude Max only; no automatic API fallback.",
+        "observation_gate": "Every actual model request has a verified content hash; confirmed inputs export after native output formatting. Arbitrary shell-to-source line attribution remains open."
+      },
+      "arms": {
+        "native": {
+          "status": "Submitted",
+          "resolved": false,
+          "tasks": 1,
+          "model_calls": 7,
+          "known_sdk_reported_cost_usd": 0.4858567,
+          "missing_metering_calls": 0,
+          "container_removed": true,
+          "all_model_inputs_confirmed": true,
+          "confirmed_model_inputs": 7,
+          "model_observations_sha256": "29577410422e8031dc21d1769c76f7f05e3a53a9adc50edd2ecb244641f00652",
+          "source_attribution": "Pending; no shell source-line credit inferred."
+        },
+        "functions_graph": {
+          "status": "Submitted",
+          "resolved": false,
+          "tasks": 1,
+          "model_calls": 11,
+          "known_sdk_reported_cost_usd": 0.8819372000000001,
+          "missing_metering_calls": 0,
+          "container_removed": true,
+          "all_model_inputs_confirmed": true,
+          "confirmed_model_inputs": 11,
+          "model_observations_sha256": "18d33f64a748c976c7ac5bda2c15804559916647cba3ae816ea0cb169013e5f2",
+          "source_attribution": "Pending; no shell source-line credit inferred."
+        }
+      },
+      "implementation": {
+        "scripts/benchmark_context_solver.py": "42f6097d6e7ba927852f460775ae8a10cadea1f1fe4974ae1358d264a278c15e",
+        "mini/agents/default.py": "faf4442506b1cdaad886f146182dff98ed740d45536729617efbdcb6d5fb5524",
+        "mini/environments/docker.py": "e3c42a76d0aee03edb0e14e693c963d4fc2e28b678ca36a72f774c90dc89dbd4",
+        "mini/config/extra/swebench.yaml": "81bb47b91311e19b73ff0f8bc670898dc5b807f774ff687e11556038e5878162"
+      },
+      "scope": "Repeated development task, 0/1 resolved in each new arm; not independent evidence or a population Pass@1 estimate."
+    },
+    "cost": {
+      "retrieval_sdk_estimate_usd": 7.266208,
+      "solver_sdk_estimate_usd": 1.3677939000000001,
+      "cumulative_program_known_sdk_estimate_usd": 50.25750360000001,
+      "cumulative_program_unmetered_attempts": [
+        "solver-smoke-functions-v2"
+      ],
+      "standalone_api_key_inference_spend_usd": 0,
+      "actual_subscription_bill_usd": null,
+      "scope": "SDK estimates, not invoices. Program total includes previous development and the completed independent 32; one earlier aborted solver request remains unmetered."
+    },
+    "conclusion": "The gate fails: all eight graph-enabled tasks make zero graph calls. Positive development point differences cannot be attributed to graph-returned source and both primary intervals cross zero. Require an adoption/novelty mechanism check before another quality cohort; no new independent validation or full-500 run."
   }
 }

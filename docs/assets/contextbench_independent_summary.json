@@ -515,7 +515,8 @@
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
     ],
-    "scope": "Known SDK metering only, not an API bill or complete total: one aborted solver attempt returned no metering. Reference/native grading makes no model calls."
+    "scope": "Known SDK metering only, not an API bill or complete total: one aborted solver attempt returned no metering. Reference/native grading makes no model calls.",
+    "snapshot_scope": "Program totals at completion of this independent validation. Later development costs are recorded in contextbench_online_development_summary.json."
   },
   "conclusion": "The frozen candidate fails the independent quality gate. Recall does not improve reliably and the primary F1 interval is negative. Keep the route experimental and do not launch the official 500 with this policy. Return to the development cohort; any revised policy requires a new validation protocol and independent task IDs. Do not tune or select best retries on these 32.",
   "artifact_scope": "Sanitized summary and per-task metrics only; no source, issue text, prompts, provider/account identifiers, credentials, or complete leaderboard submission bundle.",
