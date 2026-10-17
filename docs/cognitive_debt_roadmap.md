@@ -265,8 +265,16 @@ link failure persists outside those labels and is reproduced on unmodified
 source; full standard-library coverage is not claimed. Source-only image recipes
 add a hash-verified Python runtime and precompile base source without changing
 the original grader. Source/history/reader checks pass with no model calls.
-The next gate is a frozen three-arm repair comparison on this disclosed task,
-whose prior graph-returned source survives the actual delivered context.
+The fresh frozen C comparison is complete and negative: native/functions submit
+patches but fail 12/11 native tests, including five preservation tests in both;
+the graph arm ends at its SDK budget with no prediction. The function-only
+payload already covers the earlier graph response, so it establishes no unique
+graph benefit. All 29 model inputs are confirmed and all five owned containers
+are removed. One valid terminal usage event was omitted by post-loop accounting;
+an offline amendment recovers it without replacing the failed attempt. The
+adapter now persists usage on receipt before the SDK can raise, retaining the
+failure and exhausted-budget stop. The next gate is useful source selection
+supported by matched repair evidence before further paid comparisons.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

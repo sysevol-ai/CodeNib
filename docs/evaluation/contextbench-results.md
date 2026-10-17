@@ -426,10 +426,15 @@ The late relationship-check pilot adds **$6.796707** in SDK estimates.
 Known October 16 metering totals **$71.960832**. The two separately frozen
 October 17 reader-adoption checks add **$0.695992** and **$0.932850**, bringing
 the subtotal to $73.589674. The fresh paired Gson solver check adds **$1.088503**,
-bringing known cumulative metering to **$74.678177**,
+bringing the subtotal to $74.678177. The C three-arm solver attempt adds
+**$8.115611** after recovering $0.321885 from an already-preserved terminal event,
+bringing known cumulative metering to **$82.793787**,
 excluding one aborted development solver attempt and one interrupted retrieval
-case with no terminal usage.
-These are not account bills;
+case with no terminal usage. The C graph arm remains a budget error with no
+prediction: its original aggregate omitted one terminal cost, now explicitly
+reconciled without changing the original run or rerunning it. A per-call SDK
+budget guard can be exceeded by the terminating call; it is not a hard billing
+cap. These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
 fallback is enabled, and the failed quality gate does not authorize a 500-task run.
@@ -810,7 +815,8 @@ linking cannot find `crypto`, `pcre2-8` and `ssl`. The unmodified source-only
 image reproduces that failure after all 1,045 baseline tests pass. Required-label
 grading succeeds; the full standard-library suite remains unverified.
 
-The official image has no Python interpreter. The source-only image adds a
+The official image lacks the Python 3 interpreter required by the reader. The
+source-only image adds a
 [fixed standalone CPython 3.11.14 release](https://github.com/astral-sh/python-build-standalone/releases/tag/20260211),
 verified against its published archive hash, and precompiles only the original
 source. The original native grader image remains unchanged. Both cold and warm
@@ -819,13 +825,42 @@ checks; the warm image remains clean after baseline testing. All owned container
 are removed. These checks make no model calls and are not agent repair results.
 
 This task is chosen from disclosed development data because its earlier graph
-query supplied previously unseen source: all 200 returned lines survive the candidate's
-16K payload, with 197 absent from the native payload. Selection uses prior
-development evidence and is not an unbiased or independent sample. A fresh
-native/functions/graph solver comparison remains required before interpreting
-that source contribution as repair evidence. Provenance, runtime recipes and
-the incomplete standard-library coverage are retained in the public development
-summary.
+query supplied previously unseen source: all 200 returned lines survive the
+candidate's 16K payload, with 197 absent from the native payload. Selection uses prior
+development evidence and is not an unbiased or independent sample. Function
+completion already contains the full range covering that graph response, so it
+is not source unique to the graph arm. The candidate also adds 190 and removes
+283 initial source lines relative to the function arm; these contexts do not
+isolate a graph-only causal effect.
+
+A fresh three-arm solver comparison at frozen `6c1585b8` is complete, using the
+same model, common reader, 20-step limit and $3 SDK guard per arm:
+
+| Arm | Native outcome | Passing / failing tests | Model calls | Reconciled SDK estimate |
+| --- | --- | --- | --- | --- |
+| Native | Unresolved | 1,005 / 12 | 9 | $2.134897 |
+| Functions | Unresolved | 1,006 / 11 | 9 | $2.684968 |
+| Functions + graph | Budget error; no prediction | Not graded | 11 | $3.295746 |
+
+Native fixes none of the seven required regressions; functions fixes one.
+Both also fail five preservation tests and stop before later runtime and
+standard-library tests. The graph arm's final request triggers the SDK budget
+error and produces no submitted patch. Its failure counts as zero, with no retry
+or invented native report. All 29 model inputs are confirmed, with subscription
+initializers reporting no API key. The controlled reader adds 0/191/0 new
+original-source lines; partial totals are 1,025/1,677/1,393. Ordinary shell output
+remains unattributed. Five owned solver/grader containers are removed and verified
+absent; frozen runtime/input hashes match after grading.
+
+The final graph request preserves a valid $0.321885 terminal event before the
+SDK raises. Original aggregation misses it because accounting occurred after
+stream completion. An offline amendment retains the original failed run and
+reconciles total SDK metering to $8.115611; no current call remains unmetered.
+The adapter now persists terminal usage before advancing the stream, with a
+regression reproducing the old loss. SDK errors still stop inference. This
+single disclosed task establishes no comparative repair gain or independent
+quality result. Provenance, recipes, original and corrected accounting, and the
+incomplete standard-library coverage remain in the public development summary.
 
 New solver runs save each exact model request with a content hash and confirm
 delivery only when the SDK returns an assistant message. The local

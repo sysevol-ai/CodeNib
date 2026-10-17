@@ -41,7 +41,7 @@ The current milestones and remaining gates are:
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
 | Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model fixes correct 38 overlapping C++ ranges and recover compiler-backed JavaScript LSP name selections. The complete 764-file NodeBB graph makes 31,351 reference queries without errors; its two fixed queries add 132 physical lines and zero annotated lines. | Establish useful relationship selection and graph delivery across languages before another matched candidate. Nearby anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget. Active SCIP assigned-function definitions remain incomplete. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. The C ponyc pilot passes required native-label and source-only reader gates; its full standard-library link failure is reproduced on base source. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Run the frozen C native/functions/graph repair comparison, then establish broader matched outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. The C ponyc pilot passes native/source gates, but its fresh native/functions repairs fail (12/11 tests); its graph arm ends in a retained budget error with no prediction. Terminal usage is recovered offline and the accounting bug is fixed. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Use the C preservation failures and duplicated function/graph source to improve relevant selection before more paid comparisons; establish broader matched outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -105,7 +105,9 @@ program, known metering totals **$71.960832**, plus one aborted development solv
 attempt and one interrupted retrieval case with unknown metering. Two separately
 frozen October 17 reader-adoption checks add $0.695992 and $0.932850, bringing
 the subtotal to $73.589674. The fresh paired Gson solver check adds $1.088503,
-bringing known cumulative metering to **$74.678177** with the same two historical
+bringing the subtotal to $74.678177. The C three-arm comparison adds $8.115611,
+including $0.321885 recovered from its preserved terminal event, bringing known
+cumulative metering to **$82.793787** with the same two historical
 unknowns.
 Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
@@ -768,7 +770,8 @@ for missing `crypto`, `pcre2-8` and `ssl`; a separate unmodified-source check
 reproduces it after 1,045 passing baseline tests. Required-label success must not
 be described as a green full standard-library suite.
 
-The original grader image has no Python. A private source-only image adds the
+The original grader image lacks the Python 3 interpreter required by the reader.
+A private source-only image adds the
 hash-verified CPython 3.11.14 standalone archive and removes reference artifacts
 and Git history. Its warm variant builds only unmodified source, keeping model
 test commands within the existing time bounds. Warm source/reader protocol
@@ -779,8 +782,35 @@ only this validated repository and its pinned native module; no registry or new
 product route is introduced. Related unit tests pass 197 cases and pinned
 integration tests pass ten. All readiness checks make zero model calls.
 Artifacts are under `verification/contextbench-multiswe-pony-readiness-20261017/`.
-A frozen native/functions/graph development solver comparison is the next gate;
-no independent quality result or full-500 launch follows from readiness alone.
+The frozen C solver protocol
+`ea199d9940f8bc77a2cdaaba917117af1e8349fd2e9bf1cf85e6ec7bf33d26c1`
+at `6c1585b8` is now complete: native/functions both submit production patches,
+then fail original grading with 1,005/1,006 passing and 12/11 failing tests. They
+fix zero/one of seven required regressions and both break five preservation tests.
+The graph arm reaches its SDK budget error, supplies no prediction and remains
+zero; no retry or native report substitutes for it. The three arms make 9/9/11
+calls, all 29 inputs are confirmed and every subscription initializer reports
+`apiKeySource=none`. Controlled reads add 0/191/0 original lines, with partial
+coverage of 1,025/1,677/1,393. All five owned containers are removed and confirmed
+absent, and frozen hashes match after grading.
+
+The function-only payload already covers the earlier graph response. Relative to
+it, the graph payload adds 190 and removes 283 other initial lines; this is not a
+controlled graph-only source intervention. No comparative repair gain follows.
+SDK estimates reconcile to $2.134897/$2.684968/$3.295746, totaling $8.115611.
+Amendment `955db06b47399b76fec281ab182e7c17d77cb48cb2c67e519487b7941ad9694e`
+recovers the graph call's $0.321885 from its preserved terminal event without
+changing any original run, patch or outcome. A ResultMessage followed by an SDK
+iterator exception bypassed post-loop accounting. The reproduced regression now
+passes: terminal usage is persisted before the next iteration, while errors and
+the exhausted-budget stop remain. This correction makes no model calls.
+The per-call SDK guard is not a hard billing cap; the terminating call can exceed
+its remainder. Two historical attempts still have no terminal usage.
+Artifacts are under
+`verification/contextbench-multiswe-pony-solver-three-arm-20261017/`.
+Use the retained required/preservation failures and source redundancy to improve
+selection before another paid comparison. Independent quality, broader native
+coverage and full-500 gates remain open; the sealed 32 is unchanged.
 
 ### October 16 online development result
 
