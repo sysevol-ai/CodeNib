@@ -36,6 +36,8 @@ from codenib.agent.tool_schema import tool_to_schema
 from codenib.agent.tools.defaults import get_default_tool_specs
 from scripts import benchmark_context_agent as native
 from scripts.benchmark_jev_base import digest, write_json
+from scripts.contextbench_file_map import DESCRIPTION as FILE_MAP_DESCRIPTION
+from scripts.contextbench_file_map import mapped_read
 from scripts.contextbench_graph_navigation import (
     GRAPH_QUERY_POLICIES,
     graph_options,
@@ -178,6 +180,7 @@ async def retrieve(
     graph_query_policy=GRAPH_QUERY_POLICIES[0],
     billing_route="subscription",
     grep_view=None,
+    file_map_tokens=0,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -185,6 +188,12 @@ async def retrieve(
         raise ValueError("Unknown billing route")
     if grep_view is not None and source_policy != "native":
         raise ValueError("Matched grep views require native read/source policy")
+    if not 0 <= file_map_tokens <= 4096:
+        raise ValueError("File-map token budget must be in [0, 4096]")
+    if file_map_tokens and (
+        source_policy != "native" or grep_view is not None or graph_tool is not None
+    ):
+        raise ValueError("File maps require unmodified native source tools")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -210,6 +219,13 @@ async def retrieve(
 
         if spec.tool_id == "grep" and grep_view is not None:
             execute = grep_view.wrap(execute)
+        if spec.tool_id == "read" and file_map_tokens:
+            execute = mapped_read(
+                execute,
+                repo=repo,
+                token_budget=file_map_tokens,
+                observed_messages=lambda: tuple(row["messages"]),
+            )
 
         def bind(function):
             async def handler(arguments):
@@ -227,6 +243,8 @@ async def retrieve(
         schema = tool_to_schema(spec)["function"]
         if spec.tool_id == "grep" and grep_view is not None:
             schema["description"] = grep_view.description + "\n" + schema["description"]
+        if spec.tool_id == "read" and file_map_tokens:
+            schema["description"] = FILE_MAP_DESCRIPTION + "\n" + schema["description"]
         sdk_tools.append(
             tool(spec.tool_id, schema["description"], schema["parameters"])(
                 bind(execute)
@@ -315,12 +333,17 @@ def run(args):
     case_timeout = getattr(args, "case_timeout", 900.0)
     billing_route = getattr(args, "billing_route", "subscription")
     grep_policy = getattr(args, "grep_view", "native")
+    file_map_tokens = getattr(args, "file_map_tokens", 0)
     grep_tokens = getattr(args, "grep_tokens", 4096)
     jev_cost_usd = getattr(args, "jev_cost_usd", 0.05)
     if billing_route not in {"subscription", "anthropic-api"}:
         raise ValueError("Unknown billing route")
     if grep_policy not in GREP_POLICIES:
         raise ValueError("Unknown grep view")
+    if not 0 <= file_map_tokens <= 4096:
+        raise ValueError("File-map token budget must be in [0, 4096]")
+    if file_map_tokens and (source_policy != "native" or grep_policy != "native"):
+        raise ValueError("File maps require unmodified native source tools")
     if grep_policy != "native" and source_policy != "native":
         raise ValueError("Matched grep views require native read/source policy")
     if (
@@ -345,6 +368,8 @@ def run(args):
     auth = subscription_auth(cli) if billing_route == "subscription" else api_auth(cli)
     manifest, cases = native.load_inputs(args.prepared)
     graph_records, graph_config = graph_options(args, cases)
+    if file_map_tokens and graph_config["enabled"]:
+        raise ValueError("File maps require unmodified native source tools")
     args.output.mkdir(parents=True, exist_ok=False)
     if grep_policy != "native":
         (args.output / "grep-receipts").mkdir()
@@ -367,6 +392,7 @@ def run(args):
                 "jev_cost_usd": jev_cost_usd,
             },
             "model_requested": args.model,
+            "file_map_tokens": file_map_tokens,
             "max_turns": args.max_turns,
             "source_policy": source_policy,
             "completion_tokens": completion_tokens,
@@ -471,6 +497,7 @@ def run(args):
                             case_meter_usd=min(case_meter_usd, max_meter_usd - metered),
                             billing_route=billing_route,
                             grep_view=grep_view,
+                            file_map_tokens=file_map_tokens,
                             graph_tool=graph_tool,
                             graph_query_policy=graph_config["policy"],
                         ),
@@ -577,6 +604,7 @@ def main():
         default="subscription",
     )
     parser.add_argument("--grep-view", choices=GREP_POLICIES, default="native")
+    parser.add_argument("--file-map-tokens", type=int, default=0)
     parser.add_argument("--grep-tokens", type=int, default=4096)
     parser.add_argument("--jev-cost-usd", type=float, default=0.05)
     parser.add_argument("--max-turns", type=int, default=20)
