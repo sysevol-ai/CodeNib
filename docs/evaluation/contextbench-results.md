@@ -442,6 +442,33 @@ record the protocols and failures. This follow-up makes zero model calls and
 adds $0 in API charges; the independent 32 remains sealed and the official 500
 has not started.
 
+## Sparse discovery feasibility without model calls
+
+The existing production BM25 indexer is also checked on all 24 disclosed
+development tasks. Before retrieval, all 352,494 bounded corpus nodes are
+verified against their pinned source. Each task uses its original issue, capped
+at the production 16,000-character limit, to rank 40 candidates including tests.
+The existing packer returns at most ten chunks and 2,048 tokens. Candidate pools
+and replies are frozen before reading annotations or native source sets.
+
+The following diagnostic unions those replies with source already observed by
+native. It measures static source selection, not a new agent trajectory or
+official score. The latest eight tasks overlap the 24.
+
+| Frozen native cohort | Recall, native → source union | F1, native → source union | Newly added annotated lines |
+| --- | ---: | ---: | ---: |
+| First-source 24 | 53.35% → 53.57% | 31.18% → 26.62% | 38 |
+| Latest follow-up eight | 77.90% → 77.90% | 33.67% → 29.51% | 0 |
+
+All 24 preparations succeed, but both declared opportunity gates fail. F1 falls
+in both cohorts; only C and C++ have novel annotated source among the first five
+results, below the three-language selective-discovery gate. This evidence does
+not justify automatic injection, another BM25 agent tool or a paid comparison.
+It does not rule out other queries or selection policies. The
+[development summary](../assets/contextbench_online_development_summary.json)
+retains per-task counts, protocols and source hashes. Model calls and new API
+charges are zero; earlier scores and the sealed independent sample are unchanged.
+
 ## Historical post-run 24-task results
 
 The sample contains three tasks per language, 24 repositories and eight languages,
@@ -995,7 +1022,7 @@ historical receipts and unconfirmed requests remain explicit; their billing may
 still be unknown. This completes the raw observation boundary, while mapping
 arbitrary shell output to source lines remains an open evaluation gate.
 
-The next adapter adds a controlled source command to the same native loop:
+The adapter supplies a controlled source command in the same native loop:
 `codenib-read PATH START END`, with 1-based inclusive lines, a 2 MiB text-file
 limit and at most 2,000 requested lines. Both arms receive the same command and
 instructions. Each read records the exact file version, pinned original blob,
@@ -1006,12 +1033,34 @@ source before inference. Use the reader as the entire bash action; compound
 invocations receive an explicit usage error. Edits and tests continue through
 the existing shell.
 
+The same boundary now supports `codenib-grep PATTERN PATH [LIMIT]`, using a
+Python regex and repository-relative file or directory. It searches tracked and
+non-ignored untracked text, including tests, with 100 matches by default and at
+most 200. Each file remains bounded at 2 MiB; the search scans at most 512 paths
+and returns at most 12,000 characters of complete match records. The output
+reports scan/output limits and skipped files. Narrow the path or use the reader
+when a limit is reached. Every JSON match carries its own file, line and text,
+so a truncated multi-file response cannot attribute identical text to another
+file. Each file's captured bytes supply both its source hash and matches.
+
 `model-observations.json` labels this source attribution **partial**. Ordinary
 shell output remains explicitly unattributed, and changed files retain their
 current-version observations without guessed original line numbers. These
 coverage records are not submitted to the official scorer as full trajectories.
 The added instruction changes the solver protocol and therefore requires fresh
 matched runs; earlier results remain frozen.
+
+A zero-model search verification in the pinned fmt source-only container passes
+with eight scripted replies. It captures 20 implementation matches and six test
+matches; a larger search returns 113 matches, of which 94 complete records
+survive native truncation. Twenty matches after an edit receive no original-file
+credit, as do ordinary grep, an unconfirmed input and the terminal diff. This
+checks instrumentation, not real model adoption or repair quality. The first
+scripted attempt had an invalid edit-command string and is retained as failed;
+the corrected fixture passes without changing the implementation. Both owned
+containers are removed. The [sanitized verification](../assets/contextbench_online_development_summary.json)
+records hashes, limits and outcomes. Relevant verification totals 104 unit and
+three pinned upstream integration passes, with no model calls or API charges.
 
 The initial [source-receipt verification](../assets/contextbench_solver_source_summary.json)
 makes no model calls. An audit of the existing fmt pair preserves all ten actual
