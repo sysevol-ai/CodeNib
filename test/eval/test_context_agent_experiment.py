@@ -234,8 +234,9 @@ def test_function_reads_reach_next_model_turn_and_official_trajectory(
     }
 
 
+@pytest.mark.parametrize("query_policy", agent.GRAPH_QUERY_POLICIES)
 def test_graph_source_reaches_model_and_delivery_without_crediting_declared_range(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, query_policy
 ):
     from codenib.agent.tools.spec import ToolSpec
 
@@ -270,10 +271,15 @@ def test_graph_source_reaches_model_and_delivery_without_crediting_declared_rang
         chat=chat(),
         max_turns=4,
         graph_tool=spec,
+        graph_query_policy=query_policy,
         source_policy="functions",
     )
     assert "graph_neighbors" in {item["function"]["name"] for item in sent[0]["tools"]}
-    assert "graph_neighbors" in sent[0]["messages"][0]["content"]
+    prompt = sent[0]["messages"][0]["content"]
+    assert "graph_neighbors" in prompt
+    early = query_policy == agent.GRAPH_QUERY_POLICIES[0]
+    assert (agent.GRAPH_INSTRUCTIONS in prompt) == early
+    assert (agent.LATE_GRAPH_INSTRUCTIONS in prompt) == (not early)
     assert observed in [
         m.get("content") for m in sent[1]["messages"] if m["role"] == "tool"
     ]
@@ -538,6 +544,42 @@ def test_completion_source_comparison_rejects_confounded_graph_change(paired_run
     config["graph"] = {"enabled": True}
     path.write_text(json.dumps(config))
     with pytest.raises(ValueError, match="completion_source_policy"):
+        agent.compare(paired_runs)
+
+
+def test_graph_timing_comparison_rejects_source_budget_and_tool_confounders(
+    paired_runs,
+):
+    for directory, policy in zip(
+        (paired_runs.baseline, paired_runs.candidate),
+        agent.GRAPH_QUERY_POLICIES,
+        strict=True,
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(source_policy="functions", tools=["read", "graph_neighbors"])
+        config["graph"] = {
+            "enabled": True,
+            "tokens": 2048,
+            "source_policy": "unseen",
+            "policy": policy,
+        }
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "late_graph_query_over_first_source"
+    )
+    path = paired_runs.candidate / "config.json"
+    for key, value in (("tokens", 4096), ("source_policy", "definitions")):
+        changed = copy.deepcopy(config)
+        changed["graph"][key] = value
+        path.write_text(json.dumps(changed))
+        with pytest.raises(ValueError, match="graph-source controls"):
+            agent.compare(paired_runs)
+    config["tools"].append("bash")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="differ in tools"):
         agent.compare(paired_runs)
 
 

@@ -35,7 +35,11 @@ from codenib.agent.tool_schema import tool_to_schema
 from codenib.agent.tools.defaults import get_default_tool_specs
 from scripts import benchmark_context_agent as native
 from scripts.benchmark_jev_base import digest, write_json
-from scripts.contextbench_graph_navigation import graph_options, load_navigation
+from scripts.contextbench_graph_navigation import (
+    GRAPH_QUERY_POLICIES,
+    graph_options,
+    load_navigation,
+)
 
 TOOLS = {f"mcp__source__{name}": name for name in ("read", "grep", "glob")}
 
@@ -136,6 +140,7 @@ async def retrieve(
     completion_source_policy="definitions",
     case_meter_usd=3.0,
     graph_tool=None,
+    graph_query_policy=GRAPH_QUERY_POLICIES[0],
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -189,7 +194,9 @@ async def retrieve(
         max_turns=max_turns,
         max_budget_usd=case_meter_usd,
         system_prompt=native.retrieval_system_prompt(
-            max_turns, graph_enabled=graph_tool is not None
+            max_turns,
+            graph_enabled=graph_tool is not None,
+            graph_query_policy=graph_query_policy,
         ),
         tools=[],
         allowed_tools=list(tool_map),
@@ -310,7 +317,9 @@ def run(args):
                 {
                     "role": "system",
                     "content": native.retrieval_system_prompt(
-                        args.max_turns, graph_enabled=graph_config["enabled"]
+                        args.max_turns,
+                        graph_enabled=graph_config["enabled"],
+                        graph_query_policy=graph_config["policy"],
                     ),
                 },
                 {"role": "user", "content": case.problem_statement},
@@ -363,6 +372,7 @@ def run(args):
                             completion_source_policy=completion_source_policy,
                             case_meter_usd=min(case_meter_usd, max_meter_usd - metered),
                             graph_tool=graph_tool,
+                            graph_query_policy=graph_config["policy"],
                         ),
                         timeout=case_timeout,
                     )
