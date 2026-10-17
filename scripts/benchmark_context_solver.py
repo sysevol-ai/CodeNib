@@ -188,19 +188,26 @@ class SubscriptionModel:
                     if "text" in block:
                         response.append(block["text"])
             if kind == "ResultMessage":
+                if terminal is not None:
+                    raise ValueError("Duplicate solver SDK terminal result")
                 terminal = data
+                meter = terminal.get("total_cost_usd")
+                if (
+                    not isinstance(meter, (int, float))
+                    or isinstance(meter, bool)
+                    or not math.isfinite(meter)
+                    or meter < 0
+                ):
+                    raise ValueError(
+                        "Missing or invalid solver SDK metering; stop inference"
+                    )
+                # The SDK can raise after yielding an error result. Persist its
+                # usage before advancing the stream, while preserving failure.
+                self.cost += meter
+                record["sdk_reported_cost_usd"] = meter
             self.checkpoint()
-        meter = terminal.get("total_cost_usd") if terminal else None
-        if (
-            not isinstance(meter, (int, float))
-            or isinstance(meter, bool)
-            or not math.isfinite(meter)
-            or meter < 0
-        ):
+        if terminal is None:
             raise ValueError("Missing or invalid solver SDK metering; stop inference")
-        self.cost += meter
-        record["sdk_reported_cost_usd"] = meter
-        self.checkpoint()
         if terminal["is_error"] or not response:
             raise RuntimeError(f"Solver model failed: {terminal['subtype']}")
         return "\n".join(response)
