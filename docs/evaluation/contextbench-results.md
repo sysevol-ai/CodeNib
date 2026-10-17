@@ -1,12 +1,18 @@
 # ContextBench retrieval experiments
 
-The latest hit-preserving nearby-source policy does **not** pass its frozen
+The unchanged first-read source-window policy fails its complete 24-task development
+stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95%
+Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected
+SDK sessions are retained for $9.86110630, with no repairs. Independent and official500
+gains remain unestablished.
+
+The grep-neighborhood policy does **not** pass its frozen
 independent Recall gate. Across 32 new tasks in seven languages, Recall improves
 65.52% → 68.93% while F1 falls 26.12% → 23.30%. The +3.42-point Recall interval
 is [-2.27, +10.08], which includes zero. All 64 SDK sessions complete for
 $12.63056860, with no repair calls. This is not an established leaderboard gain.
 
-The earlier eight-task development screen and unchanged-policy replication have
+The grep-neighborhood policy earlier passed its eight-task development screen and replication with
 Recall 35.24% → 38.91% and F1 31.26% → 28.20%. Preserve those positive screening
 points, but do not promote this unchanged policy into repairs, official500 or a
 product default. Both validation cohorts remain sealed against tuning.
@@ -37,6 +43,185 @@ CodeNib Base, not ContextBench, and neither establishes an online-agent gain.
 The online control below tests source ranking before delivery; graph expansion
 is not a prerequisite. Both grep/Jev controls fail their retrieval gates; positive
 fixed-pool rankings did not transfer to these adaptive source-delivery policies.
+
+## First-read same-file source: Recall-first development
+
+The new hypothesis changes actual source delivery after a file has been located.
+On a read with no prior observed successful read of that file, preserve the
+complete native reply and append up to 2,048 cl100k tokens of previously unread
+source from the same file. Physical windows contain at most 64 lines and 3,000
+characters, ordered by distance from the current read and then line number.
+Keep at most 200 candidates and ten used windows; skip files above 2 MiB and
+explicitly report overlong lines. The candidate's total read-reply character
+ceiling is **32,000**, versus native 16,000. This larger delivery allowance and
+its downstream token costs are part of the treatment.
+
+This source-checkout feature is default-off (`--file-source-tokens 2048`). It
+adds no BM25, graph, AST expansion, file map, planner or runtime ranker. Existing
+read/grep/glob, system prompt, actual model, turns, output-token allowance,
+timeout and dollar guards stay matched. Concurrent reads may repeat source
+until replies enter observations; their exact originals, source hashes and
+returned additions all have receipts. Only complete source delivered before a
+later assistant response receives coverage. Scoring projections recompute
+trajectory and served payloads without changing raw attempts.
+
+Before implementation, a zero-new-API replay freezes source choices on the
+historical eight native trajectories. Calls and real prior observations stay
+fixed, so these figures describe source opportunity rather than new agent
+behavior:
+
+| Fixed historical calls, eight development tasks | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| Original native trajectory | 43.29% | 38.51% | 37.08% |
+| Nearby unread windows, bounded 2K addition | 56.16% | 27.72% | 34.96% |
+| Same windows and budget, new Jev ordering | 56.83% | 27.59% | 34.92% |
+
+Jev-only ranking costs **$0.02435412** for 71 decisions, with known usage for
+every request. Its +0.66-point Recall change over nearby order has exploratory
+95% interval [-2.05, +3.35] points and fails the frozen practical screen of at
+least one point. Do not add a runtime ranker from this result. The complete
+capped window pool can address 73.50% Recall, but that unbounded union is neither
+budget-achievable delivery nor an agent score.
+
+A wider, separately frozen replay retains all 24 earlier native development
+trajectories. Nearby windows increase fixed-history Recall **53.35% → 62.32%**,
+while F1 falls **31.18% → 27.59%**, with additions in all 24 tasks and no new
+model calls. It passes its source-opportunity screen of five Recall points and
+18 eligible tasks. These opportunities do not replace actual online comparisons.
+Historical reports lack normalized annotation metadata; the evaluation-only
+bridge uses the pinned official `Gold.line_spans_init()`, preserves original
+counts and the failed bridge logs, and changes no source selection or gate.
+The runtime matches all 46 eight-task historical read renderings exactly and
+passes 102 focused retrieval tests and pinned hooks.
+
+Earlier cheap ranking probes on the historical **read-hint** trajectories use a
+different baseline and candidate pool. Preserving grep hits and appending bounded
+source gives 42.09% Recall without ranking versus 42.18% with cached Jev scores,
+a +0.09-point weak point screen. It technically passes that frozen point screen,
+but is too small to justify buying main-agent sessions. Scoring only unread
+fragments gives 42.33% with edit relevance or 41.95% with marginal-information
+criteria. The selected mode adds only +0.24 points over unranked source, below
+the separately frozen one-point practical screen. Those 102 new decisions cost
+**$0.020709528**, with no main-agent or repair sessions. Cached scores add no new
+charges; all variants, intervals, gates and costs remain in the sanitized export.
+Native grep output caps occur in only one of 41 historical calls, so the separate
+cap diagnostic does not justify another search-policy implementation.
+
+Both independent32 cohorts stay sealed. Development uses the original 105
+exposed tasks only. A metadata-only inventory finds 636 extra default-config
+ContextBench rows outside verified500 by ID, original ID and repository/commit.
+A documentation viewer unexpectedly rendered reference previews for ten task
+IDs; all are quarantined from future unseen validation. This initially leaves **630**
+additional default-config candidates and **329** remaining verified candidates.
+A broader source-identity audit also covers the complete 100-task CodeNib Base
+test split used by Jev research/product controls. It excludes previously seen
+base commits across repository aliases, leaving **623** additional default
+candidates and **324** verified candidates. The raw full Parquet matches the
+pinned dataset revision and SHA-256; schema checks on only the ten quarantined
+examples pass the existing loader. No new candidate annotations are read.
+The extra population includes C++ and Java, but is not verified500 and still
+needs a broader exposure audit, annotation-format/source readiness and a new
+sampling protocol. No historical completed cohort or outcome is retroactively
+changed. Future documentation checks use raw README/schema metadata to avoid
+additional preview exposure.
+
+
+The separately frozen online pilot uses the first four metadata positions of the
+original eight-task development cohort: Python, TypeScript, C and C++. Every
+selected task remains; no paid attempt is retried or replaced. Both arms use
+actual Opus 5.5, medium effort, configured `max_turns=20`, 600 seconds, 4,096 maximum output tokens
+and $0.75 SDK guards under a $5 paired reservation. Runtime is `4a6992cb`;
+protocol is `90acdd335dc7215c8909f029a5a5fe7f24cf4f1a05e779c864191c5a431e5b99`.
+
+| Actual agent, all four selected tasks | Recall | Precision | F1 | API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 42.87% | 36.97% | 38.64% | $0.771637 |
+| First-read source windows | 49.31% | 29.01% | 35.47% | $0.871572 |
+
+First-read same-file source windows pass the four-task pure-context development screen: Recall 42.87% → 49.31%, F1 38.64% → 35.47%. API SDK usage is $1.64320910, with no repairs. The exploratory Recall interval is [-0.73, +13.61] points; this is not independent or leaderboard evidence. Both prior validation cohorts stay sealed.
+All eight sessions are normal, known-usage completions, with exact original-read,
+source-version, model/route and confirmed-delivery receipts. All four tasks
+receive additional source. Secondary final16K/32K metrics remain in the export.
+
+The unchanged-policy replication on the remaining four metadata positions (Go, Java, JavaScript, Rust) passes its frozen development gate. Recall 38.71% → 54.57%, F1 29.14% → 27.68%; Recall difference +15.85 points, exploratory 95 interval [+4.29, +27.42]. All selected outcomes and failures remain. API SDK usage $2.16424280; no repairs.
+
+First-read same-file source windows pass both four-task pure-context development screens. Across all eight tasks, Recall 40.79% → 51.94%, F1 33.89% → 31.57%. The exploratory repository-cluster 95% Recall interval is [+3.61, +19.32] points. The 16 SDK sessions cost $3.80745190, with no repairs. This is development evidence; both prior independent cohorts remain sealed.
+
+The wider continuation retains every one of the original24 development tasks
+absent from the original eight; there are 16 fixed positions and 32 SDK sessions,
+under a $12 reservation. Source policy, runtime 4a6992, model and per-case budgets
+stay unchanged; at most four sessions run concurrently. Every failure remains.
+Its protocol is `6a71770c44645adb172fff2d437dcd53db146c7a5bb4efb0367667a691fda8c7`.
+
+The unchanged first-read source-window policy fails its complete 24-task development stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95% Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected SDK sessions are retained for $9.86110630, with no repairs. Independent and official500 gains remain unestablished.
+
+| Actual agent, all 24 development tasks | Recall | Precision | F1 | API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 58.39% | 29.90% | 31.97% | $4.431075 |
+| First-read source windows | 63.91% | 22.07% | 27.94% | $5.430032 |
+
+All 48 sessions finish normally, with known usage and valid official scores for
+all 24 tasks in each arm; no trailing source is excluded. SDK 0.2.165 and CLI 2.1.301
+match across all 48 configurations. The SDK-reported turn totals are retained
+separately and are not inferred HTTP request counts. All three staged positive
+Recall point screens pass, but the frozen complete 24 Recall stability gate fails.
+Do not launch another independent cohort from this unchanged policy. F1 is
+reported without a veto; the failed gate is Recall uncertainty. Both old 32 cohorts
+stay sealed. No repair/native-harness or official500 batch follows this result.
+
+A zero-call descriptive projection strips only captured source additions from the
+candidate replies, keeping its adaptive calls fixed. Recall is 58.39% for native,
+53.27% for those unaugmented candidate calls and 63.91% for the actual candidate.
+The exact source decomposition is +10.64 points of mechanical added coverage and
+-5.12 points of unaugmented-call difference, with 15 wins/four ties/five losses.
+The latter mixes model randomness and policy-associated behavior; it is not a
+causal estimate. Every source choice is frozen before annotation counts. No
+actual alternate unaugmented agent was run. A new zero-API hypothesis tests one
+bounded late source envelope after a preserved native investigation, before any
+paid continuation. Its opportunity must not be labeled real model delivery.
+
+The separately frozen late-envelope source replay retains the actual native
+investigation and appends one 2K source packet total, rather than 2K per early
+read. It uses unread physical windows in already located files, with final-handoff
+file mentions and round-robin ordering fixed before annotation counts. Recall
+opportunity is 58.39% → 62.19%, F1 31.97% → 29.17%; the unbounded capped pool
+addresses 82.75% Recall. All 24 cases and the source-opportunity gate pass for zero
+new model calls. No extra packet has reached a new main model. A separate
+Jev-only ranking probe must beat the same-pool near order by one Recall point
+before a separately frozen actual-input study; prior first-read gates stay failed.
+
+The completed late-source Jev-only probe retains all 24 tasks and 558 decisions
+for **$0.271715010**, with known usage and exact source/model
+receipts. Near-order Recall/F1 is 62.19%/29.17%; edit-relevance ranking is 62.97%/30.17%,
+and missing-evidence ranking is 61.48%/29.04%. The selected edit criterion adds only
++0.78 Recall points over near, exploratory 95% interval [-1.80, +3.33].
+It fails the predeclared one-point screen. Do not buy a main-model ranking pilot
+or change the failed gate. This adds no real main-agent source delivery.
+
+A separate zero-call source-envelope control compares touched-callable source
+with physical windows at matched 2K and 4K budgets, keeping the completed native
+prefix fixed. The callable helper is parser-derived, not a compiler call graph;
+only actual previously unseen lines are packed. A final callable may be partial.
+
+| Hypothetical late source, all 24 cases | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| Original native prefix | 58.39% | 29.90% | 31.97% |
+| Physical 2K | 62.19% | 23.94% | 29.17% |
+| Callable 2K | 61.97% | 26.80% | 31.39% |
+| Physical 4K | 65.23% | 19.90% | 26.23% |
+| Callable 4K | 63.34% | 25.17% | 30.51% |
+
+The 4K physical source opportunity passes its separately frozen five-point
+coverage/eight-positive-task gate. Callable 4K fails its structural gate: it
+does not beat matched physical 4K by one Recall point and its native-relative
+change is under five points. Preserve both decisions and the earlier failed
+Jev gate; the selected physical 4K delivery hypothesis uses no ranker. The zero-call
+preflight fixes only a tuple/list comparison, with original logs retained.
+Prepared paired 32K packets share an actual historical native prefix, but have
+not been consumed by a new main model. A possible four-task mechanism study
+reserves $3 and first requires verified version-bound actual-input receipts and
+confirmed assistant responses. This is source-delivery feasibility, not fresh
+adaptive-agent, repair, independent or leaderboard evidence.
 
 ## Fresh independent32: seven-language retrieval-only validation
 
@@ -108,8 +293,9 @@ predictions use only confirmed exact source. Original SDK attempts and the pre-s
 correction remain immutable. Final served16K/32K and equal-language macros remain
 secondary in the sanitized export and never replace the primary.
 
-This new32 is now sealed against policy tuning, alongside the old32. The remaining
-untouched pool has 331 tasks and no C++ or Java cases; any later validation must
+This new32 is now sealed against policy tuning, alongside the old32. At that sealing point, the remaining
+untouched pool had 331 tasks and no C++ or Java cases; subsequent preview quarantine
+leaves 329 as detailed above. Any later validation must
 explicitly revise coverage rather than recycle these tasks. The [official submission
 guide](https://github.com/ContextBench/contextbench.github.io/blob/main/submissions/README.md)
 requires real issue-resolution outcomes in addition to retrieval metrics; this
@@ -1106,8 +1292,8 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The current Claude SDK/Jev experiment ledger, through the completed eight-task
-nearby-source retrieval development comparison and independent32, has the
+The current Claude SDK/Jev experiment ledger, through the completed first-read source-window
+development comparisons, the new early/late Jev probes and independent32, has the
 following known usage values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
 costs remain separate. Actual account charges and credit deductions have not
@@ -1115,25 +1301,28 @@ been reconciled.
 
 | Route | Known usage value | Billing interpretation |
 | --- | ---: | --- |
-| Direct Anthropic main-model SDK | $28.36277826 | API estimate; promotional-credit deduction unverified |
-| Separate Jev decisions | $0.053198712 | Metered API receipts |
-| **Combined API usage** | **$28.415976972** | **Usage value, not confirmed cash spending** |
+| Direct Anthropic main-model SDK | $38.22388456 | API estimate; promotional-credit deduction unverified |
+| Separate Jev decisions | $0.369977370 | Metered API receipts |
+| **Combined API usage** | **$38.593861930** | **Usage value, not confirmed cash spending** |
 | Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
 
-Main-model SDK estimates across both routes sum to $140.86463386; that mixed-route
+Main-model SDK estimates across both routes sum to $150.72574016; that mixed-route
 sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
 rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
-fixed-pool Jev controls, there are **281 Jev requests** for **$0.053198712**.
-Known API usage value totals **$28.415976972**, including the Haiku repairs
+fixed-pool Jev controls, there are **1012 Jev requests** for **$0.369977370**.
+Known API usage value totals **$38.593861930**, including the Haiku repairs
 and eight subsequent file-map sessions ($1.496507) plus eight nearby-source
 sessions ($1.76050270), plus eight remaining-four replication sessions
 ($1.88522710). The independent32 adds 64 SDK sessions for
-$12.63056860. All nearby-source inference and scoring are terminal.
-The 136 retrieval sessions and 55 repair SDK queries are distinct from
+$12.63056860. All nearby-source inference and scoring are terminal. The three new Jev probes add 731 requests for
+$0.316778658; all cached replays make no new model calls. First-read source-window
+online comparisons add 48 retrieval SDK sessions for
+$9.86110630, with no new repairs.
+The 184 retrieval sessions and 55 repair SDK queries are distinct from
 individual underlying API request counts. The latest read-hint retrieval control costs
 **$4.848424762** against its $10 reservation; its four Max repairs add
 **$6.03557620**. No completed-batch usage is missing beyond the two historical
