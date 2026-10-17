@@ -116,7 +116,7 @@
       "actual_bill_usd": null
     }
   },
-  "conclusion": "Initial native/functions trial shows no demonstrated gain. Targeted-hop graph trial passes the declared development selection gate, with both paired intervals crossing zero. Three-arm independent 32-task validation is pending; no product or leaderboard claim.",
+  "conclusion": "Initial native/functions trial shows no demonstrated gain. Targeted-hop graph trial passes the declared development selection gate, with both paired intervals crossing zero. The subsequent frozen independent 32-task validation rejects the candidate; see contextbench_independent_summary.json. No product or leaderboard claim.",
   "cost_scope": "SDK metering estimates are not paid receipts. Actual account billing is unknown. No separate API-key inference in these arms.",
   "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle.",
   "implementation_commit": "a853d8d1",

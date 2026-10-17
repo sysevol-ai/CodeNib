@@ -1,12 +1,69 @@
 # ContextBench retrieval experiments
 
-The October 11 experiments are complete. The useful improvement was **reading missing
-source**, especially complete functions, after a strong model's iterative search.
-Decision reranking helped under the earlier 4K delivery constraint but contributed
-almost nothing once most observed source fit in 16K/32K. These are development
-results, not a leaderboard submission or a SOTA claim.
-The October 16 online control has not confirmed that offline gain: its eight-task
-Recall changes by +0.53 percentage points while F1 falls by 1.76 points.
+The October 16 independent validation **rejects the current online candidate**.
+Function completion plus directed graph navigation does not improve Recall over
+native source tools and reduces F1. All 32 selected tasks remain in the scores.
+This policy will not advance to the official 500-task run or a product default.
+
+Earlier development experiments found useful missing source by completing
+functions after search. That offline gain has not transferred to the tested
+online agent. These are retrieval experiments, not a leaderboard submission.
+
+## Independent 32-task validation
+
+The frozen selection contains four tasks per language and 22 repositories,
+excluding all 105 earlier development IDs. It is independent by task, not by
+repository, and is not a population-weighted estimate of the verified 500. Its
+source mix is 23 Multi, five Poly, three Pro and one SWE-bench Verified task.
+
+All three arms use actual Opus 5.5, SDK 0.2.165 / CLI 2.1.301, the same source
+snapshots, 20-turn limit, 600-second timeout, $3/case and $20/arm SDK-meter guards.
+The policy is frozen at `3f04993f`; runtime `4152c23d` fixes preparation-failure
+accounting before any held-out inference without changing the model-facing policy.
+Each arm has 31 completed and officially scored tasks, with one Git submodule
+preparation failure retained as zero. No selected task is substituted or dropped.
+
+| Cumulative observed trajectory, all 32 tasks | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 69.64% | 29.01% | 29.01% | $6.740282 |
+| Online function completion | 68.56% | 24.50% | 28.22% | $8.055923 |
+| Function completion + targeted graph tool | 68.76% | 23.58% | 26.16% | $8.876974 |
+
+Scores are macro means of per-task line metrics, including per-task F1 and the
+failed preparation's zero. The prespecified primary contrast is the complete
+graph-enabled route against native tools; it changes both completion and graph
+navigation. Its Recall difference is **-0.88 percentage points**, paired 95%
+bootstrap interval **[-5.73, +3.59]**. F1 changes **-2.84 points**, interval
+**[-4.78, -1.02]**. The frozen gate requires a positive lower Recall interval and
+non-decreasing F1, so it fails. Intervals use 10,000 paired task resamples with
+seed `20261016`.
+
+The exploratory ablations also fail to establish an improvement. Completion
+alone changes Recall by -1.08 points, interval [-5.78, +2.79], and F1 by -0.79,
+interval [-2.17, +0.69]. Adding graph navigation to completion changes Recall by
++0.19 points, interval [-1.41, +1.62], and F1 by -2.05, interval [-3.81, -0.48].
+These secondary intervals have no multiple-comparison adjustment.
+
+Eleven tasks have available graphs. The candidate calls the graph tool on all
+31 prepared tasks, including all eleven with graphs: 35 calls yield source on
+six tasks, with 14 returned source records. Four calls receive invalid-argument
+errors; other responses include unavailable graphs and definitions that cannot
+fit the response budget. All observations and failures remain in the result.
+
+The only Verified task in the selection, `scikit-learn__scikit-learn-13142`, also
+receives a matched downstream solver check. With one attempt per arm, native and
+graph-enabled contexts each resolve **1/1 task**, passing two required regression
+tests and 54 preservation tests. This establishes no comparative or population
+Pass@1 gain. Both arms and graders use the same pinned image with the selected
+clean source tree; a no-network derived image restores file modes changed in the
+official parent. The reference-patch check passes separately and is excluded
+from agent scores. Reference patches and test feedback never enter either solver.
+
+The [per-task CSV](../assets/contextbench_independent_32.csv) and
+[frozen protocol, intervals and solver receipts](../assets/contextbench_independent_summary.json)
+retain the negative result. Return to the development cohort for diagnosis;
+any revised candidate needs a new validation protocol and independent task IDs.
+These 32 tasks must not become a tuning set or a source of best-of retries.
 
 ## Matched 24-task results
 
@@ -90,6 +147,15 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
+The October 16 development and independent-validation program uses the existing
+Claude Max route with **zero standalone API-key inference calls**. Independent
+retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
+$0.828001. Known program metering totals **$41.623502**, excluding one aborted
+development solver request with no usage returned. These are not account bills;
+actual subscription billing and any account-level extra usage are unknown.
+The authorized ceiling for new API spending remains **$100**. No automatic API
+fallback is enabled, and the failed quality gate does not authorize a 500-task run.
+
 ## Online function-completion controls
 
 The source-checkout runners now accept `--source-policy native|functions`.
@@ -121,7 +187,7 @@ pooled-count micro aggregates; those use a different weighting.
 
 The paired 95% bootstrap interval for the Recall change is [-2.03, +3.36]
 percentage points; for F1 it is [-4.94, +1.04]. Neither establishes an improvement.
-The independent 32-task selection is reserved for the frozen policy selected by
+The independent 32-task results above evaluate the frozen policy selected by
 the later directed-graph development trial below.
 These SDK estimates are not paid receipts, and this eight-task population is not
 directly comparable with the historical 24-task table or the full leaderboard.
@@ -211,9 +277,9 @@ and non-decreasing F1. The intervals still do not establish a reliable gain.
 
 The policy at `3f04993f` is frozen for independent 32-task validation with native,
 functions and functions-plus-graph arms. Eleven cases have available graphs;
-inference is running and scoring is pending. The primary contrast is the complete
-graph-enabled route
-against native source tools, with the other two contrasts as explanatory ablations.
+all three arms have completed and scored. The primary contrast is the complete
+graph-enabled route against native source tools, with the other two contrasts as
+explanatory ablations. The independent quality gate fails, as reported above.
 The 32 tasks remain excluded from tuning. Neither graph development trial is
 directly comparable with the earlier native/functions implementation freeze.
 Preflight retains 31 ready snapshots and one failed Git submodule preparation.
@@ -336,7 +402,7 @@ logged-in Claude Code CLI; the smoke used CLI 2.1.296. Model calls require an
 explicit `--live` flag. `benchmark_context_claude.py --help` describes the alternate
 subscription runner; it uses a different agent loop and is not a transport-only
 ablation. Reproduction runs use the current implementation and live model endpoint,
-so they need not reproduce the historical scores exactly. A frozen independent
-32-task selection excludes all 105 earlier
-development IDs, but remains unrun. Future leaderboard claims require renewed
-evaluation, matched failure accounting and actual solver outcomes for Pass@1.
+so they need not reproduce the historical scores exactly. The completed independent
+32-task selection excludes all 105 earlier development IDs and rejects the tested
+candidate. Future leaderboard claims require a new independently validated policy,
+matched failure accounting and actual solver outcomes for Pass@1.
