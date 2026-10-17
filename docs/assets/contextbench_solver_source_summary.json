@@ -1,50 +1,94 @@
 {
   "date": "2026-10-17",
-  "scope": "No-inference source-receipt verification; scripted inputs are not real model calls or repair scores.",
-  "protocol_sha256": "4c519cd6a84dd00b995379e5ef4555d4f53ce021840bf5b064a52f4c2e194853",
-  "historical": {
-    "native": {
-      "confirmed_model_inputs": 5,
-      "initial_base_source_lines": 411,
-      "files": 8,
-      "missing_execution_receipt_indexes": [
-        3,
-        5,
-        7,
-        9
-      ],
-      "new_shell_source_line_credit": 0,
-      "original_artifacts_unchanged": true
+  "scope": "Source-receipt checks only. Scripted verification and the repeated real development adoption probe are separate; neither is independent quality evidence.",
+  "offline_verification": {
+    "protocol_sha256": "4c519cd6a84dd00b995379e5ef4555d4f53ce021840bf5b064a52f4c2e194853",
+    "historical": {
+      "native": {
+        "confirmed_model_inputs": 5,
+        "initial_base_source_lines": 411,
+        "files": 8,
+        "missing_execution_receipt_indexes": [
+          3,
+          5,
+          7,
+          9
+        ],
+        "new_shell_source_line_credit": 0,
+        "original_artifacts_unchanged": true
+      },
+      "functions_graph": {
+        "confirmed_model_inputs": 5,
+        "initial_base_source_lines": 375,
+        "files": 6,
+        "missing_execution_receipt_indexes": [
+          3,
+          5,
+          7,
+          9
+        ],
+        "new_shell_source_line_credit": 0,
+        "original_artifacts_unchanged": true
+      }
     },
-    "functions_graph": {
-      "confirmed_model_inputs": 5,
-      "initial_base_source_lines": 375,
-      "files": 6,
-      "missing_execution_receipt_indexes": [
-        3,
-        5,
-        7,
-        9
-      ],
-      "new_shell_source_line_credit": 0,
-      "original_artifacts_unchanged": true
-    }
+    "model_calls": 0,
+    "new_api_charges_usd": 0,
+    "scripted_native_container": {
+      "simulated_model_calls": 5,
+      "source_read_events": 3,
+      "original_read_complete_lines": 36,
+      "large_read_complete_visible_lines": 217,
+      "large_read_line_count": 627,
+      "base_source_line_count": 253,
+      "changed_file_visible_lines": 4,
+      "changed_file_base_line_credit": 0,
+      "submission_received_by_model": false,
+      "python": "Python 3.11.2"
+    },
+    "all_frozen_runtime_and_input_hashes_match": true,
+    "all_owned_containers_removed": true,
+    "passed": true
   },
-  "model_calls": 0,
-  "new_api_charges_usd": 0,
-  "scripted_native_container": {
-    "simulated_model_calls": 5,
-    "source_read_events": 3,
-    "original_read_complete_lines": 36,
-    "large_read_complete_visible_lines": 217,
-    "large_read_line_count": 627,
-    "base_source_line_count": 253,
-    "changed_file_visible_lines": 4,
-    "changed_file_base_line_credit": 0,
-    "submission_received_by_model": false,
-    "python": "Python 3.11.2"
+  "real_reader_adoption": {
+    "protocol_sha256": "18a526e32ca402b62bc00c169b262945df64ce717bdcc02404e38a779741ab87",
+    "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+    "scope": "One disclosed C++ development mechanism check for the new common controlled-reader protocol. No new retrieval, graph candidate, paired quality claim, independent validation or official score.",
+    "model_calls": 5,
+    "actual_models": [
+      "claude-opus-5-5"
+    ],
+    "source_read_events": 0,
+    "confirmed_original_source_reads": 0,
+    "controlled_reader_adopted": false,
+    "base_source_line_count": 411,
+    "partial_source_coverage": true,
+    "missing_execution_receipt_indexes": [],
+    "unattributed_delivered_shell_events": 4,
+    "sdk_estimate_usd": 0.6959919,
+    "new_api_charges_usd": 0,
+    "all_input_receipts_confirmed": true,
+    "all_frozen_runtime_and_input_hashes_match": true,
+    "solver_container_removed": true,
+    "native_grading": {
+      "status": "graded",
+      "resolved": true,
+      "error": null,
+      "container_removed": true,
+      "process_exit_code": 0
+    },
+    "max_sdk_meter_usd": 2,
+    "native_tests_passed": 18,
+    "attempted_compound_reader_commands": 1,
+    "adoption_failure": "The compound invocation reached the shell, returned command-not-found, and prompted a sed fallback.",
+    "feedback_fix_commit": "7d8b5554",
+    "old_behavior_regression_reproduced": true,
+    "feedback_fix_real_adoption": "unvalidated",
+    "retry_model_calls": 0
   },
-  "all_frozen_runtime_and_input_hashes_match": true,
-  "all_owned_containers_removed": true,
-  "passed": true
+  "new_model_calls": 5,
+  "sdk_estimate_usd": 0.6959919,
+  "sdk_meter_is_actual_billing": false,
+  "new_api_key_charges_usd": 0,
+  "known_program_sdk_estimate_usd": 72.65682420000002,
+  "historical_unmetered_attempts": 2
 }
