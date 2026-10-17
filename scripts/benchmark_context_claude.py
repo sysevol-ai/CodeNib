@@ -2,10 +2,11 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run the ContextBench source agent through an existing Claude subscription.
+"""Run the ContextBench source agent through an explicitly selected Claude route.
 
 Source-checkout experiment; use the official Agent SDK and logged-in CLI, with
-CodeNib source tools and optional graph navigation. No API-key fallback.
+CodeNib source tools and optional graph navigation. Subscription is the default;
+direct Anthropic API use requires an explicit route. There is no fallback.
 SDK cost estimates are retained separately from actual billing, which is unknown.
 """
 
@@ -40,6 +41,7 @@ from scripts.contextbench_graph_navigation import (
     graph_options,
     load_navigation,
 )
+from scripts.contextbench_grep_rerank import GREP_VIEW_DESCRIPTION, GrepSourceView
 
 TOOLS = {f"mcp__source__{name}": name for name in ("read", "grep", "glob")}
 
@@ -73,6 +75,39 @@ def subscription_auth(cli):
         key: status.get(key)
         for key in ("loggedIn", "authMethod", "apiProvider", "subscriptionType")
     }
+
+
+def api_auth(cli):
+    """Verify the requested first-party API route without saving identity."""
+    if not os.environ.get("ANTHROPIC_API_KEY") or any(
+        os.environ.get(name)
+        for name in (
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_BASE_URL",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+            "CLAUDE_CODE_USE_FOUNDRY",
+        )
+    ):
+        raise ValueError("Direct API experiments require only ANTHROPIC_API_KEY")
+    result = subprocess.run(
+        [cli, "auth", "status", "--json"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    status = json.loads(result.stdout)
+    expected = {
+        "loggedIn": True,
+        "authMethod": "api_key",
+        "apiProvider": "firstParty",
+        "apiKeySource": "ANTHROPIC_API_KEY",
+    }
+    if any(status.get(key) != value for key, value in expected.items()):
+        raise ValueError("CLI did not confirm the requested Anthropic API route")
+    return expected
 
 
 def normalize_event(kind, event, tool_map=None):
@@ -141,9 +176,15 @@ async def retrieve(
     case_meter_usd=3.0,
     graph_tool=None,
     graph_query_policy=GRAPH_QUERY_POLICIES[0],
+    billing_route="subscription",
+    grep_view=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
+    if billing_route not in {"subscription", "anthropic-api"}:
+        raise ValueError("Unknown billing route")
+    if grep_view is not None and source_policy != "native":
+        raise ValueError("Matched grep views require native read/source policy")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -167,6 +208,9 @@ async def retrieve(
                 ),
             )
 
+        if spec.tool_id == "grep" and grep_view is not None:
+            execute = grep_view.wrap(execute)
+
         def bind(function):
             async def handler(arguments):
                 try:
@@ -181,6 +225,8 @@ async def retrieve(
             return handler
 
         schema = tool_to_schema(spec)["function"]
+        if spec.tool_id == "grep" and grep_view is not None:
+            schema["description"] = GREP_VIEW_DESCRIPTION + "\n" + schema["description"]
         sdk_tools.append(
             tool(spec.tool_id, schema["description"], schema["parameters"])(
                 bind(execute)
@@ -214,6 +260,11 @@ async def retrieve(
         data = dataclasses.asdict(message)
         row["sdk_events"].append({"kind": kind, "data": data})
         if kind == "SystemMessage" and data.get("subtype") == "init":
+            if (
+                billing_route == "anthropic-api"
+                and data["data"].get("apiKeySource") != "ANTHROPIC_API_KEY"
+            ):
+                raise ValueError("SDK did not confirm the requested API-key route")
             advertised = set(data["data"].get("tools", []))
             if advertised != set(tool_map):
                 raise ValueError(f"SDK tool isolation differs: {sorted(advertised)}")
@@ -231,6 +282,8 @@ async def retrieve(
             # budget errors. Retain usage before advancing while keeping errors.
             row["sdk_reported_cost_usd"] = data.get("total_cost_usd")
         checkpoint()
+        if grep_view is not None and grep_view.ledger["failed"]:
+            raise RuntimeError("Grep selection failed; stop this SDK stream")
     if "sdk_result" not in row:
         raise RuntimeError("SDK stream ended without a terminal result")
     result = row["sdk_result"]
@@ -248,7 +301,7 @@ async def retrieve(
 
 def run(args):
     if not args.live:
-        raise ValueError("Claude subscription inference requires --live")
+        raise ValueError("Claude inference requires --live")
     cli = shutil.which("claude")
     if not cli:
         raise ValueError("Claude Code CLI is not installed")
@@ -260,6 +313,24 @@ def run(args):
     max_meter_usd = getattr(args, "max_meter_usd", 100.0)
     case_meter_usd = getattr(args, "case_meter_usd", 3.0)
     case_timeout = getattr(args, "case_timeout", 900.0)
+    billing_route = getattr(args, "billing_route", "subscription")
+    grep_policy = getattr(args, "grep_view", "native")
+    grep_tokens = getattr(args, "grep_tokens", 4096)
+    jev_cost_usd = getattr(args, "jev_cost_usd", 0.05)
+    if billing_route not in {"subscription", "anthropic-api"}:
+        raise ValueError("Unknown billing route")
+    if grep_policy not in {"native", "chunks", "jev"}:
+        raise ValueError("Unknown grep view")
+    if grep_policy != "native" and source_policy != "native":
+        raise ValueError("Matched grep views require native read/source policy")
+    if (
+        not 256 <= grep_tokens <= 8192
+        or not math.isfinite(jev_cost_usd)
+        or jev_cost_usd <= 0
+    ):
+        raise ValueError("Invalid grep budget")
+    if grep_policy == "jev" and not os.environ.get("OPENROUTER_API_KEY"):
+        raise ValueError("Jev experiments require OPENROUTER_API_KEY")
     if (
         source_policy not in {"native", "functions"}
         or not 1 <= completion_tokens <= 8192
@@ -271,10 +342,12 @@ def run(args):
         for v in (max_meter_usd, case_meter_usd, case_timeout)
     ):
         raise ValueError("SDK meter and timeout limits must be finite and positive")
-    auth = subscription_auth(cli)
+    auth = subscription_auth(cli) if billing_route == "subscription" else api_auth(cli)
     manifest, cases = native.load_inputs(args.prepared)
     graph_records, graph_config = graph_options(args, cases)
     args.output.mkdir(parents=True, exist_ok=False)
+    if grep_policy != "native":
+        (args.output / "grep-receipts").mkdir()
     write_json(
         args.output / "config.json",
         {
@@ -287,6 +360,12 @@ def run(args):
                 [cli, "--version"], text=True
             ).strip(),
             "auth": auth,
+            "billing_route": billing_route,
+            "grep_view": {
+                "policy": grep_policy,
+                "tokens": grep_tokens,
+                "jev_cost_usd": jev_cost_usd,
+            },
             "model_requested": args.model,
             "max_turns": args.max_turns,
             "source_policy": source_policy,
@@ -299,10 +378,10 @@ def run(args):
             "tools": list(TOOLS)
             + (["mcp__source__graph_neighbors"] if graph_config["enabled"] else []),
             "scope": (
-                "Subscription-backed SDK harness using only CodeNib source tools. "
+                "Explicitly routed SDK harness using only CodeNib source tools. "
                 "Runtime differs from native AgentRunner; report actual returned model "
-                "and SDK metering separately from unknown actual billing. No API-key or"
-                " OpenRouter fallback, no solver."
+                "and SDK metering separately from account billing/credit. No route "
+                "fallback, no solver. Optional Jev API usage is separately recorded."
             ),
         },
     )
@@ -330,6 +409,7 @@ def run(args):
         }
         started = time.perf_counter()
         repo = None
+        grep_view = None
         source = json.loads(Path(entry["source"]).read_text())
         if source.get("status") == "error":
             # This known preparation failure made no model request. Retain its
@@ -346,6 +426,20 @@ def run(args):
                 row["snapshot_before"] = native.audit_contextbench_snapshot(
                     repo, case.base_commit
                 )
+                if grep_policy != "native":
+                    ledger_path = (
+                        args.output / "grep-receipts" / f"{case.instance_id}.json"
+                    )
+                    grep_view = GrepSourceView(
+                        repo=repo,
+                        query=case.problem_statement,
+                        policy=grep_policy,
+                        token_budget=grep_tokens,
+                        max_cost_usd=jev_cost_usd,
+                        checkpoint=lambda data, path=ledger_path: write_json(
+                            path, data
+                        ),
+                    )
                 graph_tool = None
                 if graph_config["enabled"]:
                     graph_record = graph_records[case.instance_id]
@@ -375,6 +469,8 @@ def run(args):
                             completion_tokens=completion_tokens,
                             completion_source_policy=completion_source_policy,
                             case_meter_usd=min(case_meter_usd, max_meter_usd - metered),
+                            billing_route=billing_route,
+                            grep_view=grep_view,
                             graph_tool=graph_tool,
                             graph_query_policy=graph_config["policy"],
                         ),
@@ -399,6 +495,18 @@ def run(args):
                 else:
                     metered += meter
             elif row["sdk_events"]:
+                stopped = True
+        if grep_view is not None:
+            row["grep_view"] = {
+                key: grep_view.ledger[key]
+                for key in ("policy", "cost_usd", "failed", "unknown_usage_calls")
+            }
+            row["grep_view"].update(
+                views=len(grep_view.ledger["views"]),
+                api_calls=len(grep_view.ledger["calls"]),
+            )
+            if grep_view.ledger["failed"]:
+                row.update(status="error", error="Grep source selection failed")
                 stopped = True
         if repo is not None and "snapshot_before" in row:
             try:
@@ -426,7 +534,11 @@ def run(args):
     write_json(
         args.output / "usage.json",
         {
-            "billing_route": "existing_claude_subscription",
+            "billing_route": (
+                "existing_claude_subscription"
+                if billing_route == "subscription"
+                else "anthropic_api_key"
+            ),
             "actual_bill_usd": None,
             "sdk_reported_cost_usd": sum(
                 r.get("sdk_reported_cost_usd") or 0 for r in rows
@@ -436,8 +548,17 @@ def run(args):
                 for r in rows
             ),
             "cost_scope": (
-                "SDK metering estimate is not a paid API receipt. Subscription limits "
-                "and any account-level extra usage remain applicable."
+                "SDK metering is separate from account billing and promotional "
+                "credit balance. There is no automatic billing-route fallback."
+            ),
+            "jev_api_cost_usd": sum(
+                r.get("grep_view", {}).get("cost_usd", 0) for r in rows
+            ),
+            "jev_api_calls": sum(
+                r.get("grep_view", {}).get("api_calls", 0) for r in rows
+            ),
+            "jev_unknown_usage_calls": sum(
+                r.get("grep_view", {}).get("unknown_usage_calls", 0) for r in rows
             ),
             "statuses": dict(Counter(r["status"] for r in rows)),
             "cases": len(rows),
@@ -450,6 +571,16 @@ def main():
     parser.add_argument("--prepared", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="opus")
+    parser.add_argument(
+        "--billing-route",
+        choices=("subscription", "anthropic-api"),
+        default="subscription",
+    )
+    parser.add_argument(
+        "--grep-view", choices=("native", "chunks", "jev"), default="native"
+    )
+    parser.add_argument("--grep-tokens", type=int, default=4096)
+    parser.add_argument("--jev-cost-usd", type=float, default=0.05)
     parser.add_argument("--max-turns", type=int, default=20)
     parser.add_argument("--live", action="store_true")
     parser.add_argument(

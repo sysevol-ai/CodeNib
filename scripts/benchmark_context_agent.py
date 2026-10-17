@@ -830,6 +830,7 @@ def freeze(output):
     names = [
         "scripts/benchmark_context_agent.py",
         "scripts/benchmark_context_claude.py",
+        "scripts/contextbench_grep_rerank.py",
         "scripts/contextbench_graph_navigation.py",
         "scripts/benchmark_context_serving.py",
         "codenib/graph/code_graph.py",
