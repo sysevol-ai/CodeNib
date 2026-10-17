@@ -215,6 +215,10 @@ and scoring are pending. The primary contrast is the complete graph-enabled rout
 against native source tools, with the other two contrasts as explanatory ablations.
 The 32 tasks remain excluded from tuning. Neither graph development trial is
 directly comparable with the earlier native/functions implementation freeze.
+Preflight retains 31 ready snapshots and one failed Git submodule preparation.
+Before held-out inference, `4152c23d` fixes failure accounting so that known
+preparation failures remain zero without cancelling other selected tasks. The
+model-facing policy is unchanged and all 32 tasks remain in every arm.
 
 ```bash
 python scripts/contextbench_graph_navigation.py \
