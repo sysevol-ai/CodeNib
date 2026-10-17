@@ -671,15 +671,31 @@ at the original **4 GiB artifact-space floor**. All65 have known terminal usage;
 all intents reconcile and owned children are terminal. This capacity stop adds
 **zero failed model cases** and does not replace the original interrupted case.
 
-A prospective capacity-only protocol `ac478f89` retains those65 and uses a large
-data volume for new output and a short `TMPDIR`. It reuses **189 qualified native
-prefixes**, including56 complete context pairs, and continues **only310 original
-unclaimed IDs** under the same immutable `1b0ad5ac` model/source/compiler/consumer
-profile. The artifact admission floor stays4GiB; source repositories and histories
-remain unchanged. All500 IDs/source commits and official denominators stay fixed,
-with one original zero-source case and three explicitly unavailable child-source
-cases. Runtime gold stays empty and all three32 cohorts stay sealed. This is the
-canonical population, **not fresh independent500**.
+Capacity protocol `ac478f89` uses a large output volume and short `TMPDIR`, with
+the same4GiB artifact floor and unchanged `1b0ad5ac` model/source/compiler/consumer
+profile. It completes53 known-usage investigations;52 pass its strict ban on
+unavailable-tool attempts. One normal terminal investigation also attempts
+`mcp__source:read`; the SDK rejects it with an explicit `No such tool available`
+error, and it returns no source. The original strict gate **fails and remains
+failed**; its complete raw attempted action/error and all receipts are retained.
+
+Prospective source-receipt protocol `4daea3d3` distinguishes this SDK-proven
+rejection from executed capabilities. It keeps the exact registered read/grep/glob
+toolset, requires the matching SDK error identity and `is_error=true`, and gives
+the rejected action **zero source credit**. It adds no tool alias or execution.
+The original confirmed reads survive: native source geometry and compiled packet
+bytes are identical when only the rejected action/reply are removed. Five
+adversarial boundary replays reject success, extra source, missing/duplicate
+results and broader registered tools. All53 streams pass this source-only audit,
+without labels, quality scoring, a new model call or a retry. No model, prompt,
+search, compiler, budget or primary statistical gate changes. This operational
+qualification does not turn the original strict attempt gate green.
+
+The new run reuses **242 qualified source prefixes**, including56 complete pairs,
+and continues **only257 original unclaimed IDs**. All500 IDs/source commits and
+denominators remain, with one original zero-source case and three unavailable
+child-source cases. Runtime gold stays empty and all three32 cohorts stay sealed.
+This is the canonical population, **not fresh independent500**.
 
 The default-off `--max-included-only` guard still requires first-party Max auth,
 init `apiKeySource=none` and rate events explicitly reporting
@@ -692,17 +708,15 @@ billing cap. **36 mocked SDK boundary tests**, then **142 relevant local tests**
 pass, including late quota events and missing-event terminal metering. Pinned
 hooks pass; no billed test tier runs.
 
-As of **2026-10-17 18:55 UTC**, the capacity continuation has **5/310 accepted**
-new investigations, with **305** remaining; it is live. Known new Max nominal
-usage across the original36, quota-order65 and this continuation is
-**$12.94678380**, plus the one original unknown terminal usage. New API usage
-is **$0**. The first actual task on the new output volume has normal terminal
-usage and explicit included-only rate receipts. Source-only replay verifies all
-**189** retained native prefix predictions and all56 prior cumulative pairs.
-Quota snapshots do not reserve remaining capacity. Two workers keep an exclusive
-durable intent before each dispatch; unexpected receipts stop later dispatch and
-unreconciled intents never trigger relaunch. Every original state, raw attempt and
-frozen runtime remains retained. No intermediate quality scores are computed.
+As of **2026-10-17 19:25 UTC**, **4/257** new investigations are accepted,
+with **253** remaining; the source-receipt continuation is live. Known new Max
+nominal usage across all canonical500 execution phases is **$19.99655550**,
+plus the one original unknown terminal usage. New API usage is **$0**. Source-only
+replay verifies all242 retained prefixes and all56 prior cumulative pairs. Actual
+errors remain in the trajectory, and unavailable/rejected actions gain no source.
+Two workers retain exclusive durable per-case intent; unexpected receipts stop
+later dispatch, with no unreconciled-intent relaunch. No intermediate quality
+scores are computed; quota metadata is not a provider billing cap/reservation.
 
 The cumulative baseline uses source already consumed by the investigator.
 All56 original native-packet source unions equal those prefixes. **443** new

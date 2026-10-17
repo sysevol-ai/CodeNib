@@ -466,22 +466,25 @@ All65usage/source/quota receipts are known and valid,all intents reconcile and
 children are terminal;the capacity stop addszero failed model cases. Preserve
 that stopped state and all original traces.
 
-Capacity-only protocol `ac478f89` continues exactly310originalunclaimed IDs on a
-large output volume with shortTMPDIR;same4GiBfloor and immutable1b0ad5ac
-model/source/compiler/consumer/metric profile. Reuse189qualifiedprefixes including
-56completepairs,retain1originalfailedzero-source task andall500denominators,with
-no retry/sourcehistory change. The first task completes withnormal included-only
-receipts. Source-only replay checks189prefixes/56cumulativepairs;no labels orcalls
-are added by that check. Actual late-quota event handling and its36boundary/
-142local tests remain valid for the unchanged runtime.
+Capacity protocol `ac478f89`/unchanged `1b0ad5ac` completes53known-usage cases;
+52passitsstrict unavailable-attempt ban. One otherwise normal investigation tries
+`mcp__source:read`; theSDK rejects it with`No such tool available` and no source.
+Preserve the originalfailedstrictgate andfull attemptedaction/error/rawreceipts.
 
-At **2026-10-17 18:55 UTC**, **5/310** capacity cases are accepted,**305**remain;
-known new Max nominal totals **$12.94678380** including the original36 and
-quota-order65,plus1originalunknownterminal. API/Batch/count/repair additions remain
-zero. Runtimegoldempty,source gaps andall500denominators retained,all3cohorts
-sealed. This canonicalpopulation includesexposedcases,no freshindependent500 or
-new quality result. Per-case durableintent prevents relaunch;unexpected receipts
-stop laterdispatch. Quota metadata is not a provider billingcap/reservation.
+Prelabel source-receipt protocol `4daea3d3` qualifies actual read/grep/glob inputs
+only after exactSDK rejection/identity/is_error checks,withzero rejected-action
+source. No toolalias/execution/capability is added. Native geometry andcompiled
+packetbytes equal their versions withoutthe rejectedaction;five adversarial
+boundaries failclosed. All53streams audit and242prefix/56pair replayspass without
+labels/newcalls. Model/prompt/source/compiler/budget/statisticalgate unchanged;
+originalstrictgate staysfailed. Reuse242qualifiedprefixes/56pairs,retain1original
+failedzero/unmeteredcase andall500denominators,continueonly257unclaimed IDs.
+
+At **2026-10-17 19:25 UTC**, **4/257**areaccepted,**253**remain;known new Max nominal
+is **$19.99655550**,plusoneoriginalunknownterminal. NewAPI/Batch/count/repair
+additions zero. Runtimegoldempty,source gaps retained,all3cohortssealed. This
+canonicalpopulation includesknowncases,no newquality/freshindependent500/repair
+claim. Per-case intent prevents relaunch;unexpected receipts stop laterdispatch.
 
 Baseline source is already consumed by the investigator. All56old native-packet
 source unions equal those prefixes. The443new candidate inputs plus56reused pairs
