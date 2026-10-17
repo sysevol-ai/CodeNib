@@ -154,6 +154,84 @@ def test_hint_overflow_preserves_original_without_a_decision(monkeypatch, source
     assert view.ledger["calls"] == []
 
 
+def test_neighbors_preserve_every_hit_and_only_credit_delivered_novel_source(
+    monkeypatch, source
+):
+    repo, execute = source
+    monkeypatch.setattr(
+        grep.OpenRouterDecisions,
+        "decide",
+        lambda *a, **k: pytest.fail("Neighbors must not make ranking calls"),
+    )
+    args = {"pattern": "marker", "path": "."}
+    original = execute(**args)
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"id": "g", "function": {"name": "grep", "arguments": json.dumps(args)}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": "g", "content": original},
+    ]
+    previous = native.observed_nodes(messages, repo)
+    view = grep.GrepSourceView(
+        repo=repo, query="target", policy="neighbors", token_budget=256
+    )
+    wrapped = view.wrap(execute, observed_source=lambda: previous)
+    reply = wrapped(**args)
+    assert reply.startswith(original + "\n")
+    assert len(view.encoder.encode(reply[len(original) :])) <= 256
+    messages[-1]["content"] = reply
+    delivered = native.observed_nodes(messages, repo)
+
+    def identities(nodes):
+        return {
+            (n.file, line)
+            for n in nodes
+            for line in range(n.start_line + 1, n.end_line + 2)
+        }
+
+    added = set(map(tuple, view.ledger["views"][0]["added_lines"]))
+    assert identities(delivered) == identities(previous) | added
+    assert not added & identities(previous)
+    assert added and view.ledger["views"][0]["omitted_budget_lines"] > 0
+    assert view.ledger["calls"] == [] and view.ledger["cost_usd"] == 0
+    # A new tool response must use its caller's current observations.
+    previous = delivered
+    second = wrapped(**args)
+    assert second.startswith(original)
+    assert not set(map(tuple, view.ledger["views"][1]["added_lines"])) & identities(
+        delivered
+    )
+
+
+def test_neighbors_share_budget_across_hits_and_respect_physical_radius(source):
+    repo, _ = source
+    lines = [f"value_{i} = {i}" for i in range(150)]
+    lines[30] = lines[110] = "marker = 1"
+    (repo / "b.py").write_text("\n".join(lines) + "\n")
+    args = {"pattern": "marker", "path": "."}
+    original = "b.py:31: marker = 1\nb.py:111: marker = 1\n"
+    view = grep.GrepSourceView(
+        repo=repo, query="target", policy="neighbors", token_budget=256
+    )
+    reply = view.wrap(lambda **kw: original)(**args)
+    added = view.ledger["views"][0]["added_lines"]
+    assert [line for file, line in added[:4]] == [30, 32, 110, 112]
+    assert all(min(abs(line - 31), abs(line - 111)) <= 20 for file, line in added)
+    assert reply.startswith(original) and len(reply) <= 15900
+    assert "b.py:1:" not in reply and "b.py:150:" not in reply
+
+
+@pytest.mark.parametrize("original", ["native reply" * 1600, "a.py:999: absent\n"])
+def test_neighbor_overflow_or_unverified_hits_never_discard_native(source, original):
+    repo, _ = source
+    view = grep.GrepSourceView(repo=repo, query="target", policy="neighbors")
+    assert view.wrap(lambda **kw: original)(pattern="marker") == original
+    assert view.ledger["views"][0]["added_lines"] == []
+
+
 def test_non_content_errors_and_confined_paths_never_call_jev(monkeypatch, source):
     repo, execute = source
     monkeypatch.setattr(
@@ -270,8 +348,16 @@ def test_api_route_requires_explicit_first_party_environment(monkeypatch):
         claude.api_auth("claude")
 
 
-@pytest.mark.parametrize("missing_usage", [False, True])
-@pytest.mark.parametrize("policy", ["jev", "jev-hints"])
+@pytest.mark.parametrize(
+    "policy,missing_usage",
+    [
+        ("jev", False),
+        ("jev", True),
+        ("jev-hints", False),
+        ("jev-hints", True),
+        ("neighbors", False),
+    ],
+)
 def test_sdk_observes_ranked_reply_before_next_assistant_turn(
     monkeypatch, source, missing_usage, policy
 ):
@@ -315,6 +401,10 @@ def test_sdk_observes_ranked_reply_before_next_assistant_turn(
             assert text.startswith(view.ledger["views"][0]["original"])
             assert '"file_path": "a.py"' in text
             assert "def target" not in text
+        elif policy == "neighbors":
+            text = reply["content"][0]["text"]
+            assert text.startswith(view.ledger["views"][0]["original"])
+            assert "def target" in text and view.ledger["calls"] == []
         else:
             assert "def target" in reply["content"][0]["text"].splitlines()[0]
         yield event(
@@ -322,6 +412,26 @@ def test_sdk_observes_ranked_reply_before_next_assistant_turn(
         )
         assert not missing_usage, "SDK advanced after unknown Jev usage"
         assert row["messages"][-1]["content"] == reply["content"][0]["text"]
+        if policy == "neighbors":
+            yield event(
+                "AssistantMessage",
+                content=[
+                    {
+                        "id": "g2",
+                        "name": "mcp__source__grep",
+                        "input": {"pattern": "marker", "path": "."},
+                    }
+                ],
+            )
+            again = await handlers["grep"]({"pattern": "marker", "path": "."})
+            assert view.ledger["views"][1]["previous_source"]
+            assert not set(map(tuple, view.ledger["views"][0]["added_lines"])) & set(
+                map(tuple, view.ledger["views"][1]["added_lines"])
+            )
+            yield event(
+                "UserMessage",
+                content=[{"tool_use_id": "g2", "content": again["content"]}],
+            )
         yield event(
             "AssistantMessage", content=[{"text": "Read the selected target next."}]
         )
@@ -366,5 +476,7 @@ def test_sdk_observes_ranked_reply_before_next_assistant_turn(
     asyncio.run(retrieve())
     assert row["status"] == "ok"
     observed = native.observed_nodes(row["messages"], repo)
-    assert any("def target" in node.content for node in observed) == (policy == "jev")
+    assert any("def target" in node.content for node in observed) == (
+        policy in {"jev", "neighbors"}
+    )
     assert all(node.file == "a.py" for node in observed)
