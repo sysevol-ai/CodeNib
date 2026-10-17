@@ -2718,7 +2718,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 63.8423242,
+    "known_sdk_reported_estimate_usd": 65.16412580000001,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2737,7 +2737,8 @@
       }
     ],
     "first_source_24_retrieval_sdk_estimate_usd": 12.8310857,
-    "post_fix_reliability_sdk_estimate_usd": 0.42661920000000003
+    "post_fix_reliability_sdk_estimate_usd": 0.42661920000000003,
+    "multi_fmt_development_solver_sdk_estimate_usd": 1.3218016000000001
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -4512,6 +4513,460 @@
         "model_calls": 0
       },
       "interpretation": "One metadata-selected development C++ availability diagnostic. No model calls, quality score or changes to previous frozen artifacts."
+    },
+    "final_source_set_diagnostic": {
+      "scope": "Post-hoc physical-line diagnostic on all 24 disclosed development tasks. Model calls zero. No new quality score, independent validation or causal attribution to graph/function completion; the function-only arm was interrupted.",
+      "source_manifest_sha256": "3574d68ad8832273efc58cae36db0b2361ec80a764e1714a16e5a89f5daaa43f",
+      "driver_sha256": "1b7b0060577c12fad35e3a01553b69b5919ab2b98a117144ad975e79ea57f81b",
+      "totals": {
+        "native_final_physical": 16307,
+        "candidate_final_physical": 17254,
+        "added_physical": 5151,
+        "lost_physical": 4204,
+        "added_annotated": 185,
+        "lost_annotated": 105,
+        "graph_new_at_delivery": 358,
+        "graph_new_annotated_at_delivery": 139,
+        "graph_new_annotated_also_read_by_native": 90,
+        "graph_new_annotated_not_read_by_native": 49
+      },
+      "by_language": {
+        "c": {
+          "native_final_physical": 3470,
+          "candidate_final_physical": 3591,
+          "added_physical": 991,
+          "lost_physical": 870,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        "cpp": {
+          "native_final_physical": 950,
+          "candidate_final_physical": 904,
+          "added_physical": 149,
+          "lost_physical": 195,
+          "added_annotated": 0,
+          "lost_annotated": 6,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        "go": {
+          "native_final_physical": 1307,
+          "candidate_final_physical": 1593,
+          "added_physical": 385,
+          "lost_physical": 99,
+          "added_annotated": 50,
+          "lost_annotated": 36,
+          "graph_new_at_delivery": 263,
+          "graph_new_annotated_at_delivery": 132,
+          "graph_new_annotated_also_read_by_native": 83,
+          "graph_new_annotated_not_read_by_native": 49
+        },
+        "java": {
+          "native_final_physical": 1196,
+          "candidate_final_physical": 1321,
+          "added_physical": 450,
+          "lost_physical": 325,
+          "added_annotated": 24,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        "javascript": {
+          "native_final_physical": 1990,
+          "candidate_final_physical": 2204,
+          "added_physical": 561,
+          "lost_physical": 347,
+          "added_annotated": 8,
+          "lost_annotated": 8,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        "python": {
+          "native_final_physical": 616,
+          "candidate_final_physical": 806,
+          "added_physical": 428,
+          "lost_physical": 238,
+          "added_annotated": 65,
+          "lost_annotated": 17,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        "rust": {
+          "native_final_physical": 4617,
+          "candidate_final_physical": 4973,
+          "added_physical": 1510,
+          "lost_physical": 1154,
+          "added_annotated": 38,
+          "lost_annotated": 38,
+          "graph_new_at_delivery": 28,
+          "graph_new_annotated_at_delivery": 7,
+          "graph_new_annotated_also_read_by_native": 7,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        "typescript": {
+          "native_final_physical": 2161,
+          "candidate_final_physical": 1862,
+          "added_physical": 677,
+          "lost_physical": 976,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 67,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "native_final_physical": 125,
+          "candidate_final_physical": 224,
+          "added_physical": 143,
+          "lost_physical": 44,
+          "added_annotated": 57,
+          "lost_annotated": 8,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "native_final_physical": 737,
+          "candidate_final_physical": 794,
+          "added_physical": 350,
+          "lost_physical": 293,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 52,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "native_final_physical": 914,
+          "candidate_final_physical": 648,
+          "added_physical": 211,
+          "lost_physical": 477,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "native_final_physical": 224,
+          "candidate_final_physical": 195,
+          "added_physical": 49,
+          "lost_physical": 78,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "native_final_physical": 1621,
+          "candidate_final_physical": 1748,
+          "added_physical": 586,
+          "lost_physical": 459,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "native_final_physical": 756,
+          "candidate_final_physical": 606,
+          "added_physical": 27,
+          "lost_physical": 177,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "native_final_physical": 411,
+          "candidate_final_physical": 375,
+          "added_physical": 7,
+          "lost_physical": 43,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "native_final_physical": 245,
+          "candidate_final_physical": 511,
+          "added_physical": 297,
+          "lost_physical": 31,
+          "added_annotated": 50,
+          "lost_annotated": 20,
+          "graph_new_at_delivery": 132,
+          "graph_new_annotated_at_delivery": 132,
+          "graph_new_annotated_also_read_by_native": 83,
+          "graph_new_annotated_not_read_by_native": 49
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "native_final_physical": 625,
+          "candidate_final_physical": 602,
+          "added_physical": 167,
+          "lost_physical": 190,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "native_final_physical": 510,
+          "candidate_final_physical": 420,
+          "added_physical": 116,
+          "lost_physical": 206,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 15,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "native_final_physical": 323,
+          "candidate_final_physical": 260,
+          "added_physical": 34,
+          "lost_physical": 97,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "native_final_physical": 216,
+          "candidate_final_physical": 269,
+          "added_physical": 108,
+          "lost_physical": 55,
+          "added_annotated": 0,
+          "lost_annotated": 6,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "native_final_physical": 1093,
+          "candidate_final_physical": 1237,
+          "added_physical": 378,
+          "lost_physical": 234,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "native_final_physical": 988,
+          "candidate_final_physical": 1130,
+          "added_physical": 304,
+          "lost_physical": 162,
+          "added_annotated": 7,
+          "lost_annotated": 1,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "native_final_physical": 1174,
+          "candidate_final_physical": 1212,
+          "added_physical": 252,
+          "lost_physical": 214,
+          "added_annotated": 5,
+          "lost_annotated": 10,
+          "graph_new_at_delivery": 16,
+          "graph_new_annotated_at_delivery": 2,
+          "graph_new_annotated_also_read_by_native": 2,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "native_final_physical": 417,
+          "candidate_final_physical": 556,
+          "added_physical": 243,
+          "lost_physical": 104,
+          "added_annotated": 2,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 12,
+          "graph_new_annotated_at_delivery": 5,
+          "graph_new_annotated_also_read_by_native": 5,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "native_final_physical": 656,
+          "candidate_final_physical": 639,
+          "added_physical": 147,
+          "lost_physical": 164,
+          "added_annotated": 1,
+          "lost_annotated": 7,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "native_final_physical": 3026,
+          "candidate_final_physical": 3205,
+          "added_physical": 1015,
+          "lost_physical": 836,
+          "added_annotated": 31,
+          "lost_annotated": 28,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "native_final_physical": 320,
+          "candidate_final_physical": 294,
+          "added_physical": 25,
+          "lost_physical": 51,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "native_final_physical": 341,
+          "candidate_final_physical": 384,
+          "added_physical": 44,
+          "lost_physical": 1,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "native_final_physical": 251,
+          "candidate_final_physical": 425,
+          "added_physical": 258,
+          "lost_physical": 84,
+          "added_annotated": 24,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "native_final_physical": 721,
+          "candidate_final_physical": 698,
+          "added_physical": 44,
+          "lost_physical": 67,
+          "added_annotated": 0,
+          "lost_annotated": 16,
+          "graph_new_at_delivery": 131,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "native_final_physical": 346,
+          "candidate_final_physical": 435,
+          "added_physical": 110,
+          "lost_physical": 21,
+          "added_annotated": 0,
+          "lost_annotated": 0,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "native_final_physical": 267,
+          "candidate_final_physical": 387,
+          "added_physical": 236,
+          "lost_physical": 116,
+          "added_annotated": 8,
+          "lost_annotated": 9,
+          "graph_new_at_delivery": 0,
+          "graph_new_annotated_at_delivery": 0,
+          "graph_new_annotated_also_read_by_native": 0,
+          "graph_new_annotated_not_read_by_native": 0
+        }
+      ],
+      "model_calls": 0
     }
   },
   "fresh_validation_pool": {
@@ -6184,5 +6639,313 @@
       "new_compiler_builds": 0,
       "interpretation": "A separate future-development input retains all 24 tasks, using 14 fresh graphs and five authenticated same-source prior graphs. Earlier 11/24 and 14/24 build records and all retrieval outcomes remain unchanged. It has not been used in an online quality run."
     }
+  },
+  "multi_swe_native_adapter": {
+    "scope": "Source-checkout fmt C++ solver/native adapter. Native reference/control checks are separate from agent quality; no model calls in these checks. Other Multi repositories, Poly/Pro and complete solver source-line attribution remain open.",
+    "implementation_commit": "fe4cbb7243dc4776131c52192b2a4064b6c79e37",
+    "implementation": {
+      "scripts/benchmark_context_solver.py": "1d8f9173546102c8aa2d8239a2f6b1502dd3605da5306f07a85f38c64389b34c",
+      "scripts/contextbench_multiswe.py": "16effa29d3eb7ed3dd3b3b4ae01ab536a16c9997dde2ade80c8f0fdceb5c9ea6"
+    },
+    "supported_repo": "fmtlib/fmt",
+    "source_only_preflight": {
+      "one_source_commit": true,
+      "reference_artifacts_absent": true,
+      "exact_clean_source_tree": true,
+      "container_removed": true
+    },
+    "attempts": [
+      {
+        "attempt": "initial",
+        "protocol_sha256": "827c815ca56c7072c102946ff03565f5108bc9bddff684674002bc3c5bfbd93e",
+        "passed": false,
+        "container_start_timeout_seconds": 60,
+        "results": {
+          "unchanged_issue": {
+            "status": "graded",
+            "resolved": false,
+            "container_removed": true,
+            "wall_s": 129.246481811977,
+            "native_exit_code": 2,
+            "native_report": {
+              "total_instances": 1,
+              "submitted_instances": 1,
+              "completed_instances": 1,
+              "incomplete_instances": 0,
+              "resolved_instances": 0,
+              "unresolved_instances": 1,
+              "empty_patch_instances": 0,
+              "error_instances": 0,
+              "submitted_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "completed_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "incomplete_ids": [],
+              "resolved_ids": [],
+              "unresolved_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "empty_patch_ids": [],
+              "error_ids": []
+            },
+            "source_snapshot_verified": true,
+            "native_patch_sha256": {
+              "fix_patch": "f9a464860e99bab76108c5cd5bced442645c82800bde08d89020761dbaeefd8e",
+              "test_patch": "76862918b5520d200adec1db9a1751b6ee40d9ccf041eaa358d9b4ee6d1ab19b"
+            },
+            "applied_solver_patch_sha256": "90445ffd8a33d0547a4b23a2a968d4378252718828a57959256a02ea60e49c87",
+            "native_log_sha256": "ed4fb115e538bba8525e5967cd62e7ae483663e2fdeab3de881acd82a0d2d1c8"
+          },
+          "reference": {
+            "status": "error",
+            "resolved": false,
+            "container_removed": true,
+            "wall_s": 60.089845404960215
+          }
+        },
+        "failures": {
+          "reference": {
+            "kind": "container_start_timeout",
+            "before_native_test": true
+          }
+        }
+      },
+      {
+        "attempt": "reference_retry",
+        "protocol_sha256": "92245bf76680f65f50a9d4b4a333d2faa88ad7c68ed78d7eab0bf039f390727f",
+        "passed": false,
+        "container_start_timeout_seconds": 60,
+        "results": {
+          "reference": {
+            "status": "error",
+            "resolved": false,
+            "container_removed": true,
+            "wall_s": 60.084325133939274
+          }
+        },
+        "failures": {
+          "reference": {
+            "kind": "container_start_timeout",
+            "before_native_test": true
+          }
+        }
+      },
+      {
+        "attempt": "startup_180",
+        "protocol_sha256": "eb5b60b5f5572294e67aa529ad24d31ac034936dfd0744111ed4af56f2edd32d",
+        "passed": true,
+        "container_start_timeout_seconds": 180,
+        "results": {
+          "unchanged_issue": {
+            "status": "graded",
+            "resolved": false,
+            "container_removed": true,
+            "wall_s": 115.94812042196281,
+            "native_exit_code": 2,
+            "native_report": {
+              "total_instances": 1,
+              "submitted_instances": 1,
+              "completed_instances": 1,
+              "incomplete_instances": 0,
+              "resolved_instances": 0,
+              "unresolved_instances": 1,
+              "empty_patch_instances": 0,
+              "error_instances": 0,
+              "submitted_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "completed_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "incomplete_ids": [],
+              "resolved_ids": [],
+              "unresolved_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "empty_patch_ids": [],
+              "error_ids": []
+            },
+            "source_snapshot_verified": true,
+            "native_patch_sha256": {
+              "fix_patch": "f9a464860e99bab76108c5cd5bced442645c82800bde08d89020761dbaeefd8e",
+              "test_patch": "76862918b5520d200adec1db9a1751b6ee40d9ccf041eaa358d9b4ee6d1ab19b"
+            },
+            "applied_solver_patch_sha256": "90445ffd8a33d0547a4b23a2a968d4378252718828a57959256a02ea60e49c87",
+            "native_log_sha256": "ed4fb115e538bba8525e5967cd62e7ae483663e2fdeab3de881acd82a0d2d1c8"
+          },
+          "reference": {
+            "status": "graded",
+            "resolved": true,
+            "container_removed": true,
+            "wall_s": 330.4129523159936,
+            "native_exit_code": 0,
+            "native_report": {
+              "total_instances": 1,
+              "submitted_instances": 1,
+              "completed_instances": 1,
+              "incomplete_instances": 0,
+              "resolved_instances": 1,
+              "unresolved_instances": 0,
+              "empty_patch_instances": 0,
+              "error_instances": 0,
+              "submitted_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "completed_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "incomplete_ids": [],
+              "resolved_ids": [
+                "fmtlib/fmt:pr-2394"
+              ],
+              "unresolved_ids": [],
+              "empty_patch_ids": [],
+              "error_ids": []
+            },
+            "source_snapshot_verified": true,
+            "native_patch_sha256": {
+              "fix_patch": "f9a464860e99bab76108c5cd5bced442645c82800bde08d89020761dbaeefd8e",
+              "test_patch": "76862918b5520d200adec1db9a1751b6ee40d9ccf041eaa358d9b4ee6d1ab19b"
+            },
+            "applied_solver_patch_sha256": "f9a464860e99bab76108c5cd5bced442645c82800bde08d89020761dbaeefd8e",
+            "native_log_sha256": "13d2058e88543cade7703b36d55a345ec69663b7cd927cef00b95b18548a99cc"
+          }
+        },
+        "failures": {}
+      }
+    ],
+    "latest_native_gate_passed": true,
+    "same_runtime_through_native_checks": true,
+    "solver_inference_started": true,
+    "agent_quality_score": null,
+    "model_calls": 0,
+    "validation": {
+      "related_unit_tests_passed": 150,
+      "pinned_integration_tests_passed": 4,
+      "public_docs_boundary_tests_passed": 16
+    }
+  },
+  "multi_fmt_development_solver_pair": {
+    "scope": "One disclosed C++ development task, two fresh downstream solver arms. No independent validation, new retrieval, graph-policy quality gate or official submission claim.",
+    "protocol_sha256": "f01ff70f0fe4e3057fc7ec09622e15bfad65ca4105cbe4f3162e12d29309d4de",
+    "implementation_commit": "fe4cbb7243dc4776131c52192b2a4064b6c79e37",
+    "all_frozen_runtime_and_input_hashes_match": true,
+    "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+    "original_inst_id": "fmtlib__fmt-2394",
+    "unique_tasks": 1,
+    "language": "cpp",
+    "source": "Multi",
+    "arms": {
+      "native": {
+        "status": "Submitted",
+        "model_calls": 5,
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "known_sdk_reported_estimate_usd": 0.7349067,
+        "missing_metering_calls": 0,
+        "all_model_inputs_confirmed": true,
+        "confirmed_model_inputs": 5,
+        "sdk_api_key_sources": [
+          "none"
+        ],
+        "verified_subscription_route": true,
+        "solver_container_removed": true,
+        "native_status": "graded",
+        "resolved": true,
+        "native_container_removed": true,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 1,
+          "unresolved_instances": 0,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "fmtlib/fmt:pr-2394"
+          ],
+          "completed_ids": [
+            "fmtlib/fmt:pr-2394"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [
+            "fmtlib/fmt:pr-2394"
+          ],
+          "unresolved_ids": [],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "model_patch_sha256": "4834e3b6e1f54eda978188083742f3d2eefedd4619ad529026ee306573b423e1",
+        "solver_receipt_sha256": "5b7c37b0c9342c0173fbced35e95f093ecb7b94137b7e596039ae3f53854e239",
+        "native_receipt_sha256": "bbe54b3d84f317284d49c2c691f48e0283b73bd959003293f64b0f58287eb3bd"
+      },
+      "functions_graph": {
+        "status": "Submitted",
+        "model_calls": 5,
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "known_sdk_reported_estimate_usd": 0.5868949,
+        "missing_metering_calls": 0,
+        "all_model_inputs_confirmed": true,
+        "confirmed_model_inputs": 5,
+        "sdk_api_key_sources": [
+          "none"
+        ],
+        "verified_subscription_route": true,
+        "solver_container_removed": true,
+        "native_status": "graded",
+        "resolved": true,
+        "native_container_removed": true,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 1,
+          "unresolved_instances": 0,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "fmtlib/fmt:pr-2394"
+          ],
+          "completed_ids": [
+            "fmtlib/fmt:pr-2394"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [
+            "fmtlib/fmt:pr-2394"
+          ],
+          "unresolved_ids": [],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "model_patch_sha256": "b0785bd4536e2d3551bf858f62724f270f3ff99fdf8618093e343b7d3fd5643c",
+        "solver_receipt_sha256": "da039ed8683526d511e17df561000e94345da4231030841b5457f3eb5b950f40",
+        "native_receipt_sha256": "e7d06816bb819295231b96bb812bb82252bb764b59a595f70d0762802dd08e01"
+      }
+    },
+    "context_budget": 16384,
+    "max_turns": 20,
+    "max_sdk_meter_usd_per_arm": 2,
+    "source_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+    "source_tree": "c793e859f77f2ef96bcc8f1b1804f06ebce087aa",
+    "source_only_image_id": "sha256:0c36ed672e54cd9a7f09b03d60a29d3731fd34e5250227f9154306aaf81013bf",
+    "native_image_id": "sha256:801d11f190c6669e3b2a4a1273c5f5e237f26acbecfa379300c37c2b2acaf8e8",
+    "native_adapter_check_sha256": "5e98aea466ff4bd877cde323b7bb8b558fb0c3c4fc147b24c2fc83d03c167e97",
+    "retrieval_receipt_sha256": {
+      "native": "4f0e3b55bdd7aef3f3765618bb7fd86293a63bc782ee089a7fb202c0d068ca49",
+      "functions_graph": "24e64f1f0d843c16510479542ddcc12c0be88609dfe010f9603c4197d0e85974"
+    },
+    "graph_available_during_original_retrieval": false,
+    "retrieval_recomputed": false,
+    "independent_validation": false,
+    "known_sdk_reported_estimate_usd": 1.3218016000000001,
+    "same_actual_model": true,
+    "conclusion": "One unique development task. Retain both arms and any infrastructure or budget failure. It is not independent Pass@1 evidence, a retrieval-quality gate or evidence of graph-source gains. The first-source 24 and independent 32 quality failures remain unchanged."
   }
 }

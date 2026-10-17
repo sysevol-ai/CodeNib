@@ -40,7 +40,7 @@ The current milestones and remaining gates are:
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
 | Directed graph navigation | First-source/callable-first navigation calls all eleven available graphs in the 24-task development set and supplies 139 new annotated physical lines in Go and Rust. Recall changes 53.35% → 54.02%, F1 31.18% → 30.15%; the declared gate fails. The broader offline preparation attempt retains 14/24 graphs, including eight newly available and five lost; a separate authenticated composition has 19/24 available. | Correct invocation PATH and source-preparation failures, then demonstrate useful source selection before another quality cohort. No new independent validation, product promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The original Multi native grader rejects a C++ test-only control and accepts its reference repair, passing 18 tests; a separate source-only image matches the selected tree. | Validate the fmt solver/native adapter with matched agent repairs, then extend other Multi repositories, Poly/Pro coverage and source-line attribution from actual solver observations. The reference check has no model calls or agent score; broader comparative Pass@1 remains open. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt native adapter passes its reference/control check, and its one-task development solver pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. | Extend other Multi repositories, Poly/Pro coverage and source-line attribution from actual solver observations. The fmt retrieval had no available graph, so the pair establishes neither a graph-source contribution nor a broader comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -100,7 +100,7 @@ can exceed an observed guard. Unknown or invalid metering stops later cases.
 
 The completed independent retrieval arms report **$23.673179** in SDK estimates;
 their one-task paired solver check adds **$0.828001**. Across this October 16
-program, known metering totals **$63.842324**, plus one aborted development solver
+program, known metering totals **$65.164126**, plus one aborted development solver
 attempt and one interrupted retrieval case with unknown metering.
 Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
@@ -397,6 +397,16 @@ policy/timeout. It rejects reuse with this option and rejects a prepared graph
 if HEAD or tracked source changed. Generated build files may remain only within
 the owned temporary clone; the existing bounded worker owns their cleanup.
 
+A post-hoc final-source comparison retains every one of the 24 tasks. Of the
+139 annotated graph lines new at delivery, 90 are also read by the native control
+and only 49 are absent from it, all on one Go task. Candidate final source adds
+5,151 physical lines and omits 4,204 native-read lines, including 185 added and
+105 omitted annotated lines. These physical counts are not official macro
+scores; the interrupted function-only arm prevents causal decomposition. The
+next hypothesis should emphasize selective navigation and coverage beyond the
+matched native trajectory, rather than advancing on graph availability alone.
+No new model calls or quality scores are produced by this diagnostic.
+
 ### Broader offline graph preparation outcome
 
 The complete 24-task check at `64f07462` freezes runtime hashes and enables
@@ -447,13 +457,25 @@ reference checks time out during Docker creation at the 60-second bound, before
 tests begin, and both owned containers are removed. A separate create/start
 probe succeeds, with creation taking 31.83 seconds amid high host I/O pressure.
 The adapter now allows a bounded 180 seconds for container startup, records that
-limit, and retains its test and cleanup bounds. Fresh native validation remains
-required before the proposed model pair; all these attempts make zero model calls.
+limit, and retains its test and cleanup bounds. Fresh native validation at
+`fe4cbb72` completes with unchanged runtime hashes: the unchanged-issue control
+is unresolved and the reference repair passes all 18 tests. Both containers are
+removed. All these checks make zero model calls; prior failures remain recorded.
+The bounded C++ solver pair at the same frozen commit reuses the previous
+native and graph-configured 16K contexts. Both arms submit production-only fixes
+and resolve this one unique development task, 1/1 each, passing all 18 tests.
+Both use Opus 5.5 through Max, the same source-only image, 20 turns and a $2 SDK
+meter guard. Each makes five calls, all ten exact model inputs are confirmed,
+and all terminal usage is present: $0.734907 native and $0.586895 candidate,
+$1.321802 total. Every solver/grader container is removed, and frozen runtime
+and input hashes match through grading. No new retrieval or independent
+validation occurs. The graph was unavailable in that task's original retrieval;
+these matched repairs do not establish a graph-source or comparative Pass@1 gain.
 
 Pinned native dataset revision, image IDs, module hashes and reports are retained
 under `verification/contextbench-multiswe-native-20261016/` and summarized in the
-existing public development artifact. Matched fmt agent outcomes, other Multi
-repositories, Poly/Pro harnesses and complete solver-source attribution remain open.
+existing public development artifact. Other Multi repositories, Poly/Pro
+harnesses, complete solver-source attribution and broader matched outcomes remain open.
 
 ### October 16 online development result
 

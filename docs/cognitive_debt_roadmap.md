@@ -181,8 +181,12 @@ preserving the selected source tree. The broader offline preparation check has
 and five losses; a separate authenticated composition has 19/24 available.
 Fixed-prefix source replay does not establish an online gain. The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
-patch replacement and owned-container cleanup. Matched fmt repairs, other Multi
-repositories, Poly/Pro harnesses and shell-source attribution remain open.
+patch replacement and owned-container cleanup. Its matched development pair
+resolves one C++ task in both arms, 1/1 each, passing 18 tests with ten confirmed
+model inputs and $1.321802 in SDK estimates. This task had no graph during its
+original retrieval, so the result establishes no graph-source contribution or
+comparative Pass@1 gain. Other Multi repositories, Poly/Pro harnesses, broader
+matched outcomes and shell-source attribution remain open.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

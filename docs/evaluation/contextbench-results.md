@@ -96,6 +96,15 @@ the declared adoption and two-language novelty gates, but F1 decreases.
 Physical overlap counts include blank/comment lines and are distinct from the
 official line scores.
 
+A post-hoc comparison with the complete native trajectories finds that 90 of
+those 139 annotated graph lines also appear in the native control; the other 49
+are confined to one Go task. Across all 24 tasks, the candidate adds 5,151
+physical lines and omits 4,204 that the native control reads, including 185 added
+and 105 omitted annotated lines. These are descriptive source-set differences,
+not new official scores or causal graph effects. The interrupted function-only
+arm cannot separate completion from graph navigation. Delivery-time novelty and
+broader graph availability therefore remain insufficient evidence of a gain.
+
 The function-only arm completes four tasks, then requests an unregistered graph
 tool on a C task. The event normalizer aborts before the SDK's terminal usage;
 the remaining 19 tasks are not run. Four completed traces and the partial failed
@@ -215,7 +224,7 @@ $0.828001. The later early-hop/unseen development trial adds $7.266208 for retri
 and $1.367794 for its paired solver check. Two later one-task graph mechanism
 versions add $0.327116. The first-source 24-task attempt adds $12.831086 in known
 retrieval estimates and its separate receipt-fix smoke adds $0.426619.
-Known program metering totals **$63.842324**, excluding one aborted development
+Known program metering totals **$65.164126**, excluding one aborted development
 solver attempt and one interrupted retrieval case with no terminal usage.
 These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
@@ -515,8 +524,24 @@ pilot supports `fmtlib/fmt`; it does not imply complete Multi benchmark coverage
 The new adapter rejects its unchanged-issue control. Two initial reference checks
 fail at the 60-second container-start bound before tests begin; both containers
 are removed. The bounded startup allowance is now 180 seconds, recorded
-separately from test time. Fresh native validation is pending before any C++
-model pair. These environment attempts make no model calls or agent scores.
+separately from test time. A fresh check at that bound rejects the unchanged-issue
+control and accepts the reference repair with all 18 tests passing; both
+containers are removed and the frozen runtime hashes match. The original two
+startup failures remain recorded. These environment checks make no model calls
+or agent scores.
+
+A subsequent frozen C++ development pair at `fe4cbb72` reuses the first-source
+trial's native and graph-configured 16K contexts for `fmtlib__fmt-2394`. Both
+solvers submit a production-only patch and both resolve the task, **1/1 each**,
+passing all 18 native tests. Each makes five model calls; all ten inputs have
+confirmed receipts and terminal metering. SDK estimates are $0.734907 native and
+$0.586895 candidate, $1.321802 combined. Both use Claude Max and the same source-only
+image, model, 20-step limit and $2 SDK-meter guard; every solver and grader
+container is removed. Runtime and retrieval-input hashes remain unchanged through
+grading. This is one unique development task and does not establish a comparative
+Pass@1 gain. Its graph was unavailable during the original retrieval, so this
+result cannot establish a contribution from graph-returned source. The negative
+24-task and independent 32-task retrieval gates remain unchanged.
 
 New solver runs save each exact model request with a content hash and confirm
 delivery only when the SDK returns an assistant message. The local
