@@ -203,6 +203,22 @@ These are cumulative SDK counters, not peak context, physical KV residency or
 converted API bills. Replies append to history; there is no compaction/eviction
 implementation or measured invalidation benefit here.
 
+A supplementary post-hoc audit now measures provider-reported input per unique
+main-model response. Assistant content blocks sharing a response ID are counted
+once, and uncached, cache-write and cache-read inputs are added using the
+[documented input accounting](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+All93 distinct responses across the12 original/surface/repeated-native streams
+reconcile exactly with terminal SDK input counters;152 repeated content blocks
+are not added twice. The mean of each task's maximum single-response input is
+25,980tokens for original native,24,965.75 for repeated native and22,048 for
+surface-first. Surface is11.69% below the repeat on this four-task measure;
+Python increases while the other three decrease. This is provider-reported
+input size, not physical KV memory, an HTTP request count, converted subscription
+charges or an independent/causal result. Existing quality scores and cumulative
+cost records stay unchanged. The source-checkout accounting helper rejects
+missing/conflicting usage and incomplete terminal reconciliation;62 relevant
+usage/surface/SDK tests pass.
+
 Latest99 relevant surface/cache/SDK/source/navigation tests and pinned hooks pass.
 Prepared cache reuse requires unchanged before/after source snapshots, the exact
 case/local embedding route, an explicitly non-live producer, no model intent and
@@ -240,6 +256,15 @@ all-eight reporter passes source-only replay against the eight native controls
 and four earlier surface trajectories. Its contract retains all selected
 positions, gives metadata zero source credit and reports execution/evaluator
 validity separately before reopening the already-exposed labels.
+
+A separate local integration replay checks both first surfaced handles on each
+of the seven currently ready indexes. All14 location bodies match authenticated
+source, metadata receives zero source credit, repeated reads are omitted and
+all native artifact bytes remain unchanged. These local synthetic receipts are
+never model inputs or quality results; they add zero actual agent body fetches.
+All selected locations fit one body page, so real-index multi-page behavior
+remains unexercised beyond the existing deterministic large-function test. C
+remains in the original eight-case cohort and is not replaced by this check.
 
 A source-only ranking diagnostic on the four actual agent queries compares raw
 inner product, cosine reranking of128 candidates and full cosine without changing

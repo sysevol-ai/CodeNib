@@ -558,6 +558,17 @@ The repeat costs1.1046278USD nominal and never replaces original500 results.
 This exposed small-sample screen is not a causal or independent validation gate.
 Latest99 relevant tests pass. SDK cache counters and full cold/warm preparation
 remain separate from tool-reply estimates and API cash charges.
+A supplementary source-checkout accounting helper deduplicates repeated
+assistant response blocks and reconciles all93 response input records against
+terminal SDK counters over the12 completed four-task streams. Missing/conflicting
+usage cannot become zero or a complete maximum;62 usage/surface/SDK tests pass.
+The mean per-task maximum single-response input is25,980tokens for original
+native,24,965.75 for repeated native and22,048 for surface. This post-hoc input
+measure preserves all scores/cost records and claims neither physical KV memory
+nor cash savings. A separate local replay over seven ready real indexes checks
+14 handles: exact source, zero metadata source credit, repeat suppression and
+unchanged artifact bytes all pass. Those synthetic receipts are never agent
+inputs and add no actual body calls; all selected locations fit one page.
 
 Keep the labs adapter source-only and its graph-optional pilot distinct from the
 next eight-language dense-only ablation. The new vector-only preparation option
