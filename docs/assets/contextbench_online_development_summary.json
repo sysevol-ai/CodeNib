@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 161.07417296,
+    "known_sdk_reported_estimate_usd": 162.32272866,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Completed Claude SDK/Jev and direct Messages usage through amended independent32. Original failed phase included once; every completed model call reused. All three32 cohorts sealed. Two historical Max metering gaps unchanged. Excludes historical OpenRouter controls; actual account bill/credit deduction unverified.",
+    "scope": "Completed Claude SDK/Jev,standard Messages and one8-item Batch through known-development Max/Batch route verification. Direct-API SDK307 and standard Messages112 unchanged;4new Max SDK sessions and8 Batch inferences/8free counts recorded separately. Both old32 and new32 sealed. Two historical Max metering gaps unchanged. Excludes historical OpenRouter reference;actual account charges/credit balance unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2803,11 +2803,11 @@
     "jev_rerank_api_cost_usd": 0.025743857999999994,
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
-    "known_claude_max_sdk_estimate_usd": 112.5018556,
+    "known_claude_max_sdk_estimate_usd": 113.7504113,
     "known_anthropic_api_sdk_estimate_usd": 48.57231736,
     "standalone_api_call_count_scope": "1012 Jev decisions;216 retrieval SDK sessions,36 packet-review SDK sessions and55 historical repair SDK queries.112 Messages inference requests and160 free token counts are separate; SDK sessions are not HTTP request counts.",
     "anthropic_api_sdk_sessions": 307,
-    "known_combined_api_usage_value_usd": 58.663770729999996,
+    "known_combined_api_usage_value_usd": 59.09398873000001,
     "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
     "online_grep_jev_decision_api_cost_usd": 0.00552048,
     "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413,
@@ -2836,12 +2836,19 @@
     "remaining20_late_packet_input_sdk_sessions": 24,
     "known_direct_anthropic_messages_usage_estimate_usd": 9.721476000000001,
     "direct_anthropic_messages_requests": 112,
-    "direct_anthropic_free_token_count_requests": 160,
+    "direct_anthropic_free_token_count_requests": 168,
     "all_packet_delivery_api_usage_usd": 14.352915000000003,
     "unmetered_direct_messages_requests": 0,
     "late_source_amended_independent32_native_sdk_usd": 5.716993799999999,
     "late_source_amended_independent32_messages_api_usd": 5.466732000000001,
-    "late_source_amended_independent32_combined_api_usd": 11.183725800000001
+    "late_source_amended_independent32_combined_api_usd": 11.183725800000001,
+    "known_direct_anthropic_batch_usage_estimate_usd": 0.430218,
+    "direct_anthropic_batch_message_requests": 8,
+    "direct_anthropic_batch_create_posts": 1,
+    "batch_free_token_count_requests": 8,
+    "max_batch_development_Max_sdk_sessions": 4,
+    "max_batch_development_Max_nominal_sdk_usd": 1.2485557,
+    "unmetered_batch_requests": 0
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -40003,7 +40010,7 @@
   },
   "verified500_measured_cost_and_submission_plan": {
     "scope": "Unpaid planning after amended independent32 terminal scoring. Measured route allocations and arithmetic scenarios,not a representative500 forecast,spend authorization,quota reservation or quality promotion. No source/model/label policy is changed.",
-    "remaining_authorized_api_usage_usd": 41.336229270000004,
+    "remaining_authorized_api_usage_usd": 40.90601126999999,
     "unweighted500_arithmetic_only": {
       "api_investigation_plus_candidate_review_usd": 137.94609062499995,
       "api_investigation_plus_two_reviews_usd": 174.74571562500003,
@@ -40092,15 +40099,19 @@
       "standard_discount_factor": 0.5,
       "may_take_up_to_hours": 24,
       "directly_batchable_component": "Independent final packet Messages after native source investigations are complete. Interactive SDK/tool turns do not automatically receive the batch discount.",
-      "implementation_and_receipt_parity_verified": false,
-      "batch_submitted": false
+      "implementation_and_receipt_parity_verified": true,
+      "batch_submitted": true,
+      "verification_scope": "52local tests plus one real8-item Batch from4fresh Max native investigations on known development tasks. This verifies the small route,not whole500 source/token/quota/budget readiness.",
+      "engineering_api_usage_usd": 0.430218
     },
     "max_route_option": {
       "local_supported_cli_subscription_auth_confirmed": true,
       "quota_available_verified": false,
       "same_policy_profile_source_receipt_parity_required": true,
       "new_api_route_fallback": false,
-      "frozen32_route_unchanged": true
+      "frozen32_route_unchanged": true,
+      "small_development_native_profile_verified": true,
+      "verified_Max_native_positions": 4
     },
     "full500_budget_gate_passed": false,
     "leaderboard_repository_revision": "a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9",
@@ -40115,15 +40126,655 @@
     "per_committed_file_cap_mib": 50,
     "external_links_or_lfs_pointers_suffice": false,
     "open_gates": [
-      "Passing independent quality gate under the disclosed pre-label amendment.",
-      "Measured Max quota/time/source/profile parity; same fixed context policy,model and source-credit semantics.",
-      "Implement and locally verify Batch receipts,per-request failure/cost accounting and exact source/prompt/version parity before a separately scoped engineering check.",
-      "Prepared exact500 source commits and exact-provider token counts with whole-run headroom within remaining100 allowance; retain all failures without outcome-driven replacements.",
-      "Audit and reuse every existing exact-profile context result,including all32 new cases if the policy stays fixed; no completed call is rebilled and no score-based reuse selection.",
-      "Pinned native-solver/grader coverage and complete trajectory/artifact packaging before any formal submission. No repair experiment is implied by this context-only plan."
+      "Prepare/audit exact source for all500 canonical tasks;current manifest-backed audit verifies119 and leaves381unverified,with no availability-based selection.",
+      "Control checkout disk usage through bounded staging/object reuse;no deletion of historical evidence.",
+      "Measure whole-run Max quota/time capacity;four normal Max sessions do not reserve500capacity.",
+      "Freeze exact500 contexts/provider counts and complete API headroom inside the remaining100ceiling;reuse every exact-profile output independent of score.",
+      "Pinned native solver/grader coverage and complete original source/trajectory/outcome packaging before formal submission. No automatic repair or500model batch."
     ],
     "new_model_calls": 0,
     "new_api_cost_usd": 0,
     "official500_started": false
+  },
+  "max_batch_development4_route_verification": {
+    "scope": "Four known development tasks,complete Max-native -> unchanged late physical4K compiler -> two-arm Batch source-review engineering. No confirmatory quality/retrieval scoring,repairs,native tests,unseen IDs or official500. This checks the cheaper execution route,not a new context strategy.",
+    "protocol_sha256": "4cb3ebd851d30369e90b57d94d7d825d8ff5328ffb6f5cb202b87e236e71d2b7",
+    "implementation_commit": "4143a04507c512b5839a028e6cf70b0dfb0ba4c7",
+    "gates": {
+      "all4_Max_native_receipts_accepted": true,
+      "all8_batch_inputs_confirmed": true,
+      "all_main_models_Opus55": true,
+      "all_usage_known": true,
+      "within_2_api_reservation": true,
+      "one_create_intent_and_acknowledged_identity": true,
+      "all8_positions_retained": true,
+      "source_runtime_prompt_receipts_verified": true,
+      "no_independent_tasks_or_Gold_used": true
+    },
+    "engineering_gate_passed": true,
+    "batch_rows": [
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "arm": "late_physical4096",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.044702,
+        "standard_equivalent_same_actual_tokens_usd": 0.089404,
+        "provider_usage": {
+          "input_tokens": 18331,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 804,
+          "output_tokens_details": {
+            "thinking_tokens": 375
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 11561,
+        "source_lines": 910
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "arm": "late_physical4096",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.027894,
+        "standard_equivalent_same_actual_tokens_usd": 0.055788,
+        "provider_usage": {
+          "input_tokens": 10602,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 669,
+          "output_tokens_details": {
+            "thinking_tokens": 267
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 6512,
+        "source_lines": 549
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "arm": "native_packet",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.070916,
+        "standard_equivalent_same_actual_tokens_usd": 0.141832,
+        "provider_usage": {
+          "input_tokens": 30678,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 956,
+          "output_tokens_details": {
+            "thinking_tokens": 529
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 18629,
+        "source_lines": 1642
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "arm": "native_packet",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.03236,
+        "standard_equivalent_same_actual_tokens_usd": 0.06472,
+        "provider_usage": {
+          "input_tokens": 11945,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 847,
+          "output_tokens_details": {
+            "thinking_tokens": 444
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 7474,
+        "source_lines": 565
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "arm": "late_physical4096",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.083304,
+        "standard_equivalent_same_actual_tokens_usd": 0.166608,
+        "provider_usage": {
+          "input_tokens": 37032,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 924,
+          "output_tokens_details": {
+            "thinking_tokens": 475
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 22697,
+        "source_lines": 1972
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "arm": "native_packet",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.013972,
+        "standard_equivalent_same_actual_tokens_usd": 0.027944,
+        "provider_usage": {
+          "input_tokens": 4206,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 556,
+          "output_tokens_details": {
+            "thinking_tokens": 182
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 2428,
+        "source_lines": 206
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "arm": "late_physical4096",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.08508,
+        "standard_equivalent_same_actual_tokens_usd": 0.17016,
+        "provider_usage": {
+          "input_tokens": 38230,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 862,
+          "output_tokens_details": {
+            "thinking_tokens": 389
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 22294,
+        "source_lines": 1415
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "arm": "native_packet",
+        "type": "succeeded",
+        "confirmed_input": true,
+        "response_complete": true,
+        "api_usage_usd": 0.07199,
+        "standard_equivalent_same_actual_tokens_usd": 0.14398,
+        "provider_usage": {
+          "input_tokens": 31735,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 0
+          },
+          "output_tokens": 852,
+          "output_tokens_details": {
+            "thinking_tokens": 394
+          },
+          "service_tier": "batch",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "stop_reason": "end_turn",
+        "actual_model": "claude-opus-5-5",
+        "context_tokens": 18211,
+        "source_lines": 1138
+      }
+    ],
+    "new_max_nominal_sdk_usd": 1.2485557,
+    "new_batch_api_usage_usd": 0.430218,
+    "known_program_api_usage_value_usd": 59.09398873000001,
+    "new_max_sdk_sessions": 4,
+    "new_batch_message_requests": 8,
+    "free_token_count_requests": 8,
+    "batch_create_posts": 1,
+    "models": {
+      "claude-opus-5-5": 8
+    },
+    "stop_reasons": {
+      "end_turn": 8
+    },
+    "complete_review_responses": 8,
+    "standard_equivalent_same_actual_batch_tokens_usd": 0.860436,
+    "quality_scores_computed": false,
+    "repair_calls": 0,
+    "official500_started": false,
+    "all_three32_remain_sealed": true,
+    "unknown_batch_usage": false,
+    "next": "Passing this small engineering study permits exact-source/count/quota and separately scoped verified500 context planning,not automatic500/repairs. Reuse every exact-profile output independent of score;never replace failed attempts.",
+    "native_receipts": [
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "status": "ok",
+        "terminal": "success",
+        "accepted_budget_terminal": false,
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "routes": [
+          "none"
+        ],
+        "nominal_sdk_usd": 0.4879477,
+        "known_usage": true,
+        "accepted": true,
+        "raw_error_preserved": false,
+        "exit_code": 0,
+        "sha256": "1f90b86d3d940988e298c292d5060e1d8e55deaa2bdba3f476257ab04e2b457a",
+        "language": "c",
+        "unconfirmed_tool_replies_excluded": 0,
+        "sdk_model_usage": {
+          "claude-haiku-5-5": {
+            "inputTokens": 1694,
+            "outputTokens": 21,
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0,
+            "webSearchRequests": 0,
+            "costUSD": 0.0001799,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 0,
+            "canonicalModel": "claude-haiku-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          },
+          "claude-opus-5-5": {
+            "inputTokens": 20,
+            "outputTokens": 5866,
+            "cacheReadInputTokens": 209239,
+            "cacheCreationInputTokens": 41065,
+            "webSearchRequests": 0,
+            "costUSD": 0.4877678,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 716,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "status": "ok",
+        "terminal": "success",
+        "accepted_budget_terminal": false,
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "routes": [
+          "none"
+        ],
+        "nominal_sdk_usd": 0.4467497,
+        "known_usage": true,
+        "accepted": true,
+        "raw_error_preserved": false,
+        "exit_code": 0,
+        "sha256": "95432dd2c761bd2b4301ec25cb07bdbaa6b836427b90b0b79452774447ad070e",
+        "language": "rust",
+        "unconfirmed_tool_replies_excluded": 0,
+        "sdk_model_usage": {
+          "claude-haiku-5-5": {
+            "inputTokens": 2570,
+            "outputTokens": 21,
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0,
+            "webSearchRequests": 0,
+            "costUSD": 0.0002675,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 0,
+            "canonicalModel": "claude-haiku-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          },
+          "claude-opus-5-5": {
+            "inputTokens": 20,
+            "outputTokens": 4939,
+            "cacheReadInputTokens": 213511,
+            "cacheCreationInputTokens": 38115,
+            "webSearchRequests": 0,
+            "costUSD": 0.4464822,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 446,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "status": "ok",
+        "terminal": "success",
+        "accepted_budget_terminal": false,
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "routes": [
+          "none"
+        ],
+        "nominal_sdk_usd": 0.09340180000000001,
+        "known_usage": true,
+        "accepted": true,
+        "raw_error_preserved": false,
+        "exit_code": 0,
+        "sha256": "32e2353fe5973be77a84317fff3b483a7bef26aac194c46517480d80011a2b94",
+        "language": "python",
+        "unconfirmed_tool_replies_excluded": 0,
+        "sdk_model_usage": {
+          "claude-haiku-5-5": {
+            "inputTokens": 1439,
+            "outputTokens": 21,
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0,
+            "webSearchRequests": 0,
+            "costUSD": 0.0001544,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 0,
+            "canonicalModel": "claude-haiku-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          },
+          "claude-opus-5-5": {
+            "inputTokens": 10,
+            "outputTokens": 1897,
+            "cacheReadInputTokens": 25937,
+            "cacheCreationInputTokens": 6260,
+            "webSearchRequests": 0,
+            "costUSD": 0.0932474,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 297,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "status": "ok",
+        "terminal": "success",
+        "accepted_budget_terminal": false,
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "routes": [
+          "none"
+        ],
+        "nominal_sdk_usd": 0.2204565,
+        "known_usage": true,
+        "accepted": true,
+        "raw_error_preserved": false,
+        "exit_code": 0,
+        "sha256": "b859001b2ed010a4f80cfbd1e5c09308acbee423de4896f4dad4a98986787fbe",
+        "language": "typescript",
+        "unconfirmed_tool_replies_excluded": 0,
+        "sdk_model_usage": {
+          "claude-haiku-5-5": {
+            "inputTokens": 1191,
+            "outputTokens": 26,
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0,
+            "webSearchRequests": 0,
+            "costUSD": 0.0001321,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 0,
+            "canonicalModel": "claude-haiku-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          },
+          "claude-opus-5-5": {
+            "inputTokens": 14,
+            "outputTokens": 3795,
+            "cacheReadInputTokens": 65562,
+            "cacheCreationInputTokens": 16407,
+            "webSearchRequests": 0,
+            "costUSD": 0.2203244,
+            "contextWindow": 1000000,
+            "maxOutputTokens": 128000,
+            "thinkingTokens": 671,
+            "canonicalModel": "claude-opus-5-5",
+            "provider": "firstParty",
+            "costBasis": "list"
+          }
+        }
+      }
+    ],
+    "runtime_gold_empty": true,
+    "new_dataset_annotation_or_reference_patch_columns_loaded": false,
+    "focused_local_tests": 52,
+    "batch_mock_tests": 29,
+    "protocol_api_reservation_usd": 2,
+    "count_forecast_with_headroom_usd": 0.5903436000000001
+  },
+  "verified500_source_preparation_audit": {
+    "scope": "Read-only current source coverage from existing native-source manifest records only. No whole500 model run,clones,source mutation,issue/source text,Gold,reference patches or labels read. Absence here does not prove absence from every unrelated local cache. No availability-based benchmark task filtering.",
+    "dataset_sha256": "e9dcfd504cbfb849ac815a79040c793d0d92f94eecc9b5a4ee3e1445a2f8a791",
+    "metadata_columns_read": [
+      "instance_id",
+      "original_inst_id",
+      "repo",
+      "repo_url",
+      "base_commit",
+      "language"
+    ],
+    "selected_population": 500,
+    "ready_count": 119,
+    "not_verified_count": 381,
+    "languages": {
+      "python": {
+        "total": 266,
+        "ready": 26
+      },
+      "javascript": {
+        "total": 60,
+        "ready": 15
+      },
+      "go": {
+        "total": 40,
+        "ready": 15
+      },
+      "typescript": {
+        "total": 66,
+        "ready": 15
+      },
+      "c": {
+        "total": 23,
+        "ready": 15
+      },
+      "cpp": {
+        "total": 10,
+        "ready": 7
+      },
+      "java": {
+        "total": 15,
+        "ready": 11
+      },
+      "rust": {
+        "total": 20,
+        "ready": 15
+      }
+    },
+    "unique_verified_checkout_count": 119,
+    "verified_allocated_kib": 8765296,
+    "elapsed_s": 3.9584085941314697,
+    "new_model_calls": 0,
+    "new_api_cost_usd": 0,
+    "full500_model_run_started": false,
+    "gate_passed": false,
+    "source_capacity_point_arithmetic": {
+      "cached_ready": 119,
+      "unverified": 381,
+      "missing_with_repo_sample": 358,
+      "missing_with_only_language_sample": {
+        "python": 10,
+        "go": 4,
+        "typescript": 2,
+        "java": 3,
+        "javascript": 1,
+        "rust": 3
+      },
+      "new_checkout_point_bytes": 45716062208,
+      "cache_free_bytes": 42643873792,
+      "source_staging_minimum_free_bytes": 12884901888,
+      "projected_free_after_point_bytes": -3072188416,
+      "new_api_cost_usd": 0
+    }
+  },
+  "verified500_metric_mapping_audit": {
+    "scope": "Pinned official source/schema audit only,no task examples,dataset labels or model calls.",
+    "leaderboard_source": "https://github.com/ContextBench/contextbench.github.io/blob/a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9/src/lib/leaderboard.ts",
+    "leaderboard_sha256": "cdbdf039c5909321d4b96f2d169015d9e95ffab542cc72ca934516e39ce7ff1e",
+    "official_recall_key": "performance.line.recall",
+    "official_f1_key": "performance.line.f1",
+    "default_rank_key": "line_recall",
+    "current_frozen_source_metric_matches_board_level": true,
+    "evaluator_source": "https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/contextbench/evaluate.py",
+    "evaluator_sha256": "a07e211ce72ee155c69c1e3f194526d559f1b1b152528153fa9ff0082d52b22d",
+    "evaluator_levels": [
+      "file",
+      "symbol",
+      "span",
+      "line"
+    ],
+    "website_required_levels": [
+      "file",
+      "block",
+      "line"
+    ],
+    "block_mapping_verified": true,
+    "open_gate": "Full500 still requires complete population,original artifacts and real native resolution outcomes. Metric-level and macro aggregation naming bridge is verified.",
+    "new_model_calls": 0,
+    "new_api_cost_usd": 0,
+    "block_source_metric": "symbol",
+    "aggregation": "Per-task metrics,then arithmetic mean;F1 per-task before averaging. Derive per-task F1 from R/P only when absent from the pinned evaluator raw field;never harmonic mean of macro Precision and Recall.",
+    "block_definition_primary_source": "https://arxiv.org/html/2602.05892v3",
+    "canonical_aggregation_source": "https://github.com/ContextBench/contextbench.github.io/blob/a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9/submissions/2026-09-12_openjiuwen-jiuwenswarm/aggregate.py",
+    "canonical_aggregation_sha256": "2843c5a449d25fa31073fa88845b935cd7e7783a3dff874f326b5afdcf722903"
+  },
+  "sealed32_canonical_aggregation_audit": {
+    "scope": "Posthoc aggregation/schema verification on already sealed32 official cumulative raw reports. No model calls,new annotation read,primary gate change,policy tuning or leaderboard claim.",
+    "field_mapping": {
+      "file": "file",
+      "block": "symbol",
+      "line": "line"
+    },
+    "inputs_sha256": {
+      "verification/contextbench-late-source-independent32-encoding-20261017/evaluation/native_packet/cumulative/metrics.json": "0f0ceeba76b7ece63b8e6870e2beb0ba51524d751b9643bd799b90aab4e431e5",
+      "verification/contextbench-late-source-independent32-encoding-20261017/evaluation/late_physical4096/cumulative/metrics.json": "cef2e447c5f0a3931153e98ee6a0f707f0e330260c2ea5826f6781431fd56cf1"
+    },
+    "task_macro": {
+      "native_packet": {
+        "file": {
+          "recall": 0.8542277167277167,
+          "precision": 0.3598378981699415,
+          "f1": 0.45409263801712313,
+          "evaluated_cases": 32
+        },
+        "block": {
+          "recall": 0.8283589354768236,
+          "precision": 0.17203410213938755,
+          "f1": 0.2575456817266009,
+          "evaluated_cases": 32
+        },
+        "line": {
+          "recall": 0.7494390839904986,
+          "precision": 0.22728208253297102,
+          "f1": 0.3013120498589982,
+          "evaluated_cases": 32
+        }
+      },
+      "late_physical4096": {
+        "file": {
+          "recall": 0.8542277167277167,
+          "precision": 0.3598378981699415,
+          "f1": 0.45409263801712313,
+          "evaluated_cases": 32
+        },
+        "block": {
+          "recall": 0.8359978243657125,
+          "precision": 0.13077616018772778,
+          "f1": 0.2062729156718217,
+          "evaluated_cases": 32
+        },
+        "line": {
+          "recall": 0.79092782160193,
+          "precision": 0.14834402468472668,
+          "f1": 0.2231531457948828,
+          "evaluated_cases": 32
+        }
+      }
+    },
+    "matches_frozen_primary_line_R_P_F1": true,
+    "new_api_cost_usd": 0
   }
 }
