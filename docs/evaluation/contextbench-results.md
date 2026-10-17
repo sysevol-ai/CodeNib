@@ -59,13 +59,42 @@ omitted, partial and index-only fallback text receives no source credit. The
 first pilot selects the first previously exposed122 task in each of Python,
 JavaScript, TypeScript and Go, without selecting by quality. It uses isolated
 source checkouts and cached local Jina embeddings, retains the same main Opus
-model/turn/$0.75 guard, and makes no repair calls. **307 focused compiler/MCP/SDK tests
-pass**; actual core-tool usage and matched pilot scores remain open. There is
-no explicit Haiku controller in this pilot; SDK auxiliary usage is not evidence
-of a context policy. A reproduced JS/TS alias bug in compiler receipt
-layout is fixed: aliased source languages use the normalized backend layout.
-The actual execution interpreter now validates SDK/CLI availability before
-indexing or claiming a model intent; initial failures made no model request. No indexed-context gain is established yet.
+model/turn/$0.75 guard, and makes no repair calls. The first four-task development pilot is now source-sealed and scored with the
+same official evaluator and native controls: **4/4 valid per arm**. Native versus
+optional indexed-tool line Recall is **71.61% → 73.69%**, F1 **33.68% → 40.92%**;
+unique observed source lines are **3,209 → 2,927** and Max nominal SDK usage is
+**$1.1760282 → $1.1217879**, with **$0 new API** and no repairs. This aggregate
+is **not evidence of CodeNib core benefit**: Python, TypeScript and Go never
+call the core tool. Only JavaScript calls it once, and that case declines in
+Recall **74.95% → 74.15%**, F1 **40.28% → 39.15%**. All four remain in the report;
+no favorable subset is promoted. They are exposed development cases, not an
+independent gate or leaderboard result.
+
+JavaScript and TypeScript have actual compiled graphs; Python indexing exceeds
+its600-second limit and Go lacks `scip-go`. Those missing backends stay explicit,
+with dense retrieval available. The measured cold preparation times remain
+costs of the indexed method even when a subsequent iteration reuses the cache.
+There is no explicit Haiku controller; SDK auxiliary usage is not a context policy.
+
+The same real query exposes a source-delivery bug: a named symbol can be lost in
+generic routing or displaced by dense hits. Independent main-based draft
+[PR #835](https://github.com/sysevol-ai/CodeNib/pull/835) preserves exact indexed
+query symbols and prioritizes named routes. **105 focused tests** and a
+same-query/index/source/four-window replay verify the requested definition is
+returned first, without model or Gold calls. This is a concrete fix, not a
+benchmark gain. Its source changes are included in the next development policy;
+the original four trajectories stay unchanged.
+
+The next source-only policy appends at most256 estimated tokens of compiler
+reference metadata after a successful read, then lets the agent request bodies
+through the actual context tool. It uses stable symbol/source identity, bounded
+edge inspection, history-based repeat suppression and source authentication;
+reference counts do not claim runtime calls or test coverage. Metadata locations
+receive no unread-source credit. Actual graph replay can add14 hints to15 prior
+JavaScript/TypeScript reads with identical source predictions, but these are
+counterfactual engineering outputs that no historical model consumed. The
+real same-case development comparison is still pending; cached preparation is
+reported separately from cold index costs.
 
 The user-requested interim report prospectively changes the annotation schedule:
 these122 actual-source predictions were sealed before their selected Gold was

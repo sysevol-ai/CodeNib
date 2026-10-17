@@ -6,8 +6,8 @@
 """Source-checkout pilot of real CodeNib context, without repair or API fallback.
 
 Each invocation owns one fresh output directory and one model intent. It builds
-only vector and symbol-graph views with the existing compiler, then uses the
-existing SDK retrieval loop. Run on disclosed development tasks before claiming
+vector/symbol-graph views or explicitly checks a same-case local pilot producer,
+then uses the existing SDK retrieval loop. Run on development tasks before claiming
 independent benchmark gains. An interrupted model intent is never retried here.
 """
 
@@ -34,17 +34,96 @@ from codenib.compiler.index_builders import (
     register_default_builders,
 )
 from codenib.compiler.index_compiler import IndexCompiler, IndexCompilerConfig
+from codenib.compiler.manifest import RepoManifest
 from codenib.index.embedding.artifact_integrity import capture_authenticated_vector_view
 from codenib.mcp.context import ServerContext
 from codenib.native_index_authorization import _mint_trusted_local_admin_authorization
+from codenib.provider_routes import resolve_embedding_artifact_route
 from codenib.source_fingerprint import capture_repository_source
 from scripts import benchmark_context_claude as claude
 from scripts.benchmark_jev_base import write_json
 from scripts.contextbench_codenib_context import make_context_tool
+from scripts.contextbench_context_hints import ContextHints
 
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def prepare_manifest(args, record, repo, languages):
+    """Build locally, or explicitly reuse this same case's verified pilot output."""
+    if args.reuse_from is not None:
+        producer = args.reuse_from.resolve()
+        protocol = json.loads((producer / "protocol.json").read_text())
+        raw = json.loads((producer / "trajectory.json").read_text())
+        manifest = RepoManifest.load(producer / "indexes/repo_manifest.json")
+        recorded = json.loads((producer / "index-outcomes.json").read_text())
+        if (
+            raw["instance_id"] != record["instance_id"]
+            or raw["status"] not in {"ok", "budget_exhausted"}
+            or protocol["input_sha256"] != digest(args.input)
+            or Path(manifest.repo_path).resolve() != repo
+            or manifest.commit != record["base_commit"]
+            or manifest.to_dict() != recorded
+            or protocol["embedding_model"] != args.embedding_model
+            or protocol["embedding_revision"] != args.embedding_revision
+            or raw["snapshot_before"]["commit"] != record["base_commit"]
+            or raw["snapshot_after"]["commit"] != record["base_commit"]
+        ):
+            raise ValueError("Cached producer must match the exact source/issue case")
+        route = resolve_embedding_artifact_route(manifest.indexes["vector"].config)
+        if (
+            route.provider != "huggingface"
+            or route.model != args.embedding_model
+            or manifest.indexes["vector"]
+            .config.get("embedding_kwargs", {})
+            .get("revision")
+            != args.embedding_revision
+            or not manifest.index_is_current("vector")
+        ):
+            raise ValueError("Cached pilot requires the declared local embedding route")
+        write_json(
+            args.output / "cache-producer.json",
+            {
+                "producer": str(producer),
+                "protocol_sha256": digest(producer / "protocol.json"),
+                "trajectory_sha256": digest(producer / "trajectory.json"),
+                "index_manifest_sha256": digest(
+                    producer / "indexes/repo_manifest.json"
+                ),
+                "cold_index_build_cost_reused_not_zero": True,
+            },
+        )
+        write_json(args.output / "index-outcomes.json", manifest.to_dict())
+        return manifest, "contextbench-explicit-owned-cache-reuse"
+    registry = IndexBuilderRegistry()
+    register_default_builders(
+        registry,
+        languages=languages,
+        embedding_model=args.embedding_model,
+        embedding_revision=args.embedding_revision,
+        trust_remote_code=True,
+        embedding_batch_size=16,
+        embedding_max_seq_length=1024,
+        allow_graph_project_preparation=False,
+    )
+    compiler = IndexCompiler(
+        registry,
+        IndexCompilerConfig(
+            index_types=["vector", "symbol_graph"], languages=languages
+        ),
+    )
+    manifest = compiler.compile_repo(
+        str(repo), index_types=["vector"], cache_dir=str(args.output / "indexes")
+    )
+    write_json(args.output / "index-outcomes.json", manifest.to_dict())
+    if not manifest.index_is_current("vector"):
+        raise ValueError("Dense index build failed; do not substitute native tools")
+    manifest = compiler.compile_repo(
+        str(repo), index_types=["symbol_graph"], cache_dir=str(args.output / "indexes")
+    )
+    write_json(args.output / "index-outcomes.json", manifest.to_dict())
+    return manifest, "contextbench-pilot-owned-build"
 
 
 def run(args):
@@ -90,6 +169,8 @@ def run(args):
             ROOT / "scripts/benchmark_context_claude.py",
             ROOT / "codenib/compiler/index_builders.py",
             ROOT / "codenib/mcp/tools/explore.py",
+            ROOT / "scripts/contextbench_context_hints.py",
+            ROOT / "scripts/contextbench_graph_navigation.py",
         ]
     }
     write_json(
@@ -116,6 +197,17 @@ def run(args):
             "local_model_cache": os.environ.get("HF_HUB_CACHE"),
             "offline_embeddings": os.environ.get("HF_HUB_OFFLINE") == "1",
             "views": ["vector", "symbol_graph"],
+            "reuse_from": str(args.reuse_from) if args.reuse_from else None,
+            "read_reference_hints": args.read_reference_hints,
+            "hint_limits": (
+                {
+                    "tokens_cl100k_per_read": 256,
+                    "symbols_per_read": 2,
+                    "raw_edge_scans_per_read": 128,
+                }
+                if args.read_reference_hints
+                else None
+            ),
             "BM25": False,
             "Jev": False,
             "model": "claude-opus-5-5",
@@ -145,38 +237,9 @@ def run(args):
         row["snapshot_before"] = claude.native.audit_contextbench_snapshot(
             repo, record["base_commit"]
         )
-        registry = IndexBuilderRegistry()
-        register_default_builders(
-            registry,
-            languages=languages,
-            embedding_model=args.embedding_model,
-            embedding_revision=args.embedding_revision,
-            trust_remote_code=True,
-            embedding_batch_size=16,
-            embedding_max_seq_length=1024,
-            allow_graph_project_preparation=False,
-        )
-        compiler = IndexCompiler(
-            registry,
-            IndexCompilerConfig(
-                index_types=["vector", "symbol_graph"],
-                languages=languages,
-            ),
-        )
-        manifest = compiler.compile_repo(
-            str(repo), index_types=["vector"], cache_dir=str(args.output / "indexes")
-        )
-        write_json(args.output / "index-outcomes.json", manifest.to_dict())
-        # Only this invocation's captured compiler output is authorized for FAISS.
-        entry = manifest.indexes["vector"]
-        if not manifest.index_is_current("vector"):
-            raise ValueError("Dense index build failed; do not substitute native tools")
-        manifest = compiler.compile_repo(
-            str(repo),
-            index_types=["symbol_graph"],
-            cache_dir=str(args.output / "indexes"),
-        )
-        write_json(args.output / "index-outcomes.json", manifest.to_dict())
+        manifest, trust_evidence = prepare_manifest(args, record, repo, languages)
+        # The selected view is either this build or the explicitly checked local
+        # producer above. Retain native byte authorization and source binding.
         entry = manifest.indexes["vector"]
         with capture_authenticated_vector_view(entry.path) as view:
             authorization = _mint_trusted_local_admin_authorization(
@@ -184,7 +247,7 @@ def run(args):
                 view_type="vector",
                 semantic_contract=entry.config,
                 evidence=(
-                    "contextbench-pilot-owned-build",
+                    trust_evidence,
                     "captured-vector-tree-subject",
                 ),
             )
@@ -201,6 +264,7 @@ def run(args):
         if ctx.vector is None:
             raise ValueError(f"Dense view did not load: {ctx.errors}")
         tool = make_context_tool(ctx)
+        hints = ContextHints(ctx, repo=repo) if args.read_reference_hints else None
         row["indexes"] = {
             "loaded": sorted(ctx.loaded_views),
             "errors": ctx.errors,
@@ -236,6 +300,7 @@ def run(args):
                         case_meter_usd=0.75,
                         max_included_only=True,
                         context_tool=tool,
+                        read_hints=hints,
                     ),
                     timeout=600,
                 )
@@ -281,4 +346,6 @@ if __name__ == "__main__":
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--embedding-model", required=True)
     parser.add_argument("--embedding-revision", required=True)
+    parser.add_argument("--reuse-from", type=Path)
+    parser.add_argument("--read-reference-hints", action="store_true")
     run(parser.parse_args())
