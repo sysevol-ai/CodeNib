@@ -61,6 +61,7 @@ from scripts.benchmark_decision_loop import (
 from scripts.benchmark_graph_decisions import pack_context, prediction, strict_rerank
 from scripts.benchmark_jev_base import digest, write_json
 from scripts.contextbench_graph_navigation import (
+    GRAPH_QUERY_POLICIES,
     graph_arguments,
     graph_options,
     load_graph_records,
@@ -105,9 +106,40 @@ remain, continue with a new relevant source search instead of repeating the hop.
 Inspect returned definitions only when they resolve an uncertainty about the issue."""
 
 
-def retrieval_system_prompt(max_turns, *, graph_enabled=False):
+LATE_GRAPH_INSTRUCTIONS = """\
+If graph_neighbors is available, first use ordinary source search and reads to
+understand the issue's primary implementation and a plausible fix. Do not query
+the graph just because the first function appeared. Before your final handoff,
+perform one relationship check: name a concrete question whose answer could
+change the fix or its validation, then query a function or method you actually
+read that directly bears on that question. Use its returned file and a 1-based
+source line. Choose incoming references to check caller assumptions or tests;
+choose outgoing references to check a helper's behavior or contract. Select the
+anchor by the issue's behavior, not merely a name match or the first search hit.
+This check must happen after the initial investigation and before the final
+handoff, so its returned source can still inform your reasoning. Use at most
+two graph calls: if the first reports no unseen/returned neighbors and the
+opposite direction would answer the question, you may check that direction once.
+Do not repeat an unavailable graph, a missing definition, or an identical query.
+Use further read/grep calls only for material uncertainty left by the result.
+In the SDK the tool is named mcp__source__graph_neighbors. Only returned numbered
+source is evidence; combine omitted previously observed lines with earlier
+source in the conversation. Finish by explaining the relationship you verified
+and any remaining uncertainty. Do not treat compiler references as runtime traces."""
+
+
+def retrieval_system_prompt(
+    max_turns, *, graph_enabled=False, graph_query_policy=GRAPH_QUERY_POLICIES[0]
+):
     """Describe only tools registered for this experimental arm."""
-    guidance = GRAPH_INSTRUCTIONS + "\n\n" if graph_enabled else ""
+    if graph_query_policy not in GRAPH_QUERY_POLICIES:
+        raise ValueError("Unknown graph query policy")
+    instructions = (
+        GRAPH_INSTRUCTIONS
+        if graph_query_policy == GRAPH_QUERY_POLICIES[0]
+        else LATE_GRAPH_INSTRUCTIONS
+    )
+    guidance = instructions + "\n\n" if graph_enabled else ""
     return SYSTEM.replace(
         "You have up to 20 model turns",
         guidance + f"You have up to {max_turns} model turns",
@@ -260,6 +292,7 @@ def retrieve(
     completion_tokens=2048,
     completion_source_policy="definitions",
     graph_tool=None,
+    graph_query_policy=GRAPH_QUERY_POLICIES[0],
 ):
     """Only source tools and the original issue enter the shared native loop."""
     registry = SkillRegistry()
@@ -269,7 +302,9 @@ def retrieve(
         exclude_skills=set(registry.list_skills()),
         default_tool_ids={"read", "grep", "glob"},
         system_prompt=retrieval_system_prompt(
-            max_turns, graph_enabled=graph_tool is not None
+            max_turns,
+            graph_enabled=graph_tool is not None,
+            graph_query_policy=graph_query_policy,
         ),
         max_turns=max_turns,
         max_context_tokens=None,
@@ -1101,6 +1136,7 @@ def run(args):
                 completion_tokens=completion_tokens,
                 completion_source_policy=completion_source_policy,
                 graph_tool=graph_tool,
+                graph_query_policy=graph_config["policy"],
             )
             messages = result.messages
             row.update(
@@ -1347,6 +1383,16 @@ def compare(args):
         and not left_graph["enabled"]
     ):
         contrast = "online_function_completion"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies == ("functions", "functions")
+        and left_graph["enabled"]
+        and right_graph["enabled"]
+        and left_graph.get("policy") == GRAPH_QUERY_POLICIES[0]
+        and {**left_graph, "policy": GRAPH_QUERY_POLICIES[1]} == right_graph
+    ):
+        contrast = "late_graph_query_over_first_source"
         if left["config"].get("tools") != right["config"].get("tools"):
             raise ValueError("Paired policies differ in tools")
     elif (

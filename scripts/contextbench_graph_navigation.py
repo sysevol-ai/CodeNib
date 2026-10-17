@@ -35,6 +35,11 @@ from codenib.types import (
     node_has_definition,
 )
 
+GRAPH_QUERY_POLICIES = (
+    "first_callable_source_reference_hop",
+    "late_issue_reference_hop",
+)
+
 
 def prepare_graphs(args):
     """Bind local compiler artifacts to the exact selected source snapshots.
@@ -176,10 +181,13 @@ def graph_options(args, cases):
     prepared = getattr(args, "graphs", None)
     tokens = getattr(args, "graph_tokens", 2048)
     source_policy = getattr(args, "graph_source_policy", "definitions")
+    query_policy = getattr(args, "graph_query_policy", GRAPH_QUERY_POLICIES[0])
     if not 1 <= tokens <= 8192:
         raise ValueError("Graph token budget must be between 1 and 8192")
     if source_policy not in {"definitions", "unseen"}:
         raise ValueError("Unknown graph source policy")
+    if query_policy not in GRAPH_QUERY_POLICIES:
+        raise ValueError("Unknown graph query policy")
     if enabled and (not prepared or args.source_policy != "functions"):
         raise ValueError(
             "Graph navigation requires functions policy and prepared graphs"
@@ -190,7 +198,7 @@ def graph_options(args, cases):
         "prepared": str(prepared.resolve()) if prepared else None,
         "manifest_sha256": digest(prepared / "manifest.json") if prepared else None,
         "tokens": tokens,
-        "policy": "first_callable_source_reference_hop",
+        "policy": query_policy,
         "source_policy": source_policy,
     }
 
@@ -201,6 +209,11 @@ def graph_arguments(parser):
     )
     parser.add_argument("--graph-navigation", action="store_true")
     parser.add_argument("--graph-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--graph-query-policy",
+        choices=GRAPH_QUERY_POLICIES,
+        default=GRAPH_QUERY_POLICIES[0],
+    )
     parser.add_argument(
         "--graph-source-policy",
         choices=("definitions", "unseen"),

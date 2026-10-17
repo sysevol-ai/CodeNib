@@ -103,7 +103,12 @@ def test_graph_sdk_tool_requires_explicit_run_allowlist():
 
 
 @pytest.mark.parametrize("policy", ["definitions", "unseen"])
-def test_sdk_completion_uses_streamed_source_receipts(monkeypatch, tmp_path, policy):
+@pytest.mark.parametrize("query_policy", [None, *claude.GRAPH_QUERY_POLICIES])
+def test_sdk_completion_uses_streamed_source_receipts(
+    monkeypatch, tmp_path, policy, query_policy
+):
+    from scripts.contextbench_graph_navigation import GraphNavigation
+
     (tmp_path / "a.py").write_text("def found():\n    value = 3\n    return value\n")
     row = {"instance_id": "case", "messages": [], "sdk_events": []}
     replies = []
@@ -113,6 +118,16 @@ def test_sdk_completion_uses_streamed_source_receipts(monkeypatch, tmp_path, pol
 
     async def query(*, prompt, options):
         handlers = dict(options.mcp_servers["source"])
+        assert ("graph_neighbors" in handlers) == (query_policy is not None)
+        assert ("graph_neighbors" in options.system_prompt) == (
+            query_policy is not None
+        )
+        if query_policy is not None:
+            early = query_policy == claude.GRAPH_QUERY_POLICIES[0]
+            assert (claude.native.GRAPH_INSTRUCTIONS in options.system_prompt) == early
+            assert (claude.native.LATE_GRAPH_INSTRUCTIONS in options.system_prompt) == (
+                not early
+            )
         yield event(
             "SystemMessage", subtype="init", data={"tools": options.allowed_tools}
         )
@@ -168,6 +183,10 @@ def test_sdk_completion_uses_streamed_source_receipts(monkeypatch, tmp_path, pol
             max_turns=5,
             source_policy="functions",
             completion_source_policy=policy,
+            graph_tool=(
+                GraphNavigation(None, tmp_path).tool_spec() if query_policy else None
+            ),
+            graph_query_policy=query_policy or claude.GRAPH_QUERY_POLICIES[0],
         )
     )
     assert "return value" in replies[0] and "value = 3" in replies[1]
@@ -340,7 +359,12 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
             "graph_options",
             lambda *args: (
                 {key: {"available": True} for key in cases},
-                {"enabled": True, "tokens": 2048, "source_policy": "unseen"},
+                {
+                    "enabled": True,
+                    "tokens": 2048,
+                    "source_policy": "unseen",
+                    "policy": claude.GRAPH_QUERY_POLICIES[1],
+                },
             ),
         )
         monkeypatch.setattr(
@@ -363,6 +387,11 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
             else "ok"
         )
         if first_status == "graph_observations":
+            assert kwargs["graph_query_policy"] == claude.GRAPH_QUERY_POLICIES[1]
+            assert (
+                claude.native.LATE_GRAPH_INSTRUCTIONS
+                in kwargs["row"]["messages"][0]["content"]
+            )
             observe = kwargs["graph_tool"]
             assert observe() == []  # New task, no shared source state.
             kwargs["row"]["messages"].extend(

@@ -17,11 +17,30 @@ from codenib.types import (
 )
 from scripts.benchmark_context_agent import observed_nodes
 from scripts.contextbench_graph_navigation import (
+    GRAPH_QUERY_POLICIES,
     GraphNavigation,
+    graph_options,
     load_graph_records,
     load_navigation,
     prepare_graphs,
 )
+
+
+def test_query_policy_is_recorded_without_changing_disabled_graph_prompt():
+    from scripts.benchmark_context_agent import retrieval_system_prompt
+
+    args = SimpleNamespace(source_policy="native")
+    _, default = graph_options(args, {})
+    assert default["policy"] == GRAPH_QUERY_POLICIES[0]
+    args.graph_query_policy = GRAPH_QUERY_POLICIES[1]
+    _, late = graph_options(args, {})
+    assert late == {**default, "policy": GRAPH_QUERY_POLICIES[1]}
+    assert retrieval_system_prompt(8) == retrieval_system_prompt(
+        8, graph_query_policy=args.graph_query_policy
+    )
+    args.graph_query_policy = "unknown"
+    with pytest.raises(ValueError, match="Unknown graph query policy"):
+        graph_options(args, {})
 
 
 def read_receipt(file, content):
