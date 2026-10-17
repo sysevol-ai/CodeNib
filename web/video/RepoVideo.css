@@ -1,0 +1,344 @@
+/* SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+ * SPDX-License-Identifier: Apache-2.0 */
+
+/* The system-map film: one fixed 1920x1080 frame. Every value that moves is
+   computed from the frame time in RepoVideo.tsx, so nothing here may run on
+   the wall clock: transitions are off and the poster's flow animation is
+   paused and seeked through --rv-clock. */
+@font-face {
+  font-family: "Geist";
+  src: url("../app/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../app/fonts/GeistMono-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+}
+
+html,
+body {
+  margin: 0;
+  background: #04070d;
+}
+.rv {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  position: relative;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  color: #e6edf7;
+  background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(59, 130, 246, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(34, 211, 238, 0.08), transparent 60%),
+    #04070d;
+}
+.rv *,
+.rv *::before,
+.rv *::after {
+  transition: none !important;
+}
+.rv .poster-edge-flow {
+  animation-play-state: paused !important;
+  animation-delay: calc(var(--rv-clock) * -1ms) !important;
+}
+.rv-mono {
+  font-family: var(--font-mono);
+}
+
+/* Camera: the poster at its page size, moved and scaled as one layer. */
+.rv-camera {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1920px;
+  transform-origin: 0 0;
+}
+.rv-camera .repo-poster {
+  width: 1480px;
+  max-width: none;
+  margin: 0 auto;
+}
+.rv .poster-play,
+.rv .poster-actions,
+.rv.is-short .poster-foot {
+  display: none;
+}
+.rv.is-focus .poster-edge,
+.rv.is-focus .poster-node,
+.rv.is-focus .poster-head,
+.rv.is-focus .poster-trace,
+.rv.is-focus .poster-foot,
+.rv.is-focus .poster-isolated {
+  opacity: var(--rv-dim);
+}
+
+/* Hook */
+.rv-hook {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 200px;
+}
+.rv-eyebrow {
+  margin-bottom: 28px;
+  color: #8a97ab;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.rv-eyebrow .rv-mono {
+  text-transform: none;
+  letter-spacing: 0;
+  color: #b6c2d4;
+}
+.rv-sep {
+  margin: 0 14px;
+  color: #5b6679;
+}
+.rv-hook h1 {
+  margin: 0;
+  font-size: 104px;
+  line-height: 1.12;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+.rv-hook code {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  color: #67e8f9;
+  letter-spacing: -0.02em;
+}
+
+/* Stage readout under the map while the path plays */
+.rv-stage {
+  position: absolute;
+  left: 80px;
+  right: 80px;
+  bottom: 78px;
+  display: flex;
+  align-items: baseline;
+  gap: 28px;
+  justify-content: center;
+}
+.rv-stage-no {
+  font-family: var(--font-mono);
+  font-size: 30px;
+  font-weight: 600;
+  color: #22d3ee;
+}
+.rv-stage code {
+  font-family: var(--font-mono);
+  font-size: 54px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: #e6edf7;
+}
+.rv-stage-area {
+  font-size: 28px;
+  color: #8a97ab;
+}
+
+/* Call-site card */
+.rv-wire {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.rv-wire-dot {
+  fill: #cffafe;
+  filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.9));
+}
+.rv-wire-line {
+  stroke: rgba(165, 243, 252, 0.7);
+  stroke-width: 2;
+}
+.rv-code {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 940px;
+  padding: 30px 34px 26px;
+  border: 1px solid #22314a;
+  border-radius: 18px;
+  background: #080d18;
+  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.rv-code-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 26px;
+  color: #8a97ab;
+}
+.rv-code-head b {
+  color: #e6edf7;
+  font-weight: 600;
+}
+.rv-code-line-no {
+  color: #67e8f9;
+  font-weight: 600;
+}
+.rv-code-kind {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
+.rv-code-pair {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  margin: 14px 0 22px;
+  font-size: 22px;
+  color: #5b6679;
+}
+.rv-code-pair code {
+  font-family: var(--font-mono);
+  color: #b6c2d4;
+}
+.rv-code pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 23px;
+  line-height: 1.6;
+  color: #cbd5e1;
+}
+.rv-code-row {
+  position: relative;
+  display: flex;
+  border-radius: 6px;
+}
+.rv-code-mark {
+  position: absolute;
+  inset: 0 -12px;
+  border-left: 4px solid #22d3ee;
+  border-radius: 6px;
+  background: rgba(34, 211, 238, 0.14);
+  transform-origin: 0 50%;
+}
+.rv-code-no {
+  position: relative;
+  flex: 0 0 3.2em;
+  padding-right: 1.1em;
+  text-align: right;
+  color: #4b5669;
+}
+.rv-code-row.is-anchor .rv-code-no {
+  color: #67e8f9;
+}
+.rv-code-text {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: pre;
+  text-overflow: ellipsis;
+}
+.rv-code .hljs-keyword,
+.rv-code .hljs-built_in {
+  color: #f472b6;
+}
+.rv-code .hljs-title,
+.rv-code .hljs-title.function_ {
+  color: #93c5fd;
+}
+.rv-code .hljs-string {
+  color: #86efac;
+}
+.rv-code .hljs-comment {
+  color: #64748b;
+}
+.rv-code .hljs-number,
+.rv-code .hljs-literal {
+  color: #fcd34d;
+}
+.rv-code-foot {
+  margin-top: 20px;
+  font-size: 18px;
+  color: #5b6679;
+}
+.rv-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 90px 0 64px;
+  /* A scrim, so map text the camera leaves behind never runs under it. */
+  background: linear-gradient(to bottom, rgba(4, 7, 13, 0), rgba(4, 7, 13, 0.92) 55%);
+  text-align: center;
+  font-size: 34px;
+  font-weight: 500;
+  color: #b6c2d4;
+}
+
+/* End card */
+.rv-end {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 200px;
+}
+.rv-end-claim {
+  max-width: 1300px;
+  margin: 0;
+  font-size: 64px;
+  line-height: 1.18;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.rv-end-accent {
+  margin: 18px 0 0;
+  font-size: 64px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #67e8f9;
+}
+.rv-end-url {
+  align-self: flex-start;
+  margin-top: 64px;
+  padding: 14px 26px;
+  border: 1px solid #22314a;
+  border-radius: 999px;
+  font-size: 30px;
+  color: #e6edf7;
+  background: rgba(15, 23, 42, 0.8);
+}
+.rv-end-brand {
+  position: absolute;
+  right: 120px;
+  bottom: 96px;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #8a97ab;
+}
+.rv-end.is-short {
+  align-items: center;
+  padding: 0;
+  gap: 44px;
+}
+.rv-end-mark {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  font-size: 96px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+.rv-end-mark img {
+  width: 96px;
+  height: 96px;
+}
+.rv-end.is-short .rv-end-url {
+  align-self: center;
+  margin-top: 0;
+  font-size: 38px;
+  padding: 18px 34px;
+}
