@@ -50,6 +50,24 @@ from scripts.contextbench_grep_rerank import GREP_POLICIES, GrepSourceView
 TOOLS = {f"mcp__source__{name}": name for name in ("read", "grep", "glob")}
 
 
+def included_max_rate(data):
+    """Require an allowed subscription event with paid overage explicitly off.
+
+    This checks an observed SDK event, not an account spending limit. The first
+    request may already have been sent when the event arrives. Never enable
+    credits or infer that an absent flag means they are disabled.
+    """
+    info = data.get("rate_limit_info") or {}
+    raw = info.get("raw") or {}
+    if (
+        info.get("status") not in {"allowed", "allowed_warning"}
+        or raw.get("overageEnabled") is not False
+        or raw.get("isUsingOverage") is not False
+    ):
+        raise RuntimeError("Max quota event does not confirm included usage only")
+    return info
+
+
 def subscription_auth(cli):
     """Inspect authentication through the supported CLI, never read OAuth secrets."""
     if any(
@@ -184,6 +202,7 @@ async def retrieve(
     grep_view=None,
     file_map_tokens=0,
     file_source_view=None,
+    max_included_only=False,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -204,6 +223,8 @@ async def retrieve(
         source_policy != "native" or grep_view is not None or graph_tool is not None
     ):
         raise ValueError("File source requires unmodified native source tools")
+    if max_included_only and billing_route != "subscription":
+        raise ValueError("Included Max usage requires the subscription route")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -296,11 +317,31 @@ async def retrieve(
         strict_mcp_config=True,
         extra_args={"no-session-persistence": None},
     )
+    max_rate_seen = False
     async for message in query(prompt=query_text, options=options):
         kind = type(message).__name__
         data = dataclasses.asdict(message)
         row["sdk_events"].append({"kind": kind, "data": data})
+        if kind == "ResultMessage":
+            row["sdk_result"] = data
+            # Preserve terminal usage even if a subsequent receipt check fails.
+            row["sdk_reported_cost_usd"] = data.get("total_cost_usd")
+        if max_included_only:
+            if kind == "RateLimitEvent":
+                row["max_rate_event"] = data
+                checkpoint()
+                row["max_included_rate_info"] = included_max_rate(data)
+                max_rate_seen = True
+            elif kind in {"AssistantMessage", "UserMessage", "ResultMessage"}:
+                if not max_rate_seen:
+                    checkpoint()
+                    raise RuntimeError(
+                        "No included Max quota event before model output"
+                    )
         if kind == "SystemMessage" and data.get("subtype") == "init":
+            if max_included_only and data["data"].get("apiKeySource") != "none":
+                checkpoint()
+                raise ValueError("Included Max run did not confirm subscription auth")
             if (
                 billing_route == "anthropic-api"
                 and data["data"].get("apiKeySource") != "ANTHROPIC_API_KEY"
@@ -317,11 +358,6 @@ async def retrieve(
                     row.setdefault("unavailable_tool_attempts", []).append(
                         {"id": call["id"], "name": call["function"]["name"]}
                     )
-        if kind == "ResultMessage":
-            row["sdk_result"] = data
-            # SDK iteration may raise after this terminal event, including on
-            # budget errors. Retain usage before advancing while keeping errors.
-            row["sdk_reported_cost_usd"] = data.get("total_cost_usd")
         checkpoint()
         if grep_view is not None and grep_view.ledger["failed"]:
             raise RuntimeError("Grep selection failed; stop this SDK stream")
@@ -357,6 +393,7 @@ def run(args):
     case_meter_usd = getattr(args, "case_meter_usd", 3.0)
     case_timeout = getattr(args, "case_timeout", 900.0)
     billing_route = getattr(args, "billing_route", "subscription")
+    max_included_only = getattr(args, "max_included_only", False)
     grep_policy = getattr(args, "grep_view", "native")
     file_map_tokens = getattr(args, "file_map_tokens", 0)
     file_source_tokens = getattr(args, "file_source_tokens", 0)
@@ -364,6 +401,8 @@ def run(args):
     jev_cost_usd = getattr(args, "jev_cost_usd", 0.05)
     if billing_route not in {"subscription", "anthropic-api"}:
         raise ValueError("Unknown billing route")
+    if max_included_only and billing_route != "subscription":
+        raise ValueError("Included Max usage requires the subscription route")
     if grep_policy not in GREP_POLICIES:
         raise ValueError("Unknown grep view")
     if not 0 <= file_map_tokens <= 4096:
@@ -398,6 +437,10 @@ def run(args):
     ):
         raise ValueError("SDK meter and timeout limits must be finite and positive")
     auth = subscription_auth(cli) if billing_route == "subscription" else api_auth(cli)
+    if max_included_only and (
+        auth.get("subscriptionType") != "max" or auth.get("apiProvider") != "firstParty"
+    ):
+        raise ValueError("Included Max run requires a first-party Max login")
     manifest, cases = native.load_inputs(args.prepared)
     graph_records, graph_config = graph_options(args, cases)
     if file_map_tokens and graph_config["enabled"]:
@@ -422,6 +465,7 @@ def run(args):
             ).strip(),
             "auth": auth,
             "billing_route": billing_route,
+            "max_included_only": max_included_only,
             "grep_view": {
                 "policy": grep_policy,
                 "tokens": grep_tokens,
@@ -548,6 +592,7 @@ def run(args):
                             grep_view=grep_view,
                             file_map_tokens=file_map_tokens,
                             file_source_view=file_source_view,
+                            max_included_only=max_included_only,
                             graph_tool=graph_tool,
                             graph_query_policy=graph_config["policy"],
                         ),
@@ -659,6 +704,11 @@ def main():
     parser.add_argument("--grep-tokens", type=int, default=4096)
     parser.add_argument("--jev-cost-usd", type=float, default=0.05)
     parser.add_argument("--max-turns", type=int, default=20)
+    parser.add_argument(
+        "--max-included-only",
+        action="store_true",
+        help="Require SDK quota events with usage credits explicitly disabled",
+    )
     parser.add_argument("--live", action="store_true")
     parser.add_argument(
         "--max-meter-usd",
