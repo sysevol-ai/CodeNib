@@ -444,25 +444,46 @@ language sources finish. Repacking 16 newly owned non-donor Git stores reclaims
 connectivity checks pass. Thirteen local Git tests pass before 122 relevant unit
 tests, with eight integration cases deselected. Pinned hooks pass.
 
-The work adds no model calls, API usage or quality scores. All 24 development and
-32 sealed packet pairs match current compiler bytes and complete consumer params.
-The original whole-file check rejects 24 for the disclosed two-keyword packing
-fix and remains failed. A separate AST/code-path audit establishes semantic
-parity; inactive native grep token settings remain explicit. Conditional reuse
-leaves 444 positions, with $21.59 in small-sample Max/Batch arithmetic before an
-exact reservation. Source-gap handling, provider counts, Max quota and budget
-remain open for context-only 500 execution. Formal submission separately needs
-native outcomes and raw artifacts; context research does not wait for repairs.
-API usage stays $59.09398873. All three 32 cohorts remain sealed. No full500
-inference, repair batch or product promotion starts automatically. Official
-symbol→block and task-macro/F1 mappings and sealed primary results stay unchanged.
+All 24 development and 32 sealed packet pairs match current compiler bytes and
+complete consumer params. The original whole-file check rejects 24 for the
+disclosed two-keyword packing fix and remains failed; a separate AST/code-path
+audit establishes parity. Another 32 original native prefixes qualify through
+full source/profile/code parity and equality with the fixed validated built-in
+catalog. Preserve their initial strict empty-catalog failure. Reuse every matching
+case without new scoring: 88 native prefixes, including 56 complete pairs,
+leave 412 fresh investigations and 444 candidate inputs.
+
+Canonical500 context-only protocol `cf2f2e47`, runtime `e8f6b675`, is now running
+in an immutable worktree, with empty runtime gold and all source-gap denominators
+retained. It includes exposed cases and is not fresh independent500. At the
+2026-10-17 18:16 UTC checkpoint, 29/412 fresh investigations are accepted for
+$2.88826660 additional Max nominal SDK usage, zero new API/repair calls or terminal
+metering gaps. The default-off included-only guard requires actual Max auth and
+supported rate receipts explicitly disabling overage; it changes no query
+options or account settings. The first request can precede the rate event, so it
+is not a billing cap. Thirty-three boundary tests, then 132 relevant units pass
+(eight integration cases deselected). Per-case durable intent prevents automatic
+relaunch; unexpected receipts stop later dispatch. Current live quota receipts
+are not a whole-run quota reservation.
+
+Baseline cumulative source is already consumed by the investigator; all56
+original native-packet source unions equal its prefix. The444 remaining cases
+add only an actual candidate final input, with extra volume/cost disclosed and
+no matched final-reasoning or repair claim. Exact provider counts and full
+output-cap/margin/headroom must fit the separately reserved $40 before one Batch
+create. Known API usage stays $59.09398873 under the same $100 ceiling; no new
+Batch/count calls or interim quality scores at this checkpoint. Freeze all500
+terminal predictions before annotation access. All three32 cohorts stay sealed.
+Formal native outcomes/raw archives remain later submission gates; context
+research does not wait for repairs. No product lifecycle promotion follows.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates
 (Python 194, JavaScript 36, TypeScript 40, C 3, Go 18 and Rust 1) and 623 additional
 default-only candidates. Known IDs, original issue identities and exact source
 commits are excluded across aliases. All three validation cohorts stay sealed;
-future population choices and full500 source, quota and reservation gates remain open. No product lifecycle
+future independent population choices remain open; current500 completion, exact Batch
+counts/reservation and formal submission gates remain open. No product lifecycle
 promotion or dependency-direction change is authorized by these results.
 Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
