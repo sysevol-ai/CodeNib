@@ -39,8 +39,8 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
-| Directed graph navigation | The prior candidate fails independent validation. The next `unseen` policy skips known definitions and completes only missing source, using verified observations in both runners. Offline development replay removes 220 repeated lines but adds no source; the revised shared prompt requests earlier graph use. | Fresh three-arm development comparison, with novel relevant source and quality gates fixed before inference. No product promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each; earlier development attempts remain unresolved. New runs capture hashed model inputs and export only confirmed delivery, excluding elided and unrequested terminal output. | Broader matched outcomes, Multi/Poly/Pro adapters and source-line attribution from actual solver observations; no comparative or population Pass@1 gain established. |
+| Directed graph navigation | Independent validation rejects the prior policy. The subsequent early-hop/unseen development trial completes all eight tasks per arm but makes zero graph calls, so it fails its declared novelty gate despite higher point scores. Offline replay removes 220 repeated lines without adding source. | Prove tool adoption and useful novel source before another quality cohort. No new independent validation, product promotion or full-500 launch. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The new development pair remains unresolved, 0/1 each, and confirms all 18 hashed model inputs. Elided and unrequested terminal output are excluded from observation exports. | Broader matched outcomes, Multi/Poly/Pro adapters and source-line attribution from actual solver observations; no comparative or population Pass@1 gain established. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -94,10 +94,12 @@ can exceed an observed guard. Unknown or invalid metering stops later cases.
 
 The completed independent retrieval arms report **$23.673179** in SDK estimates;
 their one-task paired solver check adds **$0.828001**. Across this October 16
-program, known metering totals **$41.623502**, plus one aborted development solver
+program, known metering totals **$50.257504**, plus one aborted development solver
 request with unknown metering. Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
 quality gate fails, so this policy does not advance to the full-500 run.
+The later early-hop/unseen development trial contributes $7.266208 in retrieval
+estimates and $1.367794 for its new paired solver attempts to that program total.
 
 The historical native search average is $0.9911/task (24 cases; median $0.690554,
 maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
@@ -232,6 +234,25 @@ development gate is candidate selection, not an independent improvement claim.
 The prior 32 tasks stay sealed against tuning. Local receipts live under
 `verification/contextbench-early-unseen-20261016/`.
 
+The frozen trial at `768785a4` completes and officially scores all eight tasks in
+every arm, with no SDK errors or missing metering:
+
+| Cumulative observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 39.15% | 35.74% | 34.27% | $2.010707 |
+| Function completion | 43.97% | 31.57% | 34.02% | $2.666574 |
+| Function completion + early/unseen graph tool | 44.03% | 36.41% | 36.60% | $2.588926 |
+
+Primary Recall changes +4.88 points, paired 95% interval [-0.11, +10.45]; F1
+changes +2.33 points, interval [-6.44, +11.03]. The graph-enabled arm makes
+**zero graph calls on all eight tasks**, including the five with graphs. Its
+new annotated source count is therefore zero and the predeclared gate fails.
+The point differences do not establish a graph-source benefit. No new independent
+selection is consumed. Before another quality cohort, verify tool adoption and
+new relevant source in a small mechanism check; advisory wording alone has now
+failed twice. Keep such probes out of quality scores and avoid repeating another
+full cohort merely to discover that the tool was unused.
+
 The parallel solver-accounting change records the exact serialized model request
 before inference and confirms its input when an assistant response arrives.
 `model-observations.json` exports confirmed, rendered histories rather than raw
@@ -241,6 +262,13 @@ submission diff are absent. Unknown delivery and missing historical input receip
 remain explicit. This is the raw full-agent observation boundary; source-line
 attribution and the other native harnesses are still required. It changes no
 retrieval runtime file used by the concurrent frozen development experiment.
+Its live paired check at `54a8f15f` uses the same first development Verified task,
+pinned image, model, 16K context limit, 30-step limit and $3 SDK-meter guard. Both
+patches are **0/1 resolved** under native grading. All seven native-context model
+inputs and eleven candidate-context inputs are confirmed and exported, with no
+missing usage; SDK estimates are $0.485857 and $0.881937. Both owned containers
+are removed. This revisits one development task, not two new independent tasks.
+The public development summary retains this complete trial and its failed gate.
 
 ### October 16 online development result
 

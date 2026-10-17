@@ -150,7 +150,9 @@ the historical results in this page do not describe that new policy.
 The October 16 development and independent-validation program uses the existing
 Claude Max route with **zero standalone API-key inference calls**. Independent
 retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
-$0.828001. Known program metering totals **$41.623502**, excluding one aborted
+$0.828001. The later early-hop/unseen development trial adds $7.266208 for retrieval
+and $1.367794 for its paired solver check. Known program metering totals
+**$50.257504**, excluding one aborted
 development solver request with no usage returned. These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
@@ -252,9 +254,24 @@ edge scan limit remains. The default `definitions` policy returns whole
 definitions. Both options retain the original reference direction and budgets.
 On an offline replay of the eight development calls, `unseen` removes all 220
 repeated lines but adds no new source. This is a mechanism check, not evidence of
-an online quality gain. A new development comparison pairs fresh native,
-function-completion and early-hop/unseen graph arms under one frozen runtime.
-The completed 32-task negative result above remains unchanged.
+an online quality gain. The subsequent development comparison pairs fresh native,
+function-completion and early-hop/unseen graph arms under runtime `768785a4`:
+
+| Observed trajectory, eight development tasks | Recall | Precision | F1 | Graph calls | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Native source tools | 39.15% | 35.74% | 34.27% | unavailable | $2.010707 |
+| Function completion | 43.97% | 31.57% | 34.02% | unavailable | $2.666574 |
+| Function completion + early/unseen graph tool | 44.03% | 36.41% | 36.60% | 0 | $2.588926 |
+
+All tasks finish and score, but the candidate makes **zero graph calls**. The
+prespecified requirement for previously unseen annotated graph source therefore
+fails. The primary whole-route Recall change is +4.88 points, paired 95% interval
+[-0.11, +10.45]; F1 changes +2.33 points, interval [-6.44, +11.03]. These point
+differences cannot be attributed to graph-returned source. The completed 32-task
+negative result remains unchanged, and no new independent validation is started.
+Future development must establish actual tool use and useful novel source before
+another quality cohort. Detailed values and the failed gate are retained in the
+[development summary](../assets/contextbench_online_development_summary.json).
 
 Prepare graphs locally, then run two fresh `functions` arms with the same
 `--graphs` directory; add `--graph-navigation` only to the candidate. The paired
@@ -350,6 +367,10 @@ submission diff that never reaches another model request are excluded. Missing
 historical receipts and unconfirmed requests remain explicit; their billing may
 still be unknown. This completes the raw observation boundary, while mapping
 arbitrary shell output to source lines remains an open evaluation gate.
+The fresh development solver pair using this recorder is **0/1 resolved in each
+arm** on the same previously disclosed Python task. All seven native-context
+inputs and eleven graph-enabled-context inputs have confirmed receipts. These
+are repeated development attempts, not additional independent solver tasks.
 
 A subsequent matched check feeds the targeted-hop trial's two 16K contexts into
 fresh solver runs on that same Python development task. Both use the same pinned
