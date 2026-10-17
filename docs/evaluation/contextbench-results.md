@@ -403,6 +403,45 @@ anchors remain concrete follow-up work. The failed general replay, sealed
 independent 32 and full-500 gate remain unchanged. Protocols, paired intervals
 and aggregate outcomes are retained in the public development summary.
 
+## Compiler coverage follow-up without model calls
+
+The source-bound follow-up improves graph availability on the latest eight
+development tasks from five to seven. It does **not** establish a retrieval gain:
+replaying the same eight queries adds 146 physical source lines and **zero
+annotated lines**. All original replies reproduce before replacing artifacts;
+queries, preceding observations and 2K response budgets stay fixed. Candidate
+replies are frozen before annotation analysis. These replies have not been
+delivered to a new agent, and earlier official scores remain unchanged.
+
+| Repaired surface | Verified outcome | Extra physical / annotated lines at the saved query |
+| --- | --- | ---: |
+| C++ callable names and conversion methods | Three compiler graphs rebuilt with every symbol ID, file, selection and edge preserved; 2,127 ranges corrected and 101 conversion symbols classified as methods | 1 / 0 |
+| TypeScript graph preparation | Existing native decoder and read-only preparation complete within the original 300-second limit; 212,904 nodes and 467,440 edges | 108 / 0 |
+| Java graph preparation | Existing managed tool, explicit Maven and command-line `java.version=8` produce 4,385 nodes and 31,158 edges; all 345 tracked files remain byte-identical | 37 / 0 |
+| C graph preparation | Rejected: the private build rewrites seven tracked Autotools helper files in the pinned oniguruma submodule | 0 / 0 |
+
+Runtime `9880b0d7` fixes conversion/overloaded operators, destructors and qualified
+or pointer/reference-return declarators. Python and native clangd queries agree
+on conversion-function kind 24; normalization profile v4 invalidates the former
+native interpretation. Existing materialized graphs need regeneration. The
+observed C++ conversion anchor now covers lines 78–81 rather than line 78 alone.
+Ten regressions fail before the fixes; 195 related unit tests and three C++
+integration tests pass afterward, including the rebuilt native binding.
+
+TypeScript readiness takes 268.17 seconds and Java 22.28 seconds in private
+clones. These are environment diagnostics, not controlled speed comparisons.
+Prior unsuccessful Java/C probes and the first overly broad C++ display-label
+assertion remain recorded. The C submodule commit is unchanged, but its seven
+tracked helper changes correctly fail the source guard; no rejected graph is
+accepted. Original source checkouts remain clean.
+
+The combined replay still has no language with annotated graph source absent
+from full matched native. No additional model batch follows from this evidence.
+The [sanitized compiler and per-query receipts](../assets/contextbench_online_development_summary.json)
+record the protocols and failures. This follow-up makes zero model calls and
+adds $0 in API charges; the independent 32 remains sealed and the official 500
+has not started.
+
 ## Historical post-run 24-task results
 
 The sample contains three tasks per language, 24 repositories and eight languages,
