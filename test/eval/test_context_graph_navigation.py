@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -19,6 +20,7 @@ from scripts.contextbench_graph_navigation import (
     GraphNavigation,
     load_graph_records,
     load_navigation,
+    prepare_graphs,
 )
 
 
@@ -310,3 +312,10 @@ def test_frozen_graph_bytes_and_source_population_are_checked(navigation):
     (prepared / "manifest.json").write_text("changed")
     with pytest.raises(ValueError, match="different source manifest"):
         load_graph_records(graphs, prepared, {"case": None})
+
+
+def test_project_preparation_cannot_relabel_reused_graphs(tmp_path):
+    with pytest.raises(ValueError, match="requires fresh graph builds"):
+        prepare_graphs(
+            SimpleNamespace(allow_project_preparation=True, reuse_cohort=tmp_path)
+        )
