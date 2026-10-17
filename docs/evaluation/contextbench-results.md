@@ -20,6 +20,16 @@ context-only baseline, not an enhancement gain, independent validation, repair
 result or leaderboard rank. Earlier122 annotation access is disclosed; no native
 case is retried or replaced. Scoring adds zero model calls and zero API usage.
 
+A separate local archive now preserves all500 original control attempts,
+499 qualified source packets, exact configurations/frozen implementations and
+the completed control evaluation. All2,070 members pass byte-for-byte round-trip
+verification and every case reference resolves. Eight gzip parts total
+28,479,415bytes; the largest is5,219,150bytes, below50MiB. The original empty
+failure and prior qualification/exposure records remain. This is an internal
+publication candidate; candidate-context results, native resolution outcomes
+and submission review remain separate open gates. Historical partial archives
+are unchanged; cancelled443 consumers require no new outputs or archive.
+
 Re-scoring the pinned September12 public submission on these exact500 Gold/source
 inputs and the same official environment gives:
 
@@ -216,13 +226,20 @@ adds an opt-in lexical regular-file discovery filter for schema-8 producers,
 preserving strict final validation and existing chunker defaults. The real
 Ansible replay retains486 regular L0 files and both alias targets;228 independent
 main-based builder/chunker/compiler tests, strict MkDocs and public-docs checks
-pass. The pilot separately translates dataset labels through the registry's
+pass, as does a fresh required unit CI run. The pilot separately translates dataset labels through the registry's
 `chunker_language`, preserving the direct factory's rejection of `c`. The broader
 feature passes179 relevant and190 compiler tests. Source-only correction protocol
 `4ddf8f93`, runtime `85b7f0d2`, rebuilds the two failed preparations and retains
 six already-verified artifacts. No case/model retry, quality-based replacement or
 model/tool/prompt/budget change occurs. All eight prepared sources must reconcile
 before the corrected live dispatch is frozen; no original gate becomes green.
+The Python correction is ready; the C checkout includes an LLVM submodule and
+is still generating embeddings for396,364 L2 chunks. That cold preparation cost
+stays with the method; no corpus narrowing or case replacement occurs. A separate
+all-eight reporter passes source-only replay against the eight native controls
+and four earlier surface trajectories. Its contract retains all selected
+positions, gives metadata zero source credit and reports execution/evaluator
+validity separately before reopening the already-exposed labels.
 
 A source-only ranking diagnostic on the four actual agent queries compares raw
 inner product, cosine reranking of128 candidates and full cosine without changing
