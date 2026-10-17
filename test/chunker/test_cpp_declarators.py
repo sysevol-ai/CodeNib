@@ -13,6 +13,8 @@ from codenib.code_chunking.cpp_chunker import CppCodeChunker
     [
         ("explicit operator bool() const", "operator bool", "return true;"),
         ("operator const char *() const", "operator const char *", 'return "ok";'),
+        ("operator const Value&() const", "operator const Value&", "return *this;"),
+        ("operator Value&&()", "operator Value&&", "return *this;"),
         ("Value& operator+=(const Value& argument)", "operator+=", "return *this;"),
         ("int operator()(int argument) const", "operator()", "return argument;"),
         ("~Value()", "~Value", "(void)0;"),
@@ -34,6 +36,12 @@ def test_member_callable_keeps_full_body(signature, name, body):
         ("int *factory(int argument)", "factory", "return 0;", "c"),
         ("int Value::member(int argument)", "Value::member", "return argument;", "cpp"),
         ("Value::operator bool() const", "Value::operator bool", "return true;", "cpp"),
+        (
+            "Value::operator const Value&() const",
+            "Value::operator const Value&",
+            "return *this;",
+            "cpp",
+        ),
     ],
 )
 def test_wrapped_and_qualified_functions_use_the_declarator_not_parameters(
