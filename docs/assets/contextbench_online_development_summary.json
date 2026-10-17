@@ -12110,5 +12110,274 @@
       }
     },
     "conclusion": "Both arms resolve the same one disclosed Java task, 1/1 each. No comparative gain, no graph in original retrieval and no independent validation. Controlled-reader coverage stays explicitly partial."
+  },
+  "multi_ponyc_native_readiness": {
+    "scope": "One outcome-informed disclosed C development task. Original native reference/control and source-only baseline/reader checks; no model calls or agent quality score.",
+    "selection": {
+      "scope": "Native environment readiness for one disclosed C development task; no model calls or independent selection.",
+      "contextbench_instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+      "original_inst_id": "ponylang__ponyc-2205",
+      "base_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+      "reason": "The completed late-relationship development trace supplies 197 annotated graph lines absent from native. Test whether such source can support a future matched repair after validating the native harness. This is an outcome-informed development diagnostic, not an unbiased quality cohort.",
+      "api_ceiling_usd": 100,
+      "new_api_calls": 0,
+      "model_calls": 0
+    },
+    "dataset": {
+      "url": "https://huggingface.co/datasets/ByteDance-Seed/Multi-SWE-bench/resolve/56ff018c04a38e27ada1e9d0a6d5839a51f88f0d/c/ponylang__ponyc_dataset.jsonl",
+      "sha256": "cddd6e471bd8a1ad9e9971d8a16ca5a0e9f002789cefc5a40ee025f8875122ee",
+      "bytes": 26444998,
+      "rows": 82,
+      "selected_record_sha256": "2967a9f7095b07c8a586150c6c426951e39353b5982eb0a7ca566c78c424c222",
+      "instance_id": "ponylang__ponyc-2205",
+      "base_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+      "test_counts": {
+        "f2p_tests": 7,
+        "p2p_tests": 1010,
+        "s2p_tests": 0,
+        "n2p_tests": 40
+      },
+      "model_calls": 0,
+      "scope": "Native grader data only; no reference material enters solver inputs."
+    },
+    "native_protocol_sha256": "a7a21664742a4d07ca15b24076d2195be7b1affdf445ed2d2d8f05bb0da75ecd",
+    "native_image_ref": "mswebench/ponylang_m_ponyc@sha256:9b0d71d45b6f6e1a1ce0f4e142cbedc95363c0b9b439cd22b16c0c65d88b41cc",
+    "native_image_id": "sha256:3b1afa3e1afd231bd1c93a003f1fbf34b24888a5014cce278f026b13361b5216",
+    "source_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+    "source_tree": "012befc5225065c77600560ceacc63453852c152",
+    "harness_revision": "24f493f8a103e72312ded4f6b9c89f081d69cb09",
+    "harness_version": "1.1.0",
+    "harness_module_sha256": {
+      "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "harness/gen_report.py": "02ebc8a5414898d12f4f5a9ba0c11a8f57c9f34a0bdc02c2311afac9f654847d",
+      "harness/report.py": "5a025fd496d42c4b7377fc0702d64c6d0e356b117eaf2face47e73a52c29902f",
+      "harness/test_result.py": "5411af794920cf4b170fe9dbe8c21c12cc63e2bbe2280d6d82acb850f4808be3",
+      "harness/dataset.py": "dd49f55baf63b60fff309b6a5b2a1826697e2b85ad1a9bccff18321dcdc200fc",
+      "harness/image.py": "86074812495b97026efb42c57acbf7738864b1f0167f99e3b9f9309458972ae9",
+      "harness/instance.py": "93da4f6db69e006949bba856e22e4a464b5e93140590258eda38833ec5f19a9e",
+      "harness/pull_request.py": "32b49f48b39124f67727f408898bd96cce91c0a362faa716ac858dcb0b0b47c7",
+      "harness/repos/c/ponylang/ponyc.py": "be551b5b2b3bb0367e12b1f46a5bc5a5d7e5ab161cced3921cd05e18f90ae744"
+    },
+    "native_script_sha256": {
+      "run.sh": "86a3c6ab8ee3f2e8acd00b14ad8c47c1d1eba7e62eeae39a36912d430fbf90dd",
+      "test-run.sh": "caa353f087b8b9df6bd27d6c50089ea24ddda738cf3bace8250a0c359eca65e5",
+      "fix-run.sh": "746c4cfc9c5fea71fb32a399a78bfdd17e3d04fe65049f161005c08b6a575676"
+    },
+    "native_controls": {
+      "test_only": {
+        "stage": "test_only",
+        "status": "complete",
+        "model_calls": 0,
+        "source_snapshot_verified": true,
+        "native_patch_sha256": {
+          "fix_patch": "6f50cbec2c943b0c6e3b83804ec24718e1a3769e2000f078e6000e94a21c281b",
+          "test_patch": "c5a5e0495ec35ae2552f2e51c0dd0f31feada0530010446bdbdd946e960d54c1"
+        },
+        "native_script_sha256": {
+          "run.sh": "86a3c6ab8ee3f2e8acd00b14ad8c47c1d1eba7e62eeae39a36912d430fbf90dd",
+          "test-run.sh": "caa353f087b8b9df6bd27d6c50089ea24ddda738cf3bace8250a0c359eca65e5",
+          "fix-run.sh": "746c4cfc9c5fea71fb32a399a78bfdd17e3d04fe65049f161005c08b6a575676"
+        },
+        "source_reader_python": {
+          "returncode": 127,
+          "output": ""
+        },
+        "native_exit_code": 2,
+        "native_parser_counts": {
+          "passed": 1010,
+          "failed": 7,
+          "skipped": 0,
+          "granularity": "test_case"
+        },
+        "regression_passed": 0,
+        "regression_failed": 7,
+        "preservation_passed": 1010,
+        "new_cases_passed": 0,
+        "parser_sets_match_pinned_dataset": true,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 0,
+          "unresolved_instances": 1,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "ponylang/ponyc:pr-2205"
+          ],
+          "completed_ids": [
+            "ponylang/ponyc:pr-2205"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [],
+          "unresolved_ids": [
+            "ponylang/ponyc:pr-2205"
+          ],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "native_report_sha256": "77f8d2a3e579e4b3dac774cd667c98b3d1080952b5b110329121eb061ec52833",
+        "native_log_sha256": "2ffcd81beff5648e55f4e3bc74f5d745582d6efb51047e432492ccd0e6b67d3d",
+        "container_removed": true,
+        "wall_s": 122.97219668806065
+      },
+      "reference": {
+        "stage": "reference",
+        "status": "complete",
+        "model_calls": 0,
+        "source_snapshot_verified": true,
+        "native_patch_sha256": {
+          "fix_patch": "6f50cbec2c943b0c6e3b83804ec24718e1a3769e2000f078e6000e94a21c281b",
+          "test_patch": "c5a5e0495ec35ae2552f2e51c0dd0f31feada0530010446bdbdd946e960d54c1"
+        },
+        "native_script_sha256": {
+          "run.sh": "86a3c6ab8ee3f2e8acd00b14ad8c47c1d1eba7e62eeae39a36912d430fbf90dd",
+          "test-run.sh": "caa353f087b8b9df6bd27d6c50089ea24ddda738cf3bace8250a0c359eca65e5",
+          "fix-run.sh": "746c4cfc9c5fea71fb32a399a78bfdd17e3d04fe65049f161005c08b6a575676"
+        },
+        "source_reader_python": {
+          "returncode": 127,
+          "output": ""
+        },
+        "native_exit_code": 2,
+        "native_parser_counts": {
+          "passed": 1057,
+          "failed": 0,
+          "skipped": 0,
+          "granularity": "test_case"
+        },
+        "regression_passed": 7,
+        "regression_failed": 0,
+        "preservation_passed": 1010,
+        "new_cases_passed": 40,
+        "parser_sets_match_pinned_dataset": true,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 1,
+          "unresolved_instances": 0,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "ponylang/ponyc:pr-2205"
+          ],
+          "completed_ids": [
+            "ponylang/ponyc:pr-2205"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [
+            "ponylang/ponyc:pr-2205"
+          ],
+          "unresolved_ids": [],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "native_report_sha256": "8eddfc39a0df4c3b1d46f9d020f3ddd5faadb09b6e12d32b7a55107e08aebd11",
+        "native_log_sha256": "646143b9cc16ca6be535d7048f0eb8e5493a826f5eaceaac70bd93d1b873ce20",
+        "container_removed": true,
+        "wall_s": 145.97421881591436
+      }
+    },
+    "cold_source_image_id": "sha256:370bfd936a11b76f8e4b2e4b433dd509c8871ecac6ffa45fa6b2b162c736663f",
+    "warm_source_image_id": "sha256:8e792f86261b3fc70dc9cc5f1c914f001d650b869c9a70754718c28384c4f20f",
+    "python_runtime": {
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260211/cpython-3.11.14%2B20260211-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+      "archive_sha256": "1fb6a89daa750f7eff00eb65d901c3c236713812eb9c8c7e07ecdfcd78203c8e",
+      "archive_bytes": 31215121,
+      "version": "3.11.14",
+      "release": "20260211",
+      "target": "x86_64-unknown-linux-gnu",
+      "provenance": "https://github.com/astral-sh/python-build-standalone/releases/tag/20260211",
+      "compatibility_reference": "https://gregoryszorc.com/docs/python-build-standalone/stable/running.html",
+      "scope": "Private solver-image runtime only. No host-global installation, package dependency, native-grader change or model calls."
+    },
+    "cold_dockerfile": "FROM mswebench/ponylang_m_ponyc@sha256:9b0d71d45b6f6e1a1ce0f4e142cbedc95363c0b9b439cd22b16c0c65d88b41cc\n\nCOPY python /opt/codenib-python\nENV PATH=\"/opt/codenib-python/bin:${PATH}\"\nWORKDIR /home/ponyc\nRUN git ls-files -z > /tmp/codenib-selected-files \\\n    && rm -rf .git \\\n    && rm -f /home/fix.patch /home/test.patch /home/fix-run.sh \\\n        /home/test-run.sh /home/prepare.sh /home/check_git_changes.sh \\\n    && git init -q \\\n    && git config user.name Benchmark \\\n    && git config user.email benchmark@example.invalid \\\n    && git config gc.auto 0 \\\n    && xargs -0 -r git add --force -- < /tmp/codenib-selected-files \\\n    && git commit -qm 'chore(benchmark): initialize selected source snapshot' \\\n    && test \"$(git rev-parse HEAD^{tree})\" = 012befc5225065c77600560ceacc63453852c152 \\\n    && test \"$(git rev-list --all --count)\" = 1 \\\n    && test -z \"$(git status --porcelain --untracked-files=all)\" \\\n    && python3 --version \\\n    && python3 -c 'import hashlib, json, pathlib, subprocess' \\\n    && rm /tmp/codenib-selected-files\n",
+    "cold_dockerfile_sha256": "a0c9f2387e9f73cafcc9665b2f79ac6ab6437f1605fc683ed725efc4debb4dad",
+    "warm_dockerfile": "FROM mswebench/ponylang_m_ponyc@sha256:9b0d71d45b6f6e1a1ce0f4e142cbedc95363c0b9b439cd22b16c0c65d88b41cc\n\nCOPY python /opt/codenib-python\nENV PATH=\"/opt/codenib-python/bin:${PATH}\"\nWORKDIR /home/ponyc\nRUN git ls-files -z > /tmp/codenib-selected-files \\\n    && rm -rf .git \\\n    && rm -f /home/fix.patch /home/test.patch /home/fix-run.sh \\\n        /home/test-run.sh /home/prepare.sh /home/check_git_changes.sh \\\n    && git init -q \\\n    && git config user.name Benchmark \\\n    && git config user.email benchmark@example.invalid \\\n    && git config gc.auto 0 \\\n    && xargs -0 -r git add --force -- < /tmp/codenib-selected-files \\\n    && git commit -qm 'chore(benchmark): initialize selected source snapshot' \\\n    && test \"$(git rev-parse HEAD^{tree})\" = 012befc5225065c77600560ceacc63453852c152 \\\n    && test \"$(git rev-list --all --count)\" = 1 \\\n    && test -z \"$(git status --porcelain --untracked-files=all)\" \\\n    && python3 --version \\\n    && python3 -c 'import hashlib, json, pathlib, subprocess' \\\n    && rm /tmp/codenib-selected-files\n\nRUN make \\\n    && test \"$(git rev-parse HEAD^{tree})\" = 012befc5225065c77600560ceacc63453852c152 \\\n    && test -z \"$(git status --porcelain --untracked-files=all)\"\n",
+    "warm_dockerfile_sha256": "94ebcc0dd7b6100942124b02efbba0fa366cf04e2959000ef6d7ccc752562a6c",
+    "preflights": {
+      "cold": {
+        "protocol_sha256": "a683a579e424ded10b41548927a7c2a074b69835e5b22a477feba1a973f724f5",
+        "passed": true,
+        "all_frozen_runtime_and_input_hashes_match": true,
+        "source_preflight": {
+          "model_calls": 0,
+          "isolation": {
+            "network": "none",
+            "host_mounts": []
+          },
+          "image_snapshot": {
+            "commit": "878d69c5de08a180f12cec5b0a242adf6e18a6d8",
+            "tree": "012befc5225065c77600560ceacc63453852c152",
+            "matches_selected_tree": true
+          },
+          "source_only": {
+            "one_source_commit": true,
+            "reference_artifacts_absent": true
+          },
+          "controlled_source_read_passed": true,
+          "model_delivery_confirmed": false,
+          "status": "passed",
+          "container_removed": true
+        }
+      },
+      "warm": {
+        "protocol_sha256": "ea72f3722cf7f170abcf75664a93487512171c8f19765ce21c44c3d8c06599af",
+        "passed": true,
+        "all_frozen_runtime_and_input_hashes_match": true,
+        "source_preflight": {
+          "model_calls": 0,
+          "isolation": {
+            "network": "none",
+            "host_mounts": []
+          },
+          "image_snapshot": {
+            "commit": "878d69c5de08a180f12cec5b0a242adf6e18a6d8",
+            "tree": "012befc5225065c77600560ceacc63453852c152",
+            "matches_selected_tree": true
+          },
+          "source_only": {
+            "one_source_commit": true,
+            "reference_artifacts_absent": true
+          },
+          "controlled_source_read_passed": true,
+          "model_delivery_confirmed": false,
+          "base_test_exit_code": 2,
+          "base_test_log_sha256": "10170aee115a8c02a3efef94e7df6ef51e0cd2cb66b0ca01e919d4c7f85e5fdf",
+          "missing_link_libraries": [
+            "crypto",
+            "pcre2-8",
+            "ssl"
+          ],
+          "source_snapshot_unchanged_after_base_test": true,
+          "status": "passed",
+          "container_removed": true
+        }
+      }
+    },
+    "base_test_analysis": {
+      "scope": "Unmodified source-only image baseline, no model or repair score.",
+      "passed_tests": 1045,
+      "failed_tests": 0,
+      "skipped_tests": 0,
+      "full_parser_sets_match_pinned_baseline": true,
+      "command_exit_code": 2,
+      "missing_link_libraries": [
+        "crypto",
+        "pcre2-8",
+        "ssl"
+      ],
+      "full_stdlib_suite_verified": false,
+      "native_required_label_gate_unchanged": true,
+      "model_calls": 0
+    },
+    "original_native_parser_parity": true,
+    "original_native_gate_passed": true,
+    "model_calls": 0,
+    "new_api_key_charges_usd": 0,
+    "agent_quality_score": null
   }
 }
