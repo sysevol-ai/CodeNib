@@ -1,19 +1,23 @@
 # ContextBench retrieval experiments
 
-The bounded direct-Messages source-delivery study **passes** its engineering gate
-on all 24 disclosed development cases. Shared-prefix cumulative Recall is
-**58.39% → 65.18%**, F1 **31.97% → 26.26%**;
-descriptive repository 95% Recall difference interval [+3.23, +11.36] points.
-All source opportunity was already scored, so this is neither independent quality
-nor two fresh adaptive-agent runs. Both old 32 cohorts remain sealed. The new
-Messages study costs **$4.25474400**; all earlier SDK mode/budget failures remain.
-No repairs or official500 run.
+The late physical 4K source strategy **passes** its frozen Recall-first gate
+on a new task-level independent32 after a disclosed pre-label encoding amendment.
+Confirmed cumulative Recall is **74.94% → 79.09%**,
+F1 **30.13% → 22.32%**; repository-cluster 95% Recall difference
+interval **[+1.99, +6.85] points** across 22 clusters.
+All 32 fresh native prefixes and 64 actual packet consumers are retained.
+Whole-study API usage is **$11.18372580**, including the original local-failure phase
+once, under $24. All three validation cohorts are sealed against tuning.
+This establishes a task-level source-coverage gain under the amended protocol;
+it does not establish repair success, autonomous discovery improvement or a
+verified500 leaderboard score. The six-language sample has no C++/Java and is not
+repository-held-out. No repairs or official500 run.
 
 The unchanged first-read source-window policy fails its complete 24-task development
 stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95%
 Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected
-SDK sessions are retained for $9.86110630, with no repairs. Independent and official500
-gains remain unestablished.
+SDK sessions are retained for $9.86110630, with no repairs. That first-read policy
+has no established independent or official500 gain.
 
 The grep-neighborhood policy does **not** pass its frozen
 independent Recall gate. Across 32 new tasks in seven languages, Recall improves
@@ -24,7 +28,7 @@ $12.63056860, with no repair calls. This is not an established leaderboard gain.
 The grep-neighborhood policy earlier passed its eight-task development screen and replication with
 Recall 35.24% → 38.91% and F1 31.26% → 28.20%. Preserve those positive screening
 points, but do not promote this unchanged policy into repairs, official500 or a
-product default. Both validation cohorts remain sealed against tuning.
+product default. Both earlier validation cohorts remain sealed against tuning.
 
 Both eight-task online grep/Jev policies **fail their development gates**.
 Replacing grep replies with source blocks reduces Recall/F1 from
@@ -384,18 +388,131 @@ follows automatically; verified500 still needs independently useful quality and
 a separately measured budget decision.
 
 
-A new prospective independent32 now has fixed metadata IDs from the 324 previously
-untouched verified candidates, excluding every known source/issue exposure.
-The cohort has 12 Python tasks and four each in C, Go, JavaScript, Rust and TypeScript,
-spanning 23 repository names. There is no untouched C++/Java coverage. Seeded
-repository/ID SHA ordering and repository round-robin select tasks before issue
-text; runtime inputs explicitly contain empty gold. The 32 IDs are reserved,
-leaving 292 unreserved candidates at selection time. No independent model calls or
-annotation access have occurred. All 32 exact source commits and clean checkouts
-now pass the independent readiness audit, with every runtime gold still empty.
-Next freeze execution, source-confirmation, Recall/interval and budget gates
-before inference. Keep both earlier 32 cohorts sealed. This selection is not an independent
-result or a representative full500 estimate.
+A new independent 32 fixes metadata IDs from 324 previously untouched verified
+candidates, excluding known source/issue exposures, both old cohorts, the original
+105 development tasks and exact known source commits. It has 12 Python tasks and
+four each in C, Go, JavaScript, Rust and TypeScript, spanning 23 repository names.
+There is no untouched C++/Java coverage, and this is not repository-held-out or a
+representative full500 distribution. Issue text is read only after ID selection;
+runtime gold remains explicitly empty. All 32 exact source commits pass readiness.
+
+Original protocol `0b84a4a4e39a20449366e079277a3658bb99e0b0da02f907a6c7e346905b632e`
+uses parent runtime `d2bf1136` and a $24 ceiling. Its execution fails locally before
+labels: eight native investigations and 14 packet consumers cost **$2.56634860**,
+with seven complete pairs. A literal tokenizer marker in a source candidate
+raises a packing error before that case's consumers. Preserve the failed original
+operational gate, raw attempts and source-only terminal audit without quality scoring.
+
+Runtime `8d5e0b87` treats tokenizer marker literals as ordinary source text in
+packing and validation. Seven completed packet pairs replay byte for byte; 129
+focused tests pass, including three marker regressions. Before any selected
+annotation access or new model call, an explicit correctness amendment freezes
+protocol `75a7579f4f0f379e23a556e869d7132de2113cb29c5e033a0f85e28ad7ce09ad`.
+It reuses all eight completed native investigations and 14 consumers, running
+only the 24 native investigations and 50 consumers not previously attempted.
+No model call is retried or replaced. Tasks, source selection, model, query,
+token/turn/output caps and quality gates stay unchanged. This is the amended
+pre-label validation, not a passing reclassification of the original execution.
+
+Each task shares one fresh native investigation between two actual packet
+consumers. Native SDK requests use Opus 5.5, medium effort, 20 configured turns,
+4,096 requested output tokens, a $0.75 guard and 600-second timeout. The direct
+Messages consumers use the same model, adaptive thinking, medium effort, 2,048
+output tokens, $0.50 guards and no retry, redirect, tools or continuation.
+Raw expected native budget errors remain visible; the prospectively defined
+source-only terminal policy permits confirmed observations without claiming a
+completed investigation. Source selection uses only already located files and
+the unchanged physical 4K compiler; BM25, graph and Jev remain absent.
+
+Only after terminal execution, immutable receipts and frozen source predictions
+are the selected annotations materialized in a separate evaluation cohort.
+The original empty-gold runtime is unchanged. Primary quality requires a positive
+lower endpoint of the repository-cluster 95% Recall interval, 5,000 resamples,
+seed 20261017, plus all 32 native receipts accepted, all 64 confirmed packet inputs,
+32 valid cumulative and final-packet official scores per arm, known usage and
+whole-study cost within $24. Precision and case-macro F1 are reported without a veto.
+
+| Confirmed cumulative source, all 32 independent tasks | Recall | Precision | F1 | Allocated investigation + consumer |
+| --- | ---: | ---: | ---: | ---: |
+| Native packet | 74.94% | 22.73% | 30.13% | $8.07216980 |
+| Late physical 4K | 79.09% | 14.83% | 22.32% | $8.82854980 |
+
+The amended independent gate **passes**. Recall changes **+4.15 points**,
+repository-cluster 95% **[+1.99, +6.85] points** across
+22 canonical repository clusters. F1 changes
+**-7.82 points**. The packet-only Recall/F1 is
+74.94%/30.15% for native and
+79.09%/22.32% for late source;
+it remains secondary to cumulative source. Extra delivered source, input tokens
+and cost are part of treatment; this does not establish ranking, autonomous
+investigation behavior or downstream repair improvement.
+
+Actual whole-study usage is **$11.18372580**: **$5.71699380** for 32 native SDK sessions
+and **$5.46673200** for 64 paid Messages, with 64 free token-count requests.
+The observed candidate allocation exceeds control by **$0.75638000** across 32
+tasks, or **$0.02364 per task**. This includes the observed input/output usage
+difference, not only a deterministic input-token charge.
+Both phases are included once; reused prefix allocations are not a second bill.
+The amended phase adds $8.61737720 after the original
+$2.56634860. There are 0 missing-usage cases and zero repair calls.
+Raw native statuses are `{'ok': 32}`; consumer stop reasons
+are `{'end_turn': 64}`. There are
+64/64 complete review responses; a capped response
+could confirm source input without claiming complete reasoning or repair success.
+
+The new 32 is sealed alongside both earlier cohorts. The passing amended gate permits a separately measured verified500 quality/cost/readiness plan.
+No repair, native-harness batch, full500 run or product default starts automatically.
+The original local failure and all earlier failed policies remain unchanged.
+
+## Verified500 budget and submission gates
+
+The current [official submission guide](https://github.com/ContextBench/contextbench.github.io/blob/a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9/submissions/README.md)
+requires real issue-resolution outcomes for Pass@1 alongside file/block/line
+metrics. Metadata, results, README, raw logs and trajectories must be committed;
+external links or LFS pointers are insufficient. Archives may be split/compressed
+with checksums and an index; each committed file is capped at 50 MiB. Maintainer
+review, not format validation alone, establishes a published result. A context-only
+study cannot supply a repair score or a complete leaderboard submission.
+
+Pinned verified500 IDs match the official selected500 metadata. Its language
+counts are Python 266, JavaScript 60, Go 40, TypeScript 66, C 23, C++ 10, Java 15 and Rust 20.
+The independent 32 does not cover 25 C++/Java tasks. Cost projections below are
+arithmetic from this small six-language sample, **not representative forecasts or
+whole-run reservations**. Repairs, native grading, retries, compute, quota delays
+and uncovered-language uncertainty are excluded.
+
+| Candidate-only context500 route | Gross 500-task sample arithmetic before reuse |
+| --- | ---: |
+| API native investigation + standard packet review | $137.95 |
+| API native investigation + Batch packet review | $113.64 |
+| Max native investigation + standard API packet review | $48.62 |
+| Max native investigation + Batch packet review | $24.31 |
+
+The authorized API ceiling stays **$100**, with **$41.33622927** remaining in
+known usage-value accounting. A two-arm all-API context500 comparison would project
+to $174.75 before repairs. Do not dispatch
+this full run. These gross 500-task equivalents are not a request to repeat completed
+calls. If the same policy/profile is retained, audit and reuse all 32 exact results,
+leaving 468 context positions. Max investigation plus Batch review then projects
+arithmetically to $22.75
+new API usage, still excluding uncovered-language and quota uncertainty. Audit
+other historical profiles separately; never choose reuse by a favorable score.
+[Batch processing](https://platform.claude.com/docs/en/build-with-claude/batch-processing)
+offers 50% standard-price savings ($2/$10 per million Opus 5.5 input/output tokens)
+and may take up to 24 hours. Only the independent final packet requests are directly
+batchable; interactive SDK/tool turns do not automatically receive that discount.
+Batch consumer engineering and source/prompt/version/cost receipt parity remain
+unverified. No batch has been submitted.
+
+A free supported-CLI check confirms the existing Max subscription login. It does
+not establish available quota or elapsed-time capacity. Max SDK dollar estimates
+are not subscription cash charges, and the completed 32 retained its frozen API route.
+The next cost investigation should measure Max investigation plus Batch review,
+preserving the selected source policy and full failure accounting. Exact source
+commits, provider token counts, headroom and quota must establish the remaining
+budget before a separate full-run protocol. Keep native solver/grader coverage,
+official metric mapping and complete raw artifact packaging as formal submission
+gates. This plan makes no model calls and starts no repairs or full500 run.
 
 ## Fresh independent32: seven-language retrieval-only validation
 
@@ -467,7 +584,7 @@ predictions use only confirmed exact source. Original SDK attempts and the pre-s
 correction remain immutable. Final served16K/32K and equal-language macros remain
 secondary in the sanitized export and never replace the primary.
 
-This new32 is now sealed against policy tuning, alongside the old 32. At that sealing point, the remaining
+This new 32 is now sealed against policy tuning, alongside the old 32. At that sealing point, the remaining
 untouched pool had 331 tasks and no C++ or Java cases; subsequent preview quarantine
 leaves 329 as detailed above. Any later validation must
 explicitly revise coverage rather than recycle these tasks. The [official submission
@@ -1467,8 +1584,8 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 the historical results in this page do not describe that new policy.
 
 The current Claude SDK/Jev experiment ledger, through the completed first-read
-source-window comparisons, early/late Jev probes, independent32 and all terminal
-late-packet input attempts, has the
+source-window comparisons, early/late Jev probes and the amended late-source
+independent32, including all terminal failed packet attempts, has the
 following known usage values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
 costs remain separate. Actual account charges and credit deductions have not
@@ -1476,21 +1593,21 @@ been reconciled.
 
 | Route | Known usage value | Billing interpretation |
 | --- | ---: | --- |
-| Direct Anthropic main-model SDK | $42.85532356 | API estimate; promotional-credit deduction unverified |
+| Direct Anthropic SDK | $48.57231736 | API estimate; promotional-credit deduction unverified |
 | Separate Jev decisions | $0.369977370 | Metered API receipts |
-| Direct Anthropic Messages | $4.25474400 | One paid HTTP request per source packet; token-based estimate |
-| **Combined API usage** | **$47.480044930** | **Usage value, not confirmed cash spending** |
-| Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
+| Direct Anthropic Messages | $9.72147600 | One paid HTTP request per source packet; token-based estimate |
+| **Combined API usage** | **$58.663770730** | **Usage value, not confirmed cash spending** |
+| Claude Max SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
 
-Main-model SDK estimates across both routes sum to $155.35717916; that mixed-route
-sum is not a cash-spending total. Two historical attempts remain unmetered: one
+SDK estimates across both routes, including reported auxiliary usage, sum to
+$161.07417296; that mixed-route sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
 rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **1012 Jev requests** for **$0.369977370**.
-Known API usage value totals **$47.480044930**, including the Haiku repairs
+Known API usage value totals **$58.663770730**, including the Haiku repairs
 and eight subsequent file-map sessions ($1.496507) plus eight nearby-source
 sessions ($1.76050270), plus eight remaining-four replication sessions
 ($1.88522710). The independent32 adds 64 SDK sessions for
@@ -1507,9 +1624,14 @@ are distinct from underlying API request counts. The latest read-hint retrieval 
 unknowns. The completed notes ablation adds $9.058375 in Max SDK estimates
 against its $17 reservation, with no new API-key inference.
 
-The direct-Messages study adds48 paid requests for **$4.25474400** and96
-free token-count requests. These are separate from the 275 SDK sessions and 1012
-Jev requests; the **$155.35717916** mixed SDK estimate stays unchanged.
+The development direct-Messages study adds48 paid requests for **$4.25474400**
+and96 free token-count requests. The amended independent32 adds32 native retrieval
+SDK sessions for **$5.71699380** and64 paid Messages for **$5.46673200**, with64 free counts.
+Total direct-API counts are **307 SDK sessions** (216 retrieval,36 packet review,
+55 historical repair), **112 Messages** and **160 free counts**. Jev stays at1012.
+The mixed SDK estimate is **$161.07417296**; direct Messages remains separate.
+The original $2.56634860 failure phase is already included, with no double billing
+or unknown new usage. All three32 cohorts are sealed; no repairs/full500 started.
 
 These are usage estimates and decision receipts, not reconciled account bills.
 Remaining promotional credit, subscription billing and account-level extra usage
@@ -1521,9 +1643,9 @@ make no model calls; their reference patches and feedback stay outside solvers.
 The historical late-only eight-task control projects mechanically to about
 $104–107 in SDK estimates per 500-task retrieval route, or $211 for both arms.
 That is not a representative full-run budget and excludes repair/grading, retries
-and quota delays. The latest rejected policies do not justify scaling; a new
-independent quality result and a separately measured budget are still required.
-No full run is started.
+and quota delays. Those rejected historical policies do not justify scaling. The
+late-source policy now passes the disclosed amended independent gate above; use
+its separate measured cost/readiness plan before any full run. No full run has started.
 
 ## Online function-completion controls
 
