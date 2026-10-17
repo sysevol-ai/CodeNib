@@ -530,7 +530,7 @@ three never invoke it. Python's graph times out at600seconds and Go has no
 `scip-go`; only JavaScript/TypeScript have graphs. Preserve all four cases and
 cold preparation costs; no favorable subset or independent-gate claim.
 
-Independent main-based draft [#835](https://github.com/sysevol-ai/CodeNib/pull/835)
+Independent main-based [#835](https://github.com/sysevol-ai/CodeNib/pull/835)
 fixes exact query-symbol preservation and named-route source admission.
 105 focused tests and same-query/index/source/budget replay pass without new
 model/Gold calls. The original trajectories remain unchanged. The actual
@@ -566,8 +566,19 @@ must prove exact case/revision/snapshot identity, zero SDK events and no model
 intent. No new product route, handle archive, generic persistence or cache-metric
 migration is introduced. A read-only Jina ranking diagnostic retains original
 artifact bytes and scores; mostly unchanged focused-query leaders do not justify
-a product metric switch. Wider development, fresh default-only validation and
-full submission evidence remain open.
+a product metric switch. The frozen eight-language/eight-repository ablation's initial source-only gate
+fails on Ansible symlink aliases and the pilot's unadapted C label, with6/8 ready
+and zero model calls. Preserve those failures and all selected positions. Generic
+schema-8 discovery correction [#836](https://github.com/sysevol-ai/CodeNib/pull/836)
+is independent/main-based and passes228 tests plus real Ansible replay, retaining
+both regular targets and strict source validation. The pilot resolves C at the
+dataset boundary through registry metadata, preserving the public factory
+contract.179 feature tests and190 compiler tests pass. Runtime `85b7f0d2` rebuilds
+only the two failed preparations under source-only correction `4ddf8f93`; the
+six canonical successful artifacts stay intact. All eight must reconcile before
+any new live call. #835 is ready with successful required unit CI; both production
+fixes remain unmerged. Wider development, fresh default-only validation and full
+submission evidence remain open.
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays
