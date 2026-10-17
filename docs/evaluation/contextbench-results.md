@@ -1,5 +1,14 @@
 # ContextBench retrieval experiments
 
+The late-source delivery study fails its source-input engineering gate. All 24
+selected development positions remain; the remaining 20 batch stops at 23 normal,
+1 budget-error and 16 unstarted SDK sessions. Shared-prefix cumulative Recall is 58.39% → 62.16%, F1
+31.97% → 28.64%; descriptive repository-cluster 95% Recall difference
+interval [+1.49, +6.51] points. The source opportunity was already scored;
+this is neither independent quality nor two fresh adaptive-agent runs. Both old 32
+cohorts stay sealed. All packet-input attempts cost $4.63143900; requested-mode
+and original overall mechanism failures remain. No repairs or official500 run.
+
 The unchanged first-read source-window policy fails its complete 24-task development
 stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95%
 Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected
@@ -186,9 +195,10 @@ read. It uses unread physical windows in already located files, with final-hando
 file mentions and round-robin ordering fixed before annotation counts. Recall
 opportunity is 58.39% → 62.19%, F1 31.97% → 29.17%; the unbounded capped pool
 addresses 82.75% Recall. All 24 cases and the source-opportunity gate pass for zero
-new model calls. No extra packet has reached a new main model. A separate
-Jev-only ranking probe must beat the same-pool near order by one Recall point
-before a separately frozen actual-input study; prior first-read gates stay failed.
+new model calls. That replay alone establishes no model-input delivery. The later
+Jev-only ranking screen below fails its separate one-point gate; the physical 4K
+control and actual-input study use the unranked policy. Prior first-read gates stay
+failed.
 
 The completed late-source Jev-only probe retains all 24 tasks and 558 decisions
 for **$0.271715010**, with known usage and exact source/model
@@ -217,11 +227,102 @@ does not beat matched physical 4K by one Recall point and its native-relative
 change is under five points. Preserve both decisions and the earlier failed
 Jev gate; the selected physical 4K delivery hypothesis uses no ranker. The zero-call
 preflight fixes only a tuple/list comparison, with original logs retained.
-Prepared paired 32K packets share an actual historical native prefix, but have
-not been consumed by a new main model. A possible four-task mechanism study
-reserves $3 and first requires verified version-bound actual-input receipts and
-confirmed assistant responses. This is source-delivery feasibility, not fresh
-adaptive-agent, repair, independent or leaderboard evidence.
+The prospective four-task actual-input study uses two 32K packet arms with the
+same completed native prefix; the treatment packs its novel 4K envelope before
+that prefix. A packet receives source credit only after an actual main-model
+assistant response confirms its exact prompt, complete physical lines, source
+version, model and first-party API route. The consumer disables repository tools
+and rejects compaction, unexpected tools, missing assistants or changed sources.
+Terminal usage survives SDK errors; prepared packet geometry alone gets no credit.
+
+The first attempt uses runtime `539e6a6b`, protocol
+`cfe51d9c65987fc13aa1d5613cb3f0d7f118d9821d663471d928d8112d53cce0`.
+It retains two normal Python sessions, two TypeScript budget errors and four
+unstarted C/C++ sessions, then stops as declared. All four attempted sessions
+have known usage totaling **$0.85013280**. The output allowance is consumed by
+thinking and SDK continuations; configured `max_turns=1` does not imply one
+reported turn or one underlying request. Its mechanism gate fails. Historical
+prefixes stay in the four-case denominator; failed/unstarted new packets add no
+new source credit. No session is retried or replaced within this attempt.
+
+A separate followup protocol `4e1b0193accf1d176e2938ad419ba3cd2a8682b3cba96a6d46c55f8a2311e3ef`,
+runtime `c141a2b7`, keeps identical tasks, model, source packets and $0.25 case
+guards, requests thinking disabled and limits review to 120 words/512 output tokens.
+Installed-SDK command construction verifies the requested flag before dispatch.
+All eight sessions finish normally with exact source-input receipts for
+**$0.91064290**. Actual thinking blocks still appear in seven sessions, with one
+to three SDK-reported turns. Preserve this mode-conformance failure and the
+original strict analyzer failure. A separately recorded delivery analysis scores
+the confirmed exact source without claiming the mode worked; the source-delivery
+receipt gate passes, while mode conformance and the overall mechanism gate stay
+**false**. No thought contents are inspected or published.
+
+| Confirmed cumulative source, four development tasks | Recall | Precision | F1 | New review SDK usage | Allocated prefix + review |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Shared native prefix + native packet | 42.87% | 36.97% | 38.64% | $0.38721930 | $1.15885590 |
+| Shared native prefix + late physical 4K packet | 49.41% | 23.91% | 31.53% | $0.52342360 | $1.29506020 |
+
+The +6.54-point Recall result is component evidence on disclosed development
+cases. It cannot establish fresh adaptive-agent behavior, repair success or
+independent quality. The already incurred prefix costs $0.77163660; allocate it
+fully to each logical pipeline arm, but do not count those allocations as new
+spending. Final 32K packet-only F1 is 38.66%/31.54%; cumulative source above retains
+all historical actual observations. Both attempts cost **$1.76077570** in total
+against the original **$3** reservation. All new usage is known. Earlier failed
+gates and both sealed 32 cohorts remain unchanged.
+
+The reusable source compiler `scripts/contextbench_late_packet.py` builds this
+policy from actual native messages without gold, reference patches, search or
+model calls. Only observed files qualify; final-handoff mentions affect file
+order, never source facts. Exact source hashes bracket construction. Its zero-call
+parity gate passes: all 24 frozen extra/native packets and all four actual-input
+pairs are byte-identical. The producer is committed as `1aa5bac1`; 96 focused
+retrieval tests and pinned hooks pass. A future source-only protocol must report actual
+SDK mode behavior rather than claim effective no-thinking. There is no product
+route or default change.
+
+
+The separately frozen remaining 20 source-delivery study uses runtime `1aa5bac1`,
+protocol `13c82732a9cc6b3c7ff30e7d2b98fe88c99c997829472c72b771f63244d1f4a3`.
+It retains the same physical 4K compiler and review controls, fixes all remaining
+positions before dispatch and reserves **$8** within the existing $100 authorization.
+Its new engineering gate measures source delivery, with actual thinking and
+reported SDK turns descriptive; it does not redefine the original four-task
+mode or overall mechanism gates. It makes **24** SDK sessions for **$2.87066330**,
+with **0** unknown usage records. All 20 selected cases are retained; 23 sessions are normal, 1 error and 16
+not run. The source-confirmed budget-error packet still receives no new source
+credit under this frozen normal-terminal protocol; never change that decision
+after scoring.
+The earlier opportunity was already evaluated, so these known development cases
+cannot provide a new confirmatory quality test.
+
+| Confirmed cumulative source, all 24 development cases | Recall | Precision | F1 | Allocated prefix + attempted review |
+| --- | ---: | ---: | ---: | ---: |
+| Shared native prefix + native packet | 58.39% | 29.90% | 31.97% | $6.04475590 |
+| Shared native prefix + late physical 4K packet | 62.16% | 24.13% | 28.64% | $6.59869990 |
+
+The complete development source-delivery gate **fails**. The 24-case table
+retains common historical prefixes for every error/unstarted position, crediting
+new packets only on normal confirmed source inputs. Repository bootstrap
+uses 5,000 resamples, seed 20261017, with 24 canonical repository clusters;
+Recall changes by **+3.77 points**. F1 is reported without a veto.
+The full historical prefix costs **$4.43107480** and is allocated
+once to each logical pipeline, not charged again. The followup and remaining 20 review attempts, including the new budget error,
+cost **$3.78130620**; the first failed attempt adds
+**$0.85013280**. All actual packet-input attempts total
+**$4.63143900** inside the separate $3 and $8 reservations.
+No effective no-thinking guarantee is claimed: actual thinking appears in
+21/24 remaining 20 sessions, with reported SDK turns
+1–3 among attempted sessions. These are SDK sessions/turns, not underlying HTTP request counts.
+
+The source envelope increases used source/model tokens; both final review packets
+have the same 32K ceiling, but used tokens are not equalized. This is a context
+strategy with extra source volume and associated cost, not proof of reranking or
+better autonomous discovery. Do not advance this failed delivery attempt to independent inference. The next
+source-consumer protocol must handle known terminal budget outcomes explicitly
+before more calls; preserve this closed attempt without replacement or retries.
+Any later independent protocol needs untouched IDs and exact source snapshots;
+neither sealed 32 cohort can be reused. No repair or official500 batch follows automatically.
 
 ## Fresh independent32: seven-language retrieval-only validation
 
@@ -293,7 +394,7 @@ predictions use only confirmed exact source. Original SDK attempts and the pre-s
 correction remain immutable. Final served16K/32K and equal-language macros remain
 secondary in the sanitized export and never replace the primary.
 
-This new32 is now sealed against policy tuning, alongside the old32. At that sealing point, the remaining
+This new32 is now sealed against policy tuning, alongside the old 32. At that sealing point, the remaining
 untouched pool had 331 tasks and no C++ or Java cases; subsequent preview quarantine
 leaves 329 as detailed above. Any later validation must
 explicitly revise coverage rather than recycle these tasks. The [official submission
@@ -1292,8 +1393,9 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The current Claude SDK/Jev experiment ledger, through the completed first-read source-window
-development comparisons, the new early/late Jev probes and independent32, has the
+The current Claude SDK/Jev experiment ledger, through the completed first-read
+source-window comparisons, early/late Jev probes, independent32 and all terminal
+late-packet input attempts, has the
 following known usage values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
 costs remain separate. Actual account charges and credit deductions have not
@@ -1301,12 +1403,12 @@ been reconciled.
 
 | Route | Known usage value | Billing interpretation |
 | --- | ---: | --- |
-| Direct Anthropic main-model SDK | $38.22388456 | API estimate; promotional-credit deduction unverified |
+| Direct Anthropic main-model SDK | $42.85532356 | API estimate; promotional-credit deduction unverified |
 | Separate Jev decisions | $0.369977370 | Metered API receipts |
-| **Combined API usage** | **$38.593861930** | **Usage value, not confirmed cash spending** |
+| **Combined API usage** | **$43.225300930** | **Usage value, not confirmed cash spending** |
 | Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
 
-Main-model SDK estimates across both routes sum to $150.72574016; that mixed-route
+Main-model SDK estimates across both routes sum to $155.35717916; that mixed-route
 sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
@@ -1314,7 +1416,7 @@ rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **1012 Jev requests** for **$0.369977370**.
-Known API usage value totals **$38.593861930**, including the Haiku repairs
+Known API usage value totals **$43.225300930**, including the Haiku repairs
 and eight subsequent file-map sessions ($1.496507) plus eight nearby-source
 sessions ($1.76050270), plus eight remaining-four replication sessions
 ($1.88522710). The independent32 adds 64 SDK sessions for
@@ -1322,8 +1424,10 @@ $12.63056860. All nearby-source inference and scoring are terminal. The three ne
 $0.316778658; all cached replays make no new model calls. First-read source-window
 online comparisons add 48 retrieval SDK sessions for
 $9.86110630, with no new repairs.
-The 184 retrieval sessions and 55 repair SDK queries are distinct from
-individual underlying API request counts. The latest read-hint retrieval control costs
+The 36 packet-review SDK sessions add **$4.63143900**, including both failed
+mechanism attempts. The 184 earlier retrieval sessions, 36 packet-review sessions
+and 55 historical repair SDK queries total 275 direct-API SDK sessions; these
+are distinct from underlying API request counts. The latest read-hint retrieval control costs
 **$4.848424762** against its $10 reservation; its four Max repairs add
 **$6.03557620**. No completed-batch usage is missing beyond the two historical
 unknowns. The completed notes ablation adds $9.058375 in Max SDK estimates
