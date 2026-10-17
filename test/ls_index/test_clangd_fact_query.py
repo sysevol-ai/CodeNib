@@ -49,8 +49,11 @@ from codenib.ls_router import LSIndexer  # noqa: E402
 from codenib.mcp.context import ServerContext  # noqa: E402
 from codenib.mcp.tools.lsp import lsp_definition_impl  # noqa: E402
 from codenib.mcp.tools.lsp import lsp_references_impl, lsp_route_impl
-from codenib.types import EDGE_TYPE_REFERENCE  # noqa: E402
-from codenib.types import node_has_definition
+from codenib.types import (  # noqa: E402
+    EDGE_TYPE_REFERENCE,
+    NODE_TYPE_METHOD,
+    node_has_definition,
+)
 from scripts.profiling.profile_clangd_fact_query_index import (  # noqa: E402
     main as profile_main,
 )
@@ -183,7 +186,7 @@ def _expected_snapshot_id(
     field("clangd-fact-query-snapshot-v1")
     field("clangd-riff-fact-query-v3")
     uint64(3)
-    field("clangd-native-normalization-v3")
+    field("clangd-native-normalization-v4")
     field(project_root.absolute().as_posix())
     field(position_encoding)
     uint64(3)
@@ -385,6 +388,43 @@ def _outcome(call: Callable[[], Any]) -> tuple[Any, ...]:
         return "error", type(exc).__name__, str(exc)
 
 
+def test_conversion_function_kind_matches_native_and_materialized_methods(tmp_path):
+    source = tmp_path / "value.hpp"
+    source.write_text(
+        "class Value {\n  operator bool() const {\n    return true;\n  }\n};\n"
+    )
+    directory = tmp_path / "index"
+    directory.mkdir()
+    symbol_id = bytes.fromhex("0102030405060708")
+    strings = ["", source.as_uri(), "operator bool", "Value::"]
+    table = b"\x00".join(s.encode() for s in strings) + b"\x00"
+    (directory / "value.idx").write_bytes(
+        _riff_bytes(
+            [
+                (b"meta", struct.pack("<I", 18)),
+                (b"stri", struct.pack("<I", 0) + table),
+                (
+                    b"symb",
+                    _symbol(
+                        symbol_id,
+                        kind=24,
+                        name_index=2,
+                        scope_index=3,
+                        file_index=1,
+                        line=1,
+                    ),
+                ),
+            ]
+        )
+    )
+    native = codenib_core.decode_clangd_fact_query_index(
+        idx_directory=str(directory), project_root=str(tmp_path)
+    )["index"]
+    graph = ClangdGraphDecoder(str(directory), str(tmp_path)).materialize_code_graph()
+    assert native.get_node_info_by_name(symbol_id.hex())["type"] == NODE_TYPE_METHOD
+    assert graph.get_node_info_by_name(symbol_id.hex())["type"] == NODE_TYPE_METHOD
+
+
 def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     root, idx_directory = clangd_fixture
     contract = codenib_core.clangd_fact_query_contract()
@@ -398,7 +438,7 @@ def test_contract_and_graph_free_payload_are_explicit(clangd_fixture) -> None:
     assert contract == {
         "abi_version": 3,
         "format": "clangd-riff-fact-query-v3",
-        "normalization_profile": "clangd-native-normalization-v3",
+        "normalization_profile": "clangd-native-normalization-v4",
         "snapshot_schema": "clangd-fact-query-snapshot-v1",
         "snapshot_digest": "sha256",
         "supported_versions": [18, 19, 20],
@@ -475,6 +515,11 @@ def test_full_and_incremental_generation_share_utf16_contract(
     ("field", "value", "message"),
     [
         ("normalization_profile", "changed", "normalization profile mismatch"),
+        (
+            "normalization_profile",
+            "clangd-native-normalization-v3",
+            "normalization profile mismatch",
+        ),
         ("snapshot_schema", "changed", "snapshot schema mismatch"),
         ("snapshot_digest", "sha1", "snapshot digest mismatch"),
     ],

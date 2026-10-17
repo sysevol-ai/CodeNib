@@ -151,11 +151,46 @@ class CppCodeChunker(BaseCodeChunker):
         Returns:
             Function name or None if extraction failed
         """
-        for child in node.children:
-            if child.type == "function_declarator":
-                for grandchild in child.children:
-                    if grandchild.type in ("identifier", "field_identifier"):
-                        return grandchild.text.decode("utf-8")
+        return self._extract_declarator_name(node.child_by_field_name("declarator"))
+
+    def _extract_declarator_name(self, node) -> Optional[str]:
+        """Follow the declared name, never identifiers in parameters or bodies."""
+        while node is not None:
+            if node.type in (
+                "identifier",
+                "field_identifier",
+                "operator_name",
+                "destructor_name",
+            ):
+                return node.text.decode("utf-8")
+            if node.type == "qualified_identifier":
+                child = node.child_by_field_name("name")
+                name = self._extract_declarator_name(child)
+                if name is None:
+                    return None
+                prefix = node.text[: child.start_byte - node.start_byte]
+                return prefix.decode("utf-8") + name
+            if node.type == "operator_cast":
+                # A conversion operator's type (including pointer/reference
+                # qualifiers) is its name. Its function declarator is abstract.
+                declarator = node.child_by_field_name("declarator")
+                while declarator is not None:
+                    parameters = declarator.child_by_field_name("parameters")
+                    if parameters is not None:
+                        return (
+                            node.text[: parameters.start_byte - node.start_byte]
+                            .decode("utf-8")
+                            .strip()
+                        )
+                    declarator = declarator.child_by_field_name("declarator")
+                return None
+            child = node.child_by_field_name("declarator")
+            if child is None and node.type in (
+                "reference_declarator",
+                "parenthesized_declarator",
+            ):
+                child = next(iter(node.named_children), None)
+            node = child
         return None
 
     def _extract_class_name(self, node) -> Optional[str]:
@@ -241,10 +276,7 @@ class CppCodeChunker(BaseCodeChunker):
         Returns:
             Method name or None if extraction failed
         """
-        for child in declarator_node.children:
-            if child.type in ("identifier", "field_identifier"):
-                return child.text.decode("utf-8")
-        return None
+        return self._extract_declarator_name(declarator_node)
 
     def _is_function_prototype(self, decl_node) -> bool:
         """Check if a declaration node is a function prototype."""
