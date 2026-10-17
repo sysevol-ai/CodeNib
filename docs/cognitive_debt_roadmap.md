@@ -547,6 +547,27 @@ reported separately from original cold index builds, including Python's graph
 timeout. Further work must improve useful discovery and source selection; adding
 reference counts alone does not establish that outcome. No new generic memory,
 archive or persistence framework is authorized by this experiment.
+The subsequent surface-first prototype `95cbc503` passes its four-task
+Recall-first development screen: Recall/F1 74.02%/42.40% versus original native
+71.61%/33.68% and one predeclared post-hoc native repeat71.37%/31.76%. All four
+actually query CodeNib surfaces,22 returned candidates/15 later-read locations,
+but none uses body handles. Those body/freshness/dedup contracts are locally
+tested; runtime body benefits remain unproven. Source falls3,209→2,610lines,
+tool-reply estimates46,257→37,376tokens and Max nominal1.1760282→1.0091893USD.
+The repeat costs1.1046278USD nominal and never replaces original500 results.
+This exposed small-sample screen is not a causal or independent validation gate.
+Latest99 relevant tests pass. SDK cache counters and full cold/warm preparation
+remain separate from tool-reply estimates and API cash charges.
+
+Keep the labs adapter source-only and its graph-optional pilot distinct from the
+next eight-language dense-only ablation. The new vector-only preparation option
+avoids an unnecessary graph build for that arm; authenticated prepared caches
+must prove exact case/revision/snapshot identity, zero SDK events and no model
+intent. No new product route, handle archive, generic persistence or cache-metric
+migration is introduced. A read-only Jina ranking diagnostic retains original
+artifact bytes and scores; mostly unchanged focused-query leaders do not justify
+a product metric switch. Wider development, fresh default-only validation and
+full submission evidence remain open.
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays
@@ -564,9 +585,12 @@ recorded snapshots, including119retained aliases. Complete500 baseline scoring i
 no proof of indexed context gains.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
-53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. An earlier metadata-only audit counted292 verified and623 additional default-only
-candidates before whole500 annotation access. Those untouched-pool counts are now
-stale; refresh exposure and alias metadata before any independent selection. Known IDs, original issue identities and exact source
+53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The refreshed metadata-only audit after whole500 annotation access confirms
+**zero unexposed verified cases** and **623 default-only candidates across62
+repositories**, with all eight languages present. No additional source/issue or
+annotation columns are read and no new tasks selected by that audit. A future
+independent sample must use separately declared default-only scope and cannot be
+called a fresh verified500 validation. All three32 cohorts stay sealed. Known IDs, original issue identities and exact source
 commits are excluded across aliases. All three validation cohorts stay sealed;
 future independent population choices remain open; current500 baseline completion,
 actual indexed-context validation and formal submission gates remain open. No product lifecycle

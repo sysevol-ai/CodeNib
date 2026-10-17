@@ -60,9 +60,16 @@ def prepare_manifest(args, record, repo, languages):
         raw = json.loads((producer / "trajectory.json").read_text())
         manifest = RepoManifest.load(producer / "indexes/repo_manifest.json")
         recorded = json.loads((producer / "index-outcomes.json").read_text())
+        prepared = (
+            raw["status"] == "prepared_no_model_call"
+            and protocol.get("live") is False
+            and raw.get("sdk_events") == []
+            and raw.get("sdk_result") is None
+            and not (producer / "model-intent.json").exists()
+        )
         if (
             raw["instance_id"] != record["instance_id"]
-            or raw["status"] not in {"ok", "budget_exhausted"}
+            or not (raw["status"] in {"ok", "budget_exhausted"} or prepared)
             or protocol["input_sha256"] != digest(args.input)
             or Path(manifest.repo_path).resolve() != repo
             or manifest.commit != record["base_commit"]
@@ -70,7 +77,7 @@ def prepare_manifest(args, record, repo, languages):
             or protocol["embedding_model"] != args.embedding_model
             or protocol["embedding_revision"] != args.embedding_revision
             or raw["snapshot_before"]["commit"] != record["base_commit"]
-            or raw["snapshot_after"]["commit"] != record["base_commit"]
+            or raw.get("snapshot_after", {}).get("commit") != record["base_commit"]
         ):
             raise ValueError("Cached producer must match the exact source/issue case")
         route = resolve_embedding_artifact_route(manifest.indexes["vector"].config)
@@ -112,7 +119,10 @@ def prepare_manifest(args, record, repo, languages):
     compiler = IndexCompiler(
         registry,
         IndexCompilerConfig(
-            index_types=["vector", "symbol_graph"], languages=languages
+            index_types=(
+                ["vector"] if args.vector_only else ["vector", "symbol_graph"]
+            ),
+            languages=languages,
         ),
     )
     manifest = compiler.compile_repo(
@@ -121,10 +131,13 @@ def prepare_manifest(args, record, repo, languages):
     write_json(args.output / "index-outcomes.json", manifest.to_dict())
     if not manifest.index_is_current("vector"):
         raise ValueError("Dense index build failed; do not substitute native tools")
-    manifest = compiler.compile_repo(
-        str(repo), index_types=["symbol_graph"], cache_dir=str(args.output / "indexes")
-    )
-    write_json(args.output / "index-outcomes.json", manifest.to_dict())
+    if not args.vector_only:
+        manifest = compiler.compile_repo(
+            str(repo),
+            index_types=["symbol_graph"],
+            cache_dir=str(args.output / "indexes"),
+        )
+        write_json(args.output / "index-outcomes.json", manifest.to_dict())
     return manifest, "contextbench-pilot-owned-build"
 
 
@@ -201,7 +214,8 @@ def run(args):
             "languages": languages,
             "local_model_cache": os.environ.get("HF_HUB_CACHE"),
             "offline_embeddings": os.environ.get("HF_HUB_OFFLINE") == "1",
-            "views": ["vector", "symbol_graph"],
+            "views": ["vector"] if args.vector_only else ["vector", "symbol_graph"],
+            "vector_only": args.vector_only,
             "reuse_from": str(args.reuse_from) if args.reuse_from else None,
             "read_reference_hints": args.read_reference_hints,
             "surface_context": args.surface_context,
@@ -268,7 +282,7 @@ def run(args):
             )
             ctx = ServerContext.load(
                 manifest,
-                views=["vector", "symbol_graph"],
+                views=["vector"] if args.vector_only else ["vector", "symbol_graph"],
                 native_index_authorization=authorization,
                 source_binding=binding,
             )
@@ -355,6 +369,9 @@ def run(args):
             )
             write_json(args.output / "prediction.json", prediction)
         else:
+            row["snapshot_after"] = claude.native.audit_contextbench_snapshot(
+                repo, record["base_commit"]
+            )
             row["status"] = "prepared_no_model_call"
         assert all(
             digest(ROOT / name) == expected for name, expected in implementation.items()
@@ -381,4 +398,5 @@ if __name__ == "__main__":
     parser.add_argument("--reuse-from", type=Path)
     parser.add_argument("--read-reference-hints", action="store_true")
     parser.add_argument("--surface-context", action="store_true")
+    parser.add_argument("--vector-only", action="store_true")
     run(parser.parse_args())

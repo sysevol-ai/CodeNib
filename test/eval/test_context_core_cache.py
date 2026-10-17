@@ -14,9 +14,11 @@ from scripts.benchmark_context_core import digest, prepare_manifest
 
 
 @pytest.mark.parametrize(
-    "mutation", [None, "input", "case", "source", "revision", "route", "stale"]
+    "status,mutation",
+    [("ok", m) for m in [None, "input", "case", "source", "revision", "route", "stale"]]
+    + [("prepared_no_model_call", m) for m in [None, "sdk", "intent", "after", "live"]],
 )
-def test_cache_producer_identity_checked_before_native_load(tmp_path, mutation):
+def test_cache_producer_identity_checked_before_native_load(tmp_path, status, mutation):
     repo = tmp_path / "repo"
     repo.mkdir()
     producer = tmp_path / "producer"
@@ -57,10 +59,13 @@ def test_cache_producer_identity_checked_before_native_load(tmp_path, mutation):
     }
     raw = {
         "instance_id": "case",
-        "status": "ok",
+        "status": status,
         "snapshot_before": {"commit": record["base_commit"]},
         "snapshot_after": {"commit": record["base_commit"]},
     }
+    if status == "prepared_no_model_call":
+        raw["sdk_events"] = []
+        protocol["live"] = False
     if mutation == "input":
         input_path.write_text("different input")
     elif mutation == "case":
@@ -73,6 +78,14 @@ def test_cache_producer_identity_checked_before_native_load(tmp_path, mutation):
         entry.config["embedding_provider"] = "openai"
     elif mutation == "stale":
         entry.status = "stale"
+    elif mutation == "sdk":
+        raw["sdk_events"] = [{"kind": "AssistantMessage"}]
+    elif mutation == "intent":
+        (producer / "model-intent.json").write_text("{}")
+    elif mutation == "after":
+        raw.pop("snapshot_after")
+    elif mutation == "live":
+        protocol["live"] = True
     manifest.save(producer / "indexes/repo_manifest.json")
     (producer / "index-outcomes.json").write_text(json.dumps(manifest.to_dict()))
     (producer / "protocol.json").write_text(json.dumps(protocol))
