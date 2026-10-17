@@ -1,10 +1,12 @@
 # ContextBench retrieval experiments
 
-The latest eight-task online grep/Jev comparison **fails its development gate**:
-Recall falls from 42.36% to 40.97% and F1 from 36.80% to 31.94%. Its matched
-end-to-end check also establishes no repair gain: both arms pass the C++ task,
-and both C attempts stop at their SDK budget without a captured prediction.
-These are disclosed development tasks, not a leaderboard submission.
+Both eight-task online grep/Jev policies **fail their development gates**.
+Replacing grep replies with source blocks reduces Recall/F1 from
+42.36%/36.80% to 40.97%/31.94%. The subsequent policy preserves every original
+grep match and suggests read locations instead, but still loses Recall/F1,
+43.29%/37.08% to 38.73%/34.17%. These disclosed development tasks establish
+no leaderboard advantage. The source-block repair check resolves the same C++
+task in both arms and loses both C predictions on budget exceptions.
 
 The October 16 independent validation also rejects the earlier function-plus-graph
 candidate. All 32 selected tasks remain in the scores and sealed against tuning.
@@ -22,8 +24,70 @@ The fixed 100-task, 4K ContextBench control below improves Opus Recall/F1 from
 71.40% in research and from 48.37% to 65.57% in a fresh product run. Those use
 CodeNib Base, not ContextBench, and neither establishes an online-agent gain.
 The online control below tests source ranking before delivery; graph expansion
-is not a prerequisite. This grep/Jev control fails its retrieval gate; positive fixed-pool rankings did not transfer to
-this adaptive source-delivery policy.
+is not a prerequisite. Both grep/Jev controls fail their retrieval gates; positive
+fixed-pool rankings did not transfer to these adaptive source-delivery policies.
+
+## Preserved grep with read-location hints
+
+Runtime `10d1a439` tests the same eight disclosed tasks in three fresh arms,
+with actual Opus 5.5 and the same explicit Anthropic API route, source snapshots,
+20 turns and 600-second limit. All 24 sessions complete and score validly.
+Native retains its ordinary tools. Both hint arms preserve original grep replies
+verbatim and may append at most three source ranges with 512 additional tokens.
+One retains candidate order; the other uses Jev against the issue and current
+grep arguments. Ranges are metadata, with no unread-source credit. Read and glob
+are unchanged. No graph, BM25 index or separate planner is added.
+
+| Cumulative trajectory, all eight selected tasks | Recall | Precision | F1 | Main-model API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 43.29% | 38.51% | 37.08% | $1.607556 |
+| Original-order read suggestions | 43.21% | 37.69% | 36.34% | $1.621346 |
+| Jev read suggestions | 38.73% | 36.37% | 34.17% | $1.609930 |
+
+The primary Jev/native difference is **-4.56 Recall points**, exploratory paired
+95% interval **[-10.08, -0.64]**, and **-2.91 F1 points**, **[-10.30, +2.89]**.
+The prespecified unranked secondary also misses the point-score gate, with
+-0.09 Recall and -0.74 F1 points against native. Against unranked hints, Jev
+changes Recall/F1 by -4.48/-2.18 points. Intervals use 5,000 paired repository
+resamples and seed 20261017; this is another development trial, not new held-out
+evidence.
+
+Jev makes 75 successful decisions for **$0.009593262**. Main-model API SDK usage
+is **$4.83883150**; the combined **$4.848424762** is within the $10 reservation.
+Every reply has a later assistant response; raw originals, candidate construction,
+score order, delivered source and runtime/input hashes verify. Suggestions add
+zero source credit. The 41 Jev views contain 36 suggestions matching actual later
+read output, an adoption diagnostic rather than proof that hints caused a read.
+Unranked hints have 42 such matches. Neither adoption nor verbatim preservation
+establishes a quality gain. Do not expand this policy or continue output-format
+variants on these tasks.
+
+The motivating frozen-candidate audit finds whole hit-bearing candidates omitted
+in 12 of the prior 38 Jev source-block views, including seven views losing entire
+candidate files. Three have more than ten candidates but use fewer than 1,024
+reply tokens. Original raw replies were stored only as hashes; unsorted ripgrep
+traversal prevents exact reconstruction, so the failed raw replay is retained
+and no exact historical hit-loss count is claimed. New receipts keep raw replies.
+
+All four preselected native/Jev-hint repair attempts submit patches, costing
+**$6.03557620** in Claude Max SDK estimates. Both C++ repairs use three calls,
+cost $0.340808/$0.340607 and pass the same 18 native tests. The C repairs cost
+$2.497070/$2.857091 and both fail the native resolution criteria. Each arm
+resolves one of the two selected tasks; all failures remain counted. Source,
+prompt, usage and owned-container absence audits pass. This second C++ pair does not
+reproduce the earlier large single-task cost difference. The selected tasks and
+all outcomes remain in the [development export](../assets/contextbench_online_development_summary.json).
+
+A separate, frozen repair-only ablation now compares identical native 16K source
+with and without up to 2K tokens of the retrieval agent's existing final answer.
+It marks those notes as unverified and gives them no source credit. Notes add
+input tokens; both arms share source and SDK-meter limits, rather than identical
+total input-token counts. Six fresh attempts cover the already disclosed Pylint,
+ponyc and fmt tasks; they reuse existing retrieval, with no new API-key inference.
+The Max SDK reservation is $17. Pylint's pinned source tree matches, and its
+separate empty/reference controls fail/pass all 21 required native tests; that
+native task has no preservation-test list. No reference patch or grading feedback
+enters a solver. This ablation is running and has no quality conclusion yet.
 
 ## Online grep/Jev on eight development tasks
 
@@ -746,28 +810,29 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The October 16–17 program now records **$97.40790440** in known Claude Max
-SDK estimates, including **$7.24264130** for the latest four repair attempts.
-Two historical attempts remain unmetered: one aborted development solver and one
-interrupted retrieval case. The earlier C graph-arm receipt correction recovers
-its preserved terminal event without replacing or rerunning that failed attempt.
+Completed October 16–17 batches through the read-hint repairs record
+**$103.44348060** in known Claude Max SDK estimates and **$10.32968070** in
+direct Anthropic SDK estimates, totaling **$113.77316130** across main-model
+routes. This excludes the in-flight retrieval-notes ablation. Two historical
+attempts remain unmetered: one aborted solver and one interrupted retrieval case.
+The earlier C graph-arm receipt correction recovers its preserved terminal event
+without replacing or rerunning that failed attempt.
 
-The explicitly authorized Anthropic API route is used for all 24 sessions in
-the latest eight-task online control. Its main-model SDK usage is
-**$5.49084920**, and 55 Jev decisions add **$0.00552048**, for
-**$5.49636968** against the frozen $10 reservation. All latest-batch usage is
-known. Together, the three dedicated Jev controls make **206 requests** for
-**$0.04360545**. The combined known API usage value is **$5.53445465**;
-SDK estimates across both main-model routes total **$102.89875360**. Session
-counts are not individual API request counts. The development export retains
-per-experiment costs and the two historical unknowns.
+The two eight-task API controls complete 48 SDK sessions. Together with the two
+fixed-pool Jev controls, there are **281 Jev requests** for **$0.053198712**.
+Known API usage value totals **$10.382879412**. Session counts are distinct from
+individual API request counts. The latest read-hint retrieval control costs
+**$4.848424762** against its $10 reservation; its four Max repairs add
+**$6.03557620**. No completed-batch usage is missing beyond the two historical
+unknowns. The notes ablation reuses existing retrieval and has a separate $17
+Max SDK reservation, with no new API-key inference.
 
-These are usage estimates and provider decision receipts, not reconciled account
-bills. Remaining promotional credit, subscription billing and any account-level
-extra usage are unverified. The authorized ceiling for new API spending remains
-**$100**. Provider routes are explicit, with no automatic API fallback. An
-in-flight call can exceed its SDK budget guard, as both C repair attempts do.
-The budget-stop patch-collection fix and final artifact audits make no model calls.
+These are usage estimates and decision receipts, not reconciled account bills.
+Remaining promotional credit, subscription billing and account-level extra usage
+are unverified. The authorized ceiling for new API spending remains **$100**.
+Provider routes are explicit, with no automatic API fallback. An in-flight call
+can exceed its SDK guard. Native readiness/reference checks and artifact audits
+make no model calls; their reference patches and feedback stay outside solvers.
 
 The historical late-only eight-task control projects mechanically to about
 $104–107 in SDK estimates per 500-task retrieval route, or $211 for both arms.
