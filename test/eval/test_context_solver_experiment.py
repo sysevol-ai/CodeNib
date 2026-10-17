@@ -12,8 +12,40 @@ from scripts.benchmark_context_solver import (
     delivered_input,
     model_observations,
     request_digest,
+    retrieval_notes,
     validate_image_snapshot,
 )
+
+
+def test_retrieval_notes_require_immutable_confirmed_answer_and_exact_prefix(tmp_path):
+    from scripts.benchmark_jev_base import digest
+
+    assert retrieval_notes(tmp_path, "missing", 0, "unused") is None
+    answer = "Verify compatibility before rejecting a signature. 😀\n" * 200
+    row = {
+        "status": "ok",
+        "answer": answer,
+        "sdk_result": {"is_error": False, "result": answer},
+        "messages": [{"role": "assistant", "content": answer}],
+    }
+    path = tmp_path / "case.json"
+    path.write_text(json.dumps(row))
+    receipt = digest(path)
+    notes = retrieval_notes(tmp_path, "case", 64, receipt)
+    assert notes["text"] and answer.startswith(notes["text"])
+    assert 0 < notes["tokens"] <= 64 and notes["truncated"]
+    assert notes["retrieval_sha256"] == receipt
+    with pytest.raises(ValueError, match="changed"):
+        retrieval_notes(tmp_path, "case", 64, "different receipt")
+    for invalid in (
+        {**row, "status": "error"},
+        {**row, "sdk_result": {"is_error": True, "result": answer}},
+        {**row, "sdk_result": {"is_error": False, "result": "different"}},
+        {**row, "messages": []},
+    ):
+        path.write_text(json.dumps(invalid))
+        with pytest.raises(ValueError, match="confirmed"):
+            retrieval_notes(tmp_path, "case", 64, digest(path))
 
 
 def test_official_synthetic_image_commit_requires_identical_clean_source():
@@ -323,6 +355,7 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
         ("Multi", "ponylang/ponyc", True, False, "generic"),
         ("Multi", "ponylang/ponyc", False, True, "generic"),
         ("Multi", "ponylang/ponyc", False, False, "budget"),
+        ("Multi", "ponylang/ponyc", False, False, "budget_notes"),
         ("Multi", "ponylang/ponyc", False, False, "budget_unknown_usage"),
         ("Multi", "ponylang/ponyc", False, False, "budget_export_failure"),
         ("Multi", "ponylang/ponyc", False, False, "non_budget"),
@@ -352,6 +385,19 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         "agent: {}\nenvironment:\n  env: {}\n"
     )
     output = tmp_path / "result"
+    note_text = "Unverified hypothesis.\na.py:999: UNREAD_NOTE_SOURCE\n"
+    note_input = tmp_path / "case.json"
+    if failure == "budget_notes":
+        note_input.write_text(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "answer": note_text,
+                    "sdk_result": {"is_error": False, "result": note_text},
+                    "messages": [{"role": "assistant", "content": note_text}],
+                }
+            )
+        )
     monkeypatch.setattr(solver.shutil, "which", lambda name: "claude")
     monkeypatch.setattr(
         solver.shutil, "disk_usage", lambda path: SimpleNamespace(free=16 * 1024**3)
@@ -387,7 +433,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
                 repo=repo,
             ),
             "source",
-            "sha",
+            solver.digest(note_input) if failure == "budget_notes" else "sha",
             "tree",
             tmp_path,
         ),
@@ -480,17 +526,25 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
             self.model, self.environment = model, environment
             self.messages = []
             self.config = SimpleNamespace(action_observation_template="output")
+            self.instance_template = kwargs["instance_template"]
 
         def render_template(self, template, **kwargs):
             return kwargs["output"]["output"]
 
         def run(self, *args, **kwargs):
+            from jinja2 import Template
+
             agent_runs.append(True)
             if failure == "generic":
                 raise RuntimeError("model failed")
             self.messages = [
                 {"role": "system", "content": "Shell format"},
-                {"role": "user", "content": "Issue and source"},
+                {
+                    "role": "user",
+                    "content": Template(self.instance_template).render(
+                        task=args[0], **kwargs
+                    ),
+                },
             ]
             reply = self.model.query(self.messages)
             self.messages.append({"role": "assistant", "content": reply["content"]})
@@ -518,6 +572,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         budget=16384,
         output=output,
         model="fixed-model",
+        retrieval_notes_tokens=128 if failure == "budget_notes" else 0,
     )
     if imported_provider_route:
         with pytest.raises(ValueError, match="existing CLI login"):
@@ -547,14 +602,14 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         assert row["sdk_reported_cost_usd"] == 1.0
         assert row["missing_metering_calls"] == 0
         assert "SDK iterator failed" in row["error"]
-    if failure in {"budget", "budget_export_failure"}:
+    if failure in {"budget", "budget_notes", "budget_export_failure"}:
         assert row["budget_exhausted"]
         assert row["patch_export_reason"] == "metered_sdk_budget_stop"
         assert commands[-1] == "git add -A && git diff --cached --binary"
     else:
         assert not row.get("budget_exhausted")
         assert commands[-1] == "edit source"
-    if failure == "budget":
+    if failure in {"budget", "budget_notes"}:
         assert row["model_patch"] == exported_patch
         assert json.loads(predictions.read_text()) == [
             {
@@ -567,3 +622,10 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         assert not predictions.exists()
     if failure == "budget_export_failure":
         assert "Failed to export" in row["patch_export_error"]
+    if failure == "budget_notes":
+        assert row["retrieval_notes"]["text"] == note_text
+        assert "UNREAD_NOTE_SOURCE" in observations
+        assert (
+            json.loads(observations)["source_attribution"]["base_source_line_count"]
+            == 0
+        )
