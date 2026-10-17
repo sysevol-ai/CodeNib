@@ -27,6 +27,64 @@ The online control below tests source ranking before delivery; graph expansion
 is not a prerequisite. Both grep/Jev controls fail their retrieval gates; positive
 fixed-pool rankings did not transfer to these adaptive source-delivery policies.
 
+## File-structure navigation: pure retrieval priority
+
+The user-selected priority for subsequent policies is higher cumulative line
+**Recall**, with Precision, F1 and cost reported alongside it. Historical frozen
+gates remain unchanged; F1 nondecrease is no longer a veto on future pilots.
+Repair through mini SWE-agent is downstream validation, after a context strategy
+passes retrieval gates. No new repair or native-harness batch is part of this
+iteration. Historical native test-collection issues do not affect the source-line
+retrieval evaluator.
+
+A read-only diagnosis reproduces the official totals on the eight disclosed
+native trajectories. Of 4,408 physically available annotated lines, 2,541 are
+missing: **1,768 in already observed files** and **773 in unobserved files**.
+Another 125 annotated lines are unavailable at their canonical paths/ranges;
+those remain in the official denominator. The 1,768/2,541 split motivates
+file-local navigation, rather than establishing a policy gain.
+
+Runtime `57387c83` adds an optional callable map to first successful file reads.
+It preserves the original source response and appends at most 2,048 cl100k tokens
+of parser-derived function names and 1-based ranges. Bodies are absent. Ranges
+longer than 500 lines or lacking a named declaration prefix are omitted to avoid
+known macro-wrapped-header ambiguities. Prior read receipts suppress repeated
+maps; concurrent first reads may conservatively repeat metadata. There is no
+retained file cache. Only later actual source reads can increase retrieval scores.
+The same native read/grep/glob tools and system prompt remain in both arms.
+
+Fixed-trace map construction freezes every map before annotation comparison.
+It adds zero source credit and exposes callable addresses containing 1,102
+previously missing annotated lines. This is an addressability diagnostic, not a
+predicted Recall improvement or an adaptive-agent result. The implementation
+passes 91 retrieval/source/SDK tests and pinned hooks.
+
+A fresh pure retrieval comparison is frozen under protocol
+`55896c5d1602b10bf3711ce00ba7192a0edadc40a595449666ca4693ec1bfbf9`:
+first four tasks in the existing eight-task metadata order, native versus file
+map, actual Opus 5.5, the explicit Anthropic API route, 20 turns and 600 seconds.
+The batch reserves **$5**, with $0.75 per-session SDK guards and $0.25 dispatch
+headroom. Independent32 stays sealed. The primary requires higher macro
+trajectory Recall and nondecreasing F1 across all four selected tasks; final
+16K/32K served metrics remain secondary. All eight sessions must complete with
+verified model/route/source/usage, maps in at least three tasks and zero metadata
+source credit. All reliability checks pass, but both primary metrics decline.
+
+| Cumulative trajectory, all four selected tasks | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| Native source tools | 40.75% | 42.00% | 39.77% |
+| First-read file-symbol maps | 39.37% | 36.89% | 36.83% |
+
+The Recall difference is **-1.38 points**, exploratory paired 95% interval
+**[-12.09, +6.51]**, and F1 changes **-2.95 points**, **[-8.70, +2.67]**.
+All eight sessions complete with known usage for **$1.496507** in API SDK
+estimates and zero repair calls. Actual maps appear in every candidate task;
+metadata adds no source credit. Python and TypeScript improve Recall, C declines
+and C++ ties. Keep the failed whole-cohort gate; do not expand this policy or
+select its positive subset. The new Recall-first preference does not change
+this result. A future positive pilot still requires larger retrieval replication
+before independent validation or a small repair check.
+
 ## Preserved grep with read-location hints
 
 Runtime `10d1a439` tests the same eight disclosed tasks in three fresh arms,
@@ -880,20 +938,20 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The current Claude SDK/Jev experiment ledger, through the completed Haiku
-repair screen, has the following known usage values. This table excludes the
+The current Claude SDK/Jev experiment ledger, through the completed four-task
+file-map retrieval pilot, has the following known usage values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
 costs remain separate. Actual account charges and credit deductions have not
 been reconciled.
 
 | Route | Known usage value | Billing interpretation |
 | --- | ---: | --- |
-| Direct Anthropic main-model SDK | $10.58997286 | API estimate; promotional-credit deduction unverified |
+| Direct Anthropic main-model SDK | $12.08647986 | API estimate; promotional-credit deduction unverified |
 | Separate Jev decisions | $0.053198712 | Metered API receipts |
-| **Combined API usage** | **$10.643171572** | **Usage value, not confirmed cash spending** |
+| **Combined API usage** | **$12.139678572** | **Usage value, not confirmed cash spending** |
 | Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
 
-Main-model SDK estimates across both routes sum to $123.09182846; that mixed-route
+Main-model SDK estimates across both routes sum to $124.58833546; that mixed-route
 sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
@@ -901,8 +959,9 @@ rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **281 Jev requests** for **$0.053198712**.
-Known API usage value totals **$10.643171572**, including the Haiku repairs.
-The 48 retrieval sessions and 55 new repair SDK queries are distinct from
+Known API usage value totals **$12.139678572**, including the Haiku repairs
+and eight subsequent file-map retrieval sessions ($1.496507).
+The 56 retrieval sessions and 55 repair SDK queries are distinct from
 individual underlying API request counts. The latest read-hint retrieval control costs
 **$4.848424762** against its $10 reservation; its four Max repairs add
 **$6.03557620**. No completed-batch usage is missing beyond the two historical

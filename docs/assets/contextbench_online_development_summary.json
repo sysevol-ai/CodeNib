@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 123.09182846,
+    "known_sdk_reported_estimate_usd": 124.58833546,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Current Claude SDK/Jev experiment ledger through completed Haiku repair/native reports. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
+    "scope": "Current Claude SDK/Jev experiment ledger through completed four-task file-map retrieval pilot. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2804,10 +2804,10 @@
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
     "known_claude_max_sdk_estimate_usd": 112.5018556,
-    "known_anthropic_api_sdk_estimate_usd": 10.589972860000001,
-    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 48 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
-    "anthropic_api_sdk_sessions": 103,
-    "known_combined_api_usage_value_usd": 10.643171572,
+    "known_anthropic_api_sdk_estimate_usd": 12.08647986,
+    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 56 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
+    "anthropic_api_sdk_sessions": 111,
+    "known_combined_api_usage_value_usd": 12.139678572,
     "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
     "online_grep_jev_decision_api_cost_usd": 0.00552048,
     "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413,
@@ -2815,7 +2815,8 @@
     "online_grep_hints_decision_api_cost_usd": 0.009593262,
     "online_grep_hints_repair_max_sdk_estimate_usd": 6.0355762,
     "retrieval_notes_repair_max_sdk_estimate_usd": 9.058375,
-    "haiku_repair_api_sdk_estimate_usd": 0.26029216
+    "haiku_repair_api_sdk_estimate_usd": 0.26029216,
+    "file_map_retrieval_api_sdk_estimate_usd": 1.496507
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -23756,5 +23757,550 @@
       "issue_only_resolved": true,
       "frozen_source_resolved": true
     }
+  },
+  "current_priority": "Recall first; report Precision, F1 and cost. Applies prospectively under explicit user preference; preserve historical gates. No repair or native-harness batches before a useful retrieval policy passes retrieval gates. mini SWE-agent repair remains downstream.",
+  "source_gap_diagnosis": {
+    "scope": "Evaluation-only diagnosis of eight disclosed native trajectories. Canonical official paths and scores unchanged. No model calls; no annotation-driven runtime choices.",
+    "totals": {
+      "valid_gold_lines": 4408,
+      "unavailable_gold_lines": 125,
+      "valid_missing_in_observed_files": 1768,
+      "valid_missing_in_unobserved_files": 773,
+      "tool_steps_after_last_gold_gain": 21
+    },
+    "source_metrics_sha256": "018203c3452eadb573a2b5ce3ba100afafada10cd04790e46d9c2960baf97bbf",
+    "model_calls": 0,
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "valid_gold_lines": 207,
+        "unavailable_gold_lines": 34,
+        "valid_missing_in_observed_files": 77,
+        "valid_missing_in_unobserved_files": 12
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "valid_gold_lines": 195,
+        "unavailable_gold_lines": 1,
+        "valid_missing_in_observed_files": 41,
+        "valid_missing_in_unobserved_files": 94
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "valid_gold_lines": 1366,
+        "unavailable_gold_lines": 3,
+        "valid_missing_in_observed_files": 669,
+        "valid_missing_in_unobserved_files": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "valid_gold_lines": 386,
+        "unavailable_gold_lines": 0,
+        "valid_missing_in_observed_files": 179,
+        "valid_missing_in_unobserved_files": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "valid_gold_lines": 480,
+        "unavailable_gold_lines": 0,
+        "valid_missing_in_observed_files": 113,
+        "valid_missing_in_unobserved_files": 149
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "valid_gold_lines": 860,
+        "unavailable_gold_lines": 87,
+        "valid_missing_in_observed_files": 519,
+        "valid_missing_in_unobserved_files": 202
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "valid_gold_lines": 581,
+        "unavailable_gold_lines": 0,
+        "valid_missing_in_observed_files": 59,
+        "valid_missing_in_unobserved_files": 316
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "valid_gold_lines": 333,
+        "unavailable_gold_lines": 0,
+        "valid_missing_in_observed_files": 111,
+        "valid_missing_in_unobserved_files": 0
+      }
+    ]
+  },
+  "file_map_opportunity": {
+    "scope": "Addressability diagnostic only. No predicted retrieval gain or actual map-guided agent behavior.",
+    "model_calls": 0,
+    "all_original_source_credit_preserved": true,
+    "frozen_maps_sha256": "b9b0b6ade034bd9b0b6629381244ef1d84f49da5ebf7a7563b01ec2d210013f5",
+    "rows": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "maps": 2,
+        "symbols": 82,
+        "rejected_ranges": 1,
+        "omitted_symbols": 0,
+        "missing_gold_inside_map_callable_ranges": 76,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "maps": 4,
+        "symbols": 34,
+        "rejected_ranges": 1,
+        "omitted_symbols": 0,
+        "missing_gold_inside_map_callable_ranges": 7,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "maps": 8,
+        "symbols": 153,
+        "rejected_ranges": 1,
+        "omitted_symbols": 0,
+        "missing_gold_inside_map_callable_ranges": 597,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "maps": 2,
+        "symbols": 33,
+        "rejected_ranges": 1,
+        "omitted_symbols": 10,
+        "missing_gold_inside_map_callable_ranges": 0,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "maps": 4,
+        "symbols": 43,
+        "rejected_ranges": 0,
+        "omitted_symbols": 0,
+        "missing_gold_inside_map_callable_ranges": 78,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "maps": 5,
+        "symbols": 153,
+        "rejected_ranges": 0,
+        "omitted_symbols": 0,
+        "missing_gold_inside_map_callable_ranges": 332,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "maps": 6,
+        "symbols": 64,
+        "rejected_ranges": 0,
+        "omitted_symbols": 0,
+        "missing_gold_inside_map_callable_ranges": 0,
+        "actual_source_credit_added": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "maps": 9,
+        "symbols": 458,
+        "rejected_ranges": 0,
+        "omitted_symbols": 70,
+        "missing_gold_inside_map_callable_ranges": 12,
+        "actual_source_credit_added": 0
+      }
+    ]
+  },
+  "file_map_retrieval_development": {
+    "status": "Complete; primary gate failed. Do not expand this policy.",
+    "runtime_commit": "57387c83724c06ca6cb5ac82c50d38341c2f6069",
+    "protocol_sha256": "55896c5d1602b10bf3711ce00ba7192a0edadc40a595449666ca4693ec1bfbf9",
+    "model": "claude-opus-5-5",
+    "sdk_reservation_usd": 5,
+    "selected_tasks_per_arm": 4,
+    "arms": [
+      "native",
+      "file-map"
+    ],
+    "source_credit_from_metadata": 0,
+    "repair_calls": 0,
+    "independent_gain_established": false,
+    "analysis": {
+      "scope": "Pure ContextBench retrieval-agent development pilot. No repairs, mini-swe-agent or native tests. Cumulative verified source is primary; final served context is secondary. No independent or leaderboard claim.",
+      "protocol_sha256": "55896c5d1602b10bf3711ce00ba7192a0edadc40a595449666ca4693ec1bfbf9",
+      "runtime_commit": "57387c83724c06ca6cb5ac82c50d38341c2f6069",
+      "rows": [
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.08478039999999999,
+          "map_views": [],
+          "later_read_replies_overlapping_mapped_ranges": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 155,
+          "tool_calls": {
+            "grep": 4,
+            "read": 3
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.42738589211618255,
+            "precision": 0.6645161290322581,
+            "f1": 0.5202020202020202
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.21437430000000002,
+          "map_views": [],
+          "later_read_replies_overlapping_mapped_ranges": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 639,
+          "tool_calls": {
+            "grep": 9,
+            "glob": 1,
+            "read": 10
+          },
+          "sdk_turns": 21,
+          "metrics": {
+            "recall": 0.20408163265306123,
+            "precision": 0.06259780907668232,
+            "f1": 0.09580838323353293
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.3606355,
+          "map_views": [],
+          "later_read_replies_overlapping_mapped_ranges": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1481,
+          "tool_calls": {
+            "grep": 10,
+            "read": 9,
+            "glob": 1
+          },
+          "sdk_turns": 21,
+          "metrics": {
+            "recall": 0.46238130021913804,
+            "precision": 0.4274139095205942,
+            "f1": 0.4442105263157895
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "status": "ok",
+          "sdk_usd": 0.1035623,
+          "map_views": [],
+          "later_read_replies_overlapping_mapped_ranges": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 394,
+          "tool_calls": {
+            "grep": 3,
+            "read": 2
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5253807106598984,
+            "f1": 0.5307692307692308
+          }
+        },
+        {
+          "arm": "file-map",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.1095194,
+          "map_views": [
+            {
+              "file": "pylint/checkers/variables.py",
+              "symbols": 75,
+              "omitted_symbols": 0,
+              "source_sha256": "162675ffaef0dcf3c9b302bf2b9c1a6806d18f6e79fa89bfd6a7096bab3f036c"
+            },
+            {
+              "file": "tests/functional/u/unused/unused_typing_imports.py",
+              "symbols": 10,
+              "omitted_symbols": 0,
+              "source_sha256": "57e6826e6778a8f6d77ba6f93709a8b2af9db94c6a7aa38fb72fa0a283f51a61"
+            }
+          ],
+          "later_read_replies_overlapping_mapped_ranges": 2,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 231,
+          "tool_calls": {
+            "grep": 4,
+            "read": 4,
+            "glob": 1
+          },
+          "sdk_turns": 10,
+          "metrics": {
+            "recall": 0.45643153526970953,
+            "precision": 0.47619047619047616,
+            "f1": 0.46610169491525416
+          }
+        },
+        {
+          "arm": "file-map",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.1810315,
+          "map_views": [
+            {
+              "file": "packages/runtime-dom/src/helpers/useCssVars.ts",
+              "symbols": 3,
+              "omitted_symbols": 0,
+              "source_sha256": "e39d7a58ca27b7633a75550b335e8d481282a77e1e1ebb966b98de825e7d04c8"
+            },
+            {
+              "file": "packages/runtime-core/src/hydration.ts",
+              "symbols": 9,
+              "omitted_symbols": 0,
+              "source_sha256": "8981f85a31f536747947b2c59dfc1bab43e269b3e121be396e1f128103fe309a"
+            },
+            {
+              "file": "packages/runtime-core/src/component.ts",
+              "symbols": 20,
+              "omitted_symbols": 0,
+              "source_sha256": "b70e6d8b96e78a8e53b531aeb059d77c18acdb77d70fa366929d68bd3e6a9c2f"
+            },
+            {
+              "file": "packages/runtime-core/__tests__/hydration.spec.ts",
+              "symbols": 2,
+              "omitted_symbols": 0,
+              "source_sha256": "0da098f8a0aba804635743812a88f3e3168164ebdbbef4eaf8962e1cbcea037d"
+            }
+          ],
+          "later_read_replies_overlapping_mapped_ranges": 2,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 567,
+          "tool_calls": {
+            "grep": 5,
+            "read": 7
+          },
+          "sdk_turns": 13,
+          "metrics": {
+            "recall": 0.29081632653061223,
+            "precision": 0.10052910052910052,
+            "f1": 0.14941022280471822
+          }
+        },
+        {
+          "arm": "file-map",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.3291887,
+          "map_views": [
+            {
+              "file": "src/libponyc/codegen/gencall.c",
+              "symbols": 35,
+              "omitted_symbols": 0,
+              "source_sha256": "b2fbd32dabce1adbbfb0cdbac65533a9f597f1a093f8fdc1d95c5b22a8cfd039"
+            },
+            {
+              "file": "src/libponyc/verify/call.c",
+              "symbols": 5,
+              "omitted_symbols": 0,
+              "source_sha256": "9cb14a23daa65008418efaed04f8313be5880c152b5dae19e300722806f08e86"
+            },
+            {
+              "file": "src/libponyc/expr/ffi.c",
+              "symbols": 3,
+              "omitted_symbols": 0,
+              "source_sha256": "b5c862f15dc0c3da372eff47e47e6d0c93097589be0c0bc6b0668a6f5bccd681"
+            },
+            {
+              "file": "src/libponyc/codegen/codegen.c",
+              "symbols": 39,
+              "omitted_symbols": 0,
+              "source_sha256": "37add58b6ab7057afc7979abf6d5afd581578ea216f09f74c9c5e0cdd9320d03"
+            },
+            {
+              "file": "src/libponyc/codegen/genreference.c",
+              "symbols": 23,
+              "omitted_symbols": 0,
+              "source_sha256": "1df0dbd7c6b84f578f1ad8fcdc5ae18437faa587757d700b429f0fb1527409d3"
+            },
+            {
+              "file": "test/libponyc/ffi.cc",
+              "symbols": 21,
+              "omitted_symbols": 0,
+              "source_sha256": "59c6457479f5a64f384a6f85ef66c29960618f011328e3653d50a513383a9673"
+            },
+            {
+              "file": "test/libponyc/util.cc",
+              "symbols": 25,
+              "omitted_symbols": 0,
+              "source_sha256": "b7ed4b417084f46dc6fc63cc7d013aad94b68147ac55d49ad8d7380343f9df2f"
+            },
+            {
+              "file": "test/libponyc/bare.cc",
+              "symbols": 30,
+              "omitted_symbols": 0,
+              "source_sha256": "c4306b2ecc8be19e2107ff892beec7469fdc9e30f0238b068e8acfa9c9db7de1"
+            }
+          ],
+          "later_read_replies_overlapping_mapped_ranges": 2,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1057,
+          "tool_calls": {
+            "grep": 7,
+            "read": 11,
+            "glob": 1
+          },
+          "sdk_turns": 20,
+          "metrics": {
+            "recall": 0.2914536157779401,
+            "precision": 0.37748344370860926,
+            "f1": 0.3289365210222589
+          }
+        },
+        {
+          "arm": "file-map",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "status": "ok",
+          "sdk_usd": 0.1134149,
+          "map_views": [
+            {
+              "file": "include/fmt/color.h",
+              "symbols": 30,
+              "omitted_symbols": 10,
+              "source_sha256": "6e2a3dbfbbccdfa8758ff75bd155d483e829492b1402defa761c707bc78df1aa"
+            },
+            {
+              "file": "test/color-test.cc",
+              "symbols": 3,
+              "omitted_symbols": 0,
+              "source_sha256": "e0df02763571419bb90d7945490bc0ab566d5153e91091986b2fa15895c0c793"
+            }
+          ],
+          "later_read_replies_overlapping_mapped_ranges": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 397,
+          "tool_calls": {
+            "grep": 3,
+            "read": 2
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5214105793450882,
+            "f1": 0.528735632183908
+          }
+        }
+      ],
+      "primary": {
+        "native": {
+          "recall": 0.40752956376004884,
+          "precision": 0.41997713957235827,
+          "f1": 0.39774754013014335,
+          "official_valid": 4
+        },
+        "file-map": {
+          "recall": 0.3937427269075188,
+          "precision": 0.36890339994331856,
+          "f1": 0.3682960177315348,
+          "official_valid": 4
+        }
+      },
+      "served_secondary": {
+        "native": {
+          "served_16384": {
+            "recall": 0.4064922193617086,
+            "precision": 0.43246540915492443,
+            "f1": 0.40346007541298246,
+            "official_valid": 4
+          },
+          "served_32768": {
+            "recall": 0.4064922193617086,
+            "precision": 0.4194325228987093,
+            "f1": 0.3968109591302712,
+            "official_valid": 4
+          }
+        },
+        "file-map": {
+          "served_16384": {
+            "recall": 0.3937427269075188,
+            "precision": 0.36908230204934156,
+            "f1": 0.3683638676739899,
+            "official_valid": 4
+          },
+          "served_32768": {
+            "recall": 0.3937427269075188,
+            "precision": 0.36908230204934156,
+            "f1": 0.3683638676739899,
+            "official_valid": 4
+          }
+        }
+      },
+      "paired_differences": {
+        "recall": {
+          "mean_difference": -0.013786836852529988,
+          "exploratory_95_interval": [
+            -0.12093435254251671,
+            0.06505102040816325
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.051073739629039744,
+          "exploratory_95_interval": [
+            -0.14223677246003902,
+            0.016980580068803965
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.029451522398608546,
+          "exploratory_95_interval": [
+            -0.08696390361647865,
+            0.026676298356697454
+          ]
+        }
+      },
+      "gates": {
+        "all_eight_sessions_complete": true,
+        "known_usage": true,
+        "one_actual_model_route": true,
+        "all_source_replies_confirmed": true,
+        "map_present_in_three_tasks": true,
+        "metadata_adds_zero_source_credit": true,
+        "greater_recall": false,
+        "nondecreasing_f1": false
+      },
+      "development_gate_passed": false,
+      "known_new_api_sdk_usd": 1.4965070000000003,
+      "new_sdk_sessions": 8,
+      "repair_calls": 0,
+      "all_frozen_hashes_match": true,
+      "independent_gain_established": false
+    },
+    "analysis_sha256": "f974bd89b90ae94b8d688721b60e0d1d88ef1f8198ef3c8303b9c60fb5a7037f"
   }
 }
