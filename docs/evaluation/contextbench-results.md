@@ -498,18 +498,19 @@ The authorized API ceiling stays **$100**, with **$40.90601127** remaining in
 known usage-value accounting. A two-arm all-API context500 comparison would project
 to $174.75 before repairs. Do not dispatch
 this full run. These gross 500-task equivalents are not a request to repeat completed
-calls. If the same policy/profile is retained, audit and reuse all 32 exact results,
-leaving 468 context positions. Max investigation plus Batch review then projects
-arithmetically to $22.75
-new API usage, still excluding uncovered-language and quota uncertainty. Audit
-other historical profiles separately; never choose reuse by a favorable score.
+calls. The completed reuse audit below covers all **56** existing packet pairs,
+leaving **444** context positions under the same policy/profile. Applying the same
+32-task sample arithmetic gives **$21.59** in new Max/Batch API usage before exact
+counts, headroom and quota checks. The earlier 32-only reuse scenario ($22.75 for
+468 positions) remains in the historical planning artifact. Never choose reuse
+by a favorable score.
 [Batch processing](https://platform.claude.com/docs/en/build-with-claude/batch-processing)
 offers 50% standard-price savings ($2/$10 per million Opus 5.5 input/output tokens)
 and may take up to 24 hours. Only the independent final packet requests are directly
 batchable; interactive SDK/tool turns do not automatically receive that discount.
 The small four-task Max/Batch engineering verification below now passes.
-Whole500 exact inputs,source coverage,reservations and quota remain open; no
-full500 batch has been submitted.
+Exact inputs, source-gap handling, reservations and quota remain open for a
+context-only 500 run. No such batch has been submitted.
 
 A free supported-CLI check confirms the existing Max subscription login. It does
 not establish available quota or elapsed-time capacity. Max SDK dollar estimates
@@ -566,11 +567,9 @@ investigations produce fresh observations; their packet bytes are not claimed
 to equal older investigations. No existing quality gate or failed attempt is
 reclassified by this engineering result.
 
-The current source-only audit verifies **119/500** exact,clean checkouts from
-existing native-source manifests. The other **381** have not been verified by
-that inventory; this does not prove absence from every unrelated cache. The
-checkout-size arithmetic calls for bounded staging/object reuse before full500
-preparation, without removing historical artifacts. No 500-task model run has started.
+The initial source-only inventory verified **119/500** exact, clean checkouts
+from existing native-source manifests. A separately frozen source-only preparation
+now records the terminal coverage below. No 500-task model run has started.
 
 The public metric bridge is also verified against the
 [paper's definition-level block alignment](https://arxiv.org/html/2602.05892v3)
@@ -582,9 +581,79 @@ the frozen primary values exactly; it changes no policy or gate. File Recall
 stays 85.42%; block Recall changes 82.84% → 83.60%,while line Recall changes
 74.94% → 79.09%. The measured gain is primarily missing lines inside located files.
 
-Whole500 source coverage,provider counts, Max quota/time,budget headroom,native
-solver/grader coverage and complete artifact packaging remain required. The
-small engineering pass starts no automatic full500 or repair batch.
+Context-only500 execution still needs source-gap handling, exact provider counts,
+Max quota/time and complete budget headroom. Formal leaderboard submission also
+needs real native resolution outcomes and complete artifact archives. Retrieval
+quality can be evaluated before repairs; the small engineering pass starts no
+automatic full500 or repair batch.
+
+## Verified500 source preparation and existing-output reuse
+
+Source-only runtime `50519a3a`, protocol `87b5c023`,
+now verifies **500/500 exact parent snapshots**, with **zero preparation errors
+or unstarted positions**. The parent-snapshot gate passes. **3 snapshots**
+explicitly retain an empty Git pointer without a submodule path/URL mapping, so
+**complete child-source availability is not established**. This is **zero model
+calls and $0 new API usage**; it is preparation rather than a leaderboard score.
+
+The helper prepares declared modules at their pinned commits. For an unmapped
+gitlink, it records the path/SHA as `unavailable_gitlinks`, keeps it empty and
+rejects injected files. It invents no child repository or contents. A missing
+input never removes a task or changes a future official gold denominator.
+Both cold-clone paths now audit source before publishing a new directory.
+
+The initial strict source attempt remains failed: runtime `ccb49d53`, protocol
+`38c3127c`, ended with 452 ready, 3 source errors and 45 unstarted at its 12 GiB
+admission floor. A separately frozen continuation keeps all 500 positions and
+records unavailable children explicitly. It uses two workers and a prospective
+**8 GiB free-space floor** after the C/C++/Go/Java/Rust sources have finished;
+this is admission control, not a disk quota. Terminal cache free space is
+**9.01 GiB**.
+
+Standard local Git repacking of **16 newly owned, non-donor borrowers** reclaims
+**1.82 GiB** of duplicate object storage.
+Every before/after pinned-source, reference, configuration, alternate and donor
+check matches; native Git connectivity checks pass. The historical 119 trees, donor
+objects, source files and original attempt receipts remain. Git object
+representation changes do not constitute new source or model observations.
+
+The source helper retains separate working trees and borrowed local objects;
+donors must remain available throughout borrowers' lifetime. **13 local Git
+tests** pass first, followed by **122 relevant context/runtime unit tests** with
+eight integration cases deselected. Coverage includes shallow references,
+independent files, missing mappings, nested/dirty/unprepared modules, injected
+opaque contents and cold-clone source drift before publication. Pinned hooks
+pass; these tests need no network/model calls.
+
+A separate read-only audit verifies **all 56 existing packet pairs**: 24 disclosed
+development positions plus all 32 sealed independent positions. The current
+compiler reproduces packet bytes and source versions; full Batch request params
+equal each already consumed standard Messages request. Raw native/result hashes,
+actual models, known usage and confirmed input match. Native SDK/CLI and active
+configuration match. The initial whole-file check accepts 32 and rejects 24,
+retaining that strict failed gate. A separate complete-module AST comparison
+proves the only implementation difference is two ordinary-text tokenizer keywords
+in post-investigation packing. The native SDK loop does not call that packer;
+all actual packets reproduce byte-identically. This documented semantic audit
+accepts all 56 without changing the original strict result.
+Stored native `grep_tokens` differs (2K/4K), but
+the native branch constructs no grep wrapper, so this knob is inactive; the
+configuration difference remains explicit. Four fresh Max engineering tasks
+overlap the development 24 and add no unique reusable positions.
+
+Keeping this exact policy/profile would therefore leave **444 context positions**
+after reuse, conditional on a separately frozen complete-run protocol. The same
+small-sample Max/Batch arithmetic becomes **$21.59** for those positions, before
+whole-run counts, headroom, quota and uncovered-language uncertainty. This audit
+computes no new quality scores, opens no sealed cohort and starts no model calls.
+It preserves every historical attempt and never chooses reuse by a favorable score.
+
+Known API usage stays **$59.09398873**, leaving **$40.90601127** under the same
+$100 ceiling. A context-only 500 run still needs source-gap handling, exact inputs and
+provider counts, Max capacity and a complete reservation. Formal submission adds
+real native outcomes and complete raw artifacts; those later requirements do not
+block context research. No full500 inference, repair batch or product promotion
+follows automatically.
 
 ## Fresh independent32: seven-language retrieval-only validation
 
