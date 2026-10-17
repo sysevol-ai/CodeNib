@@ -810,5 +810,735 @@
     "decision": "Advance unchanged policy to independent validation; no promotion or SOTA claim.",
     "implementation_commit": "3f04993f15d098df4ee798dc93565ade70fb36ed",
     "comparison_sha256": "18151151ad01eff475da706613df338494bb954af98f4eaaacefb7b8abd9d152"
+  },
+  "development_source_attribution": {
+    "scope": "Development-only physical-line attribution in existing trajectories. Count each source line once, at its first actual observation; separate original tool output from completion. Annotation overlap is diagnostic, includes physical blank/comment lines, and is not the official score or a counterfactual online ablation. Repeated traces cover the same eight tasks. Non-annotated source may still help solving.",
+    "new_model_calls": 0,
+    "new_api_spend_usd": 0,
+    "heldout_task_overlap": 0,
+    "analysis_sha256": "2162bdf7955e815ddecedb7dd385a3bc4c3360d65454c014e8f6787fa9b1584c",
+    "arms": {
+      "development-functions": {
+        "n_tasks": 8,
+        "totals": {
+          "original_grep": {
+            "new_physical_lines": 451,
+            "annotated_lines": 34,
+            "responses_adding_source": 32,
+            "annotated_fraction": 0.07538802660753881
+          },
+          "completed_grep": {
+            "new_physical_lines": 1901,
+            "annotated_lines": 255,
+            "responses_adding_source": 26,
+            "annotated_fraction": 0.13413992635455024
+          },
+          "original_read": {
+            "new_physical_lines": 4409,
+            "annotated_lines": 408,
+            "responses_adding_source": 39,
+            "annotated_fraction": 0.0925379904740304
+          },
+          "completed_read": {
+            "new_physical_lines": 584,
+            "annotated_lines": 98,
+            "responses_adding_source": 18,
+            "annotated_fraction": 0.1678082191780822
+          }
+        },
+        "cases": [
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 15,
+                "annotated_lines": 14,
+                "responses_adding_source": 1
+              },
+              "completed_grep": {
+                "new_physical_lines": 64,
+                "annotated_lines": 51,
+                "responses_adding_source": 1
+              },
+              "original_read": {
+                "new_physical_lines": 123,
+                "annotated_lines": 37,
+                "responses_adding_source": 2
+              },
+              "completed_read": {
+                "new_physical_lines": 35,
+                "annotated_lines": 35,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 65,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "completed_grep": {
+                "new_physical_lines": 158,
+                "annotated_lines": 0,
+                "responses_adding_source": 3
+              },
+              "original_read": {
+                "new_physical_lines": 611,
+                "annotated_lines": 0,
+                "responses_adding_source": 7
+              },
+              "completed_read": {
+                "new_physical_lines": 98,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 105,
+                "annotated_lines": 0,
+                "responses_adding_source": 6
+              },
+              "completed_grep": {
+                "new_physical_lines": 420,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "original_read": {
+                "new_physical_lines": 989,
+                "annotated_lines": 0,
+                "responses_adding_source": 7
+              },
+              "completed_read": {
+                "new_physical_lines": 89,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 49,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              },
+              "completed_grep": {
+                "new_physical_lines": 35,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              },
+              "original_read": {
+                "new_physical_lines": 310,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 12,
+                "annotated_lines": 6,
+                "responses_adding_source": 3
+              },
+              "completed_grep": {
+                "new_physical_lines": 250,
+                "annotated_lines": 77,
+                "responses_adding_source": 3
+              },
+              "original_read": {
+                "new_physical_lines": 227,
+                "annotated_lines": 100,
+                "responses_adding_source": 3
+              },
+              "completed_read": {
+                "new_physical_lines": 77,
+                "annotated_lines": 59,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 53,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              },
+              "completed_grep": {
+                "new_physical_lines": 224,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              },
+              "original_read": {
+                "new_physical_lines": 364,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              },
+              "completed_read": {
+                "new_physical_lines": 16,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+            "counts": {
+              "original_read": {
+                "new_physical_lines": 954,
+                "annotated_lines": 167,
+                "responses_adding_source": 10
+              },
+              "original_grep": {
+                "new_physical_lines": 81,
+                "annotated_lines": 8,
+                "responses_adding_source": 4
+              },
+              "completed_grep": {
+                "new_physical_lines": 217,
+                "annotated_lines": 35,
+                "responses_adding_source": 2
+              },
+              "completed_read": {
+                "new_physical_lines": 235,
+                "annotated_lines": 4,
+                "responses_adding_source": 5
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 71,
+                "annotated_lines": 6,
+                "responses_adding_source": 8
+              },
+              "completed_grep": {
+                "new_physical_lines": 533,
+                "annotated_lines": 92,
+                "responses_adding_source": 7
+              },
+              "original_read": {
+                "new_physical_lines": 831,
+                "annotated_lines": 104,
+                "responses_adding_source": 5
+              },
+              "completed_read": {
+                "new_physical_lines": 34,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              }
+            }
+          }
+        ]
+      },
+      "required-hop-control-functions": {
+        "n_tasks": 8,
+        "totals": {
+          "original_grep": {
+            "new_physical_lines": 542,
+            "annotated_lines": 38,
+            "responses_adding_source": 35,
+            "annotated_fraction": 0.07011070110701106
+          },
+          "completed_grep": {
+            "new_physical_lines": 1931,
+            "annotated_lines": 257,
+            "responses_adding_source": 29,
+            "annotated_fraction": 0.13309166235111342
+          },
+          "original_read": {
+            "new_physical_lines": 3952,
+            "annotated_lines": 376,
+            "responses_adding_source": 37,
+            "annotated_fraction": 0.0951417004048583
+          },
+          "completed_read": {
+            "new_physical_lines": 640,
+            "annotated_lines": 89,
+            "responses_adding_source": 19,
+            "annotated_fraction": 0.1390625
+          }
+        },
+        "cases": [
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 15,
+                "annotated_lines": 14,
+                "responses_adding_source": 1
+              },
+              "completed_grep": {
+                "new_physical_lines": 64,
+                "annotated_lines": 51,
+                "responses_adding_source": 1
+              },
+              "original_read": {
+                "new_physical_lines": 152,
+                "annotated_lines": 43,
+                "responses_adding_source": 3
+              },
+              "completed_read": {
+                "new_physical_lines": 110,
+                "annotated_lines": 30,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 68,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              },
+              "completed_grep": {
+                "new_physical_lines": 217,
+                "annotated_lines": 0,
+                "responses_adding_source": 3
+              },
+              "original_read": {
+                "new_physical_lines": 479,
+                "annotated_lines": 0,
+                "responses_adding_source": 6
+              },
+              "completed_read": {
+                "new_physical_lines": 96,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 97,
+                "annotated_lines": 0,
+                "responses_adding_source": 8
+              },
+              "completed_grep": {
+                "new_physical_lines": 336,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "original_read": {
+                "new_physical_lines": 889,
+                "annotated_lines": 0,
+                "responses_adding_source": 6
+              },
+              "completed_read": {
+                "new_physical_lines": 93,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 50,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              },
+              "completed_grep": {
+                "new_physical_lines": 35,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              },
+              "original_read": {
+                "new_physical_lines": 310,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 11,
+                "annotated_lines": 6,
+                "responses_adding_source": 4
+              },
+              "completed_grep": {
+                "new_physical_lines": 280,
+                "annotated_lines": 76,
+                "responses_adding_source": 4
+              },
+              "original_read": {
+                "new_physical_lines": 79,
+                "annotated_lines": 79,
+                "responses_adding_source": 1
+              },
+              "completed_read": {
+                "new_physical_lines": 54,
+                "annotated_lines": 54,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 56,
+                "annotated_lines": 0,
+                "responses_adding_source": 7
+              },
+              "completed_grep": {
+                "new_physical_lines": 197,
+                "annotated_lines": 0,
+                "responses_adding_source": 7
+              },
+              "original_read": {
+                "new_physical_lines": 358,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              },
+              "completed_read": {
+                "new_physical_lines": 18,
+                "annotated_lines": 0,
+                "responses_adding_source": 3
+              }
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+            "counts": {
+              "original_read": {
+                "new_physical_lines": 928,
+                "annotated_lines": 171,
+                "responses_adding_source": 10
+              },
+              "completed_read": {
+                "new_physical_lines": 213,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "original_grep": {
+                "new_physical_lines": 118,
+                "annotated_lines": 8,
+                "responses_adding_source": 3
+              },
+              "completed_grep": {
+                "new_physical_lines": 218,
+                "annotated_lines": 35,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 127,
+                "annotated_lines": 10,
+                "responses_adding_source": 6
+              },
+              "completed_grep": {
+                "new_physical_lines": 584,
+                "annotated_lines": 95,
+                "responses_adding_source": 6
+              },
+              "original_read": {
+                "new_physical_lines": 757,
+                "annotated_lines": 83,
+                "responses_adding_source": 6
+              },
+              "completed_read": {
+                "new_physical_lines": 56,
+                "annotated_lines": 5,
+                "responses_adding_source": 3
+              }
+            }
+          }
+        ]
+      },
+      "required-hop-candidate": {
+        "n_tasks": 8,
+        "totals": {
+          "original_grep": {
+            "new_physical_lines": 642,
+            "annotated_lines": 41,
+            "responses_adding_source": 40,
+            "annotated_fraction": 0.06386292834890965
+          },
+          "completed_grep": {
+            "new_physical_lines": 2123,
+            "annotated_lines": 248,
+            "responses_adding_source": 30,
+            "annotated_fraction": 0.11681582666038624
+          },
+          "original_read": {
+            "new_physical_lines": 4495,
+            "annotated_lines": 391,
+            "responses_adding_source": 39,
+            "annotated_fraction": 0.08698553948832036
+          },
+          "completed_read": {
+            "new_physical_lines": 382,
+            "annotated_lines": 83,
+            "responses_adding_source": 16,
+            "annotated_fraction": 0.21727748691099477
+          }
+        },
+        "cases": [
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 17,
+                "annotated_lines": 14,
+                "responses_adding_source": 2
+              },
+              "completed_grep": {
+                "new_physical_lines": 72,
+                "annotated_lines": 51,
+                "responses_adding_source": 2
+              },
+              "original_read": {
+                "new_physical_lines": 48,
+                "annotated_lines": 42,
+                "responses_adding_source": 1
+              },
+              "completed_read": {
+                "new_physical_lines": 76,
+                "annotated_lines": 30,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 132,
+                "annotated_lines": 0,
+                "responses_adding_source": 6
+              },
+              "completed_grep": {
+                "new_physical_lines": 339,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              },
+              "original_read": {
+                "new_physical_lines": 418,
+                "annotated_lines": 0,
+                "responses_adding_source": 7
+              },
+              "completed_read": {
+                "new_physical_lines": 103,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 145,
+                "annotated_lines": 0,
+                "responses_adding_source": 9
+              },
+              "completed_grep": {
+                "new_physical_lines": 481,
+                "annotated_lines": 0,
+                "responses_adding_source": 6
+              },
+              "original_read": {
+                "new_physical_lines": 1110,
+                "annotated_lines": 0,
+                "responses_adding_source": 8
+              },
+              "completed_read": {
+                "new_physical_lines": 47,
+                "annotated_lines": 0,
+                "responses_adding_source": 4
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 50,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              },
+              "completed_grep": {
+                "new_physical_lines": 35,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              },
+              "original_read": {
+                "new_physical_lines": 310,
+                "annotated_lines": 0,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 9,
+                "annotated_lines": 6,
+                "responses_adding_source": 3
+              },
+              "completed_grep": {
+                "new_physical_lines": 198,
+                "annotated_lines": 76,
+                "responses_adding_source": 3
+              },
+              "original_read": {
+                "new_physical_lines": 79,
+                "annotated_lines": 79,
+                "responses_adding_source": 1
+              },
+              "completed_read": {
+                "new_physical_lines": 53,
+                "annotated_lines": 53,
+                "responses_adding_source": 1
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 60,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "completed_grep": {
+                "new_physical_lines": 229,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "original_read": {
+                "new_physical_lines": 513,
+                "annotated_lines": 0,
+                "responses_adding_source": 5
+              },
+              "completed_read": {
+                "new_physical_lines": 24,
+                "annotated_lines": 0,
+                "responses_adding_source": 2
+              }
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 103,
+                "annotated_lines": 16,
+                "responses_adding_source": 6
+              },
+              "completed_grep": {
+                "new_physical_lines": 237,
+                "annotated_lines": 28,
+                "responses_adding_source": 2
+              },
+              "original_read": {
+                "new_physical_lines": 983,
+                "annotated_lines": 175,
+                "responses_adding_source": 10
+              },
+              "completed_read": {
+                "new_physical_lines": 34,
+                "annotated_lines": 0,
+                "responses_adding_source": 3
+              }
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+            "counts": {
+              "original_grep": {
+                "new_physical_lines": 126,
+                "annotated_lines": 5,
+                "responses_adding_source": 7
+              },
+              "completed_grep": {
+                "new_physical_lines": 532,
+                "annotated_lines": 93,
+                "responses_adding_source": 7
+              },
+              "original_read": {
+                "new_physical_lines": 1034,
+                "annotated_lines": 95,
+                "responses_adding_source": 6
+              },
+              "completed_read": {
+                "new_physical_lines": 45,
+                "annotated_lines": 0,
+                "responses_adding_source": 3
+              }
+            }
+          }
+        ]
+      }
+    },
+    "targeted_graph_line_novelty": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "graph_physical_lines_returned": 39,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "graph_physical_lines_returned": 0,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "graph_physical_lines_returned": 0,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "graph_physical_lines_returned": 0,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "graph_physical_lines_returned": 133,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "graph_physical_lines_returned": 0,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "graph_physical_lines_returned": 0,
+        "graph_new_physical_lines": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "graph_physical_lines_returned": 48,
+        "graph_new_physical_lines": 0
+      }
+    ],
+    "conclusion": "All 220 graph-returned physical lines were already observed in the targeted-hop development trial. Grep completion contributes most new completion lines and most newly observed annotated lines; no causal claim that removing it improves an online agent. Next development gates must measure useful novel source. Do not tune on the completed independent 32."
   }
 }
