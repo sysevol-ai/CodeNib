@@ -84,6 +84,53 @@ def test_solver_sdk_meter_and_tool_isolation(monkeypatch, tmp_path, meter):
     ]
 
 
+@pytest.mark.parametrize(
+    "result_error,stream_error", [(True, True), (False, True), (True, False)]
+)
+def test_solver_retains_terminal_meter_when_stream_fails(
+    monkeypatch, tmp_path, result_error, stream_error
+):
+    Assistant = dataclasses.make_dataclass("AssistantMessage", ["content", "model"])
+    Result = dataclasses.make_dataclass(
+        "ResultMessage", ["total_cost_usd", "is_error", "subtype"]
+    )
+
+    async def query(**kwargs):
+        yield Assistant([{"text": "```bash\npwd\n```"}], "fixed-model")
+        yield Result(0.4, result_error, "error_max_budget_usd")
+        if stream_error:
+            # The real SDK yields the budget result, then raises on iteration.
+            raise RuntimeError("SDK iterator failed after terminal result")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(ClaudeAgentOptions=lambda **kwargs: kwargs, query=query),
+    )
+    checkpoints = []
+    model = SubscriptionModel(
+        cli="claude",
+        model="fixed-model",
+        cwd=tmp_path,
+        max_meter_usd=0.3,
+        calls=[],
+        checkpoint=lambda: checkpoints.append([dict(call) for call in model.calls]),
+    )
+    messages = [
+        {"role": "system", "content": "Shell format"},
+        {"role": "user", "content": "Issue and source"},
+    ]
+    error = "SDK iterator failed" if stream_error else "Solver model failed"
+    with pytest.raises(RuntimeError, match=error):
+        model.query(messages)
+    assert model.cost == 0.4
+    assert checkpoints[-1][0]["sdk_reported_cost_usd"] == 0.4
+    assert model.calls[0]["input_delivery_confirmed"]
+    with pytest.raises(RuntimeError, match="SDK meter exhausted"):
+        model.query(messages)
+    assert model.n_calls == len(model.calls) == 1
+
+
 def test_solver_observations_exclude_unconfirmed_and_unrequested_output():
     from scripts.benchmark_context_solver import _HISTORY_PREFIX
 
