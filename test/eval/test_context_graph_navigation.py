@@ -141,6 +141,45 @@ def test_local_definition_does_not_hide_enclosing_callable_references(navigation
     assert json.loads(rebound.neighbors("a.py", 1))[0]["node_id"] == "target"
 
 
+@pytest.mark.parametrize("direction", ["incoming", "outgoing"])
+def test_callable_neighbors_precede_fields_within_raw_edge_budget(tmp_path, direction):
+    graph = CodeGraph()
+    for name, kind in (
+        ("seed", NODE_TYPE_FUNCTION),
+        ("field", NODE_TYPE_SYMBOL),
+        ("callee", NODE_TYPE_FUNCTION),
+    ):
+        (tmp_path / f"{name}.py").write_text(f"{name} = 1\n")
+        graph.graph.add_vertex(
+            name=name,
+            type=kind,
+            file=f"{name}.py",
+            start_line=0,
+            end_line=0,
+            has_definition=True,
+        )
+    graph.name_to_vertex = {v["name"]: v.index for v in graph.graph.vs}
+    for target in (1, 2):
+        source, destination = (0, target) if direction == "outgoing" else (target, 0)
+        graph.graph.add_edge(
+            source,
+            destination,
+            type=EDGE_TYPE_REFERENCE,
+            anchor_file="seed.py",
+            anchor_line=0,
+        )
+    tool = GraphNavigation(graph, tmp_path)
+    result = json.loads(tool.neighbors("seed.py", 1, direction, limit=1))
+    assert [record["node_id"] for record in result] == ["callee"]
+    assert result[0]["direction"] == direction
+    assert result[0]["relationship"] == EDGE_TYPE_REFERENCE
+    assert result[0]["content"] == "1 | callee = 1"
+    # A callable beyond the raw scan boundary cannot displace the visible field.
+    bounded = GraphNavigation(graph, tmp_path, edge_limit=1)
+    result = json.loads(bounded.neighbors("seed.py", 1, direction, limit=1))
+    assert [record["node_id"] for record in result] == ["field"]
+
+
 def test_unseen_navigation_skips_known_neighbors_without_using_result_limit(navigation):
     tool, repo = navigation
     graph = tool.graph

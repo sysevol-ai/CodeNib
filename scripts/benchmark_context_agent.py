@@ -79,12 +79,15 @@ uncertainties about the issue. Search new identifiers learned from actual reads;
 revise an unproductive search instead of repeating it. Include error handling and
 behavioral constraints when relevant. Use targeted ranges, often 200-400 lines,
 and continue a truncated read at its indicated offset when more is needed.
-If graph_neighbors is available, use it when you first locate a callable central
-to the issue and still need to understand a caller, dependency or test. Make this
-targeted hop before broadening manual reads, rather than leaving it until the
-final handoff. Choose incoming references for callers or outgoing references for
-dependencies, using a source file and line already found by search/read. In the
-SDK the tool is named mcp__source__graph_neighbors. The tool may omit previously
+If graph_neighbors is available, make one early reference query: after the first
+source-tool reply showing a function or method, your next tool call must be
+graph_neighbors, before any further read, grep or glob. Function source appended
+to a grep result counts too. Choose a callable from that reply that helps explain
+the issue, using an actually returned source file and line inside it.
+Choose incoming references for callers or outgoing references for dependencies.
+This first hop is required; further graph queries should resolve an uncertainty.
+Do not repeat it just because a later read also shows a function. In the SDK
+the tool is named mcp__source__graph_neighbors. The tool may omit previously
 observed lines; combine missing lines with the source already in this conversation.
 If its graph is unavailable, do not retry that graph. If no unseen neighbors
 remain, continue with a new relevant source search instead of repeating the hop.
