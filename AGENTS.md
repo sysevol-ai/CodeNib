@@ -263,6 +263,11 @@ Black or isort can produce changes that fail the release all-files check.
   Multi-file search observations must bind each complete visible match to its
   file and captured version; a shared line number/text is not file identity.
   Report scan/output caps and skipped files rather than implying full coverage.
+- ContextBench grep audits must validate the captured original reply and its
+  actual model delivery against source-version receipts. Re-executing ripgrep
+  is not a byte-for-byte oracle: traversal order and capped hit subsets may
+  change on an unchanged checkout. Preserve recorded inputs and scores when a
+  diagnostic rerun differs; do not replace observations with the rerun.
 
 ## Directory-Specific Rules
 
