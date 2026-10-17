@@ -165,6 +165,13 @@ dependency, or source providers degrade independently and add bounded
 `diagnostics`; unverified indexed excerpts remain marked `verified: false`
 instead of being presented as checkout source.
 
+When no explicit symbol seeds are supplied, code-shaped or backtick-quoted
+identifiers in the query may become seeds after an exact indexed-symbol match.
+The route plan reports these as `inferred_symbols`. Named routes receive source
+windows before semantic matches can exhaust the window budget; ordinary prose
+keeps the retrieval-first fallback. Symbol inference checks at most 32 distinct
+candidates and preserves the existing query, symbol and response bounds.
+
 Each complete serialized `explore_context` MCP `CallToolResult` has a hard
 256 KiB (262,144-byte) ceiling. Accounting includes the structured and text
 forms, and payload projection reserves room for the result/protocol envelope.
