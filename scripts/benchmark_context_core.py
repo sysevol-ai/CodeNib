@@ -44,6 +44,8 @@ from scripts import benchmark_context_claude as claude
 from scripts.benchmark_jev_base import write_json
 from scripts.contextbench_codenib_context import make_context_tool
 from scripts.contextbench_context_hints import ContextHints
+from scripts.contextbench_surface import GUIDANCE as SURFACE_GUIDANCE
+from scripts.contextbench_surface import SurfaceContext
 
 
 def digest(path):
@@ -127,6 +129,8 @@ def prepare_manifest(args, record, repo, languages):
 
 
 def run(args):
+    if args.surface_context and args.read_reference_hints:
+        raise ValueError("Surface-first and post-read hints are separate policies")
     record = json.loads(args.input.read_text())
     required = {"instance_id", "repo", "base_commit", "problem_statement", "language"}
     if set(record) != required:
@@ -171,6 +175,7 @@ def run(args):
             ROOT / "codenib/mcp/tools/explore.py",
             ROOT / "scripts/contextbench_context_hints.py",
             ROOT / "scripts/contextbench_graph_navigation.py",
+            ROOT / "scripts/contextbench_surface.py",
         ]
     }
     write_json(
@@ -199,6 +204,12 @@ def run(args):
             "views": ["vector", "symbol_graph"],
             "reuse_from": str(args.reuse_from) if args.reuse_from else None,
             "read_reference_hints": args.read_reference_hints,
+            "surface_context": args.surface_context,
+            "surface_limits": (
+                {"metadata_cl100k_tokens": 2048, "entries": 8, "body_page_lines": 200}
+                if args.surface_context
+                else None
+            ),
             "hint_limits": (
                 {
                     "tokens_cl100k_per_read": 256,
@@ -276,6 +287,24 @@ def run(args):
         write_json(args.output / "local-preflight.json", json.loads(preflight))
         if not any(node.get("content") for node in json.loads(preflight)[1:]):
             raise ValueError("Core preflight returned no verified source")
+        # Preflight bodies are local engineering checks, never model inputs.
+        # Only actual surface tool calls issue handles in the agent session.
+        if args.surface_context:
+            probe = SurfaceContext(ctx, observed_messages=lambda: ())
+            write_json(
+                args.output / "surface-preflight.json",
+                json.loads(probe.execute(query=record["problem_statement"])),
+            )
+            # Local preflight handles are not issued into the model session.
+            surface = SurfaceContext(
+                ctx, observed_messages=lambda: tuple(row["messages"])
+            )
+            tool = surface.tool()
+        row["indexes"]["model_ready_seconds"] = time.perf_counter() - started
+        row["indexes"]["local_preflight_seconds"] = (
+            row["indexes"]["model_ready_seconds"]
+            - row["indexes"]["preparation_seconds"]
+        )
         if args.live:
             claude.native.audit_contextbench_snapshot(repo, record["base_commit"])
             intent = args.output / "model-intent.json"
@@ -301,6 +330,9 @@ def run(args):
                         max_included_only=True,
                         context_tool=tool,
                         read_hints=hints,
+                        context_guidance=(
+                            SURFACE_GUIDANCE if args.surface_context else None
+                        ),
                     ),
                     timeout=600,
                 )
@@ -348,4 +380,5 @@ if __name__ == "__main__":
     parser.add_argument("--embedding-revision", required=True)
     parser.add_argument("--reuse-from", type=Path)
     parser.add_argument("--read-reference-hints", action="store_true")
+    parser.add_argument("--surface-context", action="store_true")
     run(parser.parse_args())
