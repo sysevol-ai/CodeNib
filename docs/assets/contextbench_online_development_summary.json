@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 73.58967420000002,
+    "known_sdk_reported_estimate_usd": 74.67817670000002,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2788,7 +2788,8 @@
     "multi_fmt_development_solver_sdk_estimate_usd": 1.3218016000000001,
     "late_graph_8_retrieval_sdk_estimate_usd": 6.796706500000001,
     "reader_adoption_v1_sdk_estimate_usd": 0.6959919,
-    "reader_adoption_v2_sdk_estimate_usd": 0.93285
+    "reader_adoption_v2_sdk_estimate_usd": 0.93285,
+    "multi_gson_development_solver_sdk_estimate_usd": 1.0885025000000002
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -11859,5 +11860,255 @@
     "agent_quality_score": null,
     "new_api_charges_usd": 0,
     "other_repository_gate": "Jackson-databind preparation rewrites its tracked POM in the pinned harness, conflicting with the current exact-clean-source gate. This is source inspection, not a failed image probe; no Jackson image or model run. No wider Multi, Poly or Pro support is claimed."
+  },
+  "multi_gson_development_solver_pair": {
+    "protocol": {
+      "scope": "One disclosed Java development task, two fresh downstream solver arms. No independent validation, new retrieval, graph-policy quality gate or official submission claim.",
+      "selection": "The previously disclosed Gson Java task selected for native adapter validation after Jackson preparation was deferred. Selection uses environment compatibility, not repair scores; this is a one-task development pair, not an independent or representative sample.",
+      "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+      "original_inst_id": "google__gson-1391",
+      "retrieval_scope": "Frozen first-source 24-task native and functions_graph delivered contexts. This task had no graph in that retrieval run, so any difference cannot establish a graph-source contribution. The newer graph artifacts are not used.",
+      "common_reader": "Corrected standalone-reader usage feedback at the existing environment boundary; identical instructions in both arms. Source coverage remains partial.",
+      "acceptance": "Report both single-attempt native repair outcomes and confirmed original-source receipts, including any zero or failure. No quality promotion, independent score or population Pass@1 claim.",
+      "inputs": {
+        "native": {
+          "retrieval_sha256": "2a9cea40a531a17c0baa59903ba4e12ea9ca4fe273dc4a11c6934f6ace32c9c0",
+          "source_tree": "abba7deda8852191b18a879e838fbbea4a8b19ff",
+          "retrieval_config_sha256": "9a71dfb5dc293cfc96f4be92a67cea47c5589bfdf335afcce9e432d13df09ea6"
+        },
+        "functions_graph": {
+          "retrieval_sha256": "d88f01c34f03907fd9e6db75943bd5c091d4cf1e9f17421528fb79126f4ae818",
+          "source_tree": "abba7deda8852191b18a879e838fbbea4a8b19ff",
+          "retrieval_config_sha256": "a17ead620e469c99a8183e8f55a04b94cf3a08cd04938b285ba6b75ea4b0ba0f"
+        }
+      },
+      "arms": [
+        "native",
+        "functions_graph"
+      ],
+      "source_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+      "image_id": "sha256:a258cc0df8fa2815689f4f2680bd4d062c0f758b6848d98a924c973cf8d521ea",
+      "native_adapter_check_sha256": "26230296d5a603c17d3ff4bbec01e4cebf320a3e2b16bfa8437fa0fc427eed3b",
+      "native_image_id": "sha256:3b2567e7897733e4b04fa5087d0db089cc56d247f33ca62d0f80360594efe16e",
+      "native_dataset_sha256": "a04ab6cc537076d0b6c7a6136d71a59cc91f66f79933488de03338c350b83658",
+      "native_test_timeout_seconds": 600,
+      "native_start_timeout_seconds": 180,
+      "implementation_commit": "0039b2a28d6fc07000156518e60456bc713469a9",
+      "implementation": {
+        "scripts/benchmark_context_agent.py": "5c4f9c451af797558174d19829f7f59f7ee8188b270295d9789ad4bbaee47721",
+        "scripts/benchmark_context_claude.py": "ca2feb3556e5ec46f656f70ba1175334a71a1600eb25c8b8ff59bce7c84c9b6d",
+        "scripts/contextbench_graph_navigation.py": "bf27c49e1688d1f2a9fb8e42240c4e96556baa4f9bc7dec03cfb69a50f287775",
+        "scripts/benchmark_context_serving.py": "6fa40f7ad145938efcb1edceddcad864b2febe0c1c61dda315d9cd5122048fe2",
+        "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+        "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+        "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+        "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+        "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+        "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+        "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+        "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+        "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+        "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+        "codenib/eval/benchmarks/contextbench.py": "1d6d1718d24abaccb46e4f6743ac8033e145628fbc55ceec85d07c0390b39609",
+        "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+        "codenib/eval/benchmarks/_contextbench_evaluate.py": "26b82cc9e800759469c52d972ac2f4b5cfda69f052601841f026f05e28cf222c",
+        "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+        "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+        "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+        "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+        "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+        "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+        "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+        "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+        "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+        "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+        "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+        "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+        "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+        "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+        "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+        "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+        "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+        "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+        "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+        "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+        "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+        "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99",
+        "scripts/benchmark_context_solver.py": "0ec005afed874d11b9acda178b1e8fb338e37e34f00d4b37fa1561209e88255e",
+        "scripts/contextbench_multiswe.py": "8f96c14f4707172b3009529322cd90dd86cad0be0985d43d4785c8be035f64e4",
+        "scripts/contextbench_solver_sources.py": "a9d81954376b28752351a2f81494aa5722227e9cf157d51fdc439c60879b0142",
+        "scripts/_contextbench_solver_read.py": "68e2e2e417150ce45e9aa692ee2c6b852b8500df404ee705949fc21b4c6f131c",
+        "mini/__init__.py": "79695f6e5b2f6f90093cd15f08dd9bba2ab099e67487f4ac93bb739e22e19fff",
+        "mini/agents/default.py": "faf4442506b1cdaad886f146182dff98ed740d45536729617efbdcb6d5fb5524",
+        "mini/environments/docker.py": "e3c42a76d0aee03edb0e14e693c963d4fc2e28b678ca36a72f774c90dc89dbd4",
+        "mini/config/extra/swebench.yaml": "81bb47b91311e19b73ff0f8bc670898dc5b807f774ff687e11556038e5878162"
+      },
+      "driver_sha256": "dfcc219ad563458fdfdda14e4643eb953cb60a249507d43dc127b9be9a736da4",
+      "grading_driver_sha256": "1be0af88cf48816fcbbcf8303c1602f0c130daad567ec2d5113a9f4018238c3d",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "context_budget": 16384,
+      "max_turns": 20,
+      "max_meter_usd_per_arm": 2,
+      "sdk_meter_is_actual_billing": false,
+      "preferred_route": "existing_claude_max",
+      "new_api_charges_authorized_ceiling_usd": 100,
+      "standalone_api_key_fallback": false,
+      "stop_rule": "No retry. Stop further inference on process/solver errors or missing terminal metering. Preserve not-run arms and missing usage. Grade only after both solver attempts end, without feedback to either model.",
+      "grading": "Original Multi Gson script in a separate pinned native image and isolated pinned native harness. One unique task; reference checks are excluded from agent Pass@1."
+    },
+    "analysis": {
+      "protocol_sha256": "3e42a546571c16b1ebc33b27eff275156807b3b28348b66d21be6a9c59aa35f2",
+      "scope": "One disclosed Java development task, two fresh downstream solver arms. No independent validation, new retrieval, graph-policy quality gate or official submission claim.",
+      "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+      "original_inst_id": "google__gson-1391",
+      "implementation_commit": "0039b2a28d6fc07000156518e60456bc713469a9",
+      "arms": {
+        "native": {
+          "status": "Submitted",
+          "resolved": true,
+          "model_calls": 5,
+          "sdk_estimate_usd": 0.5006415000000001,
+          "known_sdk_estimate_usd": 0.5006415000000001,
+          "missing_metering_calls": 0,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "sdk_init_api_key_sources": [
+            "none"
+          ],
+          "all_model_inputs_confirmed": true,
+          "initial_base_source_lines": 318,
+          "base_source_line_count": 318,
+          "new_original_source_lines": 0,
+          "source_read_events": 2,
+          "confirmed_original_source_reads": 1,
+          "partial_source_coverage": true,
+          "missing_execution_receipt_indexes": [],
+          "unattributed_delivered_shell_events": 2,
+          "solver_container_removed": true,
+          "native_grading": {
+            "status": "graded",
+            "resolved": true,
+            "native_exit_code": 1,
+            "container_removed": true,
+            "native_report": {
+              "total_instances": 1,
+              "submitted_instances": 1,
+              "completed_instances": 1,
+              "incomplete_instances": 0,
+              "resolved_instances": 1,
+              "unresolved_instances": 0,
+              "empty_patch_instances": 0,
+              "error_instances": 0,
+              "submitted_ids": [
+                "google/gson:pr-1391"
+              ],
+              "completed_ids": [
+                "google/gson:pr-1391"
+              ],
+              "incomplete_ids": [],
+              "resolved_ids": [
+                "google/gson:pr-1391"
+              ],
+              "unresolved_ids": [],
+              "empty_patch_ids": [],
+              "error_ids": []
+            },
+            "native_log_sha256": "5a7a27e2b83e81d91b03d8d14d282b5fc3b4f1409c57fb3118be97ec434e2e01"
+          },
+          "model_patch_sha256": "756bba27f6b66d57570ba930890974917af950005a9f4a3f90df98a333d092e0"
+        },
+        "functions_graph": {
+          "status": "Submitted",
+          "resolved": true,
+          "model_calls": 6,
+          "sdk_estimate_usd": 0.587861,
+          "known_sdk_estimate_usd": 0.587861,
+          "missing_metering_calls": 0,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "sdk_init_api_key_sources": [
+            "none"
+          ],
+          "all_model_inputs_confirmed": true,
+          "initial_base_source_lines": 293,
+          "base_source_line_count": 294,
+          "new_original_source_lines": 1,
+          "source_read_events": 2,
+          "confirmed_original_source_reads": 1,
+          "partial_source_coverage": true,
+          "missing_execution_receipt_indexes": [],
+          "unattributed_delivered_shell_events": 3,
+          "solver_container_removed": true,
+          "native_grading": {
+            "status": "graded",
+            "resolved": true,
+            "native_exit_code": 1,
+            "container_removed": true,
+            "native_report": {
+              "total_instances": 1,
+              "submitted_instances": 1,
+              "completed_instances": 1,
+              "incomplete_instances": 0,
+              "resolved_instances": 1,
+              "unresolved_instances": 0,
+              "empty_patch_instances": 0,
+              "error_instances": 0,
+              "submitted_ids": [
+                "google/gson:pr-1391"
+              ],
+              "completed_ids": [
+                "google/gson:pr-1391"
+              ],
+              "incomplete_ids": [],
+              "resolved_ids": [
+                "google/gson:pr-1391"
+              ],
+              "unresolved_ids": [],
+              "empty_patch_ids": [],
+              "error_ids": []
+            },
+            "native_log_sha256": "de4640fd05f00286b65b786d4d06edfd97cc5743b5985f77c0aad2cfbcc0682d"
+          },
+          "model_patch_sha256": "12b0205398cd7328d3e66ffcd413ab319c29213ed5106bbaf61757a98cd6786d"
+        }
+      },
+      "graph_available_in_original_retrieval": false,
+      "independent_quality_score": null,
+      "known_program_sdk_estimate_before": 73.58967420000002,
+      "matched_configs_and_common_prompt": true,
+      "known_sdk_estimate_usd": 1.0885025000000002,
+      "sdk_estimate_usd": 1.0885025000000002,
+      "known_program_sdk_estimate_usd": 74.67817670000002,
+      "new_api_key_charges_usd": 0,
+      "all_frozen_runtime_and_input_hashes_match_after_grading": true,
+      "sdk_meter_is_actual_billing": false
+    },
+    "native_test_counts": {
+      "scope": "Original native parser applied after both real solver arms terminate.",
+      "arms": {
+        "native": {
+          "required_regression_passed": 1,
+          "required_preservation_passed": 95,
+          "passed_classes": 96,
+          "failed_classes": 1,
+          "skipped_classes": 0,
+          "granularity": "test_class",
+          "known_failure_retained": true
+        },
+        "functions_graph": {
+          "required_regression_passed": 1,
+          "required_preservation_passed": 95,
+          "passed_classes": 96,
+          "failed_classes": 1,
+          "skipped_classes": 0,
+          "granularity": "test_class",
+          "known_failure_retained": true
+        }
+      }
+    },
+    "conclusion": "Both arms resolve the same one disclosed Java task, 1/1 each. No comparative gain, no graph in original retrieval and no independent validation. Controlled-reader coverage stays explicitly partial."
   }
 }

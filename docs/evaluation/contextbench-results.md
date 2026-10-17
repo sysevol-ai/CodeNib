@@ -425,7 +425,8 @@ retrieval estimates and its separate receipt-fix smoke adds $0.426619.
 The late relationship-check pilot adds **$6.796707** in SDK estimates.
 Known October 16 metering totals **$71.960832**. The two separately frozen
 October 17 reader-adoption checks add **$0.695992** and **$0.932850**, bringing
-known cumulative metering to **$73.589674**,
+the subtotal to $73.589674. The fresh paired Gson solver check adds **$1.088503**,
+bringing known cumulative metering to **$74.678177**,
 excluding one aborted development solver attempt and one interrupted retrieval
 case with no terminal usage.
 These are not account bills;
@@ -776,7 +777,24 @@ match, and these checks make zero model calls. The
 [public development summary](../assets/contextbench_online_development_summary.json)
 retains the pinned dataset, image provenance, source-only Dockerfile, parser
 parity and distinct control outcomes. The new entrypoint checks also match the
-existing fmt image. Fresh matched Java solver outcomes remain open.
+existing fmt image.
+
+A fresh Java solver pair at `0039b2a2` then reuses the same task's frozen native
+and function-completion contexts, with identical source-only images, actual
+Opus 5.5, common reader instructions, 16K context limits, 20 steps and $2 SDK-meter
+guards. Both submit production-only fixes and resolve **1/1 task**, passing all
+96 required classes; the known unrelated class failure remains recorded. All
+eleven model inputs are confirmed, every SDK init reports `apiKeySource=none`,
+and no usage is missing. SDK estimates are $0.500642 native and $0.587861 candidate,
+**$1.088503 combined**. Both solvers and both graders remove their containers;
+runtime and input hashes still match after grading.
+
+Each arm makes one confirmed base-version read after an explicit usage error.
+Initial source coverage is 318/293 lines; the reader adds 0/1 new original lines,
+leaving partial totals of 318/294. Two/three delivered ordinary shell observations
+remain unattributed. The task had no graph in its original retrieval. These
+matched outcomes establish Java pipeline coverage, not a comparative repair,
+graph-source or independent quality gain.
 
 Jackson-databind remains deferred: its pinned preparation script rewrites tracked
 build configuration, conflicting with the current exact-clean-source gate. This

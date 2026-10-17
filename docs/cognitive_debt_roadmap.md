@@ -250,9 +250,14 @@ hashes. Its source-only reader and native reference/negative controls pass with
 zero model calls; all 96 required test classes pass for the reference while a
 known always-failing class remains recorded. These grading fixtures are not agent
 repairs. Reuse the existing scripts and native harness, without a backend registry
-or new product surface. Jackson's tracked build-configuration rewrite remains
-deferred. Fresh Java repair outcomes, other Multi repositories, Poly/Pro harnesses,
-broader matched outcomes and shell-source attribution remain open.
+or new product surface. A fresh Gson pair then resolves the task in both arms,
+passing all 96 required classes with eleven confirmed inputs and $1.088503 in
+SDK estimates. Each arm adopts the same reader; its new-source contribution is
+0/1 line, with partial totals of 318/294. The original retrieval had no graph,
+so the pair establishes no comparative or graph-source gain. All owned containers
+are removed and frozen hashes match after grading. Jackson's tracked
+build-configuration rewrite remains deferred. Other Multi repositories, Poly/Pro
+harnesses, broader matched outcomes and shell-source attribution remain open.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
