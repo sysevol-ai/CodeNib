@@ -53,13 +53,18 @@ reference patches or native test labels are materialized before inference. After
 terminal execution and frozen output hashes, only the selected gold annotations
 will be loaded into a separate evaluation cohort. Preserve raw SDK attempts;
 source from trailing tool results without a later assistant response is excluded
-from a labeled scoring projection, with every exclusion reported.
+from a labeled scoring projection, with every exclusion reported. A zero-call
+regression finds that message filtering alone leaves cached trajectory/served
+predictions stale; a separate pre-scoring correction recomputes those fields
+from the confirmed messages. It is frozen while inference is running and before
+annotation access. The original analyzer is preserved; policy, tasks, budget and
+promotion gates remain unchanged.
 
 Both arms use fresh Opus 5.5 sessions, medium effort, 20 turns, 600 seconds and
 4,096 maximum output tokens, with the same native read/glob and system prompt.
 The candidate retains the frozen 2,048-token, 20-line physical grep neighborhood
 policy. There are 64 planned SDK sessions, at most four concurrent. The batch
-reserves **$22**, with $0.75 session guards and $0.25 dispatch headroom; developer
+reserves **$22**, with $0.75 session guards and $0.25 dispatch headroom; development
 usage forecasts **$14.58** from the eight-task controls. These are estimates,
 not a provider hard cap or reconciled credit deduction. The existing $100
 additional API authorization still applies; no repairs or native test calls run.
