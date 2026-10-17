@@ -66,6 +66,11 @@ The [per-task CSV](../assets/contextbench_independent_32.csv) and
 retain the negative result. Return to the development cohort for diagnosis;
 any revised candidate needs a new validation protocol and independent task IDs.
 These 32 tasks must not become a tuning set or a source of best-of retries.
+A metadata-only inventory leaves 363 untouched tasks, with no C++ tasks remaining:
+six of the release's ten C++ tasks are development data and four are in this
+completed validation. Another independent selection requires an explicitly new
+sampling protocol or new untouched tasks; the same four-per-language quota cannot
+be repeated on this release. No replacement validation tasks have been selected.
 
 ## First-source graph policy on 24 development tasks
 
@@ -428,6 +433,22 @@ The option defaults off, is recorded with the timeout in the graph manifest,
 and cannot be combined with `--reuse-cohort`. Freeze these new artifacts before
 any matched inference; they do not revise earlier results.
 
+An offline 24-task preparation check obtains 14 graphs, compared with eleven
+previously: eight become available and five are lost. Six Go/Java attempts lack
+the managed indexers on their invocation PATH, two TypeScript builds time out,
+and two builds are rejected after changing tracked source. Both the timeout and
+preparation policy also differ, so this is not a policy-only comparison. All
+source checkouts remain clean. On fixed native-trace prefixes, new physical
+source rises from 687 to 890 lines, while newly covered annotated lines fall from
+177 to 43, largely because the Go graphs are unavailable. This replay makes no
+model calls and is not a Recall/F1 score or an autonomous agent result.
+
+A separate prospective input combines fourteen fresh graphs with five
+authenticated prior graphs for the identical source snapshots, leaving five
+unavailable cases in the 24-task population. Artifact selection uses availability
+alone. Its 19 available graphs have not undergone new online quality evaluation;
+all prior build failures and negative quality results remain in the record.
+
 `scripts/benchmark_context_solver.py` provides an initial downstream adapter for
 **SWE-bench Verified only**. It runs the pinned upstream mini SWE-agent loop with
 the already-observed 16K/32K context, an existing Claude subscription and an
@@ -454,6 +475,19 @@ a total paid-cost figure. This single attempt is not a comparative Pass@1 result
 Multi/Poly/Pro adapters and full-agent source accounting remain open. Arbitrary
 shell reads from this solver are not added to the retrieval trajectory or claimed
 as a complete leaderboard artifact.
+
+The first Multi-SWE-bench native environment check is complete on the development
+C++ task `fmtlib__fmt-2394`. The
+[pinned native harness](https://github.com/multi-swe-bench/multi-swe-bench/tree/24f493f8a103e72312ded4f6b9c89f081d69cb09)
+rejects a test-only
+control and accepts the reference repair, passing all 18 required tests. Both
+use the exact selected source tree and native patch hashes in the same official
+image; both owned containers are removed. This check makes no model calls and
+produces no CodeNib repair score. A separate solver image removes the reference
+patches and scripts, retains only one source commit, and verifies an identical
+clean tree. The reusable Multi solver adapter remains pending. The public
+development summary retains its native dataset revision, image provenance,
+module hashes and reports separately from agent quality results.
 
 New solver runs save each exact model request with a content hash and confirm
 delivery only when the SDK returns an assistant message. The local

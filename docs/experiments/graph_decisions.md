@@ -39,8 +39,8 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
-| Directed graph navigation | First-source/callable-first navigation calls all eleven available graphs in the 24-task development set and supplies 139 new annotated physical lines in Go and Rust. Recall changes 53.35% → 54.02%, F1 31.18% → 30.15%; the declared gate fails. An offline C++ probe restores one missing graph by allowing compilation-database preparation in a private clone. | Verify broader graph availability and useful source selection before another quality cohort. No new independent validation, product promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The new development pair remains unresolved, 0/1 each, and confirms all 18 hashed model inputs. Elided and unrequested terminal output are excluded from observation exports. | Broader matched outcomes, Multi/Poly/Pro adapters and source-line attribution from actual solver observations; no comparative or population Pass@1 gain established. |
+| Directed graph navigation | First-source/callable-first navigation calls all eleven available graphs in the 24-task development set and supplies 139 new annotated physical lines in Go and Rust. Recall changes 53.35% → 54.02%, F1 31.18% → 30.15%; the declared gate fails. The broader offline preparation attempt retains 14/24 graphs, including eight newly available and five lost; a separate authenticated composition has 19/24 available. | Correct invocation PATH and source-preparation failures, then demonstrate useful source selection before another quality cohort. No new independent validation, product promotion or full-500 launch. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The original Multi native grader rejects a C++ test-only control and accepts its reference repair, passing 18 tests; a separate source-only image matches the selected tree. | Wire the Multi solver/native adapter, then complete Poly/Pro coverage and source-line attribution from actual solver observations. The reference check has no model calls or agent score; broader comparative Pass@1 remains open. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -66,6 +66,12 @@ The evaluation sequence remains:
    The 32 tasks now remain a completed validation record. Development diagnosis
    returns to the disclosed 105 IDs; a revised candidate requires new independent
    task IDs and a new protocol before inference.
+   A metadata-only inventory leaves 363 untouched tasks, including zero C++ and
+   four Java tasks. All ten C++ tasks in this pinned 500-task release are already
+   in development (six) or the completed validation (four). A second independent
+   four-per-language selection is therefore impossible on this release. Define
+   a new sampling protocol or obtain new untouched tasks before another quality
+   validation; do not reuse the completed 32 to preserve the old quota.
 3. For a SOTA claim, freeze implementation, model and evaluator versions and run
    the official verified 500. Recheck the then-current leaderboard and denominator
    conventions (the current leader has 499 valid retrieval records). Report
@@ -390,6 +396,50 @@ The source-checkout graph preparer now accepts explicit
 policy/timeout. It rejects reuse with this option and rejects a prepared graph
 if HEAD or tracked source changed. Generated build files may remain only within
 the owned temporary clone; the existing bounded worker owns their cleanup.
+
+### Broader offline graph preparation outcome
+
+The complete 24-task check at `64f07462` freezes runtime hashes and enables
+private-clone preparation with a 300-second bound. Fourteen graphs are available:
+eight new successes and five losses versus the previous eleven. Six Go/Java
+failures come from missing managed tools on this invocation PATH, two TypeScript
+builds time out, and two builds change tracked source and are rejected. The
+managed tools are installed; the doctor still reports unrelated missing tools.
+All original source snapshots remain clean. Policy, timeout and environment
+changes prevent a causal preparation-policy claim.
+
+A fixed-prefix replay chooses anchors without annotations and tests both edge
+directions before checking annotation overlap. New physical lines change
+687 → 890; annotated lines change 177 → 43, including the lost Go coverage.
+It makes zero model calls and does not measure online agent adoption or quality.
+A separate future input uses fresh available graphs and otherwise authenticated
+same-source prior artifacts, producing 19/24 available graphs. It retains all
+cases and both build histories; no scores or annotations select artifacts and
+no previous result is overwritten. The next candidate still requires a frozen
+matched protocol and meaningful new-source evidence.
+
+### Multi-SWE-bench native environment readiness
+
+On the development C++ task `fmtlib__fmt-2394`, the original Multi harness at
+`24f493f8a103e72312ded4f6b9c89f081d69cb09` rejects the test-only control and accepts
+the reference repair. Its native grader verifies all 18 required tests, with no
+failures. Both stages use the same pinned official image, exact selected source
+tree and native patch hashes. They run the original test scripts with no network
+or host mounts, bounded resources, and remove their owned containers afterward.
+No model calls occur and neither result is an agent score.
+
+The original grading image contains the reference and test patches. A separate
+solver image removes those artifacts and their test/prepare scripts, replaces
+Git history with one selected-source commit, and passes the same tree and clean
+checkout checks. Its tree remains
+`c793e859f77f2ef96bcc8f1b1804f06ebce087aa`. Native grading continues to use the
+original image; source-only image preparation does not implement the reusable
+Multi solver adapter or establish that CodeNib resolves the issue.
+
+Pinned native dataset revision, image IDs, module hashes and reports are retained
+under `verification/contextbench-multiswe-native-20261016/` and summarized in the
+existing public development artifact. The adapter, matched agent outcomes,
+Poly/Pro harnesses and complete solver-source attribution remain open.
 
 ### October 16 online development result
 

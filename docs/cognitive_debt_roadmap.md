@@ -172,8 +172,15 @@ private clone. Broader graph coverage and revised matched quality evidence remai
 required before a new independent selection. Earlier failed gates and mechanism
 checks stay in the experiment record; no product route is promoted. The new solver pair is
 0/1 resolved in each arm on the repeated development task; all 18 model inputs
-have hashed, confirmed receipts including actual output truncation. Shell-source
-attribution and the other native harnesses remain open.
+have hashed, confirmed receipts including actual output truncation. The first
+Multi C++ native environment check rejects its test-only control and accepts the
+reference repair with 18 passing tests, without model calls or an agent score.
+A separate solver image removes reference artifacts and Git history while
+preserving the selected source tree. The broader offline preparation check has 14/24 graphs, with eight new successes
+and five losses; a separate authenticated composition has 19/24 available.
+Fixed-prefix source replay does not establish an online gain. Multi solver
+integration, Poly/Pro harnesses
+and shell-source attribution remain open.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

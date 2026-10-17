@@ -4513,5 +4513,1676 @@
       },
       "interpretation": "One metadata-selected development C++ availability diagnostic. No model calls, quality score or changes to previous frozen artifacts."
     }
+  },
+  "fresh_validation_pool": {
+    "scope": "Metadata-only inventory for a future validation protocol; no new task selection, annotation inspection or inference.",
+    "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
+    "dataset_sha256": "e9dcfd504cbfb849ac815a79040c793d0d92f94eecc9b5a4ee3e1445a2f8a791",
+    "columns_read": [
+      "instance_id",
+      "language"
+    ],
+    "total": 500,
+    "excluded_development": 105,
+    "excluded_completed_validation": 32,
+    "remaining": 363,
+    "remaining_per_language": {
+      "c": 11,
+      "cpp": 0,
+      "go": 26,
+      "java": 4,
+      "javascript": 44,
+      "python": 220,
+      "rust": 9,
+      "typescript": 49
+    },
+    "consequence": "A second independent four-per-language 32-task selection is impossible on this pinned release: all ten C++ tasks are already development or completed validation. A revised candidate needs an explicitly changed sampling protocol or new untouched tasks; do not recycle the prior 32."
+  },
+  "multi_swe_native_reference_readiness": {
+    "protocol": {
+      "scope": "One development C++ native-harness reference/negative-control check. No solver, model calls, retrieval quality or agent Pass@1 claim.",
+      "instance_id": "fmtlib__fmt-2394",
+      "contextbench_instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+      "harness_revision": "24f493f8a103e72312ded4f6b9c89f081d69cb09",
+      "harness_version": "1.1.0",
+      "dataset_receipt_sha256": "f5b14f5321113536331c778d7b145c877de9c2f0de31dd32cabaa0783c0f661d",
+      "native_case_sha256": "e85e7d612570c50723c691753abfef9455eec60c20d81c3f321db430c5d232f4",
+      "image_id": "sha256:801d11f190c6669e3b2a4a1273c5f5e237f26acbecfa379300c37c2b2acaf8e8",
+      "image_repo_digests": [
+        "mswebench/fmtlib_m_fmt@sha256:a277e173e1671c25bd1fb412e45665be5e8b6c2f96f30887fa3dbc12e1dac949"
+      ],
+      "source_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+      "source_tree": "c793e859f77f2ef96bcc8f1b1804f06ebce087aa",
+      "driver_sha256": "41290e41373f09c3875dc1e8112a7f888f5f6c17a92547b00646cdb15d9ce544",
+      "stages": {
+        "test_only": "/home/test-run.sh",
+        "reference": "/home/fix-run.sh"
+      },
+      "bounds": {
+        "native_seconds": 600,
+        "grading_seconds": 60,
+        "memory": "3g",
+        "cpus": 2,
+        "pids": 256,
+        "network": "none",
+        "host_mounts": []
+      },
+      "gate": "Original native grader rejects the test-only control and accepts the reference patch, with exact clean source and patch identity. Both owned containers are removed.",
+      "solver_image_requirement": "This official grading image contains reference/test patches. Any future solver needs a separate source-only image with those artifacts removed before inference.",
+      "model_calls": 0
+    },
+    "analysis": {
+      "protocol_sha256": "a8cec334c7e02bac2d31476c7e2e7cf924f6e069d3c222d512afc6e7c1d4acbc",
+      "passed": true,
+      "results": {
+        "test_only": {
+          "stage": "test_only",
+          "native_script": "/home/test-run.sh",
+          "model_calls": 0,
+          "source": {
+            "commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+            "tree": "c793e859f77f2ef96bcc8f1b1804f06ebce087aa",
+            "tracked_clean": true
+          },
+          "native_patch_sha256": {
+            "fix_patch": "f9a464860e99bab76108c5cd5bced442645c82800bde08d89020761dbaeefd8e",
+            "test_patch": "76862918b5520d200adec1db9a1751b6ee40d9ccf041eaa358d9b4ee6d1ab19b"
+          },
+          "native_exit_code": 2,
+          "native_report": {
+            "total_instances": 1,
+            "submitted_instances": 1,
+            "completed_instances": 1,
+            "incomplete_instances": 0,
+            "resolved_instances": 0,
+            "unresolved_instances": 1,
+            "empty_patch_instances": 0,
+            "error_instances": 0,
+            "submitted_ids": [
+              "fmtlib/fmt:pr-2394"
+            ],
+            "completed_ids": [
+              "fmtlib/fmt:pr-2394"
+            ],
+            "incomplete_ids": [],
+            "resolved_ids": [],
+            "unresolved_ids": [
+              "fmtlib/fmt:pr-2394"
+            ],
+            "empty_patch_ids": [],
+            "error_ids": []
+          },
+          "native_report_sha256": "913b3112d4d851ebbe6050a958c432cf6b2957ebec820c0038c2d678cc0e5c7d",
+          "native_log_sha256": "ed4fb115e538bba8525e5967cd62e7ae483663e2fdeab3de881acd82a0d2d1c8",
+          "status": "complete",
+          "container_removed": true,
+          "elapsed_seconds": 50.719128431985155
+        },
+        "reference": {
+          "stage": "reference",
+          "native_script": "/home/fix-run.sh",
+          "model_calls": 0,
+          "source": {
+            "commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+            "tree": "c793e859f77f2ef96bcc8f1b1804f06ebce087aa",
+            "tracked_clean": true
+          },
+          "native_patch_sha256": {
+            "fix_patch": "f9a464860e99bab76108c5cd5bced442645c82800bde08d89020761dbaeefd8e",
+            "test_patch": "76862918b5520d200adec1db9a1751b6ee40d9ccf041eaa358d9b4ee6d1ab19b"
+          },
+          "native_exit_code": 0,
+          "native_report": {
+            "total_instances": 1,
+            "submitted_instances": 1,
+            "completed_instances": 1,
+            "incomplete_instances": 0,
+            "resolved_instances": 1,
+            "unresolved_instances": 0,
+            "empty_patch_instances": 0,
+            "error_instances": 0,
+            "submitted_ids": [
+              "fmtlib/fmt:pr-2394"
+            ],
+            "completed_ids": [
+              "fmtlib/fmt:pr-2394"
+            ],
+            "incomplete_ids": [],
+            "resolved_ids": [
+              "fmtlib/fmt:pr-2394"
+            ],
+            "unresolved_ids": [],
+            "empty_patch_ids": [],
+            "error_ids": []
+          },
+          "native_report_sha256": "8e32d5c7ce399ea86801c9bda0e40b833aa6191a37ad34997bd752b21b5e464c",
+          "native_log_sha256": "4b3221a05456b4a88a5ba34575fa80f82d3cbfe42e7b4872889994d1744c46a5",
+          "status": "complete",
+          "container_removed": true,
+          "elapsed_seconds": 213.48750283499248
+        }
+      },
+      "model_calls": 0,
+      "agent_quality_score": null
+    },
+    "pinned_harness_code": {
+      "harness_module_sha256": {
+        "harness/gen_report.py": "02ebc8a5414898d12f4f5a9ba0c11a8f57c9f34a0bdc02c2311afac9f654847d",
+        "harness/report.py": "5a025fd496d42c4b7377fc0702d64c6d0e356b117eaf2face47e73a52c29902f",
+        "harness/test_result.py": "5411af794920cf4b170fe9dbe8c21c12cc63e2bbe2280d6d82acb850f4808be3",
+        "harness/dataset.py": "dd49f55baf63b60fff309b6a5b2a1826697e2b85ad1a9bccff18321dcdc200fc",
+        "harness/repos/cpp/fmtlib/fmt.py": "d0a5146eb77b4416cccb86216c3df08f200d58c33bb158d953aaac385f922918"
+      },
+      "code_matches_pinned_checkout": true
+    },
+    "solver_image": {
+      "base_image_id": "sha256:801d11f190c6669e3b2a4a1273c5f5e237f26acbecfa379300c37c2b2acaf8e8",
+      "solver_image_id": "sha256:0c36ed672e54cd9a7f09b03d60a29d3731fd34e5250227f9154306aaf81013bf",
+      "size_bytes": 1509842023,
+      "dockerfile_sha256": "1958604c95f669695cd49c4499786fa3e75b0b28c5748b6ff6138f7c9a524e89",
+      "checks": {
+        "source_tree": "c793e859f77f2ef96bcc8f1b1804f06ebce087aa",
+        "single_commit_count": 1,
+        "source_commit": "91454c5532df6c481eb9cc96c108ce56d26fe86a",
+        "status": "",
+        "reference_artifacts_absent": true,
+        "owned_container_removed": true
+      },
+      "model_calls": 0,
+      "status": "ready",
+      "scope": "Source-only C++ image preparation. Solver adapter and agent inference are still pending. Native grading uses the separate original pinned image."
+    },
+    "native_dataset": {
+      "repo": "ByteDance-Seed/Multi-SWE-bench",
+      "revision": "56ff018c04a38e27ada1e9d0a6d5839a51f88f0d",
+      "files": [
+        "cpp/fmtlib__fmt_dataset.jsonl"
+      ]
+    },
+    "native_dataset_record_sha256": "e85e7d612570c50723c691753abfef9455eec60c20d81c3f321db430c5d232f4",
+    "reference_passed_tests": 18,
+    "reusable_multi_solver_adapter_implemented": false,
+    "agent_inference_completed": false,
+    "agent_pass_at_1": null,
+    "conclusion": "Original native grader rejects the test-only control and accepts the reference patch. The exact clean source-only image is ready. This is one development harness-readiness check with no model calls; it establishes no CodeNib solving result or comparative quality gain.",
+    "harness_repository": "https://github.com/multi-swe-bench/multi-swe-bench",
+    "native_dataset_source_url": "https://huggingface.co/datasets/ByteDance-Seed/Multi-SWE-bench/resolve/56ff018c04a38e27ada1e9d0a6d5839a51f88f0d/cpp/fmtlib__fmt_dataset.jsonl"
+  },
+  "offline_graph_preparation_24": {
+    "scope": "All 24 previously disclosed development tasks; offline graph-availability experiment only. No model inference, reference patches or quality scores. Original retrieval artifacts remain unchanged.",
+    "protocol": {
+      "scope": "All 24 previously disclosed development tasks; offline graph-availability experiment only. No model inference, reference patches or quality scores. Original retrieval artifacts remain unchanged.",
+      "selection": "Retain the complete disclosed 24-task cohort without score-based filtering, including all prior unavailable graphs.",
+      "selection_sha256": "122a70d4c61abcea5c27f87781fc204db768d933dd0d3bb7516e20117866f513",
+      "source_manifest_sha256": "3574d68ad8832273efc58cae36db0b2361ec80a764e1714a16e5a89f5daaa43f",
+      "prior_graph_manifest_sha256": "1d8de298ffb44da0aa511ce439b4dab60ac85d0d3517cbcefdede2dffcfdec11",
+      "implementation_commit": "64f0746217ebb621e75b32d6e615036c434930d4",
+      "driver_sha256": "290976395a8512be053cb36c18d311d698df5f0b5c240fe046a5ddaee1900ba0",
+      "timeout_per_case_seconds": 300,
+      "allow_project_preparation": true,
+      "n": 24,
+      "workers": 1,
+      "model_calls": 0,
+      "interpretation": "Availability diagnosis only: both project-preparation policy and the previous 120-second timeout change. Only the separate matched fmt probe isolates the preparation switch. Do not attribute all coverage changes to preparation or claim Recall/F1 improvements."
+    },
+    "analysis": {
+      "protocol_sha256": "a38b3ed776c509cb3fc63b4cc04c9f33f330d9f3035b5ca4026ad37c2cdf1445",
+      "graph_manifest_sha256": "f701d2cac13757112ed0017c2312eccc3aba12bda1a352a642913b4c1502e7f7",
+      "prior_available": 11,
+      "available": 14,
+      "newly_available": 8,
+      "lost_available": 5,
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "previous_available": true,
+          "available": true,
+          "build_wall_s": 45.573048056918196,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+            "clean": true
+          },
+          "graph_sha256": "fec8971a7ba35eac4d4876a324da8a91e74903b5c85263d526666aecf23856ec",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "previous_available": true,
+          "available": false,
+          "build_wall_s": 301.3752404219704,
+          "failed_languages": {},
+          "error": "graph build exceeded 300.0s",
+          "snapshot": {
+            "commit": "d276a4f3e914aaccc291f7b2513e5d978919d0f9",
+            "clean": true
+          },
+          "graph_sha256": "74ff08c6b3e2095d5e905530add5fee6c27ba8454d9865c898037782530732d5",
+          "failure_class": "timeout"
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "previous_available": false,
+          "available": false,
+          "build_wall_s": 302.6058837809833,
+          "failed_languages": {},
+          "error": "graph build exceeded 300.0s",
+          "snapshot": {
+            "commit": "a993ada9300a531c09dfa6a1be772b1abc1492ad",
+            "clean": true
+          },
+          "graph_sha256": "f09ffdbf69fe7cb84635ab1a9ede74017c266572da7e397038e3a9098cb829dd",
+          "failure_class": "timeout"
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 234.85654022498056,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "37c5b8c07be104fd5288cd87f101e48cb7a40298",
+            "clean": true
+          },
+          "graph_sha256": "9623277777325e827a679e3a11a97ee53721025a3ec13ebdb931ca58faf964f6",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 60.943939688033424,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+            "clean": true
+          },
+          "graph_sha256": "a4b21dd7c1e6a930a65d470959ffcfca8cfe0f8a7b6d5c454328c08d38efa1d9",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "previous_available": false,
+          "available": false,
+          "build_wall_s": 55.759866998996586,
+          "failed_languages": {},
+          "error": "graph worker failed; see build.log",
+          "snapshot": {
+            "commit": "7f547827e47b5ade563a293329deb4226496d72f",
+            "clean": true
+          },
+          "graph_sha256": "ffa9767c73f97bd0b9ce0ed582c6b0bf7f68521d2a6c05d6991651b216156e04",
+          "failure_class": "tracked_source_changed_rejected"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 20.677948256023228,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+            "clean": true
+          },
+          "graph_sha256": "05c348c39fd3c3ddbf612c2ccaa5835d9f41a1d42577f9ac138e98d58a249733",
+          "failure_class": null
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "previous_available": true,
+          "available": false,
+          "build_wall_s": 4.4483089469140396,
+          "failed_languages": {
+            "go": "indexer returned no graph"
+          },
+          "error": null,
+          "snapshot": {
+            "commit": "43b46cb324f64076e4d9e807c0b60c4b9ce11a82",
+            "clean": true
+          },
+          "graph_sha256": "d7df0e940204e13b3ebc2aab39a5c2660690be6f1518cb85ca6591381589a898",
+          "failure_class": "managed_indexer_missing_from_path"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "previous_available": false,
+          "available": false,
+          "build_wall_s": 4.394553430960514,
+          "failed_languages": {
+            "java": "indexer returned no graph"
+          },
+          "error": null,
+          "snapshot": {
+            "commit": "7c9e7c1e2acd9c55926b9d2592fc65234d9c3ff7",
+            "clean": true
+          },
+          "graph_sha256": "4001aa22ffb139eb492ad2e223e9ec8ce8defc8a1274cb8c2524c1694a6196d4",
+          "failure_class": "managed_indexer_missing_from_path"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "previous_available": true,
+          "available": true,
+          "build_wall_s": 29.822332373005338,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "991883df4d5910851130e3dc0e21fcbce604ea7d",
+            "clean": true
+          },
+          "graph_sha256": "bd33ff635dfacf9d5e7e8edb5aa42b6585b02a9bb84672e036ddf70ed0be3fac",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 29.903728391043842,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "2d48a4d9c5e8f0a5ce914922eb2a45dc0ec93ee3",
+            "clean": true
+          },
+          "graph_sha256": "2bdb420b0e707c3739794ae43116cc6f2c8e4d2cddb7cd142d13c45ee58256b2",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 33.226809118059464,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "979bbf03bb00bc55ca09783791b5091a2247df68",
+            "clean": true
+          },
+          "graph_sha256": "957489e881e094d24ee7c6498edf0bfc6b33a5b577f6804aed14e7d42d1d2667",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 35.61954666196834,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "a505463710aa34bccafd268c44064c129cdfb3e2",
+            "clean": true
+          },
+          "graph_sha256": "7833a61bef3b9bb3f448925addc8c6d8206d9364f8f45fd657d959ccd7afa759",
+          "failure_class": null
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "previous_available": true,
+          "available": true,
+          "build_wall_s": 39.521483383956365,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "1e137b07052bc3ea0da44ed201702c94055b8ad2",
+            "clean": true
+          },
+          "graph_sha256": "39af7e0357ed6b47df97e62dc83a332a1aedbff27ebba7fb7b35fa2c104f07c5",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "previous_available": true,
+          "available": true,
+          "build_wall_s": 44.31255821697414,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "135b15467eda2394b017f2a7d25cda1417c0feec",
+            "clean": true
+          },
+          "graph_sha256": "e53b4286d5c1fb757ae44227ce28cc327f050514ba814c8b44684819049ee8d2",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "previous_available": true,
+          "available": true,
+          "build_wall_s": 10.441258113016374,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "9965a04b5684079bb614addd750340ffc165a9f5",
+            "clean": true
+          },
+          "graph_sha256": "3fcb1b7a23cff7a377aaa15325507f08cf325e5d774ff606ff7683c7d1098dcf",
+          "failure_class": null
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "previous_available": true,
+          "available": false,
+          "build_wall_s": 16.865822591935284,
+          "failed_languages": {},
+          "error": "graph worker failed; see build.log",
+          "snapshot": {
+            "commit": "fea269947104889165e3ebb0f64638921caf2052",
+            "clean": true
+          },
+          "graph_sha256": "bc6a946ca177613e7fd5e160a50aece4a001d32d94df0d079d51e87a4b73eb89",
+          "failure_class": "tracked_source_changed_rejected"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 127.07240782503504,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "5417c89387b67c3192ae9043473b556cd669ee15",
+            "clean": true
+          },
+          "graph_sha256": "0531fe9fef890c163b5feaf49858dbad68f64fd890baa79b988eb86c5e5708d6",
+          "failure_class": null
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "previous_available": false,
+          "available": false,
+          "build_wall_s": 4.3256130299996585,
+          "failed_languages": {
+            "java": "indexer returned no graph"
+          },
+          "error": null,
+          "snapshot": {
+            "commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+            "clean": true
+          },
+          "graph_sha256": "195df6871e84b065705bf3fab337736efff11b2a557b2201a7b04fb8d8bbf03c",
+          "failure_class": "managed_indexer_missing_from_path"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "previous_available": true,
+          "available": false,
+          "build_wall_s": 3.6200944010633975,
+          "failed_languages": {
+            "go": "indexer returned no graph"
+          },
+          "error": null,
+          "snapshot": {
+            "commit": "e6ff77ce73c201b0ee36d2b802ea45e9e1ad1822",
+            "clean": true
+          },
+          "graph_sha256": "7e12343fe35f46243d1d2600cdbd7934c802125a6f0e3180506254e049200745",
+          "failure_class": "managed_indexer_missing_from_path"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "previous_available": false,
+          "available": false,
+          "build_wall_s": 5.659347126958892,
+          "failed_languages": {
+            "java": "indexer returned no graph"
+          },
+          "error": null,
+          "snapshot": {
+            "commit": "12b40c7ba3e7c30e35977195770c80beb34715c5",
+            "clean": true
+          },
+          "graph_sha256": "37167376b1c4f65c7924677db91789d0f3c49821a5fdcc0734e5d0d739e9e324",
+          "failure_class": "managed_indexer_missing_from_path"
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "previous_available": true,
+          "available": false,
+          "build_wall_s": 3.647785610985011,
+          "failed_languages": {
+            "go": "indexer returned no graph"
+          },
+          "error": null,
+          "snapshot": {
+            "commit": "e432032cf2d11e3bb6f558748a5ee41a90640daa",
+            "clean": true
+          },
+          "graph_sha256": "a865e56b0d0ec41ebc1e6fe610e3c58e6a25c10de00a6fa7ba8e0310fb97b1e5",
+          "failure_class": "managed_indexer_missing_from_path"
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "previous_available": true,
+          "available": true,
+          "build_wall_s": 28.608394160983153,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "0abc70564746496eb211bbd951041b4655aec268",
+            "clean": true
+          },
+          "graph_sha256": "1c8a14177d4dde192bb8fb227f2e074ec5fa30f69f35f209a5b0ed8b5634abc2",
+          "failure_class": null
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "previous_available": false,
+          "available": true,
+          "build_wall_s": 166.47758592502214,
+          "failed_languages": {},
+          "error": null,
+          "snapshot": {
+            "commit": "7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614",
+            "clean": true
+          },
+          "graph_sha256": "9ac61e4e09330aace5e11690d50ecb20582bac5ba8fbfe30238aa0e8cdf39004",
+          "failure_class": null
+        }
+      ],
+      "all_frozen_runtime_hashes_match": true,
+      "model_calls": 0,
+      "quality_score": null
+    },
+    "limitations": "Preparation policy, timeout and available PATH differ from prior builds. The six Go/Java failures reflect missing managed commands on this invocation PATH; the tools are installed. Two changed-source builds are rejected, and two TypeScript builds time out. These are retained preparation outcomes, not retrieval scores or a policy-only comparison.",
+    "source_replay": {
+      "protocol": {
+        "scope": "Offline source-delivery diagnostic on the frozen native 24-task development traces. No model calls, autonomous adoption, counterfactual quality score or independent validation.",
+        "anchor": "Use the prepared graph if available, otherwise the prior graph. Choose the first actual read response intersecting a compiler callable, then the callable with most returned physical lines, smallest span and lexical name; query its first returned line. Use the same anchor and prefix for both graph artifacts and both directions.",
+        "selection_uses_annotations": false,
+        "annotation_check": "Measure overlap only after selecting the anchor and retrieving every response for that task.",
+        "limits": {
+          "results": 5,
+          "tokens": 2048,
+          "raw_edges": 1000
+        },
+        "native_config_sha256": "9a71dfb5dc293cfc96f4be92a67cea47c5589bfdf335afcce9e432d13df09ea6",
+        "graph_manifest_sha256": {
+          "prior": "1d8de298ffb44da0aa511ce439b4dab60ac85d0d3517cbcefdede2dffcfdec11",
+          "prepared": "f701d2cac13757112ed0017c2312eccc3aba12bda1a352a642913b4c1502e7f7"
+        },
+        "driver_sha256": "b811ee484d1bf99fb9bf7c2fa887ffdd73477973e011b1ffc22a5959e3f30ab4",
+        "model_calls": 0
+      },
+      "protocol_sha256": "2e9dd19d52891c1d410960dd0d8e66836cec8d0f0416b68b051a0023b05b8da5",
+      "totals": {
+        "prior": {
+          "new_physical_lines": 687,
+          "new_annotated_physical_lines": 177
+        },
+        "prepared": {
+          "new_physical_lines": 890,
+          "new_annotated_physical_lines": 43
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "available": {
+            "prior": true,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 31,
+                "statuses": {
+                  "source_returned": 2
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 1,
+                "statuses": {
+                  "source_returned": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 31,
+                "statuses": {
+                  "source_returned": 2
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 1,
+                "statuses": {
+                  "source_returned": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 32,
+              "new_annotated_physical_lines": 21
+            },
+            "prepared": {
+              "new_physical_lines": 32,
+              "new_annotated_physical_lines": 21
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "available": {
+            "prior": true,
+            "prepared": false
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 14,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 14,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "available": {
+            "prior": false,
+            "prepared": false
+          },
+          "directions": {},
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 90,
+                "statuses": {
+                  "source_returned": 4,
+                  "source_not_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 37,
+                "statuses": {
+                  "source_returned": 2
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 127,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_unseen_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 26,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 26,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "available": {
+            "prior": false,
+            "prepared": false
+          },
+          "directions": {},
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "source_not_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "source_not_returned": 3
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "available": {
+            "prior": true,
+            "prepared": false
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 132,
+                "statuses": {
+                  "source_returned": 1,
+                  "source_not_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 16,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 148,
+              "new_annotated_physical_lines": 145
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "available": {
+            "prior": false,
+            "prepared": false
+          },
+          "directions": {},
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "available": {
+            "prior": true,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 36,
+                "statuses": {
+                  "source_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 36,
+                "statuses": {
+                  "source_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 36,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 36,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 1,
+                "statuses": {
+                  "source_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 14,
+                "statuses": {
+                  "source_returned": 3
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 15,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 3,
+                "statuses": {
+                  "source_returned": 3
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 3,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 99,
+                "statuses": {
+                  "source_returned": 2,
+                  "source_not_returned": 2
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 48,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 147,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "available": {
+            "prior": true,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 38,
+                "statuses": {
+                  "source_returned": 3
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 38,
+                "statuses": {
+                  "source_returned": 3
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 38,
+              "new_annotated_physical_lines": 9
+            },
+            "prepared": {
+              "new_physical_lines": 38,
+              "new_annotated_physical_lines": 9
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "available": {
+            "prior": true,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_unseen_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 46,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_unseen_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 46,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 46,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 46,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "available": {
+            "prior": true,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 90,
+                "statuses": {
+                  "source_not_returned": 1,
+                  "source_returned": 4
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 14,
+                "statuses": {
+                  "source_returned": 2
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 90,
+                "statuses": {
+                  "source_not_returned": 1,
+                  "source_returned": 4
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 14,
+                "statuses": {
+                  "source_returned": 2
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 104,
+              "new_annotated_physical_lines": 2
+            },
+            "prepared": {
+              "new_physical_lines": 104,
+              "new_annotated_physical_lines": 2
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "available": {
+            "prior": true,
+            "prepared": false
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_unseen_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 102,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 102,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "available": {
+            "prior": false,
+            "prepared": false
+          },
+          "directions": {},
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "available": {
+            "prior": true,
+            "prepared": false
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 83,
+                "statuses": {
+                  "source_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 55,
+                "statuses": {
+                  "source_returned": 5
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 138,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "available": {
+            "prior": false,
+            "prepared": false
+          },
+          "directions": {},
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "available": {
+            "prior": true,
+            "prepared": false
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 131,
+                "statuses": {
+                  "source_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_unseen_neighbors": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 131,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "available": {
+            "prior": true,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_definition_at_line": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_definition_at_line": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_returned_neighbors": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "no_unseen_neighbors": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "available": {
+            "prior": false,
+            "prepared": true
+          },
+          "directions": {
+            "prior": {
+              "incoming": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 0,
+                "statuses": {
+                  "graph_unavailable": 1
+                }
+              }
+            },
+            "prepared": {
+              "incoming": {
+                "new_physical_lines": 158,
+                "statuses": {
+                  "source_returned": 2,
+                  "source_not_returned": 1
+                }
+              },
+              "outgoing": {
+                "new_physical_lines": 56,
+                "statuses": {
+                  "source_returned": 4,
+                  "source_not_returned": 1
+                }
+              }
+            }
+          },
+          "union_directions": {
+            "prior": {
+              "new_physical_lines": 0,
+              "new_annotated_physical_lines": 0
+            },
+            "prepared": {
+              "new_physical_lines": 214,
+              "new_annotated_physical_lines": 11
+            }
+          }
+        }
+      ],
+      "interpretation": "Fixed native-trace prefixes and identical anchors per task, with annotation overlap checked after source selection. No model calls, autonomous adoption, or Recall/F1. More available graphs do not establish useful source or quality gains."
+    },
+    "prospective_composition": {
+      "protocol": {
+        "scope": "New graph input for future development only. No change to earlier retrieval or graph-build results; no model calls or new compiler builds.",
+        "selection": "Retain all 24 tasks. Prefer a newly prepared available graph; otherwise reuse the prior authenticated graph for the identical selected source. If neither is available, retain the fresh failure. No annotations, scores or model outputs select artifacts.",
+        "input_manifest_sha256": {
+          "fresh": "f701d2cac13757112ed0017c2312eccc3aba12bda1a352a642913b4c1502e7f7",
+          "fallback": "1d8de298ffb44da0aa511ce439b4dab60ac85d0d3517cbcefdede2dffcfdec11"
+        },
+        "source_manifest_sha256": "3574d68ad8832273efc58cae36db0b2361ec80a764e1714a16e5a89f5daaa43f",
+        "builder_sha256": "d20238cdaca8febdf7707c351b4a9c026078db9b17c33ce9ac2809d7b3c232b4",
+        "model_calls": 0,
+        "new_compiler_builds": 0
+      },
+      "manifest_sha256": "21310839449890abf2bf4e43a4623b58fd8bb42c93a158096a0db2f1d9ccac82",
+      "selected": 24,
+      "available": 19,
+      "fresh_available": 14,
+      "fallback_available": 5,
+      "unavailable": 5,
+      "all_source_snapshots_audited": true,
+      "all_copied_bytes_authenticated": true,
+      "model_calls": 0,
+      "new_compiler_builds": 0,
+      "interpretation": "A separate future-development input retains all 24 tasks, using 14 fresh graphs and five authenticated same-source prior graphs. Earlier 11/24 and 14/24 build records and all retrieval outcomes remain unchanged. It has not been used in an online quality run."
+    }
   }
 }
