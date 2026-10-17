@@ -375,6 +375,14 @@ raises the source pipeline estimate to $0.683119 versus issue-only $0.130250,
 so neither resolution nor pipeline-cost gates pass. There are no notes or new
 retrieval calls. Report its repair cost separately from the upstream Opus
 retrieval allocation. No revised independent or leaderboard gain is established.
+The current user-directed priority is pure ContextBench retrieval: no further
+repair or native-harness batch before a useful context strategy passes its
+retrieval gate. The eight-task source-gap audit finds 1,768 missing annotated
+lines inside observed files and 773 in unobserved files, retaining 125 unavailable
+lines in official scores. Source-bound file-symbol navigation passes 91 local
+tests and preserves all source credit on fixed traces. Its frozen four-task
+native/file-map Opus comparison has a $5 API reservation and zero repair calls;
+o quality result is available yet. Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
