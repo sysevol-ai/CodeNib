@@ -39,11 +39,11 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Function-only completion has no demonstrated gain: independent-32 Recall/F1 is 68.56%/28.22% versus native 69.64%/29.01%; the latest separate development eight is 72.14%/32.95% versus native 77.90%/33.67%. Conversation-aware completion removes duplicate delivery while preserving fixed-trace source. The bounded file-remainder replay remains rejected by its F1 gate. A canonical fixed-trace grep-only ablation loses 219/ten annotated lines in the first-source 24/latest eight, including 150/seven absent from native, and fails its preservation gate. | Retain useful grep and read completion; do not remove read completion wholesale from the early raw-path attribution counts. Do not ship the rejected file-remainder policy or advance it to model calls. Prioritize relevant source selection and fresh matched validation over more automatic source volume. |
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
-| Matched experiment | The latest eight-task native/function/late-graph controls are complete: 24/24 runs and official scores, no missing usage, matching runtime/source hashes and no API-key route. The independent 32-task validation remains complete and negative; the earlier interrupted first-source ablation remains preserved. | Retain every failed gate and interrupted attempt. A completed run establishes reliability, not a policy effect. Keep all 32 validation tasks sealed and require useful fresh matched evidence plus a new independent protocol for a revised policy. |
+| Matched experiment | The latest eight-task native/chunks/Jev comparison completes 24/24 sessions with actual Opus 5.5 on the explicitly authorized Anthropic API route. All usage, runtime/source hashes and delivered replies verify. The quality gate fails. The independent 32 remains complete and negative; earlier interrupted attempts remain preserved. | Retain every failed gate and selected task. Completion establishes reliability, not a policy effect. Keep independent 32 sealed and require a new protocol and untouched task IDs after a useful development result. |
 | Directed graph navigation | The late-only eight-task comparison completes all 24 runs and scores, but fails its mechanism gate and both primary intervals include zero. Disabling fallback reproduces every reply. Source-bound C++ callable fixes and TypeScript/Java preparation raise available graphs from five to seven; the same eight queries add 146 physical lines and zero annotated lines. C correctly fails on seven tracked submodule build-helper changes. Prior quality gates remain failed. | Keep the compiler correctness fixes without claiming retrieval gains. Do not retry or promote the policy from availability alone. Relevant source selection, active SCIP assigned-function coverage and explicit treatment of tracked build overlays remain open. Nearby-anchor windows and earlier omitted-neighbor audits do not justify more source budget. Preserve canonical paths, sealed independent 32 and full-500 gates. |
 | Sparse discovery | The current production BM25 probe completes all 24 disclosed tasks with every corpus node source-checked. A frozen 2K source union adds 38 annotated lines but reduces F1 from 31.18% to 26.62%; the overlapping latest eight add none. Both static-injection and selective-discovery opportunity gates fail. | Do not add this injection policy or a BM25 agent tool, or advance it to paid comparisons. Preserve source-bound evidence and investigate a separately supported selection hypothesis. |
-| Candidate reranking | The frozen 24-task original Opus grep pools contain 484 candidates; at the same 4K budget, Jev improves Recall/F1 32.46%/22.90% to 36.56%/28.52%. All 55 calls succeed for $0.012341112; the ranking gate passes and static-addition gate fails. The earlier BM25/Jev ordering control remains separate: its 2K ranking improves, but the full pool covers only 11.99% of annotated source and injection fails. | Stop BM25 variants. Prioritize selective Jev ranking before adaptive grep/function source delivery, then a fresh matched online-agent comparison without graphs. Freeze billing/model/source budgets, retain failures, and keep independent 32 sealed. Do not present source unions as online gains or advance to full 500. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. The C ponyc pilot passes native/source gates, but its fresh native/functions repairs fail (12/11 tests); its graph arm ends in a retained budget error with no prediction. Terminal usage is recovered offline and the accounting bug is fixed. Controlled search now shares the reader boundary: a zero-model native-container fixture verifies file-qualified matches, truncation and changed-file exclusion; the prior fixture command failure remains retained. An actual-model C check has nine confirmed calls and two reads, but zero searches; its repair fails eleven tests and both containers are removed. | Keep the failed actual search-adoption gate. Freeze fresh matched solver runs with the common reader/search instructions and use actual repair/test feedback to guide retrieval. Scripted instrumentation checks do not override failed actual adoption or establish quality. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. The C compatibility cases are grader-added and the casting/call implementation was already delivered; do not infer a missing source gap or expand those functions again. Use separately supported retrieval hypotheses before more paid comparisons; establish broader matched outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
+| Candidate reranking | The same-pool 24-task grep/Jev control improves 4K Recall/F1 from 32.46%/22.90% to 36.56%/28.52%, but the fresh eight-task online comparison rejects automatic grep source blocks. Native/chunks/Jev Recall is 42.36%/47.29%/40.97%, F1 36.80%/35.02%/31.94%. Jev versus native loses 4.86 F1 points; 95% interval [-9.05, -1.48]. Of 38 live Jev views, 31 reorder candidates and only 12 change delivered source selection. | Do not promote or expand this policy. Stop BM25 variants. Diagnose ranking against the current search intent and whether a bounded selection actually changes. The matched repair check below establishes no success-rate gain. Require useful new development and independent evidence before full 500. |
+| Complete solver | The fresh native/Jev repair check completes all four preselected attempts on two compatible development tasks. Both fmt repairs pass 18 native tests; calls are 6/3 and repair SDK estimates $0.771102/$0.361354. Both ponyc attempts stop at their $3 guards without a prediction; each arm resolves 1/2 selected tasks. A documented execution amendment completes only the unrun Jev C arm after the original generic error stop, without retry or budget increase. Its four reads/three searches add 130 original-source lines, establishing narrow actual search adoption but no repair gain. All usage and owned-container cleanup verify. SDK budget exceptions were bypassing patch collection; the prospective fix preserves executed edits while retaining error status and excluding terminal output from source credit. Prior Verified, fmt and Gson pairs resolve equally; earlier C native-test failures remain retained. | Freeze the new patch-collection policy before another matched comparison; do not rescore lost historical patches. Use actual repair/test outcomes and cost under common budgets. One C++ efficiency pair cannot establish stable savings or comparative Pass@1. Source attribution remains partial for arbitrary shell output and modified files. Broader supported native harnesses, explicit tracked-build overlays and a useful retrieval/agent policy remain open. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -85,9 +85,10 @@ The evaluation sequence remains:
 
 The paired offline decision-selection and touched-function controls below are complete.
 Reranking already improves the fixed 4K development payload, while reordering
-the much larger already-observed 16K/32K native payload changes little. The next
-selection hypothesis therefore ranks candidates before source delivery, without
-requiring graph expansion. Historical Jev results on CodeNib Base and Perplexity
+the much larger already-observed 16K/32K native payload changes little. The subsequent online source-block comparison tests ranking before delivery
+and fails its quality gate; its paired repair outcomes also establish no success-rate
+gain. The next candidate must address actual search intent and repair failures.
+Graph expansion is not required. Historical Jev results on CodeNib Base and Perplexity
 decision results on ContextBench remain distinct; neither establishes an online
 agent improvement. Keep the completed independent 32 sealed.
 The requested Claude subscription alternative is implemented through the official
@@ -106,37 +107,31 @@ SDK dollar metering and account billing remain separate. Meter guards and a
 per-case timeout stop new work when a run reaches its limit; an in-flight call
 can exceed an observed guard. Unknown or invalid metering stops later cases.
 
-The completed independent retrieval arms report **$23.673179** in SDK estimates;
-their one-task paired solver check adds **$0.828001**. Across this October 16
-program, known metering totals **$71.960832**, plus one aborted development solver
-attempt and one interrupted retrieval case with unknown metering. Two separately
-frozen October 17 reader-adoption checks add $0.695992 and $0.932850, bringing
-the subtotal to $73.589674. The fresh paired Gson solver check adds $1.088503,
-bringing the subtotal to $74.678177. The C three-arm comparison adds $8.115611,
-including $0.321885 recovered from its preserved terminal event, bringing
-the subtotal to **$82.793787**. The separate late-only eight-task three-arm
-retrieval follow-up adds **$5.087257**, bringing known cumulative metering to
-**$87.881044**. The actual-model controlled-search check adds $2.284219,
-bringing known SDK estimates to **$90.165263** with the same two historical
-unknowns. Main-model API-key inference remains zero. The separately frozen Jev
-controls record 151 API calls for **$0.038084970**, with no unknown cost receipts,
-within their small reservations and the authorized $100 envelope. These are not
-automatic main-model API fallbacks. Direct Anthropic API access is separately
-authorized and verified for Opus 5.5, but has not run benchmark inference yet.
-Freeze this route and its budget before using it in both arms of a new comparison;
-keep provider usage separate from subscription metering and account credit.
-Actual subscription billing is unknown. The independent
-quality gate fails, so this policy does not advance to the full-500 run.
-The later early-hop/unseen development trial contributes $7.266208 in retrieval
-estimates and $1.367794 for its new paired solver attempts to that program total.
-The two later one-task graph mechanism versions add $0.327116, with no standalone
-API-key inference or quality score.
-The C++ range and JavaScript compiler/LSP diagnoses add no model calls or API
-spend. The latter's accepted complete graph takes 377.57 seconds locally; its
-initial cleanup and executable-resolution failures remain separate records.
-The first-source 24-task development attempt adds $12.831086 in known retrieval
-estimates; its separate receipt-fix reliability smoke adds $0.426619. The failed
-function-only arm retains its unknown usage rather than substituting the smoke.
+Across the October 16–17 program, known Claude Max SDK estimates total
+**$97.40790440**, including **$7.24264130** for the latest four matched repair
+attempts. The same two historical attempts remain unmetered: the aborted
+`solver-smoke-functions-v2` attempt and the interrupted first-source function
+arm's C task. Their costs are not filled from later runs.
+
+The latest online comparison makes 24 direct Anthropic API sessions, with
+**$5.49084920** in SDK estimates, plus 55 Jev decisions for **$0.00552048**.
+Its combined **$5.49636968** is within the frozen $10 reservation. Across the
+three dedicated Jev controls there are 206 decisions for **$0.04360545**.
+Known SDK estimates across both main-model routes total **$102.89875360**;
+known API usage value across direct Anthropic and these Jev controls is
+**$5.53445465**. SDK sessions and individual decision requests are different
+counting units. No latest-batch usage is missing and no automatic API fallback
+occurs. Remaining promotional credit and actual account charges are unverified and
+are not substituted for usage.
+The additional $100 cash ceiling remains in force.
+
+The original C repair driver stopped at a metered native budget exception.
+The explicit continuation runs only the already planned Jev C arm once, with
+the same $3 guard and unchanged total $10 repair reservation. Both C attempts
+remain budget failures. SDK guards can be exceeded by an in-flight call.
+The subsequent patch-export correction and final artifact audits make no model
+calls. Historical expense breakdowns remain in the public development export;
+none of these rejected policies advances to the full-500 run.
 
 The historical native search average is $0.9911/task (24 cases; median $0.690554,
 maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
