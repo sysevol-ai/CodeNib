@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 128.23406526,
+    "known_sdk_reported_estimate_usd": 140.86463386,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Current Claude SDK/Jev experiment ledger through completed eight-task nearby-source development comparison. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
+    "scope": "Current Claude SDK/Jev experiment ledger through completed nearby-source development comparison and independent32. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2804,10 +2804,10 @@
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
     "known_claude_max_sdk_estimate_usd": 112.5018556,
-    "known_anthropic_api_sdk_estimate_usd": 15.73220966,
-    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 72 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
-    "anthropic_api_sdk_sessions": 127,
-    "known_combined_api_usage_value_usd": 15.785408372,
+    "known_anthropic_api_sdk_estimate_usd": 28.36277826,
+    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 136 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
+    "anthropic_api_sdk_sessions": 191,
+    "known_combined_api_usage_value_usd": 28.415976972,
     "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
     "online_grep_jev_decision_api_cost_usd": 0.00552048,
     "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413,
@@ -2819,7 +2819,10 @@
     "file_map_retrieval_api_sdk_estimate_usd": 1.496507,
     "grep_neighbors_pilot_api_sdk_estimate_usd": 1.7605027,
     "grep_neighbors_replication_api_sdk_estimate_usd": 1.8852270999999998,
-    "grep_neighbors_total_api_sdk_estimate_usd": 3.6457298
+    "grep_neighbors_total_api_sdk_estimate_usd": 3.6457298,
+    "neighbors_independent32_api_sdk_estimate_usd": 12.630568599999995,
+    "neighbors_independent32_sdk_sessions": 64,
+    "unmetered_anthropic_independent32_sessions": 0
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -5052,7 +5055,7 @@
     }
   },
   "fresh_validation_pool": {
-    "scope": "Metadata-only inventory for a future validation protocol; no new task selection, annotation inspection or inference.",
+    "scope": "Historical metadata-only inventory before the current independent32 selection; no annotation inspection or inference at inventory time. See post_neighbors_validation_untouched_pool for current remaining counts.",
     "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
     "dataset_sha256": "e9dcfd504cbfb849ac815a79040c793d0d92f94eecc9b5a4ee3e1445a2f8a791",
     "columns_read": [
@@ -25548,7 +25551,7 @@
     "combined_analysis_sha256": "a66bc79b34db11286b94b35e7e8a0f3b86a592664be4d1251da11139a9ed589b"
   },
   "fresh_neighbors_independent32": {
-    "status": "Frozen and running; no independent quality result yet.",
+    "status": "The frozen independent Recall gate fails. Do not promote this unchanged policy into repairs, official500 or a product default. Positive development screening is preserved, but has not established a stable independent gain.",
     "scope": "Fresh independent task-level 32-case retrieval-only validation of the frozen hit-preserving neighborhood policy. Seven languages; no untouched C++ tasks remain. Not a repository-held-out or representative full500 estimate. Old independent32 remains sealed. No repairs/native tests.",
     "runtime_commit": "0a80e3bf3d0ed6e605e651f809161b608996a381",
     "protocol_sha256": "b4b92a3e2bd02a7fde3a86b6f86edeb83f23c2492e896ac5f3c6d4e3e0ccf038",
@@ -25633,6 +25636,1775 @@
         "confirmed_source_lines": 1,
         "unconfirmed_line_omitted": true
       }
+    },
+    "analysis": {
+      "scope": "Fresh independent task-level 32-case retrieval-only validation of the frozen hit-preserving neighborhood policy. Seven languages; no untouched C++ tasks remain. Not a repository-held-out or representative full500 estimate. Old independent32 remains sealed. No repairs/native tests.",
+      "protocol_sha256": "b4b92a3e2bd02a7fde3a86b6f86edeb83f23c2492e896ac5f3c6d4e3e0ccf038",
+      "runtime_commit": "0a80e3bf3d0ed6e605e651f809161b608996a381",
+      "selection_sha256": "956370f5959465b10fe874811847d437fb1c98638b96a3573402874ee0023d7f",
+      "tasks_per_arm": 32,
+      "repositories": 21,
+      "languages": {
+        "c": 4,
+        "python": 8,
+        "javascript": 4,
+        "java": 4,
+        "go": 4,
+        "typescript": 4,
+        "rust": 4
+      },
+      "rows": [
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b9b45262",
+          "repo": "facebook/zstd",
+          "repo_url": "https://github.com/facebook/zstd.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.5465633999999999,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1665,
+          "tool_calls": {
+            "glob": 4,
+            "grep": 6,
+            "read": 10
+          },
+          "sdk_turns": 21,
+          "metrics": {
+            "recall": 0.21875,
+            "precision": 0.008408408408408409,
+            "f1": 0.016194331983805668
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__9c878ad5",
+          "repo": "ansible/ansible",
+          "repo_url": "https://github.com/ansible/ansible.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.16450030000000002,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 502,
+          "tool_calls": {
+            "read": 4,
+            "grep": 3
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.9216867469879518,
+            "precision": 0.3047808764940239,
+            "f1": 0.45808383233532934
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__b31d2f53",
+          "repo": "iamkun/dayjs",
+          "repo_url": "https://github.com/iamkun/dayjs.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.0807602,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 244,
+          "tool_calls": {
+            "read": 4,
+            "grep": 2,
+            "glob": 1
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.14527027027027026,
+            "precision": 0.3524590163934426,
+            "f1": 0.20574162679425836
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__2bd87230",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-databind.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.1389317,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 331,
+          "tool_calls": {
+            "grep": 3,
+            "read": 5
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.14285714285714285,
+            "precision": 0.0030211480362537764,
+            "f1": 0.005917159763313609
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__b10492be",
+          "repo": "django/django",
+          "repo_url": "https://github.com/django/django.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.1019803,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 254,
+          "tool_calls": {
+            "grep": 3,
+            "read": 5
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.2830188679245283,
+            "precision": 0.23622047244094488,
+            "f1": 0.2575107296137339
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__3d1b3145",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.11487610000000001,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 690,
+          "tool_calls": {
+            "grep": 1,
+            "read": 3
+          },
+          "sdk_turns": 5,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.02753623188405797,
+            "f1": 0.0535966149506347
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a14d0e2e",
+          "repo": "matplotlib/matplotlib",
+          "repo_url": "https://github.com/matplotlib/matplotlib.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.0699112,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 145,
+          "tool_calls": {
+            "grep": 4,
+            "read": 2
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.5079365079365079,
+            "precision": 0.8827586206896552,
+            "f1": 0.6448362720403022
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__6a53360d",
+          "repo": "vuejs/core",
+          "repo_url": "https://github.com/vuejs/core.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.1069804,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 265,
+          "tool_calls": {
+            "read": 3,
+            "grep": 5
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.6842105263157895,
+            "precision": 0.04905660377358491,
+            "f1": 0.09154929577464789
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__a7aba10f",
+          "repo": "mui/material",
+          "repo_url": "https://github.com/mui/material-ui.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.2165217,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 765,
+          "tool_calls": {
+            "glob": 6,
+            "grep": 5,
+            "read": 6
+          },
+          "sdk_turns": 18,
+          "metrics": {
+            "recall": 0.5776614310645725,
+            "precision": 0.4326797385620915,
+            "f1": 0.4947683109118087
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__37f525d2",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.1384774,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 710,
+          "tool_calls": {
+            "grep": 3,
+            "read": 5
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.023943661971830985,
+            "f1": 0.04676753782668501
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-PolyBench__python__maintenance__bugfix__8b1080ea",
+          "repo": "keras-team/keras",
+          "repo_url": "https://github.com/keras-team/keras.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.21250110000000003,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 857,
+          "tool_calls": {
+            "grep": 5,
+            "read": 6
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.208,
+            "precision": 0.030338389731621937,
+            "f1": 0.0529531568228106
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__0498ad7f",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.3437835,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1188,
+          "tool_calls": {
+            "grep": 8,
+            "glob": 5,
+            "read": 7
+          },
+          "sdk_turns": 21,
+          "metrics": {
+            "recall": 0.0,
+            "precision": 0.0,
+            "f1": 0
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__908342f0",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.1620258,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 732,
+          "tool_calls": {
+            "grep": 5,
+            "read": 5
+          },
+          "sdk_turns": 11,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.023224043715846996,
+            "f1": 0.045393858477970624
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__28ed0b77",
+          "repo": "sphinx-doc/sphinx",
+          "repo_url": "https://github.com/sphinx-doc/sphinx.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.1155273,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 207,
+          "tool_calls": {
+            "grep": 4,
+            "read": 2
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.4892703862660944,
+            "precision": 0.5507246376811594,
+            "f1": 0.5181818181818182
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__2a889a1d",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.35007849999999996,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 2089,
+          "tool_calls": {
+            "grep": 6,
+            "glob": 2,
+            "read": 11
+          },
+          "sdk_turns": 20,
+          "metrics": {
+            "recall": 0.0,
+            "precision": 0.0,
+            "f1": 0
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__1ba303a5",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.17099530000000002,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1113,
+          "tool_calls": {
+            "grep": 1,
+            "read": 4
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.7170454545454545,
+            "precision": 0.5669362084456424,
+            "f1": 0.6332162568991471
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__7b6185af",
+          "repo": "NodeBB/NodeBB",
+          "repo_url": "https://github.com/NodeBB/NodeBB.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.2110507,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1157,
+          "tool_calls": {
+            "grep": 5,
+            "read": 10
+          },
+          "sdk_turns": 16,
+          "metrics": {
+            "recall": 0.5364891518737672,
+            "precision": 0.23509075194468454,
+            "f1": 0.32692307692307687
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__2487b02a",
+          "repo": "microsoft/vscode",
+          "repo_url": "https://github.com/microsoft/vscode.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.1991387,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 927,
+          "tool_calls": {
+            "glob": 5,
+            "grep": 2,
+            "read": 3
+          },
+          "sdk_turns": 11,
+          "metrics": {
+            "recall": 0.8679245283018868,
+            "precision": 0.04962243797195254,
+            "f1": 0.09387755102040816
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__8f9042e3",
+          "repo": "ponylang/ponyc",
+          "repo_url": "https://github.com/ponylang/ponyc.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.42183820000000005,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 2030,
+          "tool_calls": {
+            "grep": 10,
+            "read": 12,
+            "glob": 1
+          },
+          "sdk_turns": 24,
+          "metrics": {
+            "recall": 0.9895397489539749,
+            "precision": 0.2330049261083744,
+            "f1": 0.3771929824561404
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__2d7a3934",
+          "repo": "prettier/prettier",
+          "repo_url": "https://github.com/prettier/prettier.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.114116,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 470,
+          "tool_calls": {
+            "grep": 4,
+            "read": 6
+          },
+          "sdk_turns": 11,
+          "metrics": {
+            "recall": 0.6426966292134831,
+            "precision": 0.6085106382978723,
+            "f1": 0.625136612021858
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__6da325be",
+          "repo": "mui/material-ui",
+          "repo_url": "https://github.com/mui/material-ui.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.1383723,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 680,
+          "tool_calls": {
+            "grep": 3,
+            "read": 3
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.07647058823529412,
+            "f1": 0.14207650273224046
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__deb49033",
+          "repo": "astropy/astropy",
+          "repo_url": "https://github.com/astropy/astropy.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.2801569,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1095,
+          "tool_calls": {
+            "glob": 1,
+            "read": 11,
+            "grep": 3
+          },
+          "sdk_turns": 16,
+          "metrics": {
+            "recall": 0.6567656765676567,
+            "precision": 0.1817351598173516,
+            "f1": 0.28469241773962806
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4f130690",
+          "repo": "scikit-learn/scikit-learn",
+          "repo_url": "https://github.com/scikit-learn/scikit-learn.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.0879306,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 254,
+          "tool_calls": {
+            "grep": 3,
+            "read": 3
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.813953488372093,
+            "precision": 0.41338582677165353,
+            "f1": 0.5483028720626631
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__36a08326",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-databind.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.1583332,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 508,
+          "tool_calls": {
+            "grep": 5,
+            "read": 6
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.43243243243243246,
+            "precision": 0.4094488188976378,
+            "f1": 0.42062689585439844
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__c9cd2b2c",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.0652803,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 205,
+          "tool_calls": {
+            "grep": 4,
+            "read": 3
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.9473684210526315,
+            "precision": 0.08780487804878048,
+            "f1": 0.1607142857142857
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__1e842312",
+          "repo": "ponylang/ponyc",
+          "repo_url": "https://github.com/ponylang/ponyc.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.2037289,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1079,
+          "tool_calls": {
+            "grep": 4,
+            "read": 9
+          },
+          "sdk_turns": 14,
+          "metrics": {
+            "recall": 0.9795918367346939,
+            "precision": 0.2669138090824838,
+            "f1": 0.4195193008011653
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3c69099b",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.20715050000000002,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1036,
+          "tool_calls": {
+            "grep": 2,
+            "read": 12
+          },
+          "sdk_turns": 15,
+          "metrics": {
+            "recall": 0.9243697478991597,
+            "precision": 0.21235521235521235,
+            "f1": 0.3453689167974882
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__f0db9a27",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-core.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.1462275,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 541,
+          "tool_calls": {
+            "grep": 6,
+            "glob": 4,
+            "read": 3
+          },
+          "sdk_turns": 14,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.031423290203327174,
+            "f1": 0.06093189964157707
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__5eea2978",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-core.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.32082560000000004,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1146,
+          "tool_calls": {
+            "grep": 7,
+            "read": 9
+          },
+          "sdk_turns": 17,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.06631762652705062,
+            "f1": 0.12438625204582653
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__6b844996",
+          "repo": "facebook/zstd",
+          "repo_url": "https://github.com/facebook/zstd.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.18868559999999998,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 633,
+          "tool_calls": {
+            "grep": 6,
+            "read": 5
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.7410071942446043,
+            "precision": 0.1627172195892575,
+            "f1": 0.2668393782383419
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__593287ea",
+          "repo": "element-hq/element-web",
+          "repo_url": "https://github.com/element-hq/element-web.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.2424598,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 892,
+          "tool_calls": {
+            "glob": 2,
+            "grep": 7,
+            "read": 13
+          },
+          "sdk_turns": 23,
+          "metrics": {
+            "recall": 0.5372340425531915,
+            "precision": 0.226457399103139,
+            "f1": 0.31861198738170343
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__e5236b5f",
+          "repo": "pytest-dev/pytest",
+          "repo_url": "https://github.com/pytest-dev/pytest.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.08886540000000001,
+          "grep_views": 0,
+          "confirmed_grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 212,
+          "tool_calls": {
+            "grep": 3,
+            "read": 3
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.18867924528301888,
+            "f1": 0.3174603174603175
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b9b45262",
+          "repo": "facebook/zstd",
+          "repo_url": "https://github.com/facebook/zstd.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.23760240000000002,
+          "grep_views": 2,
+          "confirmed_grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 155,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 981,
+          "tool_calls": {
+            "grep": 3,
+            "read": 4
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.21875,
+            "precision": 0.014271151885830785,
+            "f1": 0.026794258373205742
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__9c878ad5",
+          "repo": "ansible/ansible",
+          "repo_url": "https://github.com/ansible/ansible.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.2249871,
+          "grep_views": 2,
+          "confirmed_grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 205,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 794,
+          "tool_calls": {
+            "read": 3,
+            "grep": 3
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.9518072289156626,
+            "precision": 0.19899244332493704,
+            "f1": 0.3291666666666666
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__b31d2f53",
+          "repo": "iamkun/dayjs",
+          "repo_url": "https://github.com/iamkun/dayjs.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.10231589999999999,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 237,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 319,
+          "tool_calls": {
+            "glob": 2,
+            "grep": 4,
+            "read": 1
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.10810810810810811,
+            "precision": 0.2006269592476489,
+            "f1": 0.14050493962678376
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__2bd87230",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-databind.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.2652103,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 279,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 722,
+          "tool_calls": {
+            "grep": 6,
+            "read": 5
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.42857142857142855,
+            "precision": 0.004155124653739612,
+            "f1": 0.00823045267489712
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__b10492be",
+          "repo": "django/django",
+          "repo_url": "https://github.com/django/django.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.1180727,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 230,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 390,
+          "tool_calls": {
+            "grep": 3,
+            "read": 2
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.2830188679245283,
+            "precision": 0.15384615384615385,
+            "f1": 0.19933554817275748
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__3d1b3145",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.09138349999999999,
+          "grep_views": 1,
+          "confirmed_grep_views": 1,
+          "views_with_added_source": 1,
+          "appended_line_deliveries": 120,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 435,
+          "tool_calls": {
+            "read": 2,
+            "grep": 1
+          },
+          "sdk_turns": 4,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.04367816091954023,
+            "f1": 0.08370044052863436
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__a14d0e2e",
+          "repo": "matplotlib/matplotlib",
+          "repo_url": "https://github.com/matplotlib/matplotlib.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.0621638,
+          "grep_views": 2,
+          "confirmed_grep_views": 2,
+          "views_with_added_source": 1,
+          "appended_line_deliveries": 110,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 161,
+          "tool_calls": {
+            "grep": 2,
+            "read": 1
+          },
+          "sdk_turns": 4,
+          "metrics": {
+            "recall": 0.5476190476190477,
+            "precision": 0.8571428571428571,
+            "f1": 0.6682808716707023
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__6a53360d",
+          "repo": "vuejs/core",
+          "repo_url": "https://github.com/vuejs/core.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.1594738,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 334,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 502,
+          "tool_calls": {
+            "grep": 5,
+            "read": 2
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.6842105263157895,
+            "precision": 0.025896414342629483,
+            "f1": 0.04990403071017275
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__a7aba10f",
+          "repo": "mui/material",
+          "repo_url": "https://github.com/mui/material-ui.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.23219109999999998,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 294,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 933,
+          "tool_calls": {
+            "glob": 1,
+            "grep": 4,
+            "read": 6
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.6457242582897034,
+            "precision": 0.3965702036441586,
+            "f1": 0.49136786188579024
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__37f525d2",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.1295828,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 294,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 453,
+          "tool_calls": {
+            "grep": 4,
+            "read": 3
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.037527593818984545,
+            "f1": 0.07234042553191489
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-PolyBench__python__maintenance__bugfix__8b1080ea",
+          "repo": "keras-team/keras",
+          "repo_url": "https://github.com/keras-team/keras.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.2504847,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 374,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1130,
+          "tool_calls": {
+            "grep": 4,
+            "read": 5
+          },
+          "sdk_turns": 10,
+          "metrics": {
+            "recall": 0.36,
+            "precision": 0.03982300884955752,
+            "f1": 0.07171314741035856
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__0498ad7f",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.13459369999999998,
+          "grep_views": 1,
+          "confirmed_grep_views": 1,
+          "views_with_added_source": 1,
+          "appended_line_deliveries": 92,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 747,
+          "tool_calls": {
+            "grep": 2,
+            "read": 3
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.02677376171352075,
+            "f1": 0.05215123859191656
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__908342f0",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.21060700000000002,
+          "grep_views": 6,
+          "confirmed_grep_views": 6,
+          "views_with_added_source": 6,
+          "appended_line_deliveries": 676,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 927,
+          "tool_calls": {
+            "grep": 6,
+            "read": 3
+          },
+          "sdk_turns": 10,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.018338727076591153,
+            "f1": 0.036016949152542374
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__28ed0b77",
+          "repo": "sphinx-doc/sphinx",
+          "repo_url": "https://github.com/sphinx-doc/sphinx.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.18718070000000003,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 291,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 359,
+          "tool_calls": {
+            "grep": 4,
+            "read": 2,
+            "glob": 3
+          },
+          "sdk_turns": 10,
+          "metrics": {
+            "recall": 0.6051502145922747,
+            "precision": 0.39275766016713093,
+            "f1": 0.4763513513513513
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__2a889a1d",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.295301,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 516,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1313,
+          "tool_calls": {
+            "grep": 4,
+            "read": 13
+          },
+          "sdk_turns": 18,
+          "metrics": {
+            "recall": 0.14705882352941177,
+            "precision": 0.003808073115003808,
+            "f1": 0.007423904974016333
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__1ba303a5",
+          "repo": "cli/cli",
+          "repo_url": "https://github.com/cli/cli.git",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.2054453,
+          "grep_views": 2,
+          "confirmed_grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 201,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 955,
+          "tool_calls": {
+            "grep": 2,
+            "read": 4
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.6318181818181818,
+            "precision": 0.5821989528795811,
+            "f1": 0.6059945504087194
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__7b6185af",
+          "repo": "NodeBB/NodeBB",
+          "repo_url": "https://github.com/NodeBB/NodeBB.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.2573728,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 594,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1205,
+          "tool_calls": {
+            "grep": 5,
+            "read": 7
+          },
+          "sdk_turns": 13,
+          "metrics": {
+            "recall": 0.5187376725838264,
+            "precision": 0.21825726141078838,
+            "f1": 0.3072429906542056
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__2487b02a",
+          "repo": "microsoft/vscode",
+          "repo_url": "https://github.com/microsoft/vscode.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.2622527,
+          "grep_views": 2,
+          "confirmed_grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 135,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1071,
+          "tool_calls": {
+            "glob": 1,
+            "grep": 3,
+            "read": 4
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.9056603773584906,
+            "precision": 0.04481792717086835,
+            "f1": 0.08540925266903915
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__8f9042e3",
+          "repo": "ponylang/ponyc",
+          "repo_url": "https://github.com/ponylang/ponyc.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.4199812,
+          "grep_views": 6,
+          "confirmed_grep_views": 6,
+          "views_with_added_source": 6,
+          "appended_line_deliveries": 618,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1970,
+          "tool_calls": {
+            "grep": 7,
+            "read": 7,
+            "glob": 1
+          },
+          "sdk_turns": 16,
+          "metrics": {
+            "recall": 0.997907949790795,
+            "precision": 0.24213197969543146,
+            "f1": 0.3897058823529411
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__2d7a3934",
+          "repo": "prettier/prettier",
+          "repo_url": "https://github.com/prettier/prettier.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.1527612,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 403,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 606,
+          "tool_calls": {
+            "grep": 4,
+            "read": 4
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.6494382022471911,
+            "precision": 0.4768976897689769,
+            "f1": 0.5499524262607042
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__6da325be",
+          "repo": "mui/material-ui",
+          "repo_url": "https://github.com/mui/material-ui.git",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.18583729999999998,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 380,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 704,
+          "tool_calls": {
+            "grep": 4,
+            "read": 4
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.07386363636363637,
+            "f1": 0.13756613756613756
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__deb49033",
+          "repo": "astropy/astropy",
+          "repo_url": "https://github.com/astropy/astropy.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.2590545,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 383,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 811,
+          "tool_calls": {
+            "glob": 1,
+            "read": 6,
+            "grep": 5
+          },
+          "sdk_turns": 13,
+          "metrics": {
+            "recall": 0.5544554455445545,
+            "precision": 0.20715166461159062,
+            "f1": 0.3016157989228007
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__4f130690",
+          "repo": "scikit-learn/scikit-learn",
+          "repo_url": "https://github.com/scikit-learn/scikit-learn.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.09288569999999999,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 160,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 240,
+          "tool_calls": {
+            "grep": 3,
+            "read": 1
+          },
+          "sdk_turns": 5,
+          "metrics": {
+            "recall": 0.6589147286821705,
+            "precision": 0.3541666666666667,
+            "f1": 0.4607046070460705
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__36a08326",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-databind.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.258035,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 253,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 811,
+          "tool_calls": {
+            "grep": 6,
+            "read": 5
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.4261954261954262,
+            "precision": 0.2527743526510481,
+            "f1": 0.3173374613003096
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__c9cd2b2c",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.0943443,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 267,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 283,
+          "tool_calls": {
+            "grep": 5
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.9473684210526315,
+            "precision": 0.0636042402826855,
+            "f1": 0.11920529801324503
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__1e842312",
+          "repo": "ponylang/ponyc",
+          "repo_url": "https://github.com/ponylang/ponyc.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.2750004,
+          "grep_views": 6,
+          "confirmed_grep_views": 6,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 591,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1376,
+          "tool_calls": {
+            "grep": 6,
+            "read": 5
+          },
+          "sdk_turns": 12,
+          "metrics": {
+            "recall": 0.9693877551020408,
+            "precision": 0.20712209302325582,
+            "f1": 0.34131736526946105
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3c69099b",
+          "repo": "clap-rs/clap",
+          "repo_url": "https://github.com/clap-rs/clap.git",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.18674300000000002,
+          "grep_views": 2,
+          "confirmed_grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 257,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 884,
+          "tool_calls": {
+            "grep": 2,
+            "read": 7
+          },
+          "sdk_turns": 10,
+          "metrics": {
+            "recall": 0.6428571428571429,
+            "precision": 0.17307692307692307,
+            "f1": 0.27272727272727276
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__f0db9a27",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-core.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.2297221,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 4,
+          "appended_line_deliveries": 324,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 847,
+          "tool_calls": {
+            "grep": 5,
+            "read": 2,
+            "glob": 2
+          },
+          "sdk_turns": 10,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.020070838252656435,
+            "f1": 0.03935185185185185
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__5eea2978",
+          "repo": "fasterxml/jackson",
+          "repo_url": "https://github.com/fasterxml/jackson-core.git",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.35817030000000005,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 217,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1312,
+          "tool_calls": {
+            "grep": 4,
+            "read": 9,
+            "glob": 1
+          },
+          "sdk_turns": 15,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.057926829268292686,
+            "f1": 0.10951008645533142
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__6b844996",
+          "repo": "facebook/zstd",
+          "repo_url": "https://github.com/facebook/zstd.git",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.17916880000000002,
+          "grep_views": 4,
+          "confirmed_grep_views": 4,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 306,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 600,
+          "tool_calls": {
+            "grep": 4,
+            "read": 2
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.6258992805755396,
+            "precision": 0.145,
+            "f1": 0.23545331529093366
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__593287ea",
+          "repo": "element-hq/element-web",
+          "repo_url": "https://github.com/element-hq/element-web.git",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.27155640000000003,
+          "grep_views": 5,
+          "confirmed_grep_views": 5,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 474,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 1098,
+          "tool_calls": {
+            "glob": 1,
+            "grep": 7,
+            "read": 9
+          },
+          "sdk_turns": 18,
+          "metrics": {
+            "recall": 0.550531914893617,
+            "precision": 0.1885245901639344,
+            "f1": 0.2808683853459973
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__e5236b5f",
+          "repo": "pytest-dev/pytest",
+          "repo_url": "https://github.com/pytest-dev/pytest.git",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.1325127,
+          "grep_views": 3,
+          "confirmed_grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 298,
+          "unconfirmed_tool_replies_excluded": 0,
+          "confirmed_source_lines": 387,
+          "tool_calls": {
+            "grep": 4,
+            "read": 2
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 1.0,
+            "precision": 0.10335917312661498,
+            "f1": 0.18735362997658078
+          }
+        }
+      ],
+      "primary": {
+        "native": {
+          "recall": 0.6551587572614965,
+          "precision": 0.21693830895205174,
+          "f1": 0.2611678766021058,
+          "official_valid": 32
+        },
+        "neighbors": {
+          "recall": 0.6893497188302363,
+          "precision": 0.1820360347550386,
+          "f1": 0.232956199982291,
+          "official_valid": 32
+        }
+      },
+      "paired_differences": {
+        "recall": {
+          "mean_difference": 0.034190961568739846,
+          "repository_cluster_95_interval": [
+            -0.022676075522721578,
+            0.10084965455592514
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.03490227419701314,
+          "repository_cluster_95_interval": [
+            -0.05856450518712836,
+            -0.01659572590896617
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.02821167661981478,
+          "repository_cluster_95_interval": [
+            -0.04632130897774394,
+            -0.013158127328984442
+          ]
+        }
+      },
+      "language_macro_secondary": {
+        "native": {
+          "recall": 0.6615987284050168,
+          "precision": 0.1981326525718193,
+          "f1": 0.24344147654068155
+        },
+        "neighbors": {
+          "recall": 0.6992395798545873,
+          "precision": 0.16684047493905288,
+          "f1": 0.21811919960088103
+        }
+      },
+      "served_secondary": {
+        "native": {
+          "served_16384": {
+            "recall": 0.6551059700993344,
+            "precision": 0.22018444053376854,
+            "f1": 0.26502656827032667,
+            "official_valid": 32
+          },
+          "served_32768": {
+            "recall": 0.6551059700993344,
+            "precision": 0.21720527233450732,
+            "f1": 0.2612855125896857,
+            "official_valid": 32
+          }
+        },
+        "neighbors": {
+          "served_16384": {
+            "recall": 0.6885077767265095,
+            "precision": 0.1852481082068965,
+            "f1": 0.23669002261916033,
+            "official_valid": 32
+          },
+          "served_32768": {
+            "recall": 0.6885077767265095,
+            "precision": 0.18239849192351398,
+            "f1": 0.2331624612283883,
+            "official_valid": 32
+          }
+        }
+      },
+      "gates": {
+        "all_64_sessions_terminal": true,
+        "all_usage_known": true,
+        "one_actual_model_route": true,
+        "all_source_config_and_delivery_receipts_verified": true,
+        "unconfirmed_source_not_scored": true,
+        "gold_only_loaded_after_terminal_inference": true,
+        "all_official_scores_valid": true,
+        "positive_lower_recall_interval": false,
+        "usage_within_reservation": true
+      },
+      "independent_gate_passed": false,
+      "known_new_api_sdk_usd": 12.630568599999995,
+      "new_sdk_sessions": 64,
+      "repair_calls": 0,
+      "runtime_inputs_contained_gold": false,
+      "annotation_materialization_sha256": "6af8314e7afa9d2a6068920ad0d356c1cff6afaad7b0cf7fec1146b9e7033ed9",
+      "all_frozen_hashes_match": true,
+      "official500_started": false,
+      "scoring_correction_protocol_sha256": "0d2edff293b6fc63cf54657f22a1fa0c72512b6ea2d0fa7d72f284bcd0b3e41f"
+    },
+    "analysis_sha256": "b5ec503532f036920582f212b649db89d513c3c06d45cda93bed20dfa559c6f6",
+    "annotation_materialization_sha256": "6af8314e7afa9d2a6068920ad0d356c1cff6afaad7b0cf7fec1146b9e7033ed9",
+    "analysis_output_receipts_sha256": "5bd115d63518e484a571a87f00f38372c570632b881faba70b2f1d666ad01150",
+    "source_confirmed_scoring_exclusions": {
+      "native": 0,
+      "neighbors": 0
+    },
+    "api_sdk_estimate_usd": 12.630568599999995,
+    "annotation_source_audit": {
+      "scope": "Evaluation-only official canonical annotation/source issues; same gold paths and denominators retained in both arms. No remapping, filtering or runtime use.",
+      "cases_with_source_issues": 7,
+      "audit_sha256": "eb221be3d9025426d4b5390becbbd426e4487648a699b9a7c13f186582eed036",
+      "same_gold_paths_and_denominators_in_both_arms": true,
+      "all_selected_tasks_retained": 32
     }
-  }
+  },
+  "post_neighbors_validation_untouched_pool": {
+    "scope": "Metadata-only inventory after sealing current independent32, not a new task selection.",
+    "excluded_development": 105,
+    "excluded_validation_cohorts": 64,
+    "remaining": 331,
+    "remaining_per_language": {
+      "c": 7,
+      "cpp": 0,
+      "go": 22,
+      "java": 0,
+      "javascript": 40,
+      "python": 212,
+      "rust": 5,
+      "typescript": 45
+    },
+    "consequence": "No untouched C++ or Java remains. Do not recycle either validation cohort or imply that future samples preserve the current language coverage."
+  },
+  "latest_context_strategy_status": "independent_gate_not_passed"
 }

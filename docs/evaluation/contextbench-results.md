@@ -1,11 +1,15 @@
 # ContextBench retrieval experiments
 
-Hit-preserving nearby source passes its Recall-first development screen and
-unchanged-policy replication: across eight disclosed tasks, Recall improves
-35.24% → 38.91% while F1 falls 31.26% → 28.20%. Its interval includes zero.
-A fresh 32-task, seven-language pure-retrieval validation is now frozen and
-running. It excludes all 105 development tasks and the earlier independent32;
-no untouched C++ tasks remain. No independent or leaderboard gain is established.
+The latest hit-preserving nearby-source policy does **not** pass its frozen
+independent Recall gate. Across 32 new tasks in seven languages, Recall improves
+65.52% → 68.93% while F1 falls 26.12% → 23.30%. The +3.42-point Recall interval
+is [-2.27, +10.08], which includes zero. All 64 SDK sessions complete for
+$12.63056860, with no repair calls. This is not an established leaderboard gain.
+
+The earlier eight-task development screen and unchanged-policy replication have
+Recall 35.24% → 38.91% and F1 31.26% → 28.20%. Preserve those positive screening
+points, but do not promote this unchanged policy into repairs, official500 or a
+product default. Both validation cohorts remain sealed against tuning.
 
 Both eight-task online grep/Jev policies **fail their development gates**.
 Replacing grep replies with source blocks reduces Recall/F1 from
@@ -75,9 +79,41 @@ model/route, usage and delivery receipts. Resample canonical repository URLs
 5,000 times with seed 20261017. Report Precision, per-task macro F1, failures and
 cost without an F1 nondecrease veto. Equal-language macro and final 16K/32K
 served contexts are secondary. No interim scoring, outcome-based replacements,
-experiment retries or provider/model fallback is allowed. No quality result is
-available yet. Promotion requires passing independent gates and a separately
-measured official500 plan; neither repairs nor official500 starts automatically.
+experiment retries or provider/model fallback is allowed.
+
+The independent run is terminal: 64/64 SDK sessions are recorded, and all 32 selected
+tasks remain in each arm. All source, configuration, model, route,
+usage and delivery checks pass; both arms have 32 normal sessions and 32 valid
+official scores. No paid attempt was retried or replaced. Seven tasks have
+canonical annotation/source issues; keep those original paths and denominators unchanged
+in both arms, with all 32 tasks retained. These evaluation-only diagnostics never enter
+runtime inputs. Gold annotations were first loaded after immutable terminal output
+receipts; reference patches and native test labels remain unused.
+
+| Cumulative confirmed-source trajectory, all 32 tasks | Recall | Precision | F1 | API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 65.52% | 21.69% | 26.12% | $6.108574 |
+| Hit-preserving nearby source | 68.93% | 18.20% | 23.30% | $6.521994 |
+
+The paired Recall change is **+3.42 points**, repository-cluster 95% interval **[-2.27,
++10.08]** across 21 canonical repository clusters. F1 changes **-2.82 points**. The
+frozen independent Recall gate fails. Do not promote this unchanged policy into repairs,
+official500 or a product default. Positive development screening is preserved, but has
+not established a stable independent gain.
+
+Total API SDK usage is **$12.63056860**, against the $22 reservation, with **zero repair
+calls** and 0 missing-usage sessions. Unconfirmed trailing tool results excluded from
+scoring are `{"native": 0, "neighbors": 0}`; recomputed trajectory and served
+predictions use only confirmed exact source. Original SDK attempts and the pre-scoring
+correction remain immutable. Final served16K/32K and equal-language macros remain
+secondary in the sanitized export and never replace the primary.
+
+This new32 is now sealed against policy tuning, alongside the old32. The remaining
+untouched pool has 331 tasks and no C++ or Java cases; any later validation must
+explicitly revise coverage rather than recycle these tasks. The [official submission
+guide](https://github.com/ContextBench/contextbench.github.io/blob/main/submissions/README.md)
+requires real issue-resolution outcomes in addition to retrieval metrics; this
+context-only run is not a complete formal leaderboard submission.
 
 ## File-structure navigation: pure retrieval priority
 
@@ -1071,20 +1107,20 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 the historical results in this page do not describe that new policy.
 
 The current Claude SDK/Jev experiment ledger, through the completed eight-task
-nearby-source retrieval development comparison, has the following known usage
-values. This table excludes the
+nearby-source retrieval development comparison and independent32, has the
+following known usage values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
 costs remain separate. Actual account charges and credit deductions have not
 been reconciled.
 
 | Route | Known usage value | Billing interpretation |
 | --- | ---: | --- |
-| Direct Anthropic main-model SDK | $15.73220966 | API estimate; promotional-credit deduction unverified |
+| Direct Anthropic main-model SDK | $28.36277826 | API estimate; promotional-credit deduction unverified |
 | Separate Jev decisions | $0.053198712 | Metered API receipts |
-| **Combined API usage** | **$15.785408372** | **Usage value, not confirmed cash spending** |
+| **Combined API usage** | **$28.415976972** | **Usage value, not confirmed cash spending** |
 | Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
 
-Main-model SDK estimates across both routes sum to $128.23406526; that mixed-route
+Main-model SDK estimates across both routes sum to $140.86463386; that mixed-route
 sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
@@ -1092,11 +1128,12 @@ rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **281 Jev requests** for **$0.053198712**.
-Known API usage value totals **$15.785408372**, including the Haiku repairs
+Known API usage value totals **$28.415976972**, including the Haiku repairs
 and eight subsequent file-map sessions ($1.496507) plus eight nearby-source
 sessions ($1.76050270), plus eight remaining-four replication sessions
-($1.88522710). All nearby-source inference and scoring are terminal.
-The 72 retrieval sessions and 55 repair SDK queries are distinct from
+($1.88522710). The independent32 adds 64 SDK sessions for
+$12.63056860. All nearby-source inference and scoring are terminal.
+The 136 retrieval sessions and 55 repair SDK queries are distinct from
 individual underlying API request counts. The latest read-hint retrieval control costs
 **$4.848424762** against its $10 reservation; its four Max repairs add
 **$6.03557620**. No completed-batch usage is missing beyond the two historical
