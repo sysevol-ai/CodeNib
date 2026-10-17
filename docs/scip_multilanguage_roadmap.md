@@ -864,7 +864,7 @@ and overloaded operators, destructors and wrapped/qualified function names.
 Three source-bound development graphs regenerate with all symbol IDs, file
 identities, selection points and edges unchanged; 2,127 ranges and 101 conversion
 kinds are corrected. Existing materialized graphs require regeneration. The
-195-test targeted unit tier and three C++ integration tests pass with the rebuilt
+198-test targeted unit tier and three C++ integration tests pass with the rebuilt
 binding ([#834](https://github.com/sysevol-ai/CodeNib/pull/834)). This correctness
 repair changes neither the acceleration gate nor the prior performance claim.
 
