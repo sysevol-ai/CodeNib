@@ -250,7 +250,7 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
     )
     case = SimpleNamespace(source="Multi", repo="other/repo")
     monkeypatch.setattr(native, "load_inputs", lambda path: ({}, {"case": case}))
-    with pytest.raises(ValueError, match="fmt pilot only"):
+    with pytest.raises(ValueError, match="validated Multi"):
         delivered_input(tmp_path, "case", 16384)
     case.source = "Verified"
     path = tmp_path / "case.json"
@@ -260,16 +260,19 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
 
 
 @pytest.mark.parametrize(
-    "source,reference_artifacts,imported_provider_route",
+    "source,repo,reference_artifacts,imported_provider_route",
     [
-        ("Verified", False, False),
-        ("Multi", False, False),
-        ("Multi", True, False),
-        ("Multi", False, True),
+        ("Verified", "owner/repo", False, False),
+        ("Multi", "fmtlib/fmt", False, False),
+        ("Multi", "fmtlib/fmt", True, False),
+        ("Multi", "fmtlib/fmt", False, True),
+        ("Multi", "google/gson", False, False),
+        ("Multi", "google/gson", True, False),
+        ("Multi", "google/gson", False, True),
     ],
 )
 def test_solver_failure_removes_only_owned_container_before_completion(
-    monkeypatch, tmp_path, source, reference_artifacts, imported_provider_route
+    monkeypatch, tmp_path, source, repo, reference_artifacts, imported_provider_route
 ):
     import builtins
     import os
@@ -318,7 +321,7 @@ def test_solver_failure_removes_only_owned_container_before_completion(
                 base_commit="base",
                 problem_statement="issue",
                 source=source,
-                repo="fmtlib/fmt" if source == "Multi" else "owner/repo",
+                repo=repo,
             ),
             "source",
             "sha",
@@ -351,7 +354,9 @@ def test_solver_failure_removes_only_owned_container_before_completion(
 
     class Environment:
         def __init__(self, **kwargs):
-            assert kwargs["cwd"] == ("/home/fmt" if source == "Multi" else "/testbed")
+            assert kwargs["cwd"] == (
+                f"/home/{repo.split('/')[1]}" if source == "Multi" else "/testbed"
+            )
             self.container_id = "owned-container"
 
         def execute(self, command):

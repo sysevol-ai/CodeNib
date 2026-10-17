@@ -229,23 +229,30 @@ no model calls. Existing fmt receipts validate 411/375 initial source lines;
 their shell reads remain unattributed rather than reconstructed from requests.
 This source-checkout adapter creates no product tool or persistence boundary.
 Its partial coverage is not an official trajectory: arbitrary shell output and
-modified-file base coordinates remain open. A real one-task reader-adoption
-check fails: a compound invocation is reported as a missing shell command, so
-the model falls back to ordinary reads. Its production patch passes all 18
-native tests, but supplies no controlled-reader or comparative quality evidence.
-The exact invocation regression is fixed in the same adapter with explicit usage
-feedback; no shell interpreter or product tool is added. Real adoption of the
-corrected interface remains a gate before fresh matched solver runs and broader
-native harness coverage. The failed check retains its five calls, $0.695992 SDK
-estimate and zero new API-key charges; no model retry follows that protocol.
-The fmt pilot now
+modified-file base coordinates remain open. The first real reader-adoption
+check fails and retains its five calls and $0.695992 SDK estimate. The corrected
+usage feedback passes a separately frozen check: two confirmed standalone reads,
+eight calls and $0.932850 in SDK estimates. Its repeated fmt repair passes 18
+native tests, but both reads were already in the initial context and add zero
+original-source lines. The same environment adapter supplies the feedback;
+no shell interpreter or product tool is added. Both protocols remain separate,
+and source coverage stays partial. Fresh matched runs and relevant repair/test
+feedback remain required before a quality claim. New API-key charges remain zero.
+The fmt pilot
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair
 resolves one C++ task in both arms, 1/1 each, passing 18 tests with ten confirmed
 model inputs and $1.321802 in SDK estimates. This task had no graph during its
 original retrieval, so the result establishes no graph-source contribution or
-comparative Pass@1 gain. Other Multi repositories, Poly/Pro harnesses, broader
-matched outcomes and shell-source attribution remain open.
+comparative Pass@1 gain. The same adapter now supports the validated Gson Java
+pilot, with exact repository/task identity and three authenticated native script
+hashes. Its source-only reader and native reference/negative controls pass with
+zero model calls; all 96 required test classes pass for the reference while a
+known always-failing class remains recorded. These grading fixtures are not agent
+repairs. Reuse the existing scripts and native harness, without a backend registry
+or new product surface. Jackson's tracked build-configuration rewrite remains
+deferred. Fresh Java repair outcomes, other Multi repositories, Poly/Pro harnesses,
+broader matched outcomes and shell-source attribution remain open.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

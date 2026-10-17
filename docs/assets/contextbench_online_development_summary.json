@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 71.96083230000002,
+    "known_sdk_reported_estimate_usd": 73.58967420000002,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2786,7 +2786,9 @@
     "first_source_24_retrieval_sdk_estimate_usd": 12.8310857,
     "post_fix_reliability_sdk_estimate_usd": 0.42661920000000003,
     "multi_fmt_development_solver_sdk_estimate_usd": 1.3218016000000001,
-    "late_graph_8_retrieval_sdk_estimate_usd": 6.796706500000001
+    "late_graph_8_retrieval_sdk_estimate_usd": 6.796706500000001,
+    "reader_adoption_v1_sdk_estimate_usd": 0.6959919,
+    "reader_adoption_v2_sdk_estimate_usd": 0.93285
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -11519,5 +11521,343 @@
       "completion_source_followup.existing_source_attribution",
       "completion_source_followup.prepared_graph_fixed_query_replay"
     ]
+  },
+  "multi_gson_native_readiness": {
+    "scope": "One disclosed Java development task. Native reference/control, source-only preflight and synthetic adapter fixtures only; zero model calls and no agent repair score.",
+    "contextbench_instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+    "dataset": {
+      "url": "https://huggingface.co/datasets/ByteDance-Seed/Multi-SWE-bench/resolve/56ff018c04a38e27ada1e9d0a6d5839a51f88f0d/java/google__gson_dataset.jsonl",
+      "source_file_sha256": "fc4e6547d8ccd761719c68dc09053b9e10ba9aca8db97b4b565dbf88c83473f6",
+      "source_bytes": 122857,
+      "source_rows": 5,
+      "selected_record_sha256": "a04ab6cc537076d0b6c7a6136d71a59cc91f66f79933488de03338c350b83658",
+      "instance_id": "google__gson-1391",
+      "base_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+      "org": "google",
+      "repo": "gson",
+      "number": 1391,
+      "test_counts": {
+        "f2p_tests": 1,
+        "p2p_tests": 95,
+        "s2p_tests": 0,
+        "n2p_tests": 0
+      },
+      "model_calls": 0,
+      "scope": "Native grader reference/control only; reference data never enters solver inputs or image."
+    },
+    "source_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+    "source_tree": "abba7deda8852191b18a879e838fbbea4a8b19ff",
+    "native_image": "mswebench/google_m_gson@sha256:135ea364c947f1959102c1efe6f085e879f756cc8eecb3ded672b3c3c0f93d7e",
+    "native_image_id": "sha256:3b2567e7897733e4b04fa5087d0db089cc56d247f33ca62d0f80360594efe16e",
+    "solver_image_id": "sha256:a258cc0df8fa2815689f4f2680bd4d062c0f758b6848d98a924c973cf8d521ea",
+    "solver_dockerfile_sha256": "ddf1507ae401fb15f5c2b62073921bd67293f7b235e5855d681ebe2c4ebbb223",
+    "solver_dockerfile": "FROM mswebench/google_m_gson@sha256:135ea364c947f1959102c1efe6f085e879f756cc8eecb3ded672b3c3c0f93d7e\n\nWORKDIR /home/gson\nRUN git ls-files -z > /tmp/codenib-selected-files \\\n    && rm -rf .git \\\n    && rm -f /home/fix.patch /home/test.patch /home/fix-run.sh \\\n        /home/test-run.sh /home/prepare.sh /home/check_git_changes.sh \\\n    && git init -q \\\n    && git config user.name Benchmark \\\n    && git config user.email benchmark@example.invalid \\\n    && git add --force --pathspec-from-file=/tmp/codenib-selected-files --pathspec-file-nul \\\n    && git commit -qm 'chore(benchmark): initialize selected source snapshot' \\\n    && test \"$(git rev-parse HEAD^{tree})\" = abba7deda8852191b18a879e838fbbea4a8b19ff \\\n    && test \"$(git rev-list --all --count)\" = 1 \\\n    && test -z \"$(git status --porcelain --untracked-files=all)\" \\\n    && python3 --version \\\n    && rm /tmp/codenib-selected-files\n",
+    "harness_revision": "24f493f8a103e72312ded4f6b9c89f081d69cb09",
+    "harness_version": "1.1.0",
+    "harness_module_sha256": {
+      "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "harness/gen_report.py": "02ebc8a5414898d12f4f5a9ba0c11a8f57c9f34a0bdc02c2311afac9f654847d",
+      "harness/report.py": "5a025fd496d42c4b7377fc0702d64c6d0e356b117eaf2face47e73a52c29902f",
+      "harness/test_result.py": "5411af794920cf4b170fe9dbe8c21c12cc63e2bbe2280d6d82acb850f4808be3",
+      "harness/dataset.py": "dd49f55baf63b60fff309b6a5b2a1826697e2b85ad1a9bccff18321dcdc200fc",
+      "harness/image.py": "86074812495b97026efb42c57acbf7738864b1f0167f99e3b9f9309458972ae9",
+      "harness/instance.py": "93da4f6db69e006949bba856e22e4a464b5e93140590258eda38833ec5f19a9e",
+      "harness/pull_request.py": "32b49f48b39124f67727f408898bd96cce91c0a362faa716ac858dcb0b0b47c7",
+      "harness/repos/java/google/gson.py": "faec1d6ba360ab902a663718b9a8668d1a46a860bc613980b310107153adf890"
+    },
+    "native_script_sha256": {
+      "run.sh": "928b9d846144bb38ff4e5314d8b24b06225c335f32a44115350a735d0f9a4bc3",
+      "test-run.sh": "def4691d818e711ed1e42b0b1c812216a9530f606f0bc50a97f4c9b03a110762",
+      "fix-run.sh": "9d60f6e78b1903556a79f60f37b6bf007a3ac2cbbc4aed7a91bad7a6e9c62bd3"
+    },
+    "original_native_protocol_sha256": "0ddc4234dc8f136cdb76d9ed1c9a816086ca29d849c18c75a04c68f5330e9cc9",
+    "adapter_protocol_sha256": "c4bb87f172c152ed8896ee14944c2aed1dc87c597d58c5c7dfafec157c9bc3be",
+    "adapter_implementation": {
+      "scripts/benchmark_context_solver.py": "0ec005afed874d11b9acda178b1e8fb338e37e34f00d4b37fa1561209e88255e",
+      "scripts/contextbench_multiswe.py": "8f96c14f4707172b3009529322cd90dd86cad0be0985d43d4785c8be035f64e4",
+      "scripts/contextbench_solver_sources.py": "a9d81954376b28752351a2f81494aa5722227e9cf157d51fdc439c60879b0142",
+      "scripts/_contextbench_solver_read.py": "68e2e2e417150ce45e9aa692ee2c6b852b8500df404ee705949fc21b4c6f131c"
+    },
+    "source_preflight": {
+      "model_calls": 0,
+      "isolation": {
+        "network": "none",
+        "host_mounts": []
+      },
+      "image_snapshot": {
+        "commit": "369ade7f23b1588a285bb4d89ecb7b6674eeebbc",
+        "tree": "abba7deda8852191b18a879e838fbbea4a8b19ff",
+        "matches_selected_tree": true
+      },
+      "source_only": {
+        "one_source_commit": true,
+        "reference_artifacts_absent": true
+      },
+      "controlled_source_read_passed": true,
+      "model_delivery_confirmed": false,
+      "status": "passed",
+      "container_removed": true
+    },
+    "original_native_controls": {
+      "test_only": {
+        "stage": "test_only",
+        "status": "complete",
+        "model_calls": 0,
+        "source_snapshot_verified": true,
+        "native_patch_sha256": {
+          "fix_patch": "9277dc6f50b4841a90cec3379a0bd804eacc3a754bd435e1ca373238b0796bcc",
+          "test_patch": "f1354f494072033f276e78a565745cb717b7fc28f1f32d86dc12c7ffa2df5a54"
+        },
+        "native_script_sha256": {
+          "run.sh": "928b9d846144bb38ff4e5314d8b24b06225c335f32a44115350a735d0f9a4bc3",
+          "test-run.sh": "def4691d818e711ed1e42b0b1c812216a9530f606f0bc50a97f4c9b03a110762",
+          "fix-run.sh": "9d60f6e78b1903556a79f60f37b6bf007a3ac2cbbc4aed7a91bad7a6e9c62bd3"
+        },
+        "native_exit_code": 1,
+        "native_parser_counts": {
+          "passed": 95,
+          "failed": 2,
+          "skipped": 0,
+          "granularity": "test_class"
+        },
+        "regression_passed": 0,
+        "regression_failed": 1,
+        "preservation_passed": 95,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 0,
+          "unresolved_instances": 1,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "google/gson:pr-1391"
+          ],
+          "completed_ids": [
+            "google/gson:pr-1391"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [],
+          "unresolved_ids": [
+            "google/gson:pr-1391"
+          ],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "native_report_sha256": "96ae0cde6bba9b83aafde363b9956e7ecbc912d33462ee1221fc386bd0fda1ee",
+        "native_log_sha256": "b6d0f4098f871a64e7f3cc6a65f63a491d195e4a3ccc8518ffce3c25484e6a88",
+        "container_removed": true,
+        "wall_s": 14.667143717058934
+      },
+      "reference": {
+        "stage": "reference",
+        "status": "complete",
+        "model_calls": 0,
+        "source_snapshot_verified": true,
+        "native_patch_sha256": {
+          "fix_patch": "9277dc6f50b4841a90cec3379a0bd804eacc3a754bd435e1ca373238b0796bcc",
+          "test_patch": "f1354f494072033f276e78a565745cb717b7fc28f1f32d86dc12c7ffa2df5a54"
+        },
+        "native_script_sha256": {
+          "run.sh": "928b9d846144bb38ff4e5314d8b24b06225c335f32a44115350a735d0f9a4bc3",
+          "test-run.sh": "def4691d818e711ed1e42b0b1c812216a9530f606f0bc50a97f4c9b03a110762",
+          "fix-run.sh": "9d60f6e78b1903556a79f60f37b6bf007a3ac2cbbc4aed7a91bad7a6e9c62bd3"
+        },
+        "native_exit_code": 1,
+        "native_parser_counts": {
+          "passed": 96,
+          "failed": 1,
+          "skipped": 0,
+          "granularity": "test_class"
+        },
+        "regression_passed": 1,
+        "regression_failed": 0,
+        "preservation_passed": 95,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 1,
+          "unresolved_instances": 0,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "google/gson:pr-1391"
+          ],
+          "completed_ids": [
+            "google/gson:pr-1391"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [
+            "google/gson:pr-1391"
+          ],
+          "unresolved_ids": [],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "native_report_sha256": "b09f3d4d9e672c3211b77c7b18705fc3bc89ecc662afb4ae177f8d190d74a1d0",
+        "native_log_sha256": "57165b571a97bacd4ff6b18ba394a02421a22dd2a5297a226e145a21270edc3e",
+        "container_removed": true,
+        "wall_s": 13.41349797998555
+      }
+    },
+    "adapter_controls": {
+      "neutral": {
+        "status": "graded",
+        "resolved": false,
+        "model_calls": 0,
+        "source_snapshot_verified": true,
+        "native_patch_sha256": {
+          "fix_patch": "9277dc6f50b4841a90cec3379a0bd804eacc3a754bd435e1ca373238b0796bcc",
+          "test_patch": "f1354f494072033f276e78a565745cb717b7fc28f1f32d86dc12c7ffa2df5a54"
+        },
+        "native_script_sha256": {
+          "run.sh": "928b9d846144bb38ff4e5314d8b24b06225c335f32a44115350a735d0f9a4bc3",
+          "test-run.sh": "def4691d818e711ed1e42b0b1c812216a9530f606f0bc50a97f4c9b03a110762",
+          "fix-run.sh": "9d60f6e78b1903556a79f60f37b6bf007a3ac2cbbc4aed7a91bad7a6e9c62bd3"
+        },
+        "applied_solver_patch_sha256": "438aa919ff02bbcb90d8e974e1ee68df7fc13148f37973e40e94f9ef75129f8b",
+        "native_exit_code": 1,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 0,
+          "unresolved_instances": 1,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "google/gson:pr-1391"
+          ],
+          "completed_ids": [
+            "google/gson:pr-1391"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [],
+          "unresolved_ids": [
+            "google/gson:pr-1391"
+          ],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "native_log_sha256": "b347c62fac45c6b3f0743d04fc2c4002cd5ddf1e4534732d0bc0fa2eb0d1ec32",
+        "container_removed": true,
+        "wall_s": 14.357268824940547,
+        "process_exit_code": 0
+      },
+      "reference": {
+        "status": "graded",
+        "resolved": true,
+        "model_calls": 0,
+        "source_snapshot_verified": true,
+        "native_patch_sha256": {
+          "fix_patch": "9277dc6f50b4841a90cec3379a0bd804eacc3a754bd435e1ca373238b0796bcc",
+          "test_patch": "f1354f494072033f276e78a565745cb717b7fc28f1f32d86dc12c7ffa2df5a54"
+        },
+        "native_script_sha256": {
+          "run.sh": "928b9d846144bb38ff4e5314d8b24b06225c335f32a44115350a735d0f9a4bc3",
+          "test-run.sh": "def4691d818e711ed1e42b0b1c812216a9530f606f0bc50a97f4c9b03a110762",
+          "fix-run.sh": "9d60f6e78b1903556a79f60f37b6bf007a3ac2cbbc4aed7a91bad7a6e9c62bd3"
+        },
+        "applied_solver_patch_sha256": "9277dc6f50b4841a90cec3379a0bd804eacc3a754bd435e1ca373238b0796bcc",
+        "native_exit_code": 1,
+        "native_report": {
+          "total_instances": 1,
+          "submitted_instances": 1,
+          "completed_instances": 1,
+          "incomplete_instances": 0,
+          "resolved_instances": 1,
+          "unresolved_instances": 0,
+          "empty_patch_instances": 0,
+          "error_instances": 0,
+          "submitted_ids": [
+            "google/gson:pr-1391"
+          ],
+          "completed_ids": [
+            "google/gson:pr-1391"
+          ],
+          "incomplete_ids": [],
+          "resolved_ids": [
+            "google/gson:pr-1391"
+          ],
+          "unresolved_ids": [],
+          "empty_patch_ids": [],
+          "error_ids": []
+        },
+        "native_log_sha256": "92f739cd0a60a7f3ac916acc324135b74e3e06d64a82af86f56bf5210071015d",
+        "container_removed": true,
+        "wall_s": 24.335912427981384,
+        "process_exit_code": 0
+      }
+    },
+    "parser_parity": {
+      "scope": "Separate post-run full native-parser comparison; original frozen protocol/results retained.",
+      "all_test_label_sets_match_pinned_dataset": true,
+      "always_failing_class": "com.google.gson.DefaultDateTypeAdapterTest",
+      "always_failure_present_in_pinned_run_test_and_fix": true,
+      "both_native_build_exit_codes": {
+        "test_only": 1,
+        "reference": 1
+      },
+      "native_quality_score": null,
+      "model_calls": 0
+    },
+    "adapter_parser_parity": {
+      "scope": "Post-run exact parser comparison; no new model calls or agent quality evidence.",
+      "stages": {
+        "neutral": {
+          "passed_classes": 95,
+          "failed_classes": 2,
+          "skipped_classes": 0,
+          "required_regression_passed": 0,
+          "required_preservation_passed": 95,
+          "matches_original_native_control": true
+        },
+        "reference": {
+          "passed_classes": 96,
+          "failed_classes": 1,
+          "skipped_classes": 0,
+          "required_regression_passed": 1,
+          "required_preservation_passed": 95,
+          "matches_original_native_control": true
+        }
+      }
+    },
+    "cpp_entrypoint_compatibility": {
+      "scope": "C++ image compatibility for newly authenticated native entrypoints, no native test rerun or model calls.",
+      "native_harness_hashes": {
+        "harness/gen_report.py": "02ebc8a5414898d12f4f5a9ba0c11a8f57c9f34a0bdc02c2311afac9f654847d",
+        "harness/report.py": "5a025fd496d42c4b7377fc0702d64c6d0e356b117eaf2face47e73a52c29902f",
+        "harness/test_result.py": "5411af794920cf4b170fe9dbe8c21c12cc63e2bbe2280d6d82acb850f4808be3",
+        "harness/dataset.py": "dd49f55baf63b60fff309b6a5b2a1826697e2b85ad1a9bccff18321dcdc200fc",
+        "harness/image.py": "86074812495b97026efb42c57acbf7738864b1f0167f99e3b9f9309458972ae9",
+        "harness/instance.py": "93da4f6db69e006949bba856e22e4a464b5e93140590258eda38833ec5f19a9e",
+        "harness/pull_request.py": "32b49f48b39124f67727f408898bd96cce91c0a362faa716ac858dcb0b0b47c7",
+        "harness/repos/cpp/fmtlib/fmt.py": "d0a5146eb77b4416cccb86216c3df08f200d58c33bb158d953aaac385f922918",
+        "harness/repos/java/google/gson.py": "faec1d6ba360ab902a663718b9a8668d1a46a860bc613980b310107153adf890"
+      },
+      "expected_script_sha256": {
+        "run.sh": "8d556d2484f4e8847a40c4cc39e7eb3fdd916f46eaf094c4913fdf733ce54922",
+        "test-run.sh": "fe480a99fb0e475058e6cdb91947477612bc9636603fbccf343cff5b2def1a5e",
+        "fix-run.sh": "dff349820a4f0eb01d047ca1f33b778f6450d49270c688fbb5710ebf3b0d48e6"
+      },
+      "model_calls": 0,
+      "passed": true,
+      "actual_script_sha256": {
+        "run.sh": "8d556d2484f4e8847a40c4cc39e7eb3fdd916f46eaf094c4913fdf733ce54922",
+        "test-run.sh": "fe480a99fb0e475058e6cdb91947477612bc9636603fbccf343cff5b2def1a5e",
+        "fix-run.sh": "dff349820a4f0eb01d047ca1f33b778f6450d49270c688fbb5710ebf3b0d48e6"
+      },
+      "container_removed": true
+    },
+    "all_frozen_runtime_and_input_hashes_match": true,
+    "model_calls": 0,
+    "agent_quality_score": null,
+    "new_api_charges_usd": 0,
+    "other_repository_gate": "Jackson-databind preparation rewrites its tracked POM in the pinned harness, conflicting with the current exact-clean-source gate. This is source inspection, not a failed image probe; no Jackson image or model run. No wider Multi, Poly or Pro support is claimed."
   }
 }
