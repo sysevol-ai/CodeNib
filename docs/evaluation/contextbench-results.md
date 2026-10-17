@@ -101,13 +101,14 @@ costs of the indexed method even when a subsequent iteration reuses the cache.
 There is no explicit Haiku controller; SDK auxiliary usage is not a context policy.
 
 The same real query exposes a source-delivery bug: a named symbol can be lost in
-generic routing or displaced by dense hits. Independent main-based draft
+generic routing or displaced by dense hits. Independent main-based
 [PR #835](https://github.com/sysevol-ai/CodeNib/pull/835) preserves exact indexed
 query symbols and prioritizes named routes. **105 focused tests** and a
 same-query/index/source/four-window replay verify the requested definition is
 returned first, without model or Gold calls. This is a concrete fix, not a
 benchmark gain. Its source changes are included in the next development policy;
-the original four trajectories stay unchanged.
+the original four trajectories stay unchanged. The PR is ready for review and its
+new required unit CI run passes; it remains unmerged.
 
 The completed source-only metadata policy appends at most256 estimated tokens
 of compiler-reference metadata after a successful read, then lets the agent
@@ -198,10 +199,30 @@ case/local embedding route, an explicitly non-live producer, no model intent and
 zero SDK events before existing native artifact/source authorization. A new
 `--vector-only` labs option supports a separately declared dense-only ablation;
 it skips graph compilation/loading, without claiming a backend failure. The next
-eight development IDs are selected only by fixed metadata ordering, one per
-language, excluding the four pilot IDs and all three sealed32 cohorts/aliases.
-This arm is separate from the mixed-view four-task pilot, with fresh preparation
-costs retained; it is neither fresh independent validation nor another full500.
+eight development IDs are frozen under `0d598174` by fixed metadata ordering,
+one per language/repository, excluding the four pilot IDs and all three sealed32
+cohorts/aliases. This arm is separate from the mixed-view four-task pilot, with
+fresh preparation costs retained; it is neither fresh independent validation
+nor another full500.
+
+The initial source-only gate completes6/8 preparations and fails on two before
+any SDK/model dispatch. Ansible has two symlink aliases read by discovery and
+then rejected by the native schema-8 canonical-source guard. C's dataset label
+is passed directly to a factory that deliberately accepts `cpp` for C sources.
+Keep that original failed gate, all eight IDs and all preparation costs.
+
+Independent main-based [PR #836](https://github.com/sysevol-ai/CodeNib/pull/836)
+adds an opt-in lexical regular-file discovery filter for schema-8 producers,
+preserving strict final validation and existing chunker defaults. The real
+Ansible replay retains486 regular L0 files and both alias targets;228 independent
+main-based builder/chunker/compiler tests, strict MkDocs and public-docs checks
+pass. The pilot separately translates dataset labels through the registry's
+`chunker_language`, preserving the direct factory's rejection of `c`. The broader
+feature passes179 relevant and190 compiler tests. Source-only correction protocol
+`4ddf8f93`, runtime `85b7f0d2`, rebuilds the two failed preparations and retains
+six already-verified artifacts. No case/model retry, quality-based replacement or
+model/tool/prompt/budget change occurs. All eight prepared sources must reconcile
+before the corrected live dispatch is frozen; no original gate becomes green.
 
 A source-only ranking diagnostic on the four actual agent queries compares raw
 inner product, cosine reranking of128 candidates and full cosine without changing
