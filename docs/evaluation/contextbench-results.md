@@ -110,6 +110,9 @@ per language selected by CSV order from the disclosed 24-task cohort. Both arms
 use actual Opus 5.5 through SDK 0.2.165 / CLI 2.1.301, the same implementation and
 source snapshots, a 20-turn SDK limit, 600-second timeout, $3/case and $15/arm
 SDK-meter guards. All eight cases completed and scored in both arms.
+The table uses task-level macro means, including per-task F1, as in the cited
+JiuwenSwarm submission. The official evaluator's CLI summary also provides
+pooled-count micro aggregates; those use a different weighting.
 
 | Observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
 | --- | ---: | ---: | ---: | ---: |
@@ -118,7 +121,8 @@ SDK-meter guards. All eight cases completed and scored in both arms.
 
 The paired 95% bootstrap interval for the Recall change is [-2.03, +3.36]
 percentage points; for F1 it is [-4.94, +1.04]. Neither establishes an improvement.
-The independent 32-task selection remains unrun while development continues.
+The independent 32-task selection is reserved for the frozen policy selected by
+the later directed-graph development trial below.
 These SDK estimates are not paid receipts, and this eight-task population is not
 directly comparable with the historical 24-task table or the full leaderboard.
 
@@ -168,12 +172,49 @@ containment edges are excluded. It returns complete numbered definitions when
 they fit the response budget, otherwise explicit metadata without source-read
 credit. References are not a runtime call trace. Graphs are verified against a
 frozen source manifest and graph-file hashes before use.
+Inside a function or method, a selected line navigates from the enclosing callable
+rather than a smaller local-symbol definition. The current shared prompt requests
+at least one targeted reference hop before handoff when the tool is available;
+actual tool adoption must still be checked in the recorded trajectory.
 
 Prepare graphs locally, then run two fresh `functions` arms with the same
 `--graphs` directory; add `--graph-navigation` only to the candidate. The paired
 comparison permits that declared tool difference while retaining the other
 runtime and budget checks. The eight-task development selection has five
 available graphs; all eight tasks remain selected for the graph comparison.
+
+The first optional-graph comparison completed all eight tasks in both arms:
+
+| Observed trajectory | Recall | Precision | F1 | Graph calls | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Function completion control | 40.23% | 28.19% | 31.11% | unavailable | $2.682236 |
+| Function completion + optional graph tool | 44.56% | 32.14% | 34.28% | 0 | $2.482844 |
+
+The Recall difference is +4.34 percentage points, paired 95% interval
+[-0.06, +11.88]; F1 is +3.17 points, interval [-0.81, +7.46]. The candidate
+never called the graph tool, so these scores do not demonstrate a benefit from
+graph-returned source. An explicit-call integration probe succeeds, but is excluded
+from quality scores. A separate fresh paired trial requests a targeted hop:
+
+| Observed trajectory, targeted-hop implementation | Recall | Precision | F1 | Graph calls | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Function completion control | 37.43% | 28.40% | 30.18% | unavailable | $2.497661 |
+| Function completion + targeted graph tool | 41.29% | 32.16% | 32.85% | 8 | $2.702899 |
+
+All eight tasks complete and score in both arms. The Recall difference is +3.86
+points, paired 95% interval [-0.51, +11.82]; F1 is +2.67 points, interval
+[-1.11, +6.84]. Three graph calls return source, one returns an oversized-definition
+notice, one finds no definition at the selected line, and three report unavailable
+graphs. All five available graphs are called. This passes the development
+candidate-selection gate fixed before scoring: actual graph use, higher Recall
+and non-decreasing F1. The intervals still do not establish a reliable gain.
+
+The policy at `3f04993f` is frozen for independent 32-task validation with native,
+functions and functions-plus-graph arms. Source preparation has started; inference
+and scoring are pending. The primary contrast is the complete graph-enabled route
+against native source tools, with the other two contrasts as explanatory ablations.
+The 32 tasks remain excluded from tuning. Neither graph development trial is
+directly comparable with the earlier native/functions implementation freeze.
 
 ```bash
 python scripts/contextbench_graph_navigation.py \
@@ -207,6 +248,17 @@ a total paid-cost figure. This single attempt is not a comparative Pass@1 result
 Multi/Poly/Pro adapters and full-agent source accounting remain open. Arbitrary
 shell reads from this solver are not added to the retrieval trajectory or claimed
 as a complete leaderboard artifact.
+
+A subsequent matched check feeds the targeted-hop trial's two 16K contexts into
+fresh solver runs on that same Python development task. Both use the same pinned
+image, implementation, actual model, 30-step limit and $3 SDK-meter guard. Both
+patches apply, but each arm is **0/1 resolved**: the native test patch imports a
+definition omitted by both generated production patches. The official reference
+production patch passes in the same image and native harness; that grading-only
+check is excluded from agent scores and makes no model calls. Paired solver SDK
+estimates are $0.826470 for the control and $0.442726 for the graph candidate.
+These repeated development attempts do not establish comparative Pass@1, and
+reference patches or test feedback are never passed back to either solver.
 
 ## Evidence and reproduction
 

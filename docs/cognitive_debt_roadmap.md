@@ -142,7 +142,13 @@ downstream solver adapter to source-checkout scripts in draft
 [#834](https://github.com/sysevol-ai/CodeNib/pull/834), retaining `labs` ownership.
 The fresh eight-task online control changes Recall 41.13% → 41.67% and F1
 33.67% → 31.91%, with both paired intervals crossing zero. The first completed
-native solver sample is unresolved. Directed-graph gains, independent validation,
+native solver sample and fresh matched one-task solver pair are unresolved; the
+reference patch passes the same native harness. The first optional-graph
+comparison completes but makes no graph calls. The targeted-hop trial makes eight
+graph calls, returns source on three tasks, and passes its development selection
+gate: Recall 37.43% → 41.29%, F1 30.18% → 32.85%, with both intervals crossing
+zero. Its policy is frozen for the independent three-arm, 32-task validation.
+Reliable directed-graph gains, independent validation,
 the other native harnesses and full-agent outcomes remain open; no product route
 or package lifecycle is promoted.
 The public results and sanitized per-case exports
