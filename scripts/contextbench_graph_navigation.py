@@ -48,6 +48,9 @@ def prepare_graphs(args):
     from scripts.benchmark_context_serving import bounded_graph
     from scripts.benchmark_jev_base import digest, write_json
 
+    preparation = getattr(args, "allow_project_preparation", False)
+    if preparation and args.reuse_cohort:
+        raise ValueError("Project preparation requires fresh graph builds")
     manifest, cases = native.load_inputs(args.prepared)
     prior, provenance = {}, None
     if args.reuse_cohort:
@@ -109,6 +112,7 @@ def prepare_graphs(args):
                         normalize_graph_language(case.language),
                         output,
                         args.timeout,
+                        allow_project_preparation=preparation,
                     )
                 )
             if record["available"]:
@@ -125,6 +129,14 @@ def prepare_graphs(args):
         {
             "source_manifest_sha256": digest(args.prepared / "manifest.json"),
             "reuse": provenance,
+            "build_policy": (
+                None
+                if provenance
+                else {
+                    "allow_project_preparation": preparation,
+                    "timeout_seconds": args.timeout,
+                }
+            ),
             "cases": records,
             "implementation": native.freeze(args.output),
             "scope": "Source-bound compiler artifacts; unavailable graphs stay selected",
@@ -456,7 +468,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepared", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--reuse-cohort", type=Path)
+    preparation = parser.add_mutually_exclusive_group()
+    preparation.add_argument("--reuse-cohort", type=Path)
+    preparation.add_argument(
+        "--allow-project-preparation",
+        action="store_true",
+        help="Allow dependency/build preparation only inside each private graph clone",
+    )
     parser.add_argument("--timeout", type=float, default=120.0)
     args = parser.parse_args()
     if not 1 <= args.timeout <= 1800:

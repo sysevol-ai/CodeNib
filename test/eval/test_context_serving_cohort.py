@@ -6,6 +6,7 @@ import os
 import select
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -73,10 +74,12 @@ def test_oversized_line_is_reported_without_hiding_later_source():
     ]
 
 
+@pytest.mark.parametrize("preparation", [False, True])
 def test_graph_timeout_reaps_its_process_before_deleting_private_copy(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, preparation
 ):
     events = []
+    launches = []
 
     class Process:
         pid = 24680
@@ -92,13 +95,24 @@ def test_graph_timeout_reaps_its_process_before_deleting_private_copy(
             self.returncode = 124
 
     monkeypatch.setattr(cohort.subprocess, "run", lambda *a, **k: None)
-    monkeypatch.setattr(cohort.subprocess, "Popen", lambda *a, **k: Process())
+
+    def launch(command, **kwargs):
+        launches.append(command)
+        assert kwargs["start_new_session"]
+        assert ("--allow-project-preparation" in command) is preparation
+        private = Path(command[command.index("--repo") + 1])
+        assert private != tmp_path and private.parent.exists()
+        return Process()
+
+    monkeypatch.setattr(cohort.subprocess, "Popen", launch)
     monkeypatch.setattr(
         cohort.os, "killpg", lambda pid, sig: events.append(("kill", pid))
     )
     output = tmp_path / "build"
-    receipt = cohort.bounded_graph(tmp_path, "python", output, 3)
+    options = {"allow_project_preparation": True} if preparation else {}
+    receipt = cohort.bounded_graph(tmp_path, "python", output, 3, **options)
     assert not receipt["available"]
+    assert receipt["allow_project_preparation"] is preparation
     assert "exceeded" in receipt["error"]
     assert events == [
         ("wait", 3),
@@ -107,7 +121,8 @@ def test_graph_timeout_reaps_its_process_before_deleting_private_copy(
         ("kill", 24680),
         ("wait", None),
     ]
-    assert not list(output.glob("build-*"))
+    private = Path(launches[0][launches[0].index("--repo") + 1])
+    assert not private.parent.exists()
     assert CodeGraph.load_graph(output / "graph.pkl").graph.vcount() == 0
 
 
@@ -129,9 +144,34 @@ def test_preparation_failure_is_retained_without_billing(tmp_path):
     assert json.loads((tmp_path / "sonnet/case.json").read_text()) == row
 
 
+def source_repo(path):
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    (path / "source.py").write_text("VALUE = 1\n")
+    subprocess.run(["git", "add", "source.py"], cwd=path, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "source",
+        ],
+        cwd=path,
+        check=True,
+    )
+
+
+@pytest.mark.parametrize("preparation", [False, True])
 @pytest.mark.parametrize("language", ["python", "ts", "go", "rust", "java", "cpp"])
-def test_graph_worker_uses_portable_route_arguments(tmp_path, monkeypatch, language):
+def test_graph_worker_uses_portable_route_arguments(
+    tmp_path, monkeypatch, language, preparation
+):
     from codenib import ls_router
+
+    source_repo(tmp_path)
 
     def build(
         repo,
@@ -145,16 +185,67 @@ def test_graph_worker_uses_portable_route_arguments(tmp_path, monkeypatch, langu
         # Native backends already decode references; forwarding a Python-only
         # generation keyword to TypeScript, Rust or clangd raises TypeError.
         assert languages == [language]
-        assert not allow_project_preparation
+        assert allow_project_preparation is preparation
+        if preparation:
+            (repo / "compile_commands.json").write_text("[]\n")
         return SimpleNamespace(
             graph=CodeGraph(), failed_languages={}, index_generation_reports={}
         )
 
     monkeypatch.setattr(ls_router, "build_graph_for_languages_with_report", build)
     cohort.graph_worker(
-        SimpleNamespace(repo=tmp_path, output=tmp_path, language=language)
+        SimpleNamespace(
+            repo=tmp_path,
+            output=tmp_path,
+            language=language,
+            allow_project_preparation=preparation,
+        )
     )
     assert (tmp_path / "graph.pkl").is_file()
+    assert (tmp_path / "source.py").read_text() == "VALUE = 1\n"
+
+
+@pytest.mark.parametrize("change", ["worktree", "head"])
+def test_graph_preparation_rejects_changed_source_before_publication(
+    tmp_path, monkeypatch, change
+):
+    from codenib import ls_router
+
+    source_repo(tmp_path)
+
+    def build(repo, output, **kwargs):
+        if change == "worktree":
+            (repo / "source.py").write_text("VALUE = 2\n")
+        else:
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.com",
+                    "commit",
+                    "--allow-empty",
+                    "-qm",
+                    "changed head",
+                ],
+                cwd=repo,
+                check=True,
+            )
+        return SimpleNamespace(graph=CodeGraph())
+
+    monkeypatch.setattr(ls_router, "build_graph_for_languages_with_report", build)
+    with pytest.raises(ValueError, match="changed tracked source"):
+        cohort.graph_worker(
+            SimpleNamespace(
+                repo=tmp_path,
+                output=tmp_path,
+                language="cpp",
+                allow_project_preparation=True,
+            )
+        )
+    assert not (tmp_path / "graph-status.json").exists()
+    assert not (tmp_path / "graph.pkl").exists()
 
 
 def test_timeout_cancellation_cleans_scips_nested_session():
