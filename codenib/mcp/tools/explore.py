@@ -13,14 +13,19 @@ model-tool-model round trip merely to turn graph locations into source.
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from ...agent.lsp_graph import display_name, resolve_symbol_candidates
 from ...context_delivery import project_evidence_payloads
+from ...types import is_symbol_node
 from ..explore_bounds import MAX_EXPLORE_PAYLOAD_BYTES, bound_explore_response
 from ._validation import (
     MAX_EXPLORE_WINDOWS,
+    MAX_LSP_SYMBOL_CHARS,
+    MAX_ROUTE_SYMBOLS,
     MAX_SEARCH_QUERY_CHARS,
     MAX_SOURCE_WINDOW_LINES,
     bounded_integer,
@@ -78,6 +83,42 @@ _BUDGETS = {
 }
 _DIRECTIONS = frozenset({"impact", "dependencies", "both"})
 _MERGE_GAP_LINES = 8
+_IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\.)[A-Za-z_][A-Za-z0-9_]*)*"
+_QUERY_IDENTIFIERS = re.compile(rf"`({_IDENTIFIER})`|({_IDENTIFIER})")
+
+
+def _query_symbol_seeds(ctx: Any, query: str) -> list[str]:
+    """Preserve bounded, exact indexed code identifiers from a natural query.
+
+    Generic prose still uses the existing query-route fallback. Code-shaped or
+    quoted identifiers become seeds only when they name an indexed symbol;
+    fuzzy resolver matches and file-name matches do not authorize this path.
+    """
+    graph = getattr(ctx, "symbol_graph", None)
+    info_for = getattr(graph, "get_node_info_by_name", None)
+    if not callable(info_for):
+        return []
+    seeds: list[str] = []
+    examined: set[str] = set()
+    for match in _QUERY_IDENTIFIERS.finditer(query):
+        quoted, bare = match.groups()
+        seed = quoted or bare
+        if not quoted and not re.search(r"[_:.]|[a-z0-9][A-Z]", seed):
+            continue
+        if len(seed) > MAX_LSP_SYMBOL_CHARS or seed in examined:
+            continue
+        if len(examined) >= MAX_ROUTE_SYMBOLS:
+            break
+        examined.add(seed)
+        for name in resolve_symbol_candidates(graph, seed, limit=4):
+            if not is_symbol_node((info_for(name) or {}).get("type")):
+                continue
+            label = str(display_name(graph, name)).rstrip("()")
+            leaf = label.rsplit(":", 1)[-1].rsplit(".", 1)[-1]
+            if label == seed or label.endswith(":" + seed) or leaf == seed:
+                seeds.append(seed)
+                break
+    return seeds
 
 
 @dataclass(slots=True)
@@ -419,6 +460,10 @@ def explore_context_impl(
     if normalized_direction not in _DIRECTIONS:
         raise ValueError("direction must be 'impact', 'dependencies', or 'both'.")
     normalized_symbols = normalize_lsp_route_symbols(symbols)
+    inferred_symbols = (
+        [] if normalized_symbols else _query_symbol_seeds(ctx, normalized_query)
+    )
+    route_symbols = normalized_symbols or inferred_symbols
     profile = _BUDGETS[normalized_budget]
     window_limit = min(top_k, profile.max_windows)
 
@@ -475,7 +520,7 @@ def explore_context_impl(
         try:
             routed = lsp_route_impl(
                 ctx,
-                symbols=normalized_symbols,
+                symbols=route_symbols,
                 query=normalized_query,
                 top_k=profile.route_top_k,
                 include_neighbors=True,
@@ -501,7 +546,7 @@ def explore_context_impl(
     dependency_seeds: list[str] = []
     if include_dependencies and getattr(ctx, "symbol_graph", None) is not None:
         dependency_seeds = _dependency_seed_candidates(
-            normalized_symbols,
+            route_symbols,
             route_results,
             retrieval_results,
             limit=profile.dependency_symbols,
@@ -538,8 +583,15 @@ def explore_context_impl(
             )
         )
 
+    # Retain canonical origin/merge metadata, but reserve delivery for requested
+    # definitions before dense hits can fill every source-window slot.
+    delivery_anchors = (
+        sorted(anchors, key=lambda anchor: "route" not in anchor.origins)
+        if route_symbols
+        else anchors
+    )
     windows = _admit_windows(
-        anchors,
+        delivery_anchors,
         max_windows=window_limit,
         window_lines=profile.source_window_lines,
     )
@@ -606,7 +658,8 @@ def explore_context_impl(
             "retrieval": retrieval_plan,
             "route": {
                 "symbols": normalized_symbols,
-                "query_fallback": not normalized_symbols,
+                "inferred_symbols": inferred_symbols,
+                "query_fallback": not route_symbols,
                 "result_count": len(route_results),
                 "provider": _route_provider(ctx, route_results),
             },
