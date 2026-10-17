@@ -346,6 +346,19 @@ $0.04360545; actual account charges/remaining promotional credit are unknown.
 Stop BM25 variants and do not expand the rejected automatic source-block policy.
 Require an actionable search-selection diagnosis and a fresh matched protocol
 with the corrected patch-collection policy. No revised independent gain is established.
+The further verbatim-grep read-hint experiment also fails: all 24 sessions
+complete, but Jev lowers Recall/F1 from native 43.29%/37.08% to 38.73%/34.17%.
+The unranked secondary also misses its gate. Original replies and candidate/order
+receipts replay exactly, and suggestions gain no unread-source credit. Its API
+usage value is $4.848424762. All four repair attempts submit for $6.03557620 in
+Max SDK estimates; both fmt grades pass with nearly identical costs, while both C
+patches fail native resolution. Each arm resolves 1/2; frozen input/prompt and
+owned-container audits pass. Stop these Jev output-format variants. The isolated
+optional retrieval-note handoff has 59 test passes and now has a frozen six-attempt
+repair ablation on Python/C/C++, with shared native source and separately bounded
+unverified notes. Extra note input and partial source attribution remain explicit.
+Pylint source/image and 21 native regression labels verify against empty/reference
+controls without model calls. No revised independent or leaderboard gain is established.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
