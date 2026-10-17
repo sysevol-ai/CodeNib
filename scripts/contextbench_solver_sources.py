@@ -66,6 +66,26 @@ def source_output(source):
     )
 
 
+def _requests_reader(command):
+    """Recognize command-position attempts for usage errors, never source credit."""
+    # Preserve quotes so a grep pattern or printed "&&" is not a separator.
+    lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()\n")
+    lexer.whitespace = " \t\r"
+    lexer.whitespace_split = True
+    try:
+        tokens = list(lexer)
+    except ValueError:
+        return command.split(maxsplit=1)[:1] == ["codenib-read"]
+    return any(
+        token == "codenib-read"
+        and (
+            index == 0
+            or (bool(tokens[index - 1]) and set(tokens[index - 1]) <= set(";&|()\n"))
+        )
+        for index, token in enumerate(tokens)
+    )
+
+
 class SourceEnvironment:
     """Record executions before the next model request can confirm delivery.
 
@@ -88,12 +108,16 @@ class SourceEnvironment:
         source = None
         kind = "shell_unattributed"
         try:
-            if command.split(maxsplit=1)[:1] == ["codenib-read"]:
+            if _requests_reader(command):
                 kind = "source_read"
                 try:
                     args = shlex.split(command)
-                    if len(args) != 4:
-                        raise ValueError("Use codenib-read PATH START END alone")
+                    if len(args) != 4 or args[0] != "codenib-read":
+                        raise ValueError(
+                            "codenib-read is available only as the whole bash action: "
+                            "codenib-read PATH START END. Remove cd, &&, pipes and "
+                            "other commands; paths already resolve from the repository root."
+                        )
                     request = {
                         "root": self.root,
                         "commit": self.commit,

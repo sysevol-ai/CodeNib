@@ -270,6 +270,42 @@ def test_wrapper_uses_controlled_read_and_never_executes_shell_in_reader_args(
     assert checkpoints == [1, 2, 3, 4]
 
 
+@pytest.mark.parametrize("prefix", ["cd {repo} && ", "pwd;\n", "echo ready | "])
+def test_compound_reader_attempt_explains_available_interface(source_repo, prefix):
+    repo, commit = source_repo
+    shell = LocalEnvironment(repo)
+    receipts = []
+    env = SourceEnvironment(
+        shell,
+        root=str(repo),
+        commit=commit,
+        receipts=receipts,
+        checkpoint=lambda: None,
+        observation=lambda command, output, timeout: (3, output["output"]),
+    )
+    # The real adoption probe first combined cd, two reads and git status. An
+    # ordinary command-not-found error incorrectly tells the model to abandon
+    # an available tool; reject the invocation with its actual interface.
+    command = prefix.format(repo=repo) + (
+        "codenib-read source.txt 1 2 && codenib-read source.txt 3 3 "
+        "&& git status --short"
+    )
+    result = env.execute(command)
+    assert result["returncode"] == 1 and "whole bash action" in result["output"]
+    assert not shell.commands
+    assert receipts[-1]["receipt"]["kind"] == "source_read"
+    assert receipts[-1]["receipt"]["source"] is None
+    assert env.execute("codenib-read source.txt 1 2")["returncode"] == 0
+    # A quoted mention of the command is ordinary shell output, not an attempt.
+    assert env.execute("printf '%s\\n' 'codenib-read'")["output"] == "codenib-read\n"
+    assert receipts[-1]["receipt"]["kind"] == "shell_unattributed"
+    assert (
+        env.execute("printf '%s %s\\n' '&&' codenib-read")["output"]
+        == "&& codenib-read\n"
+    )
+    assert receipts[-1]["receipt"]["kind"] == "shell_unattributed"
+
+
 @pytest.mark.integration
 def test_native_loop_receipts_cover_truncation_edits_timeouts_and_terminal_output(
     monkeypatch, source_repo
