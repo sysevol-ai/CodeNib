@@ -5,6 +5,8 @@ source**, especially complete functions, after a strong model's iterative search
 Decision reranking helped under the earlier 4K delivery constraint but contributed
 almost nothing once most observed source fit in 16K/32K. These are development
 results, not a leaderboard submission or a SOTA claim.
+The October 16 online control has not confirmed that offline gain: its eight-task
+Recall changes by +0.53 percentage points while F1 falls by 1.76 points.
 
 ## Matched 24-task results
 
@@ -103,6 +105,23 @@ the native runner's 16,000-character response limit; skipped completion is
 reported when space permits. Names-only results cannot trigger reads. These
 policies remain experiments and do not change the product retrieval defaults.
 
+The first fresh online comparison is complete on eight development tasks, one
+per language selected by CSV order from the disclosed 24-task cohort. Both arms
+use actual Opus 5.5 through SDK 0.2.165 / CLI 2.1.301, the same implementation and
+source snapshots, a 20-turn SDK limit, 600-second timeout, $3/case and $15/arm
+SDK-meter guards. All eight cases completed and scored in both arms.
+
+| Observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 41.13% | 33.94% | 33.67% | $2.153231 |
+| Online function completion | 41.67% | 29.33% | 31.91% | $2.406782 |
+
+The paired 95% bootstrap interval for the Recall change is [-2.03, +3.36]
+percentage points; for F1 it is [-4.94, +1.04]. Neither establishes an improvement.
+The independent 32-task selection remains unrun while development continues.
+These SDK estimates are not paid receipts, and this eight-task population is not
+directly comparable with the historical 24-task table or the full leaderboard.
+
 Use a fresh directory for each arm, with the same prepared tasks, model,
 runtime, turn limit and cost settings. Existing clean task checkouts can be
 reused during preparation with `--repos-root`; they are audited, never reset.
@@ -141,6 +160,54 @@ counts scoring failures as zero, preserves runtime failures and usage records,
 and reports paired task-bootstrap intervals. It does not produce Pass@1 or turn
 a development subset into a leaderboard result.
 
+## Directed graph and downstream solver controls
+
+The optional `graph_neighbors` tool follows one directed compiler-reference hop
+from a source definition. Incoming references include tests; file hubs and
+containment edges are excluded. It returns complete numbered definitions when
+they fit the response budget, otherwise explicit metadata without source-read
+credit. References are not a runtime call trace. Graphs are verified against a
+frozen source manifest and graph-file hashes before use.
+
+Prepare graphs locally, then run two fresh `functions` arms with the same
+`--graphs` directory; add `--graph-navigation` only to the candidate. The paired
+comparison permits that declared tool difference while retaining the other
+runtime and budget checks. The eight-task development selection has five
+available graphs; all eight tasks remain selected for the graph comparison.
+
+```bash
+python scripts/contextbench_graph_navigation.py \
+  --prepared results/contextbench-dev/prepared \
+  --output results/contextbench-dev/graphs --timeout 120
+```
+
+`scripts/benchmark_context_solver.py` provides an initial downstream adapter for
+**SWE-bench Verified only**. It runs the pinned upstream mini SWE-agent loop with
+the already-observed 16K/32K context, an existing Claude subscription and an
+already-local Docker image identified by digest. The image must have the same
+clean source tree as the selected base commit. The solver container has no
+network access or host credentials. SDK metering, failed attempts and missing
+usage remain explicit.
+
+The `grade` command requires an isolated `swebench==4.1.0` environment and the
+corresponding native Verified dataset row in JSON format. It uses the native test
+script, reference test patch and resolution grader on the exact solver image:
+
+```bash
+python scripts/benchmark_context_solver.py grade \
+  --solver-run results/contextbench-dev/solver-case \
+  --dataset results/contextbench-dev/native-verified-case.json \
+  --output results/contextbench-dev/solver-case-grade
+```
+
+The first completed development attempt produced a patch that applied but failed
+the required native tests: **0/1 resolved**. Its generation reported $0.555974 in
+SDK metering; preliminary aborted attempts include missing usage, so this is not
+a total paid-cost figure. This single attempt is not a comparative Pass@1 result.
+Multi/Poly/Pro adapters and full-agent source accounting remain open. Arbitrary
+shell reads from this solver are not added to the retrieval trajectory or claimed
+as a complete leaderboard artifact.
+
 ## Evidence and reproduction
 
 The [per-case CSV](../assets/contextbench_development_24.csv) and
@@ -149,6 +216,12 @@ The [per-case CSV](../assets/contextbench_development_24.csv) and
 text, prompts, provider identifiers and credentials. The raw local receipts remain
 under ignored `verification/` directories; these summary exports are not a complete
 official submission artifact bundle.
+
+The October 16 online comparison has a separate
+[eight-task CSV](../assets/contextbench_online_development_8.csv) and
+[protocol, metering and paired-interval summary](../assets/contextbench_online_development_summary.json).
+They retain the negative result and exclude prompts, source excerpts, account
+identities and provider request identifiers.
 
 The dataset revision is `c2855792b006af41c67202d33883fb9d46362853` and evaluator
 revision is `1436c28a8eb95496da4ea69ad458b9f8a8eb7d61`. The recorded native and

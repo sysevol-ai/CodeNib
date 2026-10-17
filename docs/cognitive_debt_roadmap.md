@@ -137,9 +137,14 @@ actual Opus 5.5 and the same three source tools; SDK metering is separated from
 unknown actual billing. Its follow-up batch was stopped with 3 completed,
 1 interrupted and 20 unrun tasks, without a cohort quality claim. No further
 model experiment from that closed batch is scheduled. The October 16 follow-up
-adds online function completion and matched native/SDK controls to the same
-source-checkout scripts, retaining `labs` ownership and the existing gates.
-Directed graph navigation and downstream issue-resolution outcomes remain open.
+adds online function completion, directed compiler navigation and a Verified
+downstream solver adapter to source-checkout scripts in draft
+[#834](https://github.com/sysevol-ai/CodeNib/pull/834), retaining `labs` ownership.
+The fresh eight-task online control changes Recall 41.13% → 41.67% and F1
+33.67% → 31.91%, with both paired intervals crossing zero. The first completed
+native solver sample is unresolved. Directed-graph gains, independent validation,
+the other native harnesses and full-agent outcomes remain open; no product route
+or package lifecycle is promoted.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
