@@ -151,8 +151,9 @@ The October 16 development and independent-validation program uses the existing
 Claude Max route with **zero standalone API-key inference calls**. Independent
 retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
 $0.828001. The later early-hop/unseen development trial adds $7.266208 for retrieval
-and $1.367794 for its paired solver check. Known program metering totals
-**$50.257504**, excluding one aborted
+and $1.367794 for its paired solver check. Two later one-task graph mechanism
+versions add $0.327116. Known program metering totals
+**$50.584619**, excluding one aborted
 development solver request with no usage returned. These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
@@ -241,10 +242,12 @@ they fit the response budget, otherwise explicit metadata without source-read
 credit. References are not a runtime call trace. Graphs are verified against a
 frozen source manifest and graph-file hashes before use.
 Inside a function or method, a selected line navigates from the enclosing callable
-rather than a smaller local-symbol definition. The current development prompt
-requests a targeted hop when a central callable is located and dependencies are
-still unclear, before expanding manual reads. Actual use and new source must
-still be checked in the recorded trajectory.
+rather than a smaller local-symbol definition. Within the bounded raw-edge scan,
+function/method neighbors precede other defined symbols while preserving direction
+and edge order within each group. The current development prompt requires a hop
+after the first source reply showing a callable, including grep completion,
+before further source tools. Actual use and new source must still be checked
+in the recorded trajectory.
 
 The experimental `--graph-source-policy unseen` skips fully observed definitions
 and returns only the missing lines of partly observed definitions when all of
@@ -272,6 +275,31 @@ negative result remains unchanged, and no new independent validation is started.
 Future development must establish actual tool use and useful novel source before
 another quality cohort. Detailed values and the failed gate are retained in the
 [development summary](../assets/contextbench_online_development_summary.json).
+
+An offline diagnostic then fixes the first callable-bearing read and its observed
+source prefix in each of the same eight development traces. Before reordering,
+the TypeScript and Go queries fill all five outgoing result slots with fields or
+types. Prioritizing callable neighbors raises the Go query's new annotated source
+from 1 to 16 physical lines; the other four available graphs add no annotated
+lines at those anchors. Incoming output is unchanged. Across both directions,
+the union of new physical source changes from 256 to 412 lines. These counts
+include blank/comment lines and do not establish a Recall/F1 gain or predict the
+agent's subsequent behavior. The old annotated Go line is displaced by different
+source. All three unavailable graphs remain reported.
+
+A first original-issue Go probe calls the graph after grep supplies a complete
+function, before its first read. It delivers 132 previously unseen annotated
+physical lines, but fails the literal predeclared after-first-read timing gate.
+That failure and its $0.201015 SDK estimate remain recorded. A revised prompt
+explicitly counts callable source from grep completion or read, and is frozen for
+a second one-task mechanism version. Both versions have an eight-turn, $1 SDK
+meter guard, receive no selected source anchor and stay outside quality scores.
+The second version passes its declared source-observation timing and novelty
+gate, delivers 132 new annotated physical lines to a subsequent assistant turn,
+and reports $0.126101 in SDK metering. These are two versions on one development
+task, not independent quality evidence. Broader fresh matched development controls
+are still required; no new independent quality cohort is started. Both complete
+records accompany the public development summary.
 
 Prepare graphs locally, then run two fresh `functions` arms with the same
 `--graphs` directory; add `--graph-navigation` only to the candidate. The paired

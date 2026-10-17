@@ -2170,8 +2170,564 @@
       ],
       "standalone_api_key_inference_spend_usd": 0,
       "actual_subscription_bill_usd": null,
-      "scope": "SDK estimates, not invoices. Program total includes previous development and the completed independent 32; one earlier aborted solver request remains unmetered."
+      "scope": "SDK estimates, not invoices. Program total includes previous development and the completed independent 32; one earlier aborted solver request remains unmetered.",
+      "snapshot_scope": "Historical snapshot at early/unseen trial completion; current_program_cost contains subsequent mechanism probes."
     },
     "conclusion": "The gate fails: all eight graph-enabled tasks make zero graph calls. Positive development point differences cannot be attributed to graph-returned source and both primary intervals cross zero. Require an adoption/novelty mechanism check before another quality cohort; no new independent validation or full-500 run."
+  },
+  "first_callable_graph_mechanism": {
+    "scope": "Development mechanism checks only, excluded from quality/leaderboard scores. No independent-validation tasks.",
+    "offline": {
+      "selection_sha256": "3f271fffc1394591c485e4eee5e2501e39e07e0e6146263392ee8ab0e889f568",
+      "anchor_rule": "First actual read response intersecting a compiler callable. Choose maximum count of returned physical lines in a callable, then smallest callable span and lexical name; use its earliest observed line. This rule is fixed before annotation overlap is measured.",
+      "observations": "Actual source-checked message prefix through that read; both directions use the same prefix independently.",
+      "annotation_use": "Only compute overlap after anchor selection and graph responses. Do not select a better anchor from annotations.",
+      "directions": [
+        "incoming",
+        "outgoing"
+      ],
+      "limit_per_call": 5,
+      "graph_tokens_per_call": 2048,
+      "neighbor_order_change": "Functions/methods precede other defined symbols within the same 1000-raw-edge scan; stable edge order within groups.",
+      "protocol_sha256": "ff24ad2ec7b18d48e3135f48fd8da4701771195af8a59f35571fc72d42a8feaf",
+      "baseline_summary_sha256": "9399c750f331ae9d6a028f659cc4de79760776f9309173b11fb27660e9529d58",
+      "analysis_sha256": "3233844bcdd387affa280dbaef012fd7fe40dd94c8b7b5108cfcec8806b1ffa8",
+      "implementation": {
+        "scripts/benchmark_context_agent.py": "a5c4a762721142fc3c910e79e2ed6e7a60f2e991ce80b535afa27d5f2a077b26",
+        "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+        "scripts/contextbench_graph_navigation.py": "09729d03dd77d4a4c1504f7c77a31c0a0b72fabe9fd70031946e14f57cc20d0e",
+        "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+        "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+        "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+        "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+        "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+        "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+        "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+        "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+        "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+        "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+        "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+        "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+        "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+        "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+        "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+        "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+        "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+        "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+        "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+        "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+        "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+        "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+        "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+        "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+        "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+        "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+        "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+        "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+        "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+        "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+        "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+        "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+        "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+        "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+        "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+      },
+      "model_calls": 0,
+      "new_physical_lines_union_per_task": {
+        "before": 256,
+        "after": 412
+      },
+      "new_annotated_physical_lines_union_per_task": {
+        "before": 1,
+        "after": 16
+      },
+      "interpretation": "Only the Go anchor adds annotated source; its previous annotated line is displaced. Physical blank/comment lines are counted. This is not official Recall/F1 or an online quality score.",
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "graph_available": true,
+          "directions": {
+            "incoming": {
+              "before_new_lines": 27,
+              "after_new_lines": 27,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 27,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_returned"
+              ],
+              "node_types": [
+                "method"
+              ]
+            },
+            "outgoing": {
+              "before_new_lines": 59,
+              "after_new_lines": 64,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 58,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned"
+              ],
+              "node_types": [
+                "method",
+                "function",
+                "function",
+                "function",
+                "class"
+              ]
+            }
+          },
+          "union_directions": {
+            "before_new_lines": 86,
+            "after_new_lines": 91,
+            "before_new_annotated_lines": 0,
+            "after_new_annotated_lines": 0
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "graph_available": true,
+          "directions": {
+            "incoming": {
+              "before_new_lines": 5,
+              "after_new_lines": 5,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 5,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_not_returned",
+                "source_returned"
+              ],
+              "node_types": [
+                "function",
+                "function"
+              ]
+            },
+            "outgoing": {
+              "before_new_lines": 5,
+              "after_new_lines": 128,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 0,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned"
+              ],
+              "node_types": [
+                "function",
+                "function",
+                "function",
+                "function",
+                "method"
+              ]
+            }
+          },
+          "union_directions": {
+            "before_new_lines": 10,
+            "after_new_lines": 133,
+            "before_new_annotated_lines": 0,
+            "after_new_annotated_lines": 0
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "graph_available": false,
+          "directions": {}
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "graph_available": false,
+          "directions": {}
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "graph_available": true,
+          "directions": {
+            "incoming": {
+              "before_new_lines": 0,
+              "after_new_lines": 0,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 0,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "no_returned_neighbors"
+              ],
+              "node_types": []
+            },
+            "outgoing": {
+              "before_new_lines": 5,
+              "after_new_lines": 101,
+              "before_new_annotated_lines": 1,
+              "after_new_annotated_lines": 16,
+              "retained_new_lines": 0,
+              "removed_annotated_lines": 1,
+              "statuses": [
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned"
+              ],
+              "node_types": [
+                "function",
+                "function",
+                "method",
+                "function",
+                "function"
+              ]
+            }
+          },
+          "union_directions": {
+            "before_new_lines": 5,
+            "after_new_lines": 101,
+            "before_new_annotated_lines": 1,
+            "after_new_annotated_lines": 16
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "graph_available": false,
+          "directions": {}
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "graph_available": true,
+          "directions": {
+            "incoming": {
+              "before_new_lines": 0,
+              "after_new_lines": 0,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 0,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "no_returned_neighbors"
+              ],
+              "node_types": []
+            },
+            "outgoing": {
+              "before_new_lines": 25,
+              "after_new_lines": 25,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 25,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_returned",
+                "source_returned"
+              ],
+              "node_types": [
+                "function",
+                "field"
+              ]
+            }
+          },
+          "union_directions": {
+            "before_new_lines": 25,
+            "after_new_lines": 25,
+            "before_new_annotated_lines": 0,
+            "after_new_annotated_lines": 0
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "graph_available": true,
+          "directions": {
+            "incoming": {
+              "before_new_lines": 16,
+              "after_new_lines": 16,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 16,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_returned"
+              ],
+              "node_types": [
+                "method"
+              ]
+            },
+            "outgoing": {
+              "before_new_lines": 114,
+              "after_new_lines": 46,
+              "before_new_annotated_lines": 0,
+              "after_new_annotated_lines": 0,
+              "retained_new_lines": 7,
+              "removed_annotated_lines": 0,
+              "statuses": [
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned",
+                "source_returned"
+              ],
+              "node_types": [
+                "method",
+                "method",
+                "method",
+                "method",
+                "function"
+              ]
+            }
+          },
+          "union_directions": {
+            "before_new_lines": 130,
+            "after_new_lines": 62,
+            "before_new_annotated_lines": 0,
+            "after_new_annotated_lines": 0
+          }
+        }
+      ]
+    },
+    "online_versions": [
+      {
+        "scope": "Single development mechanism probe on the original issue; no quality or leaderboard score. No task-specific source anchors supplied to model.",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "protocol_sha256": "02d858fdef7fa2a3c69a3358c97c37c8dbacdd85204dd86ecf5b7399c08da21a",
+        "result_sha256": "c82bfb91ab783b66942255342fced1786dd71cff20f329dcadd0ce4306661683",
+        "analysis_sha256": "8edd91d9748c91c9da229dc09b887ce1aae80c15919540bdbd05a940a219ca33",
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "a5c4a762721142fc3c910e79e2ed6e7a60f2e991ce80b535afa27d5f2a077b26",
+          "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+          "scripts/contextbench_graph_navigation.py": "09729d03dd77d4a4c1504f7c77a31c0a0b72fabe9fd70031946e14f57cc20d0e",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "model_requested": "claude-opus-5-5",
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "graph_policy": "first_callable_read_reference_hop",
+        "first_callable_read": {
+          "message_index": 8,
+          "tool": "read",
+          "next_tools": [
+            "grep"
+          ]
+        },
+        "first_callable_source": {
+          "message_index": 3,
+          "tool": "grep",
+          "next_tools": [
+            "graph_neighbors"
+          ]
+        },
+        "confirmed_new_graph_physical_lines": 132,
+        "confirmed_new_graph_annotated_physical_lines": 132,
+        "strict_first_read_timing_passed": false,
+        "first_source_timing_passed": true,
+        "predeclared_timing_passed": false,
+        "predeclared_gate_passed": false,
+        "status": "ok",
+        "sdk_reported_cost_usd": 0.201015,
+        "sdk_metering_is_actual_billing": false,
+        "actual_bill_usd": null,
+        "missing_metering_calls": 0,
+        "quality_score": null,
+        "quality_claim": false,
+        "tool_sequence": [
+          "grep",
+          "graph_neighbors",
+          "read",
+          "grep",
+          "grep"
+        ],
+        "name": "online-probe",
+        "graph_calls": [
+          {
+            "message_index": 6,
+            "following_assistant_confirms_delivery": true,
+            "returned_physical_lines": 132,
+            "new_physical_lines": 132,
+            "statuses": [
+              "source_returned"
+            ]
+          }
+        ],
+        "limits": {
+          "max_turns": 8,
+          "case_timeout_seconds": 180,
+          "sdk_meter_guard_usd": 1.0,
+          "source_policy": "functions",
+          "completion_tokens": 2048,
+          "graph_source_policy": "unseen",
+          "graph_tokens": 2048
+        },
+        "predeclared_gate": "The first new assistant tool-call turn after a callable-bearing read calls graph_neighbors before further source tools, and a delivered graph response adds previously unseen physical source.",
+        "selected_source_anchor_in_prompt": false,
+        "attempts_for_this_version": 1
+      },
+      {
+        "scope": "Second development mechanism version on the same original issue; first version retained separately; no quality or leaderboard score. No task-specific source anchors supplied to model.",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "protocol_sha256": "3429ba8b216af5593479f50629ce33729863db4774a82979c4c3aa281cba44a0",
+        "result_sha256": "51a41236b11494403da6348cf69e688cc7b02c3ef1d64e1c0283aadc95309d9a",
+        "analysis_sha256": "8edd91d9748c91c9da229dc09b887ce1aae80c15919540bdbd05a940a219ca33",
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "3a0b3c1604ed09532eabd1173349c60f9497019b83131023e85de752d13a922b",
+          "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+          "scripts/contextbench_graph_navigation.py": "26ee7bc5e203b4c028f4b4acc5d019b106b04ab3c8365ec6a3fb42bc9b220bc9",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "model_requested": "claude-opus-5-5",
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "graph_policy": "first_callable_source_reference_hop",
+        "first_callable_read": null,
+        "first_callable_source": {
+          "message_index": 3,
+          "tool": "grep",
+          "next_tools": [
+            "graph_neighbors"
+          ]
+        },
+        "confirmed_new_graph_physical_lines": 132,
+        "confirmed_new_graph_annotated_physical_lines": 132,
+        "strict_first_read_timing_passed": false,
+        "first_source_timing_passed": true,
+        "predeclared_timing_passed": true,
+        "predeclared_gate_passed": true,
+        "status": "ok",
+        "sdk_reported_cost_usd": 0.1261007,
+        "sdk_metering_is_actual_billing": false,
+        "actual_bill_usd": null,
+        "missing_metering_calls": 0,
+        "quality_score": null,
+        "quality_claim": false,
+        "tool_sequence": [
+          "grep",
+          "graph_neighbors",
+          "grep",
+          "grep"
+        ],
+        "name": "online-probe-source-trigger",
+        "graph_calls": [
+          {
+            "message_index": 6,
+            "following_assistant_confirms_delivery": true,
+            "returned_physical_lines": 132,
+            "new_physical_lines": 132,
+            "statuses": [
+              "source_returned"
+            ]
+          }
+        ],
+        "limits": {
+          "max_turns": 8,
+          "case_timeout_seconds": 180,
+          "sdk_meter_guard_usd": 1.0,
+          "source_policy": "functions",
+          "completion_tokens": 2048,
+          "graph_source_policy": "unseen",
+          "graph_tokens": 2048
+        },
+        "predeclared_gate": "The first new assistant tool-call turn after the first callable-bearing source reply (read or function-completed grep) calls graph_neighbors before further source tools, and a delivered graph response adds previously unseen physical source.",
+        "selected_source_anchor_in_prompt": false,
+        "attempts_for_this_version": 1
+      }
+    ],
+    "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
+  },
+  "current_program_cost": {
+    "known_sdk_reported_estimate_usd": 50.58461930000001,
+    "mechanism_probes_sdk_estimate_usd": 0.3271157,
+    "unmetered_solver_attempts": [
+      "solver-smoke-functions-v2"
+    ],
+    "standalone_api_key_inference_calls": 0,
+    "standalone_api_key_inference_cost_usd": 0,
+    "authorized_new_api_spend_usd": 100,
+    "sdk_metering_is_actual_billing": false,
+    "actual_bill_usd": null,
+    "scope": "Latest known October 16 program estimate, including both mechanism probes; historical trial budgets remain snapshots. One earlier aborted solver request is unmetered."
   }
 }

@@ -39,7 +39,7 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
-| Directed graph navigation | Independent validation rejects the prior policy. The subsequent early-hop/unseen development trial completes all eight tasks per arm but makes zero graph calls, so it fails its declared novelty gate despite higher point scores. Offline replay removes 220 repeated lines without adding source. | Prove tool adoption and useful novel source before another quality cohort. No new independent validation, product promotion or full-500 launch. |
+| Directed graph navigation | Independent validation rejects the prior policy, and the advisory early-hop trial makes zero graph calls. A fixed-anchor replay motivates callable-first ordering. The revised prompt's one-task mechanism check calls the graph after its first callable observation and delivers 132 previously unseen annotated physical lines. | Freeze fresh matched development controls to test quality and broader adoption. A one-task mechanism pass is not a score improvement; no new independent validation, product promotion or full-500 launch. |
 | Complete solver | The independent Verified task resolves in both arms, 1/1 each. The new development pair remains unresolved, 0/1 each, and confirms all 18 hashed model inputs. Elided and unrequested terminal output are excluded from observation exports. | Broader matched outcomes, Multi/Poly/Pro adapters and source-line attribution from actual solver observations; no comparative or population Pass@1 gain established. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -94,12 +94,14 @@ can exceed an observed guard. Unknown or invalid metering stops later cases.
 
 The completed independent retrieval arms report **$23.673179** in SDK estimates;
 their one-task paired solver check adds **$0.828001**. Across this October 16
-program, known metering totals **$50.257504**, plus one aborted development solver
+program, known metering totals **$50.584619**, plus one aborted development solver
 request with unknown metering. Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
 quality gate fails, so this policy does not advance to the full-500 run.
 The later early-hop/unseen development trial contributes $7.266208 in retrieval
 estimates and $1.367794 for its new paired solver attempts to that program total.
+The two later one-task graph mechanism versions add $0.327116, with no standalone
+API-key inference or quality score.
 
 The historical native search average is $0.9911/task (24 cases; median $0.690554,
 maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
@@ -269,6 +271,67 @@ inputs and eleven candidate-context inputs are confirmed and exported, with no
 missing usage; SDK estimates are $0.485857 and $0.881937. Both owned containers
 are removed. This revisits one development task, not two new independent tasks.
 The public development summary retains this complete trial and its failed gate.
+
+### First-callable graph mechanism check
+
+Before another model cohort, freeze a source-only diagnostic on the same eight
+development traces. Select the first actual `read` response intersecting a
+compiler function/method, then the callable with the most returned physical lines
+(smallest span and lexical name break ties). Query its earliest observed line.
+Both reference directions use that identical prefix independently, with five
+results and 2,048 tokens per call. Annotation overlap is measured only after
+selection and source retrieval. Three unavailable graphs remain explicit.
+
+The TypeScript and Go outgoing responses fill all five slots with fields/types.
+The revised tool prioritizes functions and methods within the same 1,000-raw-edge
+scan; it preserves edge order within each group, reference direction and source
+budgets. The replay holds every anchor and observed prefix fixed:
+
+| Development language | Outgoing new physical lines, before → after | Annotated overlap, before → after |
+| --- | ---: | ---: |
+| Python | 59 → 64 | 0 → 0 |
+| TypeScript | 5 → 128 | 0 → 0 |
+| Go | 5 → 101 | 1 → 16 |
+| JavaScript | 25 → 25 | 0 → 0 |
+| Rust | 114 → 46 | 0 → 0 |
+
+Incoming output is unchanged. Taking the union of both directions per task,
+new physical source changes from 256 to 412 lines, with annotated overlap from
+1 to 16 lines. The original annotated Go field line is displaced; the 16 returned
+annotated lines are different source. Counts include physical blank/comment lines
+and are not official Recall/F1 or a counterfactual online quality score. The
+other available queries with zero annotated overlap remain
+reported. No inference is used for this diagnostic.
+
+The first original-issue Go probe calls the graph after function completion in
+`grep`, before its first `read`. The response supplies 132 previously unseen
+annotated physical lines and reaches a subsequent assistant turn, but the literal
+predeclared **after-first-read** timing gate fails. Its $0.201015 SDK estimate and
+failed timing gate remain recorded. This is useful early navigation, not a reason
+to silently redefine that probe's gate.
+
+The revised shared prompt explicitly counts callable source delivered through
+either read or grep completion, and requires the next tool call to be the graph
+query. It avoids requiring another hop just because a later `read` occurs. A
+second version of the same original-issue probe freezes this source-observation
+rule before inference. Each version has one attempt, eight turns, 180 seconds and
+a $1 SDK-meter guard; neither supplies a selected source anchor or annotations to
+the model. Both remain outside quality evaluation. Raw receipts and the frozen
+implementations are under
+`verification/contextbench-graph-mechanism-20261016/`; sanitized counts accompany
+the existing public development summary.
+
+The second version passes its predeclared timing and unseen-source gate: its
+first callable-bearing reply is grep completion, its next tool call is the graph,
+and a subsequent assistant turn confirms delivery of 132 newly observed annotated
+physical lines. It reports $0.126101 in SDK metering. Both versions finish without
+SDK errors or missing metering and use actual Opus 5.5. The first version's timing
+failure remains reported; the two versions are not independent tasks. This
+establishes working tool adoption and source delivery on one development issue,
+not a quality improvement attributable to ordering or prompting. The next gate
+is a frozen fresh matched development comparison with broader adoption and Recall/F1
+accounting. No new independent selection or full-500 run is started; the prior
+negative validation and native-solver gates remain unchanged.
 
 ### October 16 online development result
 

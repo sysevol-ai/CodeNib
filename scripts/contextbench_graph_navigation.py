@@ -178,7 +178,7 @@ def graph_options(args, cases):
         "prepared": str(prepared.resolve()) if prepared else None,
         "manifest_sha256": digest(prepared / "manifest.json") if prepared else None,
         "tokens": tokens,
-        "policy": "early_reference_hop_before_expanding_reads",
+        "policy": "first_callable_source_reference_hop",
         "source_policy": source_policy,
     }
 
@@ -231,6 +231,8 @@ class GraphNavigation:
 
     No file hubs or containment edges participate. Scan at most ``edge_limit``
     raw edges and return at most the requested number of unique definitions.
+    Within that bounded scan, callable definitions precede other symbols so
+    fields and parameters cannot consume every result slot before a callee.
     A definition's source is returned whole, or as all its missing lines under
     ``unseen``, within the response budget. Its declared range is never credited
     as read without actual numbered source. ``observed_source`` supplies verified
@@ -321,7 +323,7 @@ class GraphNavigation:
         )
         scanner = RepoDependencySearcher(self.graph)
         budget = NeighborScanBudget(self.edge_limit)
-        records, seen = [], {seed["name"]}
+        records, candidates, seen = [], [], {seed["name"]}
         observed = defaultdict(set)
         if self.source_policy == "unseen":
             for node in self.observed_source():
@@ -340,6 +342,14 @@ class GraphNavigation:
             node = self.graph.graph.vs[self.graph.name_to_vertex[name]].attributes()
             if not is_symbol_node(node.get("type")) or not node_has_definition(node):
                 continue
+            candidates.append((name, node, edge))
+        # Preserve reference direction and edge order within each group. Ranking
+        # never widens the raw-edge scan or turns a reference into a call edge.
+        candidates.sort(
+            key=lambda candidate: candidate[1].get("type")
+            not in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
+        )
+        for name, node, edge in candidates:
             file = node.get("file")
             start, end = node.get("start_line"), node.get("end_line")
             if (
@@ -418,7 +428,9 @@ class GraphNavigation:
                 "Choose an observed source file and 1-based line inside a definition. "
                 "Inside a function or method, navigate from that enclosing callable. "
                 "Outgoing follows its references; incoming finds definitions referencing "
-                "it, including tests. These are compiler references, not a complete "
+                "it, including tests. Functions and methods are returned before other "
+                "symbols within the bounded edge scan. These are compiler references, "
+                "not a complete "
                 "runtime call graph. Only numbered content has been read. A missing "
                 "graph or omitted source is explicit; continue with read/grep as needed. "
                 "The unseen policy skips fully observed definitions and returns only "

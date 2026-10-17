@@ -161,7 +161,16 @@ The later source-only candidate skips already observed graph source and requests
 an early reference hop. Offline replay removes 220 repeated lines without adding
 source. Its fresh three-arm development comparison makes zero graph calls and
 fails the declared novelty gate, despite higher point scores. Require a tool-use
-and source-novelty check before another quality cohort. The new solver pair is
+and source-novelty check before another quality cohort. A fixed-anchor offline
+replay finds fields/types occupying the result limit; prioritizing callable
+neighbors changes new annotated source from 1 to 16 physical lines on one Go
+task, with no annotated gain on the other four available graphs. The current
+shared prompt requires the first callable-bearing source reply, including grep
+completion, to be followed by a graph query. Its one-task mechanism check passes
+and delivers 132 newly observed annotated physical lines. The earlier literal
+after-read timing failure remains recorded; neither version is a quality score.
+Broader fresh matched development evidence remains required before independent
+validation. No product route is promoted. The new solver pair is
 0/1 resolved in each arm on the repeated development task; all 18 model inputs
 have hashed, confirmed receipts including actual output truncation. Shell-source
 attribution and the other native harnesses remain open.
