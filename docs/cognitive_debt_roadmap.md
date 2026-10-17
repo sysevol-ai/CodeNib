@@ -400,6 +400,20 @@ official500 or a product default; the positive point estimate has not establishe
 stable independent gain.
 The new default-off `scripts/contextbench_file_source.py` remains labs-only and
 appends exact unread same-file windows while preserving native reads. The unchanged first-read source-window policy fails its complete 24-task development stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95% Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected SDK sessions are retained for $9.86110630, with no repairs. Independent and official500 gains remain unestablished.
+The late physical-source compiler and actual-input reviewer remain labs-only.
+The late-source study retains all 24 development positions and fails its delivery gate:
+Recall 58.39% → 62.16%, F1 31.97% → 28.64%; descriptive repository 95%
+Recall interval [+1.49,+6.51] points. Remaining 20 input validation costs
+$2.87066330; all packet attempts total $4.63143900 within separate $3/$8 reservations.
+All 24 construction parity and 96 focused tests pass. Preserve original first-attempt,
+requested no-thinking and overall mechanism failures. This known opportunity was
+already scored: it is component delivery, not independent quality or fresh paired
+adaptive-agent behavior. The remaining 20 study stops on an SDK budget error:
+23 normal, one error and 16 unstarted sessions remain. Source-consumer budget and
+terminal handling need a new prospective protocol before independent calls;
+both old 32 cohorts stay sealed. No product default/lifecycle change or repair/full500 advancement.
+See the [current results](evaluation/contextbench-results.md) and draft
+[PR #834](https://github.com/sysevol-ai/CodeNib/pull/834).
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The historical 331

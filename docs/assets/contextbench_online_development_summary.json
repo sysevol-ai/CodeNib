@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 150.72574016,
+    "known_sdk_reported_estimate_usd": 155.35717916,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Current Claude SDK/Jev ledger through first-read source-window development, including both completed independent32 cohorts, historical repairs and all new Jev probes. Excludes historical OpenRouter reference/decision controls documented separately. Mixed SDK sums include subscription usage and are not cash spending. Same two historical SDK metering gaps; actual billing and credit balance unverified.",
+    "scope": "Current Claude SDK/Jev ledger through complete24 late-source development delivery study, including original failed mechanism attempts, both sealed independent32 cohorts and historical repairs. Excludes historical OpenRouter controls documented separately. Mixed SDK sums include subscription usage and are not cash spending. Same two historical Max metering gaps; actual charges and credit balance unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2804,10 +2804,10 @@
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
     "known_claude_max_sdk_estimate_usd": 112.5018556,
-    "known_anthropic_api_sdk_estimate_usd": 38.22388456,
-    "standalone_api_call_count_scope": "1012 Jev decision requests only. Direct Anthropic main-model use is recorded as 184 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
-    "anthropic_api_sdk_sessions": 239,
-    "known_combined_api_usage_value_usd": 38.593861929999996,
+    "known_anthropic_api_sdk_estimate_usd": 42.85532356,
+    "standalone_api_call_count_scope": "1012 Jev decision requests; direct Anthropic use is184 retrieval SDK sessions,36 packet-review SDK sessions and55 historical repair SDK queries, not individual HTTP request counts.",
+    "anthropic_api_sdk_sessions": 275,
+    "known_combined_api_usage_value_usd": 43.22530093,
     "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
     "online_grep_jev_decision_api_cost_usd": 0.00552048,
     "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413,
@@ -2829,7 +2829,11 @@
     "file_source_online_pilot_sdk_sessions": 8,
     "all_file_source_online_api_sdk_estimate_usd": 9.8611063,
     "all_file_source_online_sdk_sessions": 48,
-    "late_source_jev_probe_cost_usd": 0.27171501
+    "late_source_jev_probe_cost_usd": 0.27171501,
+    "late_packet_input_api_sdk_estimate_usd": 4.631439,
+    "late_packet_input_sdk_sessions": 36,
+    "remaining20_late_packet_input_api_sdk_estimate_usd": 2.8706633000000004,
+    "remaining20_late_packet_input_sdk_sessions": 24
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -27413,7 +27417,7 @@
     },
     "consequence": "No untouched C++ or Java remains. Do not recycle either validation cohort or imply that future samples preserve the current language coverage."
   },
-  "latest_context_strategy_status": "All three staged first-read source point screens pass, but the complete24 development stability gate fails: Recall58.39% to63.91%, difference+5.52points with repository-cluster95 interval[-2.76,+12.52]. F131.97% to27.94%, $9.86110630 SDK usage across48 normal sessions. All source/usage/model/route/delivery/environment audits pass. No new independent/repair/full500 calls. Preserve both sealed validation cohorts. Late one-envelope source timing is a new zero-call opportunity hypothesis only.",
+  "latest_context_strategy_status": "All24 selected development cases retained; partial late physical4K source delivery engineering gate fails. Remaining20 status23 normal/1 error/16 not-run SDK sessions. Recall0.58390060 to0.62161683, F10.31965727 to0.28635753; descriptive repository95 Recall difference interval[0.01486057,0.06505073]. Existing opportunity was already scored: not new independent quality or fresh paired adaptive-agent behavior. Remaining20 source reviews cost$2.87066330; all packet attempts$4.63143900. Earlier first-attempt and no-thinking/overall mechanism failures remain. Both old32 cohorts sealed; no repairs/full500.",
   "preserved_source_cached_ranking": {
     "scope": "Fixed-query actual-source union opportunity only, using shared historical real observations. No new agent behavior, paid calls or independent/leaderboard claim. No retrospective change to earlier failed online or independent gates.",
     "protocol_sha256": "707b197e50de1591e9ca6abfbb0213b7682440d74043e51ab944161f6e5a1428",
@@ -35155,5 +35159,1087 @@
       "new_api_cost_usd": 0,
       "new_model_calls": 0
     }
+  },
+  "late_packet_input_first_attempt": {
+    "scope": "Prospective input-delivery mechanism check, not fresh adaptive-agent discovery, independent quality, Pass@1 or a leaderboard result. Native prefix stays identical in each paired arm. Late source is chosen by the separately passed physical4K opportunity, not by the failed Jev ranking screen.",
+    "protocol_sha256": "cfe51d9c65987fc13aa1d5613cb3f0d7f118d9821d663471d928d8112d53cce0",
+    "runtime_commit": "539e6a6bb7f70c53afcee9037bf6b43695922075",
+    "primary_cumulative": {
+      "native_packet": {
+        "recall": 0.42871498145133813,
+        "precision": 0.36974567623958443,
+        "f1": 0.38637140958381844,
+        "official_valid": 4
+      },
+      "late_physical4096": {
+        "recall": 0.47020875738494816,
+        "precision": 0.32386550403197856,
+        "f1": 0.3684456476149993,
+        "official_valid": 4
+      }
+    },
+    "secondary_final32k_packet": {
+      "native_packet": {
+        "recall": 0.09647302904564316,
+        "precision": 0.10472972972972973,
+        "f1": 0.10043196544276457,
+        "official_valid": 1
+      },
+      "late_physical4096": {
+        "recall": 0.13796680497925312,
+        "precision": 0.058849557522123896,
+        "f1": 0.08250620347394541,
+        "official_valid": 1
+      }
+    },
+    "gates": {
+      "all8_sessions_normal": false,
+      "all_actual_inputs_version_bound_and_confirmed": false,
+      "known_usage": true,
+      "all_official_scores_valid": false,
+      "runtime_source_driver_receipts_exact": true,
+      "all_selected_positions_retained": true,
+      "within_reservation": true
+    },
+    "mechanism_gate_passed": false,
+    "new_api_sdk_estimate_usd": 0.8501327999999999,
+    "new_sdk_sessions": 4,
+    "reused_prefix_sdk_estimate_usd": 0.7716366,
+    "allocated_pipeline_sdk_usd": {
+      "native_packet": 1.1803831,
+      "late_physical4096": 1.2130229000000001
+    },
+    "environments": [
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      }
+    ],
+    "cost_scope": "Incremental experiment spending excludes reused prefixes. Each pipeline arm allocates its full historical prefix cost; those allocations are not additional API spending. This is a shared-prefix mechanism check, not two fresh adaptive-agent runs.",
+    "repair_calls": 0,
+    "independent_gain_established": false,
+    "prior_failed_gates_unchanged": true,
+    "analysis_sha256": "3d49a09a00018bda308dce66f4054205fcc42d800b1eda41dcf37b6c1dae8688",
+    "implementation_commit": "539e6a6bb7f70c53afcee9037bf6b43695922075",
+    "source_packet_sha256": "ab3b64c05b3ecc670ec1624c36af2d33b2b06e9cd9a9b87f474cc7318c26416b",
+    "selected_tasks": 4,
+    "planned_sessions": 8,
+    "attempted_sessions": 4,
+    "status_counts": {
+      "error": 2,
+      "ok": 2
+    },
+    "not_run_sessions": 4,
+    "raw_attempts_preserved": true
+  },
+  "late_packet_input_followup": {
+    "scope": "Separate prospective packet input mechanism check with explicit thinking disabled and at most120-word review. Same model/source packets and case budgets as closed first attempt. Retain the original two successful/two budget-error/four not-run positions and its failed gate. No repair or fresh adaptive/independent/leaderboard claim.",
+    "protocol_sha256": "4e1b0193accf1d176e2938ad419ba3cd2a8682b3cba96a6d46c55f8a2311e3ef",
+    "runtime_commit": "c141a2b7348b43c3fb39deadc6b3d0d43f65d473",
+    "primary_cumulative": {
+      "native_packet": {
+        "recall": 0.42871498145133813,
+        "precision": 0.36974567623958443,
+        "f1": 0.38637140958381844,
+        "official_valid": 4
+      },
+      "late_physical4096": {
+        "recall": 0.4940660896349624,
+        "precision": 0.2391237670550279,
+        "f1": 0.31527428214593783,
+        "official_valid": 4
+      }
+    },
+    "secondary_final32k_packet": {
+      "native_packet": {
+        "recall": 0.42871498145133813,
+        "precision": 0.37022799199187983,
+        "f1": 0.38663509246571426,
+        "official_valid": 4
+      },
+      "late_physical4096": {
+        "recall": 0.4940660896349624,
+        "precision": 0.23929183871900586,
+        "f1": 0.31542040903571045,
+        "official_valid": 4
+      }
+    },
+    "gates": {
+      "all8_sessions_normal": true,
+      "all_actual_inputs_version_bound_and_confirmed": true,
+      "known_usage": true,
+      "all_official_scores_valid": true,
+      "runtime_source_driver_receipts_exact": true,
+      "all_selected_positions_retained": true,
+      "within_reservation": true
+    },
+    "mechanism_gate_passed": false,
+    "source_delivery_receipt_gate_passed": true,
+    "mode_conformance_gate_passed": false,
+    "new_api_sdk_estimate_usd": 0.9106428999999999,
+    "new_sdk_sessions": 8,
+    "reused_prefix_sdk_estimate_usd": 0.7716366,
+    "allocated_pipeline_sdk_usd": {
+      "native_packet": 1.1588559,
+      "late_physical4096": 1.2950602000000002
+    },
+    "environments": [
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      },
+      {
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5"
+      }
+    ],
+    "cost_scope": "Incremental experiment spending excludes reused prefixes. Each pipeline arm allocates its full historical prefix cost; those allocations are not additional API spending. This is a shared-prefix mechanism check, not two fresh adaptive-agent runs.",
+    "repair_calls": 0,
+    "independent_gain_established": false,
+    "prior_failed_gates_unchanged": true,
+    "aggregate_mechanism_sdk_usd": 1.7607757,
+    "analysis_sha256": "34c492554cb02e084da2f3a084ee0b41920e3114708a8fa7012bf44fd38629d4",
+    "implementation_commit": "c141a2b7348b43c3fb39deadc6b3d0d43f65d473",
+    "source_packet_sha256": "ab3b64c05b3ecc670ec1624c36af2d33b2b06e9cd9a9b87f474cc7318c26416b",
+    "selected_tasks": 4,
+    "planned_sessions": 8,
+    "attempted_sessions": 8,
+    "status_counts": {
+      "ok": 8
+    },
+    "not_run_sessions": 0,
+    "raw_attempts_preserved": true,
+    "actual_mode_summary": {
+      "requested_thinking": "disabled",
+      "sessions_with_thinking_blocks": 7,
+      "sessions": 8,
+      "sdk_reported_turn_range": [
+        1,
+        3
+      ],
+      "thought_contents_inspected_or_published": false,
+      "thinking_mode_conformance": false
+    },
+    "delivery_analysis_protocol_sha256": "5bb2654944fa0e707ae72eba06a4d239c840e0490c0c67adc560eccb29808106",
+    "mode_conformance_audit_sha256": "4c1eb6634a34f4884c39b05f0d838ee41d9af91dc13b211c43898b0dc2e3f39c"
+  },
+  "late_packet_input_next_gate": "Keep failed complete-development delivery gate and stop. Fix source-consumer budget/terminal handling under a new prospective bounded protocol before further independent task calls; no retries within this closed attempt, no repairs/full500.",
+  "late_packet_source_compiler_parity": {
+    "scope": "Unpaid construction parity on already disclosed development source, not new source delivery or independent quality. No gold or reference patch fields loaded.",
+    "producer_sha256": "5dbd7fc8578f87e470615079ab1776953057526a5540d0e848d61fb65b5c2424",
+    "drivers_sha256": "aa78abce8011a03eed6bd7ab7eaa88257ddd261d5a334164277769a0cc6bad13",
+    "source_replay_sha256": "adc1ff0fd0dce5cbd8901721ee40da7e42ffe24ac4b525518fb30b4590720f3a",
+    "metadata_replay_sha256": "d1e3b2991035df0b04ea98588ddf40164d69dec9b44e8b843eb471f16e78f5ab",
+    "prior_input_packets_sha256": "ab3b64c05b3ecc670ec1624c36af2d33b2b06e9cd9a9b87f474cc7318c26416b",
+    "rows": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": true,
+        "context_tokens": {
+          "native_packet": 2434,
+          "late_physical4096": 6514
+        },
+        "extra_tokens": 4091,
+        "candidate_windows": 34
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": true,
+        "context_tokens": {
+          "native_packet": 8012,
+          "late_physical4096": 12085
+        },
+        "extra_tokens": 4084,
+        "candidate_windows": 161
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": true,
+        "context_tokens": {
+          "native_packet": 20416,
+          "late_physical4096": 24481
+        },
+        "extra_tokens": 4095,
+        "candidate_windows": 200
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": true,
+        "context_tokens": {
+          "native_packet": 5203,
+          "late_physical4096": 9289
+        },
+        "extra_tokens": 4096,
+        "candidate_windows": 25
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 3593,
+          "late_physical4096": 7659
+        },
+        "extra_tokens": 4094,
+        "candidate_windows": 48
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 7741,
+          "late_physical4096": 11830
+        },
+        "extra_tokens": 4091,
+        "candidate_windows": 93
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 15726,
+          "late_physical4096": 19809
+        },
+        "extra_tokens": 4093,
+        "candidate_windows": 200
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 17535,
+          "late_physical4096": 21620
+        },
+        "extra_tokens": 4092,
+        "candidate_windows": 142
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 13838,
+          "late_physical4096": 17912
+        },
+        "extra_tokens": 4089,
+        "candidate_windows": 120
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 4175,
+          "late_physical4096": 8253
+        },
+        "extra_tokens": 4084,
+        "candidate_windows": 14
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 10142,
+          "late_physical4096": 14234
+        },
+        "extra_tokens": 4094,
+        "candidate_windows": 137
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 5960,
+          "late_physical4096": 10029
+        },
+        "extra_tokens": 4075,
+        "candidate_windows": 36
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 4183,
+          "late_physical4096": 8251
+        },
+        "extra_tokens": 4094,
+        "candidate_windows": 200
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 3898,
+          "late_physical4096": 7967
+        },
+        "extra_tokens": 4079,
+        "candidate_windows": 200
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 22266,
+          "late_physical4096": 26355
+        },
+        "extra_tokens": 4095,
+        "candidate_windows": 200
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 4935,
+          "late_physical4096": 9014
+        },
+        "extra_tokens": 4091,
+        "candidate_windows": 81
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 8305,
+          "late_physical4096": 12375
+        },
+        "extra_tokens": 4092,
+        "candidate_windows": 51
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 32749,
+          "late_physical4096": 32766
+        },
+        "extra_tokens": 4096,
+        "candidate_windows": 200
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 6571,
+          "late_physical4096": 10644
+        },
+        "extra_tokens": 4091,
+        "candidate_windows": 10
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 4138,
+          "late_physical4096": 6672
+        },
+        "extra_tokens": 2536,
+        "candidate_windows": 4
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 4406,
+          "late_physical4096": 8484
+        },
+        "extra_tokens": 4094,
+        "candidate_windows": 141
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 8925,
+          "late_physical4096": 12982
+        },
+        "extra_tokens": 4087,
+        "candidate_windows": 181
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 3651,
+          "late_physical4096": 7722
+        },
+        "extra_tokens": 4085,
+        "candidate_windows": 37
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "extra_packet_byte_identical": true,
+        "native_packet_byte_identical": true,
+        "prior_actual_input_pair_byte_identical": null,
+        "context_tokens": {
+          "native_packet": 4113,
+          "late_physical4096": 8146
+        },
+        "extra_tokens": 4091,
+        "candidate_windows": 178
+      }
+    ],
+    "all24_extra_and_native_packets_byte_identical": true,
+    "all4_prior_actual_packet_pairs_byte_identical": true,
+    "new_model_calls": 0,
+    "new_api_cost_usd": 0,
+    "implementation_commit": "1aa5bac1fc025b1e615fbece6ac8c4b442a4b8e8",
+    "receipt_sha256": "5fbc4a7b2b129eeeaa7a598cbc52f67b7930ef69c66aa611eccea7c38183c24e",
+    "focused_tests": 96
+  },
+  "late_packet_input_remaining20_development": {
+    "scope": "Complete actual source-input engineering validation on remaining20 disclosed development tasks, then report all24 together. Native investigation is shared; not fresh paired adaptive agents, independent quality, repair or leaderboard evidence. Existing source opportunity was already scored, so this is not a new confirmatory quality test. Preserve every original failed mechanism/mode/quality gate.",
+    "protocol_sha256": "13c82732a9cc6b3c7ff30e7d2b98fe88c99c997829472c72b771f63244d1f4a3",
+    "runtime_commit": "1aa5bac1fc025b1e615fbece6ac8c4b442a4b8e8",
+    "primary_cumulative": {
+      "native_packet": {
+        "recall": 0.6149377222650073,
+        "precision": 0.28490913378281346,
+        "f1": 0.30631444204337394,
+        "official_valid": 20
+      },
+      "late_physical4096": {
+        "recall": 0.6471269751224085,
+        "precision": 0.24177135070181716,
+        "f1": 0.28057417923243533,
+        "official_valid": 20
+      }
+    },
+    "secondary_final32k_packet": {
+      "native_packet": {
+        "recall": 0.3574824559726793,
+        "precision": 0.1442215692437978,
+        "f1": 0.15977357584138788,
+        "official_valid": 12
+      },
+      "late_physical4096": {
+        "recall": 0.38032131512929296,
+        "precision": 0.09472311995942258,
+        "f1": 0.12646077109797305,
+        "official_valid": 11
+      }
+    },
+    "gates": {
+      "all40_sessions_normal": false,
+      "all_actual_inputs_version_bound_and_confirmed": false,
+      "known_usage": true,
+      "all_official_scores_valid": false,
+      "runtime_source_driver_receipts_exact": true,
+      "all_selected_positions_retained": true,
+      "within_reservation": true
+    },
+    "source_delivery_receipt_gate_passed": false,
+    "new_api_sdk_estimate_usd": 2.8706633000000004,
+    "new_sdk_sessions": 24,
+    "reused_prefix_sdk_estimate_usd": 3.6594382000000008,
+    "allocated_pipeline_sdk_usd": {
+      "native_packet": 4.885899999999999,
+      "late_physical4096": 5.3036397
+    },
+    "repair_calls": 0,
+    "independent_gain_established": false,
+    "prior_failed_gates_unchanged": true,
+    "analysis_sha256": "480a741d7a802eec0c2a9350729576b866b80e7830b4fec246e3d5ed913935c6",
+    "actual_thinking_sessions": 21,
+    "sdk_reported_turn_range": [
+      1,
+      3
+    ],
+    "selected_positions": 20,
+    "normal_sessions": 23,
+    "error_sessions": 1,
+    "not_run_sessions": 16,
+    "stopped_reason": "Declared source/model/route/input/status/usage stop rule",
+    "source_packet_sha256": "f333548ecc223939c0cfc1030b85816bf6cb771d4cd1a512432797477f385f4e"
+  },
+  "late_packet_input_combined24_development": {
+    "scope": "Complete24 disclosed development cases; shared actual native prefixes plus actually confirmed source packets. Component source delivery, not fresh paired adaptive agents or independent quality. The source opportunity was already scored; intervals are descriptive. Preserve both old32 sealed cohorts and every prior failed gate.",
+    "protocol_sha256": "13c82732a9cc6b3c7ff30e7d2b98fe88c99c997829472c72b771f63244d1f4a3",
+    "rows": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "repo": "pylint-dev/pylint",
+        "repo_url": "https://github.com/pylint-dev/pylint.git",
+        "language": "python",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.38589211618257263,
+            "precision": 0.4189189189189189,
+            "f1": 0.4017278617710583
+          },
+          "late_physical4096": {
+            "recall": 0.5518672199170125,
+            "precision": 0.23539823008849559,
+            "f1": 0.33002481389578164
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "repo": "vuejs/core",
+        "repo_url": "https://github.com/vuejs/core.git",
+        "language": "typescript",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.2653061224489796,
+            "precision": 0.09154929577464789,
+            "f1": 0.13612565445026178
+          },
+          "late_physical4096": {
+            "recall": 0.32653061224489793,
+            "precision": 0.06896551724137931,
+            "f1": 0.11387900355871886
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "repo": "ponylang/ponyc",
+        "repo_url": "https://github.com/ponylang/ponyc.git",
+        "language": "c",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.5273922571219869,
+            "precision": 0.40448179271708684,
+            "f1": 0.4578313253012048
+          },
+          "late_physical4096": {
+            "recall": 0.5434623813002192,
+            "precision": 0.34685314685314683,
+            "f1": 0.4234490608992601
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "repo": "fmtlib/fmt",
+        "repo_url": "https://github.com/fmtlib/fmt.git",
+        "language": "cpp",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5640326975476839,
+            "f1": 0.5498007968127491
+          },
+          "late_physical4096": {
+            "recall": 0.5544041450777202,
+            "precision": 0.30527817403708984,
+            "f1": 0.39374425022999077
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "repo": "future-architect/vuls",
+        "repo_url": "https://github.com/future-architect/vuls.git",
+        "language": "go",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.375,
+            "precision": 0.694980694980695,
+            "f1": 0.4871447902571043
+          },
+          "late_physical4096": {
+            "recall": 0.4479166666666667,
+            "precision": 0.35714285714285715,
+            "f1": 0.39741219963031427
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "repo": "fasterxml/jackson",
+        "repo_url": "https://github.com/fasterxml/jackson-databind.git",
+        "language": "java",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.15100316789862725,
+            "precision": 0.23442622950819672,
+            "f1": 0.18368657675016056
+          },
+          "late_physical4096": {
+            "recall": 0.23231256599788808,
+            "precision": 0.23036649214659685,
+            "f1": 0.23133543638275497
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "repo": "NodeBB/NodeBB",
+        "repo_url": "https://github.com/NodeBB/NodeBB.git",
+        "language": "javascript",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.3648881239242685,
+            "precision": 0.1973929236499069,
+            "f1": 0.25619335347432026
+          },
+          "late_physical4096": {
+            "recall": 0.3648881239242685,
+            "precision": 0.15680473372781065,
+            "f1": 0.21934816347646144
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "repo": "clap-rs/clap",
+        "repo_url": "https://github.com/clap-rs/clap.git",
+        "language": "rust",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.6576576576576577,
+            "precision": 0.1456117021276596,
+            "f1": 0.23843222645617856
+          },
+          "late_physical4096": {
+            "recall": 0.6756756756756757,
+            "precision": 0.12335526315789473,
+            "f1": 0.2086230876216968
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "repo": "microsoft/vscode",
+        "repo_url": "https://github.com/microsoft/vscode.git",
+        "language": "typescript",
+        "metrics": {
+          "native_packet": {
+            "recall": 1.0,
+            "precision": 0.06455142231947483,
+            "f1": 0.12127440904419322
+          },
+          "late_physical4096": {
+            "recall": 1.0,
+            "precision": 0.049372384937238493,
+            "f1": 0.09409888357256778
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "repo": "django/django",
+        "repo_url": "https://github.com/django/django.git",
+        "language": "python",
+        "metrics": {
+          "native_packet": {
+            "recall": 1.0,
+            "precision": 0.21515151515151515,
+            "f1": 0.35411471321695764
+          },
+          "late_physical4096": {
+            "recall": 1.0,
+            "precision": 0.09726027397260274,
+            "f1": 0.17727840199750314
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "repo": "jqlang/jq",
+        "repo_url": "https://github.com/jqlang/jq.git",
+        "language": "c",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.8706140350877193,
+            "precision": 0.5416098226466576,
+            "f1": 0.6677880571909168
+          },
+          "late_physical4096": {
+            "recall": 1.0,
+            "precision": 0.4351145038167939,
+            "f1": 0.6063829787234043
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "repo": "darkreader/darkreader",
+        "repo_url": "https://github.com/darkreader/darkreader.git",
+        "language": "typescript",
+        "metrics": {
+          "native_packet": {
+            "recall": 1.0,
+            "precision": 0.04246284501061571,
+            "f1": 0.0814663951120163
+          },
+          "late_physical4096": {
+            "recall": 1.0,
+            "precision": 0.02518891687657431,
+            "f1": 0.049140049140049144
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "repo": "nlohmann/json",
+        "repo_url": "https://github.com/nlohmann/json.git",
+        "language": "cpp",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.2608695652173913,
+            "precision": 0.41317365269461076,
+            "f1": 0.3198146002317497
+          },
+          "late_physical4096": {
+            "recall": 0.3856332703213611,
+            "precision": 0.30402384500745155,
+            "f1": 0.33999999999999997
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "repo": "catchorg/Catch2",
+        "repo_url": "https://github.com/catchorg/Catch2.git",
+        "language": "cpp",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.5,
+            "precision": 0.15673981191222572,
+            "f1": 0.23866348448687352
+          },
+          "late_physical4096": {
+            "recall": 0.5,
+            "precision": 0.08237232289950576,
+            "f1": 0.1414427157001414
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "repo": "facebook/zstd",
+        "repo_url": "https://github.com/facebook/zstd.git",
+        "language": "c",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.18700787401574803,
+            "precision": 0.12666666666666668,
+            "f1": 0.15103338632750396
+          },
+          "late_physical4096": {
+            "recall": 0.18700787401574803,
+            "precision": 0.12666666666666668,
+            "f1": 0.15103338632750396
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "repo": "tokio-rs/bytes",
+        "repo_url": "https://github.com/tokio-rs/bytes.git",
+        "language": "rust",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.782608695652174,
+            "precision": 0.05042016806722689,
+            "f1": 0.09473684210526315
+          },
+          "late_physical4096": {
+            "recall": 1.0,
+            "precision": 0.03276353276353276,
+            "f1": 0.06344827586206897
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "repo": "serverless/serverless",
+        "repo_url": "https://github.com/serverless/serverless.git",
+        "language": "javascript",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.8661710037174721,
+            "precision": 0.38576158940397354,
+            "f1": 0.5337915234822451
+          },
+          "late_physical4096": {
+            "recall": 0.8661710037174721,
+            "precision": 0.38576158940397354,
+            "f1": 0.5337915234822451
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "repo": "nushell/nushell",
+        "repo_url": "https://github.com/nushell/nushell.git",
+        "language": "rust",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.6807760141093474,
+            "precision": 0.13370280568063733,
+            "f1": 0.22350897510133177
+          },
+          "late_physical4096": {
+            "recall": 0.6807760141093474,
+            "precision": 0.13370280568063733,
+            "f1": 0.22350897510133177
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "repo": "google/gson",
+        "repo_url": "https://github.com/google/gson.git",
+        "language": "java",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.9699646643109541,
+            "precision": 0.973404255319149,
+            "f1": 0.9716814159292034
+          },
+          "late_physical4096": {
+            "recall": 0.9699646643109541,
+            "precision": 0.973404255319149,
+            "f1": 0.9716814159292034
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "repo": "cli/cli",
+        "repo_url": "https://github.com/cli/cli.git",
+        "language": "go",
+        "metrics": {
+          "native_packet": {
+            "recall": 1.0,
+            "precision": 0.04361370716510903,
+            "f1": 0.0835820895522388
+          },
+          "late_physical4096": {
+            "recall": 1.0,
+            "precision": 0.04361370716510903,
+            "f1": 0.0835820895522388
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "repo": "alibaba/fastjson2",
+        "repo_url": "https://github.com/alibaba/fastjson2.git",
+        "language": "java",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.546875,
+            "precision": 0.10542168674698796,
+            "f1": 0.17676767676767677
+          },
+          "late_physical4096": {
+            "recall": 0.546875,
+            "precision": 0.10542168674698796,
+            "f1": 0.17676767676767677
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "repo": "flipt-io/flipt",
+        "repo_url": "https://github.com/flipt-io/flipt.git",
+        "language": "go",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.2745664739884393,
+            "precision": 0.12532981530343007,
+            "f1": 0.1721014492753623
+          },
+          "late_physical4096": {
+            "recall": 0.2745664739884393,
+            "precision": 0.12532981530343007,
+            "f1": 0.1721014492753623
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "repo": "axios/axios",
+        "repo_url": "https://github.com/axios/axios.git",
+        "language": "javascript",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.22058823529411764,
+            "precision": 0.7038123167155426,
+            "f1": 0.3358992302309307
+          },
+          "late_physical4096": {
+            "recall": 0.22058823529411764,
+            "precision": 0.7038123167155426,
+            "f1": 0.3358992302309307
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "repo": "pydata/xarray",
+        "repo_url": "https://github.com/pydata/xarray.git",
+        "language": "python",
+        "metrics": {
+          "native_packet": {
+            "recall": 0.5901639344262295,
+            "precision": 0.34394904458598724,
+            "f1": 0.4346076458752515
+          },
+          "late_physical4096": {
+            "recall": 0.5901639344262295,
+            "precision": 0.34394904458598724,
+            "f1": 0.4346076458752515
+          }
+        }
+      }
+    ],
+    "macro": {
+      "native_packet": {
+        "recall": 0.5839005987960625,
+        "precision": 0.2990485575256086,
+        "f1": 0.31965726996678134
+      },
+      "late_physical4096": {
+        "recall": 0.6216168275411674,
+        "precision": 0.24133008676068557,
+        "f1": 0.2863575297180191
+      }
+    },
+    "descriptive_bootstrap": {
+      "recall": {
+        "difference": 0.03771622874510494,
+        "descriptive_repository_cluster_95": [
+          0.014860570372834518,
+          0.0650507292305561
+        ]
+      },
+      "precision": {
+        "difference": -0.057718470764923036,
+        "descriptive_repository_cluster_95": [
+          -0.09550488929577373,
+          -0.026249844737664983
+        ]
+      },
+      "f1": {
+        "difference": -0.033299740248762255,
+        "descriptive_repository_cluster_95": [
+          -0.055210142546839716,
+          -0.014017128987312681
+        ]
+      }
+    },
+    "repository_clusters": 24,
+    "languages": {
+      "python": 3,
+      "typescript": 3,
+      "c": 3,
+      "cpp": 3,
+      "go": 3,
+      "java": 3,
+      "javascript": 3,
+      "rust": 3
+    },
+    "complete_development_source_delivery_gate_passed": false,
+    "prior_four_task_mode_conformance_gate_passed": false,
+    "prior_four_task_overall_mechanism_gate_passed": false,
+    "remaining20_new_api_sdk_usd": 2.8706633000000004,
+    "failed_first_attempt_api_sdk_usd": 0.8501327999999999,
+    "all_packet_input_api_sdk_usd": 4.631439,
+    "new_sdk_sessions": 24,
+    "all_attempted_packet_sdk_sessions": 36,
+    "reused_prefix_sdk_usd": 4.4310748,
+    "allocated_pipeline_sdk_usd": {
+      "native_packet": 6.044755899999998,
+      "late_physical4096": 6.5986999
+    },
+    "known_program_api_usage_value_usd": 43.22530093,
+    "new_usage_missing": 0,
+    "actual_thinking_sessions_remaining20": 21,
+    "sdk_reported_turn_range_remaining20": [
+      1,
+      3
+    ],
+    "repair_calls": 0,
+    "independent_gain_established": false,
+    "next": "If complete source-delivery gate passes, a new independent source-only protocol on untouched IDs may test this materially new late policy; both previous validation cohorts remain sealed. Freeze population and source before any new calls. No repairs or official500 automatically.",
+    "analysis_sha256": "651a69d2248aad6cc35a23d375671adc3901045719a92bac8a907c786f6dc88e",
+    "followup_and_development_review_attempts_api_sdk_usd": 3.7813062000000004,
+    "publication_field_audit_sha256": "0fe41629d034ef6bb088a21c15ee7cce2659c629b7db64a523885122304d4c24"
   }
 }
