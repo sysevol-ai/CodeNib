@@ -102,6 +102,88 @@ def test_graph_sdk_tool_requires_explicit_run_allowlist():
     assert "unavailable" not in normalized[0]["tool_calls"][0]["function"]
 
 
+def test_sdk_file_map_guides_a_later_read_without_initial_source_credit(
+    monkeypatch, tmp_path
+):
+    from scripts.contextbench_file_map import MARKER
+
+    (tmp_path / "a.py").write_text(
+        "def primary():\n    return 1\n\ndef sibling():\n    return 'LATER_BODY'\n"
+    )
+    row = {"instance_id": "case", "messages": [], "sdk_events": []}
+    replies = []
+
+    def event(kind, **fields):
+        return make_dataclass(kind, [(key, object) for key in fields])(**fields)
+
+    async def query(*, prompt, options):
+        handlers = dict(options.mcp_servers["source"])
+        assert set(handlers) == {"read", "grep", "glob"}
+        yield event(
+            "SystemMessage", subtype="init", data={"tools": options.allowed_tools}
+        )
+        for identifier, offset in (("first", 1), ("sibling", 4)):
+            args = {"file_path": "a.py", "offset": offset, "limit": 2}
+            yield event(
+                "AssistantMessage",
+                content=[
+                    {"id": identifier, "name": "mcp__source__read", "input": args}
+                ],
+                model="test-model",
+            )
+            reply = await handlers["read"](args)
+            text = reply["content"][0]["text"]
+            replies.append(text)
+            yield event(
+                "UserMessage",
+                content=[{"tool_use_id": identifier, "content": reply["content"]}],
+            )
+            spans = claude.native.contextbench_prediction(
+                instance_id="case", messages=row["messages"], repo_path=tmp_path
+            )["traj_data"]["pred_spans"]["a.py"]
+            if identifier == "first":
+                metadata = json.loads(text.split(MARKER)[1])
+                assert ["sibling()", "function", 4, 5] in metadata["symbols"]
+                assert "LATER_BODY" not in text and spans == [{"start": 1, "end": 2}]
+            else:
+                assert MARKER not in text and "LATER_BODY" in text
+                assert spans == [{"start": 1, "end": 2}, {"start": 4, "end": 5}]
+        yield event("AssistantMessage", content=[{"text": "Done"}], model="test-model")
+        yield event(
+            "ResultMessage",
+            subtype="success",
+            is_error=False,
+            num_turns=3,
+            total_cost_usd=0.03,
+            result="Done",
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            tool=lambda name, description, schema: lambda handler: (name, handler),
+        ),
+    )
+    asyncio.run(
+        claude.retrieve(
+            repo=tmp_path,
+            query_text="Inspect primary and sibling",
+            row=row,
+            checkpoint=lambda: None,
+            cli="test",
+            model="test-model",
+            max_turns=5,
+            file_map_tokens=2048,
+        )
+    )
+    assert row["status"] == "ok" and row["sdk_reported_cost_usd"] == 0.03
+    assert len(replies) == 2
+
+
 @pytest.mark.parametrize("policy", ["definitions", "unseen"])
 @pytest.mark.parametrize("query_policy", [None, *claude.GRAPH_QUERY_POLICIES])
 def test_sdk_completion_uses_streamed_source_receipts(
