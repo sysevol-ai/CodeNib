@@ -150,3 +150,115 @@ def test_reference_identity_and_task_path_are_explicit(repositories):
     r.case.instance_id = "../escape"
     with pytest.raises(ValueError, match="task identity"):
         prepare(r)
+
+
+@pytest.mark.parametrize("borrow", [False, True])
+def test_unmapped_gitlink_stays_empty_and_is_reported(repositories, borrow):
+    r = repositories
+    git(
+        r.origin,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "160000",
+        "c" * 40,
+        "fixture/missing",
+    )
+    git(r.origin, "commit", "-qm", "Record opaque fixture gitlink")
+    r.case.base_commit = git(r.origin, "rev-parse", "HEAD")
+    result = (
+        prepare(r)
+        if borrow
+        else checkout.prepare_checkout(r.case, r.root, minimum_free_bytes=0)
+    )
+    snapshot = checkout.audit_contextbench_snapshot(result, r.case.base_commit)
+    assert snapshot == {
+        "commit": r.case.base_commit,
+        "clean": True,
+        "unavailable_gitlinks": [
+            {
+                "path": "fixture/missing",
+                "commit": "c" * 40,
+                "reason": "unregistered_gitlink",
+            }
+        ],
+    }
+    assert not list((result / "fixture/missing").iterdir())
+    (result / "fixture/missing/injected.py").write_text("unverified source\n")
+    with pytest.raises(ValueError, match="snapshot audit failed"):
+        checkout.audit_contextbench_snapshot(result, r.case.base_commit)
+
+
+def test_declared_submodule_is_initialized_and_nested_gitlink_is_reported(
+    repositories, monkeypatch
+):
+    r = repositories
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
+    parent = r.origin.parent / "parent"
+    parent.mkdir()
+    git(parent, "init", "-q")
+    git(parent, "config", "user.name", "Source test")
+    git(parent, "config", "user.email", "source@example.invalid")
+    git(parent, "config", "gc.auto", "0")
+    git(parent, "config", "maintenance.auto", "false")
+    git(r.origin, "update-index", "--add", "--cacheinfo", "160000", "c" * 40, "missing")
+    git(r.origin, "commit", "-qm", "Record nested opaque gitlink")
+    nested_commit = git(r.origin, "rev-parse", "HEAD")
+    (parent / ".gitmodules").write_text(
+        f'[submodule "declared"]\n\tpath = deps\n\turl = {r.origin.as_uri()}\n'
+    )
+    git(parent, "add", ".gitmodules")
+    git(parent, "update-index", "--add", "--cacheinfo", "160000", nested_commit, "deps")
+    git(parent, "commit", "-qm", "Declare source dependency")
+    r.case.repo_url = parent.as_uri()
+    r.case.base_commit = git(parent, "rev-parse", "HEAD")
+    result = checkout.prepare_checkout(r.case, r.root, minimum_free_bytes=0)
+    snapshot = checkout.audit_contextbench_snapshot(result, r.case.base_commit)
+    assert git(result / "deps", "rev-parse", "HEAD") == nested_commit
+    assert snapshot["unavailable_gitlinks"] == [
+        {"path": "deps/missing", "commit": "c" * 40, "reason": "unregistered_gitlink"}
+    ]
+    (result / "deps/a.py").write_text("changed dependency source\n")
+    with pytest.raises(ValueError, match="snapshot audit failed"):
+        checkout.audit_contextbench_snapshot(result, r.case.base_commit)
+
+
+def test_declared_but_unprepared_submodule_is_rejected(repositories):
+    r = repositories
+    (r.origin / ".gitmodules").write_text(
+        f'[submodule "declared"]\n\tpath = deps\n\turl = {r.reference.as_uri()}\n'
+    )
+    git(r.origin, "add", ".gitmodules")
+    git(r.origin, "update-index", "--add", "--cacheinfo", "160000", r.old, "deps")
+    git(r.origin, "commit", "-qm", "Declare unprepared dependency")
+    (r.origin / "deps").mkdir()
+    with pytest.raises(ValueError, match="snapshot audit failed: unprepared submodule"):
+        checkout.audit_contextbench_snapshot(
+            r.origin, git(r.origin, "rev-parse", "HEAD")
+        )
+
+
+@pytest.mark.parametrize("helper", ["source", "benchmark"])
+def test_cold_checkout_drift_cannot_publish_destination(
+    repositories, monkeypatch, helper
+):
+    from codenib.eval.benchmarks import contextbench_runner as runner
+
+    r = repositories
+    module = checkout if helper == "source" else runner
+    original = module._git
+
+    def changed_checkout(repo, *args):
+        result = original(repo, *args)
+        if args[0] == "checkout":
+            (repo / "a.py").write_text("source changed before readiness\n")
+        return result
+
+    monkeypatch.setattr(module, "_git", changed_checkout)
+    with pytest.raises(ValueError, match="snapshot audit failed"):
+        if helper == "source":
+            checkout.prepare_checkout(r.case, r.root, minimum_free_bytes=0)
+        else:
+            runner.prepare_contextbench_repo(r.case, r.root)
+    assert not (r.root / r.case.instance_id).exists()
+    assert list(r.root.iterdir()) == []

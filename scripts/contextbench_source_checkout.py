@@ -13,7 +13,7 @@ from pathlib import Path
 from codenib.eval.benchmarks.contextbench_runner import (
     _git,
     audit_contextbench_snapshot,
-    prepare_contextbench_repo,
+    prepare_contextbench_submodules,
 )
 
 
@@ -60,10 +60,9 @@ def prepare_checkout(
     root.mkdir(parents=True, exist_ok=True)
     if shutil.disk_usage(root).free < minimum_free_bytes:
         raise OSError("Source staging disk floor reached")
-    if reference is None:
-        return prepare_contextbench_repo(case, root)
-    reference = reference.resolve()
-    audit_contextbench_snapshot(reference, reference_commit)
+    if reference is not None:
+        reference = reference.resolve()
+        audit_contextbench_snapshot(reference, reference_commit)
     temporary = Path(tempfile.mkdtemp(prefix=".checkout-", dir=root))
     try:
         # Local clone optimizations can be ignored for a shallow donor. Install
@@ -71,28 +70,32 @@ def prepare_checkout(
         _git(temporary, "init")
         _git(temporary, "config", "gc.auto", "0")
         _git(temporary, "config", "maintenance.auto", "false")
-        objects = Path(_git(reference, "rev-parse", "--git-path", "objects"))
-        if not objects.is_absolute():
-            objects = reference / objects
-        (temporary / ".git/objects/info/alternates").write_text(
-            str(objects.resolve()) + "\n"
-        )
-        _git(
-            temporary,
-            "fetch",
-            "--depth",
-            "1",
-            "--update-shallow",
-            str(reference),
-            reference_commit,
-        )
-        _git(temporary, "update-ref", "refs/contextbench/reference", reference_commit)
+        if reference is not None:
+            objects = Path(_git(reference, "rev-parse", "--git-path", "objects"))
+            if not objects.is_absolute():
+                objects = reference / objects
+            (temporary / ".git/objects/info/alternates").write_text(
+                str(objects.resolve()) + "\n"
+            )
+            _git(
+                temporary,
+                "fetch",
+                "--depth",
+                "1",
+                "--update-shallow",
+                str(reference),
+                reference_commit,
+            )
+            _git(
+                temporary, "update-ref", "refs/contextbench/reference", reference_commit
+            )
         _git(temporary, "remote", "add", "origin", case.repo_url)
         _git(temporary, "fetch", "--depth", "1", "origin", case.base_commit)
         _git(temporary, "checkout", "--detach", case.base_commit)
-        _git(temporary, "submodule", "update", "--init", "--recursive", "--depth", "1")
+        prepare_contextbench_submodules(temporary)
         audit_contextbench_snapshot(temporary, case.base_commit)
-        audit_contextbench_snapshot(reference, reference_commit)
+        if reference is not None:
+            audit_contextbench_snapshot(reference, reference_commit)
         try:
             temporary.rename(destination)
         except OSError:
