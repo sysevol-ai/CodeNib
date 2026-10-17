@@ -6,7 +6,7 @@
 
 Supports SWE-bench Verified and the Multi fmt/Gson/ponyc pilots, one task per
 invocation. Uses the existing solver loop and pinned, already-local Docker
-images. Native grading is separate; source receipts cover controlled reads only.
+images. Native grading is separate; source receipts cover controlled reads/searches.
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ def model_observations(row):
     message. A request without that evidence stays explicitly unconfirmed; it
     may still have consumed usage. mini's final messages can contain submission
     output that no subsequent model call received, so they are not a substitute.
-    Source receipts can attribute controlled reads within these exact inputs;
+    Source receipts can attribute controlled reads/searches within these exact inputs;
     arbitrary shell output remains outside that partial coverage artifact.
     """
     confirmed, missing, unconfirmed = [], [], []
@@ -352,8 +352,14 @@ def run(args):
             "implement a general fix in production source, and run relevant tests. "
             "For source inspection use a standalone command: "
             "codenib-read PATH START END (1-based inclusive lines, at most 2000). "
-            "Paths resolve from the repository root. Use ordinary shell commands "
-            "for searches, edits and tests. "
+            "For source search use a standalone command: "
+            "codenib-grep PATTERN PATH [LIMIT] (Python regex, a file or directory, "
+            "default 100 matches, maximum 200). Tests are included; scan/output "
+            "limits and skipped files are reported. Narrow PATH or read the "
+            "reported source ranges when a limit is reached. Both commands "
+            "resolve paths from the repository root; do not combine them with "
+            "cd, pipes or other commands. Use ordinary shell commands for "
+            "edits, builds and tests. "
             "Keep existing tests and configuration unchanged. The container has "
             "no network access. When finished, submit with:\n```bash\n"
             "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached\n"
@@ -400,7 +406,7 @@ def run(args):
             "max_meter_usd": args.max_meter_usd,
             "sdk_version": importlib.metadata.version("claude-agent-sdk"),
             "scope": (
-                "Downstream solver; native grading required. Controlled source reads "
+                "Downstream solver; native grading required. Controlled reads/searches "
                 "have partial attribution; arbitrary shell output has no line credit."
             ),
             "implementation": freeze_solver(args.output, mini_root),

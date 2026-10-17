@@ -4,8 +4,8 @@
 """Source receipts at the existing mini SWE-agent environment/model boundary.
 
 This is a checkout-only benchmark adapter, not a shell parser. Arbitrary shell
-output remains available to the solver and explicitly unattributed. Only the
-controlled reader binds output to one source version; changed files never gain
+output remains available to the solver and explicitly unattributed. Controlled
+reads and searches bind output to source versions; changed files never gain
 original-commit line credit through guessed offsets or text matching.
 """
 
@@ -17,6 +17,8 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
+
+from scripts._contextbench_solver_read import search_line
 
 
 def receipt_digest(value):
@@ -66,7 +68,21 @@ def source_output(source):
     )
 
 
-def _requests_reader(command):
+def search_output(search):
+    summary = {key: value for key, value in search.items() if key != "sources"}
+    return (
+        "Source search: "
+        + json.dumps(summary)
+        + "\n"
+        + "".join(
+            search_line(source["file"], match["line"], match["text"]) + "\n"
+            for source in search["sources"]
+            for match in source["matches"]
+        )
+    )
+
+
+def _requested_source_tool(command):
     """Recognize command-position attempts for usage errors, never source credit."""
     # Preserve quotes so a grep pattern or printed "&&" is not a separator.
     lexer = shlex.shlex(command, posix=False, punctuation_chars=";&|()\n")
@@ -75,14 +91,20 @@ def _requests_reader(command):
     try:
         tokens = list(lexer)
     except ValueError:
-        return command.split(maxsplit=1)[:1] == ["codenib-read"]
-    return any(
-        token == "codenib-read"
-        and (
-            index == 0
-            or (bool(tokens[index - 1]) and set(tokens[index - 1]) <= set(";&|()\n"))
-        )
-        for index, token in enumerate(tokens)
+        tokens = command.split(maxsplit=1)[:1]
+    return next(
+        (
+            token
+            for index, token in enumerate(tokens)
+            if token in {"codenib-read", "codenib-grep"}
+            and (
+                index == 0
+                or (
+                    bool(tokens[index - 1]) and set(tokens[index - 1]) <= set(";&|()\n")
+                )
+            )
+        ),
+        None,
     )
 
 
@@ -105,26 +127,36 @@ class SourceEnvironment:
         return self.environment.get_template_vars()
 
     def execute(self, command):
-        source = None
+        source = search = None
         kind = "shell_unattributed"
         try:
-            if _requests_reader(command):
-                kind = "source_read"
+            requested = _requested_source_tool(command)
+            if requested:
+                kind = "source_read" if requested == "codenib-read" else "source_search"
                 try:
                     args = shlex.split(command)
-                    if len(args) != 4 or args[0] != "codenib-read":
+                    valid_length = (
+                        len(args) == 4 if kind == "source_read" else len(args) in (3, 4)
+                    )
+                    if not valid_length or args[0] != requested:
                         raise ValueError(
-                            "codenib-read is available only as the whole bash action: "
-                            "codenib-read PATH START END. Remove cd, &&, pipes and "
+                            f"{requested} is available only as the whole bash action: "
+                            "codenib-read PATH START END or codenib-grep PATTERN PATH [LIMIT]. "
+                            "Remove cd, &&, pipes and "
                             "other commands; paths already resolve from the repository root."
                         )
-                    request = {
-                        "root": self.root,
-                        "commit": self.commit,
-                        "file": args[1],
-                        "start": int(args[2]),
-                        "end": int(args[3]),
-                    }
+                    request = {"root": self.root, "commit": self.commit}
+                    if kind == "source_read":
+                        request.update(
+                            file=args[1], start=int(args[2]), end=int(args[3])
+                        )
+                    else:
+                        request.update(
+                            operation="search",
+                            pattern=args[1],
+                            path=args[2],
+                            limit=int(args[3]) if len(args) == 4 else 100,
+                        )
                     script = (
                         Path(__file__)
                         .with_name("_contextbench_solver_read.py")
@@ -134,14 +166,22 @@ class SourceEnvironment:
                         shlex.join(["python3", "-c", script, json.dumps(request)])
                     )
                     if raw["returncode"]:
-                        raise ValueError("Source reader failed in the container")
+                        raise ValueError("Source operation failed in the container")
                     data = json.loads(raw["output"])
                     if "error" in data:
                         raise ValueError(data["error"])
-                    source = data["source"]
-                    output = {"returncode": 0, "output": source_output(source)}
+                    if kind == "source_read":
+                        source = data["source"]
+                        text = source_output(source)
+                    else:
+                        search = data["search"]
+                        text = search_output(search)
+                    output = {"returncode": 0, "output": text}
                 except (ValueError, KeyError, TypeError) as exc:
-                    output = {"returncode": 1, "output": f"Source read failed: {exc}\n"}
+                    output = {
+                        "returncode": 1,
+                        "output": f"Source operation failed: {exc}\n",
+                    }
             else:
                 output = self.environment.execute(command)
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
@@ -151,10 +191,10 @@ class SourceEnvironment:
             )
             self._record(command, kind, {"output": text}, None, timeout=True)
             raise
-        self._record(command, kind, output, source)
+        self._record(command, kind, output, source, search=search)
         return output
 
-    def _record(self, command, kind, output, source, *, timeout=False):
+    def _record(self, command, kind, output, source, *, search=None, timeout=False):
         index, rendered = self.observation(command, output, timeout)
         receipt = {
             "command": command,
@@ -165,6 +205,8 @@ class SourceEnvironment:
             "message_index": index,
             "rendered_observation": rendered,
         }
+        if search is not None:
+            receipt["search"] = search
         self.receipts.append({"receipt": receipt, "sha256": receipt_digest(receipt)})
         self.checkpoint()
 
@@ -223,6 +265,40 @@ def source_attribution(row, confirmed):
             confirmed, receipt["message_index"], receipt["rendered_observation"]
         )
         source = receipt["source"]
+        search = receipt.get("search")
+        if search is not None:
+            if search_output(search) != receipt["output"]["output"]:
+                raise ValueError("Solver search receipt output differs")
+            for file in search["sources"]:
+                visible = [
+                    match["line"]
+                    for match in file["matches"]
+                    if turns
+                    and (
+                        "\n"
+                        + search_line(file["file"], match["line"], match["text"])
+                        + "\n"
+                    )
+                    in receipt["rendered_observation"]
+                ]
+                original = file["source_sha256"] == file["base_sha256"]
+                if original and visible:
+                    seen.setdefault(file["file"], set()).update(visible)
+                events.append(
+                    {
+                        "kind": receipt["kind"],
+                        "message_index": receipt["message_index"],
+                        "confirmed_turns": turns,
+                        "sha256": envelope["sha256"],
+                        "file": file["file"],
+                        "source_sha256": file["source_sha256"],
+                        "base_version": original,
+                        "visible_source_lines": visible,
+                        "search_limits_reached": search["limits_reached"],
+                    }
+                )
+            if search["sources"]:
+                continue
         visible = []
         if turns and source:
             if source_output(source) != receipt["output"]["output"]:
@@ -244,6 +320,11 @@ def source_attribution(row, confirmed):
                     source and source["source_sha256"] == source["base_sha256"]
                 ),
                 "visible_source_lines": visible,
+                **(
+                    {"search_limits_reached": search["limits_reached"]}
+                    if search is not None
+                    else {}
+                ),
             }
         )
     return {
@@ -260,7 +341,7 @@ def source_attribution(row, confirmed):
         ),
         "events": events,
         "scope": (
-            "Confirmed initial retrieval and complete controlled-reader lines only. "
+            "Confirmed initial retrieval and complete controlled read/search lines only. "
             "Arbitrary shell output, partial/elided lines and modified-file coordinates "
             "receive no original-source credit. This is not a full ContextBench score."
         ),
