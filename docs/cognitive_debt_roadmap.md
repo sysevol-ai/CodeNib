@@ -225,6 +225,11 @@ bridge. The current BM25 feasibility check also fails on the disclosed 24 tasks:
 a 2K source union adds 38 annotated lines, but F1 falls 31.18% to 26.62%; the
 overlapping latest eight add none. Its source and candidate hashes are frozen
 before annotation analysis. No automatic injection or new retrieval tool follows.
+A canonical-source ablation also rejects removing read completion wholesale:
+it loses 219 annotated lines from the first-source 24 and ten from the overlapping
+latest eight, including 150/seven absent from native. Both original baseline
+counts reproduce before comparison. Keep the existing completion behavior; the
+fixed traces provide no new online or independent quality result.
 Source attribution now reuses one environment adapter for controlled reads and
 searches in the existing native solver loop. It records exact per-file versions
 and rendered input positions, preserves native truncation, and credits only
@@ -246,7 +251,11 @@ native tests, but both reads were already in the initial context and add zero
 original-source lines. The same environment adapter supplies the feedback;
 no shell interpreter or product tool is added. Both protocols remain separate,
 and source coverage stays partial. Fresh matched runs and relevant repair/test
-feedback remain required before a quality claim. New API-key charges remain zero.
+feedback remain required before a quality claim. A frozen actual-model search
+check on the disclosed C task has nine confirmed calls and two controlled reads,
+adding 70 original-source lines, but no controlled-search call. Its repair fails
+eleven native tests; both owned containers are removed. Keep the failed adoption
+gate and partial source coverage. Repeated one-task checks establish no gain.
 The fmt pilot
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair
@@ -305,7 +314,14 @@ Relevant source selection and active SCIP assigned-function coverage remain
 gates before another policy trial. These diagnostics make zero model calls.
 The retrieval runner also checkpoints terminal SDK metering before an iterator
 error; the old loss is reproduced without model calls. Known cumulative SDK
-estimates are $87.881044, not an account bill; new API-key inference remains zero.
+estimates are $90.165263, not an account bill. The main model remains on Claude
+Max. A separate frozen 24-task Jev ordering control makes 96 API calls for
+$0.025743858, with complete usage records. At the same 2K budget it improves
+Recall/F1 from 0.53%/0.83% to 9.11%/7.77%, but the whole BM25 candidate pool
+covers only 11.99% of annotated source. Static addition still reduces F1 on both
+cohorts, so no injection/tool is promoted. Prioritize a separately frozen
+grep-candidate reranking control; graph expansion is not a prerequisite. This
+remains a selection experiment with no online-agent or independent gain.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

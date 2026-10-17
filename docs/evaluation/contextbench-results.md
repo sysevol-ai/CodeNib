@@ -14,6 +14,15 @@ Earlier development experiments found useful missing source by completing
 functions after search. That offline gain has not transferred to the tested
 online agent. These are retrieval experiments, not a leaderboard submission.
 
+Reranking remains a separate candidate with positive development evidence.
+The fixed 100-task, 4K ContextBench control below improves Opus Recall/F1 from
+39.88%/22.60% to 45.70%/27.84% using the Perplexity decision scorer. The separate
+[grep/Jev evaluation](grep_jev.md) improves code-block Recall@5 from 58.62% to
+71.40% in research and from 48.37% to 65.57% in a fresh product run. Those use
+CodeNib Base, not ContextBench, and neither establishes an online-agent gain.
+The next selection work prioritizes ranking candidate source before delivery;
+graph expansion is not a prerequisite.
+
 ## Independent 32-task validation
 
 The frozen selection contains four tasks per language and 22 repositories,
@@ -469,6 +478,70 @@ It does not rule out other queries or selection policies. The
 retains per-task counts, protocols and source hashes. Model calls and new API
 charges are zero; earlier scores and the sealed independent sample are unchanged.
 
+## Jev ordering control on 24 development tasks
+
+A new matched control freezes the same 40 BM25 candidates per disclosed task,
+then compares original ordering with Jev before packing source. Both arms use
+at most ten chunks and 2,048 tokens, preserve whole physical lines, and include
+tests. Jev uses the existing four-level relevance rubric in batches of ten;
+queries, candidates and settings freeze before calls, and all ranked outputs
+freeze before canonical annotation analysis. No graph is required.
+
+| Source-set diagnostic, all 24 | Recall | F1 |
+| --- | ---: | ---: |
+| Original BM25 order, 2K payload | 0.53% | 0.83% |
+| Same candidates, Jev order, 2K payload | 9.11% | 7.77% |
+| Existing native trajectory | 53.35% | 31.18% |
+| Native source union with the Jev payload | 54.03% | 27.95% |
+
+The ranking-only development gate passes. Its exploratory repository-bootstrap
+95% intervals are +2.43 to +17.98 points for Recall and +2.97 to +11.39 for F1,
+using 5,000 draws and seed 20261017. Absolute coverage remains low: a post-run
+candidate diagnostic finds that even the entire frozen 40-candidate pool covers
+only 11.99% of annotated source on average. Reranking cannot recover source
+outside that pool. It adds 143 annotated lines absent from native across four
+languages, but static addition still reduces F1. The overlapping eight-task
+check likewise changes native Recall 77.90% to 78.77% and F1 33.67% to 31.99%.
+The static-injection gate fails; these results do not authorize automatic source
+addition or establish an online-agent effect.
+
+All 96 calls succeed as `typesafe/jev-1.13-20260917`, with **$0.025743858** in
+recorded API usage and no missing cost receipts. This is a dedicated reranker
+experiment within the authorized $100 API envelope, not a main-model fallback.
+Every ranked candidate is an exact permutation of its frozen pool, every
+rendered line matches source, and all baseline source counts reproduce the
+official evaluator. The [sanitized results](../assets/contextbench_online_development_summary.json)
+include per-task metrics, uncertainty, costs and integrity checks. Protocol
+`056973a8b33efe9fe7666713cd1f5e1ad0ffcbb6217e75c1500794ce17e38989`
+remains development-only. A separately frozen grep-candidate control is the next
+selection hypothesis; the independent 32 and official-500 gates stay unchanged.
+
+## Keeping read completion after a canonical-source ablation
+
+A separate fixed-trace diagnostic tests whether completion should be limited to
+grep fragments. It removes only automatic completion appended to read replies
+in the existing graph-arm traces. Every explicitly requested read, grep
+completion, graph reply, tool call and later message stays fixed. These later
+messages do not constitute a valid counterfactual agent conversation; only the
+resulting source sets are compared. All transformed source sets are frozen
+before annotation analysis, and both native and graph baseline line counts
+reproduce the official evaluator exactly.
+
+| Existing graph trace | Recall, original → grep-only completion | F1, original → grep-only completion | Removed physical / annotated lines |
+| --- | ---: | ---: | ---: |
+| First-source 24 | 54.02% → 53.14% | 30.15% → 30.12% | 1,346 / 219 |
+| Latest follow-up eight | 80.57% → 80.26% | 37.55% → 38.14% | 178 / 10 |
+
+Of the removed annotated source, 150 lines in the first cohort and seven in the
+overlapping eight were also absent from matched native. The declared gate
+requires preserving every already observed canonical annotated line and
+non-decreasing F1 in both cohorts. It fails, so read completion remains enabled;
+there is no new policy or online ablation. This result uses official normalized
+annotation paths, not the early diagnostic's raw paths. The
+[development summary](../assets/contextbench_online_development_summary.json)
+retains all task counts and hashes. This check makes zero model calls and
+changes no earlier official score or independent-validation result.
+
 ## Historical post-run 24-task results
 
 The sample contains three tasks per language, 24 repositories and eight languages,
@@ -552,7 +625,9 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 the historical results in this page do not describe that new policy.
 
 The October 16 development and independent-validation program uses the existing
-Claude Max route with **zero standalone API-key inference calls**. Independent
+Claude Max route with **zero standalone API-key inference calls for the main
+model**. The separate October 17 Jev ranking control records 96 API calls and
+$0.025743858; it has no API fallback. Independent
 retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
 $0.828001. The later early-hop/unseen development trial adds $7.266208 for retrieval
 and $1.367794 for its paired solver check. Two later one-task graph mechanism
@@ -566,7 +641,9 @@ bringing the subtotal to $74.678177. The C three-arm solver attempt adds
 **$8.115611** after recovering $0.321885 from an already-preserved terminal event,
 bringing the subtotal to **$82.793787**. The separate late-only eight-task
 three-arm retrieval follow-up adds **$5.087257**, bringing known cumulative
-metering to **$87.881044**, excluding one aborted development solver attempt and
+metering to **$87.881044**. The actual-model controlled-search check adds
+**$2.284219**, bringing known SDK metering to **$90.165263**, excluding one
+aborted development solver attempt and
 one interrupted retrieval case with no terminal usage. The C graph arm remains
 a budget error with no prediction: its original aggregate omitted one terminal cost, now explicitly
 reconciled without changing the original run or rerunning it. A per-call SDK
@@ -1061,6 +1138,17 @@ the corrected fixture passes without changing the implementation. Both owned
 containers are removed. The [sanitized verification](../assets/contextbench_online_development_summary.json)
 records hashes, limits and outcomes. Relevant verification totals 104 unit and
 three pinned upstream integration passes, with no model calls or API charges.
+
+A separately frozen actual-model check on the disclosed ponyc development task
+does **not** establish controlled-search adoption: Opus 5.5 makes nine confirmed
+model calls and two controlled reads, but no controlled search. The reads add
+70 original-source lines to the initial 1,025; six ordinary shell observations
+remain unattributed. The submitted repair fails eleven native tests. Inference
+and grading preserve every frozen input/runtime hash and remove both owned
+containers. This repeated one-task check costs $2.284219 in SDK estimates through
+Claude Max, with no API-key charge. It provides no comparative quality result;
+source coverage remains partial. Its protocol hash is
+`050dd033f6ce718b8d5df39c53fc4fcbabb609e071902c7396f6bfd5730020b5`.
 
 The initial [source-receipt verification](../assets/contextbench_solver_source_summary.json)
 makes no model calls. An audit of the existing fmt pair preserves all ten actual
