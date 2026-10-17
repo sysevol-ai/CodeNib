@@ -480,11 +480,27 @@ labels/newcalls. Model/prompt/source/compiler/budget/statisticalgate unchanged;
 originalstrictgate staysfailed. Reuse242qualifiedprefixes/56pairs,retain1original
 failedzero/unmeteredcase andall500denominators,continueonly257unclaimed IDs.
 
-At **2026-10-17 19:25 UTC**, **4/257**areaccepted,**253**remain;known new Max nominal
-is **$19.99655550**,plusoneoriginalunknownterminal. NewAPI/Batch/count/repair
-additions zero. Runtimegoldempty,source gaps retained,all3cohortssealed. This
-canonicalpopulation includesknowncases,no newquality/freshindependent500/repair
-claim. Per-case intent prevents relaunch;unexpected receipts stop laterdispatch.
+The **2026-10-17 20:28 UTC** snapshot has **122/257** accepted, **135** remaining
+and **365/500 native records**; known new Max nominal is **$46.58501650**, plus
+one original unknown terminal. New API/Batch/count/repair additions are zero.
+Interim protocol `853d663c` seals all122 completed native predictions before
+selected annotation access and scores **122/122 valid**: line Recall **76.81%**,
+F1 **39.00%**. This completion-order baseline covers four languages/16 repository
+clusters, not a candidate comparison, all500 score or leaderboard rank. Local
+scoring makes zero model/API calls. The original all500-before-first-new-Gold
+schedule is prospectively superseded and must not be claimed to pass. Runtime
+gold stays empty; source/model/compiler/population/budgets remain frozen and
+cannot use interim scores. Source gaps remain and all3 cohorts stay sealed.
+Per-case intent prevents relaunch; unexpected receipts stop later dispatch.
+
+Public leader predictions match all122 IDs. The same local Gold, snapshots and
+official environment score122valid on both sides: native line Recall/F1
+**76.81%/39.00%**, versus openJiuwen+DeepSeek **79.24%/29.65%**. The native
+baseline has lower Recall and higher F1; this is a cross-model/harness comparison,
+not an enhancement gain. It uses CodeNib read/grep/glob and source/trajectory
+adapters, with no indexed graph, vector/BM25 or Jev retrieval. Its late4K packets
+still require actual candidate consumption. No new model/API calls are needed
+for these comparisons.
 
 Baseline source is already consumed by the investigator. All56old native-packet
 source unions equal those prefixes. The443new candidate inputs plus56reused pairs
@@ -492,14 +508,15 @@ plus1failedzero position account for500, with asymmetric extra calls/tokens/cost
 and no matched final-reasoning/repair claim. Complete exact provider counts,
 full output caps/margin/headroom within the same40USD reservation before one
 Batchcreate. Known API usage stays59.09398873USD under100USD. Freeze all500terminal
-predictions before annotation access and disclose the operational amendment and
+predictions before final all500 scoring and disclose the earlier122-case
+annotation access, operational amendments and
 failed case. Formal native outcomes/raw archives remain later submission gates;
-context research does not wait for repairs. Partial local raw archives now retain190
+context research does not wait for repairs. Partial local raw archives now retain243
 ended native attempts (including the original interrupted one) and112 consumed
-standard Messages. The125/65native groups are disjoint;639file members at598unique
+standard Messages. The125/65/53native groups are disjoint;796file members at713unique
 member paths round-trip byte-identically,with identical hashes on overlapping
-code/config names. Five gzip parts total9,906,981bytes,each below50MiB. This is not
-complete500 evidence or a quality result;remaining310native/443Batch/evaluation/
+code/config names. Seven gzip parts total11,568,526bytes,each below50MiB. This is not
+complete500 evidence or a quality result;remaining257native/443Batch/evaluation/
 outcome archives andpublication review stay open. All500evaluator source targets
 match recorded snapshots,including119retained aliases. No model/API/annotation
 work is added. No product lifecycle
@@ -513,6 +530,8 @@ commits are excluded across aliases. All three validation cohorts stay sealed;
 future independent population choices remain open; current500 completion, exact Batch
 counts/reservation and formal submission gates remain open. No product lifecycle
 promotion or dependency-direction change is authorized by these results.
+The earlier untouched-pool inventory predates the122-case interim Gold access;
+refresh exposure metadata before any future independent selection.
 Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes

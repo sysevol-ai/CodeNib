@@ -40942,7 +40942,7 @@
     "new_api_usage_usd": 0
   },
   "verified500_context_execution": {
-    "observed_at_utc": "2026-10-17T19:25:39+00:00",
+    "observed_at_utc": "2026-10-17T20:28:44.876467+00:00",
     "state": "running",
     "phase": "SDK_rejected_action_source_receipt_continuation",
     "runtime_commit": "1b0ad5ac835ce4ce8a2ed46e0b6fa47ce27ade58",
@@ -40960,23 +40960,28 @@
     "rejected_action_source_credit": 0,
     "tool_alias_rewrite_or_execution_added": false,
     "current_native_positions": 257,
-    "current_completed": 4,
-    "current_accepted": 4,
-    "current_remaining": 253,
-    "all500_native_terminal_records": 247,
+    "current_completed": 122,
+    "current_accepted": 122,
+    "current_remaining": 135,
+    "all500_native_terminal_records": 365,
     "new_candidate_consumers": 443,
-    "known_new_Max_nominal_sdk_usd": 19.996555500000007,
+    "known_new_Max_nominal_sdk_usd": 46.58501650000001,
     "new_Max_terminal_metering_gaps": 1,
     "new_API_usage_usd": 0,
     "known_prior_API_usage_usd": 59.09398873,
     "same_API_reservation_usd": 40,
     "API_ceiling_usd": 100,
     "new_Batch_or_count_requests": 0,
-    "new_quality_scores": false,
+    "new_quality_scores": true,
     "new_repairs": 0,
     "fresh_independent500": false,
     "all_three32_cohorts_sealed": true,
-    "source_model_prompt_compiler_budget_unchanged": true
+    "source_model_prompt_compiler_budget_unchanged": true,
+    "new_native_baseline_scored_cases": 122,
+    "new_candidate_scored_cases": 0,
+    "full500_paired_score_available": false,
+    "original_all500_before_first_new_Gold_schedule_followed": false,
+    "interim_protocol_sha256": "853d663ca2afcd72ddda4af9e525835cd7a9422fc967c57b65009652637f5a7d"
   },
   "verified500_additional_native_prefix_reuse": {
     "scope": "Metadata/profile/source/code-path audit of every matching original prefix, without new calls, quality scoring, label access or favorable-case selection. Original strict empty advertised-catalog requirement remains failed; separate exact validated-reference catalog equality qualifies all32. All sealed study quality conclusions remain unchanged.",
@@ -41060,24 +41065,26 @@
     "new_quality_scores": false
   },
   "verified500_raw_archive_bundle": {
-    "scope": "Partial originalraw bundle:190disjoint nativepositions incl1failedzero and112standardconsumers. Both archive groups roundtrip independently;overlapping implementation/configmembernames have identical hashes. Current310native/new443Batch/evaluation/outcome/publication work remain open. No model/Gold/quality work added by bundling.",
-    "native_positions": 190,
-    "failed_native_positions": 1,
+    "scope": "Partial original raw bundle:243 disjoint native attempts,including1original interrupted zero-source case and1original strict rejected-action gate retained;112standard consumer attempts. Source qualification contributes zero source for the SDK-rejected action. Three independently roundtrip-verified archive groups. Current257native,new443Batch,quality/outcome/fullpublication remain open.",
+    "native_positions": 243,
+    "failed_zero_source_native_positions": 1,
+    "capacity_original_strict_attempt_gate_failures": 1,
     "consumed_standard_message_attempts": 112,
-    "verified_file_members_with_cross_group_duplicates": 639,
-    "distinct_member_names": 598,
-    "gzip_parts": 5,
-    "compressed_bytes": 9906981,
+    "verified_file_members_with_cross_group_duplicates": 796,
+    "distinct_member_names": 713,
+    "gzip_parts": 7,
+    "compressed_bytes": 11568526,
     "largest_part_bytes": 4258086,
     "all_parts_below_50MiB": true,
     "overlapping_members_byte_identical": true,
+    "previous_partial_index_sha256": "eac01d64a6202950e9c9fd2315a829f4619deb0ec79ae0f992ba938e1f93941f",
     "full500_submission_ready": false,
     "new_model_calls": 0,
     "new_annotation_reads": 0,
     "new_API_usage_usd": 0,
-    "partial_bundle_index_sha256": "eac01d64a6202950e9c9fd2315a829f4619deb0ec79ae0f992ba938e1f93941f",
-    "additional65_archive_index_sha256": "b3120d52a5b2ba1c5b83b26d710c44ac7328cc2fff6cf90585d3ef7919c94a1b",
-    "additional65_verification_sha256": "9908c2801cb9d5e65ad7e8d20c2a64b087babab4f6e20719a4fb24760df6112f",
+    "partial_bundle_index_sha256": "98a7ce52d0d89afaad397197b1507c5bf0b42c5fb6e6f3ce66963cd8b70648ef",
+    "additional53_archive_index_sha256": "53e344b9689332b53b24ea54bfc544fdef2c562a14cd275d4a3637e866e02bae",
+    "additional53_verification_sha256": "be35301bb064fc1ad31219c3c5d05cbe4842ed371d7c0c6f75eec8bf3ca5af17",
     "new_quality_scores": false
   },
   "verified500_rejected_action_source_qualification": {
@@ -41104,5 +41111,2613 @@
     "qualification_sha256": "aee417dd780a427e9738b6088dcbaa35cecc6c04af43e02c8a9cc844909736e4",
     "new_model_calls": 0,
     "new_Gold_or_quality_reads": false
+  },
+  "verified500_native_interim_baseline": {
+    "population": 122,
+    "native_prefix_only": true,
+    "candidate_comparison_available": false,
+    "failure_accounted_snapshot_macro": {
+      "file": {
+        "recall": 0.8031858348726338,
+        "precision": 0.3562485256717264,
+        "f1": 0.44327477356524747
+      },
+      "block": {
+        "recall": 0.8178157043431532,
+        "precision": 0.26038132580387824,
+        "f1": 0.35072697039911144
+      },
+      "line": {
+        "recall": 0.7680559332548911,
+        "precision": 0.30752983776988435,
+        "f1": 0.3899852469923677
+      }
+    },
+    "official_valid_cases": 122,
+    "official_failed_cases": [],
+    "language_counts": {
+      "python": 58,
+      "javascript": 34,
+      "go": 4,
+      "typescript": 26
+    },
+    "repository_clusters": 16,
+    "known_baseline_Max_nominal_sdk_usd": 27.262828100000007,
+    "Max_nominal_is_cash_bill": false,
+    "new_model_calls": 0,
+    "new_API_usage_usd": 0,
+    "native_model_retries": 0,
+    "repair_calls": 0,
+    "Pass_at_1": null,
+    "fresh_independent_sample": false,
+    "whole500_result": false,
+    "original_all500_before_first_new_Gold_schedule_followed": false,
+    "protocol_sha256": "853d663ca2afcd72ddda4af9e525835cd7a9422fc967c57b65009652637f5a7d",
+    "predictions_sha256": "241eb07350b327ef47892d4f2edacfabf04fee55e3761e9b0c90bd9f3f140e24",
+    "metrics_sha256": "9ae946101239c6b7ca7451e76ccba05ff2281e5bb999095d97897b6cfccc995f",
+    "annotation_access_sha256": "7d408207be56209592e9f65338ec507c8c217939e59b8433c377dbd7bbd11043",
+    "scope": "Descriptive interim native-prefix baseline on every completed case in one atomic running-state snapshot. Completion-order subset, not random, not all500, not independent validation, not candidate gain or repair success. All snapshot source predictions sealed before their new Gold access.",
+    "frozen_at_utc": "2026-10-17T20:28:44.876467+00:00",
+    "analysis_sha256": "9fb214d5663b6747c52d9a1d1856a90201d666271db8ba9f317e628ffd5fc207",
+    "selection": "All completed source-accepted rows at a single prelabel snapshot; no quality selection.",
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1eaeabf4",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 1.0,
+          "f1": 1.0
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.8,
+          "f1": 0.888888888888889
+        },
+        "line": {
+          "recall": 0.26744186046511625,
+          "precision": 0.6216216216216216,
+          "f1": 0.37398373983739835
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__ac127191",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6,
+          "precision": 0.75,
+          "f1": 0.6666666666666665
+        },
+        "block": {
+          "recall": 0.25,
+          "precision": 0.3,
+          "f1": 0.2727272727272727
+        },
+        "line": {
+          "recall": 0.48104956268221577,
+          "precision": 0.4714285714285714,
+          "f1": 0.4761904761904762
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__3c7d37b7",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "line": {
+          "recall": 0.6994047619047619,
+          "precision": 0.8131487889273357,
+          "f1": 0.752
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__71253eae",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.27586206896551724,
+          "f1": 0.4324324324324324
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.10256410256410256,
+          "f1": 0.18604651162790695
+        },
+        "line": {
+          "recall": 0.7659574468085106,
+          "precision": 0.16997167138810199,
+          "f1": 0.2782071097372489
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__53ca6a30",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.9411764705882353,
+          "f1": 0.9696969696969697
+        },
+        "line": {
+          "recall": 0.9926739926739927,
+          "precision": 0.8138138138138138,
+          "f1": 0.8943894389438944
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__39a9746b",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.12,
+          "f1": 0.20689655172413793
+        },
+        "block": {
+          "recall": 0.7142857142857143,
+          "precision": 0.1282051282051282,
+          "f1": 0.21739130434782608
+        },
+        "line": {
+          "recall": 0.749498997995992,
+          "precision": 0.27540500736377027,
+          "f1": 0.4028002154011847
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__7c4a11fb",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.4117647058823529,
+          "f1": 0.5833333333333334
+        },
+        "line": {
+          "recall": 0.9041095890410958,
+          "precision": 0.38596491228070173,
+          "f1": 0.5409836065573771
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__40a717e5",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6923076923076923,
+          "precision": 0.42857142857142855,
+          "f1": 0.5294117647058824
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.425,
+          "f1": 0.5964912280701754
+        },
+        "line": {
+          "recall": 0.847457627118644,
+          "precision": 0.29093931837073983,
+          "f1": 0.43316831683168316
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__739b23db",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2777777777777778,
+          "f1": 0.4347826086956522
+        },
+        "block": {
+          "recall": 0.8421052631578947,
+          "precision": 0.23529411764705882,
+          "f1": 0.367816091954023
+        },
+        "line": {
+          "recall": 0.5592105263157895,
+          "precision": 0.1501766784452297,
+          "f1": 0.23676880222841223
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__64fffdfa",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8333333333333334,
+          "precision": 0.45454545454545453,
+          "f1": 0.5882352941176471
+        },
+        "block": {
+          "recall": 0.6666666666666666,
+          "precision": 0.07407407407407407,
+          "f1": 0.13333333333333333
+        },
+        "line": {
+          "recall": 0.5734265734265734,
+          "precision": 0.15922330097087378,
+          "f1": 0.2492401215805471
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__ac8400d9",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "block": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "line": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__6efcf999",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.631578947368421,
+          "precision": 0.4444444444444444,
+          "f1": 0.5217391304347826
+        },
+        "block": {
+          "recall": 0.4782608695652174,
+          "precision": 0.12643678160919541,
+          "f1": 0.2
+        },
+        "line": {
+          "recall": 0.32941176470588235,
+          "precision": 0.10467289719626169,
+          "f1": 0.1588652482269504
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__cf01f471",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.5,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 0.9090909090909091,
+          "precision": 0.4166666666666667,
+          "f1": 0.5714285714285715
+        },
+        "line": {
+          "recall": 0.82,
+          "precision": 0.47766990291262135,
+          "f1": 0.603680981595092
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__18d7bbbc",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8181818181818182,
+          "precision": 0.28125,
+          "f1": 0.41860465116279066
+        },
+        "block": {
+          "recall": 0.8444444444444444,
+          "precision": 0.3220338983050847,
+          "f1": 0.4662576687116564
+        },
+        "line": {
+          "recall": 0.5942211055276382,
+          "precision": 0.45133587786259544,
+          "f1": 0.5130151843817787
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__20f502e0",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.5,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 0.7692307692307693,
+          "precision": 0.20408163265306123,
+          "f1": 0.3225806451612903
+        },
+        "line": {
+          "recall": 0.9021164021164021,
+          "precision": 0.4577181208053691,
+          "f1": 0.6073018699910953
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__d3c56cc5",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.875,
+          "precision": 0.5185185185185185,
+          "f1": 0.6511627906976744
+        },
+        "block": {
+          "recall": 0.8095238095238095,
+          "precision": 0.3695652173913043,
+          "f1": 0.5074626865671641
+        },
+        "line": {
+          "recall": 0.8959854014598541,
+          "precision": 0.30649188514357056,
+          "f1": 0.4567441860465117
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__5b2cf9bb",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3,
+          "f1": 0.4615384615384615
+        },
+        "block": {
+          "recall": 0.8421052631578947,
+          "precision": 0.2962962962962963,
+          "f1": 0.4383561643835616
+        },
+        "line": {
+          "recall": 0.8790697674418605,
+          "precision": 0.11659469463294263,
+          "f1": 0.2058823529411765
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__84fdadf0",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6666666666666666,
+          "precision": 0.15384615384615385,
+          "f1": 0.25
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.09302325581395349,
+          "f1": 0.1702127659574468
+        },
+        "line": {
+          "recall": 0.9318181818181818,
+          "precision": 0.03996101364522417,
+          "f1": 0.07663551401869158
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__e2b70931",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.9090909090909091,
+          "precision": 0.7692307692307693,
+          "f1": 0.8333333333333333
+        },
+        "block": {
+          "recall": 0.7878787878787878,
+          "precision": 0.6842105263157895,
+          "f1": 0.732394366197183
+        },
+        "line": {
+          "recall": 0.6301369863013698,
+          "precision": 0.4316996871741397,
+          "f1": 0.5123762376237623
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__2464eadb",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.16666666666666666,
+          "f1": 0.2857142857142857
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.03571428571428571,
+          "f1": 0.0689655172413793
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.21284403669724772,
+          "f1": 0.3509833585476551
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__c1f435de",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.42857142857142855,
+          "f1": 0.4615384615384615
+        },
+        "block": {
+          "recall": 0.8571428571428571,
+          "precision": 0.16666666666666666,
+          "f1": 0.27906976744186046
+        },
+        "line": {
+          "recall": 0.7098976109215017,
+          "precision": 0.2950354609929078,
+          "f1": 0.41683366733466937
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__64469377",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.42857142857142855,
+          "f1": 0.5454545454545454
+        },
+        "block": {
+          "recall": 0.9473684210526315,
+          "precision": 0.3157894736842105,
+          "f1": 0.47368421052631576
+        },
+        "line": {
+          "recall": 0.456,
+          "precision": 0.21923076923076923,
+          "f1": 0.2961038961038961
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__607fc4ff",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.2631578947368421,
+          "f1": 0.3448275862068966
+        },
+        "block": {
+          "recall": 0.7307692307692307,
+          "precision": 0.16666666666666666,
+          "f1": 0.2714285714285714
+        },
+        "line": {
+          "recall": 0.6551724137931034,
+          "precision": 0.22478206724782068,
+          "f1": 0.334724153917478
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__4c132bfd",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "line": {
+          "recall": 0.9925373134328358,
+          "precision": 0.21212121212121213,
+          "f1": 0.34954007884362687
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__d9d9c3a6",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5714285714285714,
+          "precision": 0.27586206896551724,
+          "f1": 0.37209302325581395
+        },
+        "block": {
+          "recall": 0.7777777777777778,
+          "precision": 0.5,
+          "f1": 0.6086956521739131
+        },
+        "line": {
+          "recall": 0.6861538461538461,
+          "precision": 0.5234741784037559,
+          "f1": 0.5938748335552596
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__450d75e0",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3076923076923077,
+          "f1": 0.47058823529411764
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.23809523809523808,
+          "f1": 0.3846153846153846
+        },
+        "line": {
+          "recall": 0.9254658385093167,
+          "precision": 0.2450657894736842,
+          "f1": 0.38751625487646296
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__7c2efe8a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6666666666666666,
+          "precision": 0.12121212121212122,
+          "f1": 0.20512820512820512
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.20987654320987653,
+          "f1": 0.346938775510204
+        },
+        "line": {
+          "recall": 0.8379888268156425,
+          "precision": 0.20920502092050208,
+          "f1": 0.33482142857142855
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__512d556b",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6666666666666666,
+          "precision": 0.2222222222222222,
+          "f1": 0.3333333333333333
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.16666666666666666,
+          "f1": 0.2857142857142857
+        },
+        "line": {
+          "recall": 0.7228915662650602,
+          "precision": 0.22304832713754646,
+          "f1": 0.34090909090909094
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__4df06349",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8888888888888888,
+          "precision": 0.5714285714285714,
+          "f1": 0.6956521739130435
+        },
+        "block": {
+          "recall": 0.8,
+          "precision": 0.29850746268656714,
+          "f1": 0.43478260869565216
+        },
+        "line": {
+          "recall": 0.7882882882882883,
+          "precision": 0.14767932489451477,
+          "f1": 0.24875621890547264
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__31f13b61",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.23076923076923078,
+          "f1": 0.3529411764705882
+        },
+        "block": {
+          "recall": 0.5581395348837209,
+          "precision": 0.25,
+          "f1": 0.34532374100719426
+        },
+        "line": {
+          "recall": 0.5071283095723014,
+          "precision": 0.38131699846860645,
+          "f1": 0.43531468531468526
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__1cae51cc",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.46153846153846156,
+          "precision": 0.11764705882352941,
+          "f1": 0.1875
+        },
+        "block": {
+          "recall": 0.15789473684210525,
+          "precision": 0.046875,
+          "f1": 0.07228915662650602
+        },
+        "line": {
+          "recall": 0.19455252918287938,
+          "precision": 0.08361204013377926,
+          "f1": 0.11695906432748536
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__36b8c9ee",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.2962962962962963,
+          "f1": 0.43243243243243246
+        },
+        "block": {
+          "recall": 0.3953488372093023,
+          "precision": 0.18888888888888888,
+          "f1": 0.2556390977443609
+        },
+        "line": {
+          "recall": 0.17435897435897435,
+          "precision": 0.255,
+          "f1": 0.20710659898477157
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__62badbbf",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.13636363636363635,
+          "f1": 0.24000000000000002
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.22448979591836735,
+          "f1": 0.36666666666666664
+        },
+        "line": {
+          "recall": 0.9527027027027027,
+          "precision": 0.14461538461538462,
+          "f1": 0.25111308993766696
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__81c5c6fa",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5384615384615384,
+          "f1": 0.7000000000000001
+        },
+        "block": {
+          "recall": 0.9615384615384616,
+          "precision": 0.4166666666666667,
+          "f1": 0.5813953488372093
+        },
+        "line": {
+          "recall": 0.7791932059447984,
+          "precision": 0.5381231671554252,
+          "f1": 0.6366001734605378
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__0c4f8d13",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.8,
+          "f1": 0.888888888888889
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.6451612903225806,
+          "f1": 0.7843137254901961
+        },
+        "line": {
+          "recall": 0.911340206185567,
+          "precision": 0.5538847117794486,
+          "f1": 0.6890101325019486
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__5ec14acf",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.078125,
+          "f1": 0.14492753623188406
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.07242990654205607,
+          "f1": 0.13507625272331153
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__07bb383a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8333333333333334,
+          "precision": 0.2,
+          "f1": 0.3225806451612903
+        },
+        "block": {
+          "recall": 0.7,
+          "precision": 0.175,
+          "f1": 0.27999999999999997
+        },
+        "line": {
+          "recall": 0.6762075134168157,
+          "precision": 0.5220994475138122,
+          "f1": 0.5892439594699922
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__6ebb54dc",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.3333333333333333,
+          "precision": 0.2857142857142857,
+          "f1": 0.30769230769230765
+        },
+        "block": {
+          "recall": 0.9310344827586207,
+          "precision": 0.421875,
+          "f1": 0.5806451612903226
+        },
+        "line": {
+          "recall": 0.967487684729064,
+          "precision": 0.49898373983739835,
+          "f1": 0.6583975863224941
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__942d0b14",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.6,
+          "f1": 0.5454545454545454
+        },
+        "block": {
+          "recall": 0.6,
+          "precision": 0.2608695652173913,
+          "f1": 0.36363636363636365
+        },
+        "line": {
+          "recall": 0.4384858044164038,
+          "precision": 0.25112917795844625,
+          "f1": 0.31935669155657664
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__fcb506a5",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.9,
+          "precision": 0.47368421052631576,
+          "f1": 0.6206896551724138
+        },
+        "block": {
+          "recall": 0.8363636363636363,
+          "precision": 0.5348837209302325,
+          "f1": 0.652482269503546
+        },
+        "line": {
+          "recall": 0.8061336254107339,
+          "precision": 0.5631216526396328,
+          "f1": 0.6630630630630631
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__462b957d",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.5294117647058824,
+          "f1": 0.6923076923076924
+        },
+        "line": {
+          "recall": 0.8112449799196787,
+          "precision": 0.6516129032258065,
+          "f1": 0.7227191413237924
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__5fdd12f6",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2222222222222222,
+          "f1": 0.3636363636363636
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.20754716981132076,
+          "f1": 0.34375000000000006
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.3252032520325203,
+          "f1": 0.49079754601226994
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__95b4abc1",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.7272727272727273,
+          "precision": 0.16666666666666666,
+          "f1": 0.2711864406779661
+        },
+        "block": {
+          "recall": 0.8245614035087719,
+          "precision": 0.23857868020304568,
+          "f1": 0.37007874015748027
+        },
+        "line": {
+          "recall": 0.6142433234421365,
+          "precision": 0.20679320679320679,
+          "f1": 0.30941704035874434
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__e31ec45c",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3793103448275862,
+          "f1": 0.5499999999999999
+        },
+        "block": {
+          "recall": 0.5869565217391305,
+          "precision": 0.34615384615384615,
+          "f1": 0.43548387096774194
+        },
+        "line": {
+          "recall": 0.5851063829787234,
+          "precision": 0.3142857142857143,
+          "f1": 0.4089219330855019
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__1bb5c0b0",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.6,
+          "f1": 0.6666666666666665
+        },
+        "block": {
+          "recall": 0.8461538461538461,
+          "precision": 0.28205128205128205,
+          "f1": 0.4230769230769231
+        },
+        "line": {
+          "recall": 0.7529761904761905,
+          "precision": 0.32603092783505155,
+          "f1": 0.45503597122302164
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__5c001746",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5833333333333334,
+          "precision": 0.5833333333333334,
+          "f1": 0.5833333333333334
+        },
+        "block": {
+          "recall": 0.5714285714285714,
+          "precision": 0.4,
+          "f1": 0.47058823529411764
+        },
+        "line": {
+          "recall": 0.5756676557863502,
+          "precision": 0.44241733181299886,
+          "f1": 0.5003223726627982
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__python__maintenance__bugfix__e6efdd87",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.7272727272727273,
+          "precision": 0.5333333333333333,
+          "f1": 0.6153846153846153
+        },
+        "block": {
+          "recall": 0.8333333333333334,
+          "precision": 0.33707865168539325,
+          "f1": 0.48
+        },
+        "line": {
+          "recall": 0.6891891891891891,
+          "precision": 0.39666666666666667,
+          "f1": 0.5035260930888575
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__1ad00901",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "f1": 0.33333333333333337
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.1111111111111111,
+          "f1": 0.19999999999999998
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.07575757575757576,
+          "f1": 0.14084507042253522
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__9d623e73",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.4,
+          "f1": 0.5714285714285715
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.17857142857142858,
+          "f1": 0.30303030303030304
+        },
+        "line": {
+          "recall": 0.9085923217550275,
+          "precision": 0.41624790619765495,
+          "f1": 0.5709362435381965
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__e21304a6",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.07692307692307693,
+          "f1": 0.13333333333333336
+        },
+        "block": {
+          "recall": 0.6666666666666666,
+          "precision": 0.10526315789473684,
+          "f1": 0.18181818181818182
+        },
+        "line": {
+          "recall": 0.927710843373494,
+          "precision": 0.26101694915254237,
+          "f1": 0.40740740740740733
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__d3babcfe",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3125,
+          "f1": 0.47619047619047616
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.18571428571428572,
+          "f1": 0.3132530120481928
+        },
+        "line": {
+          "recall": 0.958974358974359,
+          "precision": 0.13689604685212298,
+          "f1": 0.23959000640614994
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__78039f77",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.3,
+          "f1": 0.4285714285714285
+        },
+        "block": {
+          "recall": 0.5625,
+          "precision": 0.25,
+          "f1": 0.34615384615384615
+        },
+        "line": {
+          "recall": 0.53156146179402,
+          "precision": 0.367816091954023,
+          "f1": 0.43478260869565216
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__d1cb6b19",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.2857142857142857,
+          "f1": 0.4210526315789473
+        },
+        "block": {
+          "recall": 0.8461538461538461,
+          "precision": 0.2558139534883721,
+          "f1": 0.3928571428571428
+        },
+        "line": {
+          "recall": 0.5354107648725213,
+          "precision": 0.6116504854368932,
+          "f1": 0.5709969788519638
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__eb1411ba",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8333333333333334,
+          "precision": 0.5555555555555556,
+          "f1": 0.6666666666666667
+        },
+        "block": {
+          "recall": 0.8,
+          "precision": 0.3,
+          "f1": 0.4363636363636363
+        },
+        "line": {
+          "recall": 0.6423357664233577,
+          "precision": 0.2678843226788432,
+          "f1": 0.3780880773361976
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__b9ce6a70",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.16666666666666666,
+          "f1": 0.2857142857142857
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.5625,
+          "f1": 0.72
+        },
+        "line": {
+          "recall": 0.9675675675675676,
+          "precision": 0.7937915742793792,
+          "f1": 0.8721071863580999
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__c6d3e230",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6666666666666666,
+          "precision": 0.5,
+          "f1": 0.5714285714285715
+        },
+        "block": {
+          "recall": 0.5714285714285714,
+          "precision": 0.3333333333333333,
+          "f1": 0.4210526315789474
+        },
+        "line": {
+          "recall": 0.40634920634920635,
+          "precision": 0.5224489795918368,
+          "f1": 0.45714285714285713
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__11e78a8d",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.5,
+          "f1": 0.6153846153846154
+        },
+        "block": {
+          "recall": 0.8888888888888888,
+          "precision": 0.5714285714285714,
+          "f1": 0.6956521739130435
+        },
+        "line": {
+          "recall": 0.7219512195121951,
+          "precision": 0.8757396449704142,
+          "f1": 0.7914438502673797
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__9ca0e415",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.3333333333333333,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 0.6,
+          "precision": 0.5294117647058824,
+          "f1": 0.5625
+        },
+        "line": {
+          "recall": 0.4301675977653631,
+          "precision": 0.2883895131086142,
+          "f1": 0.3452914798206278
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__8cc426dd",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.75,
+          "f1": 0.75
+        },
+        "block": {
+          "recall": 0.9523809523809523,
+          "precision": 0.47619047619047616,
+          "f1": 0.634920634920635
+        },
+        "line": {
+          "recall": 0.9692832764505119,
+          "precision": 0.5579567779960707,
+          "f1": 0.7082294264339151
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__7e3e2bb9",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.18181818181818182,
+          "f1": 0.2962962962962963
+        },
+        "block": {
+          "recall": 0.631578947368421,
+          "precision": 0.16216216216216217,
+          "f1": 0.25806451612903225
+        },
+        "line": {
+          "recall": 0.8923444976076556,
+          "precision": 0.18483647175421208,
+          "f1": 0.30623973727422005
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__63513ada",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.4,
+          "precision": 1.0,
+          "f1": 0.5714285714285715
+        },
+        "block": {
+          "recall": 0.6923076923076923,
+          "precision": 0.9,
+          "f1": 0.7826086956521738
+        },
+        "line": {
+          "recall": 0.7516129032258064,
+          "precision": 0.4794238683127572,
+          "f1": 0.5854271356783919
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__c26fd1ab",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.16666666666666666,
+          "precision": 0.14285714285714285,
+          "f1": 0.15384615384615383
+        },
+        "block": {
+          "recall": 0.2,
+          "precision": 0.07692307692307693,
+          "f1": 0.1111111111111111
+        },
+        "line": {
+          "recall": 0.15763546798029557,
+          "precision": 0.47761194029850745,
+          "f1": 0.23703703703703707
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__e647c8ce",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.17647058823529413,
+          "f1": 0.2608695652173913
+        },
+        "block": {
+          "recall": 0.5,
+          "precision": 0.15,
+          "f1": 0.23076923076923075
+        },
+        "line": {
+          "recall": 0.1456953642384106,
+          "precision": 0.19298245614035087,
+          "f1": 0.16603773584905657
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__27e1903f",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.125,
+          "f1": 0.2222222222222222
+        },
+        "block": {
+          "recall": 0.75,
+          "precision": 0.2,
+          "f1": 0.31578947368421056
+        },
+        "line": {
+          "recall": 0.8230088495575221,
+          "precision": 0.36328125,
+          "f1": 0.5040650406504065
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__1e29a469",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.42857142857142855,
+          "f1": 0.6
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.20234604105571846,
+          "f1": 0.3365853658536585
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__108b2d38",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.3333333333333333,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 0.5555555555555556,
+          "precision": 0.16666666666666666,
+          "f1": 0.2564102564102564
+        },
+        "line": {
+          "recall": 0.7291666666666666,
+          "precision": 0.2679938744257274,
+          "f1": 0.3919372900335946
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__9b08d665",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.17647058823529413,
+          "f1": 0.3
+        },
+        "block": {
+          "recall": 0.5,
+          "precision": 0.12,
+          "f1": 0.1935483870967742
+        },
+        "line": {
+          "recall": 0.34615384615384615,
+          "precision": 0.19834710743801653,
+          "f1": 0.2521891418563923
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__21086305",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.25,
+          "precision": 0.5,
+          "f1": 0.3333333333333333
+        },
+        "block": {
+          "recall": 0.6153846153846154,
+          "precision": 0.4444444444444444,
+          "f1": 0.5161290322580646
+        },
+        "line": {
+          "recall": 0.5277777777777778,
+          "precision": 0.45103857566765576,
+          "f1": 0.48640000000000005
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__3b6e6f3a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2727272727272727,
+          "f1": 0.42857142857142855
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.2777777777777778,
+          "f1": 0.4347826086956522
+        },
+        "line": {
+          "recall": 0.9213483146067416,
+          "precision": 0.2939068100358423,
+          "f1": 0.44565217391304346
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__c017c9ba",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.625,
+          "precision": 0.4166666666666667,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 0.36363636363636365,
+          "precision": 0.21052631578947367,
+          "f1": 0.26666666666666666
+        },
+        "line": {
+          "recall": 0.17579250720461095,
+          "precision": 0.30808080808080807,
+          "f1": 0.22385321100917432
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__463d4713",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.25,
+          "precision": 1.0,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 0.42857142857142855,
+          "precision": 1.0,
+          "f1": 0.6
+        },
+        "line": {
+          "recall": 0.4470588235294118,
+          "precision": 0.6333333333333333,
+          "f1": 0.5241379310344828
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__d6eb75d7",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.15384615384615385,
+          "f1": 0.23529411764705882
+        },
+        "block": {
+          "recall": 0.5555555555555556,
+          "precision": 0.13157894736842105,
+          "f1": 0.2127659574468085
+        },
+        "line": {
+          "recall": 0.3646723646723647,
+          "precision": 0.2064516129032258,
+          "f1": 0.26364572605561276
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__10ab7842",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "block": {
+          "recall": 0.75,
+          "precision": 0.6,
+          "f1": 0.6666666666666665
+        },
+        "line": {
+          "recall": 0.8518518518518519,
+          "precision": 0.5373831775700935,
+          "f1": 0.6590257879656161
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__59dd675b",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.35294117647058826,
+          "f1": 0.48
+        },
+        "block": {
+          "recall": 0.7142857142857143,
+          "precision": 0.32608695652173914,
+          "f1": 0.4477611940298507
+        },
+        "line": {
+          "recall": 0.7137546468401487,
+          "precision": 0.5106382978723404,
+          "f1": 0.5953488372093023
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__0f1fd789",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.361328125,
+          "f1": 0.5308464849354376
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__a65e43ee",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 0.8846153846153846,
+          "precision": 0.3333333333333333,
+          "f1": 0.4842105263157894
+        },
+        "line": {
+          "recall": 0.8932384341637011,
+          "precision": 0.5218295218295218,
+          "f1": 0.6587926509186351
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__9c9b931e",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.4444444444444444,
+          "precision": 0.5,
+          "f1": 0.47058823529411764
+        },
+        "block": {
+          "recall": 0.4090909090909091,
+          "precision": 0.391304347826087,
+          "f1": 0.4
+        },
+        "line": {
+          "recall": 0.5493562231759657,
+          "precision": 0.5412262156448203,
+          "f1": 0.5452609158679447
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__7d106697",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.07894736842105263,
+          "f1": 0.14634146341463414
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.07364975450081833,
+          "f1": 0.1371951219512195
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__22615f27",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "f1": 0.33333333333333337
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.08562197092084006,
+          "f1": 0.15773809523809523
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__16d1ff7a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.1,
+          "f1": 0.18181818181818182
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.07679738562091504,
+          "f1": 0.1426403641881639
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__48468065",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.17647058823529413,
+          "f1": 0.3
+        },
+        "line": {
+          "recall": 0.9772727272727273,
+          "precision": 0.15925925925925927,
+          "f1": 0.2738853503184714
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__2bb4ea7a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.09090909090909091,
+          "f1": 0.16666666666666669
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.13310580204778158,
+          "f1": 0.23493975903614459
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__evolution__feature__684a3415",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.2,
+          "precision": 0.125,
+          "f1": 0.15384615384615385
+        },
+        "block": {
+          "recall": 0.25,
+          "precision": 0.1,
+          "f1": 0.14285714285714288
+        },
+        "line": {
+          "recall": 0.6436781609195402,
+          "precision": 0.3128491620111732,
+          "f1": 0.42105263157894735
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__evolution__feature__07098661",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.3333333333333333,
+          "f1": 0.46153846153846156
+        },
+        "block": {
+          "recall": 0.9166666666666666,
+          "precision": 0.13253012048192772,
+          "f1": 0.23157894736842105
+        },
+        "line": {
+          "recall": 0.9178082191780822,
+          "precision": 0.10014947683109118,
+          "f1": 0.18059299191374661
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__evolution__feature__c2e9e5ff",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6,
+          "precision": 0.75,
+          "f1": 0.6666666666666665
+        },
+        "block": {
+          "recall": 0.75,
+          "precision": 0.23076923076923078,
+          "f1": 0.3529411764705882
+        },
+        "line": {
+          "recall": 0.8811881188118812,
+          "precision": 0.29276315789473684,
+          "f1": 0.43950617283950616
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__18d389e5",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.3333333333333333,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 0.5714285714285714,
+          "precision": 0.0975609756097561,
+          "f1": 0.16666666666666669
+        },
+        "line": {
+          "recall": 0.6419753086419753,
+          "precision": 0.1187214611872146,
+          "f1": 0.20038535645472058
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__0307e40c",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.07142857142857142,
+          "f1": 0.13333333333333333
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.07692307692307693,
+          "f1": 0.14285714285714288
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.0711743772241993,
+          "f1": 0.132890365448505
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__2d1b4a72",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.3333333333333333,
+          "precision": 0.16666666666666666,
+          "f1": 0.2222222222222222
+        },
+        "block": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "line": {
+          "recall": 0.3333333333333333,
+          "precision": 0.046153846153846156,
+          "f1": 0.08108108108108109
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__52180d42",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "f1": 0.33333333333333337
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.1566579634464752,
+          "f1": 0.2708803611738149
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__1de1bd3c",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.1,
+          "f1": 0.18181818181818182
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.057692307692307696,
+          "f1": 0.1090909090909091
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.16929133858267717,
+          "f1": 0.2895622895622896
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__6659fd5a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.5,
+          "precision": 0.5,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 0.6666666666666666,
+          "precision": 0.14285714285714285,
+          "f1": 0.23529411764705882
+        },
+        "line": {
+          "recall": 0.6284153005464481,
+          "precision": 0.3582554517133956,
+          "f1": 0.4563492063492064
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__27393dd8",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.25,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.07142857142857142,
+          "f1": 0.13333333333333333
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.10144927536231885,
+          "f1": 0.1842105263157895
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__7dfdbbd1",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.16666666666666666,
+          "f1": 0.2857142857142857
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "f1": 0.33333333333333337
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.1958762886597938,
+          "f1": 0.3275862068965517
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__2bfb742a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.2702702702702703,
+          "f1": 0.4255319148936171
+        },
+        "line": {
+          "recall": 0.9743589743589743,
+          "precision": 0.2544642857142857,
+          "f1": 0.40353982300884955
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__7827bc22",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.25,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 0.6666666666666666,
+          "precision": 0.03571428571428571,
+          "f1": 0.06779661016949153
+        },
+        "line": {
+          "recall": 0.8181818181818182,
+          "precision": 0.09977827050997783,
+          "f1": 0.17786561264822134
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__evolution__feature__34826a6a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.26666666666666666,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 0.8,
+          "precision": 0.11428571428571428,
+          "f1": 0.19999999999999998
+        },
+        "line": {
+          "recall": 0.6036585365853658,
+          "precision": 0.22654462242562928,
+          "f1": 0.329450915141431
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__678fa217",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.1111111111111111,
+          "f1": 0.19999999999999998
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.017857142857142856,
+          "f1": 0.03508771929824561
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.05792349726775956,
+          "f1": 0.10950413223140495
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__evolution__feature__d520ba22",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6666666666666666,
+          "precision": 0.13333333333333333,
+          "f1": 0.2222222222222222
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.1590909090909091,
+          "f1": 0.2745098039215686
+        },
+        "line": {
+          "recall": 0.904,
+          "precision": 0.2198443579766537,
+          "f1": 0.3536776212832551
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__3864c137",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.6666666666666666,
+          "precision": 0.6666666666666666,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.1875,
+          "f1": 0.3157894736842105
+        },
+        "line": {
+          "recall": 0.8,
+          "precision": 0.23645320197044334,
+          "f1": 0.3650190114068441
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__15589352",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.16666666666666666,
+          "f1": 0.2857142857142857
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.047619047619047616,
+          "f1": 0.0909090909090909
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.15940685820203893,
+          "f1": 0.2749800159872102
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__6688f2d9",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.25,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.2222222222222222,
+          "f1": 0.3636363636363636
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.23780487804878048,
+          "f1": 0.3842364532019704
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__evolution__feature__41cd3842",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.16666666666666666,
+          "f1": 0.2857142857142857
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.15,
+          "f1": 0.2608695652173913
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.054409005628517824,
+          "f1": 0.10320284697508897
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__42165c4e",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.3333333333333333,
+          "f1": 0.46153846153846156
+        },
+        "block": {
+          "recall": 0.6666666666666666,
+          "precision": 0.07142857142857142,
+          "f1": 0.12903225806451613
+        },
+        "line": {
+          "recall": 0.7073170731707317,
+          "precision": 0.06812842599843383,
+          "f1": 0.12428571428571429
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__ed58622a",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.09090909090909091,
+          "f1": 0.16666666666666669
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.0392156862745098,
+          "f1": 0.07547169811320754
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.10482921083627797,
+          "f1": 0.18976545842217482
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__faa6b3ac",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.09090909090909091,
+          "f1": 0.16666666666666669
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.05434782608695652,
+          "f1": 0.10309278350515463
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.17307692307692307,
+          "f1": 0.29508196721311475
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__9a72b241",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2857142857142857,
+          "f1": 0.4444444444444445
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.12195121951219512,
+          "f1": 0.21739130434782605
+        },
+        "line": {
+          "recall": 0.8596491228070176,
+          "precision": 0.23671497584541062,
+          "f1": 0.3712121212121212
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__5188c6bc",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.25,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.05128205128205128,
+          "f1": 0.09756097560975609
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.025594149908592323,
+          "f1": 0.049910873440285206
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__214ce29d",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.08333333333333333,
+          "f1": 0.15384615384615385
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.08928571428571429,
+          "f1": 0.1639344262295082
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.1079913606911447,
+          "f1": 0.1949317738791423
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__2f88019c",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.25,
+          "f1": 0.4
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.3148148148148148,
+          "f1": 0.4788732394366197
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__dbd7cde5",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.5,
+          "f1": 0.6666666666666666
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.2857142857142857,
+          "f1": 0.4444444444444445
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.49557522123893805,
+          "f1": 0.6627218934911243
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__453fb844",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.14285714285714285,
+          "f1": 0.25
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.07407407407407407,
+          "f1": 0.13793103448275862
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.09688013136288999,
+          "f1": 0.17664670658682635
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__5518cb7f",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 0.8333333333333334,
+          "precision": 0.17857142857142858,
+          "f1": 0.29411764705882354
+        },
+        "line": {
+          "recall": 0.9150943396226415,
+          "precision": 0.2878338278931751,
+          "f1": 0.43792325056433407
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__evolution__feature__8bb50331",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.3333333333333333,
+          "f1": 0.47058823529411764
+        },
+        "block": {
+          "recall": 0.967741935483871,
+          "precision": 0.5084745762711864,
+          "f1": 0.6666666666666666
+        },
+        "line": {
+          "recall": 0.5258064516129032,
+          "precision": 0.21168831168831168,
+          "f1": 0.3018518518518518
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__e3c9c53c",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.125,
+          "f1": 0.2222222222222222
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.043478260869565216,
+          "f1": 0.08333333333333333
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.20618556701030927,
+          "f1": 0.3418803418803419
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__evolution__feature__4a329645",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "block": {
+          "recall": 0.9130434782608695,
+          "precision": 1.0,
+          "f1": 0.9545454545454545
+        },
+        "line": {
+          "recall": 0.855191256830601,
+          "precision": 0.9178885630498533,
+          "f1": 0.8854314002828855
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__5acd9675",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.25,
+          "f1": 0.4
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.1568627450980392,
+          "f1": 0.2711864406779661
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.5272108843537415,
+          "f1": 0.690423162583519
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__9ff56151",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.75,
+          "precision": 0.3333333333333333,
+          "f1": 0.46153846153846156
+        },
+        "block": {
+          "recall": 0.8461538461538461,
+          "precision": 0.1506849315068493,
+          "f1": 0.2558139534883721
+        },
+        "line": {
+          "recall": 0.7480314960629921,
+          "precision": 0.3327495621716287,
+          "f1": 0.4606060606060606
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__evolution__feature__17a093c8",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.4,
+          "precision": 1.0,
+          "f1": 0.5714285714285715
+        },
+        "block": {
+          "recall": 0.8,
+          "precision": 1.0,
+          "f1": 0.888888888888889
+        },
+        "line": {
+          "recall": 0.8297297297297297,
+          "precision": 0.953416149068323,
+          "f1": 0.8872832369942195
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__evolution__feature__ebb79d55",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 0.8,
+          "precision": 0.5,
+          "f1": 0.6153846153846154
+        },
+        "block": {
+          "recall": 0.8571428571428571,
+          "precision": 0.2057142857142857,
+          "f1": 0.3317972350230415
+        },
+        "line": {
+          "recall": 0.8143564356435643,
+          "precision": 0.4177777777777778,
+          "f1": 0.5522450692404531
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__evolution__feature__b4302840",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.2,
+          "f1": 0.33333333333333337
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.3888888888888889,
+          "f1": 0.56
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.3405088062622309,
+          "f1": 0.5080291970802919
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__91e6ed53",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.09090909090909091,
+          "f1": 0.16666666666666669
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.12142857142857143,
+          "f1": 0.21656050955414013
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__python__maintenance__bugfix__ac5893a5",
+        "official_valid": true,
+        "error": null,
+        "file": {
+          "recall": 1.0,
+          "precision": 0.3333333333333333,
+          "f1": 0.5
+        },
+        "block": {
+          "recall": 1.0,
+          "precision": 0.13043478260869565,
+          "f1": 0.23076923076923078
+        },
+        "line": {
+          "recall": 1.0,
+          "precision": 0.09465648854961832,
+          "f1": 0.1729428172942817
+        }
+      }
+    ],
+    "CodeNib_components_used": [
+      "default read/grep/glob source tools",
+      "repository-bound source adapters",
+      "actual-consumed-source trajectory conversion",
+      "snapshot/usage receipts and official evaluator bridge"
+    ],
+    "not_enabled": [
+      "semantic graph",
+      "vector retrieval",
+      "BM25",
+      "Jev reranking",
+      "late4K final-context consumer"
+    ],
+    "enhancement_is_later_matched_source_packing_comparison": true
+  },
+  "verified500_same122_official_comparison": {
+    "scope": "Same122 IDs, same local Gold/source snapshots, same pinned official evaluator/environment; compare two different model+agent systems, not CodeNib treatment benefit.",
+    "population": 122,
+    "our_native": {
+      "population": 122,
+      "official_valid_cases": 122,
+      "official_failed_cases": [],
+      "failure_accounted_snapshot_macro": {
+        "file": {
+          "recall": 0.8031858348726338,
+          "precision": 0.3562485256717264,
+          "f1": 0.44327477356524747
+        },
+        "block": {
+          "recall": 0.8178157043431532,
+          "precision": 0.26038132580387824,
+          "f1": 0.35072697039911144
+        },
+        "line": {
+          "recall": 0.7680559332548911,
+          "precision": 0.30752983776988435,
+          "f1": 0.3899852469923677
+        }
+      }
+    },
+    "official_published_same122": {
+      "population": 122,
+      "official_valid_cases": 121,
+      "official_failed_cases": [
+        "SWE-Bench-Pro__python__maintenance__bugfix__84fdadf0"
+      ],
+      "failure_accounted_snapshot_macro": {
+        "file": {
+          "recall": 0.7646786166091601,
+          "precision": 0.4115735189053502,
+          "f1": 0.4637008811885822
+        },
+        "block": {
+          "recall": 0.802263652981903,
+          "precision": 0.2503276867782366,
+          "f1": 0.33661294161526745
+        },
+        "line": {
+          "recall": 0.7882829073733001,
+          "precision": 0.21106891356016186,
+          "f1": 0.29617444896085793
+        }
+      }
+    },
+    "official_rescored_same122": {
+      "population": 122,
+      "official_valid_cases": 122,
+      "official_failed_cases": [],
+      "failure_accounted_snapshot_macro": {
+        "file": {
+          "recall": 0.7674108570463186,
+          "precision": 0.4148294901851989,
+          "f1": 0.46644728029467275
+        },
+        "block": {
+          "recall": 0.804399961177463,
+          "precision": 0.24932312319125916,
+          "f1": 0.33491978766693953
+        },
+        "line": {
+          "recall": 0.7923812680290379,
+          "precision": 0.21124399526501034,
+          "f1": 0.29648935839398977
+        }
+      }
+    },
+    "our_minus_official_rescored": {
+      "file": {
+        "recall": 0.035774977826315224,
+        "precision": -0.0585809645134725,
+        "f1": -0.02317250672942528
+      },
+      "block": {
+        "recall": 0.013415743165690164,
+        "precision": 0.011058202612619084,
+        "f1": 0.01580718273217191
+      },
+      "line": {
+        "recall": -0.02432533477414678,
+        "precision": 0.09628584250487401,
+        "f1": 0.09349588859837793
+      }
+    },
+    "different_backbone_and_agent_harness": true,
+    "CodeNib_enhancement_gain_established": false,
+    "context_only_our_run_vs_issue_resolution_competitor": true,
+    "whole500_result_or_leaderboard_rank": false,
+    "protocol_sha256": "77ec9ee3f1ee67feeb48ff5276f6d4768aaac4dcfc61adbf15089e0489e15ce2",
+    "metrics_sha256": "959f6a4259108bc3bda21544cb8ded32af1cb20fe049346e7da1d442f8662cd9",
+    "new_model_calls": 0,
+    "new_API_usage_usd": 0,
+    "new_Gold_cases_beyond_already_scored122": 0,
+    "analysis_sha256": "0f89ba85d2d62fea9aa0bf184393503a3d5d42260f0bec9fbb217e5457bc5609",
+    "official_submission_commit": "a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9",
+    "official_submission": "https://github.com/ContextBench/contextbench.github.io/tree/a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9/submissions/2026-09-12_openjiuwen-jiuwenswarm",
+    "same122_official_valid_both_arms": true,
+    "mean_of_task_F1": true
   }
 }
