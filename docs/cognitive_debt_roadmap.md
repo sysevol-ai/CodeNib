@@ -340,9 +340,9 @@ no baseline retry or budget increase. Repair SDK estimates total $7.24264130;
 all frozen hashes and owned-container cleanup verify. The prospective solver fix
 collects existing edits after a fully metered SDK budget exception while retaining
 its error; it makes no extra model call and gives terminal diffs no source credit.
-Historical failed attempts stay unchanged. Known Max SDK estimates now total
-$97.40790440, direct Anthropic SDK estimates $5.49084920, and 206 Jev requests
-$0.04360545; actual account charges/remaining promotional credit are unknown.
+Historical failed attempts stay unchanged. Current per-route usage estimates
+and unreconciled account billing remain in the results export; actual charges
+and remaining promotional credit are unknown.
 Stop BM25 variants and do not expand the rejected automatic source-block policy.
 Require an actionable search-selection diagnosis and a fresh matched protocol
 with the corrected patch-collection policy. No revised independent gain is established.
@@ -354,11 +354,27 @@ usage value is $4.848424762. All four repair attempts submit for $6.03557620 in
 Max SDK estimates; both fmt grades pass with nearly identical costs, while both C
 patches fail native resolution. Each arm resolves 1/2; frozen input/prompt and
 owned-container audits pass. Stop these Jev output-format variants. The isolated
-optional retrieval-note handoff has 59 test passes and now has a frozen six-attempt
-repair ablation on Python/C/C++, with shared native source and separately bounded
-unverified notes. Extra note input and partial source attribution remain explicit.
-Pylint source/image and 21 native regression labels verify against empty/reference
-controls without model calls. No revised independent or leaderboard gain is established.
+optional retrieval-note handoff completes all six native grades: source 1/3,
+notes 0/3, with notes costing 24.0% more in repair SDK estimates. Reject it;
+all source/prompt/hash/usage/container audits pass, and both C budget exceptions
+retain their failed status and captured patches. A read-only failure audit finds
+Pylint collection errors in both arms and native test-patch conflicts in both
+Multi notes arms; do not interpret those as behavioral test failures. Native
+readiness must require an executable empty-control baseline, beyond a passing
+reference control; prospective patch-application rules remain an open gate. Its
+$9.058375 Max SDK value is usage estimation, not confirmed billing. Pylint source/image and
+21 native regression labels verify against empty/reference controls without
+model calls. The explicit solver API route and empty-context control pass 86
+local tests and pinned hooks. All six repairs and native reports in the
+$1-reserved Haiku screen finish for $0.26029216 across 55 SDK queries. Issue-only
+and frozen source both resolve 1/3, with 35/20 repair queries. C failures fall
+from 11 to seven of 1,017 tests, but neither repair resolves; Python collection
+fails in both arms. Actual model/route, frozen hashes, source-only initial-prompt
+contrast and owned-container absence verify. Allocating prior Opus retrieval
+raises the source pipeline estimate to $0.683119 versus issue-only $0.130250,
+so neither resolution nor pipeline-cost gates pass. There are no notes or new
+retrieval calls. Report its repair cost separately from the upstream Opus
+retrieval allocation. No revised independent or leaderboard gain is established.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

@@ -224,6 +224,13 @@ Black or isort can produce changes that fail the release all-files check.
 - New tests default to unit scope. Add heavier markers only when the test really
   needs external repos, SCIP indexing, LLM calls, GPU embeddings, or serial
   mutation.
+- Native benchmark readiness must show that the empty control collects and
+  executes the intended tests, as well as failing where the reference passes.
+  A reference-only production dependency can otherwise conceal a collection
+  failure. Record collection errors and model/native test-patch conflicts
+  separately from behavioral failures; retain all original selected outcomes.
+  Change grading methodology only in a separate, explicit protocol, and keep
+  reference material and grading feedback outside model inputs.
 
 ## Critical Code Conventions
 
