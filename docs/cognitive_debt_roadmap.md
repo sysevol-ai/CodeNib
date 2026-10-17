@@ -460,23 +460,28 @@ unknown Max terminal usage; do not substitute partial tokens or rerun the case.
 It calls no source tools, so both arms retain zero source for that case within
 all500 denominators.
 
-Prospective quota-order protocol `21456878`, immutable runtime `1b0ad5ac`,
-continues only375unstarted IDs. All124 qualified native prefixes (88original plus
-36initial500 accepted) are reused, including56complete context pairs. SDK query,
-options, source policy and compiler are unchanged. Pending output now drains to
-terminal metering before a missing-event rejection; explicit unsafe rate events
-still stop immediately. Require actual included-only quota receipts before case
-acceptance, without account setting changes/API fallback. This is not a billing
-cap. Thirty-six SDK boundary tests, then142relevant local tests and pinned hooks
-pass without billed tests.
+Quota-order protocol `21456878`/runtime `1b0ad5ac` completes65accepted additional
+investigations, then stops before dispatch at its4GiB artifact admission floor.
+All65usage/source/quota receipts are known and valid,all intents reconcile and
+children are terminal;the capacity stop addszero failed model cases. Preserve
+that stopped state and all original traces.
 
-At **2026-10-17 18:24 UTC**, the continuation has **3/375 accepted**, **372remaining**,
-for **$4.21292300 known new Max nominal usage** including the initial36, plus the
-one unknown terminal usage. New API/Batch/count/repair calls remain zero. Runtime
-gold is empty, source gaps and all500denominators retained, and all three32cohorts
-stay sealed. This canonical population includes exposed cases; no fresh
-independent500 or new quality result is claimed. Durable per-case intent prevents
-relaunch; unexpected receipts stop later dispatch.
+Capacity-only protocol `ac478f89` continues exactly310originalunclaimed IDs on a
+large output volume with shortTMPDIR;same4GiBfloor and immutable1b0ad5ac
+model/source/compiler/consumer/metric profile. Reuse189qualifiedprefixes including
+56completepairs,retain1originalfailedzero-source task andall500denominators,with
+no retry/sourcehistory change. The first task completes withnormal included-only
+receipts. Source-only replay checks189prefixes/56cumulativepairs;no labels orcalls
+are added by that check. Actual late-quota event handling and its36boundary/
+142local tests remain valid for the unchanged runtime.
+
+At **2026-10-17 18:55 UTC**, **5/310** capacity cases are accepted,**305**remain;
+known new Max nominal totals **$12.94678380** including the original36 and
+quota-order65,plus1originalunknownterminal. API/Batch/count/repair additions remain
+zero. Runtimegoldempty,source gaps andall500denominators retained,all3cohorts
+sealed. This canonicalpopulation includesexposedcases,no freshindependent500 or
+new quality result. Per-case durableintent prevents relaunch;unexpected receipts
+stop laterdispatch. Quota metadata is not a provider billingcap/reservation.
 
 Baseline source is already consumed by the investigator. All56old native-packet
 source unions equal those prefixes. The443new candidate inputs plus56reused pairs

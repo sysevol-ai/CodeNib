@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 166.53565166,
+    "known_sdk_reported_estimate_usd": 175.26951246000002,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "As-of verified500_context_execution checkpoint,add known fresh Max nominal once to prior Max113.75041130/mixed162.32272866. Original37attempts have36known terminals plus1unknown,not zero. Continuation pending excluded. API59.09398873unchanged,no new Batch/count/repaircalls. Historical2Max gaps plusnew1remain; accountbilling/creditbalance unverified.",
+    "scope": "As-of verified500_context_execution:known freshMax nominal includes original36,quota-order65 andcapacityacceptedcases once;one originalunknownterminal notzero. Add topriorMax113.75041130/mixed162.32272866,pendingexcluded. API59.09398873unchanged,no newBatch/count/repair. Maxnominal notcash;historical2Max gaps plus1neworiginalgap remain,accountbilling/creditbalanceunverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2803,7 +2803,7 @@
     "jev_rerank_api_cost_usd": 0.025743857999999994,
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
-    "known_claude_max_sdk_estimate_usd": 117.9633343,
+    "known_claude_max_sdk_estimate_usd": 126.6971951,
     "known_anthropic_api_sdk_estimate_usd": 48.57231736,
     "standalone_api_call_count_scope": "1012 Jev decisions;216 retrieval SDK sessions,36 packet-review SDK sessions and55 historical repair SDK queries.112 Messages inference requests and160 free token counts are separate; SDK sessions are not HTTP request counts.",
     "anthropic_api_sdk_sessions": 307,
@@ -2849,9 +2849,9 @@
     "max_batch_development_Max_sdk_sessions": 4,
     "max_batch_development_Max_nominal_sdk_usd": 1.2485557,
     "unmetered_batch_requests": 0,
-    "verified500_native_checkpoint": "2026-10-17T18:24:16+00:00",
-    "verified500_new_Max_nominal_sdk_usd": 4.212923,
-    "verified500_new_Max_sdk_terminal_sessions": 39,
+    "verified500_native_checkpoint": "2026-10-17T18:55:33+00:00",
+    "verified500_new_Max_nominal_sdk_usd": 12.946783800000002,
+    "verified500_new_Max_sdk_terminal_sessions": 106,
     "verified500_unknown_Max_terminal_cases": 1
   },
   "first_callable_source_24_development": {
@@ -23794,7 +23794,7 @@
       "frozen_source_resolved": true
     }
   },
-  "current_priority": "Context metrics first,Recall primary,F1/cost reported. Complete canonical500 under disclosed operational amendment,retain failed attempts andno interim labels/scoring,API fallback orrepairs. Exact443candidate input count/reservation remains required before one paidBatchcreate;onefailedposition remainszero without a packet.",
+  "current_priority": "Context metrics first,Recall primary,F1/cost reported. Complete only310originalunclaimed investigations onlarge-volume outputs/TMPDIR aftervalid65case disk-admission stop. Reuse189prefixes incl56completepairs;retainoriginal1failedzero-source case/all500denominators,no retry. Same model/source/compiler/consumer policy. No interimGold/quality/repairs;443exactinput preflight<=same40reservation beforeonepaidBatch.",
   "source_gap_diagnosis": {
     "scope": "Evaluation-only diagnosis of eight disclosed native trajectories. Canonical official paths and scores unchanged. No model calls; no annotation-driven runtime choices.",
     "totals": {
@@ -27436,7 +27436,7 @@
     },
     "consequence": "No untouched C++ or Java remains. Do not recycle either validation cohort or imply that future samples preserve the current language coverage."
   },
-  "latest_context_strategy_status": "Amended independent32 source coverage remains Recall74.94% to79.09%,F130.13% to22.32%,repository95 Recall difference[+1.99,+6.85]points. No new quality score. Canonical500 original native execution failed after37attempts due to quota-event ordering guard; prospective correction continues only375unstarted positions,retains1failedzero-source case/all500denominators andall sealed32s. Not fresh independent500 or repair benefit.",
+  "latest_context_strategy_status": "Independent32 sourcecoverage unchanged:Recall74.94to79.09,F130.13to22.32,repository95Recall delta[+1.99,+6.85]points. Canonical500 ongoing underdisclosed quota-order thenartifact-capacity continuations,no newquality/repairresult. All3sealed32s untouched;known canonicalpopulation,notfresh independent500.",
   "preserved_source_cached_ranking": {
     "scope": "Fixed-query actual-source union opportunity only, using shared historical real observations. No new agent behavior, paid calls or independent/leaderboard claim. No retrospective change to earlier failed online or independent gates.",
     "protocol_sha256": "707b197e50de1591e9ca6abfbb0213b7682440d74043e51ab944161f6e5a1428",
@@ -40130,9 +40130,9 @@
     "per_committed_file_cap_mib": 50,
     "external_links_or_lfs_pointers_suffice": false,
     "open_gates": [
-      "Complete only375unstarted investigations under frozen quota-order correction; retain original failed zero-source case andunknown terminal usage without retry/replacement.",
-      "Before one paid Batch create,count all443eligible exact candidate inputs and full capped outputs/margin/headroom<=40USD; failedposition stays in all500denominators.",
-      "Seal all500terminal predictions/receipts before annotation access; disclose operational amendment andknown/exposed cases,report Recall,F1,cost without repair/fresh-independent500claim.",
+      "Finish only310originalunclaimed nativecases undercapacity protocol;reuse189qualifiedprefixes/56pairs andretain1originalfailedzero-source task/unknownterminal without retry.",
+      "All443eligible exact candidate inputs withfree counts,fulloutputcaps/margin/headroom<=same40USD reservation beforeonepaidBatchcreate;all500denominators unchanged.",
+      "Freeze all500terminal sourcepredictions/rawreceipts beforeannotation access;report Recall/F1/cost andofficialvalidity/failures separately,discloseoperationalcontinuations/knowncases,no repair/freshindependent500claim.",
       "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
       "Complete original raw trajectories,failed attempts,evaluation and outcome archives committed within official file limits."
     ],
@@ -40140,9 +40140,9 @@
     "new_api_cost_usd": 0,
     "official500_started": false,
     "context500_open_gates": [
-      "Complete only375unstarted investigations under frozen quota-order correction; retain original failed zero-source case andunknown terminal usage without retry/replacement.",
-      "Before one paid Batch create,count all443eligible exact candidate inputs and full capped outputs/margin/headroom<=40USD; failedposition stays in all500denominators.",
-      "Seal all500terminal predictions/receipts before annotation access; disclose operational amendment andknown/exposed cases,report Recall,F1,cost without repair/fresh-independent500claim."
+      "Finish only310originalunclaimed nativecases undercapacity protocol;reuse189qualifiedprefixes/56pairs andretain1originalfailedzero-source task/unknownterminal without retry.",
+      "All443eligible exact candidate inputs withfree counts,fulloutputcaps/margin/headroom<=same40USD reservation beforeonepaidBatchcreate;all500denominators unchanged.",
+      "Freeze all500terminal sourcepredictions/rawreceipts beforeannotation access;report Recall/F1/cost andofficialvalidity/failures separately,discloseoperationalcontinuations/knowncases,no repair/freshindependent500claim."
     ],
     "official_submission_additional_gates": [
       "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
@@ -40942,42 +40942,46 @@
     "new_api_usage_usd": 0
   },
   "verified500_context_execution": {
-    "observed_at_utc": "2026-10-17T18:24:16+00:00",
+    "observed_at_utc": "2026-10-17T18:55:33+00:00",
     "state": "running",
-    "phase": "quota_order_continuation",
-    "source_state_sha256": "928b345373ae7baf240917a79ae5a203394da9799adcfa38fda86ff7d7b09481",
+    "phase": "capacity_only_continuation",
     "runtime_commit": "1b0ad5ac835ce4ce8a2ed46e0b6fa47ce27ade58",
-    "protocol_sha256": "2145687887c3aa4def05a6cdc9417718ec8d4030e209e5d86d98c44e712eb92d",
+    "protocol_sha256": "ac478f8956de831e7776212176f1dac617e4e2888a54362348c57fa3d926253a",
     "population": 500,
     "complete_context_pairs_reused": 56,
-    "original_qualified_prefixes": 88,
-    "initial500_accepted_prefixes_reused": 36,
-    "qualified_prefixes_at_continuation_start": 124,
+    "qualified_prefixes_at_continuation_start": 189,
     "original_native_attempts": 37,
     "original_native_accepted": 36,
     "original_native_failed": 1,
     "original_native_execution_strict_gate_passed": false,
-    "original_failure_retried_or_replaced": false,
-    "failed_native_source_credit": "zero in both arms; no source tools called",
+    "original_failed_case_retried_or_replaced": false,
+    "failed_native_source_credit": "zero in both arms;no source tools called",
     "failed_position_retained_in_all500_denominators": true,
-    "unstarted_at_continuation_freeze": 375,
-    "continuation_completed": 3,
-    "continuation_accepted": 3,
-    "continuation_remaining": 372,
+    "quota_order_parent_accepted_native": 65,
+    "quota_order_parent_stop": "4GiB artifact admission reached before next dispatch;all65receipts valid,allintents reconciled/children terminal",
+    "capacity_stop_added_failed_model_cases": 0,
+    "capacity_continuation_positions": 310,
+    "capacity_completed": 5,
+    "capacity_accepted": 5,
+    "capacity_remaining": 305,
+    "all500_native_terminal_records": 195,
     "new_candidate_consumers": 443,
     "failed_candidate_positions_without_a_packet": 1,
-    "known_new_Max_nominal_sdk_usd": 4.212923,
-    "new_terminal_metering_gaps": 1,
-    "new_api_usage_usd": 0,
+    "known_new_Max_nominal_sdk_usd": 12.946783800000002,
+    "new_terminal_Max_metering_gaps": 1,
+    "new_API_usage_usd": 0,
     "new_paid_Batch_requests": 0,
     "new_free_count_requests": 0,
-    "new_repair_calls": 0,
+    "new_repairs": 0,
     "new_quality_scores": false,
-    "api_reserved_for_all443_usd": 40,
-    "known_prior_api_usage_usd": 59.09398873,
-    "total_api_ceiling_usd": 100,
+    "same_API_reservation_for_all443_usd": 40,
+    "known_prior_API_usage_usd": 59.09398873,
+    "total_API_ceiling_usd": 100,
     "fresh_independent500_claim": false,
-    "source_unavailable_gitlink_cases": 3
+    "source_unavailable_gitlink_cases": 3,
+    "source_or_model_or_compiler_policy_changed": false,
+    "output_and_temp_on_data_volume": true,
+    "source_histories_retained_unchanged": true
   },
   "verified500_additional_native_prefix_reuse": {
     "scope": "Metadata/profile/source/code-path audit of every matching original prefix, without new calls, quality scoring, label access or favorable-case selection. Original strict empty advertised-catalog requirement remains failed; separate exact validated-reference catalog equality qualifies all32. All sealed study quality conclusions remain unchanged.",
@@ -41039,5 +41043,25 @@
       "all_targets_match_recorded_sources": true,
       "audit_sha256": "483b26e1498eb0e3e584ed06263ee20065e5322dc06a3dce65bb592043a323a5"
     }
+  },
+  "verified500_capacity_continuation": {
+    "scope": "Prospective artifact-capacity continuation only,all model/source/compiler/consumer/metricsettings unchanged. Preserve parent65accepted raw/state andoriginal1failedzero-source case; no modelretry ornew annotations.",
+    "parent_protocol_sha256": "2145687887c3aa4def05a6cdc9417718ec8d4030e209e5d86d98c44e712eb92d",
+    "parent_exec_terminal_exit": 1,
+    "parent_completed_known_usage_accepted": 65,
+    "parent_unreconciled_intents": 0,
+    "capacity_protocol_sha256": "ac478f8956de831e7776212176f1dac617e4e2888a54362348c57fa3d926253a",
+    "fresh_native_positions": 310,
+    "prefixes_reused": 189,
+    "new_candidate_inputs": 443,
+    "artifact_admission_floor_bytes": 4294967296,
+    "large_volume_output_and_TMPDIR_only": true,
+    "source_repositories_unmoved": true,
+    "first_actual_case_terminal_and_included_only_verified": true,
+    "source_prefix_roundtrips_passed": 189,
+    "prior_full_context_pair_source_parity_passed": 56,
+    "new_model_failures_due_to_capacity_stop": 0,
+    "new_API_usage_usd": 0,
+    "new_quality_scores": false
   }
 }
