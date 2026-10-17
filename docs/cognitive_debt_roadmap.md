@@ -157,20 +157,20 @@ new independent selection for any revised policy. Reliable directed-graph gains,
 the other native harnesses and full-agent outcomes remain open. The rejected
 policy does not advance to the official 500; no product route or package
 lifecycle is promoted.
-The later source-only candidate skips already observed graph source and requests
-an early reference hop. Offline replay removes 220 repeated lines without adding
-source. Its fresh three-arm development comparison makes zero graph calls and
-fails the declared novelty gate, despite higher point scores. Require a tool-use
-and source-novelty check before another quality cohort. A fixed-anchor offline
-replay finds fields/types occupying the result limit; prioritizing callable
-neighbors changes new annotated source from 1 to 16 physical lines on one Go
-task, with no annotated gain on the other four available graphs. The current
-shared prompt requires the first callable-bearing source reply, including grep
-completion, to be followed by a graph query. Its one-task mechanism check passes
-and delivers 132 newly observed annotated physical lines. The earlier literal
-after-read timing failure remains recorded; neither version is a quality score.
-Broader fresh matched development evidence remains required before independent
-validation. No product route is promoted. The new solver pair is
+The current first-source graph policy prioritizes callable neighbors and skips
+observed source. Its complete 24-task development primary pair changes Recall
+53.35% → 54.02% and F1 31.18% → 30.15%; the declared quality gate fails.
+All eleven available graphs are called, and three tasks in Go/Rust receive 139
+previously unseen annotated physical lines. The function-only ablation aborts
+after four completed cases and one partial error, retaining 19 not-run cases.
+The SDK normalizer now preserves unavailable attempts through terminal usage and
+excludes error feedback from source credit. Graph instructions appear only when
+the tool is registered; a separate one-task reliability check passes, without
+replacing the failed experiment or recovering its unknown usage. An offline C++
+probe restores one missing graph through compilation-database preparation in a
+private clone. Broader graph coverage and revised matched quality evidence remain
+required before a new independent selection. Earlier failed gates and mechanism
+checks stay in the experiment record; no product route is promoted. The new solver pair is
 0/1 resolved in each arm on the repeated development task; all 18 model inputs
 have hashed, confirmed receipts including actual output truncation. Shell-source
 attribution and the other native harnesses remain open.

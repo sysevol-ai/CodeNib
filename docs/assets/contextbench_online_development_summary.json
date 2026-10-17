@@ -2718,7 +2718,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 50.58461930000001,
+    "known_sdk_reported_estimate_usd": 63.8423242,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2728,6 +2728,1790 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Latest known October 16 program estimate, including both mechanism probes; historical trial budgets remain snapshots. One earlier aborted solver request is unmetered."
+    "scope": "Known SDK metering only, not an account bill or a complete usage total: one aborted solver attempt and one aborted retrieval case returned no terminal metering. Reference/native grading makes no model calls.",
+    "unmetered_retrieval_cases": [
+      {
+        "run": "first-source-24/functions",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "reason": "Unexpected SDK tool attempt ended stream before terminal usage."
+      }
+    ],
+    "first_source_24_retrieval_sdk_estimate_usd": 12.8310857,
+    "post_fix_reliability_sdk_estimate_usd": 0.42661920000000003
+  },
+  "first_callable_source_24_development": {
+    "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
+    "protocol": {
+      "scope": "Three fresh arms on the disclosed 24 development tasks, three per language. This is development selection, not independent validation or a leaderboard score.",
+      "implementation_commit": "63e035eb79635f45c578c718a0750785dace3c39",
+      "selection_sha256": "122a70d4c61abcea5c27f87781fc204db768d933dd0d3bb7516e20117866f513",
+      "selection": "Reuse every task in the previously disclosed 24-task selection; no new score-based filtering. Includes all eight earlier pilot tasks and 16 additional development tasks.",
+      "n": 24,
+      "arms": {
+        "native": {
+          "source_policy": "native",
+          "graph_navigation": false
+        },
+        "functions": {
+          "source_policy": "functions",
+          "graph_navigation": false
+        },
+        "functions_graph": {
+          "source_policy": "functions",
+          "graph_navigation": true
+        }
+      },
+      "graph_source_policy": "unseen",
+      "graph_policy": "first_callable_source_reference_hop",
+      "neighbor_order": "Functions/methods before other defined symbols inside the unchanged raw-edge budget.",
+      "model": "claude-opus-5-5",
+      "max_turns": 20,
+      "completion_tokens": 2048,
+      "graph_tokens": 2048,
+      "max_meter_usd_per_arm": 12,
+      "case_meter_usd": 3,
+      "case_timeout_seconds": 600,
+      "billing_route": "existing_claude_max",
+      "additional_API_spending_ceiling_usd": 100,
+      "automatic_API_fallback": false,
+      "primary_contrast": "functions_graph minus native, complete route.",
+      "secondary_contrasts": [
+        "functions minus native",
+        "functions_graph minus functions"
+      ],
+      "metrics": "Official per-task macro cumulative observed line Recall, precision and F1 over all 24 selected tasks; failed or missing scores remain zero.",
+      "uncertainty": {
+        "method": "paired task bootstrap",
+        "draws": 10000,
+        "seed": 20261016,
+        "secondary_multiplicity": "Exploratory; no adjusted significance claim."
+      },
+      "development_gate": {
+        "all_selected_tasks_finish_and_score": true,
+        "every_available_graph_called": true,
+        "at_least_two_languages_receive_previously_unseen_annotated_graph_source": true,
+        "primary_recall_point_increased": true,
+        "primary_f1_point_not_lower": true
+      },
+      "graph_ablation_interpretation": "Report the graph-versus-functions contrast separately; positive complete-route scores do not establish marginal graph benefit.",
+      "source_delivery": "Count graph novelty only from actual source-checked tool replies followed by an assistant response; requested ranges and metadata earn no source credit.",
+      "policy_changes_after_start": "None. No annotation or reference patch enters model prompts. All arms retain their first attempt; no best retries.",
+      "scope_of_passing": "Candidate selection only. A new independent validation protocol and broader native solver evidence remain required before the official 500."
+    },
+    "execution": {
+      "protocol_sha256": "3def16e46468b5a98c9e4901fe8f68a768b87857cc21c4aef28f237b441edc96",
+      "driver_sha256": "59aeeab8840a89143885a476d393349e7bf9d2cbd9829ee766fdc4dd039cf171",
+      "graph_manifest_sha256": "1d8de298ffb44da0aa511ce439b4dab60ac85d0d3517cbcefdede2dffcfdec11",
+      "source_manifest_sha256": "3574d68ad8832273efc58cae36db0b2361ec80a764e1714a16e5a89f5daaa43f",
+      "state": "finished",
+      "arms": {
+        "functions": {
+          "process_exit_code": 0
+        },
+        "functions_graph": {
+          "process_exit_code": 0
+        },
+        "native": {
+          "process_exit_code": 0
+        }
+      }
+    },
+    "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
+    "evaluator_revision": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+    "population_sources": {
+      "Multi": 16,
+      "Poly": 2,
+      "Pro": 3,
+      "Verified": 3
+    },
+    "arms": {
+      "native": {
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "statuses": {
+          "ok": 24
+        },
+        "scoring_failures": 0,
+        "summary": {
+          "n": 24,
+          "arms": {
+            "trajectory": {
+              "recall": 0.5335256710568391,
+              "precision": 0.31624050372742957,
+              "f1": 0.31176405157915105,
+              "official_valid": 24
+            },
+            "served_16384": {
+              "recall": 0.5290730444172403,
+              "precision": 0.32156232477720387,
+              "f1": 0.31700750295252067,
+              "official_valid": 24
+            },
+            "served_32768": {
+              "recall": 0.5333242389837503,
+              "precision": 0.3168462409239863,
+              "f1": 0.31234242488057157,
+              "official_valid": 24
+            }
+          },
+          "usage": {
+            "billing_route": "existing_claude_subscription",
+            "actual_bill_usd": null,
+            "sdk_reported_cost_usd": 5.4937837,
+            "missing_metering_cases": 0,
+            "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+            "statuses": {
+              "ok": 24
+            },
+            "cases": 24
+          }
+        },
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "3a0b3c1604ed09532eabd1173349c60f9497019b83131023e85de752d13a922b",
+          "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+          "scripts/contextbench_graph_navigation.py": "26ee7bc5e203b4c028f4b4acc5d019b106b04ab3c8365ec6a3fb42bc9b220bc9",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "cases": [
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+            "language": "python",
+            "original_inst_id": "pylint-dev__pylint-4604",
+            "base_commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.3651452282157676,
+              "precision": 0.704,
+              "f1": 0.48087431693989063
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+            "language": "typescript",
+            "original_inst_id": "vuejs__core-10250",
+            "base_commit": "d276a4f3e914aaccc291f7b2513e5d978919d0f9",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.40816326530612246,
+              "precision": 0.10854816824966079,
+              "f1": 0.17148981779206862
+            }
+          },
+          {
+            "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+            "language": "typescript",
+            "original_inst_id": "microsoft__vscode-135197",
+            "base_commit": "a993ada9300a531c09dfa6a1be772b1abc1492ad",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.06455142231947483,
+              "f1": 0.12127440904419322
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+            "language": "python",
+            "original_inst_id": "django__django-15863",
+            "base_commit": "37c5b8c07be104fd5288cd87f101e48cb7a40298",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.3169642857142857,
+              "f1": 0.48135593220338985
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+            "language": "c",
+            "original_inst_id": "ponylang__ponyc-2205",
+            "base_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.36303871439006574,
+              "precision": 0.3066008636644047,
+              "f1": 0.3324414715719064
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+            "language": "c",
+            "original_inst_id": "jqlang__jq-2919",
+            "base_commit": "7f547827e47b5ade563a293329deb4226496d72f",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.8706140350877193,
+              "precision": 0.5251322751322751,
+              "f1": 0.6551155115511551
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+            "language": "cpp",
+            "original_inst_id": "fmtlib__fmt-2394",
+            "base_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5362694300518135,
+              "precision": 0.5036496350364964,
+              "f1": 0.519447929736512
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+            "language": "go",
+            "original_inst_id": "instance_future-architect__vuls-b8db2e0b74f60cb7d45f710f255e061f054b6afc",
+            "base_commit": "43b46cb324f64076e4d9e807c0b60c4b9ce11a82",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.425,
+              "precision": 0.8326530612244898,
+              "f1": 0.5627586206896551
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+            "language": "java",
+            "original_inst_id": "fasterxml__jackson-databind-4469",
+            "base_commit": "7c9e7c1e2acd9c55926b9d2592fc65234d9c3ff7",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.14889123548046462,
+              "precision": 0.2256,
+              "f1": 0.17938931297709926
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+            "language": "typescript",
+            "original_inst_id": "darkreader__darkreader-7241",
+            "base_commit": "991883df4d5910851130e3dc0e21fcbce604ea7d",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.0392156862745098,
+              "f1": 0.07547169811320754
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+            "language": "cpp",
+            "original_inst_id": "nlohmann__json-3601",
+            "base_commit": "2d48a4d9c5e8f0a5ce914922eb2a45dc0ec93ee3",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.29678638941398866,
+              "precision": 0.48606811145510836,
+              "f1": 0.3685446009389672
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+            "language": "cpp",
+            "original_inst_id": "catchorg__Catch2-1608",
+            "base_commit": "979bbf03bb00bc55ca09783791b5091a2247df68",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5,
+              "precision": 0.23148148148148148,
+              "f1": 0.3164556962025316
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+            "language": "c",
+            "original_inst_id": "facebook__zstd-1733",
+            "base_commit": "a505463710aa34bccafd268c44064c129cdfb3e2",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.2047244094488189,
+              "precision": 0.19030192131747484,
+              "f1": 0.19724988146040778
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+            "language": "javascript",
+            "original_inst_id": "instance_NodeBB__NodeBB-04998908ba6721d64eba79ae3b65a351dcfbc5b5-vnan",
+            "base_commit": "1e137b07052bc3ea0da44ed201702c94055b8ad2",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.3528399311531842,
+              "precision": 0.2074898785425101,
+              "f1": 0.26131293817718293
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+            "language": "rust",
+            "original_inst_id": "clap-rs__clap-3420",
+            "base_commit": "135b15467eda2394b017f2a7d25cda1417c0feec",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5795795795795796,
+              "precision": 0.1643952299829642,
+              "f1": 0.25613802256138024
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+            "language": "rust",
+            "original_inst_id": "tokio-rs__bytes-721",
+            "base_commit": "9965a04b5684079bb614addd750340ffc165a9f5",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5652173913043478,
+              "precision": 0.03117505995203837,
+              "f1": 0.05909090909090909
+            }
+          },
+          {
+            "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+            "language": "javascript",
+            "original_inst_id": "serverless__serverless-3457",
+            "base_commit": "fea269947104889165e3ebb0f64638921caf2052",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.8996282527881041,
+              "precision": 0.36890243902439024,
+              "f1": 0.5232432432432432
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+            "language": "rust",
+            "original_inst_id": "nushell__nushell-13357",
+            "base_commit": "5417c89387b67c3192ae9043473b556cd669ee15",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.7195767195767195,
+              "precision": 0.1348314606741573,
+              "f1": 0.22710826607291956
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+            "language": "java",
+            "original_inst_id": "google__gson-1391",
+            "base_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.46819787985865724,
+              "precision": 0.828125,
+              "f1": 0.5981941309255079
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+            "language": "go",
+            "original_inst_id": "cli__cli-4253",
+            "base_commit": "e6ff77ce73c201b0ee36d2b802ea45e9e1ad1822",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.04105571847507331,
+              "f1": 0.07887323943661972
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+            "language": "java",
+            "original_inst_id": "alibaba__fastjson2-2775",
+            "base_commit": "12b40c7ba3e7c30e35977195770c80beb34715c5",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+            "language": "go",
+            "original_inst_id": "instance_flipt-io__flipt-c154dd1a3590954dfd3b901555fc6267f646a289",
+            "base_commit": "e432032cf2d11e3bb6f558748a5ee41a90640daa",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.2745664739884393,
+              "precision": 0.1317614424410541,
+              "f1": 0.17806935332708526
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+            "language": "javascript",
+            "original_inst_id": "axios__axios-5661",
+            "base_commit": "0abc70564746496eb211bbd951041b4655aec268",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.23621323529411764,
+              "precision": 0.7427745664739884,
+              "f1": 0.3584379358437936
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+            "language": "python",
+            "original_inst_id": "pydata__xarray-2905",
+            "base_commit": "7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5901639344262295,
+              "precision": 0.4044943820224719,
+              "f1": 0.48
+            }
+          }
+        ]
+      },
+      "functions": {
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "statuses": {
+          "ok": 4,
+          "error": 1,
+          "not_run": 19
+        },
+        "scoring_failures": 19,
+        "summary": {
+          "n": 24,
+          "arms": {
+            "trajectory": {
+              "recall": 0.12064738088464838,
+              "precision": 0.042582924380788985,
+              "f1": 0.054296528980621366,
+              "official_valid": 5
+            },
+            "served_16384": {
+              "recall": 0.12064738088464838,
+              "precision": 0.042845524435860816,
+              "f1": 0.054760142399322434,
+              "official_valid": 5
+            },
+            "served_32768": {
+              "recall": 0.12064738088464838,
+              "precision": 0.042582924380788985,
+              "f1": 0.054296528980621366,
+              "official_valid": 5
+            }
+          },
+          "usage": {
+            "billing_route": "existing_claude_subscription",
+            "actual_bill_usd": null,
+            "sdk_reported_cost_usd": 0.961724,
+            "missing_metering_cases": 1,
+            "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+            "statuses": {
+              "ok": 4,
+              "error": 1,
+              "not_run": 19
+            },
+            "cases": 24
+          }
+        },
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "3a0b3c1604ed09532eabd1173349c60f9497019b83131023e85de752d13a922b",
+          "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+          "scripts/contextbench_graph_navigation.py": "26ee7bc5e203b4c028f4b4acc5d019b106b04ab3c8365ec6a3fb42bc9b220bc9",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "cases": [
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+            "language": "python",
+            "original_inst_id": "pylint-dev__pylint-4604",
+            "base_commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5726141078838174,
+              "precision": 0.4046920821114369,
+              "f1": 0.4742268041237113
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+            "language": "typescript",
+            "original_inst_id": "vuejs__core-10250",
+            "base_commit": "d276a4f3e914aaccc291f7b2513e5d978919d0f9",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.30612244897959184,
+              "precision": 0.09345794392523364,
+              "f1": 0.1431980906921241
+            }
+          },
+          {
+            "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+            "language": "typescript",
+            "original_inst_id": "microsoft__vscode-135197",
+            "base_commit": "a993ada9300a531c09dfa6a1be772b1abc1492ad",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.061203319502074686,
+              "f1": 0.11534701857282502
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+            "language": "python",
+            "original_inst_id": "django__django-15863",
+            "base_commit": "37c5b8c07be104fd5288cd87f101e48cb7a40298",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.3717277486910995,
+              "f1": 0.5419847328244275
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+            "language": "c",
+            "original_inst_id": "ponylang__ponyc-2205",
+            "base_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+            "status": "error",
+            "trajectory": {
+              "recall": 0.016800584368151936,
+              "precision": 0.09090909090909091,
+              "f1": 0.02836004932182491
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+            "language": "c",
+            "original_inst_id": "jqlang__jq-2919",
+            "base_commit": "7f547827e47b5ade563a293329deb4226496d72f",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+            "language": "cpp",
+            "original_inst_id": "fmtlib__fmt-2394",
+            "base_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+            "language": "go",
+            "original_inst_id": "instance_future-architect__vuls-b8db2e0b74f60cb7d45f710f255e061f054b6afc",
+            "base_commit": "43b46cb324f64076e4d9e807c0b60c4b9ce11a82",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+            "language": "java",
+            "original_inst_id": "fasterxml__jackson-databind-4469",
+            "base_commit": "7c9e7c1e2acd9c55926b9d2592fc65234d9c3ff7",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+            "language": "typescript",
+            "original_inst_id": "darkreader__darkreader-7241",
+            "base_commit": "991883df4d5910851130e3dc0e21fcbce604ea7d",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+            "language": "cpp",
+            "original_inst_id": "nlohmann__json-3601",
+            "base_commit": "2d48a4d9c5e8f0a5ce914922eb2a45dc0ec93ee3",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+            "language": "cpp",
+            "original_inst_id": "catchorg__Catch2-1608",
+            "base_commit": "979bbf03bb00bc55ca09783791b5091a2247df68",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+            "language": "c",
+            "original_inst_id": "facebook__zstd-1733",
+            "base_commit": "a505463710aa34bccafd268c44064c129cdfb3e2",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+            "language": "javascript",
+            "original_inst_id": "instance_NodeBB__NodeBB-04998908ba6721d64eba79ae3b65a351dcfbc5b5-vnan",
+            "base_commit": "1e137b07052bc3ea0da44ed201702c94055b8ad2",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+            "language": "rust",
+            "original_inst_id": "clap-rs__clap-3420",
+            "base_commit": "135b15467eda2394b017f2a7d25cda1417c0feec",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+            "language": "rust",
+            "original_inst_id": "tokio-rs__bytes-721",
+            "base_commit": "9965a04b5684079bb614addd750340ffc165a9f5",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+            "language": "javascript",
+            "original_inst_id": "serverless__serverless-3457",
+            "base_commit": "fea269947104889165e3ebb0f64638921caf2052",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+            "language": "rust",
+            "original_inst_id": "nushell__nushell-13357",
+            "base_commit": "5417c89387b67c3192ae9043473b556cd669ee15",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+            "language": "java",
+            "original_inst_id": "google__gson-1391",
+            "base_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+            "language": "go",
+            "original_inst_id": "cli__cli-4253",
+            "base_commit": "e6ff77ce73c201b0ee36d2b802ea45e9e1ad1822",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+            "language": "java",
+            "original_inst_id": "alibaba__fastjson2-2775",
+            "base_commit": "12b40c7ba3e7c30e35977195770c80beb34715c5",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+            "language": "go",
+            "original_inst_id": "instance_flipt-io__flipt-c154dd1a3590954dfd3b901555fc6267f646a289",
+            "base_commit": "e432032cf2d11e3bb6f558748a5ee41a90640daa",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+            "language": "javascript",
+            "original_inst_id": "axios__axios-5661",
+            "base_commit": "0abc70564746496eb211bbd951041b4655aec268",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+            "language": "python",
+            "original_inst_id": "pydata__xarray-2905",
+            "base_commit": "7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614",
+            "status": "not_run",
+            "trajectory": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0
+            }
+          }
+        ]
+      },
+      "functions_graph": {
+        "models": [
+          "claude-opus-5-5"
+        ],
+        "statuses": {
+          "ok": 24
+        },
+        "scoring_failures": 0,
+        "summary": {
+          "n": 24,
+          "arms": {
+            "trajectory": {
+              "recall": 0.5401686329564104,
+              "precision": 0.2860920178829965,
+              "f1": 0.3014815297089224,
+              "official_valid": 24
+            },
+            "served_16384": {
+              "recall": 0.5258478761889225,
+              "precision": 0.2877248025695819,
+              "f1": 0.3012754427265953,
+              "official_valid": 24
+            },
+            "served_32768": {
+              "recall": 0.5386683435889694,
+              "precision": 0.2866860354099939,
+              "f1": 0.3021406647114891,
+              "official_valid": 24
+            }
+          },
+          "usage": {
+            "billing_route": "existing_claude_subscription",
+            "actual_bill_usd": null,
+            "sdk_reported_cost_usd": 6.375578,
+            "missing_metering_cases": 0,
+            "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+            "statuses": {
+              "ok": 24
+            },
+            "cases": 24
+          }
+        },
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "3a0b3c1604ed09532eabd1173349c60f9497019b83131023e85de752d13a922b",
+          "scripts/benchmark_context_claude.py": "0ba94a80c5bf60c61f64ad3964d02cfb22682dfa8e13878e93b4d2fd0fb2595b",
+          "scripts/contextbench_graph_navigation.py": "26ee7bc5e203b4c028f4b4acc5d019b106b04ab3c8365ec6a3fb42bc9b220bc9",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "cases": [
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+            "language": "python",
+            "original_inst_id": "pylint-dev__pylint-4604",
+            "base_commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5684647302904564,
+              "precision": 0.6116071428571429,
+              "f1": 0.589247311827957
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+            "language": "typescript",
+            "original_inst_id": "vuejs__core-10250",
+            "base_commit": "d276a4f3e914aaccc291f7b2513e5d978919d0f9",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.25510204081632654,
+              "precision": 0.06297229219143577,
+              "f1": 0.101010101010101
+            }
+          },
+          {
+            "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+            "language": "typescript",
+            "original_inst_id": "microsoft__vscode-135197",
+            "base_commit": "a993ada9300a531c09dfa6a1be772b1abc1492ad",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.09104938271604938,
+              "f1": 0.1669024045261669
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+            "language": "python",
+            "original_inst_id": "django__django-15863",
+            "base_commit": "37c5b8c07be104fd5288cd87f101e48cb7a40298",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.3641025641025641,
+              "f1": 0.5338345864661653
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+            "language": "c",
+            "original_inst_id": "ponylang__ponyc-2205",
+            "base_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.4616508400292184,
+              "precision": 0.36155606407322655,
+              "f1": 0.4055181264035932
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+            "language": "c",
+            "original_inst_id": "jqlang__jq-2919",
+            "base_commit": "7f547827e47b5ade563a293329deb4226496d72f",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5460526315789473,
+              "precision": 0.41089108910891087,
+              "f1": 0.4689265536723164
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+            "language": "cpp",
+            "original_inst_id": "fmtlib__fmt-2394",
+            "base_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5362694300518135,
+              "precision": 0.552,
+              "f1": 0.5440210249671484
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+            "language": "go",
+            "original_inst_id": "instance_future-architect__vuls-b8db2e0b74f60cb7d45f710f255e061f054b6afc",
+            "base_commit": "43b46cb324f64076e4d9e807c0b60c4b9ce11a82",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.4875,
+              "precision": 0.45792563600782776,
+              "f1": 0.47225025227043393
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+            "language": "java",
+            "original_inst_id": "fasterxml__jackson-databind-4469",
+            "base_commit": "7c9e7c1e2acd9c55926b9d2592fc65234d9c3ff7",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.19640971488912354,
+              "precision": 0.3089700996677741,
+              "f1": 0.24015493867010976
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+            "language": "typescript",
+            "original_inst_id": "darkreader__darkreader-7241",
+            "base_commit": "991883df4d5910851130e3dc0e21fcbce604ea7d",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.047619047619047616,
+              "f1": 0.0909090909090909
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+            "language": "cpp",
+            "original_inst_id": "nlohmann__json-3601",
+            "base_commit": "2d48a4d9c5e8f0a5ce914922eb2a45dc0ec93ee3",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.2495274102079395,
+              "precision": 0.5076923076923077,
+              "f1": 0.3346007604562738
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+            "language": "cpp",
+            "original_inst_id": "catchorg__Catch2-1608",
+            "base_commit": "979bbf03bb00bc55ca09783791b5091a2247df68",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.44,
+              "precision": 0.16356877323420074,
+              "f1": 0.2384823848238482
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+            "language": "c",
+            "original_inst_id": "facebook__zstd-1733",
+            "base_commit": "a505463710aa34bccafd268c44064c129cdfb3e2",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.17716535433070865,
+              "precision": 0.14551333872271624,
+              "f1": 0.15978695073235685
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+            "language": "javascript",
+            "original_inst_id": "instance_NodeBB__NodeBB-04998908ba6721d64eba79ae3b65a351dcfbc5b5-vnan",
+            "base_commit": "1e137b07052bc3ea0da44ed201702c94055b8ad2",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.36316695352839934,
+              "precision": 0.18672566371681415,
+              "f1": 0.24663939216832265
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+            "language": "rust",
+            "original_inst_id": "clap-rs__clap-3420",
+            "base_commit": "135b15467eda2394b017f2a7d25cda1417c0feec",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5645645645645646,
+              "precision": 0.1551155115511551,
+              "f1": 0.24336569579288025
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+            "language": "rust",
+            "original_inst_id": "tokio-rs__bytes-721",
+            "base_commit": "9965a04b5684079bb614addd750340ffc165a9f5",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.6521739130434783,
+              "precision": 0.02697841726618705,
+              "f1": 0.05181347150259066
+            }
+          },
+          {
+            "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+            "language": "javascript",
+            "original_inst_id": "serverless__serverless-3457",
+            "base_commit": "fea269947104889165e3ebb0f64638921caf2052",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.8773234200743495,
+              "precision": 0.36932707355242567,
+              "f1": 0.5198237885462554
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+            "language": "rust",
+            "original_inst_id": "nushell__nushell-13357",
+            "base_commit": "5417c89387b67c3192ae9043473b556cd669ee15",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.7248677248677249,
+              "precision": 0.1282371294851794,
+              "f1": 0.21792152704135737
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+            "language": "java",
+            "original_inst_id": "google__gson-1391",
+            "base_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.44876325088339225,
+              "precision": 0.8639455782312925,
+              "f1": 0.5906976744186048
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+            "language": "go",
+            "original_inst_id": "cli__cli-4253",
+            "base_commit": "e6ff77ce73c201b0ee36d2b802ea45e9e1ad1822",
+            "status": "ok",
+            "trajectory": {
+              "recall": 1.0,
+              "precision": 0.036458333333333336,
+              "f1": 0.07035175879396986
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+            "language": "java",
+            "original_inst_id": "alibaba__fastjson2-2775",
+            "base_commit": "12b40c7ba3e7c30e35977195770c80beb34715c5",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.375,
+              "precision": 0.05647058823529412,
+              "f1": 0.098159509202454
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+            "language": "go",
+            "original_inst_id": "instance_flipt-io__flipt-c154dd1a3590954dfd3b901555fc6267f646a289",
+            "base_commit": "e432032cf2d11e3bb6f558748a5ee41a90640daa",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.22832369942196531,
+              "precision": 0.11318051575931232,
+              "f1": 0.15134099616858238
+            }
+          },
+          {
+            "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+            "language": "javascript",
+            "original_inst_id": "axios__axios-5661",
+            "base_commit": "0abc70564746496eb211bbd951041b4655aec268",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.2270220588235294,
+              "precision": 0.5678160919540229,
+              "f1": 0.3243598161523309
+            }
+          },
+          {
+            "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+            "language": "python",
+            "original_inst_id": "pydata__xarray-2905",
+            "base_commit": "7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614",
+            "status": "ok",
+            "trajectory": {
+              "recall": 0.5846994535519126,
+              "precision": 0.27648578811369506,
+              "f1": 0.375438596491228
+            }
+          }
+        ]
+      }
+    },
+    "bootstrap": {
+      "draws": 10000,
+      "seed": 20261016,
+      "unit": "task"
+    },
+    "comparisons": {
+      "primary": {
+        "contrast": "functions_and_directed_graph_over_native",
+        "metrics": {
+          "recall": {
+            "baseline": 0.5335256710568391,
+            "candidate": 0.5401686329564104,
+            "difference": 0.006642961899571264,
+            "paired_bootstrap_95_interval": [
+              -0.041123996794128176,
+              0.05591541359811768
+            ]
+          },
+          "precision": {
+            "baseline": 0.31624050372742957,
+            "candidate": 0.2860920178829965,
+            "difference": -0.0301484858444331,
+            "paired_bootstrap_95_interval": [
+              -0.07305829744775158,
+              0.0037484294601860123
+            ]
+          },
+          "f1": {
+            "baseline": 0.31176405157915105,
+            "candidate": 0.3014815297089224,
+            "difference": -0.01028252187022866,
+            "paired_bootstrap_95_interval": [
+              -0.037074972214231956,
+              0.015619874227425445
+            ]
+          }
+        },
+        "complete": true,
+        "interpretation": "Complete selected primary pair; development only."
+      },
+      "functions": {
+        "contrast": "online_function_completion",
+        "metrics": {
+          "recall": {
+            "baseline": 0.5335256710568391,
+            "candidate": 0.12064738088464838,
+            "difference": -0.41287829017219074,
+            "paired_bootstrap_95_interval": [
+              -0.5417121350676875,
+              -0.2842740156987571
+            ]
+          },
+          "precision": {
+            "baseline": 0.31624050372742957,
+            "candidate": 0.042582924380788985,
+            "difference": -0.2736575793466406,
+            "paired_bootstrap_95_interval": [
+              -0.37993615038723794,
+              -0.1779350318663182
+            ]
+          },
+          "f1": {
+            "baseline": 0.31176405157915105,
+            "candidate": 0.054296528980621366,
+            "difference": -0.25746752259852973,
+            "paired_bootstrap_95_interval": [
+              -0.3415253883735656,
+              -0.1766083451891632
+            ]
+          }
+        },
+        "complete": false,
+        "interpretation": "Incomplete function-only arm; not interpretable as a policy or marginal graph quality effect."
+      },
+      "graph": {
+        "contrast": "directed_graph_over_function_completion",
+        "metrics": {
+          "recall": {
+            "baseline": 0.12064738088464838,
+            "candidate": 0.5401686329564104,
+            "difference": 0.41952125207176205,
+            "paired_bootstrap_95_interval": [
+              0.3017910482408834,
+              0.5373840928628781
+            ]
+          },
+          "precision": {
+            "baseline": 0.042582924380788985,
+            "candidate": 0.2860920178829965,
+            "difference": 0.24350909350220748,
+            "paired_bootstrap_95_interval": [
+              0.16170675403291523,
+              0.3345622637759854
+            ]
+          },
+          "f1": {
+            "baseline": 0.054296528980621366,
+            "candidate": 0.3014815297089224,
+            "difference": 0.24718500072830105,
+            "paired_bootstrap_95_interval": [
+              0.17845776748032188,
+              0.31914253399299386
+            ]
+          }
+        },
+        "complete": false,
+        "interpretation": "Incomplete function-only arm; not interpretable as a policy or marginal graph quality effect."
+      }
+    },
+    "development_gate": {
+      "protocol_sha256": "3def16e46468b5a98c9e4901fe8f68a768b87857cc21c4aef28f237b441edc96",
+      "analysis_sha256": "ced6aed2de953016861328ec3be240d91cb69694328ed0c7166185675d13f950",
+      "gates": {
+        "all_selected_tasks_finish_and_score": false,
+        "every_available_graph_called": true,
+        "at_least_two_languages_receive_previously_unseen_annotated_graph_source": true,
+        "primary_recall_point_increased": true,
+        "primary_f1_point_not_lower": false
+      },
+      "passed": false,
+      "graph_adoption": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "no_unseen_neighbors": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "graph_available": true,
+          "new_physical_lines": 52,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 52,
+            "source_returned": 5
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "graph_available": true,
+          "new_physical_lines": 132,
+          "new_annotated_lines": 132,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 132,
+            "source_returned": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "graph_available": true,
+          "new_physical_lines": 15,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 15,
+            "source_returned": 3
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "no_definition_at_line": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "graph_available": true,
+          "new_physical_lines": 16,
+          "new_annotated_lines": 2,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 16,
+            "source_returned": 5
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "graph_available": true,
+          "new_physical_lines": 12,
+          "new_annotated_lines": 5,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 12,
+            "source_returned": 2
+          }
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "no_returned_neighbors": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "no_unseen_neighbors": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "graph_available": true,
+          "new_physical_lines": 131,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 131,
+            "source_returned": 1
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "graph_available": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "no_definition_at_line": 1
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "graph_available": false,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "counts": {
+            "calls": 1,
+            "confirmed_responses": 1,
+            "returned_physical_lines": 0,
+            "graph_unavailable": 1
+          }
+        }
+      ],
+      "primary_metrics": {
+        "recall": {
+          "baseline": 0.5335256710568391,
+          "candidate": 0.5401686329564104,
+          "difference": 0.006642961899571264,
+          "paired_bootstrap_95_interval": [
+            -0.041123996794128176,
+            0.05591541359811768
+          ]
+        },
+        "precision": {
+          "baseline": 0.31624050372742957,
+          "candidate": 0.2860920178829965,
+          "difference": -0.0301484858444331,
+          "paired_bootstrap_95_interval": [
+            -0.07305829744775158,
+            0.0037484294601860123
+          ]
+        },
+        "f1": {
+          "baseline": 0.31176405157915105,
+          "candidate": 0.3014815297089224,
+          "difference": -0.01028252187022866,
+          "paired_bootstrap_95_interval": [
+            -0.037074972214231956,
+            0.015619874227425445
+          ]
+        }
+      },
+      "scope": "Development selection gate only; no independent quality or leaderboard claim."
+    },
+    "graph_delivery_totals": {
+      "calls": 24,
+      "available_tasks": 11,
+      "source_tasks": 6,
+      "confirmed_new_physical_lines": 358,
+      "confirmed_new_annotated_physical_lines": 139,
+      "annotated_languages": [
+        "go",
+        "rust"
+      ]
+    },
+    "interrupted_function_arm": {
+      "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+      "reason": "The model attempted an unregistered graph tool. The normalizer aborted before the SDK terminal result, losing usage and stopping later tasks.",
+      "official_valid": 5,
+      "interpretation": "Four completed traces and the partial failed trace have valid official observations; 19 unstarted cases remain zero. All 24 positions remain in the denominator. No retry replaces an original result.",
+      "metering_recovered": false
+    },
+    "receipt_fix": {
+      "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+      "scope": "One post-fix reliability check on the development case that triggered an unavailable graph-tool attempt. Excluded from quality comparisons; original failed arm is unchanged.",
+      "implementation_commit": "25e5e31e4ed53f1bcb64d40ac60e1acc93d5b787",
+      "protocol_sha256": "591a527766d678384ea65de9b2019823aafd3781fd10dae753d987bebe8dc294",
+      "gates": {
+        "terminal_result_and_meter": true,
+        "isolated_inventory": true,
+        "no_unavailable_graph_instructions": true,
+        "frozen_runtime": true
+      },
+      "passed": true,
+      "status": "ok",
+      "sdk_reported_cost_usd": 0.42661920000000003,
+      "unavailable_tool_attempts": [],
+      "actual_models": [
+        "claude-opus-5-5"
+      ],
+      "original_stream_replay": {
+        "unavailable_attempts_retained": [
+          "mcp__source__graph_neighbors"
+        ],
+        "terminal_result_available": false,
+        "metering_recovered": false,
+        "new_model_calls": 0
+      },
+      "actual_bill_usd": null,
+      "quality_score": null
+    },
+    "known_retrieval_sdk_estimate_usd": 12.8310857,
+    "conclusion": "Graph use and novel annotated delivery now meet their gates, but F1 decreases and one ablation is interrupted. The candidate fails the declared development gate; do not advance it to new independent validation or official 500.",
+    "offline_graph_preparation_probe": {
+      "protocol": {
+        "scope": "Offline development graph preparation diagnosis. No model calls or quality score; no replacement of frozen 24-task graph artifacts.",
+        "selection": "First C++ task in the previously disclosed 24-task selection, chosen from metadata only.",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "original_inst_id": "fmtlib__fmt-2394",
+        "base_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+        "implementation_commit": "25e5e31e4ed53f1bcb64d40ac60e1acc93d5b787",
+        "driver_sha256": "3ad8c400b84fc213af393878de0a65921849480d9e0efd3df1e8c7d3b9ed1bc9",
+        "timeout_per_arm_seconds": 300,
+        "arms": {
+          "readonly": false,
+          "prepared": true
+        },
+        "invariant": "Each arm indexes its own shared clone. Reuse bounded_graph owner cleanup and SIGTERM unwinding; reap the worker before deleting its workspace. Original checkout remains source-audited and unmodified.",
+        "gate": "Enabling project preparation creates a compiler graph where the matched read-only control does not; source snapshot remains clean. This is availability evidence only.",
+        "model_calls": 0
+      },
+      "analysis": {
+        "protocol_sha256": "31e404c790fda42b2e64f54242b3cadb3b1615009442823e5621ec4c42765c10",
+        "results": {
+          "readonly": {
+            "available": false,
+            "language": "cpp",
+            "returncode": 0,
+            "failed_languages": {
+              "cpp": "indexer returned no graph"
+            },
+            "index_generation_reports": {},
+            "build_wall_s": 4.163067555055022,
+            "sha256": "a738a254184e9c06e3f1aabc584ac3b4e2672331f2dc3042b0517a24dc75d6a2"
+          },
+          "prepared": {
+            "available": true,
+            "language": "cpp",
+            "returncode": 0,
+            "failed_languages": {},
+            "index_generation_reports": {},
+            "nodes": 8247,
+            "edges": 39953,
+            "build_wall_s": 18.178339838050306,
+            "sha256": "4241fb24d892c2368f2e9315ef4683ec1feab439346099a3fdd9ecb492cab4b9"
+          }
+        },
+        "source_snapshot_unchanged": true,
+        "passed": true,
+        "model_calls": 0
+      },
+      "interpretation": "One metadata-selected development C++ availability diagnostic. No model calls, quality score or changes to previous frozen artifacts."
+    }
   }
 }

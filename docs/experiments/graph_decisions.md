@@ -38,8 +38,8 @@ The current milestones and remaining gates are:
 | Milestone | Current outcome | Open gate |
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
-| Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
-| Directed graph navigation | Independent validation rejects the prior policy, and the advisory early-hop trial makes zero graph calls. A fixed-anchor replay motivates callable-first ordering. The revised prompt's one-task mechanism check calls the graph after its first callable observation and delivers 132 previously unseen annotated physical lines. | Freeze fresh matched development controls to test quality and broader adoption. A one-task mechanism pass is not a score improvement; no new independent validation, product promotion or full-500 launch. |
+| Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
+| Directed graph navigation | First-source/callable-first navigation calls all eleven available graphs in the 24-task development set and supplies 139 new annotated physical lines in Go and Rust. Recall changes 53.35% → 54.02%, F1 31.18% → 30.15%; the declared gate fails. An offline C++ probe restores one missing graph by allowing compilation-database preparation in a private clone. | Verify broader graph availability and useful source selection before another quality cohort. No new independent validation, product promotion or full-500 launch. |
 | Complete solver | The independent Verified task resolves in both arms, 1/1 each. The new development pair remains unresolved, 0/1 each, and confirms all 18 hashed model inputs. Elided and unrequested terminal output are excluded from observation exports. | Broader matched outcomes, Multi/Poly/Pro adapters and source-line attribution from actual solver observations; no comparative or population Pass@1 gain established. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -94,14 +94,18 @@ can exceed an observed guard. Unknown or invalid metering stops later cases.
 
 The completed independent retrieval arms report **$23.673179** in SDK estimates;
 their one-task paired solver check adds **$0.828001**. Across this October 16
-program, known metering totals **$50.584619**, plus one aborted development solver
-request with unknown metering. Standalone API-key inference calls and their
+program, known metering totals **$63.842324**, plus one aborted development solver
+attempt and one interrupted retrieval case with unknown metering.
+Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
 quality gate fails, so this policy does not advance to the full-500 run.
 The later early-hop/unseen development trial contributes $7.266208 in retrieval
 estimates and $1.367794 for its new paired solver attempts to that program total.
 The two later one-task graph mechanism versions add $0.327116, with no standalone
 API-key inference or quality score.
+The first-source 24-task development attempt adds $12.831086 in known retrieval
+estimates; its separate receipt-fix reliability smoke adds $0.426619. The failed
+function-only arm retains its unknown usage rather than substituting the smoke.
 
 The historical native search average is $0.9911/task (24 cases; median $0.690554,
 maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
@@ -329,9 +333,63 @@ SDK errors or missing metering and use actual Opus 5.5. The first version's timi
 failure remains reported; the two versions are not independent tasks. This
 establishes working tool adoption and source delivery on one development issue,
 not a quality improvement attributable to ordering or prompting. The next gate
-is a frozen fresh matched development comparison with broader adoption and Recall/F1
-accounting. No new independent selection or full-500 run is started; the prior
+was the frozen 24-task development comparison below. Its failed quality gate
+does not advance to a new independent selection or full-500 run; the prior
 negative validation and native-solver gates remain unchanged.
+
+### First-source 24-task development outcome
+
+Runtime `63e035eb` tests all disclosed 24 tasks, three per language, including
+the eight earlier pilot IDs. Selection SHA-256 is
+`122a70d4c61abcea5c27f87781fc204db768d933dd0d3bb7516e20117866f513`.
+All three fresh arms use actual Opus 5.5, the same 20-turn / 600-second limits,
+$3/case and $12/arm SDK-meter guards and 2,048-token completion/graph budgets.
+Source preparation succeeds on all tasks; eleven graphs are available.
+
+The primary native and graph-enabled arms both finish and score 24/24 tasks.
+Recall changes 53.35% → 54.02%, paired difference +0.66 points, 95% interval
+[-4.11, +5.59]. F1 changes 31.18% → 30.15%, difference -1.03, interval
+[-3.71, +1.56]. The graph arm makes exactly 24 calls, including every available
+graph. Six tasks receive 358 newly observed physical lines; 139 overlap
+annotations on one Go and two Rust tasks. Each response reaches a later assistant
+turn. Adoption and two-language novelty pass, but F1 fails the declared gate.
+
+The function-only arm finishes four cases and aborts on C case `b8c88ac8` after
+requesting the unregistered graph tool. The normalizer throws before terminal
+SDK metering, so the next 19 cases remain `not_run`. The four complete traces
+and the partial error trace receive five valid official scores; all 24 positions
+remain in the macro denominator, with the other 19 zero. These incomplete
+ablations cannot estimate completion or marginal graph benefit. The full declared
+three-arm completion gate fails independently of the F1 failure.
+
+Fix `25e5e31e`, developed separately while the frozen experiment ran, retains
+unavailable attempts and SDK error feedback until terminal usage. Error outputs
+earn no source credit; an unexpected advertised tool inventory remains fatal.
+Only graph-enabled arms receive graph instructions, and their prompt is unchanged.
+A separate C-task smoke at eight turns / 180 seconds / $1 SDK-meter guard passes
+all receipt and isolation checks, with a $0.426619 estimate. No quality score is
+assigned and no original record is replaced. Offline event replay preserves the
+old unsupported attempt but cannot recover a terminal result that was never read.
+
+Known retrieval estimates are $5.493784 native, $0.961724 function-only and
+$6.375578 graph-enabled; one retrieval case remains unmetered. All 38 runtime
+hashes match the frozen commit through official scoring. Raw receipts are under
+`verification/contextbench-first-source-24-20261016/`; the existing public
+development summary contains every selected task, gate and separate smoke.
+
+An offline metadata-selected C++ probe diagnoses a preparation constraint:
+`fmtlib__fmt-2394` needs a compilation database, but the benchmark worker disables
+project preparation even inside its private clone. Under the same 300-second
+bound, the control returns no graph in 4.16 seconds; enabling preparation builds
+8,247 nodes / 39,953 edges in 18.18 seconds. The original checkout stays clean.
+This uses no model calls or label-based selection and does not replace any frozen
+artifact. Broader preparation coverage and a new matched quality candidate remain
+open; the completed independent 32 is not used for tuning.
+The source-checkout graph preparer now accepts explicit
+`--allow-project-preparation` for fresh private-clone builds and records the
+policy/timeout. It rejects reuse with this option and rejects a prepared graph
+if HEAD or tracked source changed. Generated build files may remain only within
+the owned temporary clone; the existing bounded worker owns their cleanup.
 
 ### October 16 online development result
 
