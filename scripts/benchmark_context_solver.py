@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Validate a delivered context with the pinned mini SWE-agent and Claude Max.
+"""Validate context with pinned mini SWE-agent and an explicit Claude route.
 
 Supports SWE-bench Verified and the Multi fmt/Gson/ponyc pilots, one task per
 invocation. Uses the existing solver loop and pinned, already-local Docker
@@ -35,7 +35,7 @@ import yaml
 
 from codenib.eval.benchmarks.contextbench import CONTEXTBENCH_UPSTREAM_REVISION
 from scripts import benchmark_context_agent as native
-from scripts.benchmark_context_claude import subscription_auth
+from scripts.benchmark_context_claude import api_auth, subscription_auth
 from scripts.benchmark_jev_base import digest, write_json
 from scripts.contextbench_multiswe import solver_cwd, validate_source_only_image
 from scripts.contextbench_solver_sources import (
@@ -119,8 +119,21 @@ def model_observations(row):
 class SubscriptionModel:
     """Adapt actual SDK replies to mini SWE-agent's synchronous model boundary."""
 
-    def __init__(self, *, cli, model, cwd, max_meter_usd, calls, checkpoint):
+    def __init__(
+        self,
+        *,
+        cli,
+        model,
+        cwd,
+        max_meter_usd,
+        calls,
+        checkpoint,
+        billing_route="subscription",
+    ):
+        if billing_route not in {"subscription", "anthropic-api"}:
+            raise ValueError("Unknown solver billing route")
         self.cli, self.model, self.cwd = cli, model, cwd
+        self.billing_route = billing_route
         self.max_meter_usd = max_meter_usd
         self.calls, self.checkpoint = calls, checkpoint
         self.cost, self.n_calls = 0.0, 0
@@ -182,6 +195,11 @@ class SubscriptionModel:
             if kind == "SystemMessage" and data.get("subtype") == "init":
                 if data["data"].get("tools"):
                     raise ValueError("Solver model unexpectedly received local tools")
+                if (
+                    self.billing_route == "anthropic-api"
+                    and data["data"].get("apiKeySource") != "ANTHROPIC_API_KEY"
+                ):
+                    raise ValueError("Solver SDK did not confirm the API-key route")
             if kind == "AssistantMessage":
                 record["input_delivery_confirmed"] = True
                 record["model"] = data.get("model")
@@ -362,7 +380,15 @@ def freeze_solver(output, mini_root):
 
 def run(args):
     if not args.live:
-        raise ValueError("Subscription solver inference requires --live")
+        raise ValueError("Solver inference requires --live")
+    billing_route = getattr(args, "billing_route", "subscription")
+    initial_context = getattr(args, "initial_context", "retrieved")
+    if billing_route not in {"subscription", "anthropic-api"}:
+        raise ValueError("Unknown solver billing route")
+    if initial_context not in {"retrieved", "none"}:
+        raise ValueError("Unknown initial context policy")
+    if initial_context == "none" and getattr(args, "retrieval_notes_tokens", 0):
+        raise ValueError("The no-context control cannot receive retrieval notes")
     if not 1 <= args.max_turns <= 80 or not 0 < args.max_meter_usd <= 100:
         raise ValueError("Invalid solver turn or metering limit")
     if not args.image.startswith("sha256:") and "@sha256:" not in args.image:
@@ -378,6 +404,8 @@ def run(args):
     case, context, retrieval_sha, source_tree, source_repo = delivered_input(
         args.retrieval, args.instance_id, args.budget
     )
+    if initial_context == "none":
+        context = "[]"
     notes = retrieval_notes(
         args.retrieval,
         args.instance_id,
@@ -415,7 +443,7 @@ def run(args):
 
     # The native package initializer can load a user-global dotenv file. Check
     # the effective provider route after that import, before any model request.
-    auth = subscription_auth(cli)
+    auth = subscription_auth(cli) if billing_route == "subscription" else api_auth(cli)
     config_path = mini_root / "minisweagent/config/extra/swebench.yaml"
     config = yaml.safe_load(config_path.read_text())
     config["agent"].update(
@@ -486,6 +514,8 @@ def run(args):
             "retrieval": str(args.retrieval.resolve()),
             "retrieval_sha256": retrieval_sha,
             "context_budget": args.budget,
+            "initial_context": initial_context,
+            "billing_route": billing_route,
             "retrieval_notes_token_limit": getattr(args, "retrieval_notes_tokens", 0),
             "context_budget_scope": (
                 "Source budget plus separately bounded unverified retrieval notes. "
@@ -560,6 +590,7 @@ def run(args):
                 max_meter_usd=args.max_meter_usd,
                 calls=row["calls"],
                 checkpoint=checkpoint,
+                billing_route=billing_route,
             )
 
             def observation(command, output, timeout):
@@ -765,6 +796,14 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="claude-opus-5-5")
+    parser.add_argument(
+        "--billing-route",
+        choices=("subscription", "anthropic-api"),
+        default="subscription",
+    )
+    parser.add_argument(
+        "--initial-context", choices=("retrieved", "none"), default="retrieved"
+    )
     parser.add_argument("--budget", type=int, choices=(16384, 32768), default=16384)
     parser.add_argument("--retrieval-notes-tokens", type=int, default=0)
     parser.add_argument("--max-turns", type=int, default=30)

@@ -53,6 +53,25 @@ def source_repo(tmp_path):
     return repo, commit
 
 
+def test_empty_initial_context_has_no_source_credit(source_repo):
+    repo, commit = source_repo
+    row = {"initial_source_receipt": initial_source_receipt("[]", repo, commit)}
+    confirmed = [
+        {
+            "turn": 1,
+            "messages": [
+                {"role": "system", "content": "Shell agent"},
+                {
+                    "role": "user",
+                    "content": "<retrieved_source>\n[]\n</retrieved_source>",
+                },
+            ],
+        }
+    ]
+    assert row["initial_source_receipt"]["receipt"]["sources"] == []
+    assert source_attribution(row, confirmed)["base_source_line_count"] == 0
+
+
 def test_source_snapshot_pins_original_commit_after_edits_and_new_commit(source_repo):
     repo, commit = source_repo
     original = read_source(repo, commit, "source.txt", 1, 10)

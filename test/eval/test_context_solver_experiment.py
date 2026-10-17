@@ -17,6 +17,15 @@ from scripts.benchmark_context_solver import (
 )
 
 
+def test_no_context_control_rejects_notes_before_loading_inputs():
+    from scripts.benchmark_context_solver import run
+
+    with pytest.raises(ValueError, match="cannot receive retrieval notes"):
+        run(
+            SimpleNamespace(live=True, initial_context="none", retrieval_notes_tokens=1)
+        )
+
+
 def test_retrieval_notes_require_immutable_confirmed_answer_and_exact_prefix(tmp_path):
     from scripts.benchmark_jev_base import digest
 
@@ -116,6 +125,55 @@ def test_solver_sdk_meter_and_tool_isolation(monkeypatch, tmp_path, meter):
         {"role": "system", "content": "Shell format"},
         {"role": "user", "content": "Issue and source"},
     ]
+
+
+@pytest.mark.parametrize("key_source", ["ANTHROPIC_API_KEY", "none"])
+def test_api_solver_requires_actual_sdk_key_route(monkeypatch, tmp_path, key_source):
+    def event(kind, **fields):
+        return dataclasses.make_dataclass(kind, [(k, object) for k in fields])(**fields)
+
+    async def query(**kwargs):
+        yield event(
+            "SystemMessage",
+            subtype="init",
+            data={"tools": [], "apiKeySource": key_source},
+        )
+        yield event(
+            "AssistantMessage",
+            content=[{"text": "```bash\npwd\n```"}],
+            model="claude-haiku-5-5",
+        )
+        yield event(
+            "ResultMessage", total_cost_usd=0.001, is_error=False, subtype="success"
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(ClaudeAgentOptions=lambda **kwargs: kwargs, query=query),
+    )
+    model = SubscriptionModel(
+        cli="claude",
+        model="claude-haiku-5-5",
+        cwd=tmp_path,
+        max_meter_usd=0.1,
+        calls=[],
+        checkpoint=lambda: None,
+        billing_route="anthropic-api",
+    )
+    messages = [
+        {"role": "system", "content": "Shell format"},
+        {"role": "user", "content": "Issue"},
+    ]
+    if key_source == "none":
+        with pytest.raises(ValueError, match="API-key route"):
+            model.query(messages)
+        assert "sdk_reported_cost_usd" not in model.calls[0]
+        assert not model.calls[0]["input_delivery_confirmed"]
+    else:
+        assert model.query(messages)["content"].startswith("```bash")
+        assert model.cost == 0.001
+        assert model.calls[0]["model"] == "claude-haiku-5-5"
 
 
 @pytest.mark.parametrize(
@@ -356,6 +414,8 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
         ("Multi", "ponylang/ponyc", False, True, "generic"),
         ("Multi", "ponylang/ponyc", False, False, "budget"),
         ("Multi", "ponylang/ponyc", False, False, "budget_notes"),
+        ("Multi", "ponylang/ponyc", False, False, "budget_none"),
+        ("Multi", "ponylang/ponyc", False, False, "budget_api"),
         ("Multi", "ponylang/ponyc", False, False, "budget_unknown_usage"),
         ("Multi", "ponylang/ponyc", False, False, "budget_export_failure"),
         ("Multi", "ponylang/ponyc", False, False, "non_budget"),
@@ -420,6 +480,16 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
 
     monkeypatch.setattr(builtins, "__import__", native_import)
     monkeypatch.setattr(solver, "subscription_auth", effective_auth)
+    api_auth_calls = []
+
+    def effective_api_auth(cli):
+        assert os.environ.get("ANTHROPIC_API_KEY") == "fixture-api-only"
+        api_auth_calls.append(cli)
+        return {"apiKeySource": "ANTHROPIC_API_KEY"}
+
+    monkeypatch.setattr(solver, "api_auth", effective_api_auth)
+    if failure == "budget_api":
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-api-only")
     monkeypatch.setattr(
         solver,
         "delivered_input",
@@ -498,6 +568,10 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
 
     async def query(**kwargs):
         requests.append(kwargs["prompt"])
+        if failure == "budget_api":
+            yield dataclasses.make_dataclass("SystemMessage", ["subtype", "data"])(
+                "init", {"tools": [], "apiKeySource": "ANTHROPIC_API_KEY"}
+            )
         first = len(requests) == 1
         command = "edit source" if first else "UNEXECUTED_FAILED_REPLY"
         yield Assistant([{"text": f"```bash\n{command}\n```"}], "fixed-model")
@@ -573,6 +647,8 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         output=output,
         model="fixed-model",
         retrieval_notes_tokens=128 if failure == "budget_notes" else 0,
+        initial_context="none" if failure == "budget_none" else "retrieved",
+        billing_route="anthropic-api" if failure == "budget_api" else "subscription",
     )
     if imported_provider_route:
         with pytest.raises(ValueError, match="existing CLI login"):
@@ -583,6 +659,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
     assert removed == ["owned-container"]
     row = json.loads((output / "solver.json").read_text())
     assert row["status"] == "error" and row["container_removed"]
+    assert bool(api_auth_calls) is (failure == "budget_api")
     assert bool(agent_runs) is not reference_artifacts
     predictions = output / "predictions.json"
     if failure == "generic":
@@ -602,14 +679,15 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         assert row["sdk_reported_cost_usd"] == 1.0
         assert row["missing_metering_calls"] == 0
         assert "SDK iterator failed" in row["error"]
-    if failure in {"budget", "budget_notes", "budget_export_failure"}:
+    captured = {"budget", "budget_notes", "budget_none", "budget_api"}
+    if failure in captured | {"budget_export_failure"}:
         assert row["budget_exhausted"]
         assert row["patch_export_reason"] == "metered_sdk_budget_stop"
         assert commands[-1] == "git add -A && git diff --cached --binary"
     else:
         assert not row.get("budget_exhausted")
         assert commands[-1] == "edit source"
-    if failure in {"budget", "budget_notes"}:
+    if failure in captured:
         assert row["model_patch"] == exported_patch
         assert json.loads(predictions.read_text()) == [
             {
@@ -629,3 +707,8 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
             json.loads(observations)["source_attribution"]["base_source_line_count"]
             == 0
         )
+    if failure == "budget_none":
+        first = json.loads(observations)["confirmed_inputs"][0]["messages"][1]
+        assert "<retrieved_source>\n[]\n</retrieved_source>" in first["content"]
+        assert "<retrieved_source>\nsource\n</retrieved_source>" not in first["content"]
+        assert row["retrieval_notes"] is None
