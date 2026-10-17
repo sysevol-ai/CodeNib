@@ -2184,7 +2184,13 @@ class TestSymbolGraphBuilder:
         assert report["invalid_path_count_after"] == 0
         assert "removed_excluded_paths" not in report
 
-    def test_build_records_existing_decoded_scip_artifact(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize(
+        "languages,normalized",
+        [(["python"], "python"), (["javascript", "typescript"], "typescript")],
+    )
+    def test_build_records_existing_decoded_scip_artifact(
+        self, monkeypatch, tmp_path, languages, normalized
+    ):
         from codenib import ls_router
         from codenib.compiler.artifact_fingerprints import regular_file_fingerprint
         from codenib.graph.code_graph import CodeGraph
@@ -2208,22 +2214,22 @@ class TestSymbolGraphBuilder:
             "build_graph_for_languages_with_report",
             lambda *args, **kwargs: GraphBuildResult(
                 graph=mock_graph,
-                requested_languages=["python"],
-                available_languages=["python"],
+                requested_languages=[normalized],
+                available_languages=[normalized],
                 failed_languages={},
-                decoded_input_receipts={"python": decoded_receipt},
+                decoded_input_receipts={normalized: decoded_receipt},
                 graph_output_receipt=graph_receipt,
             ),
         )
 
-        status = SymbolGraphBuilder(language="python").build(
+        status = SymbolGraphBuilder(languages=languages).build(
             scope="current_repo",
             repo_path="/fake/repo",
             output_dir=str(output),
         )
 
         assert status.metadata["scip_decoded_artifacts"] == {
-            "python": {
+            normalized: {
                 "relative_path": "index.decoded",
                 **regular_file_fingerprint(decoded),
             }
