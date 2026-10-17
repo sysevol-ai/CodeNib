@@ -104,6 +104,7 @@ def test_graph_sdk_tool_requires_explicit_run_allowlist():
         ("missing_meter", 1),
         ("invalid_meter", 1),
         ("meter_limit", 1),
+        ("preparation_error", 1),
     ],
 )
 def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
@@ -113,7 +114,7 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     prepared.mkdir()
     (prepared / "manifest.json").write_text("frozen")
     source = prepared / "source.json"
-    source.write_text(json.dumps({"repo": str(tmp_path)}))
+    source.write_text(json.dumps({"status": "ok", "repo": str(tmp_path)}))
     cases = {
         key: SimpleNamespace(
             instance_id=key, problem_statement="issue", base_commit="abc"
@@ -121,6 +122,12 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
         for key in ("first", "second")
     }
     manifest = {"cases": [{"instance_id": key, "source": str(source)} for key in cases]}
+    if first_status == "preparation_error":
+        failed_source = prepared / "failed-source.json"
+        failed_source.write_text(
+            json.dumps({"status": "error", "error": "unconfigured gitlink"})
+        )
+        manifest["cases"][0]["source"] = str(failed_source)
     monkeypatch.setattr(claude.shutil, "which", lambda name: "claude")
     monkeypatch.setattr(
         claude, "subscription_auth", lambda cli: {"subscriptionType": "max"}
@@ -148,7 +155,7 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
         calls.append(kwargs["row"]["instance_id"])
         kwargs["row"]["status"] = (
             first_status
-            if len(calls) == 1
+            if kwargs["row"]["instance_id"] == "first"
             and "snapshot" not in first_status
             and "meter" not in first_status
             else "ok"
@@ -169,11 +176,19 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     )
     assert len(calls) == expected_calls
     second = json.loads((output / "second.json").read_text())
-    assert second["status"] == ("ok" if expected_calls == 2 else "not_run")
+    continues = expected_calls == 2 or first_status == "preparation_error"
+    assert second["status"] == ("ok" if continues else "not_run")
     assert second["actual_bill_usd"] is None
 
     usage = json.loads((output / "usage.json").read_text())
     assert usage["cases"] == 2
+    if first_status == "preparation_error":
+        first = json.loads((output / "first.json").read_text())
+        assert first["status"] == "preparation_failed"
+        assert first["sdk_reported_cost_usd"] == 0.0
+        assert not first["sdk_events"] and "trajectory" not in first
+        assert calls == ["second"]
+        assert usage["statuses"] == {"preparation_failed": 1, "ok": 1}
     if "snapshot" in first_status:
         first = json.loads((output / "first.json").read_text())
         assert first["status"] == "error"

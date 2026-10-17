@@ -5,7 +5,7 @@
 """Run the ContextBench source agent through an existing Claude subscription.
 
 Source-checkout experiment; use the official Agent SDK and logged-in CLI, with
-only the same three CodeNib source tools. No OpenRouter or API-key fallback.
+CodeNib source tools and optional graph navigation. No API-key fallback.
 SDK cost estimates are retained separately from actual billing, which is unknown.
 """
 
@@ -298,10 +298,18 @@ def run(args):
         }
         started = time.perf_counter()
         repo = None
-        if not stopped and metered < max_meter_usd:
+        source = json.loads(Path(entry["source"]).read_text())
+        if source.get("status") == "error":
+            # This known preparation failure made no model request. Retain its
+            # zero result without cancelling unrelated selected tasks.
+            row.update(
+                status="preparation_failed",
+                error=source.get("error", "Source preparation failed"),
+                sdk_reported_cost_usd=0.0,
+            )
+        elif not stopped and metered < max_meter_usd:
             row["status"] = "running"
             try:
-                source = json.loads(Path(entry["source"]).read_text())
                 repo = Path(source["repo"]).resolve()
                 row["snapshot_before"] = native.audit_contextbench_snapshot(
                     repo, case.base_commit
