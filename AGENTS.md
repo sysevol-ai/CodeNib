@@ -238,6 +238,12 @@ Black or isort can produce changes that fail the release all-files check.
   `codenib/graph/code_graph.py` and checking C++ decoder parity under `core/`.
 - New languages should flow through the language registry instead of adding
   isolated dispatch maps.
+- ContextBench source-overlap diagnostics must use the pinned official
+  `Gold.line_spans_init()` normalization (available as `gold_line_spans` in
+  evaluator reports), not raw annotation path strings. Container-prefixed
+  `/workspace/<repo>/` or `/testbed/` annotations otherwise silently lose credit
+  in auxiliary counts even when official scores are correct. Preserve frozen
+  results and label any retrospective diagnostic correction explicitly.
 
 ## Directory-Specific Rules
 
