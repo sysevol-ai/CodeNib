@@ -664,15 +664,22 @@ substituted for a terminal bill. The failed case called no source tools and
 receives **zero source in both arms**, retained in all500 denominators without
 retry, replacement or a new packet request.
 
-A prospective, pre-label quota-order correction uses protocol `21456878`,
-immutable runtime `1b0ad5ac`. SDK options, query and source policy are unchanged.
-It reuses all **124 qualified native prefixes** (88 original plus36 accepted
-initial500), including56 complete context pairs, and continues **only375
-original unstarted IDs**. All canonical500 IDs/source commits and the unchanged
-compiler remain fixed. Runtime gold stays empty; no annotations, reference
-patches or test labels enter investigation. All three32 cohorts remain sealed.
-The three unavailable child-source cases stay explicit, with no denominator
-rewrite. This is the complete canonical population, **not fresh independent500**.
+The pre-label quota-order correction uses protocol `21456878`, immutable runtime
+`1b0ad5ac`, with unchanged SDK options/query/source/compiler. It completes
+**65 additional accepted investigations**, then stops **before another dispatch**
+at the original **4 GiB artifact-space floor**. All65 have known terminal usage;
+all intents reconcile and owned children are terminal. This capacity stop adds
+**zero failed model cases** and does not replace the original interrupted case.
+
+A prospective capacity-only protocol `ac478f89` retains those65 and uses a large
+data volume for new output and a short `TMPDIR`. It reuses **189 qualified native
+prefixes**, including56 complete context pairs, and continues **only310 original
+unclaimed IDs** under the same immutable `1b0ad5ac` model/source/compiler/consumer
+profile. The artifact admission floor stays4GiB; source repositories and histories
+remain unchanged. All500 IDs/source commits and official denominators stay fixed,
+with one original zero-source case and three explicitly unavailable child-source
+cases. Runtime gold stays empty and all three32 cohorts stay sealed. This is the
+canonical population, **not fresh independent500**.
 
 The default-off `--max-included-only` guard still requires first-party Max auth,
 init `apiKeySource=none` and rate events explicitly reporting
@@ -685,16 +692,17 @@ billing cap. **36 mocked SDK boundary tests**, then **142 relevant local tests**
 pass, including late quota events and missing-event terminal metering. Pinned
 hooks pass; no billed test tier runs.
 
-As of **2026-10-17 18:24 UTC**, the amended continuation has **3/375 accepted**
-new investigations, with **372** remaining; it is live. Including the original
-36 accepted calls, known new Max nominal usage is **$4.21292300**, plus the one
-original unknown terminal usage. New API usage is **$0**. The first corrected
-ordinary task has actual included-only rate receipts and normal terminal usage;
-quota snapshots do not reserve the remaining capacity. Two workers keep an
-exclusive durable per-case intent before dispatch. Unexpected receipts stop later
-dispatch; no unreconciled intent is relaunched. The original source/runtime,
-protocol and failed raw attempt remain immutable. No intermediate quality scores
-are computed.
+As of **2026-10-17 18:55 UTC**, the capacity continuation has **5/310 accepted**
+new investigations, with **305** remaining; it is live. Known new Max nominal
+usage across the original36, quota-order65 and this continuation is
+**$12.94678380**, plus the one original unknown terminal usage. New API usage
+is **$0**. The first actual task on the new output volume has normal terminal
+usage and explicit included-only rate receipts. Source-only replay verifies all
+**189** retained native prefix predictions and all56 prior cumulative pairs.
+Quota snapshots do not reserve remaining capacity. Two workers keep an exclusive
+durable intent before each dispatch; unexpected receipts stop later dispatch and
+unreconciled intents never trigger relaunch. Every original state, raw attempt and
+frozen runtime remains retained. No intermediate quality scores are computed.
 
 The cumulative baseline uses source already consumed by the investigator.
 All56 original native-packet source unions equal those prefixes. **443** new
