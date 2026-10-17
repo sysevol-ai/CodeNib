@@ -491,13 +491,15 @@ full output caps/margin/headroom within the same40USD reservation before one
 Batchcreate. Known API usage stays59.09398873USD under100USD. Freeze all500terminal
 predictions before annotation access and disclose the operational amendment and
 failed case. Formal native outcomes/raw archives remain later submission gates;
-context research does not wait for repairs. Partial local raw archives now retain125
-ended native attempts (including the interrupted one) and112 consumed standard
-Messages:464 original files round-trip byte-identically through3 gzip parts,
-7,964,272 bytes total, each below50MiB. This is not complete500 evidence or a new
-quality result; remaining native/Batch/outcome archives and publication review
-stay open. All500 evaluator source targets match recorded snapshots, including119
-retained aliases. No model/API/annotation work is added. No product lifecycle
+context research does not wait for repairs. Partial local raw archives now retain190
+ended native attempts (including the original interrupted one) and112 consumed
+standard Messages. The125/65native groups are disjoint;639file members at598unique
+member paths round-trip byte-identically,with identical hashes on overlapping
+code/config names. Five gzip parts total9,906,981bytes,each below50MiB. This is not
+complete500 evidence or a quality result;remaining310native/443Batch/evaluation/
+outcome archives andpublication review stay open. All500evaluator source targets
+match recorded snapshots,including119retained aliases. No model/API/annotation
+work is added. No product lifecycle
 promotion follows.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
