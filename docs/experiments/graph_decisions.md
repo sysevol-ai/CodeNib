@@ -38,9 +38,9 @@ The current milestones and remaining gates are:
 | Milestone | Current outcome | Open gate |
 | --- | --- | --- |
 | Online source completion | The fresh eight-task SDK comparison is complete: Recall 41.13% → 41.67%, F1 33.67% → 31.91%; both paired intervals cross zero. All eight tasks scored in both arms. New source reaches the next model call, within per-response bounds. | No demonstrated online gain; continue development before consuming the independent selection. |
-| Matched experiment | `compare` requires the same input manifest, implementation, actual model, runtime and budgets; official task scores retain failures and report paired bootstrap intervals. | Independent validation after freezing the development policy. |
-| Directed graph navigation | Both runners expose an optional one-hop directed compiler-reference tool. Frozen graph digests bind it to the source manifest; only actual returned lines receive credit. Five of the eight development cases have graphs. | Fresh paired comparison against function completion, including the three unavailable graphs; no route promotion. |
-| Complete solver | A source-checkout adapter runs pinned mini SWE-agent through Claude Max in a pinned Verified container and grades its patch with native SWE-bench 4.1.0. The first completed development attempt is unresolved. | Matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no leaderboard Pass@1 claim. |
+| Matched experiment | `compare` requires the same input manifest, implementation, actual model, runtime and budgets; official task scores retain failures and report paired bootstrap intervals. The targeted-hop policy is frozen at `3f04993f` for independent validation. | Finish the frozen 32-task native/functions/functions-plus-graph comparison; retain failures and the complete selected population. |
+| Directed graph navigation | The optional-tool trial had zero graph calls. The targeted-hop trial calls the tool on all eight tasks and receives source on three; Recall 37.43% → 41.29%, F1 30.18% → 32.85%. Both intervals cross zero, but the declared development selection gate passes. | Independent quality validation and broader downstream outcomes; no route promotion. |
+| Complete solver | The initial attempt and a fresh matched Python development pair are unresolved. Both paired patches apply but omit a definition required by the native tests. The official reference patch passes in the same image and harness. | Broader matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no leaderboard Pass@1 claim. |
 | Leaderboard submission | Official artifact and population requirements are documented. | Verified 500, measured resolution outcomes, matched aggregation and complete artifact review. |
 
 The evaluation sequence remains:
@@ -53,8 +53,10 @@ The evaluation sequence remains:
    development IDs. Its SHA-256 is
    `49e0370ff0f384aed1691cb8dd3f071cf900c9020fadd3608d3f1955912be64a`.
    Selection uses only metadata and a fixed seed; no reference scores or labels
-   were inspected for selection. It is currently unrun, task-held-out rather
-   than repository-held-out, and not a population-weighted 500-task estimate.
+   were inspected for selection. Source preparation for its frozen three-arm
+   validation has started; inference and scoring are still pending. It is
+   task-held-out rather than repository-held-out, and not a population-weighted
+   500-task estimate.
 3. For a SOTA claim, freeze implementation, model and evaluator versions and run
    the official verified 500. Recheck the then-current leaderboard and denominator
    conventions (the current leader has 499 valid retrieval records). Report
@@ -94,8 +96,16 @@ Development starts with the first CSV-ordered task per language from the
 disclosed 24-task cohort: eight tasks, selected without consulting their scores.
 A one-task smoke uses the first of those tasks. Artifacts are retained under
 `verification/contextbench-online-20261016/`. The independent 32-task selection
-is not used to tune the policy. The first paired eight-task result does not pass
-the improvement gate, so the independent selection remains unrun.
+is not used to tune the policy. The first native/functions comparison does not
+pass the development selection gate. The subsequent targeted-hop trial passes
+that gate and advances unchanged to independent validation. The 32-task protocol
+retains native, functions and functions-plus-graph arms, with $20/arm SDK-meter
+guards; all use the same $3/case guard and 600-second timeout. The primary contrast
+is the complete graph-enabled route against native source tools; the other two
+contrasts are explanatory ablations. A positive lower paired Recall interval and
+non-decreasing F1 point estimate are required on that primary contrast before
+further quality claims. Secondary intervals are exploratory, with no adjusted
+multiple-comparison significance claim.
 
 ### October 16 online development result
 
@@ -130,12 +140,57 @@ dataset is pinned to revision `c104f840cc67f8b6eec6f759ebc8b2693d585d4a`.
 Only the issue and observed retrieval payload enter the solver; reference patches
 and required-test annotations are isolated to the native grading stage.
 
+A fresh paired solver check uses the targeted-hop trial's Python case, the same
+16K delivery limit, implementation `3f04993f`, pinned image, actual model,
+30-step limit and $3 SDK-meter guard. Both patches apply, but both arms are
+**0/1 resolved**. Native test collection fails because the generated production
+patches omit `IS_PYPY`, which the reference test patch imports. The official
+reference production patch passes in the exact same image and native harness;
+that separate grading-only check makes no model calls and is excluded from agent
+scores. Solver SDK estimates are $0.826470 for the control and $0.442726 for the
+graph candidate. This revisits one disclosed development task, not two new
+independent tasks or a population Pass@1 estimate. No reference-test feedback or
+reference production patch is sent to either solver.
+
 Directed graph controls use a new shared implementation freeze. Their source
 tools retain function completion in both arms; only the candidate receives
 `graph_neighbors`. Both arms receive the same graph manifest, per-response graph
 budget, runtime, model and case limits. Unavailable graphs remain selected.
 Do not compare a new graph run directly with the earlier frozen eight-task arm
 and attribute all differences to the graph tool.
+
+Before scoring the targeted-hop trial, freeze the development-to-validation gate:
+both fresh arms must finish and score every selected task; the candidate must
+actually call the graph tool on every graph-available task and receive source on
+at least one; its macro Recall must increase without a lower macro F1. This is a
+candidate-selection gate, not proof of an improvement. Report both paired
+intervals even when they cross zero. Only a passing candidate advances unchanged
+to the independent 32 tasks; promotion still requires independent quality and
+downstream outcomes. Do not select individual best task runs or tune on the 32.
+
+The first optional-graph trial, frozen at `359357a2`, completes and officially
+scores all eight tasks in both arms. Its function-only control has 40.23% Recall,
+28.19% precision and 31.11% F1; the graph-enabled candidate has 44.56%, 32.14%
+and 34.28%. The paired Recall difference is +4.34 points, 95% interval
+[-0.06, +11.88]; F1 is +3.17 points, interval [-0.81, +7.46]. However, the
+candidate makes **zero graph calls on all eight tasks**. These differences
+cannot establish a benefit from graph-returned source. Combined SDK metering is
+$5.165080, not a paid receipt. A separate explicit-call integration probe makes
+one successful graph call ($0.028054 SDK estimate); its synthetic instruction is
+excluded from quality scores. The next development trial requires a targeted hop
+before handoff and fixes local-symbol selection hiding enclosing callables.
+It uses two fresh arms under the same new implementation, not an old control.
+
+That targeted-hop trial is complete at `3f04993f`, with all eight tasks valid in
+both arms. The function control scores 37.43% Recall, 28.40% precision and 30.18%
+F1 ($2.497661 SDK estimate); the graph candidate scores 41.29%, 32.16% and 32.85%
+($2.702899). Recall changes +3.86 points, paired 95% interval [-0.51, +11.82];
+F1 changes +2.67 points, interval [-1.11, +6.84]. Each task makes one graph call:
+Python, Go and Rust receive source; TypeScript's definition exceeds the response
+budget; JavaScript has no definition at the queried line; C, C++ and Java report
+unavailable graphs. All remain in the scores. The declared development gate
+passes, but the intervals do not establish a reliable gain. The policy advances
+unchanged to the independent 32 tasks; no product or leaderboard claim follows.
 
 ## Graph-free feedback and context-budget diagnosis
 

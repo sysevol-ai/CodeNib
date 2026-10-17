@@ -116,7 +116,699 @@
       "actual_bill_usd": null
     }
   },
-  "conclusion": "No demonstrated online improvement; independent 32-task validation remains unrun.",
+  "conclusion": "Initial native/functions trial shows no demonstrated gain. Targeted-hop graph trial passes the declared development selection gate, with both paired intervals crossing zero. Three-arm independent 32-task validation is pending; no product or leaderboard claim.",
   "cost_scope": "SDK metering estimates are not paid receipts. Actual account billing is unknown. No separate API-key inference in these arms.",
-  "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle."
+  "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle.",
+  "implementation_commit": "a853d8d1",
+  "aggregation": "Macro mean of per-task line recall, precision and F1; all selected tasks retained. The evaluator CLI summary uses separate pooled-count micro aggregates.",
+  "directed_graph_trials": [
+    {
+      "n": 8,
+      "contrast": "directed_graph_over_function_completion",
+      "population": "All selected tasks; scoring failures contribute zero",
+      "metric_scope": "Official cumulative observed trajectory; no Pass@1",
+      "bootstrap": {
+        "draws": 10000,
+        "seed": 20261016,
+        "unit": "task"
+      },
+      "metrics": {
+        "recall": {
+          "baseline": 0.40225208733729645,
+          "candidate": 0.44564829582496857,
+          "difference": 0.043396208487672144,
+          "paired_bootstrap_95_interval": [
+            -0.0005920672800379771,
+            0.11875505772151156
+          ]
+        },
+        "precision": {
+          "baseline": 0.2819475699668096,
+          "candidate": 0.3213650055170624,
+          "difference": 0.039417435550252816,
+          "paired_bootstrap_95_interval": [
+            -0.010599561790323637,
+            0.09682554772623696
+          ]
+        },
+        "f1": {
+          "baseline": 0.3110870341379826,
+          "candidate": 0.34282392448513155,
+          "difference": 0.03173689034714895,
+          "paired_bootstrap_95_interval": [
+            -0.008101353070228686,
+            0.07461544211656611
+          ]
+        }
+      },
+      "policy": "optional_reference_hop",
+      "implementation_commit": "359357a2",
+      "arms": {
+        "control": {
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "statuses": {
+            "ok": 8
+          },
+          "scoring_failures": 0,
+          "sdk_reported_cost_usd": 2.6822363,
+          "actual_bill_usd": null,
+          "missing_metering_cases": 0,
+          "tools": [
+            "mcp__source__read",
+            "mcp__source__grep",
+            "mcp__source__glob"
+          ],
+          "per_case": {
+            "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+              "recall": 0.4594594594594595,
+              "precision": 0.245224171539961,
+              "f1": 0.31977630910015253,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.6683185
+            },
+            "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+              "recall": 0.5362694300518135,
+              "precision": 0.5476190476190477,
+              "f1": 0.5418848167539269,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.1506482
+            },
+            "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+              "recall": 0.16473072861668428,
+              "precision": 0.23636363636363636,
+              "f1": 0.19415059116365901,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.2948599
+            },
+            "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+              "recall": 0.6186186186186187,
+              "precision": 0.12576312576312576,
+              "f1": 0.20903094875697614,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.5618663999999999
+            },
+            "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+              "recall": 0.01020408163265306,
+              "precision": 0.0029069767441860465,
+              "f1": 0.004524886877828054,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.2650199
+            },
+            "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+              "recall": 0.48333333333333334,
+              "precision": 0.4522417153996101,
+              "f1": 0.4672708962739174,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.1684652
+            },
+            "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+              "recall": 0.3769363166953528,
+              "precision": 0.1697674418604651,
+              "f1": 0.23409941207910212,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.4668738
+            },
+            "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+              "recall": 0.5684647302904564,
+              "precision": 0.4756944444444444,
+              "f1": 0.5179584120982986,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.10618440000000001
+            }
+          }
+        },
+        "candidate": {
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "statuses": {
+            "ok": 8
+          },
+          "scoring_failures": 0,
+          "sdk_reported_cost_usd": 2.4828441000000003,
+          "actual_bill_usd": null,
+          "missing_metering_cases": 0,
+          "tools": [
+            "mcp__source__read",
+            "mcp__source__grep",
+            "mcp__source__glob",
+            "mcp__source__graph_neighbors"
+          ],
+          "per_case": {
+            "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+              "recall": 0.5025566106647188,
+              "precision": 0.3926940639269406,
+              "f1": 0.4408843319448894,
+              "status": "ok",
+              "graph_available": false,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.4448314
+            },
+            "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+              "recall": 0.5362694300518135,
+              "precision": 0.5490716180371353,
+              "f1": 0.5425950196592398,
+              "status": "ok",
+              "graph_available": false,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.1478053
+            },
+            "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+              "recall": 0.1816261879619852,
+              "precision": 0.27129337539432175,
+              "f1": 0.21758380771663505,
+              "status": "ok",
+              "graph_available": false,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.27610579999999996
+            },
+            "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+              "recall": 0.6126126126126126,
+              "precision": 0.11056910569105691,
+              "f1": 0.18732782369146003,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.5382674000000001
+            },
+            "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+              "recall": 0.30612244897959184,
+              "precision": 0.06952491309385864,
+              "f1": 0.11331444759206799,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.30520210000000003
+            },
+            "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+              "recall": 0.48333333333333334,
+              "precision": 0.3979416809605489,
+              "f1": 0.43650047036688616,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.173739
+            },
+            "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+              "recall": 0.37005163511187605,
+              "precision": 0.1349654739485248,
+              "f1": 0.19779208831646733,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.5050728999999999
+            },
+            "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+              "recall": 0.5726141078838174,
+              "precision": 0.6448598130841121,
+              "f1": 0.6065934065934065,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.0918202
+            }
+          }
+        }
+      },
+      "protocol": {
+        "backend": "claude-agent-sdk",
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5",
+        "max_turns": 20,
+        "source_policy": "functions",
+        "completion_tokens": 2048,
+        "max_meter_usd": 15.0,
+        "case_meter_usd": 3.0,
+        "case_timeout": 600.0,
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "ff70cc368d09751efb6f0b1e4070c4fa72298d7df9b3af6d0608e382c50920ee",
+          "scripts/benchmark_context_claude.py": "0f183363ffee367b1bb530bc078a4d0468238f85d72fc62c13ccdd2f02a2cfda",
+          "scripts/contextbench_graph_navigation.py": "90b6e9c415c3d2d1ebf057afb064519c0701f3ffe9a7112c720fa07ed1b5272e",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "source_manifest_sha256": "73233491d39de65c36aff7ab290610f47f06ec2b3b294ed77e117c7fc27345bc",
+        "graph_manifest_sha256": "883db1e8dbef3b81597e23bbc9ff4286ce611e66fb9d524cd6d7bbf2898aaa92",
+        "graph_tokens": 2048
+      }
+    },
+    {
+      "n": 8,
+      "contrast": "directed_graph_over_function_completion",
+      "population": "All selected tasks; scoring failures contribute zero",
+      "metric_scope": "Official cumulative observed trajectory; no Pass@1",
+      "bootstrap": {
+        "draws": 10000,
+        "seed": 20261016,
+        "unit": "task"
+      },
+      "metrics": {
+        "recall": {
+          "baseline": 0.3743427274870472,
+          "candidate": 0.41289431183458625,
+          "difference": 0.03855158434753907,
+          "paired_bootstrap_95_interval": [
+            -0.005057292318419334,
+            0.11819952431003419
+          ]
+        },
+        "precision": {
+          "baseline": 0.2839737331350818,
+          "candidate": 0.32159343682426644,
+          "difference": 0.03761970368918465,
+          "paired_bootstrap_95_interval": [
+            -0.021400895280340417,
+            0.10924826376143723
+          ]
+        },
+        "f1": {
+          "baseline": 0.30179977366013355,
+          "candidate": 0.32854617509582895,
+          "difference": 0.026746401435695406,
+          "paired_bootstrap_95_interval": [
+            -0.011059746243171006,
+            0.0683726801589936
+          ]
+        }
+      },
+      "policy": "targeted_reference_hop_before_handoff",
+      "implementation_commit": "3f04993f",
+      "arms": {
+        "control": {
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "statuses": {
+            "ok": 8
+          },
+          "scoring_failures": 0,
+          "sdk_reported_cost_usd": 2.4976613,
+          "actual_bill_usd": null,
+          "missing_metering_cases": 0,
+          "tools": [
+            "mcp__source__read",
+            "mcp__source__grep",
+            "mcp__source__glob"
+          ],
+          "per_case": {
+            "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+              "recall": 0.32213294375456536,
+              "precision": 0.311660777385159,
+              "f1": 0.31681034482758613,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.4835439
+            },
+            "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+              "recall": 0.5362694300518135,
+              "precision": 0.5240506329113924,
+              "f1": 0.530089628681178,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.1545109
+            },
+            "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+              "recall": 0.1678986272439282,
+              "precision": 0.2527821939586645,
+              "f1": 0.20177664974619286,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.3011871
+            },
+            "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+              "recall": 0.5795795795795796,
+              "precision": 0.12664041994750655,
+              "f1": 0.20786214324178784,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.5244481999999999
+            },
+            "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+              "recall": 0.0,
+              "precision": 0.0,
+              "f1": 0,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.2932394
+            },
+            "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+              "recall": 0.4479166666666667,
+              "precision": 0.5070754716981132,
+              "f1": 0.4756637168141593,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.1450923
+            },
+            "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+              "recall": 0.3683304647160069,
+              "precision": 0.14488828706838186,
+              "f1": 0.2079689018464529,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.4729049
+            },
+            "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+              "recall": 0.5726141078838174,
+              "precision": 0.4046920821114369,
+              "f1": 0.4742268041237113,
+              "status": "ok",
+              "graph_available": null,
+              "graph_calls": 0,
+              "graph_response_records": {},
+              "sdk_reported_cost_usd": 0.1227346
+            }
+          }
+        },
+        "candidate": {
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "statuses": {
+            "ok": 8
+          },
+          "scoring_failures": 0,
+          "sdk_reported_cost_usd": 2.702899,
+          "actual_bill_usd": null,
+          "missing_metering_cases": 0,
+          "tools": [
+            "mcp__source__read",
+            "mcp__source__grep",
+            "mcp__source__glob",
+            "mcp__source__graph_neighbors"
+          ],
+          "per_case": {
+            "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": {
+              "recall": 0.30533235938641345,
+              "precision": 0.23443634324172744,
+              "f1": 0.26522842639593913,
+              "status": "ok",
+              "graph_available": false,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "graph_unavailable": 1
+              },
+              "sdk_reported_cost_usd": 0.5992711000000001
+            },
+            "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e": {
+              "recall": 0.5362694300518135,
+              "precision": 0.5240506329113924,
+              "f1": 0.530089628681178,
+              "status": "ok",
+              "graph_available": false,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "graph_unavailable": 1
+              },
+              "sdk_reported_cost_usd": 0.17042839999999998
+            },
+            "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": {
+              "recall": 0.1795142555438226,
+              "precision": 0.20581113801452786,
+              "f1": 0.19176536943034406,
+              "status": "ok",
+              "graph_available": false,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "graph_unavailable": 1
+              },
+              "sdk_reported_cost_usd": 0.33667870000000005
+            },
+            "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163": {
+              "recall": 0.5795795795795796,
+              "precision": 0.1111111111111111,
+              "f1": 0.18647342995169083,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "source_returned": 1
+              },
+              "sdk_reported_cost_usd": 0.48835259999999997
+            },
+            "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": {
+              "recall": 0.3112244897959184,
+              "precision": 0.06149193548387097,
+              "f1": 0.1026936026936027,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "source_not_returned": 1
+              },
+              "sdk_reported_cost_usd": 0.38124450000000004
+            },
+            "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92": {
+              "recall": 0.44583333333333336,
+              "precision": 0.6312684365781711,
+              "f1": 0.5225885225885226,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "source_returned": 1
+              },
+              "sdk_reported_cost_usd": 0.15453859999999997
+            },
+            "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647": {
+              "recall": 0.3769363166953528,
+              "precision": 0.16138540899042003,
+              "f1": 0.22600619195046437,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "no_definition_at_line": 1
+              },
+              "sdk_reported_cost_usd": 0.43596709999999994
+            },
+            "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": {
+              "recall": 0.5684647302904564,
+              "precision": 0.6431924882629108,
+              "f1": 0.6035242290748899,
+              "status": "ok",
+              "graph_available": true,
+              "graph_calls": 1,
+              "graph_response_records": {
+                "source_returned": 3
+              },
+              "sdk_reported_cost_usd": 0.136418
+            }
+          }
+        }
+      },
+      "protocol": {
+        "backend": "claude-agent-sdk",
+        "sdk_version": "0.2.165",
+        "cli_version": "2.1.301 (Claude Code)",
+        "model_requested": "claude-opus-5-5",
+        "max_turns": 20,
+        "source_policy": "functions",
+        "completion_tokens": 2048,
+        "max_meter_usd": 15.0,
+        "case_meter_usd": 3.0,
+        "case_timeout": 600.0,
+        "implementation": {
+          "scripts/benchmark_context_agent.py": "60eb7f4120ef34f9116fee3de6143f13687fa74ba246b2604c8103abf12293df",
+          "scripts/benchmark_context_claude.py": "0f183363ffee367b1bb530bc078a4d0468238f85d72fc62c13ccdd2f02a2cfda",
+          "scripts/contextbench_graph_navigation.py": "826b0ca787f9806c67339555e3fe62588abed0781209e5684e35bc35e2d4a535",
+          "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+          "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+          "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+          "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+          "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+          "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+          "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+          "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+          "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+          "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+          "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+          "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+          "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+          "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+          "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+          "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+          "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+          "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+          "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+          "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+          "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+          "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+          "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+          "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+          "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+          "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+          "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+          "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+          "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+          "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+          "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+          "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+          "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+          "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+          "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+        },
+        "source_manifest_sha256": "73233491d39de65c36aff7ab290610f47f06ec2b3b294ed77e117c7fc27345bc",
+        "graph_manifest_sha256": "883db1e8dbef3b81597e23bbc9ff4286ce611e66fb9d524cd6d7bbf2898aaa92",
+        "graph_tokens": 2048
+      }
+    }
+  ],
+  "explicit_graph_integration_probe": {
+    "scope": "Synthetic explicit-call instruction; excluded from quality scores.",
+    "graph_calls": 1,
+    "status": "ok",
+    "sdk_reported_cost_usd": 0.0280536,
+    "actual_bill_usd": null
+  },
+  "matched_solver_development_check": {
+    "scope": "Repeated disclosed Python development task; not independent tasks or population Pass@1. No grading feedback entered either solver.",
+    "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+    "implementation_commit": "3f04993f",
+    "protocol": {
+      "context_budget": 16384,
+      "source_commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+      "source_tree": "05a6b93fcb973fb72fe368b7d43eee00ed6635da",
+      "upstream_commit": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+      "image_id": "sha256:b5fac9ce8ae7da0c6ad028bce73932b257eb44656985e4f7c7d73d7dfc60dcf7",
+      "model_requested": "claude-opus-5-5",
+      "max_turns": 30,
+      "max_meter_usd": 3.0,
+      "sdk_version": "0.2.165"
+    },
+    "native_harness_version": "4.1.0",
+    "native_dataset_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+    "arms": {
+      "control": {
+        "status": "Submitted",
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "sdk_model_calls": 9,
+        "sdk_reported_cost_usd": 0.8264703,
+        "missing_metering_calls": 0,
+        "actual_bill_usd": null,
+        "patch_successfully_applied": true,
+        "resolved": false,
+        "required_tests_passed": 0,
+        "required_tests_failed": 21,
+        "failure": "Native test collection: generated production patch omits IS_PYPY imported by the reference test patch."
+      },
+      "candidate": {
+        "status": "Submitted",
+        "actual_models": [
+          "claude-opus-5-5"
+        ],
+        "sdk_model_calls": 6,
+        "sdk_reported_cost_usd": 0.442726,
+        "missing_metering_calls": 0,
+        "actual_bill_usd": null,
+        "patch_successfully_applied": true,
+        "resolved": false,
+        "required_tests_passed": 0,
+        "required_tests_failed": 21,
+        "failure": "Native test collection: generated production patch omits IS_PYPY imported by the reference test patch."
+      }
+    },
+    "reference_patch_harness_check": {
+      "scope": "Reference-patch harness check only; excluded from agent scores and solver attempts.",
+      "dataset_sha256": "d92ef4dadc6482fc80a961e1a3a313713c78567721bb11b96dda6dab621ed71f",
+      "native_harness_version": "4.1.0",
+      "image_id": "sha256:b5fac9ce8ae7da0c6ad028bce73932b257eb44656985e4f7c7d73d7dfc60dcf7",
+      "model_calls": 0,
+      "completed": true,
+      "resolved": true
+    }
+  },
+  "targeted_hop_development_gate": {
+    "all_cases_scored": true,
+    "all_available_graphs_called": true,
+    "graph_returned_source": true,
+    "recall_point_increased": true,
+    "f1_point_not_lower": true,
+    "decision": "Advance unchanged policy to independent validation; no promotion or SOTA claim.",
+    "implementation_commit": "3f04993f15d098df4ee798dc93565ade70fb36ed",
+    "comparison_sha256": "18151151ad01eff475da706613df338494bb954af98f4eaaacefb7b8abd9d152"
+  }
 }
