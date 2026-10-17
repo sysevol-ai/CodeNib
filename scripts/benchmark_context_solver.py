@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import tiktoken
 import yaml
 
 from codenib.eval.benchmarks.contextbench import CONTEXTBENCH_UPSTREAM_REVISION
@@ -253,6 +254,56 @@ def delivered_input(run, instance_id, budget):
     return case, payload["context"], digest(path), tree, repo
 
 
+def retrieval_notes(run, instance_id, token_limit, expected_sha):
+    """Retain an actual final SDK answer as explicitly unverified model analysis."""
+    if token_limit == 0:
+        return None
+    if not 1 <= token_limit <= 2048:
+        raise ValueError("Retrieval notes limit must be between 0 and 2048 tokens")
+    raw = (run / f"{instance_id}.json").read_bytes()
+    if hashlib.sha256(raw).hexdigest() != expected_sha:
+        raise ValueError("Retrieval changed before collecting notes")
+    row = json.loads(raw)
+    answer = row.get("answer")
+    if (
+        row.get("status") != "ok"
+        or not isinstance(answer, str)
+        or not answer.strip()
+        or row.get("sdk_result", {}).get("is_error", True)
+        or row.get("sdk_result", {}).get("result") != answer
+        or not any(
+            m.get("role") == "assistant"
+            and not m.get("tool_calls")
+            and m.get("content") == answer
+            for m in row.get("messages", [])
+        )
+    ):
+        raise ValueError("Retrieval notes lack a confirmed successful SDK answer")
+    encoder = tiktoken.get_encoding("cl100k_base")
+    tokens = encoder.encode(answer, disallowed_special=())
+    selected = tokens[:token_limit]
+    while selected:
+        text = b"".join(
+            encoder.decode_single_token_bytes(token) for token in selected
+        ).decode("utf-8", errors="ignore")
+        count = len(encoder.encode(text, disallowed_special=()))
+        if count <= token_limit:
+            break
+        selected.pop()
+    if not selected or not text or not answer.startswith(text):
+        raise ValueError("Retrieval notes must be a nonempty exact answer prefix")
+    return {
+        "text": text,
+        "tokens": count,
+        "token_limit": token_limit,
+        "truncated": text != answer,
+        "answer_sha256": hashlib.sha256(answer.encode()).hexdigest(),
+        "text_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "retrieval_sha256": expected_sha,
+        "status": "unverified model analysis, not source evidence",
+    }
+
+
 def validate_image_snapshot(result, expected_tree):
     """Official images can add a synthetic commit while preserving the base tree."""
     lines = result["output"].strip().splitlines()
@@ -327,6 +378,12 @@ def run(args):
     case, context, retrieval_sha, source_tree, source_repo = delivered_input(
         args.retrieval, args.instance_id, args.budget
     )
+    notes = retrieval_notes(
+        args.retrieval,
+        args.instance_id,
+        getattr(args, "retrieval_notes_tokens", 0),
+        retrieval_sha,
+    )
     cwd = solver_cwd(case.source, case.repo)
     image = json.loads(
         subprocess.check_output(["docker", "image", "inspect", args.image], text=True)
@@ -392,6 +449,18 @@ def run(args):
         ),
         format_error_template="Return exactly one executable bash code block.",
     )
+    if notes is not None:
+        config["agent"]["instance_template"] = config["agent"][
+            "instance_template"
+        ].replace(
+            "</retrieved_source>\n",
+            "</retrieved_source>\n"
+            "<retrieval_notes>\n{{retrieval_notes}}\n</retrieval_notes>\n"
+            "These are unverified notes from the retrieval agent. Check their "
+            "claims and proposed fixes against the issue, source and tests; "
+            "preserve valid behavior that their hypothesis may overlook.\n",
+            1,
+        )
     args.output.mkdir(parents=True, exist_ok=False)
     row = {
         "instance_id": case.instance_id,
@@ -404,6 +473,7 @@ def run(args):
         ),
         "actual_bill_usd": None,
         "native_resolution": None,
+        "retrieval_notes": notes,
     }
     result_path = args.output / "solver.json"
 
@@ -416,6 +486,11 @@ def run(args):
             "retrieval": str(args.retrieval.resolve()),
             "retrieval_sha256": retrieval_sha,
             "context_budget": args.budget,
+            "retrieval_notes_token_limit": getattr(args, "retrieval_notes_tokens", 0),
+            "context_budget_scope": (
+                "Source budget plus separately bounded unverified retrieval notes. "
+                "Report their additional input tokens; notes receive no source credit."
+            ),
             "source_commit": case.base_commit,
             "source_tree": source_tree,
             "source": case.source,
@@ -509,7 +584,11 @@ def run(args):
                 observation=observation,
             )
             agent = DefaultAgent(model, observed_environment, **config["agent"])
-            status, answer = agent.run(case.problem_statement, retrieved_source=context)
+            status, answer = agent.run(
+                case.problem_statement,
+                retrieved_source=context,
+                retrieval_notes=notes["text"] if notes else "",
+            )
             row.update(status=status, answer=answer)
         row["patch_export_reason"] = "agent_termination"
         export_prediction(args, environment, row)
@@ -687,6 +766,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", default="claude-opus-5-5")
     parser.add_argument("--budget", type=int, choices=(16384, 32768), default=16384)
+    parser.add_argument("--retrieval-notes-tokens", type=int, default=0)
     parser.add_argument("--max-turns", type=int, default=30)
     parser.add_argument("--max-meter-usd", type=float, default=3.0)
     parser.add_argument("--live", action="store_true")
