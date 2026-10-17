@@ -319,9 +319,13 @@ Max. A separate frozen 24-task Jev ordering control makes 96 API calls for
 $0.025743858, with complete usage records. At the same 2K budget it improves
 Recall/F1 from 0.53%/0.83% to 9.11%/7.77%, but the whole BM25 candidate pool
 covers only 11.99% of annotated source. Static addition still reduces F1 on both
-cohorts, so no injection/tool is promoted. Prioritize a separately frozen
-grep-candidate reranking control; graph expansion is not a prerequisite. This
-remains a selection experiment with no online-agent or independent gain.
+cohorts, so no injection/tool is promoted. The subsequent frozen grep-pool
+control uses 484 existing Opus candidates at 4K: Jev improves Recall/F1 from
+32.46%/22.90% to 36.56%/28.52%, with 55 successful calls for $0.012341112.
+It passes the ranking gate but still fails static addition. Stop BM25 variants
+and prioritize selective grep/Jev source delivery in a fresh matched online
+protocol without graphs. Both controls remain selection experiments with no
+online-agent or independent gain; combined new API usage is $0.038084970.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

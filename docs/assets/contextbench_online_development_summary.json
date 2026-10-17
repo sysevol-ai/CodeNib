@@ -2770,8 +2770,8 @@
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
     ],
-    "standalone_api_key_inference_calls": 96,
-    "standalone_api_key_inference_cost_usd": 0.025743857999999994,
+    "standalone_api_key_inference_calls": 151,
+    "standalone_api_key_inference_cost_usd": 0.03808497,
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
@@ -2801,7 +2801,8 @@
     "late_opposite_followup_8_retrieval_sdk_estimate_usd": 5.0872571,
     "solver_search_adoption_sdk_estimate_usd": 2.2842187,
     "jev_rerank_api_cost_usd": 0.025743857999999994,
-    "unmetered_api_calls": 0
+    "unmetered_api_calls": 0,
+    "jev_grep_api_cost_usd": 0.012341112
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -19229,5 +19230,1496 @@
       "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
     },
     "conclusion": "Jev improves the same 2K candidate payload, but the frozen BM25 pool covers only 11.99% of canonical annotated source on average. Appending the ranked payload still reduces F1 versus native on both cohorts, so static injection is rejected. Prioritize a separately frozen grep-candidate ranking control before any new online policy; no independent or leaderboard gain is established."
+  },
+  "jev_grep_development": {
+    "scope": "Jev candidate-order control on all 24 disclosed development tasks. Same frozen top-40 planned-grep pools and 4K/top-10 packing. Source-set results only; no live agent, repair, independent validation or leaderboard result.",
+    "protocol_sha256": "680e669f4b40a798a441ffed6052a6e08279ec255713ca0dab1a1c766cbd46a9",
+    "ranking_receipts_sha256": "222e9d34284a9f555a307bb5f71a569843219deaa2310ed0b9b7990be031b89e",
+    "known_api_cost_usd": 0.012341112,
+    "api_calls": 55,
+    "unknown_usage_calls": 0,
+    "all_frozen_hashes_match": true,
+    "summaries": [
+      {
+        "cohort": "first_source_24",
+        "tasks": 24,
+        "repositories": 24,
+        "metrics": {
+          "grep": {
+            "recall": 0.32458311738472695,
+            "precision": 0.261706256169623,
+            "f1": 0.22900656367776848
+          },
+          "jev": {
+            "recall": 0.3655804028334009,
+            "precision": 0.3544915727971922,
+            "f1": 0.2852113816077193
+          },
+          "native": {
+            "recall": 0.5335256710568391,
+            "precision": 0.31624050372742957,
+            "f1": 0.31176405157915105
+          },
+          "native_grep": {
+            "recall": 0.5717884203180778,
+            "precision": 0.2509067873956268,
+            "f1": 0.29116504241742264
+          },
+          "native_jev": {
+            "recall": 0.5767756518829088,
+            "precision": 0.2629296939776763,
+            "f1": 0.30164330185834987
+          }
+        },
+        "jev_minus_grep_95pct": {
+          "recall": [
+            0.00841718963544605,
+            0.07800411633637323
+          ],
+          "f1": [
+            0.017020366750142114,
+            0.10018795250053998
+          ]
+        },
+        "jev_added_annotated": 382,
+        "novel_annotated_languages": [
+          "c",
+          "cpp",
+          "java",
+          "python"
+        ]
+      },
+      {
+        "cohort": "late_opposite_8",
+        "tasks": 8,
+        "repositories": 8,
+        "metrics": {
+          "grep": {
+            "recall": 0.5805245534139435,
+            "precision": 0.3347305906283551,
+            "f1": 0.31511161775638946
+          },
+          "jev": {
+            "recall": 0.6118958196371223,
+            "precision": 0.3569689810439398,
+            "f1": 0.34900013157280524
+          },
+          "native": {
+            "recall": 0.7789736557074384,
+            "precision": 0.3054811929734058,
+            "f1": 0.33670104886762275
+          },
+          "native_grep": {
+            "recall": 0.7912646249591897,
+            "precision": 0.2668793567875476,
+            "f1": 0.3117284129518817
+          },
+          "native_jev": {
+            "recall": 0.7939691674492438,
+            "precision": 0.2716904637264399,
+            "f1": 0.31820507275387483
+          }
+        },
+        "jev_minus_grep_95pct": {
+          "recall": [
+            -0.009046052631578955,
+            0.10315985130111521
+          ],
+          "f1": [
+            -0.01018261765281364,
+            0.09811952045740427
+          ]
+        },
+        "jev_added_annotated": 58,
+        "novel_annotated_languages": [
+          "c",
+          "java",
+          "javascript"
+        ]
+      }
+    ],
+    "rows": [
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "repo": "pylint-dev/pylint",
+        "language": "python",
+        "grep": {
+          "recall": 0.5186721991701245,
+          "precision": 0.49019607843137253,
+          "f1": 0.5040322580645161
+        },
+        "jev": {
+          "recall": 0.5020746887966805,
+          "precision": 0.5330396475770925,
+          "f1": 0.5170940170940171
+        },
+        "native": {
+          "recall": 0.3651452282157676,
+          "precision": 0.704,
+          "f1": 0.4808743169398907
+        },
+        "native_grep": {
+          "recall": 0.5892116182572614,
+          "precision": 0.461038961038961,
+          "f1": 0.517304189435337
+        },
+        "native_jev": {
+          "recall": 0.5684647302904564,
+          "precision": 0.48928571428571427,
+          "f1": 0.525911708253359
+        },
+        "jev_added_physical": 155,
+        "jev_added_annotated": 49,
+        "grep_added_annotated": 54,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "repo": "vuejs/core",
+        "language": "typescript",
+        "grep": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "jev": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "native": {
+          "recall": 0.40816326530612246,
+          "precision": 0.10854816824966079,
+          "f1": 0.1714898177920686
+        },
+        "native_grep": {
+          "recall": 0.40816326530612246,
+          "precision": 0.08791208791208792,
+          "f1": 0.14466546112115733
+        },
+        "native_jev": {
+          "recall": 0.40816326530612246,
+          "precision": 0.08465608465608465,
+          "f1": 0.14022787028921999
+        },
+        "jev_added_physical": 208,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "repo": "microsoft/vscode",
+        "language": "typescript",
+        "grep": {
+          "recall": 0.9491525423728814,
+          "precision": 0.1696969696969697,
+          "f1": 0.2879177377892031
+        },
+        "jev": {
+          "recall": 0.9491525423728814,
+          "precision": 0.21052631578947367,
+          "f1": 0.3446153846153846
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.06455142231947483,
+          "f1": 0.12127440904419322
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.05060034305317324,
+          "f1": 0.0963265306122449
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.06230200633579725,
+          "f1": 0.1172962226640159
+        },
+        "jev_added_physical": 33,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "repo": "django/django",
+        "language": "python",
+        "grep": {
+          "recall": 1.0,
+          "precision": 0.27099236641221375,
+          "f1": 0.4264264264264264
+        },
+        "jev": {
+          "recall": 1.0,
+          "precision": 0.27099236641221375,
+          "f1": 0.4264264264264264
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.3169642857142857,
+          "f1": 0.48135593220338985
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.19086021505376344,
+          "f1": 0.32054176072234764
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.19086021505376344,
+          "f1": 0.32054176072234764
+        },
+        "jev_added_physical": 148,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "repo": "ponylang/ponyc",
+        "language": "c",
+        "grep": {
+          "recall": 0.13732651570489407,
+          "precision": 0.5236768802228412,
+          "f1": 0.2175925925925926
+        },
+        "jev": {
+          "recall": 0.24908692476260044,
+          "precision": 1.0,
+          "f1": 0.39883040935672515
+        },
+        "native": {
+          "recall": 0.36303871439006574,
+          "precision": 0.3066008636644047,
+          "f1": 0.33244147157190634
+        },
+        "native_grep": {
+          "recall": 0.36303871439006574,
+          "precision": 0.27749860413176997,
+          "f1": 0.31455696202531647
+        },
+        "native_jev": {
+          "recall": 0.44923301680058436,
+          "precision": 0.35365152386428983,
+          "f1": 0.39575289575289574
+        },
+        "jev_added_physical": 118,
+        "jev_added_annotated": 118,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "repo": "jqlang/jq",
+        "language": "c",
+        "grep": {
+          "recall": 0.4451754385964912,
+          "precision": 0.697594501718213,
+          "f1": 0.5435073627844712
+        },
+        "jev": {
+          "recall": 0.42105263157894735,
+          "precision": 0.6056782334384858,
+          "f1": 0.49676584734799484
+        },
+        "native": {
+          "recall": 0.8706140350877193,
+          "precision": 0.5251322751322751,
+          "f1": 0.6551155115511551
+        },
+        "native_grep": {
+          "recall": 0.8947368421052632,
+          "precision": 0.5319426336375489,
+          "f1": 0.6672117743254292
+        },
+        "native_jev": {
+          "recall": 0.8903508771929824,
+          "precision": 0.530718954248366,
+          "f1": 0.665028665028665
+        },
+        "jev_added_physical": 9,
+        "jev_added_annotated": 9,
+        "grep_added_annotated": 11,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "repo": "fmtlib/fmt",
+        "language": "cpp",
+        "grep": {
+          "recall": 0.09326424870466321,
+          "precision": 0.15789473684210525,
+          "f1": 0.11726384364820847
+        },
+        "jev": {
+          "recall": 0.09326424870466321,
+          "precision": 0.15789473684210525,
+          "f1": 0.11726384364820847
+        },
+        "native": {
+          "recall": 0.5362694300518135,
+          "precision": 0.5036496350364964,
+          "f1": 0.5194479297365119
+        },
+        "native_grep": {
+          "recall": 0.5854922279792746,
+          "precision": 0.44313725490196076,
+          "f1": 0.5044642857142857
+        },
+        "native_jev": {
+          "recall": 0.5854922279792746,
+          "precision": 0.44313725490196076,
+          "f1": 0.5044642857142857
+        },
+        "jev_added_physical": 99,
+        "jev_added_annotated": 19,
+        "grep_added_annotated": 19,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "repo": "future-architect/vuls",
+        "language": "go",
+        "grep": {
+          "recall": 0.225,
+          "precision": 0.3898916967509025,
+          "f1": 0.285336856010568
+        },
+        "jev": {
+          "recall": 0.3104166666666667,
+          "precision": 0.4901315789473684,
+          "f1": 0.38010204081632654
+        },
+        "native": {
+          "recall": 0.425,
+          "precision": 0.8326530612244898,
+          "f1": 0.5627586206896552
+        },
+        "native_grep": {
+          "recall": 0.425,
+          "precision": 0.4939467312348668,
+          "f1": 0.4568868980963046
+        },
+        "native_jev": {
+          "recall": 0.425,
+          "precision": 0.5354330708661418,
+          "f1": 0.4738675958188153
+        },
+        "jev_added_physical": 136,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "repo": "fasterxml/jackson",
+        "language": "java",
+        "grep": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "jev": {
+          "recall": 0.13199577613516367,
+          "precision": 0.5605381165919282,
+          "f1": 0.21367521367521367
+        },
+        "native": {
+          "recall": 0.14889123548046462,
+          "precision": 0.2256,
+          "f1": 0.17938931297709923
+        },
+        "native_grep": {
+          "recall": 0.14889123548046462,
+          "precision": 0.18359375,
+          "f1": 0.16443148688046647
+        },
+        "native_jev": {
+          "recall": 0.2006335797254488,
+          "precision": 0.2672292545710267,
+          "f1": 0.22919179734620024
+        },
+        "jev_added_physical": 86,
+        "jev_added_annotated": 49,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "repo": "darkreader/darkreader",
+        "language": "typescript",
+        "grep": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "jev": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.0392156862745098,
+          "f1": 0.07547169811320754
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.02717391304347826,
+          "f1": 0.05291005291005291
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.027247956403269755,
+          "f1": 0.05305039787798409
+        },
+        "jev_added_physical": 224,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "repo": "nlohmann/json",
+        "language": "cpp",
+        "grep": {
+          "recall": 0.23629489603024575,
+          "precision": 0.4370629370629371,
+          "f1": 0.3067484662576687
+        },
+        "jev": {
+          "recall": 0.23629489603024575,
+          "precision": 0.4370629370629371,
+          "f1": 0.3067484662576687
+        },
+        "native": {
+          "recall": 0.29678638941398866,
+          "precision": 0.48606811145510836,
+          "f1": 0.3685446009389671
+        },
+        "native_grep": {
+          "recall": 0.33648393194706994,
+          "precision": 0.3869565217391304,
+          "f1": 0.35995955510616784
+        },
+        "native_jev": {
+          "recall": 0.33648393194706994,
+          "precision": 0.3869565217391304,
+          "f1": 0.35995955510616784
+        },
+        "jev_added_physical": 137,
+        "jev_added_annotated": 21,
+        "grep_added_annotated": 21,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "repo": "catchorg/Catch2",
+        "language": "cpp",
+        "grep": {
+          "recall": 0.5,
+          "precision": 0.15151515151515152,
+          "f1": 0.23255813953488372
+        },
+        "jev": {
+          "recall": 0.5,
+          "precision": 0.15151515151515152,
+          "f1": 0.23255813953488372
+        },
+        "native": {
+          "recall": 0.5,
+          "precision": 0.23148148148148148,
+          "f1": 0.31645569620253167
+        },
+        "native_grep": {
+          "recall": 0.5,
+          "precision": 0.14285714285714285,
+          "f1": 0.2222222222222222
+        },
+        "native_jev": {
+          "recall": 0.5,
+          "precision": 0.14285714285714285,
+          "f1": 0.2222222222222222
+        },
+        "jev_added_physical": 134,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "repo": "facebook/zstd",
+        "language": "c",
+        "grep": {
+          "recall": 0.08366141732283465,
+          "precision": 0.34274193548387094,
+          "f1": 0.13449367088607594
+        },
+        "jev": {
+          "recall": 0.06791338582677166,
+          "precision": 0.2987012987012987,
+          "f1": 0.11066559743384122
+        },
+        "native": {
+          "recall": 0.2047244094488189,
+          "precision": 0.19030192131747484,
+          "f1": 0.19724988146040778
+        },
+        "native_grep": {
+          "recall": 0.2155511811023622,
+          "precision": 0.18496621621621623,
+          "f1": 0.1990909090909091
+        },
+        "native_jev": {
+          "recall": 0.22244094488188976,
+          "precision": 0.18880534670008353,
+          "f1": 0.20424762765476728
+        },
+        "jev_added_physical": 104,
+        "jev_added_annotated": 18,
+        "grep_added_annotated": 11,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "repo": "NodeBB/NodeBB",
+        "language": "javascript",
+        "grep": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "jev": {
+          "recall": 0.23580034423407917,
+          "precision": 0.4756944444444444,
+          "f1": 0.31530494821634064
+        },
+        "native": {
+          "recall": 0.3528399311531842,
+          "precision": 0.2074898785425101,
+          "f1": 0.26131293817718293
+        },
+        "native_grep": {
+          "recall": 0.3528399311531842,
+          "precision": 0.16748366013071894,
+          "f1": 0.22714681440443213
+        },
+        "native_jev": {
+          "recall": 0.3528399311531842,
+          "precision": 0.19052044609665428,
+          "f1": 0.24743512371756185
+        },
+        "jev_added_physical": 88,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "repo": "clap-rs/clap",
+        "language": "rust",
+        "grep": {
+          "recall": 0.23723723723723725,
+          "precision": 0.31225296442687744,
+          "f1": 0.2696245733788396
+        },
+        "jev": {
+          "recall": 0.21021021021021022,
+          "precision": 0.35353535353535354,
+          "f1": 0.263653483992467
+        },
+        "native": {
+          "recall": 0.5795795795795796,
+          "precision": 0.1643952299829642,
+          "f1": 0.25613802256138024
+        },
+        "native_grep": {
+          "recall": 0.5795795795795796,
+          "precision": 0.1634208298052498,
+          "f1": 0.25495376486129456
+        },
+        "native_jev": {
+          "recall": 0.5795795795795796,
+          "precision": 0.1643952299829642,
+          "f1": 0.25613802256138024
+        },
+        "jev_added_physical": 0,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "repo": "tokio-rs/bytes",
+        "language": "rust",
+        "grep": {
+          "recall": 0.34782608695652173,
+          "precision": 0.037209302325581395,
+          "f1": 0.06722689075630252
+        },
+        "jev": {
+          "recall": 0.34782608695652173,
+          "precision": 0.05,
+          "f1": 0.08743169398907104
+        },
+        "native": {
+          "recall": 0.5652173913043478,
+          "precision": 0.03117505995203837,
+          "f1": 0.05909090909090909
+        },
+        "native_grep": {
+          "recall": 0.5652173913043478,
+          "precision": 0.023423423423423424,
+          "f1": 0.04498269896193772
+        },
+        "native_jev": {
+          "recall": 0.5652173913043478,
+          "precision": 0.026530612244897958,
+          "f1": 0.050682261208576995
+        },
+        "jev_added_physical": 73,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "repo": "serverless/serverless",
+        "language": "javascript",
+        "grep": {
+          "recall": 0.40148698884758366,
+          "precision": 0.3103448275862069,
+          "f1": 0.3500810372771475
+        },
+        "jev": {
+          "recall": 0.6765799256505576,
+          "precision": 0.527536231884058,
+          "f1": 0.5928338762214984
+        },
+        "native": {
+          "recall": 0.8996282527881041,
+          "precision": 0.36890243902439024,
+          "f1": 0.5232432432432432
+        },
+        "native_grep": {
+          "recall": 0.8996282527881041,
+          "precision": 0.275,
+          "f1": 0.4212358572671889
+        },
+        "native_jev": {
+          "recall": 0.8996282527881041,
+          "precision": 0.3055555555555556,
+          "f1": 0.45617342130065974
+        },
+        "jev_added_physical": 136,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "repo": "nushell/nushell",
+        "language": "rust",
+        "grep": {
+          "recall": 0.07054673721340388,
+          "precision": 0.125,
+          "f1": 0.09019165727170236
+        },
+        "jev": {
+          "recall": 0.30158730158730157,
+          "precision": 0.534375,
+          "f1": 0.3855693348365276
+        },
+        "native": {
+          "recall": 0.7195767195767195,
+          "precision": 0.1348314606741573,
+          "f1": 0.22710826607291956
+        },
+        "native_grep": {
+          "recall": 0.7195767195767195,
+          "precision": 0.131697869593286,
+          "f1": 0.22264665757162347
+        },
+        "native_jev": {
+          "recall": 0.7195767195767195,
+          "precision": 0.13229571984435798,
+          "f1": 0.22350041084634348
+        },
+        "jev_added_physical": 58,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "repo": "google/gson",
+        "language": "java",
+        "grep": {
+          "recall": 0.33568904593639576,
+          "precision": 0.7116104868913857,
+          "f1": 0.4561824729891957
+        },
+        "jev": {
+          "recall": 0.33568904593639576,
+          "precision": 0.7116104868913857,
+          "f1": 0.4561824729891957
+        },
+        "native": {
+          "recall": 0.46819787985865724,
+          "precision": 0.828125,
+          "f1": 0.5981941309255079
+        },
+        "native_grep": {
+          "recall": 0.5706713780918727,
+          "precision": 0.7783132530120482,
+          "f1": 0.6585117227319062
+        },
+        "native_jev": {
+          "recall": 0.5706713780918727,
+          "precision": 0.7783132530120482,
+          "f1": 0.6585117227319062
+        },
+        "jev_added_physical": 95,
+        "jev_added_annotated": 58,
+        "grep_added_annotated": 58,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "repo": "cli/cli",
+        "language": "go",
+        "grep": {
+          "recall": 0.9285714285714286,
+          "precision": 0.043333333333333335,
+          "f1": 0.08280254777070063
+        },
+        "jev": {
+          "recall": 0.9285714285714286,
+          "precision": 0.04234527687296417,
+          "f1": 0.08099688473520249
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.04105571847507331,
+          "f1": 0.07887323943661972
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.03636363636363636,
+          "f1": 0.07017543859649122
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.03636363636363636,
+          "f1": 0.07017543859649122
+        },
+        "jev_added_physical": 44,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "repo": "alibaba/fastjson2",
+        "language": "java",
+        "grep": {
+          "recall": 0.375,
+          "precision": 0.16216216216216217,
+          "f1": 0.22641509433962265
+        },
+        "jev": {
+          "recall": 0.375,
+          "precision": 0.16216216216216217,
+          "f1": 0.22641509433962265
+        },
+        "native": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "native_grep": {
+          "recall": 0.375,
+          "precision": 0.07079646017699115,
+          "f1": 0.11910669975186104
+        },
+        "native_jev": {
+          "recall": 0.375,
+          "precision": 0.07079646017699115,
+          "f1": 0.11910669975186104
+        },
+        "jev_added_physical": 88,
+        "jev_added_annotated": 24,
+        "grep_added_annotated": 24,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "repo": "flipt-io/flipt",
+        "language": "go",
+        "grep": {
+          "recall": 0.20809248554913296,
+          "precision": 0.3037974683544304,
+          "f1": 0.2469982847341338
+        },
+        "jev": {
+          "recall": 0.20809248554913296,
+          "precision": 0.3037974683544304,
+          "f1": 0.2469982847341338
+        },
+        "native": {
+          "recall": 0.2745664739884393,
+          "precision": 0.1317614424410541,
+          "f1": 0.1780693533270853
+        },
+        "native_grep": {
+          "recall": 0.2745664739884393,
+          "precision": 0.1317614424410541,
+          "f1": 0.1780693533270853
+        },
+        "native_jev": {
+          "recall": 0.2745664739884393,
+          "precision": 0.1317614424410541,
+          "f1": 0.1780693533270853
+        },
+        "jev_added_physical": 0,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "repo": "axios/axios",
+        "language": "javascript",
+        "grep": {
+          "recall": 0.030330882352941176,
+          "precision": 0.08943089430894309,
+          "f1": 0.045298558682223745
+        },
+        "jev": {
+          "recall": 0.02665441176470588,
+          "precision": 0.07611548556430446,
+          "f1": 0.039482641252552755
+        },
+        "native": {
+          "recall": 0.23621323529411764,
+          "precision": 0.7427745664739884,
+          "f1": 0.3584379358437936
+        },
+        "native_grep": {
+          "recall": 0.23621323529411764,
+          "precision": 0.4269102990033223,
+          "f1": 0.30414201183431955
+        },
+        "native_jev": {
+          "recall": 0.23621323529411764,
+          "precision": 0.4165316045380875,
+          "f1": 0.30146627565982403
+        },
+        "jev_added_physical": 271,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "repo": "pydata/xarray",
+        "language": "python",
+        "grep": {
+          "recall": 0.6666666666666666,
+          "precision": 0.5545454545454546,
+          "f1": 0.6054590570719603
+        },
+        "jev": {
+          "recall": 0.6666666666666666,
+          "precision": 0.5545454545454546,
+          "f1": 0.6054590570719603
+        },
+        "native": {
+          "recall": 0.5901639344262295,
+          "precision": 0.4044943820224719,
+          "f1": 0.48
+        },
+        "native_grep": {
+          "recall": 0.6830601092896175,
+          "precision": 0.35410764872521244,
+          "f1": 0.4664179104477612
+        },
+        "native_jev": {
+          "recall": 0.6830601092896175,
+          "precision": 0.35410764872521244,
+          "f1": 0.4664179104477612
+        },
+        "jev_added_physical": 86,
+        "jev_added_annotated": 17,
+        "grep_added_annotated": 17,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "repo": "microsoft/vscode",
+        "language": "typescript",
+        "grep": {
+          "recall": 0.9491525423728814,
+          "precision": 0.1696969696969697,
+          "f1": 0.2879177377892031
+        },
+        "jev": {
+          "recall": 0.9491525423728814,
+          "precision": 0.21052631578947367,
+          "f1": 0.3446153846153846
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.04223335719398712,
+          "f1": 0.08104395604395605
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.03626306084818685,
+          "f1": 0.06998813760379596
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.04134548002803083,
+          "f1": 0.07940780619111709
+        },
+        "jev_added_physical": 30,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "repo": "django/django",
+        "language": "python",
+        "grep": {
+          "recall": 1.0,
+          "precision": 0.27099236641221375,
+          "f1": 0.4264264264264264
+        },
+        "jev": {
+          "recall": 1.0,
+          "precision": 0.27099236641221375,
+          "f1": 0.4264264264264264
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.21846153846153846,
+          "f1": 0.35858585858585856
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.16173120728929385,
+          "f1": 0.2784313725490196
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.16173120728929385,
+          "f1": 0.2784313725490196
+        },
+        "jev_added_physical": 114,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "repo": "jqlang/jq",
+        "language": "c",
+        "grep": {
+          "recall": 0.4451754385964912,
+          "precision": 0.697594501718213,
+          "f1": 0.5435073627844712
+        },
+        "jev": {
+          "recall": 0.42105263157894735,
+          "precision": 0.6056782334384858,
+          "f1": 0.49676584734799484
+        },
+        "native": {
+          "recall": 0.8706140350877193,
+          "precision": 0.5357624831309041,
+          "f1": 0.6633249791144528
+        },
+        "native_grep": {
+          "recall": 0.8947368421052632,
+          "precision": 0.5425531914893617,
+          "f1": 0.6754966887417219
+        },
+        "native_jev": {
+          "recall": 0.8903508771929824,
+          "precision": 0.5413333333333333,
+          "f1": 0.6733001658374793
+        },
+        "jev_added_physical": 9,
+        "jev_added_annotated": 9,
+        "grep_added_annotated": 11,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "repo": "nlohmann/json",
+        "language": "cpp",
+        "grep": {
+          "recall": 0.23629489603024575,
+          "precision": 0.4370629370629371,
+          "f1": 0.3067484662576687
+        },
+        "jev": {
+          "recall": 0.23629489603024575,
+          "precision": 0.4370629370629371,
+          "f1": 0.3067484662576687
+        },
+        "native": {
+          "recall": 0.2570888468809074,
+          "precision": 0.3646112600536193,
+          "f1": 0.30155210643015523
+        },
+        "native_grep": {
+          "recall": 0.2570888468809074,
+          "precision": 0.27530364372469635,
+          "f1": 0.26588465298142716
+        },
+        "native_jev": {
+          "recall": 0.2570888468809074,
+          "precision": 0.27530364372469635,
+          "f1": 0.26588465298142716
+        },
+        "jev_added_physical": 121,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "repo": "tokio-rs/bytes",
+        "language": "rust",
+        "grep": {
+          "recall": 0.34782608695652173,
+          "precision": 0.037209302325581395,
+          "f1": 0.06722689075630252
+        },
+        "jev": {
+          "recall": 0.34782608695652173,
+          "precision": 0.05,
+          "f1": 0.08743169398907104
+        },
+        "native": {
+          "recall": 0.7391304347826086,
+          "precision": 0.04028436018957346,
+          "f1": 0.07640449438202247
+        },
+        "native_grep": {
+          "recall": 0.7391304347826086,
+          "precision": 0.030357142857142857,
+          "f1": 0.058319039451114926
+        },
+        "native_jev": {
+          "recall": 0.7391304347826086,
+          "precision": 0.033663366336633666,
+          "f1": 0.06439393939393939
+        },
+        "jev_added_physical": 83,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "repo": "serverless/serverless",
+        "language": "javascript",
+        "grep": {
+          "recall": 0.40148698884758366,
+          "precision": 0.3103448275862069,
+          "f1": 0.3500810372771475
+        },
+        "jev": {
+          "recall": 0.6765799256505576,
+          "precision": 0.527536231884058,
+          "f1": 0.5928338762214984
+        },
+        "native": {
+          "recall": 0.8773234200743495,
+          "precision": 0.36251920122887865,
+          "f1": 0.5130434782608696
+        },
+        "native_grep": {
+          "recall": 0.8773234200743495,
+          "precision": 0.2806183115338882,
+          "f1": 0.4252252252252252
+        },
+        "native_jev": {
+          "recall": 0.9033457249070632,
+          "precision": 0.3119383825417201,
+          "f1": 0.4637404580152672
+        },
+        "jev_added_physical": 128,
+        "jev_added_annotated": 7,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "repo": "google/gson",
+        "language": "java",
+        "grep": {
+          "recall": 0.33568904593639576,
+          "precision": 0.7116104868913857,
+          "f1": 0.4561824729891957
+        },
+        "jev": {
+          "recall": 0.33568904593639576,
+          "precision": 0.7116104868913857,
+          "f1": 0.4561824729891957
+        },
+        "native": {
+          "recall": 0.4876325088339223,
+          "precision": 0.8363636363636363,
+          "f1": 0.6160714285714286
+        },
+        "native_grep": {
+          "recall": 0.5618374558303887,
+          "precision": 0.7718446601941747,
+          "f1": 0.6503067484662577
+        },
+        "native_jev": {
+          "recall": 0.5618374558303887,
+          "precision": 0.7718446601941747,
+          "f1": 0.6503067484662577
+        },
+        "jev_added_physical": 82,
+        "jev_added_annotated": 42,
+        "grep_added_annotated": 42,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "repo": "cli/cli",
+        "language": "go",
+        "grep": {
+          "recall": 0.9285714285714286,
+          "precision": 0.043333333333333335,
+          "f1": 0.08280254777070063
+        },
+        "jev": {
+          "recall": 0.9285714285714286,
+          "precision": 0.04234527687296417,
+          "f1": 0.08099688473520249
+        },
+        "native": {
+          "recall": 1.0,
+          "precision": 0.04361370716510903,
+          "f1": 0.08358208955223881
+        },
+        "native_grep": {
+          "recall": 1.0,
+          "precision": 0.03636363636363636,
+          "f1": 0.07017543859649122
+        },
+        "native_jev": {
+          "recall": 1.0,
+          "precision": 0.03636363636363636,
+          "f1": 0.07017543859649122
+        },
+        "jev_added_physical": 64,
+        "jev_added_annotated": 0,
+        "grep_added_annotated": 0,
+        "official_baseline_counts_exact": true
+      }
+    ],
+    "rerank_development_gate_passed": true,
+    "static_injection_gate_passed": false,
+    "integrity_audit": {
+      "scope": "Post-run source/permutation/cost integrity audit and candidate coverage diagnostic. No policy or selection change.",
+      "all_candidate_permutations_exact": true,
+      "all_delivered_source_exact": true,
+      "all_requests_and_cost_receipts_exact": true,
+      "all_frozen_hashes_match": true,
+      "tasks": 24,
+      "candidate_pool_macro_recall": 0.4088892470451529,
+      "rows": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "pool_recall": 0.5394190871369294,
+          "candidate_union_lines": 341,
+          "gold_lines": 241,
+          "ranked_delivery_lines": 227
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "pool_recall": 0.0,
+          "candidate_union_lines": 1607,
+          "gold_lines": 196,
+          "ranked_delivery_lines": 369
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "pool_recall": 0.9491525423728814,
+          "candidate_union_lines": 2004,
+          "gold_lines": 59,
+          "ranked_delivery_lines": 266
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "pool_recall": 1.0,
+          "candidate_union_lines": 262,
+          "gold_lines": 71,
+          "ranked_delivery_lines": 262
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "pool_recall": 0.42804967129291455,
+          "candidate_union_lines": 1280,
+          "gold_lines": 1369,
+          "ranked_delivery_lines": 341
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "pool_recall": 0.5197368421052632,
+          "candidate_union_lines": 373,
+          "gold_lines": 456,
+          "ranked_delivery_lines": 317
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "pool_recall": 0.09326424870466321,
+          "candidate_union_lines": 228,
+          "gold_lines": 386,
+          "ranked_delivery_lines": 228
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "pool_recall": 0.43333333333333335,
+          "candidate_union_lines": 1398,
+          "gold_lines": 480,
+          "ranked_delivery_lines": 304
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "pool_recall": 0.2006335797254488,
+          "candidate_union_lines": 747,
+          "gold_lines": 947,
+          "ranked_delivery_lines": 223
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "pool_recall": 0.0,
+          "candidate_union_lines": 1289,
+          "gold_lines": 20,
+          "ranked_delivery_lines": 269
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "pool_recall": 0.23629489603024575,
+          "candidate_union_lines": 286,
+          "gold_lines": 529,
+          "ranked_delivery_lines": 286
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "pool_recall": 0.5,
+          "candidate_union_lines": 330,
+          "gold_lines": 100,
+          "ranked_delivery_lines": 330
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "pool_recall": 0.2017716535433071,
+          "candidate_union_lines": 1283,
+          "gold_lines": 1016,
+          "ranked_delivery_lines": 231
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "pool_recall": 0.35800344234079173,
+          "candidate_union_lines": 1774,
+          "gold_lines": 581,
+          "ranked_delivery_lines": 288
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "pool_recall": 0.27627627627627627,
+          "candidate_union_lines": 350,
+          "gold_lines": 333,
+          "ranked_delivery_lines": 198
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "pool_recall": 0.34782608695652173,
+          "candidate_union_lines": 284,
+          "gold_lines": 23,
+          "ranked_delivery_lines": 160
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "pool_recall": 0.7657992565055762,
+          "candidate_union_lines": 1337,
+          "gold_lines": 269,
+          "ranked_delivery_lines": 345
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "pool_recall": 0.4056437389770723,
+          "candidate_union_lines": 1014,
+          "gold_lines": 567,
+          "ranked_delivery_lines": 320
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "pool_recall": 0.33568904593639576,
+          "candidate_union_lines": 267,
+          "gold_lines": 566,
+          "ranked_delivery_lines": 267
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "pool_recall": 0.9285714285714286,
+          "candidate_union_lines": 436,
+          "gold_lines": 14,
+          "ranked_delivery_lines": 307
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "pool_recall": 0.375,
+          "candidate_union_lines": 148,
+          "gold_lines": 64,
+          "ranked_delivery_lines": 148
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "pool_recall": 0.20809248554913296,
+          "candidate_union_lines": 237,
+          "gold_lines": 346,
+          "ranked_delivery_lines": 237
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "pool_recall": 0.04411764705882353,
+          "candidate_union_lines": 526,
+          "gold_lines": 1088,
+          "ranked_delivery_lines": 381
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "pool_recall": 0.6666666666666666,
+          "candidate_union_lines": 220,
+          "gold_lines": 183,
+          "ranked_delivery_lines": 220
+        }
+      ],
+      "response_models": [
+        "typesafe/jev-1.13-20260917"
+      ],
+      "max_request_cost_usd": 0.000427476,
+      "new_model_calls": 0,
+      "new_api_charges_usd": 0
+    },
+    "model": "typesafe/jev-1.13",
+    "response_models": [
+      "typesafe/jev-1.13-20260917"
+    ],
+    "delivery": {
+      "candidates": 40,
+      "top_k": 10,
+      "token_budget": 4096,
+      "whole_source_lines": true,
+      "tests_included": true
+    },
+    "ranking": "Existing four-level code relevance rubric, issue prefix <=16000 chars, candidate content <=3000 chars, batches of ten, descending mean score, original order on ties. No thresholds, gold, patch or native observations in ranking.",
+    "budget": {
+      "api_reservation_usd": 1,
+      "per_call_reservation_usd": 0.01,
+      "max_calls": 96,
+      "retries": 0,
+      "timeout_s": 30,
+      "on_error_or_unknown_usage": "Persist receipt and stop all later calls; no model or ordering fallback counted as Jev."
+    },
+    "uncertainty": {
+      "method": "repository-cluster paired bootstrap, exploratory 95%",
+      "draws": 5000,
+      "seed": 20261017
+    },
+    "runtime_commit": "77968aaa70ca58164216d488f25cb24642b206b2",
+    "implementation_sha256": {
+      "scripts/benchmark_context_agent.py": "7cf8372c78449d30c327e014ac04f9e54599bdb8586c1bd0b68904d3f6f75621",
+      "scripts/benchmark_context_claude.py": "9e3ec04a05e4e87c7f8885c4cfb99a2aa920dad5b0a6fd2f66c243e072a105de",
+      "scripts/contextbench_graph_navigation.py": "d188b4c0edeaba024d8aef958c00b237d212a3f67a76923c9e6d4a446be03bac",
+      "scripts/benchmark_context_serving.py": "6fa40f7ad145938efcb1edceddcad864b2febe0c1c61dda315d9cd5122048fe2",
+      "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+      "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+      "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+      "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+      "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+      "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+      "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+      "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+      "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+      "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+      "codenib/eval/benchmarks/contextbench.py": "1d6d1718d24abaccb46e4f6743ac8033e145628fbc55ceec85d07c0390b39609",
+      "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+      "codenib/eval/benchmarks/_contextbench_evaluate.py": "26b82cc9e800759469c52d972ac2f4b5cfda69f052601841f026f05e28cf222c",
+      "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+      "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+      "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+      "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+      "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+      "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+      "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+      "codenib/code_chunking/cpp_chunker.py": "5a29bc267bc4d8946d7983590e87f14b838bb2f34ccba41927d4cc3302f1f9ef",
+      "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+      "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+      "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+      "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+      "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+      "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+      "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+      "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+      "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+      "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+      "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+      "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+      "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+      "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+    },
+    "candidate_origin": "Frozen original Opus 100-task one-shot grep plans/pools; no new planner, graph or adaptive agent. Only the same disclosed 24 IDs.",
+    "original_planner_models": [
+      "anthropic/claude-opus-5.5"
+    ],
+    "candidate_count": 484,
+    "new_planner_calls": 0,
+    "conclusion": "The 4K same-pool planned-grep comparison passes the ranking development gate. Keep the positive selection signal separate from an online effect: static source addition still reduces F1. Stop BM25 variants and prioritize selective grep/Jev delivery inside a fresh matched agent protocol without graphs. Independent 32 remains sealed; no full-500 launch."
   }
 }

@@ -478,6 +478,45 @@ It does not rule out other queries or selection policies. The
 retains per-task counts, protocols and source hashes. Model calls and new API
 charges are zero; earlier scores and the sealed independent sample are unchanged.
 
+## Planned grep plus Jev on 24 development tasks
+
+The next control uses **484 original Opus planned-grep candidates** across all
+24 disclosed tasks, with at most 40 per task and no BM25 or graph selection.
+It reuses the immutable plans and source-bound pools from the earlier 100-task
+run; only Jev ranking makes new model calls. This is a fixed one-shot planner
+comparison, not an adaptive online-agent run.
+
+| Same grep candidates, top-ten / 4K delivery | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| Original grep order | 32.46% | 26.17% | 22.90% |
+| Jev order | 36.56% | 35.45% | 28.52% |
+
+The ranking development gate passes: Recall improves **4.10 percentage points**
+and F1 **5.62 points**. Exploratory repository-bootstrap 95% intervals are
+[+0.84, +7.80] and [+1.70, +10.02], with 5,000 draws and seed 20261017. All
+selected tasks remain in the denominator. The full candidate pool's mean Recall
+is 40.89%; the 4K budget still requires source selection. Do not compare these
+4K delivery scores directly with the separate 2K BM25 control below.
+
+Static addition remains rejected. Union with the existing native source changes
+Recall 53.35% to 57.68% and F1 31.18% to 30.16%, adding 382 annotated physical
+lines absent from native across four languages. The overlapping eight-task check
+also loses F1 under static addition. Its ranking-only point differences are
+positive, but its intervals cross zero. These fixed source sets cannot establish
+what an agent would read or solve after receiving a ranked result.
+
+All **55 Jev calls succeed**, resolve to `typesafe/jev-1.13-20260917`, and record
+**$0.012341112** in API usage with no missing receipts. This prices only the new
+reranking pass: reused planning, source preparation and a downstream agent are
+excluded. Exact candidate permutations, every delivered source line, all frozen
+hashes and the 32 baseline source-count comparisons verify. Protocol
+`680e669f4b40a798a441ffed6052a6e08279ec255713ca0dab1a1c766cbd46a9`
+and [per-task evidence](../assets/contextbench_online_development_summary.json)
+retain the result. Stop further BM25 variants and prioritize selective Jev
+ranking before source delivery in a fresh matched online-agent experiment,
+without requiring graph navigation. Keep the independent 32 sealed and the
+full-500 quality gate closed.
+
 ## Jev ordering control on 24 development tasks
 
 A new matched control freezes the same 40 BM25 candidates per disclosed task,
@@ -513,8 +552,9 @@ rendered line matches source, and all baseline source counts reproduce the
 official evaluator. The [sanitized results](../assets/contextbench_online_development_summary.json)
 include per-task metrics, uncertainty, costs and integrity checks. Protocol
 `056973a8b33efe9fe7666713cd1f5e1ad0ffcbb6217e75c1500794ce17e38989`
-remains development-only. A separately frozen grep-candidate control is the next
-selection hypothesis; the independent 32 and official-500 gates stay unchanged.
+remains development-only. The separate planned-grep control above follows this
+selection hypothesis; no further BM25 variant is planned. The independent 32
+and official-500 gates stay unchanged.
 
 ## Keeping read completion after a canonical-source ablation
 
@@ -626,8 +666,8 @@ the historical results in this page do not describe that new policy.
 
 The October 16 development and independent-validation program uses the existing
 Claude Max route with **zero standalone API-key inference calls for the main
-model**. The separate October 17 Jev ranking control records 96 API calls and
-$0.025743858; it has no API fallback. Independent
+model**. The separate October 17 BM25- and grep-candidate Jev controls record
+151 API calls and $0.038084970 in total, with no API fallback. Independent
 retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
 $0.828001. The later early-hop/unseen development trial adds $7.266208 for retrieval
 and $1.367794 for its paired solver check. Two later one-task graph mechanism
@@ -652,6 +692,10 @@ cap. These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
 fallback is enabled, and the failed quality gate does not authorize a 500-task run.
+A separately authorized direct Anthropic API route now passes credential and
+model-access checks, including Opus 5.5; it has not yet run benchmark inference.
+Future comparisons must freeze that billing route for both arms and keep API
+usage separate from subscription estimates and unverified account balances.
 A mechanical projection from the latest eight tasks is about $104–107 in SDK
 estimates for 500 retrieval tasks on one route, or $211 for native plus candidate.
 This is not an account bill or a representative full-run budget; it excludes
