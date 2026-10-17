@@ -79,16 +79,20 @@ def normalize_event(kind, event, tool_map=None):
         text, calls = [], []
         for block in event["content"]:
             if "name" in block and "input" in block:
+                # An attempted unknown tool is not an advertised capability.
+                # The isolated SDK/MCP inventory rejects it. Keep consuming the
+                # stream so its error reply and terminal usage are not lost.
+                function = {
+                    "name": tool_map.get(block["name"], block["name"]),
+                    "arguments": json.dumps(block["input"]),
+                }
                 if block["name"] not in tool_map:
-                    raise ValueError(f"Unexpected SDK tool: {block['name']}")
+                    function["unavailable"] = True
                 calls.append(
                     {
                         "id": block["id"],
                         "type": "function",
-                        "function": {
-                            "name": tool_map[block["name"]],
-                            "arguments": json.dumps(block["input"]),
-                        },
+                        "function": function,
                     }
                 )
             elif "text" in block:
@@ -112,6 +116,7 @@ def normalize_event(kind, event, tool_map=None):
                     "role": "tool",
                     "tool_call_id": block["tool_use_id"],
                     "content": content,
+                    **({"is_error": True} if block.get("is_error") else {}),
                 }
             )
     return messages
@@ -178,8 +183,8 @@ async def retrieve(
         effort="medium",
         max_turns=max_turns,
         max_budget_usd=case_meter_usd,
-        system_prompt=native.SYSTEM.replace(
-            "20 model turns", f"{max_turns} model turns"
+        system_prompt=native.retrieval_system_prompt(
+            max_turns, graph_enabled=graph_tool is not None
         ),
         tools=[],
         allowed_tools=list(tool_map),
@@ -200,7 +205,14 @@ async def retrieve(
             advertised = set(data["data"].get("tools", []))
             if advertised != set(tool_map):
                 raise ValueError(f"SDK tool isolation differs: {sorted(advertised)}")
-        row["messages"].extend(normalize_event(kind, data, tool_map))
+        normalized = normalize_event(kind, data, tool_map)
+        row["messages"].extend(normalized)
+        for entry in normalized:
+            for call in entry.get("tool_calls", []):
+                if call["function"].get("unavailable"):
+                    row.setdefault("unavailable_tool_attempts", []).append(
+                        {"id": call["id"], "name": call["function"]["name"]}
+                    )
         if kind == "ResultMessage":
             row["sdk_result"] = data
         checkpoint()
@@ -289,8 +301,8 @@ def run(args):
             "messages": [
                 {
                     "role": "system",
-                    "content": native.SYSTEM.replace(
-                        "20 model turns", f"{args.max_turns} model turns"
+                    "content": native.retrieval_system_prompt(
+                        args.max_turns, graph_enabled=graph_config["enabled"]
                     ),
                 },
                 {"role": "user", "content": case.problem_statement},
