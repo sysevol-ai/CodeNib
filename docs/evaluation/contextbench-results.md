@@ -674,7 +674,7 @@ alone. Its 19 available graphs have not undergone new online quality evaluation;
 all prior build failures and negative quality results remain in the record.
 
 `scripts/benchmark_context_solver.py` provides an initial downstream adapter for
-**SWE-bench Verified and the Multi-SWE-bench fmt C++ / Gson Java pilots**. It runs the
+**SWE-bench Verified and the Multi-SWE-bench fmt, Gson and ponyc pilots**. It runs the
 pinned upstream mini SWE-agent loop with
 the already-observed 16K/32K context, an existing Claude subscription and an
 already-local Docker image identified by digest. The image must have the same
@@ -734,7 +734,8 @@ python -m scripts.contextbench_multiswe \
 The native image must differ from the source-only solver image. Both must match
 the selected source tree; their mutable tags are insufficient. Timeout, failed
 patches, incomplete native reports and cleanup failures remain explicit. This
-adapter supports the validated `fmtlib/fmt` and `google/gson` pilots; it does not
+adapter supports the validated `fmtlib/fmt`, `google/gson` and `ponylang/ponyc`
+pilots; it does not
 imply complete Multi benchmark coverage. All three native test entrypoints are
 authenticated against the pinned harness before any submitted patch executes.
 
@@ -799,6 +800,32 @@ graph-source or independent quality gain.
 Jackson-databind remains deferred: its pinned preparation script rewrites tracked
 build configuration, conflicting with the current exact-clean-source gate. This
 is a source-inspection finding; no Jackson image or model probe was run.
+
+The C task `ponylang__ponyc-2205` now has native reference/control and isolated
+source-image checks. Its test-only control preserves 1,010 tests and fails seven
+required regression tests. The reference passes all 1,057 required tests,
+including 40 later-stage runtime tests. Both complete parser sets match the
+pinned dataset. The full reference command still exits 2: standard-library
+linking cannot find `crypto`, `pcre2-8` and `ssl`. The unmodified source-only
+image reproduces that failure after all 1,045 baseline tests pass. Required-label
+grading succeeds; the full standard-library suite remains unverified.
+
+The official image has no Python interpreter. The source-only image adds a
+[fixed standalone CPython 3.11.14 release](https://github.com/astral-sh/python-build-standalone/releases/tag/20260211),
+verified against its published archive hash, and precompiles only the original
+source. The original native grader image remains unchanged. Both cold and warm
+source-only images pass exact-tree, removed-reference/history and controlled-read
+checks; the warm image remains clean after baseline testing. All owned containers
+are removed. These checks make no model calls and are not agent repair results.
+
+This task is chosen from disclosed development data because its earlier graph
+query supplied previously unseen source: all 200 returned lines survive the candidate's
+16K payload, with 197 absent from the native payload. Selection uses prior
+development evidence and is not an unbiased or independent sample. A fresh
+native/functions/graph solver comparison remains required before interpreting
+that source contribution as repair evidence. Provenance, runtime recipes and
+the incomplete standard-library coverage are retained in the public development
+summary.
 
 New solver runs save each exact model request with a content hash and confirm
 delivery only when the SDK returns an assistant message. The local

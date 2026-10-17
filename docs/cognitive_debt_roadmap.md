@@ -258,6 +258,15 @@ so the pair establishes no comparative or graph-source gain. All owned container
 are removed and frozen hashes match after grading. Jackson's tracked
 build-configuration rewrite remains deferred. Other Multi repositories, Poly/Pro
 harnesses, broader matched outcomes and shell-source attribution remain open.
+The existing Multi adapter also admits the validated ponyc C pilot, adding only
+one repository and one pinned native module. Its negative control fails seven
+required tests and the reference passes all 1,057 required tests. A missing-library
+link failure persists outside those labels and is reproduced on unmodified
+source; full standard-library coverage is not claimed. Source-only image recipes
+add a hash-verified Python runtime and precompile base source without changing
+the original grader. Source/history/reader checks pass with no model calls.
+The next gate is a frozen three-arm repair comparison on this disclosed task,
+whose prior graph-returned source survives the actual delivered context.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

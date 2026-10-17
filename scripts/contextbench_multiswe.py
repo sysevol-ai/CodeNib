@@ -5,8 +5,8 @@
 """Separate native grading for validated Multi-SWE-bench development pilots.
 
 Reference patches and native tests enter only this grader, never the solver.
-fmt (C++) and Gson (Java) have native reference/control checks. Other repositories
-need their own source, environment and grading checks before use.
+fmt (C++), Gson (Java) and ponyc (C) have native reference/control checks. Other
+repositories need their own source, environment and grading checks before use.
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ HARNESS_HASHES = {
     "harness/pull_request.py": (
         "32b49f48b39124f67727f408898bd96cce91c0a362faa716ac858dcb0b0b47c7"
     ),
+    "harness/repos/c/ponylang/ponyc.py": (
+        "be551b5b2b3bb0367e12b1f46a5bc5a5d7e5ab161cced3921cd05e18f90ae744"
+    ),
     "harness/repos/cpp/fmtlib/fmt.py": (
         "d0a5146eb77b4416cccb86216c3df08f200d58c33bb158d953aaac385f922918"
     ),
@@ -42,7 +45,7 @@ HARNESS_HASHES = {
         "faec1d6ba360ab902a663718b9a8668d1a46a860bc613980b310107153adf890"
     ),
 }
-MULTI_PILOTS = {"fmtlib/fmt", "google/gson"}
+MULTI_PILOTS = {"fmtlib/fmt", "google/gson", "ponylang/ponyc"}
 REFERENCE_PATHS = (
     "/home/fix.patch",
     "/home/test.patch",
@@ -66,7 +69,9 @@ def solver_cwd(source, repo):
         return "/testbed"
     if source == "Multi" and repo in MULTI_PILOTS:
         return "/home/" + repo.split("/")[1]
-    raise ValueError("Solver supports Verified and the validated Multi fmt/Gson pilots")
+    raise ValueError(
+        "Solver supports Verified and the validated Multi fmt/Gson/ponyc pilots"
+    )
 
 
 def validate_source_only_image(environment, commit):

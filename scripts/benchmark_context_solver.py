@@ -4,7 +4,7 @@
 
 """Validate a delivered context with the pinned mini SWE-agent and Claude Max.
 
-Supports SWE-bench Verified and the Multi fmt/Gson pilots, one task per
+Supports SWE-bench Verified and the Multi fmt/Gson/ponyc pilots, one task per
 invocation. Uses the existing solver loop and pinned, already-local Docker
 images. Native grading is separate; source receipts cover controlled reads only.
 """

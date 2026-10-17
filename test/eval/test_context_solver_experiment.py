@@ -269,6 +269,9 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
         ("Multi", "google/gson", False, False),
         ("Multi", "google/gson", True, False),
         ("Multi", "google/gson", False, True),
+        ("Multi", "ponylang/ponyc", False, False),
+        ("Multi", "ponylang/ponyc", True, False),
+        ("Multi", "ponylang/ponyc", False, True),
     ],
 )
 def test_solver_failure_removes_only_owned_container_before_completion(

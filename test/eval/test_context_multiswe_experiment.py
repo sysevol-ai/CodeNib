@@ -38,7 +38,10 @@ def test_multi_solver_rejects_reference_files_and_history(history, artifacts, va
             multi.validate_source_only_image(environment, "selected")
 
 
-@pytest.mark.parametrize("repo,number", [("fmtlib/fmt", 2394), ("google/gson", 1391)])
+@pytest.mark.parametrize(
+    "repo,number",
+    [("fmtlib/fmt", 2394), ("google/gson", 1391), ("ponylang/ponyc", 2205)],
+)
 def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
     org, name = repo.split("/")
     row = {
@@ -81,9 +84,12 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
         "wrong_report_identity",
     ],
 )
-@pytest.mark.parametrize("repo,number", [("fmtlib/fmt", 2394), ("google/gson", 1391)])
+@pytest.mark.parametrize(
+    "repo,number,native_exit_code",
+    [("fmtlib/fmt", 2394, 0), ("google/gson", 1391, 1), ("ponylang/ponyc", 2205, 2)],
+)
 def test_native_grader_replaces_reference_before_running_and_removes_owner(
-    monkeypatch, tmp_path, failure, repo, number
+    monkeypatch, tmp_path, failure, repo, number, native_exit_code
 ):
     org, name = repo.split("/")
     solver_run = tmp_path / "solver"
@@ -215,10 +221,10 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
                     }
                 )
             )
-        # Gson's pinned reference retains a known unrelated failing class. The
-        # native grader determines resolution from required test labels.
+        # Gson retains an unrelated failing class; ponyc lacks stdlib linkage
+        # dependencies. The native grader uses required test labels in both.
         return SimpleNamespace(
-            returncode=int(cmd[:2] == ["docker", "exec"] and repo == "google/gson")
+            returncode=native_exit_code if cmd[:2] == ["docker", "exec"] else 0
         )
 
     monkeypatch.setattr(multi, "command", command)
@@ -234,6 +240,6 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
     assert result["status"] == ("graded" if failure is None else "error")
     assert result["model_calls"] == 0
     if failure is None:
-        assert result["native_exit_code"] == int(repo == "google/gson")
+        assert result["native_exit_code"] == native_exit_code
     if failure in {"startup_timeout", "copy_mismatch", "wrong_tree", "wrong_script"}:
         assert not state["executed"]
