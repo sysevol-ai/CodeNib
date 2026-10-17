@@ -170,7 +170,11 @@ def contextbench_prediction(
                     n = int(match[1])
                     viewed.setdefault(path, []).append((n, n))
 
-        if not content.lstrip().startswith("Error"):
+        if not (
+            call.get("unavailable")
+            or message.get("is_error")
+            or content.lstrip().startswith("Error")
+        ):
             if call["name"] == "read":
                 add_numbered(str(arguments.get("file_path") or ""), content)
             elif call["name"] == "grep":

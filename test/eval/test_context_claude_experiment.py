@@ -1,6 +1,9 @@
 """Subscription benchmark boundaries; no SDK installation or live calls required."""
 
+import asyncio
 import json
+import sys
+from dataclasses import make_dataclass
 from types import SimpleNamespace
 
 import pytest
@@ -37,11 +40,15 @@ def test_sdk_tool_results_count_returned_lines_only(tmp_path):
         instance_id="case", messages=messages, repo_path=tmp_path
     )
     assert prediction["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 1}]}
-    with pytest.raises(ValueError, match="Unexpected SDK tool"):
-        claude.normalize_event(
-            "AssistantMessage",
-            {"content": [{"id": "unexpected", "name": "Bash", "input": {}}]},
-        )
+    attempted = claude.normalize_event(
+        "AssistantMessage",
+        {"content": [{"id": "unexpected", "name": "Bash", "input": {}}]},
+    )
+    assert attempted[0]["tool_calls"][0]["function"] == {
+        "name": "Bash",
+        "arguments": "{}",
+        "unavailable": True,
+    }
 
 
 def test_subscription_auth_refuses_api_route_and_omits_identity(monkeypatch):
@@ -84,14 +91,114 @@ def test_graph_sdk_tool_requires_explicit_run_allowlist():
             }
         ]
     }
-    with pytest.raises(ValueError, match="Unexpected SDK tool"):
-        claude.normalize_event("AssistantMessage", event)
+    unavailable = claude.normalize_event("AssistantMessage", event)
+    assert unavailable[0]["tool_calls"][0]["function"]["unavailable"]
     normalized = claude.normalize_event(
         "AssistantMessage",
         event,
         {**claude.TOOLS, "mcp__source__graph_neighbors": "graph_neighbors"},
     )
     assert normalized[0]["tool_calls"][0]["function"]["name"] == "graph_neighbors"
+    assert "unavailable" not in normalized[0]["tool_calls"][0]["function"]
+
+
+@pytest.mark.parametrize("unexpected_inventory", [False, True])
+def test_sdk_unknown_attempt_retains_usage_but_rejects_extra_capability(
+    monkeypatch, tmp_path, unexpected_inventory
+):
+    (tmp_path / "a.py").write_text("visible\nunseen\n")
+    row = {"instance_id": "case", "messages": [], "sdk_events": []}
+
+    def event(kind, **fields):
+        return make_dataclass(kind, [(key, object) for key in fields])(**fields)
+
+    rejected = json.dumps([{"file": "a.py", "content": "2 | unseen"}])
+
+    async def query(*, prompt, options):
+        assert options.tools == [] and options.strict_mcp_config
+        assert set(options.allowed_tools) == set(claude.TOOLS)
+        assert "graph_neighbors" not in options.system_prompt
+        yield event(
+            "SystemMessage",
+            subtype="init",
+            data={
+                "tools": options.allowed_tools
+                + (["Bash"] if unexpected_inventory else [])
+            },
+        )
+        yield event(
+            "AssistantMessage",
+            content=[
+                {"id": "absent", "name": "mcp__source__graph_neighbors", "input": {}}
+            ],
+            model="test-model",
+        )
+        yield event(
+            "UserMessage",
+            content=[{"tool_use_id": "absent", "content": rejected, "is_error": True}],
+        )
+        yield event(
+            "AssistantMessage",
+            content=[
+                {
+                    "id": "read",
+                    "name": "mcp__source__read",
+                    "input": {"file_path": "a.py"},
+                }
+            ],
+            model="test-model",
+        )
+        yield event(
+            "UserMessage",
+            content=[{"tool_use_id": "read", "content": "1 | visible"}],
+        )
+        yield event("AssistantMessage", content=[{"text": "Done"}], model="test-model")
+        yield event(
+            "ResultMessage",
+            subtype="success",
+            is_error=False,
+            num_turns=3,
+            total_cost_usd=0.03,
+            result="Done",
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            tool=lambda *args: lambda handler: handler,
+        ),
+    )
+    call = claude.retrieve(
+        repo=tmp_path,
+        query_text="issue",
+        row=row,
+        checkpoint=lambda: None,
+        cli="test",
+        model="test-model",
+        max_turns=5,
+    )
+    if unexpected_inventory:
+        with pytest.raises(ValueError, match="tool isolation differs"):
+            asyncio.run(call)
+        assert "sdk_result" not in row
+        return
+    asyncio.run(call)
+    assert row["status"] == "ok" and row["sdk_reported_cost_usd"] == 0.03
+    assert row["unavailable_tool_attempts"] == [
+        {"id": "absent", "name": "mcp__source__graph_neighbors"}
+    ]
+    assert row["messages"][1]["content"] == rejected
+    prediction = claude.native.contextbench_prediction(
+        instance_id="case", messages=row["messages"], repo_path=tmp_path
+    )
+    assert prediction["traj_data"]["pred_steps"][0] == {"files": [], "spans": {}}
+    assert prediction["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 1}]}
+    nodes = claude.native.observed_nodes(row["messages"], tmp_path)
+    assert len(nodes) == 1 and nodes[0].start_line == nodes[0].end_line == 0
 
 
 @pytest.mark.parametrize(

@@ -78,6 +78,21 @@ def test_truncated_json_keeps_complete_nodes_only(tmp_path):
     assert pred["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 2}]}
 
 
+@pytest.mark.parametrize("reason", ["unavailable", "is_error"])
+def test_rejected_tool_keeps_empty_step_without_source_credit(tmp_path, reason):
+    (tmp_path / "a.py").write_text("visible\n")
+    messages = tool_messages("read", {"file_path": "a.py"}, "1 | visible")
+    if reason == "unavailable":
+        messages[0]["tool_calls"][0]["function"][reason] = True
+    else:
+        messages[1][reason] = True
+    prediction = contextbench_prediction(
+        instance_id="case", messages=messages, repo_path=tmp_path
+    )
+    assert prediction["traj_data"]["pred_spans"] == {}
+    assert prediction["traj_data"]["pred_steps"] == [{"files": [], "spans": {}}]
+
+
 def test_partial_json_node_recovers_only_complete_delivered_lines(tmp_path):
     (tmp_path / "a.py").write_text("\n".join(["x"] * 20))
     node = {"file": "a.py", "content": '4 | text="\\n"\n5 | next\n12 | incomplete'}

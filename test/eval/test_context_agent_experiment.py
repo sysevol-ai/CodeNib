@@ -223,6 +223,7 @@ def test_function_reads_reach_next_model_turn_and_official_trajectory(
         source_policy=policy,
     )
     delivered = next(m["content"] for m in sent[1]["messages"] if m["role"] == "tool")
+    assert "graph_neighbors" not in sent[0]["messages"][0]["content"]
     assert ("value = helper()" in delivered) == (policy == "functions")
     assert "return 1" not in delivered
     predicted = agent.contextbench_prediction(
@@ -272,6 +273,7 @@ def test_graph_source_reaches_model_and_delivery_without_crediting_declared_rang
         source_policy="functions",
     )
     assert "graph_neighbors" in {item["function"]["name"] for item in sent[0]["tools"]}
+    assert "graph_neighbors" in sent[0]["messages"][0]["content"]
     assert observed in [
         m.get("content") for m in sent[1]["messages"] if m["role"] == "tool"
     ]

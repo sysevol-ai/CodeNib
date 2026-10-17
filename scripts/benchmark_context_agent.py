@@ -79,6 +79,17 @@ uncertainties about the issue. Search new identifiers learned from actual reads;
 revise an unproductive search instead of repeating it. Include error handling and
 behavioral constraints when relevant. Use targeted ranges, often 200-400 lines,
 and continue a truncated read at its indicated offset when more is needed.
+You have up to 20 model turns and can make several independent tool calls in one
+turn. There is no 4K final-context or ten-chunk limit. Avoid reading unrelated
+files just to accumulate volume. Before stopping, check that you have inspected
+the implementation, important dependencies and the behavior or tests needed to
+understand a plausible fix. Use further tools for any material missing evidence.
+Finish with a concise handoff naming the relevant paths/ranges, how they connect,
+and any unresolved uncertainty. Do not edit files or claim to have run tests.
+"""
+
+
+GRAPH_INSTRUCTIONS = """\
 If graph_neighbors is available, make one early reference query: after the first
 source-tool reply showing a function or method, your next tool call must be
 graph_neighbors, before any further read, grep or glob. Function source appended
@@ -91,16 +102,16 @@ the tool is named mcp__source__graph_neighbors. The tool may omit previously
 observed lines; combine missing lines with the source already in this conversation.
 If its graph is unavailable, do not retry that graph. If no unseen neighbors
 remain, continue with a new relevant source search instead of repeating the hop.
-Inspect returned definitions only when they resolve an uncertainty about the issue.
+Inspect returned definitions only when they resolve an uncertainty about the issue."""
 
-You have up to 20 model turns and can make several independent tool calls in one
-turn. There is no 4K final-context or ten-chunk limit. Avoid reading unrelated
-files just to accumulate volume. Before stopping, check that you have inspected
-the implementation, important dependencies and the behavior or tests needed to
-understand a plausible fix. Use further tools for any material missing evidence.
-Finish with a concise handoff naming the relevant paths/ranges, how they connect,
-and any unresolved uncertainty. Do not edit files or claim to have run tests.
-"""
+
+def retrieval_system_prompt(max_turns, *, graph_enabled=False):
+    """Describe only tools registered for this experimental arm."""
+    guidance = GRAPH_INSTRUCTIONS + "\n\n" if graph_enabled else ""
+    return SYSTEM.replace(
+        "You have up to 20 model turns",
+        guidance + f"You have up to {max_turns} model turns",
+    )
 
 
 def message_key(message):
@@ -256,7 +267,9 @@ def retrieve(
         registry=registry,
         exclude_skills=set(registry.list_skills()),
         default_tool_ids={"read", "grep", "glob"},
-        system_prompt=SYSTEM.replace("20 model turns", f"{max_turns} model turns"),
+        system_prompt=retrieval_system_prompt(
+            max_turns, graph_enabled=graph_tool is not None
+        ),
         max_turns=max_turns,
         max_context_tokens=None,
         compact_after_read=False,
@@ -321,6 +334,8 @@ def observed_nodes(messages, repo):
         if message.get("role") != "tool":
             continue
         call = calls[message["tool_call_id"]]
+        if call.get("unavailable") or message.get("is_error"):
+            continue
         try:
             args = json.loads(call.get("arguments") or "{}")
         except ValueError:
