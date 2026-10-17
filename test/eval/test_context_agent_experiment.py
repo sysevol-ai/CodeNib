@@ -383,26 +383,39 @@ def test_unseen_completion_only_uses_actual_prior_source_and_current_targets(tmp
         )
 
 
-def test_prior_source_allows_remaining_function_to_fit_small_response(tmp_path):
-    middle = "    value = '" + "long existing source " * 100 + "'"
-    (tmp_path / "a.py").write_text(f"def found():\n{middle}\n    return value\n")
+def test_unseen_completion_does_not_refill_budget_with_unselected_functions(tmp_path):
+    (tmp_path / "a.py").write_text(
+        "def first():\n    value = 3\n    return value\n\n"
+        "def second():\n    return 4\n"
+    )
     history = [
         tool("read", {"file_path": "a.py"}, "prior"),
-        {"role": "tool", "tool_call_id": "prior", "content": f"2 | {middle}"},
+        {
+            "role": "tool",
+            "tool_call_id": "prior",
+            "content": "1 | def first():\n2 |     value = 3\n3 |     return value",
+        },
     ]
+    first = "a.py:1: def first():"
+    original = first + "\na.py:5: def second():"
+    probe = agent.bind_context_source_tool(
+        lambda **kw: first, repo=tmp_path, tool_id="grep", source_policy="functions"
+    )(path="a.py", pattern="first")
+    budget = len(tiktoken.get_encoding("cl100k_base").encode(probe[len(first) :]))
     for policy in ("definitions", "unseen"):
         bound = agent.bind_context_source_tool(
-            lambda **kw: "a.py:1: def found():",
+            lambda **kw: original,
             repo=tmp_path,
             tool_id="grep",
             source_policy="functions",
             completion_source_policy=policy,
-            completion_tokens=64,
+            completion_tokens=budget,
             observed_source=lambda: agent.observed_nodes(history, tmp_path),
         )
-        result = bound(path="a.py", pattern="found")
-        assert ("return value" in result) == (policy == "unseen")
-        assert "long existing" not in result
+        result = bound(path="a.py", pattern="first|second")
+        assert result.startswith(original)
+        assert ("return value" in result) == (policy == "definitions")
+        assert "return 4" not in result and "not completed" in result
 
 
 @pytest.mark.parametrize("budget,huge", [(1, False), (8192, True)])

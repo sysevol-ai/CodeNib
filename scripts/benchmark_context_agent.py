@@ -533,6 +533,9 @@ def bind_context_source_tool(
     runner's response limit in full. No annotation or reference patch is read.
     Under ``unseen``, omit lines verified in the delivered conversation snapshot;
     earlier source plus this reply must still complete each selected callable.
+    Preserve the historical callable selection and its budget reservations before
+    omitting prior source. Freed space cannot select another callable or change
+    downstream packing on fixed tool trajectories.
     Only the current response selects callables. Old observations cannot trigger
     expansion in other files or functions. The caller supplies verified NodeInfo
     ranges, as for graph navigation, never requested or declared-only ranges.
@@ -602,15 +605,16 @@ def bind_context_source_tool(
             for node in nodes
             for line in range(node.start_line, node.end_line + 1)
         }
+        observed = set()
         if completion_source_policy == "unseen":
-            seen.update(
+            observed.update(
                 (node.file, line)
                 for node in observed_source()
                 for line in range(node.start_line, node.end_line + 1)
             )
-        extra = ""
+        extra = reserved = ""
         for node in additions:
-            lines = []
+            lines, missing = [], []
             novel = set()
             for number, content in enumerate(
                 node.content.splitlines(), node.start_line
@@ -623,10 +627,13 @@ def bind_context_source_tool(
                     else f"{node.file}:{number + 1}: "
                 )
                 lines.append(prefix + content)
+                if (node.file, number) not in observed:
+                    missing.append(prefix + content)
                 novel.add((node.file, number))
             if not lines:
                 continue
-            candidate = extra + "\n[CodeNib function completion]\n" + "\n".join(lines)
+            marker = "\n[CodeNib function completion]\n"
+            candidate = reserved + marker + "\n".join(lines)
             if (
                 len(encoder.encode(candidate, disallowed_special=()))
                 > completion_tokens
@@ -634,14 +641,24 @@ def bind_context_source_tool(
             ):
                 skipped.append({"file": node.file})
                 continue
-            extra = candidate
+            reserved = candidate
             seen.update(novel)
+            if missing:
+                extra += marker + "\n".join(missing)
+                # Tokenization is not strictly monotone under text removal.
+                # The already-bounded historical reply is a coverage-preserving
+                # fallback if removing lines changes token boundaries adversely.
+                if (
+                    len(encoder.encode(extra, disallowed_special=()))
+                    > completion_tokens
+                ):
+                    extra = reserved
         if skipped:
             notice = (
                 f"\n[CodeNib: {len(skipped)} callable(s) not completed "
                 "within source/output limits.]"
             )
-            if len(original + extra + notice) <= _MAX_RESULT_CHARS:
+            if len(original + reserved + notice) <= _MAX_RESULT_CHARS:
                 extra += notice
         return original + extra
 
