@@ -39,7 +39,7 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
-| Directed graph navigation | The complete candidate fails the independent gate: Recall 69.64% → 68.76%, F1 29.01% → 26.16%. All eleven available graphs are called; six tasks receive source. | Return to development diagnosis before another candidate; no product promotion or full-500 launch for this policy. |
+| Directed graph navigation | The complete candidate fails the independent gate: Recall 69.64% → 68.76%, F1 29.01% → 26.16%. All eleven available graphs are called; six tasks receive source. Development replay finds all 220 graph-returned lines were already observed. | Require useful new source, not only successful graph calls, in the next development gate; no product promotion or full-500 launch for this policy. |
 | Complete solver | The one independent Verified task resolves in both arms, 1/1 each, with the same pinned image and native harness. Both earlier paired development attempts remain unresolved. Separate reference-patch checks pass. | Broader matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no comparative or population Pass@1 improvement established. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -167,9 +167,36 @@ The sanitized [32-task CSV](../assets/contextbench_independent_32.csv) and
 [protocol and summary](../assets/contextbench_independent_summary.json) preserve
 the failure, uncertainty, implementation hashes and image provenance. Local
 receipts remain in `verification/context-agent-holdout-32/`. The next development
-diagnosis should separate source added by broad grep completion from deliberate
-reads and measure relevant source per added line, using only development IDs.
-No new model batch or policy is selected from the held-out results.
+diagnosis uses only development IDs. No new model batch or policy is selected
+from the held-out results.
+
+### Development source-attribution diagnosis
+
+An offline audit of the same eight development tasks separates original tool
+output from automatic completion and counts each physical source line at its
+first observation. It makes no model calls and does not inspect held-out labels.
+The targeted-hop candidate's three source-returning graph calls contain 220
+physical lines, **all already observed**. Successful calls alone did not establish
+additional coverage. The next development gate must measure genuinely new,
+relevant source before spending another independent validation selection.
+
+| Existing eight-task trace | New grep-completion lines / annotated | New read-completion lines / annotated |
+| --- | ---: | ---: |
+| Initial function-completion arm | 1,901 / 255 | 584 / 98 |
+| Targeted-hop function control | 1,931 / 257 | 640 / 89 |
+| Targeted-hop graph candidate | 2,123 / 248 | 382 / 83 |
+
+Grep completion supplies 75–85% of completion's new physical lines, but also most
+of its newly observed annotated lines. Disabling it may lose useful coverage;
+these counts do not establish that read-only completion would improve quality.
+Annotation overlap includes physical blank/comment lines, is not the official
+score, and does not make unannotated source useless to a solver. This audit
+attributes observations in recorded traces; it cannot predict how an online
+agent would react to changed outputs. The next bounded development hypotheses
+are selecting which matched callable to complete and avoiding graph responses
+that only repeat known source. Receipts are in
+`verification/contextbench-online-20261016/development-source-attribution.json`;
+sanitized counts accompany the existing development summary.
 
 ### October 16 online development result
 

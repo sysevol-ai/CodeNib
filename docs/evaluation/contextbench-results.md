@@ -275,6 +275,15 @@ graphs. All five available graphs are called. This passes the development
 candidate-selection gate fixed before scoring: actual graph use, higher Recall
 and non-decreasing F1. The intervals still do not establish a reliable gain.
 
+A subsequent development-only source audit finds that the three successful
+graph responses contain 220 physical lines, all already observed by the agent.
+Actual graph use therefore did not add new source in this trial. In the same
+eight-task traces, grep-triggered completion contributes most added source but
+also most newly observed annotated lines. These descriptive counts do not prove
+that removing grep completion would improve an online agent. Future development
+must measure useful new source and test selection policies before another
+independent validation run; the completed 32 tasks remain excluded from tuning.
+
 The policy at `3f04993f` is frozen for independent 32-task validation with native,
 functions and functions-plus-graph arms. Eleven cases have available graphs;
 all three arms have completed and scored. The primary contrast is the complete
