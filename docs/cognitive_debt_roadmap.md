@@ -278,10 +278,18 @@ compatibility cases are grader-added, while all three initial contexts already
 contain the complete casting helper and FFI call implementation; another expansion
 of those functions is unsupported. A 33-query graph audit finds original-direction
 ranking opportunity only in Rust. A general empty-response opposite-hop replay
-improves the late eight but fails its two-cohort gate, so no runtime option is
-added. A separate late-only hypothesis has eight other metadata-selected,
-already disclosed development tasks; implementation and fresh matched controls
-remain open, with no inherited passing gate or new model charge.
+improves the late eight but fails its two-cohort gate. A distinct, explicit
+late-only experimental option now has a completed matched comparison on eight
+other metadata-selected development tasks: all 24 runs finish, but its gate
+fails. Recall/F1 point estimates rise while both intervals include zero; none
+of the eight graph replies changes when the fallback is disabled. No novel
+annotated graph source is absent from matched native. The option stays confined
+to checkout experiments for reproduction, with no product/default promotion or
+further online retry justified by this sample. Current work is source-bound
+compiler coverage and missing-anchor diagnosis before another policy trial.
+The retrieval runner also checkpoints terminal SDK metering before an iterator
+error; the old loss is reproduced without model calls. Known cumulative SDK
+estimates are $87.881044, not an account bill; new API-key inference remains zero.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
