@@ -12,6 +12,7 @@ from codenib.types import (
     EDGE_TYPE_REFERENCE,
     NODE_TYPE_FILE,
     NODE_TYPE_FUNCTION,
+    NODE_TYPE_SYMBOL,
 )
 from scripts.contextbench_graph_navigation import (
     GraphNavigation,
@@ -103,6 +104,22 @@ def test_navigation_enforces_path_and_scan_bounds(navigation):
     assert (
         json.loads(bounded.neighbors("a.py", 1, "incoming"))[0]["node_id"] == "caller"
     )
+
+
+def test_local_definition_does_not_hide_enclosing_callable_references(navigation):
+    tool, repo = navigation
+    graph = tool.graph
+    graph.graph.add_vertex(
+        name="local",
+        type=NODE_TYPE_SYMBOL,
+        file="a.py",
+        start_line=0,
+        end_line=0,
+        has_definition=True,
+    )
+    graph.name_to_vertex["local"] = graph.graph.vcount() - 1
+    rebound = GraphNavigation(graph, repo)
+    assert json.loads(rebound.neighbors("a.py", 1))[0]["node_id"] == "target"
 
 
 def test_frozen_graph_bytes_and_source_population_are_checked(navigation):

@@ -79,9 +79,13 @@ uncertainties about the issue. Search new identifiers learned from actual reads;
 revise an unproductive search instead of repeating it. Include error handling and
 behavioral constraints when relevant. Use targeted ranges, often 200-400 lines,
 and continue a truncated read at its indicated offset when more is needed.
-When graph_neighbors is available, use directed references to investigate
-specific dependencies or callers needed by the issue. Continue source search
-when graph coverage is unavailable.
+If graph_neighbors is available, before the final handoff make at least one
+targeted graph_neighbors call for a definition central to the issue. Choose
+incoming references for callers or outgoing references for dependencies; use a
+source file and line already found by search/read. In the SDK the tool is named
+mcp__source__graph_neighbors. If its graph is unavailable, do not retry that
+unavailable graph; continue with source search. Inspect returned definitions
+only when they matter to the issue.
 
 You have up to 20 model turns and can make several independent tool calls in one
 turn. There is no 4K final-context or ten-chunk limit. Avoid reading unrelated
