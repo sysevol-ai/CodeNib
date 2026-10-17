@@ -576,7 +576,7 @@ dataset boundary through registry metadata, preserving the public factory
 contract.179 feature tests and190 compiler tests pass. Runtime `85b7f0d2` rebuilds
 only the two failed preparations under source-only correction `4ddf8f93`; the
 six canonical successful artifacts stay intact. All eight must reconcile before
-any new live call. #835 is ready with successful required unit CI; both production
+any new live call. #835 and #836 are ready with successful required unit CI; both production
 fixes remain unmerged. Wider development, fresh default-only validation and full
 submission evidence remain open.
 Product lifecycle and dependency direction stay unchanged.
@@ -585,15 +585,17 @@ The unstarted443 paid consumers remain cancelled. Known API usage stays
 59.09398873USD under100USD, leaving40.90601127USD with the former40USD reservation
 released. Historical calls/costs and all three sealed32 cohorts are retained.
 Native500 remains a frozen control; completed scoring discloses earlier122-case
-annotation access and the original failed case. Formal native outcomes/raw
-submission archives remain later gates; no new repair batch follows.
-Partial archives retain243 ended native attempts (including the interrupted
-one) and112 consumed standard Messages,796members/713unique paths in seven gzip
-parts totaling11,568,526bytes, each below50MiB, round-trip verified. Remaining
-native/control-evaluation/outcome archives and publication review stay open;
-no cancelled443 Batch archive is required. All500 evaluator source targets match
-recorded snapshots, including119retained aliases. Complete500 baseline scoring is separate from archival completeness and provides
-no proof of indexed context gains.
+annotation access and the original failed case. A standalone control archive now
+retains all500 original attempts,499 source packets, configurations/frozen code
+and completed control evaluation. All2,070 members and every case reference pass
+round-trip/hash verification; eight gzip parts total28,479,415bytes, largest
+5,219,150bytes below50MiB. Original failures and exposure/qualification records
+remain. Historical partial archives retain243 native attempts and112 consumed
+standard Messages unchanged. Candidate-context/outcome archives and publication
+review stay open; no cancelled443 Batch archive is required and no new repair
+batch follows. All500 evaluator source targets match recorded snapshots,
+including119retained aliases. Complete500 baseline scoring and archival coverage
+provide no proof of indexed context gains.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The refreshed metadata-only audit after whole500 annotation access confirms
