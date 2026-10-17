@@ -582,10 +582,10 @@ def build_hierarchical_vector_store(
             f"chunking_{level}",
             {"level": level, "language": languages[0]},
         ):
-            chunks = chunker.chunk_repository(
-                repo_path=repo_path,
-                strict=strict_chunking,
-            )
+            chunking_kwargs = {"strict": strict_chunking}
+            if schema_8_documents:
+                chunking_kwargs["regular_files_only"] = True
+            chunks = chunker.chunk_repository(repo_path=repo_path, **chunking_kwargs)
             chunks_by_level[level] = (
                 [_schema_8_repository_chunk(chunk, repository_root) for chunk in chunks]
                 if schema_8_documents
