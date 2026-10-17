@@ -333,6 +333,46 @@ source classification. The next priority is useful relationship selection and
 source attribution from actual solver/test feedback. All earlier failed gates,
 the sealed independent 32 and the unlaunched official 500 remain unchanged.
 
+An offline graph-opportunity audit now reproduces all 33 original graph queries
+across the 24-task and overlapping eight-task development traces. It keeps the
+original anchors, compiler artifacts, preceding messages and 1,000-edge scan
+bounds. Among omitted definitions that individually fit a 2K reply, only Rust
+has additional canonical annotated source absent from both complete trajectories
+in the original direction. A source-ranking change therefore fails the declared
+multi-language opportunity gate. The opposite direction has theoretical
+opportunity in C, Go and TypeScript; the union of those definitions is an upper
+bound, not a feasible response or new source-read credit.
+
+A separate frozen replay tests one opposite-direction fallback per task, only
+when the requested direction returns no source. It retains the original source,
+anchor and later messages, uses the existing ordering and limits every reply to
+2K tokens. Actual and requested directions remain explicit. Five replies change,
+adding one unannotated line in the early cohort and 90 lines in the late cohort.
+The latter include 71 annotated lines, 59 absent from matched native, across Go
+and TypeScript.
+
+| Fixed-trajectory cohort | Recall, original graph → replay | F1, original graph → replay |
+| --- | --- | --- |
+| First-source 24 | 54.017% → 54.017% | 30.148% → 30.143% |
+| Late graph 8 | 41.621% → 45.659% | 35.292% → 36.591% |
+
+The predeclared gate requires higher Recall and non-decreasing F1 in **both**
+cohorts, plus new annotated source across two languages. It fails. The general
+fallback is not implemented or run online. All 32 original predictions and 33
+graph responses reproduce, no original source is lost, and all frozen hashes
+match. A missing output directory interrupted the first scoring step after
+candidate generation; a separate scoring-only follow-up retains the unchanged
+predictions and gate. These diagnostics make zero model calls.
+
+The late improvement motivates a separate late-only hypothesis, whose runtime
+and matched controls are still open work. Eight other disclosed development tasks
+are selected by the first remaining task per language in the frozen file order,
+excluding the prior late eight and using no scores or graph-availability filters.
+They are not independent or untouched tasks. No new inference follows from that
+selection alone; the failed replay, sealed independent 32 and full-500 gate remain
+unchanged. Protocols and aggregate outcomes are retained in the public development
+summary.
+
 ## Historical post-run 24-task results
 
 The sample contains three tasks per language, 24 repositories and eight languages,
@@ -851,6 +891,16 @@ initializers reporting no API key. The controlled reader adds 0/191/0 new
 original-source lines; partial totals are 1,025/1,677/1,393. Ordinary shell output
 remains unattributed. Five owned solver/grader containers are removed and verified
 absent; frozen runtime/input hashes match after grading.
+
+A separate source audit explains the five preservation failures more precisely:
+those compatibility tests are introduced by the grader's test patch, in a file
+absent from base source. Both submitted solvers report passing all 1,005 base
+compiler tests they run. Native preservation labels describe behavior that must
+pass, not necessarily tests already available to the solver. All three initial
+contexts already contain the complete 25-line argument-casting helper and
+91-line FFI call implementation. This evidence does not establish a missing
+source-delivery gap for those constraints or justify expanding the same functions
+again. No grading-only test or reference patch is supplied to a model.
 
 The final graph request preserves a valid $0.321885 terminal event before the
 SDK raises. Original aggregation misses it because accounting occurred after

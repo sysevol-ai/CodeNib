@@ -273,8 +273,15 @@ graph benefit. All 29 model inputs are confirmed and all five owned containers
 are removed. One valid terminal usage event was omitted by post-loop accounting;
 an offline amendment recovers it without replacing the failed attempt. The
 adapter now persists usage on receipt before the SDK can raise, retaining the
-failure and exhausted-budget stop. The next gate is useful source selection
-supported by matched repair evidence before further paid comparisons.
+failure and exhausted-budget stop. Offline diagnosis confirms that the five
+compatibility cases are grader-added, while all three initial contexts already
+contain the complete casting helper and FFI call implementation; another expansion
+of those functions is unsupported. A 33-query graph audit finds original-direction
+ranking opportunity only in Rust. A general empty-response opposite-hop replay
+improves the late eight but fails its two-cohort gate, so no runtime option is
+added. A separate late-only hypothesis has eight other metadata-selected,
+already disclosed development tasks; implementation and fresh matched controls
+remain open, with no inherited passing gate or new model charge.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a
