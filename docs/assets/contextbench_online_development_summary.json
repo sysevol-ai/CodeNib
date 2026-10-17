@@ -25620,6 +25620,19 @@
     "annotation_isolation": "Runtime selected.jsonl contains only metadata, issue text and explicit empty gold_context. Do not load annotation columns, patches or native test labels during inference. After terminal execution and immutable output receipts, materialize only gold_context in a separate evaluator cohort; keep original source-only runtime configs and attempts unchanged.",
     "repair_calls": 0,
     "official500_started": false,
-    "independent_gain_established": false
+    "independent_gain_established": false,
+    "pre_scoring_projection_correction": {
+      "protocol_sha256": "0d2edff293b6fc63cf54657f22a1fa0c72512b6ea2d0fa7d72f284bcd0b3e41f",
+      "reason": "Recompute cached trajectory and served predictions from confirmed messages; message filtering alone does not update the stored predictions consumed by the evaluator.",
+      "registered_before_annotation_access": true,
+      "original_analyzer_preserved": true,
+      "paid_runtime_policy_and_gates_unchanged": true,
+      "new_model_calls": 0,
+      "regression": {
+        "raw_source_lines": 2,
+        "confirmed_source_lines": 1,
+        "unconfirmed_line_omitted": true
+      }
+    }
   }
 }
