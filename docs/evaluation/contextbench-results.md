@@ -420,12 +420,12 @@ delivered to a new agent, and earlier official scores remain unchanged.
 | Java graph preparation | Existing managed tool, explicit Maven and command-line `java.version=8` produce 4,385 nodes and 31,158 edges; all 345 tracked files remain byte-identical | 37 / 0 |
 | C graph preparation | Rejected: the private build rewrites seven tracked Autotools helper files in the pinned oniguruma submodule | 0 / 0 |
 
-Runtime `9880b0d7` fixes conversion/overloaded operators, destructors and qualified
+Runtime `1edb2a68` fixes conversion/overloaded operators, destructors and qualified
 or pointer/reference-return declarators. Python and native clangd queries agree
 on conversion-function kind 24; normalization profile v4 invalidates the former
 native interpretation. Existing materialized graphs need regeneration. The
 observed C++ conversion anchor now covers lines 78–81 rather than line 78 alone.
-Ten regressions fail before the fixes; 195 related unit tests and three C++
+Thirteen regression cases fail before the fixes; 198 related unit tests and three C++
 integration tests pass afterward, including the rebuilt native binding.
 
 TypeScript readiness takes 268.17 seconds and Java 22.28 seconds in private

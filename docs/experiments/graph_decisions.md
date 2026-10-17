@@ -903,10 +903,10 @@ reproduction, with no product/default promotion or additional online retry.
 The source-bound follow-up now repairs C++ callable extraction and maps clangd
 conversion kind 24 to methods in Python and native queries. Normalization v4
 rejects old native interpretations. Rebuilding all three disclosed C++ graphs
-at `9880b0d7` corrects 2,127 ranges and 101 conversion kinds, while preserving
+at `1edb2a68` corrects 2,127 ranges and 101 conversion kinds, while preserving
 all compiler IDs, file identities, selection points and edges. The missing
-conversion anchor now covers its body. Ten pre-fix regressions reproduce;
-195 related unit tests and three C++ integration tests pass after rebuilding
+conversion anchor now covers its body. Thirteen pre-fix regression cases reproduce;
+198 related unit tests and three C++ integration tests pass after rebuilding
 the native binding.
 
 Existing tools also recover TypeScript in 268.17 seconds within the original
@@ -919,7 +919,7 @@ Earlier failed probes remain recorded, as does the initial C++ assertion that
 mistook the expected callable display suffix for a changed compiler identity.
 
 Under combined replay protocol
-`c46e0f96d511fb106fe98ed6d7ab75ef9d27b18d3ad31d2a5861e858be6907b3`,
+`40bc54186d31d819d67c2e2503a4d1f1555fde27e99324c60f06432a90e5eafe`,
 all eight queries, preceding source and reply budgets remain fixed. Availability
 rises five to seven, but the additional 108 TypeScript, 37 Java and one C++
 physical lines contain zero annotated lines. Replies are frozen before canonical

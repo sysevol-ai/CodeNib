@@ -15469,16 +15469,16 @@
   },
   "compiler_coverage_followup": {
     "scope": "Zero-model compiler/source diagnostics on disclosed development tasks. Fixed queries are not counterfactual agent trajectories or revised official scores.",
-    "runtime_commit": "9880b0d7e3ac65dbbb59dbca6e370e6716b21a4f",
+    "runtime_commit": "1edb2a686044209f718b682901f0bd9f63718717",
     "environment_runtime_commit": "de691eecff0b959fdd78562469eb0d1ce1f02a85",
     "protocol_sha256": {
       "initial_index": "58a2d48ad0d429a2d205343b64cd6678e112fe774f2c48a926cd0e3df67b7c91",
       "environment_followup": "c2d8dda569ca270a00f3a3868112d88c4bf5d0428103b354805aa097c7d22626",
       "tracked_source_followup": "b2c42effc761ad7cc01bcdbde90df5368f649fd8f80c5dcd2ae93595390fb763",
-      "cpp_repair_replay": "58b5e8c9bb77fcff317c44fd69d8a640a15350e5165f855bfe66243ef9216509",
-      "combined_fixed_queries": "c46e0f96d511fb106fe98ed6d7ab75ef9d27b18d3ad31d2a5861e858be6907b3"
+      "cpp_repair_replay": "b0f86bba1923a59b5d7dd64f0067299c25e040de8d76b0bd76224d852289e3bc",
+      "combined_fixed_queries": "40bc54186d31d819d67c2e2503a4d1f1555fde27e99324c60f06432a90e5eafe"
     },
-    "analysis_sha256": "bbf1a1a2495827ea9f7c33aee2cc75babc2940a33469f0dc167b521feeaa32fd",
+    "analysis_sha256": "4a1de3837c9157700ff269717f9b35e54f7c103e22583109ebad2d21679d5044",
     "implementation": "Follow C/C++ callable declarators and classify compiler ConversionFunction kind 24 as method in both Python and native query paths. Native normalization profile advances to v4; cached materialized graphs require regeneration.",
     "cpp_rebuilt": [
       {
@@ -15554,6 +15554,7 @@
       "reason": "Private build rewrites seven tracked oniguruma Autotools helper files. Guard rejection is correct; ignored outputs alone do not explain it. No graph accepted and no source guard relaxed."
     },
     "retained_prior_attempts": [
+      "A follow-up catches three missed abstract-reference conversion declarators. All three regressions fail before the follow-up; the final 198-test unit tier and three integrations pass, followed by a separately frozen graph/reply replay.",
       "Java managed-tool probe needs explicit build-tool selection.",
       "Explicit Maven without a Java version override fails compilation; the diagnostic snapshot audit also rejects ignored outputs despite an empty tracked diff.",
       "The first C build failure lacked recursive source details; a separate frozen probe records the actual tracked submodule changes.",
@@ -15652,8 +15653,8 @@
       ]
     },
     "validation": {
-      "pre_fix_regression_failures": 10,
-      "targeted_unit_passed": 195,
+      "pre_fix_regression_failures": 13,
+      "targeted_unit_passed": 198,
       "cpp_integration_passed": 3,
       "compiled_native_binding_rebuilt": true,
       "pinned_implementation_hooks_passed": true
