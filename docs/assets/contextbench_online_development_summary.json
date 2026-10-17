@@ -40126,15 +40126,33 @@
     "per_committed_file_cap_mib": 50,
     "external_links_or_lfs_pointers_suffice": false,
     "open_gates": [
-      "Prepare/audit exact source for all500 canonical tasks;current manifest-backed audit verifies119 and leaves381unverified,with no availability-based selection.",
-      "Control checkout disk usage through bounded staging/object reuse;no deletion of historical evidence.",
-      "Measure whole-run Max quota/time capacity;four normal Max sessions do not reserve500capacity.",
-      "Freeze exact500 contexts/provider counts and complete API headroom inside the remaining100ceiling;reuse every exact-profile output independent of score.",
-      "Pinned native solver/grader coverage and complete original source/trajectory/outcome packaging before formal submission. No automatic repair or500model batch."
+      "Freeze source-gap handling for all500 positions; retain explicitly unavailable child inputs and official denominators.",
+      "Verify supported Max quota/time and billing behavior; never enable paid extra usage or add an API fallback implicitly.",
+      "Audit every reusable context/profile receipt, freeze fresh native context work, then exact provider counts and complete API reservation within remaining40.90601127. No automatic500dispatch.",
+      "Formal submission only: Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
+      "Formal submission only: Complete original raw trajectories,failed attempts,evaluation and outcome archives committed within official file limits."
     ],
     "new_model_calls": 0,
     "new_api_cost_usd": 0,
-    "official500_started": false
+    "official500_started": false,
+    "context500_open_gates": [
+      "Freeze source-gap handling for all500 positions; retain explicitly unavailable child inputs and official denominators.",
+      "Verify supported Max quota/time and billing behavior; never enable paid extra usage or add an API fallback implicitly.",
+      "Audit every reusable context/profile receipt, freeze fresh native context work, then exact provider counts and complete API reservation within remaining40.90601127. No automatic500dispatch."
+    ],
+    "official_submission_additional_gates": [
+      "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
+      "Complete original raw trajectories,failed attempts,evaluation and outcome archives committed within official file limits."
+    ],
+    "context_quality_can_be_evaluated_before_repairs": true,
+    "current_conditional_reuse_of_exact56_context_results": {
+      "scope": "All24 disclosed development plus all32 sealed pairs,source/packet/fullrequest/native semantic profile verified;no score-based filtering or new scoring. Original whole-file hash check remains failed;separate encoding-only AST/postprocessing proof recorded.",
+      "eligible_context_positions": 56,
+      "remaining_positions": 444,
+      "unweighted_remaining444_max_investigation_and_batch_review_api_usd": 21.58641975,
+      "estimate_basis": "Same32-task sample arithmetic,not representative forecast or whole-run reservation.",
+      "repairs_required_before_context_evaluation": false
+    }
   },
   "max_batch_development4_route_verification": {
     "scope": "Four known development tasks,complete Max-native -> unchanged late physical4K compiler -> two-arm Batch source-review engineering. No confirmatory quality/retrieval scoring,repairs,native tests,unseen IDs or official500. This checks the cheaper execution route,not a new context strategy.",
@@ -40688,7 +40706,8 @@
       "source_staging_minimum_free_bytes": 12884901888,
       "projected_free_after_point_bytes": -3072188416,
       "new_api_cost_usd": 0
-    }
+    },
+    "inventory_stage": "Initial119-source inventory, retained as historical evidence; current parent readiness is recorded in verified500_source_gitlinks_continuation."
   },
   "verified500_metric_mapping_audit": {
     "scope": "Pinned official source/schema audit only,no task examples,dataset labels or model calls.",
@@ -40776,5 +40795,146 @@
     },
     "matches_frozen_primary_line_R_P_F1": true,
     "new_api_cost_usd": 0
+  },
+  "verified500_source_preparation_execution": {
+    "scope": "Terminal source-only preparation of all canonical verified500 positions. Source readiness is not a benchmark model attempt or source input consumed by a model. Failed and unstarted positions stay in the500 denominator and are never replaced.",
+    "runtime_commit": "ccb49d538f35e76042b9d85772459d080332fb5d",
+    "protocol_sha256": "38c3127c29e1aee43d90ee2928266356a0b1f70c00ca52e428ee71386b2124b8",
+    "execution_sha256": "e0ecb20a9583b3b732958ac7487c9313500b4e696ce0f6d0aafcb01c5f30101c",
+    "manifest_sha256": "25e43f72e6e6dd79b9a810e995774a93d478d05992350008130ca469a97c3362",
+    "state": "finished",
+    "population": 500,
+    "ready": 452,
+    "errors": 3,
+    "not_started": 45,
+    "source_gate_passed": false,
+    "methods": {
+      "audited_existing_link": 119,
+      "borrowed_git_objects": 318,
+      "fresh_shallow_fetch": 15,
+      "error": 3
+    },
+    "new_allocated_bytes": 29848334336,
+    "cache_free_bytes": 12795011072,
+    "minimum_free_bytes_before_dispatch": 12884901888,
+    "workers": 2,
+    "stop_reason": "source disk floor before dispatch",
+    "languages": {
+      "c": {
+        "ready": 23
+      },
+      "cpp": {
+        "ready": 10
+      },
+      "go": {
+        "ready": 40
+      },
+      "java": {
+        "ready": 15
+      },
+      "javascript": {
+        "ready": 60
+      },
+      "rust": {
+        "ready": 20
+      },
+      "typescript": {
+        "ready": 63
+      },
+      "python": {
+        "ready": 221,
+        "error": 3
+      }
+    },
+    "new_model_calls": 0,
+    "new_api_usage_usd": 0,
+    "all_three32_sealed": true,
+    "full500_inference_or_repairs_started": false,
+    "timestamp_utc": "2026-10-17T17:31:38.696869+00:00"
+  },
+  "verified500_existing_packet_reuse_audit": {
+    "scope": "Read-only code/profile explanation after strict reuse audit rejected24 whole-file hashes. Retain that failed strict gate. No labels, quality scores, compiler/window/model changes, task filtering or new calls. Semantic eligibility requires all other strict checks plus a proven exact two-keyword postprocessing-only change; never allow an arbitrary implementation difference.",
+    "plan_sha256": "186940ccdc4d20ac5fe1e344173302e6410625baa1c196dfcb8ef56fcbb847cc",
+    "audit_sha256": "40c5a49b78cd24d909364c23fdeb319008cd7202f8bb8711981efdbf91a2f107",
+    "strict_audit_sha256": "0bee18a3e73294668d312153fd7a003dcf2a41d50ad46cf2e7e35587742ac3ca",
+    "original_strict_whole_file_gate_passed": false,
+    "strict_whole_file_eligible_positions": 32,
+    "postprocessing_encoding_only_difference_positions": 24,
+    "positions_audited": 56,
+    "eligible_positions": 56,
+    "development_positions": 24,
+    "independent_positions": 32,
+    "remaining_positions": 444,
+    "all56_gate_passed": true,
+    "inactive_native_grep_tokens_disclosed": [
+      2048,
+      4096
+    ],
+    "duplicate_Max_engineering_positions_add_new_unique_positions": false,
+    "new_quality_scores": false,
+    "new_model_calls": 0,
+    "new_api_usage_usd": 0,
+    "whole500_run_authorized": false,
+    "remaining444_max_batch_arithmetic_only_usd": 21.58641975
+  },
+  "verified500_source_gitlinks_continuation": {
+    "scope": "All canonical500 exact parent snapshots, no model/API/issue/annotation/repair work. Preserve the original strict source failures and unstarted positions; this is a new source-only correctness continuation, never a model retry or reclassification of the original strict source gate. Unmapped gitlinks stay empty and explicitly unavailable; do not fabricate child bytes or URLs, exclude tasks or alter gold denominators.",
+    "runtime_commit": "50519a3a33030b5181675c5b3993949a5468d75a",
+    "protocol_sha256": "87b5c0232d4818442e72b56d47719935c64c73591dde076dac358b1c9a4a102e",
+    "execution_sha256": "441f85a0e90b482140de384031652c8036e96fb8550d8a9be7c1d6dd57b880e3",
+    "manifest_sha256": "e4e5579cd7d63342439dc2727123c01d7ace256862b47b3b4ad135eb9cf23b97",
+    "parent_ready_count": 500,
+    "source_errors": 0,
+    "not_started": 0,
+    "parent_snapshot_gate_passed": true,
+    "complete_source_availability_gate_passed": false,
+    "cases_with_unavailable_gitlinks": 3,
+    "unavailable_gitlinks": {
+      "SWE-PolyBench__python__maintenance__bugfix__52a91dd8": [
+        {
+          "commit": "7e525a3b91ddf2cc0d9b3add5928460449c1d600",
+          "path": "docs/modules/indexes/document_loaders/examples/example_data/test_repo1",
+          "reason": "unregistered_gitlink"
+        }
+      ],
+      "SWE-PolyBench__python__maintenance__bugfix__aaf309d2": [
+        {
+          "commit": "7e525a3b91ddf2cc0d9b3add5928460449c1d600",
+          "path": "docs/modules/indexes/document_loaders/examples/example_data/test_repo1",
+          "reason": "unregistered_gitlink"
+        }
+      ],
+      "SWE-PolyBench__python__maintenance__bugfix__b52bbc24": [
+        {
+          "commit": "7e525a3b91ddf2cc0d9b3add5928460449c1d600",
+          "path": "docs/modules/indexes/document_loaders/examples/example_data/test_repo1",
+          "reason": "unregistered_gitlink"
+        }
+      ]
+    },
+    "original_strict_source_gate_passed": false,
+    "original_ready": 452,
+    "original_errors": 3,
+    "original_unstarted": 45,
+    "original_floor_gib": 12,
+    "continuation_floor_gib": 8,
+    "continuation_workers": 2,
+    "owned_nondonor_object_repacks": 16,
+    "saved_object_bytes": 1958182912,
+    "cache_free_bytes": 9670189056,
+    "new_model_calls": 0,
+    "new_api_usage_usd": 0,
+    "new_quality_scores": false,
+    "all_three32_sealed": true,
+    "full500_inference_or_repairs_started": false
+  },
+  "verified500_owned_object_compaction": {
+    "state": "finished",
+    "owned_nondonor_borrowers": 16,
+    "saved_object_bytes": 1958182912,
+    "source_refs_config_alternates_and_donors_unchanged": true,
+    "native_connectivity_audits_passed": true,
+    "new_model_calls": 0,
+    "new_api_usage_usd": 0
   }
 }

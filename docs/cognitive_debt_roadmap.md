@@ -433,12 +433,29 @@ Max SDK nominal $1.2485557 is separate. 52 focused tests (29 new Batch cases),
 durable one-create intent and source/prompt/runtime/metering receipts pass.
 Current known API usage is $59.09398873, leaving $40.90601127 within the same
 $100 ceiling. This verifies the small execution route, not new quality or 500 quota.
-The source audit verifies 119/500 exact clean checkouts; 381 are unverified by
-existing native-source manifests. Bounded staging/object reuse, exact input counts,
-whole-run Max capacity, remaining reservation, native grader coverage and complete
-raw artifacts remain open. Definition-level symbol→block and per-task macro/F1
-mapping now match the paper and official example; sealed32 primary results stay
-unchanged. No full500 inference or repair batch starts automatically.
+Source-only runtime `50519a3a`, protocol `87b5c023`, verifies all 500 exact parent
+snapshots with zero preparation errors or unstarted positions. Three cases retain
+empty unmapped gitlinks explicitly; complete child-source availability remains
+unestablished, and neither tasks nor gold denominators are filtered. The initial
+strict attempt (452 ready, 3 errors, 45 unstarted at its 12 GiB floor) stays failed.
+A frozen two-worker continuation uses an 8 GiB admission floor after the large
+language sources finish. Repacking 16 newly owned non-donor Git stores reclaims
+1.82 GiB with source, refs, configuration, alternates and donors unchanged;
+connectivity checks pass. Thirteen local Git tests pass before 122 relevant unit
+tests, with eight integration cases deselected. Pinned hooks pass.
+
+The work adds no model calls, API usage or quality scores. All 24 development and
+32 sealed packet pairs match current compiler bytes and complete consumer params.
+The original whole-file check rejects 24 for the disclosed two-keyword packing
+fix and remains failed. A separate AST/code-path audit establishes semantic
+parity; inactive native grep token settings remain explicit. Conditional reuse
+leaves 444 positions, with $21.59 in small-sample Max/Batch arithmetic before an
+exact reservation. Source-gap handling, provider counts, Max quota and budget
+remain open for context-only 500 execution. Formal submission separately needs
+native outcomes and raw artifacts; context research does not wait for repairs.
+API usage stays $59.09398873. All three 32 cohorts remain sealed. No full500
+inference, repair batch or product promotion starts automatically. Official
+symbol→block and task-macro/F1 mappings and sealed primary results stay unchanged.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates
