@@ -871,6 +871,19 @@ and native snapshot identity. The maintained profiler now validates both raw
 query parity and MCP serialization/public-error parity and publishes a separate
 `mcp_consumer_decision` over startup plus consumer work.
 
+Current graph-range correctness follow-up
+([#834](https://github.com/sysevol-ai/CodeNib/pull/834)): materialized clangd graphs
+choose the smallest containing tree-sitter range for a compiler definition.
+Previously the first overlapping chunk could assign distinct methods one large
+range and select an unrelated symbol for a line query. Three cached development
+graphs reproduce exactly before the fix; 38 ranges shrink afterward while all
+compiler identities, selection points and edges remain exact. The old regression
+fails, then passes for both chunk orders, and all 48 compiled clangd query tests
+pass. Both provider routes share this materializer; the native graph-free index,
+serialized schema and acceleration gates remain unchanged. Frozen benchmark
+graphs retain their original ranges. The fixed-query replay adds no source
+coverage and does not establish a ContextBench quality gain.
+
 The 2026-08-10 consumer-boundary gate used 223 `cpp_simple` shards, five
 alternating measured rounds, and 100 deterministic symbol requests per round.
 Median complete-graph MCP consumer time was 178.269 ms versus 27.717 ms for the
