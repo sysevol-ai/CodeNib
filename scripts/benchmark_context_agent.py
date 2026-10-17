@@ -39,7 +39,10 @@ from codenib.agent.runner import _MAX_RESULT_CHARS, AgentRunner
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.code_chunker import CodeChunker
 from codenib.dataset.contextbench import load_contextbench_cases
-from codenib.eval.benchmarks.contextbench import contextbench_prediction
+from codenib.eval.benchmarks.contextbench import (
+    _visible_json_nodes,
+    contextbench_prediction,
+)
 from codenib.eval.benchmarks.contextbench_runner import (
     _bind_source_tool,
     audit_contextbench_snapshot,
@@ -57,6 +60,12 @@ from scripts.benchmark_decision_loop import (
 )
 from scripts.benchmark_graph_decisions import pack_context, prediction, strict_rerank
 from scripts.benchmark_jev_base import digest, write_json
+from scripts.contextbench_graph_navigation import (
+    graph_arguments,
+    graph_options,
+    load_graph_records,
+    load_navigation,
+)
 
 SYSTEM = """You are a repository context-retrieval agent helping an engineer fix
 the supplied issue. Build a complete, grounded understanding of its execution
@@ -70,6 +79,9 @@ uncertainties about the issue. Search new identifiers learned from actual reads;
 revise an unproductive search instead of repeating it. Include error handling and
 behavioral constraints when relevant. Use targeted ranges, often 200-400 lines,
 and continue a truncated read at its indicated offset when more is needed.
+When graph_neighbors is available, use directed references to investigate
+specific dependencies or callers needed by the issue. Continue source search
+when graph coverage is unavailable.
 
 You have up to 20 model turns and can make several independent tool calls in one
 turn. There is no 4K final-context or ten-chunk limit. Avoid reading unrelated
@@ -218,7 +230,14 @@ class OpenRouterToolChat:
 
 
 def retrieve(
-    *, repo, query, chat, max_turns=20, source_policy="native", completion_tokens=2048
+    *,
+    repo,
+    query,
+    chat,
+    max_turns=20,
+    source_policy="native",
+    completion_tokens=2048,
+    graph_tool=None,
 ):
     """Only source tools and the original issue enter the shared native loop."""
     registry = SkillRegistry()
@@ -245,6 +264,10 @@ def retrieve(
             source_policy=source_policy,
             completion_tokens=completion_tokens,
         )
+    if graph_tool is not None:
+        runner.tool_registry.register(graph_tool)
+        runner._default_ids.add(graph_tool.tool_id)
+        runner.tools = runner._tools_for(runner._base_allow)
     execute = runner._execute_tool_call
 
     def replay_or_execute(call, *, allowed_tool_ids):
@@ -295,13 +318,23 @@ def observed_nodes(messages, repo):
         text = str(message.get("content") or "")
         if text.startswith("Error"):
             continue
-        for line in text.splitlines():
-            if call["name"] == "read":
+        segments = [(args.get("file_path", ""), text)]
+        if call["name"] == "graph_neighbors":
+            segments = [
+                (node["file"], node["content"])
+                for node in _visible_json_nodes(text)
+                if isinstance(node.get("file"), str)
+                and isinstance(node.get("content"), str)
+            ]
+        for raw, line in (
+            (file, line) for file, block in segments for line in block.splitlines()
+        ):
+            if call["name"] in {"read", "graph_neighbors"}:
                 match = re.match(r"^\s*(\d+)\s*\| ?(.*)$", line)
                 if not match:
                     continue
                 raw, number, content = (
-                    args.get("file_path", ""),
+                    raw,
                     int(match[1]),
                     match[2],
                 )
@@ -562,6 +595,7 @@ def source_policy_arguments(parser):
         "--source-policy", choices=("native", "functions"), default="native"
     )
     parser.add_argument("--completion-tokens", type=int, default=2048)
+    graph_arguments(parser)
 
 
 def refine(args):
@@ -680,6 +714,10 @@ def freeze(output):
     names = [
         "scripts/benchmark_context_agent.py",
         "scripts/benchmark_context_claude.py",
+        "scripts/contextbench_graph_navigation.py",
+        "scripts/benchmark_context_serving.py",
+        "codenib/graph/code_graph.py",
+        "codenib/graph/traverse_graph.py",
         "scripts/benchmark_decision_loop.py",
         "scripts/benchmark_graph_decisions.py",
         "codenib/agent/runner.py",
@@ -797,6 +835,7 @@ def run(args):
     ):
         raise ValueError("Invalid source policy or completion token budget")
     manifest, cases = load_inputs(args.prepared)
+    graph_records, graph_config = graph_options(args, cases)
     # Each lane owns a disjoint budget and processes tasks serially. No shared
     # mutable cost counter or lock spans model calls. Unknown usage signals all
     # lanes to stop at their next call boundary; in-flight calls may complete.
@@ -821,6 +860,7 @@ def run(args):
             or parent["max_turns"] != args.max_turns
             or parent.get("source_policy", "native") != source_policy
             or parent.get("completion_tokens", 2048) != completion_tokens
+            or parent.get("graph", {**graph_config, "enabled": False}) != graph_config
         ):
             raise ValueError("Resume configuration differs from original model policy")
         resume = {
@@ -878,6 +918,7 @@ def run(args):
             "max_turns": args.max_turns,
             "source_policy": source_policy,
             "completion_tokens": completion_tokens,
+            "graph": graph_config,
             "context_safety_tokens": 120000,
             "max_cost_usd": args.max_cost_usd,
             "case_cost_usd": args.case_cost_usd,
@@ -951,6 +992,13 @@ def run(args):
                 raise ValueError(f"Source preparation failed: {source['error']}")
             repo = Path(source["repo"]).resolve()
             row["snapshot_before"] = audit_contextbench_snapshot(repo, case.base_commit)
+            graph_tool = None
+            if graph_config["enabled"]:
+                graph_record = graph_records[case.instance_id]
+                graph_tool = load_navigation(
+                    graph_record, args.graphs, repo, token_budget=graph_config["tokens"]
+                ).tool_spec()
+                row["graph_available"] = graph_record["available"]
             result = retrieve(
                 repo=repo,
                 query=case.problem_statement,
@@ -958,6 +1006,7 @@ def run(args):
                 max_turns=args.max_turns,
                 source_policy=source_policy,
                 completion_tokens=completion_tokens,
+                graph_tool=graph_tool,
             )
             messages = result.messages
             row.update(
@@ -1099,6 +1148,12 @@ def compare(args):
         manifest, cases = load_inputs(prepared)
         if digest(prepared / "manifest.json") != config["manifest_sha256"]:
             raise ValueError("Run manifest changed")
+        graph_config = config.get("graph", {})
+        if graph_config.get("prepared"):
+            graphs = Path(graph_config["prepared"])
+            if digest(graphs / "manifest.json") != graph_config["manifest_sha256"]:
+                raise ValueError("Run graph manifest changed")
+            load_graph_records(graphs, prepared, cases)
         for name, sha in config["implementation"].items():
             if digest(directory / "implementation" / name) != sha:
                 raise ValueError("Archived agent implementation changed")
@@ -1167,7 +1222,6 @@ def compare(args):
         "workers",
         "sdk_version",
         "cli_version",
-        "tools",
         "max_meter_usd",
         "case_meter_usd",
         "case_timeout",
@@ -1176,11 +1230,33 @@ def compare(args):
             raise ValueError(f"Paired policies differ in {key}")
     if left["models"] != right["models"]:
         raise ValueError("Actual model identities differ between arms")
+    left_graph = left["config"].get("graph", {"enabled": False})
+    right_graph = right["config"].get("graph", {"enabled": False})
+    policies = tuple(run["config"].get("source_policy", "native") for run in runs)
     if (
-        left["config"].get("source_policy", "native") != "native"
-        or right["config"].get("source_policy") != "functions"
+        policies == ("native", "functions")
+        and left_graph == right_graph
+        and not left_graph["enabled"]
     ):
-        raise ValueError("Expected native baseline and functions candidate")
+        contrast = "online_function_completion"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies == ("functions", "functions")
+        and not left_graph["enabled"]
+        and right_graph["enabled"]
+        and {**left_graph, "enabled": True} == right_graph
+    ):
+        contrast = "directed_graph_over_function_completion"
+        if left["config"].get("backend") == "claude-agent-sdk" and (
+            right["config"].get("tools")
+            != left["config"].get("tools", []) + ["mcp__source__graph_neighbors"]
+        ):
+            raise ValueError("Only graph_neighbors may differ between paired tools")
+    else:
+        raise ValueError(
+            "Expected native/functions or functions/directed-graph controls"
+        )
     ids = sorted(left["values"])
     comparisons = {}
     for metric in ("recall", "precision", "f1"):
@@ -1188,21 +1264,30 @@ def compare(args):
             right["values"][i][metric] - left["values"][i][metric] for i in ids
         ]
         generator = random.Random(20261016)
-        boot = sorted(
-            mean(generator.choices(differences, k=len(ids))) for _ in range(10000)
+        boot = (
+            sorted(
+                mean(generator.choices(differences, k=len(ids))) for _ in range(10000)
+            )
+            if len(ids) > 1
+            else None
         )
         comparisons[metric] = {
             "baseline": mean(left["values"][i][metric] for i in ids),
             "candidate": mean(right["values"][i][metric] for i in ids),
             "difference": mean(differences),
-            "paired_bootstrap_95_interval": [boot[249], boot[9749]],
+            "paired_bootstrap_95_interval": [boot[249], boot[9749]] if boot else None,
         }
     result = {
         "n": len(ids),
+        "contrast": contrast,
         "instance_ids": ids,
         "population": "All selected tasks; scoring failures contribute zero",
         "metric_scope": "Official cumulative observed trajectory; no Pass@1",
-        "bootstrap": {"draws": 10000, "seed": 20261016, "unit": "task"},
+        "bootstrap": {
+            "draws": 10000 if len(ids) > 1 else 0,
+            "seed": 20261016,
+            "unit": "task",
+        },
         "metrics": comparisons,
         "arms": [{k: v for k, v in run.items() if k != "config"} for run in runs],
     }
