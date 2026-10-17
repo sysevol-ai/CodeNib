@@ -126,9 +126,9 @@ retains 57.26% Recall; $23.7864 in recorded API charges makes this a strong-mode
 quality reference, not an ultra-low-cost route. The October 11 iteration is
 complete; implementation and recorded results were merged through
 [#827](https://github.com/sysevol-ai/CodeNib/pull/827). Retrieval SOTA was not
-achieved. The 32-task validation selection
-excludes all 105 prior development IDs and remains unrun, as does the full-500
-quality gate. Paired final decision selection adds essentially no gain at
+achieved. The 32-task validation selection excludes all 105 prior development
+IDs; its completed October 16 result is recorded below. The full-500 quality
+gate remains unrun. Paired final decision selection adds essentially no gain at
 16K/32K. Deterministic completion of touched callables reaches 64.97%/29.06% at
 16K and 66.95%/27.42% at 32K on the development 24; its new reads remain distinct
 from the original Opus trajectory and its intervals do not establish SOTA.
@@ -147,10 +147,16 @@ reference patch passes the same native harness. The first optional-graph
 comparison completes but makes no graph calls. The targeted-hop trial makes eight
 graph calls, returns source on three tasks, and passes its development selection
 gate: Recall 37.43% → 41.29%, F1 30.18% → 32.85%, with both intervals crossing
-zero. Its policy is frozen for the independent three-arm, 32-task validation.
-Reliable directed-graph gains, independent validation,
-the other native harnesses and full-agent outcomes remain open; no product route
-or package lifecycle is promoted.
+zero. Its frozen independent three-arm, 32-task validation rejects the candidate:
+Recall changes 69.64% → 68.76% and F1 29.01% → 26.16%. Every arm retains 31 valid
+scores and one source-preparation failure as zero. All eleven available graphs
+are called, but only six tasks receive graph source. The one independent Verified
+solver task resolves in each arm, 1/1 each; this establishes no comparative or
+population Pass@1 gain. Return to development IDs for diagnosis and require a
+new independent selection for any revised policy. Reliable directed-graph gains,
+the other native harnesses and full-agent outcomes remain open. The rejected
+policy does not advance to the official 500; no product route or package
+lifecycle is promoted.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

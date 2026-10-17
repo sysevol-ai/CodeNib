@@ -37,11 +37,11 @@ The current milestones and remaining gates are:
 
 | Milestone | Current outcome | Open gate |
 | --- | --- | --- |
-| Online source completion | The fresh eight-task SDK comparison is complete: Recall 41.13% → 41.67%, F1 33.67% → 31.91%; both paired intervals cross zero. All eight tasks scored in both arms. New source reaches the next model call, within per-response bounds. | No demonstrated online gain; continue development before consuming the independent selection. |
-| Matched experiment | `compare` requires the same input manifest, implementation, actual model, runtime and budgets; official task scores retain failures and report paired bootstrap intervals. The targeted-hop policy is frozen at `3f04993f` for independent validation. | Finish the frozen 32-task native/functions/functions-plus-graph comparison; retain failures and the complete selected population. |
-| Directed graph navigation | The optional-tool trial had zero graph calls. The targeted-hop trial calls the tool on all eight tasks and receives source on three; Recall 37.43% → 41.29%, F1 30.18% → 32.85%. Both intervals cross zero, but the declared development selection gate passes. | Independent quality validation and broader downstream outcomes; no route promotion. |
-| Complete solver | The initial attempt and a fresh matched Python development pair are unresolved. Both paired patches apply but omit a definition required by the native tests. The official reference patch passes in the same image and harness. | Broader matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no leaderboard Pass@1 claim. |
-| Leaderboard submission | Official artifact and population requirements are documented. | Verified 500, measured resolution outcomes, matched aggregation and complete artifact review. |
+| Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
+| Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
+| Directed graph navigation | The complete candidate fails the independent gate: Recall 69.64% → 68.76%, F1 29.01% → 26.16%. All eleven available graphs are called; six tasks receive source. | Return to development diagnosis before another candidate; no product promotion or full-500 launch for this policy. |
+| Complete solver | The one independent Verified task resolves in both arms, 1/1 each, with the same pinned image and native harness. Both earlier paired development attempts remain unresolved. Separate reference-patch checks pass. | Broader matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no comparative or population Pass@1 improvement established. |
+| Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
 
@@ -53,8 +53,8 @@ The evaluation sequence remains:
    development IDs. Its SHA-256 is
    `49e0370ff0f384aed1691cb8dd3f071cf900c9020fadd3608d3f1955912be64a`.
    Selection uses only metadata and a fixed seed; no reference scores or labels
-   were inspected for selection. Its frozen three-arm validation is running,
-   with scoring pending. It is
+   were inspected for selection. Its frozen three-arm validation is complete
+   and fails the independent quality gate. It is
    task-held-out rather than repository-held-out, and not a population-weighted
    500-task estimate.
    Source preparation has 31 ready cases and one unconfigured Git submodule
@@ -63,6 +63,9 @@ The evaluation sequence remains:
    cancelling unrelated cases. The retrieval prompt and graph policy remain
    byte-identical to `3f04993f`; snapshot checks are not weakened. All 32 tasks
    remain in every arm. Eleven cases have an available compiler graph.
+   The 32 tasks now remain a completed validation record. Development diagnosis
+   returns to the disclosed 105 IDs; a revised candidate requires new independent
+   task IDs and a new protocol before inference.
 3. For a SOTA claim, freeze implementation, model and evaluator versions and run
    the official verified 500. Recheck the then-current leaderboard and denominator
    conventions (the current leader has 499 valid retrieval records). Report
@@ -89,6 +92,13 @@ SDK dollar metering and account billing remain separate. Meter guards and a
 per-case timeout stop new work when a run reaches its limit; an in-flight call
 can exceed an observed guard. Unknown or invalid metering stops later cases.
 
+The completed independent retrieval arms report **$23.673179** in SDK estimates;
+their one-task paired solver check adds **$0.828001**. Across this October 16
+program, known metering totals **$41.623502**, plus one aborted development solver
+request with unknown metering. Standalone API-key inference calls and their
+charges remain zero. Actual subscription billing is unknown. The independent
+quality gate fails, so this policy does not advance to the full-500 run.
+
 The historical native search average is $0.9911/task (24 cases; median $0.690554,
 maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
 for search alone; 500 tasks cost **$495.55 per arm**, or **$991.10 for two arms**.
@@ -112,6 +122,54 @@ contrasts are explanatory ablations. A positive lower paired Recall interval and
 non-decreasing F1 point estimate are required on that primary contrast before
 further quality claims. Secondary intervals are exploratory, with no adjusted
 multiple-comparison significance claim.
+
+### Independent 32-task outcome
+
+All three arms finish with 31 `ok` cases and one `preparation_failed` case, with
+31 valid official scores and the failed preparation retained as zero. There are
+no SDK batch errors or missing usage records. Runtime `4152c23d` preserves the
+selected `3f04993f` policy; all 38 archived implementation hashes match in every
+arm. The selected population contains 23 Multi, five Poly, three Pro and one
+Verified task, so its native solver coverage is limited to one task.
+
+| Cumulative observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 69.64% | 29.01% | 29.01% | $6.740282 |
+| Online function completion | 68.56% | 24.50% | 28.22% | $8.055923 |
+| Function completion + targeted graph tool | 68.76% | 23.58% | 26.16% | $8.876974 |
+
+The primary whole-route contrast changes Recall by -0.88 points, paired 95%
+interval [-5.73, +3.59], and F1 by -2.84, interval [-4.78, -1.02]. The declared
+gate fails. The secondary graph-over-functions contrast changes Recall by only
++0.19 points and F1 by -2.05; its exploratory intervals are [-1.41, +1.62] and
+[-3.81, -0.48]. Do not infer a quality improvement from the earlier development
+gate or compare these retrieval-only scores directly with the full leaderboard.
+
+The candidate makes 35 graph calls across all 31 prepared tasks, including all
+eleven graph-available tasks. Six tasks receive source, totaling 14 source
+records. Four model calls to the tool have invalid arguments and return errors;
+these remain in the trajectories. Other explicit outcomes include unavailable
+graphs, missing definitions and source that does not fit the response budget.
+
+The one independent Verified case, `scikit-learn__scikit-learn-13142`, resolves
+in each of the two solver arms: **1/1 each**, with one attempt, five model calls,
+16K context limit, 30-step limit and $3 SDK-meter guard per arm. Native grading
+passes two required regression tests and 54 preservation tests. Both solvers
+and graders use the exact same clean source tree and pinned derived image. Its
+official parent had identical tracked content but changed file modes; a local
+no-network image layer resets only to the selected source commit. This keeps the
+strict tree check intact. The separate reference-patch check passes without
+model calls and is excluded from agent scores. Solver SDK estimates are
+$0.359556 for native and $0.468446 for the candidate. One successful independent
+task does not establish comparative Pass@1 or complete the full-agent boundary.
+
+The sanitized [32-task CSV](../assets/contextbench_independent_32.csv) and
+[protocol and summary](../assets/contextbench_independent_summary.json) preserve
+the failure, uncertainty, implementation hashes and image provenance. Local
+receipts remain in `verification/context-agent-holdout-32/`. The next development
+diagnosis should separate source added by broad grep completion from deliberate
+reads and measure relevant source per added line, using only development IDs.
+No new model batch or policy is selected from the held-out results.
 
 ### October 16 online development result
 
