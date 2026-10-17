@@ -41,7 +41,7 @@ The current milestones and remaining gates are:
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
 | Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model fixes correct 38 overlapping C++ ranges and recover compiler-backed JavaScript LSP name selections. The complete 764-file NodeBB graph makes 31,351 reference queries without errors; its two fixed queries add 132 physical lines and zero annotated lines. | Establish useful relationship selection and graph delivery across languages before another matched candidate. Nearby anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget. Active SCIP assigned-function definitions remain incomplete. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native reference/control, isolated-source reader and implemented-grader checks with no model calls. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Establish Java repair outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Establish broader matched repair outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -104,7 +104,9 @@ their one-task paired solver check adds **$0.828001**. Across this October 16
 program, known metering totals **$71.960832**, plus one aborted development solver
 attempt and one interrupted retrieval case with unknown metering. Two separately
 frozen October 17 reader-adoption checks add $0.695992 and $0.932850, bringing
-known cumulative metering to **$73.589674** with the same two historical unknowns.
+the subtotal to $73.589674. The fresh paired Gson solver check adds $1.088503,
+bringing known cumulative metering to **$74.678177** with the same two historical
+unknowns.
 Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
 quality gate fails, so this policy does not advance to the full-500 run.
@@ -733,8 +735,25 @@ both controls and parser parity. All Java readiness checks make zero model calls
 
 Jackson-databind is deferred because its pinned preparation script rewrites a
 tracked POM, conflicting with exact clean-source validation. This is a source
-inspection, not a failed runtime probe. Fresh Java repair outcomes, other Multi
-repositories, Poly/Pro harnesses and complete solver-source attribution remain open.
+inspection, not a failed runtime probe.
+
+The fresh Gson solver pair at frozen `0039b2a2` is complete under protocol
+`3e42a546571c16b1ebc33b27eff275156807b3b28348b66d21be6a9c59aa35f2`,
+with artifacts at `verification/contextbench-multiswe-gson-solver-pair-20261017/`.
+Both arms submit production-only fixes and resolve 1/1 task, passing all 96
+required test classes. The known always-failing class remains present. Source,
+image, Opus 5.5/medium, reader instructions, 16K context limit, 20 steps and $2
+SDK guards match. All eleven input receipts are confirmed, every SDK init uses
+`apiKeySource=none`, and usage is complete: $0.500642 native, $0.587861 candidate,
+$1.088503 total. All four owned containers are removed and frozen hashes match
+after grading. The separate native results never enter either solver.
+
+Each arm adopts one controlled read after an explicit usage error. Source coverage
+changes 318 → 318 and 293 → 294 lines; two/three delivered shell observations
+remain unattributed. Original retrieval had no available graph. This expands
+native pipeline coverage but shows no comparative repair or graph-source gain.
+Other Multi repositories, Poly/Pro harnesses, complete solver-source attribution
+and broader matched outcomes remain open.
 
 ### October 16 online development result
 

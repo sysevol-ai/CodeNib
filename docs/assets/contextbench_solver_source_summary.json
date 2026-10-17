@@ -89,7 +89,7 @@
   "sdk_estimate_usd": 1.6288418999999998,
   "sdk_meter_is_actual_billing": false,
   "new_api_key_charges_usd": 0,
-  "known_program_sdk_estimate_usd": 73.58967420000002,
+  "known_program_sdk_estimate_usd": 74.67817670000002,
   "historical_unmetered_attempts": 2,
   "real_reader_adoption_v2": {
     "protocol_sha256": "3a5fa6cab44908dd4a92ffeac7f57080eb7faffb0f99947b453964756d8fa3c1",
