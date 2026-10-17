@@ -507,11 +507,13 @@ builds vector/symbol-graph views through the existing compiler and registers
 `explore_context_impl` in the actual SDK loop. The adapter returns only exact
 complete projected source lines after content authentication; elided, partial
 or index-only fallback text gets no source credit. No BM25/Jev, generic storage,
-memory framework or explicit Haiku controller is added. **109 focused tests
+memory framework or explicit Haiku controller is added. **307 focused compiler/MCP/SDK tests
 pass**. The four-task pilot uses the first already exposed122 case per
 Python/JavaScript/TypeScript/Go, isolated checkouts and cached local Jina
 embeddings. Actual tool consumption and matched Recall/F1/token/cost outcomes
-remain open. Missing graph providers stay explicit; a loaded tool alone is not
+remain open. The pilot reproduces and fixes JS/TS alias-collapsed
+artifact receipt layout. SDK/CLI checks now precede indexing/model intent;
+initial preparation failures made no model request and stay retained. Missing graph providers stay explicit; a loaded tool alone is not
 an advantage. Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays

@@ -59,10 +59,13 @@ omitted, partial and index-only fallback text receives no source credit. The
 first pilot selects the first previously exposed122 task in each of Python,
 JavaScript, TypeScript and Go, without selecting by quality. It uses isolated
 source checkouts and cached local Jina embeddings, retains the same main Opus
-model/turn/$0.75 guard, and makes no repair calls. **109 focused local tests
+model/turn/$0.75 guard, and makes no repair calls. **307 focused compiler/MCP/SDK tests
 pass**; actual core-tool usage and matched pilot scores remain open. There is
 no explicit Haiku controller in this pilot; SDK auxiliary usage is not evidence
-of a context policy. No indexed-context gain is established yet.
+of a context policy. A reproduced JS/TS alias bug in compiler receipt
+layout is fixed: aliased source languages use the normalized backend layout.
+The actual execution interpreter now validates SDK/CLI availability before
+indexing or claiming a model intent; initial failures made no model request. No indexed-context gain is established yet.
 
 The user-requested interim report prospectively changes the annotation schedule:
 these122 actual-source predictions were sealed before their selected Gold was
