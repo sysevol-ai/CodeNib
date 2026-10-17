@@ -1,9 +1,11 @@
 # ContextBench retrieval experiments
 
-The October 16 independent validation **rejects the current online candidate**.
+The October 16 independent validation **rejects the earlier online candidate**.
 Function completion plus directed graph navigation does not improve Recall over
 native source tools and reduces F1. All 32 selected tasks remain in the scores.
 This policy will not advance to the official 500-task run or a product default.
+The revised first-source graph policy also fails its 24-task development gate:
+Recall rises slightly, F1 falls, and the function-only ablation is interrupted.
 
 Earlier development experiments found useful missing source by completing
 functions after search. That offline gain has not transferred to the tested
@@ -65,7 +67,61 @@ retain the negative result. Return to the development cohort for diagnosis;
 any revised candidate needs a new validation protocol and independent task IDs.
 These 32 tasks must not become a tuning set or a source of best-of retries.
 
-## Matched 24-task results
+## First-source graph policy on 24 development tasks
+
+Runtime `63e035eb` freezes three fresh arms on all 24 disclosed development tasks,
+three per language. It includes the eight earlier pilot tasks; these are not new
+independent IDs. All arms use actual Opus 5.5, 20 turns, 600 seconds, $3/case and
+$12/arm SDK-meter guards, with 2,048-token completion and graph-response budgets.
+The candidate requires a graph hop after its first callable-bearing source reply
+and prefers callable neighbors under the `unseen` policy.
+
+| Cumulative trajectory, all 24 selected tasks | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools, 24 completed | 53.35% | 31.62% | 31.18% | $5.493784 |
+| Function completion + first-source graph, 24 completed | 54.02% | 28.61% | 30.15% | $6.375578 |
+| Function completion, interrupted | 12.06% | 4.26% | 5.43% | $0.961724 known |
+
+The complete primary pair changes Recall by **+0.66 points**, paired 95% interval
+[-4.11, +5.59], and F1 by **-1.03 points**, interval [-3.71, +1.56]. The graph arm
+makes 24 calls, covering all eleven available graphs. Six tasks receive 358
+previously unseen physical source lines, including 139 annotated lines on one
+Go and two Rust tasks. Subsequent assistant turns confirm delivery. This meets
+the declared adoption and two-language novelty gates, but F1 decreases.
+Physical overlap counts include blank/comment lines and are distinct from the
+official line scores.
+
+The function-only arm completes four tasks, then requests an unregistered graph
+tool on a C task. The event normalizer aborts before the SDK's terminal usage;
+the remaining 19 tasks are not run. Four completed traces and the partial failed
+trace have valid official observations, with the 19 unstarted tasks retained as
+zero. The interrupted arm's scores are failure accounting, not an estimate of
+the completion policy or graph's marginal effect. Its missing usage remains
+unknown. The predeclared three-arm development gate fails; neither retries nor
+the later reliability smoke replace these records.
+
+Fix `25e5e31e` preserves unavailable tool attempts and SDK error replies until
+terminal usage, gives them no source credit, and includes graph instructions only
+when that arm registers the tool. Extra advertised capabilities still fail the
+tool-isolation check. A fresh eight-turn reliability check on the original C task
+finishes with a terminal result and a $0.426619 SDK estimate; it has no quality
+score and does not recover the historical missing usage.
+
+An offline preparation diagnostic explains one missing graph. The first C++
+development task, `fmtlib__fmt-2394`, has no compilation database under the
+read-only preparation policy. With the same source and 300-second bound, enabling
+project preparation in a private clone builds 8,247 nodes and 39,953 edges in
+18.18 seconds; the control returns no graph in 4.16 seconds. The original source
+remains clean. This availability check makes no model calls and does not alter
+the frozen graph artifacts or scores above. Broader graph coverage and a revised
+matched quality comparison remain open.
+
+The existing [development summary](../assets/contextbench_online_development_summary.json)
+retains all 72 task positions, intervals, failed gates, graph-source counts,
+implementation hashes and the separate reliability check. The negative independent
+32-task record remains sealed; the official 500 has not been launched.
+
+## Historical post-run 24-task results
 
 The sample contains three tasks per language, 24 repositories and eight languages,
 selected deterministically from the earlier 100-task development cohort. Every
@@ -152,9 +208,11 @@ Claude Max route with **zero standalone API-key inference calls**. Independent
 retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
 $0.828001. The later early-hop/unseen development trial adds $7.266208 for retrieval
 and $1.367794 for its paired solver check. Two later one-task graph mechanism
-versions add $0.327116. Known program metering totals
-**$50.584619**, excluding one aborted
-development solver request with no usage returned. These are not account bills;
+versions add $0.327116. The first-source 24-task attempt adds $12.831086 in known
+retrieval estimates and its separate receipt-fix smoke adds $0.426619.
+Known program metering totals **$63.842324**, excluding one aborted development
+solver attempt and one interrupted retrieval case with no terminal usage.
+These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
 fallback is enabled, and the failed quality gate does not authorize a 500-task run.
@@ -246,8 +304,8 @@ rather than a smaller local-symbol definition. Within the bounded raw-edge scan,
 function/method neighbors precede other defined symbols while preserving direction
 and edge order within each group. The current development prompt requires a hop
 after the first source reply showing a callable, including grep completion,
-before further source tools. Actual use and new source must still be checked
-in the recorded trajectory.
+before further source tools. This guidance is included only for graph-enabled
+arms. Actual use and new source must still be checked in the recorded trajectory.
 
 The experimental `--graph-source-policy unseen` skips fully observed definitions
 and returns only the missing lines of partly observed definitions when all of
@@ -297,9 +355,10 @@ meter guard, receive no selected source anchor and stay outside quality scores.
 The second version passes its declared source-observation timing and novelty
 gate, delivers 132 new annotated physical lines to a subsequent assistant turn,
 and reports $0.126101 in SDK metering. These are two versions on one development
-task, not independent quality evidence. Broader fresh matched development controls
-are still required; no new independent quality cohort is started. Both complete
-records accompany the public development summary.
+task, not independent quality evidence. The later 24-task development controls
+above establish broader tool use but fail the quality gate. Both mechanism
+records accompany the public development summary; no new independent quality
+cohort is started.
 
 Prepare graphs locally, then run two fresh `functions` arms with the same
 `--graphs` directory; add `--graph-navigation` only to the candidate. The paired
@@ -359,6 +418,15 @@ python scripts/contextbench_graph_navigation.py \
   --prepared results/contextbench-dev/prepared \
   --output results/contextbench-dev/graphs --timeout 120
 ```
+
+For a fresh graph build, `--allow-project-preparation` permits the existing
+backend's dependency and build preparation inside its disposable clone. The
+worker rejects changes to the selected commit or tracked source before publishing
+a graph; generated build files are allowed. Timeout cleanup reaps the worker
+before deleting that clone. The source checkout used by the agent stays clean.
+The option defaults off, is recorded with the timeout in the graph manifest,
+and cannot be combined with `--reuse-cohort`. Freeze these new artifacts before
+any matched inference; they do not revise earlier results.
 
 `scripts/benchmark_context_solver.py` provides an initial downstream adapter for
 **SWE-bench Verified only**. It runs the pinned upstream mini SWE-agent loop with
@@ -420,11 +488,13 @@ text, prompts, provider identifiers and credentials. The raw local receipts rema
 under ignored `verification/` directories; these summary exports are not a complete
 official submission artifact bundle.
 
-The October 16 online comparison has a separate
+The initial October 16 online comparison has a separate
 [eight-task CSV](../assets/contextbench_online_development_8.csv) and
 [protocol, metering and paired-interval summary](../assets/contextbench_online_development_summary.json).
 They retain the negative result and exclude prompts, source excerpts, account
-identities and provider request identifiers.
+identities and provider request identifiers. The summary also contains the later
+24-task first-source trial, including its interrupted function-only arm; the
+eight-task CSV remains the original comparison.
 
 The dataset revision is `c2855792b006af41c67202d33883fb9d46362853` and evaluator
 revision is `1436c28a8eb95496da4ea69ad458b9f8a8eb7d61`. The recorded native and
