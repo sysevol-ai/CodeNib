@@ -54,6 +54,18 @@ keep the native config path. Focused regression and SCIP/compiler unit checks
 cover these boundaries; this does not promote a backend or regenerate hosted
 graph artifacts.
 
+Assigned JavaScript function selection in the existing LSP route is corrected
+in draft [#834](https://github.com/sysevol-ai/CodeNib/pull/834). When
+`typescript-language-server` drops a compiler name span before its initializer,
+reference lookup otherwise queries the function body and can return no results.
+The shared LSP client recovers only an unambiguous TypeScript `navtree` name span
+with an exact name/body match, and only when the server advertises the command.
+Existing LSP indexing and incremental updates consume the corrected selection;
+unavailable, stale or conflicting compiler evidence keeps the original symbol.
+The regression reproduces the old failure; 206 related tests pass. This fixes
+LSP selection, while the active SCIP provider's missing property-assignment
+definitions remain a separate limitation. No backend or schema is promoted.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:

@@ -262,9 +262,35 @@ none within 64 lines. These windows do not justify a new delivery policy. The
 JavaScript file has 36 defined field nodes and 42 references owned by its file
 node. Its compiler index lacks callable definitions for the assigned functions;
 the chunker already supports their syntax. Adding inferred call edges would not
-repair that compiler evidence gap. Useful graph delivery across languages and
-JavaScript definition coverage remain open. The linked summary includes this
-diagnostic's hashes and aggregate evidence; it adds no model calls or API spend.
+repair that compiler evidence gap. The linked summary includes this diagnostic's
+hashes and aggregate evidence; it adds no model calls or API spend.
+
+A compiler-only JavaScript follow-up separates that SCIP limitation from a
+second problem in the existing LSP route. Identical syntax fixtures under three
+project configurations reproduce missing assigned callable definitions in
+`scip-typescript` 0.4.0. The TypeScript 5.9.3 language service can resolve the
+NodeBB functions, but `typescript-language-server` 5.3.0 drops a function's name
+span when it precedes the initializer, making reference lookup query the body
+instead. The LSP client now recovers that span through the server's advertised
+`navtree` command, requiring an exact name/body match and an unambiguous compiler
+name span. Missing, stale or conflicting evidence retains the original symbol.
+This serves existing LSP indexing and incremental updates; it neither changes
+the active JavaScript SCIP route nor synthesizes relationships.
+
+The complete existing LSP route processes all 764 original source files,
+including tests, and 31,351 reference requests in 377.57 seconds with no request
+errors or timeouts. A private clone uses a generated `allowJs` source list and
+the observed TypeScript version is pinned; original source and runtime hashes
+remain unchanged. The two targets have 26 and 18 compiler reference locations.
+Replaying the original queries and message prefixes at the same 2,048-token
+budget adds 132 unique physical lines and **zero annotated lines**, matching the
+earlier partial probe. Even omitted neighbor ranges contain no unseen annotated
+lines, so this result does not support increasing that delivery budget. The
+summary retains the initial cleanup/PATH failures separately from the accepted
+complete graph. The old-selection regression is reproduced and 206 related
+tests pass. Useful relationship selection across languages and the active SCIP
+definition gap remain open; this correction adds no model calls or API spend
+and establishes no online quality gain.
 
 ## Historical post-run 24-task results
 

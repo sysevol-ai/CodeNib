@@ -1949,5 +1949,294 @@
     },
     "outcome": "38 ranges shrink across three C++ graphs, with identical compiler identities, selection points and edges. The changed late C++ query selects the observed constructor instead of rgb; it has no returned neighbors. No query gains physical or annotated source. Eight of nine replies stay identical. No online quality claim, relaxed gate, or full-500 launch.",
     "limits": "Smallest containing parsed span does not repair every macro parse error. JavaScript callable definition coverage and useful multi-language graph delivery remain open. Prior failed gates and official scores stay unchanged."
+  },
+  "posthoc_commonjs_diagnostic": {
+    "scope": "Post-hoc compiler-only diagnosis on a disclosed JavaScript development task. A complete existing LSP route and original fixed-query replay, not a new online outcome or a backend promotion.",
+    "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+    "source_commit": "1e137b07052bc3ea0da44ed201702c94055b8ad2",
+    "model_calls": 0,
+    "additional_API_spend_usd": 0,
+    "protocols": {
+      "synthetic": "177eb1f1d5af050c4b653e59eda99abf53dc9bfbbff1e66b4f988d47ede5c8ee",
+      "compiler_source_inventory": "cdafe3f472ef62e7be6212cc10a2a4e0054e2b156b155147fac1b3a91bbf800b",
+      "partial_runtime_probe": "03b1e8a2d778c55fc3c68a90d21e8986edcb2380374072ce3299ad5d24320779",
+      "full_lsp": "ac2d1a0a2d2139811f5ab9972b5e4fc88b5b8aac982d17a4a885b02ed00c703b",
+      "fixed_query_replay": "ff088e2af1941a2731433395aec8f8bd46a19e7d538c822a5a76d1848f9f9065",
+      "canonical_gold": "680fae306f038de45ff8af9dd8113f4ca9a3bde4f318703f47fa682d2e88af21"
+    },
+    "synthetic": {
+      "provider": "scip-typescript 0.4.0 / TypeScript 5.9.3",
+      "configuration_count": 3,
+      "source_file_count": 8,
+      "outcomes": [
+        {
+          "configuration": "no_package_inferred",
+          "index_sha256": "cf9cf95d35378c20c5b7962b5eee2ecdc91c13cc9eb78fd9c36725035ebf483c",
+          "body_node_types_by_file": {
+            "alias.js": [],
+            "declaration.js": [
+              "function"
+            ],
+            "variable.js": [
+              "field"
+            ],
+            "exports.js": [],
+            "module.js": [],
+            "object.js": [],
+            "caller.js": [],
+            "class.js": [
+              "class",
+              "method"
+            ]
+          }
+        },
+        {
+          "configuration": "package_inferred",
+          "index_sha256": "fffd42bc732b828226f7996c6e9c9e9ffc83c5771231d0b61a27df6d78664c51",
+          "body_node_types_by_file": {
+            "alias.js": [],
+            "declaration.js": [
+              "function"
+            ],
+            "variable.js": [
+              "field"
+            ],
+            "exports.js": [],
+            "module.js": [],
+            "object.js": [],
+            "caller.js": [],
+            "class.js": [
+              "class",
+              "method"
+            ]
+          }
+        },
+        {
+          "configuration": "package_checked_commonjs",
+          "index_sha256": "5969878567be8d15b186ea4a727ca79c7338916b9721b610fe6f2127427c4e90",
+          "body_node_types_by_file": {
+            "alias.js": [],
+            "declaration.js": [
+              "function"
+            ],
+            "variable.js": [
+              "field"
+            ],
+            "exports.js": [],
+            "module.js": [],
+            "object.js": [],
+            "caller.js": [],
+            "class.js": [
+              "class",
+              "method"
+            ]
+          }
+        }
+      ],
+      "interpretation": "Assigned exports/module/alias functions lack callable definitions under all three configurations. Function declarations and classes work. Variable-held arrows have enclosing source but are classified as fields; that separate SCIP decoder issue remains open."
+    },
+    "repair": {
+      "consumer": "Existing shared LSP client, generic LSP graph route and TypeScript incremental patching",
+      "rule": "Use advertised TypeScript navtree only for callable symbols with whole-body fallback selections. Recover one compiler name span with the exact same name/body; retain originals for missing, stale or ambiguous compiler evidence.",
+      "runtime": {
+        "codenib/graph/incremental/lsp_client.py": "6f18d5a88b582edd7f51f488c8856caa5c3b6150193f56965310ff5fa8bf4a43",
+        "codenib/graph/incremental/typescript_symbols.py": "d8efd6b307bad11960ca461f907267b6add2c2be4578e45979c80036da9a596b",
+        "codenib/ls_index/lsp_graph_decode.py": "24bf6da5ad8f0b62344b1933413fe7eac95da3aa69b1c33b5e20137643067202",
+        "codenib/ls_index/lsp_indexer.py": "454400e1cabbe3ee1ba2edc42bfc445b1cfbc549648822283a2503835f707b80"
+      },
+      "schema_changed": false,
+      "default_backend_changed": false
+    },
+    "full_graph": {
+      "state": "finished",
+      "wall_seconds": 377.565759368008,
+      "counts": {
+        "initialize": 1,
+        "textDocument/documentSymbol": 766,
+        "textDocument/references": 31351,
+        "workspace/executeCommand": 709,
+        "document_symbol_calls": 764,
+        "documents_completed": 764,
+        "shutdown": 1,
+        "null_response:shutdown": 1
+      },
+      "request_errors": [],
+      "actual_compiler_versions": [
+        {
+          "jsonrpc": "2.0",
+          "method": "$/typescriptVersion",
+          "params": {
+            "version": "5.9.3",
+            "source": "user-setting"
+          }
+        }
+      ],
+      "nodes": 32077,
+      "edges": 78129,
+      "graph_sha256": "77400bb7ab1d33921609ca86e99360a3452ffc4c07a25501060b940f2d131fa2",
+      "server": "typescript-language-server 5.3.0",
+      "compiler": "TypeScript 5.9.3; actual initialized version confirmed",
+      "source_files": 764,
+      "preparation": "Private clean clone; allowJs tsconfig lists exactly the prior SCIP document inventory, including tests. No dependencies installed; generated config removed before clone audit.",
+      "runtime_and_source_unchanged": true,
+      "raw_index_sha256": "7ed866659ddc9c08623196ec26c2dc982194fe3351b82d18c4325b7342012899",
+      "execution_sha256": "7bcde1070ceabc5045fb322c3c2d7476fcc4fddd198e47755b0c87204922592f",
+      "target_reference_locations_by_definition_line": {
+        "190": 26,
+        "47": 18
+      }
+    },
+    "partial_probe": {
+      "scope": "All document symbols, but only the two target reference queries. Preserved as a partial mechanism probe, not a full prepared graph.",
+      "reference_locations": [
+        26,
+        18
+      ],
+      "full_graph_replies_match_partial": true
+    },
+    "replay": {
+      "original_responses_exactly_reproduced": 2,
+      "source_policy": "unseen",
+      "token_budget": 2048,
+      "new_physical": 132,
+      "new_annotated": 0,
+      "new_annotated_absent_native": 0,
+      "queries": [
+        {
+          "arguments": {
+            "file_path": "src/user/email.js",
+            "line": 194,
+            "direction": "incoming",
+            "limit": 10
+          },
+          "same_as_partial_probe": true,
+          "new_physical": 102,
+          "new_annotated": 0,
+          "new_annotated_absent_native": 0,
+          "neighbors": [
+            {
+              "node_id": "src/api/users.js:addEmail():414",
+              "file": "src/api/users.js",
+              "status": "source_returned",
+              "range": [
+                415,
+                427
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 13
+            },
+            {
+              "node_id": "src/user/interstitials.js:email().callback():49",
+              "file": "src/user/interstitials.js",
+              "status": "source_returned",
+              "range": [
+                50,
+                141
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 89
+            },
+            {
+              "node_id": "test/api.js:describe('API') callback().setupData():180",
+              "file": "test/api.js",
+              "status": "source_not_returned",
+              "range": [
+                181,
+                325
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 144
+            },
+            {
+              "node_id": "test/authentication.js:describe('authentication') callback().it('should be able to login with email') callback():465",
+              "file": "test/authentication.js",
+              "status": "source_not_returned",
+              "range": [
+                466,
+                473
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 8
+            },
+            {
+              "node_id": "test/controllers.js:describe('Controllers') callback().before() callback():35",
+              "file": "test/controllers.js",
+              "status": "source_not_returned",
+              "range": [
+                36,
+                58
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 23
+            }
+          ]
+        },
+        {
+          "arguments": {
+            "file_path": "src/user/email.js",
+            "line": 48,
+            "direction": "incoming",
+            "limit": 10
+          },
+          "same_as_partial_probe": true,
+          "new_physical": 119,
+          "new_annotated": 0,
+          "new_annotated_absent_native": 0,
+          "neighbors": [
+            {
+              "node_id": "src/user/interstitials.js:email():22",
+              "file": "src/user/interstitials.js",
+              "status": "source_returned",
+              "range": [
+                23,
+                145
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 119
+            },
+            {
+              "node_id": "test/authentication.js:describe('authentication') callback().it('should register and login a user') callback().request() callback().request.post(`${nconf.get('url')}/register`) callback():132",
+              "file": "test/authentication.js",
+              "status": "source_not_returned",
+              "range": [
+                133,
+                155
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 22
+            },
+            {
+              "node_id": "test/controllers.js:describe('Controllers') callback().describe('registration interstitials') callback().describe('email update') callback().it('should successfully issue validation request if the correct password is passed in') callback():550",
+              "file": "test/controllers.js",
+              "status": "source_not_returned",
+              "range": [
+                551,
+                575
+              ],
+              "missing_annotated": 0,
+              "missing_annotated_absent_native": 0,
+              "missing_physical_lines": 24
+            }
+          ]
+        }
+      ]
+    },
+    "preserved_attempts": [
+      "The first partial probe failed its private-clone audit because the generated tsconfig had not been removed. Its artifact is not accepted as a complete graph.",
+      "The first full-route attempt could not resolve the managed LSP server from PATH. The accepted run explicitly names the installed server and pins the observed compiler version."
+    ],
+    "verification": {
+      "old_selection_regression_reproduced": true,
+      "related_unit_passed": 206
+    },
+    "outcome": "Compiler-backed reference coverage is recovered, but the same original two queries add no annotated source under the unchanged delivery policy. Omitted neighbor ranges also contain zero unseen annotated lines, so this diagnosis does not support a larger graph budget. Correctness is established, not a new online quality gain. Failed quality gates and the sealed independent 32 remain unchanged; official 500 is not launched.",
+    "open_gate": "Establish useful relationship queries and multi-language delivery before a newly frozen matched candidate. Active SCIP assigned-function coverage, broader repository validation and downstream repair effects remain open."
   }
 }

@@ -198,11 +198,20 @@ reproduces all nine replies and three cached C++ graphs. Choosing the smallest
 containing parsed range fixes 38 clangd graph spans without changing compiler
 identities or edges. The affected query now selects the observed constructor,
 but adds no source; eight replies remain identical. Nearby reference windows
-provide little unseen source, and the JavaScript compiler index lacks the
-assigned-function definitions despite chunker support. Useful graph delivery
-across languages and provider definition coverage remain open; no new independent
-or official-500 run follows. The shared clangd materializer gains this correctness
-fix without a new parser, route, schema or benchmark-label dependency. The fmt pilot now
+provide little unseen source. A separate JavaScript fixture reproduces missing
+assigned-function definitions in SCIP under three project configurations.
+The existing LSP route also loses compiler name spans before function
+initializers; the shared client now recovers them through advertised `navtree`
+support with exact, unambiguous name/body matches. A complete 764-file NodeBB
+graph makes 31,351 reference queries without errors and recovers 26/18 references
+for the two previously queried targets. Their unchanged fixed-query replay adds
+132 physical lines but no annotated source; omitted neighbor ranges also have
+no unseen annotations. This supports neither a larger graph budget nor an online
+quality claim. Useful relationship selection across languages and active SCIP
+definition coverage remain open; no new independent or official-500 run follows.
+The shared clangd and LSP consumers gain correctness fixes with 206 related LSP
+tests passing, without a new parser, route, schema or benchmark-label dependency.
+The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair
 resolves one C++ task in both arms, 1/1 each, passing 18 tests with ten confirmed
