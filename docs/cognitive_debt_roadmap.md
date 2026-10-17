@@ -480,18 +480,32 @@ labels/newcalls. Model/prompt/source/compiler/budget/statisticalgate unchanged;
 originalstrictgate staysfailed. Reuse242qualifiedprefixes/56pairs,retain1original
 failedzero/unmeteredcase andall500denominators,continueonly257unclaimed IDs.
 
-The **2026-10-17 20:28 UTC** snapshot has **122/257** accepted, **135** remaining
-and **365/500 native records**; known new Max nominal is **$46.58501650**, plus
-one original unknown terminal. New API/Batch/count/repair additions are zero.
-Interim protocol `853d663c` seals all122 completed native predictions before
-selected annotation access and scores **122/122 valid**: line Recall **76.81%**,
-F1 **39.00%**. This completion-order baseline covers four languages/16 repository
-clusters, not a candidate comparison, all500 score or leaderboard rank. Local
-scoring makes zero model/API calls. The original all500-before-first-new-Gold
-schedule is prospectively superseded and must not be claimed to pass. Runtime
-gold stays empty; source/model/compiler/population/budgets remain frozen and
-cannot use interim scores. Source gaps remain and all3 cohorts stay sealed.
-Per-case intent prevents relaunch; unexpected receipts stop later dispatch.
+All500 native records are terminal and source-sealed under protocol `f7057ac6`:
+499 valid and the one original failed empty-source case, retained as zero in the
+fixed500 denominator. Line task-macro Recall/precision/F1 are72.83%/27.97%/33.95%
+across eight languages/59 repository clusters. This is basic read/grep/glob, not
+an indexed-context gain or independent validation. Prior122 annotation access is
+disclosed; the original all500-before-first-Gold schedule was not followed.
+The CLI's unchanged micro summary is retained separately, not confused with task
+macro. Native selected known Max nominal usage is91.1558898USD plus the original
+unknown terminal; this is not an API cash bill.
+
+The SDK adapter now validates exact typed budget terminals after post-result
+exceptions, with60 relevant tests. The historical214-case continuation's strict
+failure remains; a pinned-SDK source-only replay qualifies its saved terminal
+without altering messages/cost or retrying. Immutable `fdb6b9ee` under protocol
+`1cda4a24` runs only43 never-claimed cases, all43 accepted with known usage and
+Max included receipts,8.5949313USD nominal/zero API. All500 cases and source gaps
+remain. All three32 cohorts stay sealed; no failed-case retry or443-consumer
+restart occurs. The earlier122-only baseline remains76.81%/39.00% Recall/F1,
+but is not a representative substitute for the full population.
+
+The pinned public submission also re-scores all500 locally on the exact same
+Gold/source/environment: line Recall/F1 is75.30%/25.70%, compared with native
+72.83%/33.95% including its original zero-source failure. Recall is2.46points
+lower and F1 is8.25points higher. Local validity is500/500 versus499/500. These
+are different model/harness systems and context-only versus repair workflows,
+not a core enhancement ablation, matched-cost result or current rank.
 
 Public leader predictions match all122 IDs. The same local Gold, snapshots and
 official environment score122valid on both sides: native line Recall/F1
@@ -519,19 +533,26 @@ cold preparation costs; no favorable subset or independent-gate claim.
 Independent main-based draft [#835](https://github.com/sysevol-ai/CodeNib/pull/835)
 fixes exact query-symbol preservation and named-route source admission.
 105 focused tests and same-query/index/source/budget replay pass without new
-model/Gold calls. The original trajectories remain unchanged. The next labs
-policy appends bounded, source-authenticated reference metadata after reads and
-uses existing context tools for on-demand bodies. It adds no source merely for
-volume, runtime/test coverage claims, generic memory framework or new persistence.
-Actual metadata replay preserves official source geometry; its outputs are not
-claimed as historical model inputs. Real matched development scoring remains
-open; warm cache latency/cost stays separate from the recorded cold builds.
+model/Gold calls. The original trajectories remain unchanged. The actual
+metadata-after-read development iteration at `7db07141` combines that fix with
+bounded authenticated compiler-reference hints and on-demand source bodies.
+All4/4 cases per arm are valid, with thirteen actual graph-hint deliveries and
+two unavailable-graph notices. Recall declines71.61%→68.24% versus native while
+F1 rises33.68%→40.60%; source lines fall3,209→2,693 and Max nominal usage is
+1.0819325USD. Only graph-unavailable Go calls the core tool, once. Reject this
+policy for the Recall-first objective; no expansion or causal/independent gain
+claim. Latest89 relevant tests pass, as do pinned hooks/strict MkDocs/public-docs
+boundary checks. No API or repair calls. Warm exact-case cache preparation is
+reported separately from original cold index builds, including Python's graph
+timeout. Further work must improve useful discovery and source selection; adding
+reference counts alone does not establish that outcome. No new generic memory,
+archive or persistence framework is authorized by this experiment.
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays
 59.09398873USD under100USD, leaving40.90601127USD with the former40USD reservation
 released. Historical calls/costs and all three sealed32 cohorts are retained.
-Native500 remains a frozen control; final scoring must disclose earlier122-case
+Native500 remains a frozen control; completed scoring discloses earlier122-case
 annotation access and the original failed case. Formal native outcomes/raw
 submission archives remain later gates; no new repair batch follows.
 Partial archives retain243 ended native attempts (including the interrupted
@@ -539,13 +560,13 @@ one) and112 consumed standard Messages,796members/713unique paths in seven gzip
 parts totaling11,568,526bytes, each below50MiB, round-trip verified. Remaining
 native/control-evaluation/outcome archives and publication review stay open;
 no cancelled443 Batch archive is required. All500 evaluator source targets match
-recorded snapshots, including119retained aliases. This is not complete500
-quality or proof of indexed context gains.
+recorded snapshots, including119retained aliases. Complete500 baseline scoring is separate from archival completeness and provides
+no proof of indexed context gains.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
-53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates
-(Python 194, JavaScript 36, TypeScript 40, C 3, Go 18 and Rust 1) and 623 additional
-default-only candidates. Known IDs, original issue identities and exact source
+53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. An earlier metadata-only audit counted292 verified and623 additional default-only
+candidates before whole500 annotation access. Those untouched-pool counts are now
+stale; refresh exposure and alias metadata before any independent selection. Known IDs, original issue identities and exact source
 commits are excluded across aliases. All three validation cohorts stay sealed;
 future independent population choices remain open; current500 baseline completion,
 actual indexed-context validation and formal submission gates remain open. No product lifecycle
