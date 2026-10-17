@@ -85,9 +85,79 @@ input tokens; both arms share source and SDK-meter limits, rather than identical
 total input-token counts. Six fresh attempts cover the already disclosed Pylint,
 ponyc and fmt tasks; they reuse existing retrieval, with no new API-key inference.
 The Max SDK reservation is $17. Pylint's pinned source tree matches, and its
-separate empty/reference controls fail/pass all 21 required native tests; that
-native task has no preservation-test list. No reference patch or grading feedback
-enters a solver. This ablation is running and has no quality conclusion yet.
+separate empty/reference reports mark all 21 required labels unresolved/resolved;
+that native task has no preservation-test list. The collection-error diagnostic
+below qualifies this readiness check. No reference patch or grading feedback
+enters a solver. All six attempts and native grades are now complete:
+
+| Repeated development task | Source only | Source plus notes | Source SDK estimate | Notes SDK estimate |
+| --- | --- | --- | ---: | ---: |
+| Pylint, Python | Collection error | Collection error | $0.448441 | $0.867652 |
+| ponyc, C | Budget error; captured patch fails tests | Budget error; patch conflicts with native tests | $3.207922 | $3.192637 |
+| fmt, C++ | Resolved | Patch conflicts with native tests | $0.386881 | $0.954843 |
+| All three selected tasks | **1/3** | **0/3** | **$4.043244** | **$5.015131** |
+
+Notes cost 24.0% more in repair SDK estimates and do not improve resolution.
+Stop this handoff policy. The completed ablation costs **$9.058375** in Max SDK
+estimates, with zero new API-key inference calls and zero missing usage. All
+frozen hashes, identical source receipts, initial prompts differing only by the
+notes/advisory block, native outcomes and owned-container absence verify. Both C
+budget errors remain errors; their executed patches were captured and graded.
+These are repeated development tasks, not independent evidence.
+
+A read-only failure audit limits what those unresolved reports establish. Both
+Pylint attempts collect zero tests: the native test patch imports `IS_PYPY`,
+which is absent at the base and introduced by the official reference production
+patch. The earlier empty/reference false/true check therefore did not establish
+an executable behavioral baseline. Both Multi notes patches conflict with the
+native test patches before tests execute. The source-only ponyc patch does run
+1,017 tests, with 1,006 passing and 11 failing. Keep all original outcomes and
+selected denominators; do not label collection or patch-application failures as
+proof that the production fix is wrong. Native fixture readiness and patch
+application need a separate prospective protocol before broader quality claims.
+
+## Low-cost Haiku repair control
+
+The next screen uses the explicitly selected `claude-haiku-5-5` through the
+first-party API, with a **$1 total SDK reservation**, $0.10 per-attempt guards
+and $0.06 per-attempt dispatch headroom. Model availability is verified without
+inference. The API route cannot fall back to Max or another model.
+
+Six fresh attempts compare the same three disclosed tasks with an empty initial
+source list or the frozen native 16K source. Issue, prompt templates, images,
+20 turns, medium effort and 4,096 output-token ceiling match. Both arms may
+inspect the checkout. Notes, graph and reranking are absent; independent32 stays
+sealed. Frozen upstream retrieval used Opus, so repair cost and allocated
+pipeline cost must be reported separately. All six repair attempts and native
+reports complete for **$0.26029216** across 55 SDK queries, with no missing usage.
+Actual model, first-party route, frozen hashes, initial prompts differing only
+by source availability and owned-container absence all verify.
+
+| Haiku control, all three selected tasks | Native resolved | Repair SDK queries | New repair API SDK estimate | Allocated pipeline usage estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Issue only | 1/3 | 35 | $0.130250 | $0.130250 |
+| Frozen native source | 1/3 | 20 | $0.130042 | $0.683119 |
+
+Both C++ patches pass native resolution. In C, issue-only passes 1,006 of 1,017
+tests and fails 11; source passes 1,010 and fails seven. Both remain unresolved;
+the source arm retains its metered budget error and captured patch. Both Python
+attempts hit the same `IS_PYPY` collection error diagnosed above. All selected
+positions stay counted; the reports do not establish three valid behavioral
+comparisons.
+
+The resolution gate fails. Fewer repair queries and four fewer C test failures
+are narrow development diagnostics, not independent or stable gains. The reused
+Opus retrieval costs $0.55307720 across these tasks and is allocated only to the
+source pipeline arm; it is not charged again in program totals. Including it
+removes any pipeline-cost saving. Haiku makes the screen cheap, but a cheap
+full retrieval/repair pipeline and qualified native fixtures still need evidence.
+Do not advance this policy to independent32, official500 or a product default.
+
+For prompts of at most 100,000 tokens, Haiku 5.5's standard input/output prices
+are $0.10/$0.50 per million tokens, one-fortieth of Opus 5.5's $4/$20. Prompts
+above that threshold use Haiku's higher $0.50/$2.50 rates. Token prices do not
+establish cost per resolved issue. See the [official Haiku specifications](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
+and [pricing](https://platform.claude.com/docs/en/about-claude/pricing).
 
 ## Online grep/Jev on eight development tasks
 
@@ -810,22 +880,34 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-Completed October 16–17 batches through the read-hint repairs record
-**$103.44348060** in known Claude Max SDK estimates and **$10.32968070** in
-direct Anthropic SDK estimates, totaling **$113.77316130** across main-model
-routes. This excludes the in-flight retrieval-notes ablation. Two historical
-attempts remain unmetered: one aborted solver and one interrupted retrieval case.
-The earlier C graph-arm receipt correction recovers its preserved terminal event
-without replacing or rerunning that failed attempt.
+The current Claude SDK/Jev experiment ledger, through the completed Haiku
+repair screen, has the following known usage values. This table excludes the
+historical OpenRouter reference and decision controls above; their recorded
+costs remain separate. Actual account charges and credit deductions have not
+been reconciled.
+
+| Route | Known usage value | Billing interpretation |
+| --- | ---: | --- |
+| Direct Anthropic main-model SDK | $10.58997286 | API estimate; promotional-credit deduction unverified |
+| Separate Jev decisions | $0.053198712 | Metered API receipts |
+| **Combined API usage** | **$10.643171572** | **Usage value, not confirmed cash spending** |
+| Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
+
+Main-model SDK estimates across both routes sum to $123.09182846; that mixed-route
+sum is not a cash-spending total. Two historical attempts remain unmetered: one
+aborted solver and one interrupted retrieval case. The earlier C graph-arm
+receipt correction recovers its preserved terminal event without replacing or
+rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **281 Jev requests** for **$0.053198712**.
-Known API usage value totals **$10.382879412**. Session counts are distinct from
-individual API request counts. The latest read-hint retrieval control costs
+Known API usage value totals **$10.643171572**, including the Haiku repairs.
+The 48 retrieval sessions and 55 new repair SDK queries are distinct from
+individual underlying API request counts. The latest read-hint retrieval control costs
 **$4.848424762** against its $10 reservation; its four Max repairs add
 **$6.03557620**. No completed-batch usage is missing beyond the two historical
-unknowns. The notes ablation reuses existing retrieval and has a separate $17
-Max SDK reservation, with no new API-key inference.
+unknowns. The completed notes ablation adds $9.058375 in Max SDK estimates
+against its $17 reservation, with no new API-key inference.
 
 These are usage estimates and decision receipts, not reconciled account bills.
 Remaining promotional credit, subscription billing and account-level extra usage

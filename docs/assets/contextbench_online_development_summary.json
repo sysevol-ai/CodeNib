@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 113.7731613,
+    "known_sdk_reported_estimate_usd": 123.09182846,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Completed October 16–17 batches through the read-hint repairs, excluding the new in-flight retrieval-notes repair ablation. SDK estimates span subscription and direct API routes and exclude separate Jev decision receipts. The same two historical attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
+    "scope": "Current Claude SDK/Jev experiment ledger through completed Haiku repair/native reports. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2803,17 +2803,19 @@
     "jev_rerank_api_cost_usd": 0.025743857999999994,
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
-    "known_claude_max_sdk_estimate_usd": 103.4434806,
-    "known_anthropic_api_sdk_estimate_usd": 10.3296807,
-    "standalone_api_call_count_scope": "Jev decision requests only; direct Anthropic main-model use is recorded separately as SDK sessions, not individual API requests.",
-    "anthropic_api_sdk_sessions": 48,
-    "known_combined_api_usage_value_usd": 10.382879412,
+    "known_claude_max_sdk_estimate_usd": 112.5018556,
+    "known_anthropic_api_sdk_estimate_usd": 10.589972860000001,
+    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 48 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
+    "anthropic_api_sdk_sessions": 103,
+    "known_combined_api_usage_value_usd": 10.643171572,
     "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
     "online_grep_jev_decision_api_cost_usd": 0.00552048,
     "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413,
     "online_grep_hints_retrieval_api_sdk_estimate_usd": 4.8388315,
     "online_grep_hints_decision_api_cost_usd": 0.009593262,
-    "online_grep_hints_repair_max_sdk_estimate_usd": 6.0355762
+    "online_grep_hints_repair_max_sdk_estimate_usd": 6.0355762,
+    "retrieval_notes_repair_max_sdk_estimate_usd": 9.058375,
+    "haiku_repair_api_sdk_estimate_usd": 0.26029216
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -23224,7 +23226,7 @@
     }
   },
   "retrieval_notes_development": {
-    "status": "Frozen and running, no quality result yet.",
+    "status": "Complete: source 1/3, notes 0/3; reject the notes handoff policy.",
     "protocol_sha256": "aa6e6148a22646727666108d39dd08b7b6584c5e4f80b04285d5a62b9fc8932e",
     "implementation_commit": "33d027dbd91f53a15e105fc4236712d34976fd30",
     "scope": "Three repeated development tasks (Pylint Python, ponyc C, fmt C++), six fresh repair attempts on shared frozen native retrieval. No new retrieval calls or independent Pass@1 claim.",
@@ -23244,7 +23246,515 @@
       "empty_control_native_failures": 21,
       "reference_control_native_passes": 21,
       "preservation_tests_in_native_task": 0,
-      "reference_production_patch_excluded_from_solver_inputs": true
+      "reference_production_patch_excluded_from_solver_inputs": true,
+      "behavioral_baseline_executable": false,
+      "collection_error": "Native test patch imports IS_PYPY, absent at the base and supplied by the official reference production patch."
+    },
+    "analysis": {
+      "scope": "Three repeated development tasks, shared frozen native retrieval, fresh matched repair attempts. Handoff ablation, not independent Pass@1 or new ContextBench retrieval scores.",
+      "protocol_sha256": "aa6e6148a22646727666108d39dd08b7b6584c5e4f80b04285d5a62b9fc8932e",
+      "implementation_commit": "33d027dbd91f53a15e105fc4236712d34976fd30",
+      "rows": [
+        {
+          "task": "pylint",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "arm": "source",
+          "status": "Submitted",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "model_calls": 6,
+          "repair_sdk_usd": 0.44844080000000003,
+          "known_repair_sdk_usd": 0.44844080000000003,
+          "missing_metering_calls": 0,
+          "shared_retrieval_api_sdk_usd": 0.10044059999999999,
+          "allocated_pipeline_meter_usd": 0.5488814,
+          "notes_tokens": 0,
+          "notes_truncated": false,
+          "initial_base_source_lines": 224,
+          "base_source_line_count": 224,
+          "new_original_source_lines": 0,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "repair_wall_s": 65.67515322298277,
+          "grading_wall_s": null,
+          "model_patch_sha256": "45c8b21e12c5c64b73db309c222369cd243e219ecc781fc428f050c9eb4b22a2"
+        },
+        {
+          "task": "pylint",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "arm": "source-notes",
+          "status": "Submitted",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "model_calls": 9,
+          "repair_sdk_usd": 0.8676517000000001,
+          "known_repair_sdk_usd": 0.8676517000000001,
+          "missing_metering_calls": 0,
+          "shared_retrieval_api_sdk_usd": 0.10044059999999999,
+          "allocated_pipeline_meter_usd": 0.9680923000000001,
+          "notes_tokens": 827,
+          "notes_truncated": false,
+          "initial_base_source_lines": 224,
+          "base_source_line_count": 224,
+          "new_original_source_lines": 0,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "repair_wall_s": 129.90341635595541,
+          "grading_wall_s": null,
+          "model_patch_sha256": "e547d89f3eb9d8fd8eefffd8b1af190bdee58a1a2757b16f9064ef49c2e509af"
+        },
+        {
+          "task": "ponyc",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "arm": "source",
+          "status": "error",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "model_calls": 12,
+          "repair_sdk_usd": 3.2079216000000006,
+          "known_repair_sdk_usd": 3.2079216000000006,
+          "missing_metering_calls": 0,
+          "shared_retrieval_api_sdk_usd": 0.33174750000000003,
+          "allocated_pipeline_meter_usd": 3.5396691000000007,
+          "notes_tokens": 0,
+          "notes_truncated": false,
+          "initial_base_source_lines": 1302,
+          "base_source_line_count": 1302,
+          "new_original_source_lines": 0,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "budget_exhausted": true,
+          "solver_container_removed": true,
+          "repair_wall_s": 154.74466425401624,
+          "grading_wall_s": 90.64230875403155,
+          "model_patch_sha256": "855a0cd6457d0cd7fa0b5214c35607d9eb1559120a8cf9c2a9a38a4dd5cfbae8"
+        },
+        {
+          "task": "ponyc",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "arm": "source-notes",
+          "status": "error",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "model_calls": 10,
+          "repair_sdk_usd": 3.1926371000000002,
+          "known_repair_sdk_usd": 3.1926371000000002,
+          "missing_metering_calls": 0,
+          "shared_retrieval_api_sdk_usd": 0.33174750000000003,
+          "allocated_pipeline_meter_usd": 3.5243846000000003,
+          "notes_tokens": 1520,
+          "notes_truncated": false,
+          "initial_base_source_lines": 1302,
+          "base_source_line_count": 1302,
+          "new_original_source_lines": 0,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "budget_exhausted": true,
+          "solver_container_removed": true,
+          "repair_wall_s": 170.98775800305884,
+          "grading_wall_s": 3.108311725081876,
+          "model_patch_sha256": "6bbdc1f09b62fd91273307c86c947734b583f503c6c429c53068832a014f36ce"
+        },
+        {
+          "task": "fmt",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "arm": "source",
+          "status": "Submitted",
+          "resolved": true,
+          "native_grade_status": "graded",
+          "model_calls": 4,
+          "repair_sdk_usd": 0.38688120000000004,
+          "known_repair_sdk_usd": 0.38688120000000004,
+          "missing_metering_calls": 0,
+          "shared_retrieval_api_sdk_usd": 0.12088910000000001,
+          "allocated_pipeline_meter_usd": 0.5077703,
+          "notes_tokens": 0,
+          "notes_truncated": false,
+          "initial_base_source_lines": 402,
+          "base_source_line_count": 402,
+          "new_original_source_lines": 0,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "repair_wall_s": 161.5216594779631,
+          "grading_wall_s": 200.11525097792037,
+          "model_patch_sha256": "1c849808ca5ba029631a601cb4c7f5d54e136f577bbb7ebdf9b434aba6734361"
+        },
+        {
+          "task": "fmt",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "arm": "source-notes",
+          "status": "Submitted",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "model_calls": 6,
+          "repair_sdk_usd": 0.9548426,
+          "known_repair_sdk_usd": 0.9548426,
+          "missing_metering_calls": 0,
+          "shared_retrieval_api_sdk_usd": 0.12088910000000001,
+          "allocated_pipeline_meter_usd": 1.0757317,
+          "notes_tokens": 954,
+          "notes_truncated": false,
+          "initial_base_source_lines": 402,
+          "base_source_line_count": 402,
+          "new_original_source_lines": 0,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "repair_wall_s": 80.89998147008009,
+          "grading_wall_s": 1.928598088095896,
+          "model_patch_sha256": "256cdb043226c07388fe51ed8fbbb5e95909315c3feb263a3ef81cb701f7d299"
+        }
+      ],
+      "totals": {
+        "source": {
+          "resolved": 1,
+          "selected_tasks": 3,
+          "repair_sdk_usd": 4.043243600000001,
+          "model_calls": 22
+        },
+        "source-notes": {
+          "resolved": 0,
+          "selected_tasks": 3,
+          "repair_sdk_usd": 5.0151314000000005,
+          "model_calls": 25
+        }
+      },
+      "known_repair_sdk_usd": 9.058375,
+      "new_api_key_inference_calls": 0,
+      "missing_metering_calls": 0,
+      "all_selected_native_outcomes_valid": true,
+      "all_frozen_hashes_match": true,
+      "all_initial_sources_identical": true,
+      "only_notes_and_advisory_change_initial_prompt": true,
+      "all_owned_containers_absent": true,
+      "independent_gain_established": false,
+      "interpretation": "Report all repeated development outcomes. Extra note input is explicit; source and SDK guards match. Shared retrieval is allocated for arm comparisons but not billed again. Any positive result requires replication and independent validation."
+    },
+    "analysis_sha256": "aa6fe70d341884a07544204026e43955c4b8f70872452d2506ae78cfe569b1bf",
+    "equivalent_pr_runtime_commit": "a8fe2a02",
+    "native_failure_diagnostics": [
+      {
+        "task": "pylint",
+        "arm": "source",
+        "native_resolved": false,
+        "failure_phase": "collection_error_missing_IS_PYPY",
+        "log_sha256": "402ca14e0fc3d6a5c66c96ef75a16fa638a5353ce9fb4ed1cf13211f71ef9293"
+      },
+      {
+        "task": "pylint",
+        "arm": "source-notes",
+        "native_resolved": false,
+        "failure_phase": "collection_error_missing_IS_PYPY",
+        "log_sha256": "a009df98a47eea568e5d03f98953654d4964709b3e3c0304903c39d3776d92cd"
+      },
+      {
+        "task": "ponyc",
+        "arm": "source",
+        "native_resolved": false,
+        "failure_phase": "native_test_execution",
+        "log_sha256": "9c49c00d2eac53f7ebbc8a9d830d7f8b6c6f39db059972328cc0ce279535bf24"
+      },
+      {
+        "task": "ponyc",
+        "arm": "source-notes",
+        "native_resolved": false,
+        "failure_phase": "model_patch_conflicts_with_native_test_patch",
+        "log_sha256": "0fe8b04448f30fab2ece02dfdc8e504bbe6b04b4edf2a24d32d364cf5429d1c7"
+      },
+      {
+        "task": "fmt",
+        "arm": "source",
+        "native_resolved": true,
+        "failure_phase": "native_test_execution",
+        "log_sha256": "9ad0dab5a3b5bbeb113708c39ee530ae44ce9f74df0651267a8dd2b8276ca807"
+      },
+      {
+        "task": "fmt",
+        "arm": "source-notes",
+        "native_resolved": false,
+        "failure_phase": "model_patch_conflicts_with_native_test_patch",
+        "log_sha256": "41e42e5689b1391c62e34f9ec204502dcfa3e4c4a167c642ae6d639b7f1048aa"
+      }
+    ],
+    "analysis_field_note": "The archived all_selected_native_outcomes_valid flag verifies available native report receipts, not that every native test executed. The separate failure-phase audit qualifies all unresolved outcomes."
+  },
+  "haiku_initial_context_development": {
+    "status": "Complete: issue-only and frozen-source each resolve 1/3 selected tasks; no resolution or allocated pipeline-cost gain. Native failure phases qualify interpretation.",
+    "protocol_sha256": "83acf2b25a0af2c035b4cd03e870a2b59c34d01067c746993a37a1d434fc92c7",
+    "implementation_commit": "59ef2e9fafcad23a977b798f4dc7f2ca2b3efa76",
+    "scope": "Six fresh matched Haiku repair attempts on three repeated development tasks. Frozen retrieval was generated by Opus and is reused without new calls. This is repair context availability, not a cheap full-pipeline or independent gain claim.",
+    "policy": "Identical issue, solver system/user templates, image and limits. Initial retrieved_source is the empty JSON list in none, or the frozen native 16K context in retrieved. No notes, reranking, graph or extra planner. Subsequent shell inspection is available in both.",
+    "model": "claude-haiku-5-5",
+    "route": "Explicit first-party Anthropic API, no subscription/provider/model fallback.",
+    "repair_sdk_reservation_usd": 1,
+    "repair_api_sdk_estimate_usd": 0.26029216,
+    "repair_attempts": 6,
+    "repair_sdk_queries": 55,
+    "additional_retrieval_calls": 0,
+    "missing_metering_calls": 0,
+    "independent_gain_established": false,
+    "analysis": {
+      "scope": "Six fresh matched Haiku repair attempts on three repeated development tasks. Frozen retrieval was generated by Opus and is reused without new calls. This is repair context availability, not a cheap full-pipeline or independent gain claim.",
+      "protocol_sha256": "83acf2b25a0af2c035b4cd03e870a2b59c34d01067c746993a37a1d434fc92c7",
+      "implementation_commit": "59ef2e9fafcad23a977b798f4dc7f2ca2b3efa76",
+      "rows": [
+        {
+          "task": "pylint",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "arm": "none",
+          "status": "Submitted",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "repair_api_sdk_usd": 0.012634925,
+          "model_calls": 8,
+          "actual_models": [
+            "claude-haiku-5-5"
+          ],
+          "missing_metering_calls": 0,
+          "initial_base_source_lines": 0,
+          "base_source_line_count": 56,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "prior_retrieval_api_sdk_usd": 0.10044059999999999,
+          "allocated_pipeline_meter_usd": 0.012634925,
+          "repair_wall_s": 39.7998473449843,
+          "grading_wall_s": null
+        },
+        {
+          "task": "pylint",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "arm": "retrieved",
+          "status": "Submitted",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "repair_api_sdk_usd": 0.008787975,
+          "model_calls": 4,
+          "actual_models": [
+            "claude-haiku-5-5"
+          ],
+          "missing_metering_calls": 0,
+          "initial_base_source_lines": 224,
+          "base_source_line_count": 224,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "prior_retrieval_api_sdk_usd": 0.10044059999999999,
+          "allocated_pipeline_meter_usd": 0.109228575,
+          "repair_wall_s": 26.795587124070153,
+          "grading_wall_s": null
+        },
+        {
+          "task": "ponyc",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "arm": "none",
+          "status": "Submitted",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "repair_api_sdk_usd": 0.09553966,
+          "model_calls": 20,
+          "actual_models": [
+            "claude-haiku-5-5"
+          ],
+          "missing_metering_calls": 0,
+          "initial_base_source_lines": 0,
+          "base_source_line_count": 765,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "prior_retrieval_api_sdk_usd": 0.33174750000000003,
+          "allocated_pipeline_meter_usd": 0.09553966,
+          "repair_wall_s": 126.81422503001522,
+          "grading_wall_s": 91.28787757398095
+        },
+        {
+          "task": "ponyc",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "arm": "retrieved",
+          "status": "error",
+          "resolved": false,
+          "native_grade_status": "graded",
+          "repair_api_sdk_usd": 0.10082195,
+          "model_calls": 11,
+          "actual_models": [
+            "claude-haiku-5-5"
+          ],
+          "missing_metering_calls": 0,
+          "initial_base_source_lines": 1302,
+          "base_source_line_count": 1394,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": false,
+          "budget_exhausted": true,
+          "solver_container_removed": true,
+          "prior_retrieval_api_sdk_usd": 0.33174750000000003,
+          "allocated_pipeline_meter_usd": 0.43256945,
+          "repair_wall_s": 156.0411981480429,
+          "grading_wall_s": 90.6421816929942
+        },
+        {
+          "task": "fmt",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "arm": "none",
+          "status": "Submitted",
+          "resolved": true,
+          "native_grade_status": "graded",
+          "repair_api_sdk_usd": 0.022075400000000002,
+          "model_calls": 7,
+          "actual_models": [
+            "claude-haiku-5-5"
+          ],
+          "missing_metering_calls": 0,
+          "initial_base_source_lines": 0,
+          "base_source_line_count": 288,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "prior_retrieval_api_sdk_usd": 0.12088910000000001,
+          "allocated_pipeline_meter_usd": 0.022075400000000002,
+          "repair_wall_s": 74.1336342409486,
+          "grading_wall_s": 188.14434883696958
+        },
+        {
+          "task": "fmt",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "arm": "retrieved",
+          "status": "Submitted",
+          "resolved": true,
+          "native_grade_status": "graded",
+          "repair_api_sdk_usd": 0.02043225,
+          "model_calls": 5,
+          "actual_models": [
+            "claude-haiku-5-5"
+          ],
+          "missing_metering_calls": 0,
+          "initial_base_source_lines": 402,
+          "base_source_line_count": 402,
+          "source_coverage_status": "partial",
+          "all_model_inputs_confirmed": true,
+          "budget_exhausted": false,
+          "solver_container_removed": true,
+          "prior_retrieval_api_sdk_usd": 0.12088910000000001,
+          "allocated_pipeline_meter_usd": 0.14132135,
+          "repair_wall_s": 102.58622005209327,
+          "grading_wall_s": 187.96970002201851
+        }
+      ],
+      "totals": {
+        "none": {
+          "resolved": 1,
+          "selected_tasks": 3,
+          "repair_api_sdk_usd": 0.130249985,
+          "allocated_pipeline_meter_usd": 0.130249985,
+          "model_calls": 35
+        },
+        "retrieved": {
+          "resolved": 1,
+          "selected_tasks": 3,
+          "repair_api_sdk_usd": 0.13004217499999998,
+          "allocated_pipeline_meter_usd": 0.6831193750000001,
+          "model_calls": 20
+        }
+      },
+      "known_new_repair_api_sdk_usd": 0.26029216,
+      "new_repair_attempts": 6,
+      "new_api_sdk_sessions": 55,
+      "new_retrieval_or_summary_calls": 0,
+      "missing_metering_calls": 0,
+      "all_selected_native_reports_available": true,
+      "native_readiness_and_patch_methodology_gate_passed": false,
+      "all_frozen_hashes_match": true,
+      "only_source_availability_changes_initial_prompt": true,
+      "all_owned_containers_absent": true,
+      "independent_gain_established": false,
+      "interpretation": "Repeated development screen only. Report every position and repair-only vs allocated pipeline cost separately. No comparison to Opus is matched. No independent validation or official500 advancement.",
+      "native_failure_diagnostics": [
+        {
+          "task": "pylint",
+          "arm": "none",
+          "native_resolved": false,
+          "failure_phase": "collection_error_missing_IS_PYPY",
+          "log_sha256": "378a3cdefdf74ce8c0cc2f9e7f6d666239b8a34a28bf040bc81e7471d16681ea"
+        },
+        {
+          "task": "pylint",
+          "arm": "retrieved",
+          "native_resolved": false,
+          "failure_phase": "collection_error_missing_IS_PYPY",
+          "log_sha256": "e353b2c3a39d9526a0e0fe4753369cd5742f995f04c278a2358de58b3819152a"
+        },
+        {
+          "task": "ponyc",
+          "arm": "none",
+          "native_resolved": false,
+          "failure_phase": "native_test_execution",
+          "log_sha256": "fee538629eaf8aad79108c2b321bf7d1852ff4f6d8b68abe46886a0f546b0ae2"
+        },
+        {
+          "task": "ponyc",
+          "arm": "retrieved",
+          "native_resolved": false,
+          "failure_phase": "native_test_execution",
+          "log_sha256": "30d4495a17bd6f6fe219d2fe76512bd8ddc9fb8b0c5fe627b3bffcc715c287c4"
+        },
+        {
+          "task": "fmt",
+          "arm": "none",
+          "native_resolved": true,
+          "failure_phase": "native_test_execution",
+          "log_sha256": "6537df58d4d74926b4fe50004a3f0ffeb751cafcfb673a90c19fedeff51038e9"
+        },
+        {
+          "task": "fmt",
+          "arm": "retrieved",
+          "native_resolved": true,
+          "failure_phase": "native_test_execution",
+          "log_sha256": "fdfafaa5341bd5dbcada1226a5341140e7fcfbba211d42e213fad5b7c7a999d9"
+        }
+      ]
+    },
+    "analysis_sha256": "5fb5338c32df8ad3dc996250302b423b07737595ba67f90690517bc48772cae0",
+    "native_readiness_and_patch_methodology_gate_passed": false,
+    "c_native_tests": {
+      "selected_native_test_count": 1017,
+      "issue_only_passed": 1006,
+      "issue_only_failed": 11,
+      "frozen_source_passed": 1010,
+      "frozen_source_failed": 7,
+      "both_unresolved": true,
+      "interpretation": "Single repeated development task; partial test progress, not a resolved-issue or independent gain."
+    },
+    "cpp_native_tests": {
+      "issue_only_resolved": true,
+      "frozen_source_resolved": true
     }
   }
 }
