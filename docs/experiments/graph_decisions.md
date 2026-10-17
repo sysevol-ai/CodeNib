@@ -37,9 +37,9 @@ The current milestones and remaining gates are:
 
 | Milestone | Current outcome | Open gate |
 | --- | --- | --- |
-| Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
+| Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. Optional conversation-aware completion removes 726 repeated line deliveries in the fixed 24-task replay with identical cumulative source, reducing reply characters 3.63%. It preserves the original callable selection and has no online quality result. | Preserve useful grep completion; validate the changed policy in fresh matched development runs before any new independent selection. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
-| Directed graph navigation | First-source/callable-first navigation calls all eleven available graphs in the 24-task development set and supplies 139 new annotated physical lines in Go and Rust. Recall changes 53.35% → 54.02%, F1 31.18% → 30.15%; the declared gate fails. The broader offline preparation attempt retains 14/24 graphs, including eight newly available and five lost; a separate authenticated composition has 19/24 available. | Correct invocation PATH and source-preparation failures, then demonstrate useful source selection before another quality cohort. No new independent validation, product promotion or full-500 launch. |
+| Directed graph navigation | The 24-task first-source policy fails: Recall 53.35% → 54.02%, F1 31.18% → 30.15%. A fresh preparation attempt has 14/24 graphs; an authenticated composition has 19/24. Replaying the same actual graph queries with that composition increases delivery-time annotated novelty 139 → 154, but annotations absent from the native control remain 49 lines on one Go task. | Improve query timing and target selection; graph availability alone does not justify another quality cohort. Correct remaining PATH/preparation failures without treating availability as quality. No new independent validation, product promotion or full-500 launch. |
 | Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt native adapter passes its reference/control check, and its one-task development solver pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. | Extend other Multi repositories, Poly/Pro coverage and source-line attribution from actual solver observations. The fmt retrieval had no available graph, so the pair establishes neither a graph-source contribution nor a broader comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -406,6 +406,58 @@ scores; the interrupted function-only arm prevents causal decomposition. The
 next hypothesis should emphasize selective navigation and coverage beyond the
 matched native trajectory, rather than advancing on graph availability alone.
 No new model calls or quality scores are produced by this diagnostic.
+
+### Conversation-aware completion and fixed-query follow-up
+
+Source attribution on all 24 existing candidate trajectories finds 552 annotated
+lines first exposed by grep completion. Removing grep completion while holding
+all later tool calls fixed would lose 410 annotated physical lines, so a blanket
+grep-completion removal is not a supported next policy. Function completion also
+repeats 726 previously delivered physical lines: 310 in grep additions and 416
+in read additions. These counts include physical blank/comment lines and are
+not official line scores or causal effects on subsequent agent choices.
+
+Both source runners now accept `--completion-source-policy definitions|unseen`.
+The historical `definitions` policy stays the default. The opt-in `unseen`
+policy derives prior source from verified conversation text, preserves original
+tool replies and appends only the remaining lines of currently touched
+callables. Retain the historical selection and budget reservations before
+omitting duplicates; freed space cannot select another function. Prior reads
+cannot select unrelated functions. No shared mutable seen-set is introduced.
+Concurrent calls may conservatively repeat source from the same model turn.
+Configuration and resume checks retain the policy; a paired completion-source
+contrast requires matching graph configuration and tools.
+
+A frozen replay holds every actual tool call and original source reply fixed,
+using the previous assistant-confirmed prefix for each parallel call batch.
+The control reproduces all 234 source replies exactly. The new policy changes
+20 replies, reduces repeated completion-line deliveries 726 → 0 and reply
+characters 1,008,050 → 971,508 (3.63%), with identical cumulative physical source.
+An initial implementation refilled the saved budget and added 63 non-annotated
+lines, displacing 14 other non-annotated lines in 16K delivery. Both initial
+replays remain recorded. The current implementation preserves callable
+selection before removing duplicates to avoid changing downstream content.
+Recomputing every candidate payload at 16K and 32K confirms exact equality of
+context bytes, token counts and source predictions with the archived historical
+payloads. The separate input/runtime hashes also match through this check.
+This is delivery behavior, not a new quality score or measured model-token cost.
+All input/runtime hashes match; no model calls occur. Native-loop and SDK-stream
+regressions verify delivery, original-reply retention and rejection of unobserved
+or truncated source. A deterministic small-budget regression reproduces the
+unselected-function refill and verifies its rejection; comparison tests reject
+a simultaneous graph-policy change.
+
+The actual-query graph replay uses the same 24 old candidate queries and
+prefixes for both prior and composed artifacts. All old responses reproduce
+exactly. With 19 available graphs instead of eleven, new physical source rises
+358 → 932 and annotated source at delivery rises 139 → 154. Annotated source
+absent from the complete native trajectory stays at 49 lines on one Go task.
+The next useful graph experiment must change query timing/selection; availability
+alone does not provide the required mechanism evidence. Private diagnostics,
+hashes and source-bearing replay outputs remain under
+`verification/contextbench-completion-source-diagnostic/`; sanitized counts are
+in the existing public development asset. The independent 32 remains sealed and
+both failed quality gates remain in force.
 
 ### Broader offline graph preparation outcome
 

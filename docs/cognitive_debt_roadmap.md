@@ -179,7 +179,14 @@ A separate solver image removes reference artifacts and Git history while
 preserving the selected source tree. The broader offline preparation check has
 14/24 graphs, with eight new successes
 and five losses; a separate authenticated composition has 19/24 available.
-Fixed-prefix source replay does not establish an online gain. The fmt pilot now
+Replaying the same actual graph queries with that composition leaves annotated
+source absent from the native control unchanged at 49 lines on one Go task;
+query timing and target selection remain open. Optional conversation-aware
+function completion preserves the original callable selection and removes 726
+repeated line deliveries in a fixed 24-task replay, with identical cumulative
+source and 3.63% fewer reply characters. Neither replay establishes an online
+quality gain; all 24 final 16K/32K payloads remain byte-identical to their
+historical controls. The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair
 resolves one C++ task in both arms, 1/1 each, passing 18 tests with ten confirmed

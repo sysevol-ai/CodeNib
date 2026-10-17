@@ -105,6 +105,37 @@ not new official scores or causal graph effects. The interrupted function-only
 arm cannot separate completion from graph navigation. Delivery-time novelty and
 broader graph availability therefore remain insufficient evidence of a gain.
 
+A further zero-model diagnostic attributes the existing replies before checking
+annotations. Removing grep completion from the fixed trajectories would remove
+410 annotated physical lines; disabling it is not supported by this evidence.
+Completion also repeats 726 previously delivered lines. The optional
+`--completion-source-policy unseen` omits verified prior source while retaining
+the original read/grep reply and completing each selected callable across the
+conversation. It does not use old observations to select additional callables.
+The historical callable selection and budget reservations are retained before
+removing duplicate lines; freed space cannot add a different function.
+
+On all 24 fixed trajectories, the historical policy reproduces all 234 source
+replies exactly. The new policy changes 20 replies, removes all 726 repeated
+completion-line deliveries, and reduces reply characters from 1,008,050 to
+971,508 (3.63%). Cumulative physical source is identical. An initial version
+refilled the freed budget, adding 63 non-annotated lines and displacing 14 other
+non-annotated lines in 16K delivery. That result is retained; the implementation
+now preserves selection to isolate deduplication. These are offline diagnostics, not
+new model results, token-cost measurements or a demonstrated quality gain.
+Repacking every revised trajectory at 16K and 32K produces byte-identical
+contexts, token counts and source predictions to the archived historical payloads.
+
+Keeping the same 24 actual graph queries and source prefixes, the separately
+prepared 19-graph composition returns 932 new physical lines versus 358 with
+the original eleven graphs. Annotated novelty at delivery rises 139 → 154,
+but annotated source absent from the complete native control remains **49
+lines**, on the same Go task. More graph availability alone therefore does not
+justify another quality batch; query timing and target selection remain open.
+Both replays retain all tasks, reproduce their historical controls exactly and
+verify frozen inputs and runtime hashes. Neither makes model calls or changes
+the failed development/independent gates.
+
 The function-only arm completes four tasks, then requests an unregistered graph
 tool on a C task. The event normalizer aborts before the SDK's terminal usage;
 the remaining 19 tasks are not run. Four completed traces and the partial failed
@@ -245,6 +276,13 @@ within the additional-source budget (`--completion-tokens`, default 2,048) and
 the native runner's 16,000-character response limit; skipped completion is
 reported when space permits. Names-only results cannot trigger reads. These
 policies remain experiments and do not change the product retrieval defaults.
+The opt-in `--completion-source-policy unseen` omits lines already verified in
+the conversation; the default `definitions` retains the historical behavior.
+Earlier source and the added missing lines together must complete the callable.
+It retains the historical callable selection before omitting duplicates, so
+unused budget does not expand a different function.
+This option is recorded in run configurations and checked on resume and paired
+comparison. Its offline diagnostic above does not establish an online gain.
 
 The first fresh online comparison is complete on eight development tasks, one
 per language selected by CSV order from the disclosed 24-task cohort. Both arms
