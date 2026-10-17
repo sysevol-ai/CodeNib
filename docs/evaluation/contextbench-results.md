@@ -1,21 +1,42 @@
 # ContextBench retrieval experiments
 
-The historical late physical 4K source strategy **passes** its frozen Recall-first gate
-on a new task-level independent32 after a disclosed pre-label encoding amendment.
-Confirmed cumulative Recall is **74.94% → 79.09%**,
-F1 **30.13% → 22.32%**; repository-cluster 95% Recall difference
-interval **[+1.99, +6.85] points** across 22 clusters.
-All 32 fresh native prefixes and 64 actual packet consumers are retained.
-Whole-study API usage is **$11.18372580**, including the original local-failure phase
-once, under $24. All three validation cohorts are sealed against tuning.
-This establishes a task-level source-coverage gain under the amended protocol;
-it does not establish repair success, autonomous discovery improvement or a
-verified500 leaderboard score. The six-language sample has no C++/Java and is not
-repository-held-out. No new repairs or full500 quality result.
-The canonical500 context-only native stage is now running under the separately
-frozen protocol below; it includes known cases and is not a fresh independent500.
+The current on-demand indexed-context strategies have **not established a
+Recall-first gain**. Named-symbol source routing has a verified production fix;
+benchmark benefits remain a separate gate. The metadata-after-read development
+iteration is rejected for expansion: line Recall **71.61% → 68.24%**, F1
+**33.68% → 40.60%** on the same four exposed tasks. All four outcomes remain.
 
-An interim **native-only baseline** now scores **122/122 valid cases** with the
+The canonical **500-task native baseline** is now sealed and scored. With the
+original empty-source failure counted as zero in the fixed500 denominator,
+line task-macro Recall/precision/F1 are **72.83%/27.97%/33.95%**. File Recall/F1
+are **84.83%/45.58%**; block (official symbol) Recall/F1 are **81.30%/31.47%**.
+The official evaluator returns **499 valid, one failed** across eight languages
+and59 repository clusters. This uses CodeNib read/grep/glob and the trajectory
+bridge, without indexed graph/vector/BM25/Jev enhancement. It is a known/exposed
+context-only baseline, not an enhancement gain, independent validation, repair
+result or leaderboard rank. Earlier122 annotation access is disclosed; no native
+case is retried or replaced. Scoring adds zero model calls and zero API usage.
+
+Re-scoring the pinned September12 public submission on these exact500 Gold/source
+inputs and the same official environment gives:
+
+| Same500 tasks, line task macro, failed cases counted as zero | Native Opus5.5 + CodeNib source tools | openJiuwen-JiuwenSwarm + DeepSeek-V4-Pro |
+| --- | ---: | ---: |
+| Recall | 72.83% | 75.30% |
+| Precision | 27.97% | 19.43% |
+| F1 | 33.95% | 25.70% |
+
+Native Recall is2.46points lower and F1 is8.25points higher. Local validity is
+499/500 versus500/500; the public submission's original499-valid parser result is
+retained separately. Different model/harness and context-only versus repair
+workflows prevent causal, matched-cost or resolution claims. This compares one
+pinned submission, without asserting a current leaderboard rank; it adds no
+model/API calls.
+
+The historical late4K policy and all three sealed32 cohorts remain below for
+reproducibility. The unstarted443 additional consumers stay cancelled.
+
+The earlier interim **native-only baseline** scores **122/122 valid cases** with the
 pinned official evaluator. Line Recall is **76.81%**, precision **30.75%**, and
 task-macro F1 **39.00%**. File Recall/F1 is **80.32%/44.33%**; block
 (official symbol) Recall/F1 is **81.78%/35.07%**. This is every completed case in
@@ -85,21 +106,48 @@ returned first, without model or Gold calls. This is a concrete fix, not a
 benchmark gain. Its source changes are included in the next development policy;
 the original four trajectories stay unchanged.
 
-The next source-only policy appends at most256 estimated tokens of compiler
-reference metadata after a successful read, then lets the agent request bodies
-through the actual context tool. It uses stable symbol/source identity, bounded
-edge inspection, history-based repeat suppression and source authentication;
-reference counts do not claim runtime calls or test coverage. Metadata locations
-receive no unread-source credit. Actual graph replay can add14 hints to15 prior
-JavaScript/TypeScript reads with identical source predictions, but these are
-counterfactual engineering outputs that no historical model consumed. The
-real same-case development comparison is still pending; cached preparation is
-reported separately from cold index costs.
+The completed source-only metadata policy appends at most256 estimated tokens
+of compiler-reference metadata after a successful read, then lets the agent
+request bodies through the actual context tool. It uses stable symbol/source
+identity, bounded edge inspection, history-based repeat suppression and source
+authentication. Reference counts claim neither runtime calls nor test coverage;
+metadata locations receive no unread-source credit. Source-only replay adds14
+hints to15 historical JS/TS reads with identical source predictions; those replay
+outputs were never historical model inputs.
+
+The real four-task iteration is frozen at `7db07141`, combining this metadata
+policy with the named-symbol fix. These are the same exposed development cases,
+after v0 scoring, with unchanged Opus5.5/medium/20turn/$0.75guard and all outcomes
+retained. Each arm scores4/4 valid:
+
+| Same four development tasks, line task macro | Recall | F1 | Unique source lines | Max nominal SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 71.61% | 33.68% | 3,209 | $1.1760282 |
+| Optional core tool, v0 | 73.69% | 40.92% | 2,927 | $1.1217879 |
+| Reference hints plus named routing, v1 | 68.24% | 40.60% | 2,693 | $1.0819325 |
+
+Reject v1 for the Recall-first objective; do not expand this policy. Actual agents
+consume13 graph hints (JS10, TS3) and two graph-unavailable notices. Only Go calls
+`explore_context`, once, using dense retrieval because its graph is unavailable.
+Thus the named-route fix is not exercised by that call. The bundling and small,
+exposed sample do not establish a causal effect of either component. Consumed
+tool-reply estimates are46,257/43,327/43,602cl100k tokens across the three arms;
+these estimates are not Claude input usage. New API usage and repairs are zero.
+
+Reusing exact-case authenticated indexes takes9.30/8.94/18.29/4.99seconds for
+Python/JS/TS/Go. Original cold preparations remain818.05/131.15/617.66/17.94seconds,
+including the failed Python graph build; warm reuse does not erase those costs.
+An initial private launcher omits embedding fields and fails before constructing
+any child process or model intent; its evidence is retained, and a corrected
+protocol is frozen before the four actual sessions. No model retry occurs.
+The latest89 relevant tests, pinned hooks, strict MkDocs and public-docs boundary
+checks pass. Further context work must improve useful discovery and demand-driven
+source selection, rather than expand a failed metadata policy.
 
 The user-requested interim report prospectively changes the annotation schedule:
 these122 actual-source predictions were sealed before their selected Gold was
-read, while remaining native investigations are
-still incomplete. The later443 consumer plan has since been cancelled. Preserve the original full500-before-first-new-Gold schedule
+read, while remaining native investigations were
+still incomplete at that time. The later443 consumer plan has since been cancelled. Preserve the original full500-before-first-new-Gold schedule
 as **not followed**. Runtime gold stays empty; the frozen model, tools, compiler,
 population and budgets do not change or use these results. Final full500 results
 must disclose this prior annotation access and keep the three32 cohorts sealed.
@@ -743,7 +791,7 @@ original quality conclusions changes. Thus **88 native prefixes** are reused:
 investigations and **444** candidate consumers. Reuse includes every matching
 case independent of its score.
 
-## Canonical500 context-only execution in progress
+## Canonical500 context-only baseline and execution receipts
 
 The frozen canonical500 native protocol `cf2f2e47`, runtime `e8f6b675`, stops
 after **37 attempts: 36 accepted and one interrupted**. The optional quota guard
@@ -799,18 +847,37 @@ billing cap. **36 mocked SDK boundary tests**, then **142 relevant local tests**
 pass, including late quota events and missing-event terminal metering. Pinned
 hooks pass; no billed test tier runs.
 
-At the **2026-10-17 20:28 UTC** interim snapshot, **122/257** new investigations
-are accepted, with **135** remaining and **365/500 native records** in total;
-the source-receipt continuation is live. Known new Max
-nominal usage across all canonical500 execution phases is **$46.58501650**,
-plus the one original unknown terminal usage. New API usage is **$0**. Source-only
-replay verifies all242 retained prefixes and all56 prior cumulative pairs. Actual
-errors remain in the trajectory, and unavailable/rejected actions gain no source.
-Two workers retain exclusive durable per-case intent; unexpected receipts stop
-later dispatch, with no unreconciled-intent relaunch. The122 native predictions
-are sealed and then scored separately under interim protocol `853d663c`; they
-establish only the baseline reported above. No new enhanced comparison is
-available. Quota metadata is not a provider billing cap/reservation.
+All500 native records are now terminal. The original214-case continuation
+stops after a recorded budget result is followed by the SDK's typed
+`ResultError`; preserve its original strict failure. The adapter now accepts only
+an exact matching budget terminal, including session/UUID/type/cost, then completes
+existing tool/auth/quota/meter checks without a retry. A source-only replay with
+the pinned SDK reconstructs the historical exception from the saved terminal
+frame; the original exception data was not saved and this inferential provenance
+is explicit. Normalized messages, source prediction and cost remain identical.
+
+Protocol `1cda4a24`, immutable runtime `fdb6b9ee`, continues only the43 never-claimed
+IDs. All43 are accepted, all terminal usage is known, and Max nominal usage is
+$8.5949313 with no API charge. A real new budget terminal also passes the typed
+exception path. The population is456 qualified retained source prefixes plus43
+new prefixes plus the one original empty-source failure. No failed case is
+retried, removed or replaced. The source receipt amendment does not turn earlier
+strict failures green.
+
+Native-only seal `f7057ac6` freezes all500 actual consumed-source predictions
+before this final population's label read, disclosing the prior122 labels.
+The evaluator returns499 valid and the original empty-source case as failed.
+Fixed500 line task-macro Recall/precision/F1 are72.83%/27.97%/33.95%; valid499-only
+line Recall is72.98%. The unchanged CLI summary is a different, micro-averaged
+quantity: line Recall55.90%, precision24.24%. Both forms are retained, with the
+fixed-population task macro used for comparisons. The predictions SHA-256 is
+`b69e8d7a85ef3cf0f2c0de7b560477b69b5d7afd2146c0e3a8dda19d796236f9`;
+metrics SHA-256 is
+`6f2f02002aeae2455e171aa74d3d88a1a558c147708eab186cfe91f9d09a2eb4`.
+Known selected native Max nominal usage totals$91.1558898, excluding the one
+original unknown terminal usage; it is not an API cash bill. Scoring makes zero
+model/API calls. These known500 cases are not an independent validation set,
+indexed-context ablation or formal rank; runtime Gold remains empty.
 
 The cumulative baseline uses source already consumed by the investigator.
 All56 historical native-packet source unions equal those prefixes; existing
@@ -819,9 +886,8 @@ Batch discounts. The unstarted443 extra consumers are cancelled. Known API usage
 stays **$59.09398873** under the **$100** ceiling, leaving **$40.90601127**;
 the previous $40 reservation is released. No new Batch/count/repair call starts.
 
-Freeze terminal native predictions and raw receipts before final all500 baseline
-scoring, disclose the earlier122-case annotation access and failed case, and
-report official validity separately from fixed-population failure accounting.
+The completed all500 seal/scoring retains earlier122 annotation access and the
+failed case, with official validity separate from fixed-population accounting.
 The original no-interim-Gold timing gate must not be reported as passed.
 Actual indexed-context usage, a small matched development comparison and later
 validation are separate gates; the plain native baseline cannot satisfy them.
@@ -837,9 +903,9 @@ original rejected-action strict gate. Across them,
 overlapping implementation/configuration names have identical hashes. There are
 **7 gzip tar-stream parts**, **11,568,526 compressed bytes** total; the largest
 part is **4,258,086 bytes**, below the official50MiB cap. This is a partial local
-archive, not complete500 evidence or new quality scoring. Current257 native
-outputs, baseline evaluation/native outcomes and publication review remain
-open. No new443 Batch archive is expected after cancellation. A source-only audit verifies all500 evaluator target paths match the
+archive, not complete500 evidence or new quality scoring. The remaining257 native
+outputs and completed baseline evaluation still need archival inclusion; native
+outcomes and publication review remain open. No new443 Batch archive is expected after cancellation. A source-only audit verifies all500 evaluator target paths match the
 recorded snapshots, including119 aliases to retained trees; no duplicate source
 checkout or source-path rewrite is needed. Archival work makes zero model/API
 calls and reads no new annotations.
