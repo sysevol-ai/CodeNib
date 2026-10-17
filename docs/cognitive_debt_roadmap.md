@@ -426,13 +426,19 @@ volume/cost, not fresh paired adaptive agents or repair gain. No product lifecyc
 change or repair/full500 starts automatically; verified500 still needs a measured
 budget and source/native readiness plan. See [current results](evaluation/contextbench-results.md)
 and draft [PR #834](https://github.com/sysevol-ai/CodeNib/pull/834).
-The measured context500 plan leaves the $100 ceiling unchanged ($41.33622927
-known allowance remaining). A candidate-only API route projects arithmetically
-to $137.95, versus $24.31 for
-Max investigation plus Batch review, before repairs and unmeasured quota/source
-coverage. Max login passes an unpaid check; Batch receipt parity, exact-input
-reservation, native readiness and formal artifacts remain open. No full500 or
-repair batch starts; real solver outcomes are required for leaderboard Pass@1.
+The four-task Max/Batch route engineering gate now passes under protocol
+`4cb3ebd8`, runtime `4143a045`: four normal Max investigations and eight normal
+Batch reviews,zero unknown usage/retries/repairs. New API usage is $0.430218;
+Max SDK nominal $1.2485557 is separate. 52 focused tests (29 new Batch cases),
+durable one-create intent and source/prompt/runtime/metering receipts pass.
+Current known API usage is $59.09398873, leaving $40.90601127 within the same
+$100 ceiling. This verifies the small execution route, not new quality or 500 quota.
+The source audit verifies 119/500 exact clean checkouts; 381 are unverified by
+existing native-source manifests. Bounded staging/object reuse, exact input counts,
+whole-run Max capacity, remaining reservation, native grader coverage and complete
+raw artifacts remain open. Definition-level symbol→block and per-task macro/F1
+mapping now match the paper and official example; sealed32 primary results stay
+unchanged. No full500 inference or repair batch starts automatically.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates

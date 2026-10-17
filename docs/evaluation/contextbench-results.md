@@ -13,6 +13,12 @@ it does not establish repair success, autonomous discovery improvement or a
 verified500 leaderboard score. The six-language sample has no C++/Java and is not
 repository-held-out. No repairs or official500 run.
 
+The cheaper Max-to-Batch execution route now **passes a four-task development
+engineering check**: four normal Max investigations and eight normal Batch packet
+inputs cost **$0.430218** in new API usage. The **$1.2485557** Max SDK estimate
+is separate nominal metering. This is route/source delivery verification, not
+another quality test or a full500 result.
+
 The unchanged first-read source-window policy fails its complete 24-task development
 stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95%
 Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected
@@ -488,7 +494,7 @@ and uncovered-language uncertainty are excluded.
 | Max native investigation + standard API packet review | $48.62 |
 | Max native investigation + Batch packet review | $24.31 |
 
-The authorized API ceiling stays **$100**, with **$41.33622927** remaining in
+The authorized API ceiling stays **$100**, with **$40.90601127** remaining in
 known usage-value accounting. A two-arm all-API context500 comparison would project
 to $174.75 before repairs. Do not dispatch
 this full run. These gross 500-task equivalents are not a request to repeat completed
@@ -501,18 +507,84 @@ other historical profiles separately; never choose reuse by a favorable score.
 offers 50% standard-price savings ($2/$10 per million Opus 5.5 input/output tokens)
 and may take up to 24 hours. Only the independent final packet requests are directly
 batchable; interactive SDK/tool turns do not automatically receive that discount.
-Batch consumer engineering and source/prompt/version/cost receipt parity remain
-unverified. No batch has been submitted.
+The small four-task Max/Batch engineering verification below now passes.
+Whole500 exact inputs,source coverage,reservations and quota remain open; no
+full500 batch has been submitted.
 
 A free supported-CLI check confirms the existing Max subscription login. It does
 not establish available quota or elapsed-time capacity. Max SDK dollar estimates
 are not subscription cash charges, and the completed 32 retained its frozen API route.
-The next cost investigation should measure Max investigation plus Batch review,
-preserving the selected source policy and full failure accounting. Exact source
+The four-task check verifies the Max/Batch route with the selected source policy
+and complete failure accounting. Exact source
 commits, provider token counts, headroom and quota must establish the remaining
 budget before a separate full-run protocol. Keep native solver/grader coverage,
 official metric mapping and complete raw artifact packaging as formal submission
 gates. This plan makes no model calls and starts no repairs or full500 run.
+
+## Max and Batch: four-task route verification
+
+Runtime `4143a045` adds the source-checkout-only
+`scripts/contextbench_packet_batch.py` consumer. Its frozen protocol is
+`4cb3ebd851d30369e90b57d94d7d825d8ff5328ffb6f5cb202b87e236e71d2b7`.
+Four fixed known development tasks in C, Rust, Python and TypeScript first run
+fresh native Max investigations,then use the unchanged late physical 4K compiler
+and two final-source arms. Runtime inputs contain metadata, the already known
+issue and explicit empty gold; no new annotation columns or quality scores are
+loaded. All three independent 32 cohorts remain sealed.
+
+The Max profile keeps Opus 5.5, medium effort, 20 configured turns, 4,096 requested
+output tokens, $0.75 guards and 600-second timeouts. All four finish normally,
+with actual main Opus 5.5,`apiKeySource=none`,verified Max subscription login and
+API/provider variables removed. No API-key fallback occurs. Max SDK nominal
+usage is **$1.2485557**,included once in the mixed SDK ledger; actual subscription
+or extra-usage billing is unverified.
+
+Eight exact packet prompts pass free input counts and source checks. The
+input/output-cap forecast with margin/headroom is **$0.59034360**, inside a frozen
+**$2** API reservation. One acknowledged Batch create is followed only by
+read-only status/results calls. All eight items finish at `end_turn`, with exact
+prompt, source, model, runtime and known usage receipts. Batch API usage is
+**$0.430218**; the standard-price equivalent for these same actual tokens is
+**$0.860436**. There are zero
+unknown-usage items, retries, replacements, repairs or native tests. This measures
+the cheaper route on known cases, not independent quality or Max quota for 500.
+
+The submitter records an exclusive durable intent before the one paid create.
+That file is the linearization point: a concurrent or resumed submitter cannot
+create a second batch. A lost acknowledgement remains billing-unknown and never
+resubmits. A saved acknowledgement can recover through read-only requests.
+Result order is irrelevant: every custom ID and assistant message identity must
+match the frozen request set and provider counts. Queue acceptance or free
+counts get no source credit; canceled, expired and error items remain failed.
+Raw results and terminal metering are durable before source/runtime validation.
+Keep complete/capped response semantics separate from source input confirmation.
+
+All **52 focused local tests**, including 29 new Batch tests, and pinned hooks pass.
+Mocked direct/Batch comparisons send equal requests for the same packet and
+produce equal source predictions at the declared half-price tariff. Real Max
+investigations produce fresh observations; their packet bytes are not claimed
+to equal older investigations. No existing quality gate or failed attempt is
+reclassified by this engineering result.
+
+The current source-only audit verifies **119/500** exact,clean checkouts from
+existing native-source manifests. The other **381** have not been verified by
+that inventory; this does not prove absence from every unrelated cache. The
+checkout-size arithmetic calls for bounded staging/object reuse before full500
+preparation, without removing historical artifacts. No 500-task model run has started.
+
+The public metric bridge is also verified against the
+[paper's definition-level block alignment](https://arxiv.org/html/2602.05892v3)
+and the [official example aggregator](https://github.com/ContextBench/contextbench.github.io/blob/a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9/submissions/2026-09-12_openjiuwen-jiuwenswarm/aggregate.py):
+website `block` maps to evaluator `symbol`; `span` is character-byte coverage.
+Average per-task metrics, including each task's F1, rather than deriving F1 from
+mean Recall/Precision. A posthoc check of the sealed32 raw reports reproduces
+the frozen primary values exactly; it changes no policy or gate. File Recall
+stays 85.42%; block Recall changes 82.84% → 83.60%,while line Recall changes
+74.94% → 79.09%. The measured gain is primarily missing lines inside located files.
+
+Whole500 source coverage,provider counts, Max quota/time,budget headroom,native
+solver/grader coverage and complete artifact packaging remain required. The
+small engineering pass starts no automatic full500 or repair batch.
 
 ## Fresh independent32: seven-language retrieval-only validation
 
@@ -1596,18 +1668,19 @@ been reconciled.
 | Direct Anthropic SDK | $48.57231736 | API estimate; promotional-credit deduction unverified |
 | Separate Jev decisions | $0.369977370 | Metered API receipts |
 | Direct Anthropic Messages | $9.72147600 | One paid HTTP request per source packet; token-based estimate |
-| **Combined API usage** | **$58.663770730** | **Usage value, not confirmed cash spending** |
-| Claude Max SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
+| Direct Anthropic Batch | $0.43021800 | Eight paid items in one Batch; token-based estimate |
+| **Combined API usage** | **$59.093988730** | **Usage value, not confirmed cash spending** |
+| Claude Max SDK | $113.75041130 | SDK list-price estimate, not a confirmed subscription bill |
 
 SDK estimates across both routes, including reported auxiliary usage, sum to
-$161.07417296; that mixed-route sum is not a cash-spending total. Two historical attempts remain unmetered: one
+$162.32272866; that mixed-route sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
 rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **1012 Jev requests** for **$0.369977370**.
-Known API usage value totals **$58.663770730**, including the Haiku repairs
+Known API usage value totals **$59.093988730**, including the Haiku repairs
 and eight subsequent file-map sessions ($1.496507) plus eight nearby-source
 sessions ($1.76050270), plus eight remaining-four replication sessions
 ($1.88522710). The independent32 adds 64 SDK sessions for
@@ -1629,9 +1702,16 @@ and96 free token-count requests. The amended independent32 adds32 native retriev
 SDK sessions for **$5.71699380** and64 paid Messages for **$5.46673200**, with64 free counts.
 Total direct-API counts are **307 SDK sessions** (216 retrieval,36 packet review,
 55 historical repair), **112 Messages** and **160 free counts**. Jev stays at1012.
-The mixed SDK estimate is **$161.07417296**; direct Messages remains separate.
+The mixed SDK estimate is **$162.32272866**; Messages and Batch remain separate.
 The original $2.56634860 failure phase is already included, with no double billing
 or unknown new usage. All three32 cohorts are sealed; no repairs/full500 started.
+
+The four-task Max/Batch route adds **$1.2485557** in Max SDK nominal usage
+and **$0.430218** in Batch API usage. Direct API SDK307 and standard Messages112
+stay unchanged; four Max SDK sessions and eight Batch inferences are separate.
+Free token-count requests total168 (160 prior plus8). One Batch create is not
+one paid inference. All new usage is known; the same two historical Max gaps
+remain. No new repair or500 model calls.
 
 These are usage estimates and decision receipts, not reconciled account bills.
 Remaining promotional credit, subscription billing and account-level extra usage
