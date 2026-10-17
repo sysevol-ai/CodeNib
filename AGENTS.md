@@ -273,6 +273,13 @@ Black or isort can produce changes that fail the release all-files check.
   render gold contexts and reference patches. Record any exposed preview task
   IDs and exclude them from future unseen validation. Keep completed cohorts and
   their timing intact rather than retroactively changing their outcomes.
+- Before freezing a paid model experiment, verify the selected model's current
+  thinking, tool-choice and output-limit constraints in official documentation.
+  Requested CLI flags do not prove effective behavior. Distinguish main assistant
+  models, auxiliary models in terminal usage, SDK turns and HTTP request counts.
+  For source-only delivery checks, define accepted capped-response outcomes
+  prospectively; do not change an earlier protocol's terminal-status or source
+  credit rules after seeing its failures.
 
 ## Directory-Specific Rules
 

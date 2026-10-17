@@ -1,20 +1,18 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Source-checkout experiment: confirm an exact packet in a tool-free SDK input."""
+"""Source-checkout experiment: confirm an exact packet in one bounded Messages API call."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import dataclasses
 import hashlib
 import importlib.metadata
 import json
 import math
+import os
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -25,7 +23,6 @@ if str(ROOT) not in sys.path:
 import tiktoken
 
 from scripts import benchmark_context_agent as native
-from scripts.benchmark_context_claude import api_auth
 from scripts.benchmark_jev_base import digest, write_json
 
 SYSTEM = (
@@ -80,6 +77,41 @@ def validate_packet(repo, context, source_hashes):
     return {"source_lines": len(points), "tokens": tokens}
 
 
+# Frozen standard/global, uncached Claude API prices checked on 2026-10-17.
+# https://platform.claude.com/docs/en/models/opus-5-5/overview
+API_URL = "https://api.anthropic.com"
+MODEL = "claude-opus-5-5"
+PRICING = {"input_per_million": 4, "output_per_million": 20}
+
+
+def usage_cost(usage):
+    """Price only the explicitly requested uncached, tool-free global profile."""
+    for key in ("input_tokens", "output_tokens"):
+        if type(usage.get(key)) is not int or usage[key] < 0:
+            raise ValueError("Missing or invalid terminal token usage")
+    for key in ("cache_creation_input_tokens", "cache_read_input_tokens"):
+        if usage.get(key, 0) not in (None, 0):
+            raise ValueError("Unexpected caching outside the frozen request profile")
+    if usage.get("inference_geo") not in (None, "global"):
+        raise ValueError("Unexpected inference geography")
+    if usage.get("service_tier") not in (None, "standard"):
+        raise ValueError("Unexpected service tier")
+    if usage.get("speed") not in (None, "standard"):
+        raise ValueError("Unexpected inference speed")
+    if any((usage.get("server_tool_use") or {}).values()):
+        raise ValueError("Unexpected billed server tool use")
+    return (
+        sum(
+            usage[key + "_tokens"] * rate
+            for key, rate in (
+                ("input", PRICING["input_per_million"]),
+                ("output", PRICING["output_per_million"]),
+            )
+        )
+        / 1_000_000
+    )
+
+
 async def inspect_packet(
     *,
     repo,
@@ -89,160 +121,193 @@ async def inspect_packet(
     issue,
     row,
     checkpoint,
-    cli,
-    model,
-    case_meter_usd=0.25,
-    max_output_tokens=512,
+    client,
+    model=MODEL,
+    request_budget_usd=0.5,
+    max_output_tokens=2048,
 ):
-    """Publish credit only after input confirmation and final source validation.
+    """Count for free, reserve an estimated bound, then send one paid request.
 
-    The pending receipt precedes SDK dispatch. Assistant output confirms that
-    request; successful terminal usage and unchanged versions are the final
-    credit publication point. SDK iteration errors retain metering but publish
-    no prediction. Pending artifacts are owned by the experiment operator; this
-    helper never retries or recovers a request automatically. No locks are held.
+    Both HTTP calls have the exact recorded prompt. The fixed first-party client
+    must have retries/redirects disabled. There is no continuation or fallback.
+    A normal API response at end_turn or max_tokens confirms source consumption;
+    response completion is recorded separately, never presented as repair success.
+    Metering precedes final source validation/publication. Failed/unknown responses
+    retain their receipts and never publish predictions. The experiment operator
+    owns pending artifacts; this helper never retries a request. No locks exist.
     """
-    from claude_agent_sdk import ClaudeAgentOptions, query
-
-    if not math.isfinite(case_meter_usd) or case_meter_usd <= 0:
-        raise ValueError("SDK budget must be finite and positive")
     for key in (
         "packet_prediction",
         "input_receipt",
-        "sdk_result",
-        "sdk_reported_cost_usd",
+        "response",
+        "usage",
+        "api_usage_estimate_usd",
+        "count_tokens_response",
+        "actual_models",
+        "request",
+        "preflight",
+        "snapshot_after",
+        "response_complete",
+        "observed_thinking_blocks",
+        "http_status",
     ):
         row.pop(key, None)
-    row.update(status="validating", api_attempted=False, sdk_events=[], messages=[])
+    source_hashes = dict(source_hashes)
+    row.update(
+        status="validating",
+        api_attempted=False,
+        api_http_requests=0,
+        paid_message_requests=0,
+        messages=[],
+        api_usage_estimate_usd=0.0,
+    )
+    if model != MODEL or str(client.base_url).rstrip("/") != API_URL:
+        raise ValueError("Only the frozen first-party model and endpoint qualify")
+    if not math.isfinite(request_budget_usd) or request_budget_usd <= 0:
+        raise ValueError("Request budget must be finite and positive")
+    if type(max_output_tokens) is not int or not 1 <= max_output_tokens <= 4096:
+        raise ValueError("Invalid bounded output allowance")
     row["snapshot_before"] = native.audit_contextbench_snapshot(repo, commit)
     geometry = validate_packet(repo, context, source_hashes)
     prompt = f"Issue:\n{issue}\n\nNumbered source packet (JSON):\n{context}"
+    common = {
+        "model": model,
+        "system": SYSTEM,
+        "messages": [{"role": "user", "content": prompt}],
+        "tools": [],
+        "thinking": {"type": "adaptive"},
+    }
     row.update(
-        status="running",
-        sdk_events=[],
-        messages=[{"role": "user", "content": prompt}],
+        status="counting",
+        messages=common["messages"].copy(),
         input_receipt={
             "prompt_sha256": text_hash(prompt),
             "context_sha256": text_hash(context),
-            "source_sha256": source_hashes,
+            "source_sha256": dict(source_hashes),
             "confirmed": False,
             **geometry,
         },
     )
     checkpoint()
-    options = ClaudeAgentOptions(
-        cli_path=cli,
-        cwd=repo,
-        model=model,
-        effort="medium",
-        thinking={"type": "disabled"},
-        max_turns=1,
-        max_budget_usd=case_meter_usd,
-        system_prompt=SYSTEM,
-        tools=[],
-        allowed_tools=[],
-        mcp_servers={},
-        strict_mcp_config=True,
-        setting_sources=[],
-        skills=[],
-        plugins=[],
-        agents={},
-        permission_mode="default",
-        extra_args={"no-session-persistence": None},
-        env={"CLAUDE_CODE_MAX_OUTPUT_TOKENS": str(max_output_tokens)},
-    )
-    route_ok = False
-    models, attempted_tools = set(), []
-    compacted = False
-    row["api_attempted"] = True
+    row["api_http_requests"] += 1
+    count = await client.post("/v1/messages/count_tokens", json=common)
+    count.raise_for_status()
+    row["count_tokens_response"] = count.json()
+    tokens = row["count_tokens_response"].get("input_tokens")
+    if type(tokens) is not int or tokens < 0:
+        raise ValueError("Invalid preflight input count")
+    # Counting is an estimate. Reserve 2%/64 tokens plus all allowed output;
+    # this is not a provider-enforced dollar limit or an account-bill claim.
+    margin = max(64, math.ceil(tokens * 0.02))
+    forecast = (
+        (tokens + margin) * PRICING["input_per_million"]
+        + max_output_tokens * PRICING["output_per_million"]
+    ) / 1_000_000
+    row["preflight"] = {
+        "provider_input_tokens": tokens,
+        "input_margin_tokens": margin,
+        "output_token_cap": max_output_tokens,
+        "estimated_max_usd_with_margin": forecast,
+        "request_budget_usd": request_budget_usd,
+    }
     checkpoint()
+    if forecast > request_budget_usd:
+        raise ValueError("Input plus capped output exceeds the reserved request budget")
+    validate_packet(repo, context, source_hashes)
+    native.audit_contextbench_snapshot(repo, commit)
+    request = {
+        **common,
+        "max_tokens": max_output_tokens,
+        "output_config": {"effort": "medium"},
+        "service_tier": "standard_only",
+        "inference_geo": "global",
+    }
+    row.update(
+        status="running",
+        request=request,
+        api_attempted=True,
+        paid_message_requests=1,
+        api_usage_estimate_usd=None,
+    )
+    row["api_http_requests"] += 1
+    checkpoint()
+    response = await client.post("/v1/messages", json=request)
+    row["http_status"] = response.status_code
+    response.raise_for_status()
+    data = response.json()
+    row["response"] = data
+    row["usage"] = data.get("usage", {})
+    row["actual_models"] = [data.get("model")]
     try:
-        async for message in query(prompt=prompt, options=options):
-            kind = type(message).__name__
-            data = dataclasses.asdict(message)
-            row["sdk_events"].append({"kind": kind, "data": data})
-            if kind == "SystemMessage" and data.get("subtype") == "init":
-                route_ok = (
-                    data["data"].get("apiKeySource") == "ANTHROPIC_API_KEY"
-                    and data["data"].get("tools") == []
-                )
-            if kind == "SystemMessage" and data.get("subtype") == "compact_boundary":
-                compacted = True
-            if kind == "AssistantMessage":
-                models.add(data.get("model"))
-                attempted_tools.extend(
-                    block["name"] for block in data["content"] if "name" in block
-                )
-                if route_ok and data.get("model") == model:
-                    row["input_receipt"]["confirmed"] = True
-                row["messages"].append(
-                    {
-                        "role": "assistant",
-                        "content": "\n".join(
-                            block["text"]
-                            for block in data["content"]
-                            if "text" in block
-                        ),
-                    }
-                )
-            if kind == "ResultMessage":
-                # Keep terminal usage even if the SDK raises while advancing.
-                row["sdk_result"] = data
-                row["sdk_reported_cost_usd"] = data.get("total_cost_usd")
-            checkpoint()
+        if data.get("model") == model:
+            row["api_usage_estimate_usd"] = usage_cost(row["usage"])
     finally:
-        row.update(
-            actual_models=sorted(models, key=str),
-            unexpected_tool_attempts=attempted_tools,
-            route_and_empty_tools_confirmed=route_ok,
-            compaction_detected=compacted,
+        checkpoint()  # Preserve usage/cost before any later validation or I/O error.
+    if data.get("model") != model:
+        raise ValueError("Response model differs; its price is not assumed")
+    content = data.get("content")
+    if (
+        data.get("role") != "assistant"
+        or not data.get("id")
+        or not isinstance(content, list)
+        or not content
+        or any(
+            b.get("type") not in {"text", "thinking", "redacted_thinking"}
+            for b in content
         )
-        checkpoint()
-    result = row.get("sdk_result")
-    cost = row.get("sdk_reported_cost_usd")
-    if not result or type(cost) not in (int, float) or not math.isfinite(cost):
-        raise ValueError("Packet review ended without known terminal usage")
-    if cost < 0 or result.get("is_error") or result.get("subtype") != "success":
-        raise ValueError("Packet review did not complete normally")
-    if models != {model} or not route_ok or attempted_tools or compacted:
-        raise ValueError("Packet model, route or tool isolation differs")
-    if not row["input_receipt"]["confirmed"]:
-        raise ValueError("Packet has no confirmed assistant response")
+    ):
+        raise ValueError("No isolated, confirmed assistant message")
+    if data.get("stop_reason") not in {"end_turn", "max_tokens"}:
+        raise ValueError("Unexpected API terminal reason")
+    if row["usage"]["output_tokens"] > max_output_tokens:
+        raise ValueError("Provider output exceeds the requested allowance")
+    row["input_receipt"]["confirmed"] = True
+    row["response_complete"] = data["stop_reason"] == "end_turn"
+    row["observed_thinking_blocks"] = sum(b["type"] == "thinking" for b in content)
+    row["messages"].append(
+        {
+            "role": "assistant",
+            "content": "\n".join(b["text"] for b in content if b["type"] == "text"),
+        }
+    )
+    checkpoint()
     validate_packet(repo, context, source_hashes)
     row["snapshot_after"] = native.audit_contextbench_snapshot(repo, commit)
+    if row["api_usage_estimate_usd"] > request_budget_usd:
+        raise ValueError("Actual usage exceeds the request reservation")
     row["packet_prediction"] = native.prediction(row["instance_id"], context, repo)
     row["status"] = "ok"
     checkpoint()
 
 
 def main():
+    import httpx
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packets", type=Path, required=True)
     parser.add_argument("--instance-id", required=True)
     parser.add_argument("--arm", required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--case-meter-usd", type=float, default=0.25)
+    parser.add_argument("--model", choices=(MODEL,), default=MODEL)
+    parser.add_argument("--request-budget-usd", type=float, default=0.5)
+    parser.add_argument("--max-output-tokens", type=int, default=2048)
     parser.add_argument("--case-timeout", type=float, default=180)
     parser.add_argument("--live", action="store_true")
     args = parser.parse_args()
-    if not args.live:
-        parser.error("New SDK inference requires --live")
-    cli = shutil.which("claude")
-    if not cli:
-        parser.error("Claude Code CLI is missing")
-    auth = api_auth(cli)
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not args.live or not key:
+        parser.error("Messages inference requires --live and ANTHROPIC_API_KEY")
     packet = next(
         r
         for r in json.loads(args.packets.read_text())["rows"]
         if r["instance_id"] == args.instance_id
     )
-    context = packet["contexts"][args.arm]
     args.output.mkdir(parents=True, exist_ok=False)
     implementation = native.freeze(args.output)
-    own_name = "scripts/contextbench_packet_reader.py"
-    shutil.copyfile(__file__, args.output / "implementation" / own_name)
-    implementation[own_name] = digest(Path(__file__))
+    own = "scripts/contextbench_packet_reader.py"
+    target = args.output / "implementation" / own
+    target.write_bytes(Path(__file__).read_bytes())
+    implementation[own] = digest(Path(__file__))
     write_json(
         args.output / "config.json",
         {
@@ -250,49 +315,57 @@ def main():
             "arm": args.arm,
             "implementation": implementation,
             "model_requested": args.model,
-            "auth": auth,
-            "sdk_version": importlib.metadata.version("claude-agent-sdk"),
-            "cli_version": subprocess.check_output(
-                [cli, "--version"], text=True
-            ).strip(),
-            "max_turns": 1,
-            "max_output_tokens": 512,
-            "thinking": {"type": "disabled"},
-            "case_meter_usd": args.case_meter_usd,
+            "endpoint": API_URL,
+            "httpx_version": importlib.metadata.version("httpx"),
+            "max_output_tokens": args.max_output_tokens,
+            "thinking": {"type": "adaptive"},
+            "effort": "medium",
+            "request_budget_usd": args.request_budget_usd,
+            "pricing_usd_per_million": PRICING,
+            "max_retries": 0,
+            "follow_redirects": False,
+            "paid_requests_per_packet": 1,
             "case_timeout": args.case_timeout,
             "tools": [],
-            "scope": "Confirmed initial-user packet input, no source tools or repair.",
+            "scope": "Count once for free; one direct paid message, no CLI or repair.",
         },
     )
     row = {"instance_id": args.instance_id, "arm": args.arm}
     path = args.output / "result.json"
-    try:
-        asyncio.run(
-            asyncio.wait_for(
-                inspect_packet(
-                    repo=Path(packet["repo"]),
-                    commit=packet["source_commit"],
-                    context=context,
-                    source_hashes=packet["source_sha256"],
-                    issue=packet["issue"],
-                    row=row,
-                    checkpoint=lambda: write_json(path, row),
-                    cli=cli,
-                    model=args.model,
-                    case_meter_usd=args.case_meter_usd,
-                ),
-                timeout=args.case_timeout,
+
+    async def run():
+        async with httpx.AsyncClient(
+            base_url=API_URL,
+            timeout=args.case_timeout,
+            follow_redirects=False,
+            transport=httpx.AsyncHTTPTransport(retries=0),
+            headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
+        ) as client:
+            await inspect_packet(
+                repo=Path(packet["repo"]),
+                commit=packet["source_commit"],
+                context=packet["contexts"][args.arm],
+                source_hashes=packet["source_sha256"],
+                issue=packet["issue"],
+                row=row,
+                checkpoint=lambda: write_json(path, row),
+                client=client,
+                model=args.model,
+                request_budget_usd=args.request_budget_usd,
+                max_output_tokens=args.max_output_tokens,
             )
-        )
+
+    try:
+        asyncio.run(asyncio.wait_for(run(), timeout=args.case_timeout))
     except Exception as exc:
         row.update(status="error", error_type=type(exc).__name__)
         if not row.get("api_attempted"):
-            row["sdk_reported_cost_usd"] = 0.0
+            row["api_usage_estimate_usd"] = 0.0
     finally:
         write_json(path, row)
     print(
         json.dumps(
-            {k: row.get(k) for k in ("instance_id", "status", "sdk_reported_cost_usd")}
+            {k: row.get(k) for k in ("instance_id", "status", "api_usage_estimate_usd")}
         )
     )
     raise SystemExit(0 if row["status"] == "ok" else 1)
