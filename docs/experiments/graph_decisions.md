@@ -40,7 +40,7 @@ The current milestones and remaining gates are:
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
 | Directed graph navigation | The prior candidate fails independent validation. The next `unseen` policy skips known definitions and completes only missing source, using verified observations in both runners. Offline development replay removes 220 repeated lines but adds no source; the revised shared prompt requests earlier graph use. | Fresh three-arm development comparison, with novel relevant source and quality gates fixed before inference. No product promotion or full-500 launch. |
-| Complete solver | The one independent Verified task resolves in both arms, 1/1 each, with the same pinned image and native harness. Both earlier paired development attempts remain unresolved. Separate reference-patch checks pass. | Broader matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no comparative or population Pass@1 improvement established. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each; earlier development attempts remain unresolved. New runs capture hashed model inputs and export only confirmed delivery, excluding elided and unrequested terminal output. | Broader matched outcomes, Multi/Poly/Pro adapters and source-line attribution from actual solver observations; no comparative or population Pass@1 gain established. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -231,6 +231,16 @@ the model. Report paired intervals even if they cross zero; passing this small
 development gate is candidate selection, not an independent improvement claim.
 The prior 32 tasks stay sealed against tuning. Local receipts live under
 `verification/contextbench-early-unseen-20261016/`.
+
+The parallel solver-accounting change records the exact serialized model request
+before inference and confirms its input when an assistant response arrives.
+`model-observations.json` exports confirmed, rendered histories rather than raw
+shell stdout or the solver's terminal message list. A pinned native-loop test
+proves that middle output elided by the 10,000-character renderer and an unrequested
+submission diff are absent. Unknown delivery and missing historical input receipts
+remain explicit. This is the raw full-agent observation boundary; source-line
+attribution and the other native harnesses are still required. It changes no
+retrieval runtime file used by the concurrent frozen development experiment.
 
 ### October 16 online development result
 

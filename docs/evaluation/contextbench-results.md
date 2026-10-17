@@ -342,6 +342,15 @@ Multi/Poly/Pro adapters and full-agent source accounting remain open. Arbitrary
 shell reads from this solver are not added to the retrieval trajectory or claimed
 as a complete leaderboard artifact.
 
+New solver runs save each exact model request with a content hash and confirm
+delivery only when the SDK returns an assistant message. The local
+`model-observations.json` export therefore contains the shell output after the
+native loop's formatting and truncation. Elided middle output and a final
+submission diff that never reaches another model request are excluded. Missing
+historical receipts and unconfirmed requests remain explicit; their billing may
+still be unknown. This completes the raw observation boundary, while mapping
+arbitrary shell output to source lines remains an open evaluation gate.
+
 A subsequent matched check feeds the targeted-hop trial's two 16K contexts into
 fresh solver runs on that same Python development task. Both use the same pinned
 image, implementation, actual model, 30-step limit and $3 SDK-meter guard. Both
