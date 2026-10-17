@@ -724,17 +724,19 @@ amendment and failed case disclosed. Formal submission separately needs real
 native outcomes and complete raw archives. Draft
 [PR #834](https://github.com/sysevol-ai/CodeNib/pull/834) remains unmerged.
 
-Raw archival preparation now covers **125 ended native attempts**, including the
-interrupted one, and **112 already consumed standard Messages**. All **464**
-original files round-trip byte-identically through **3 gzip tar-stream parts**,
-**7,964,272 compressed bytes** in total; the largest part is **4,258,086 bytes**,
-below the official50MiB file cap. This is a partial local archive, not complete500
-submission evidence or new quality scoring. Active native outputs, new Batch
-results, native resolution outcomes and publication review remain open. A
-source-only binding audit verifies all500 evaluator target paths match the
-recorded snapshots, including119 aliases to retained source trees; no duplicate
-source checkout or source-path rewrite is needed for scoring. This archival work
-makes zero model/API calls and reads no new annotations.
+Raw archival preparation now covers **190 ended native attempts**, including the
+original interrupted one, and **112 already consumed standard Messages**. The
+new65-case group and original125-case group have disjoint task IDs. Across them,
+**639 file members** (**598 distinct member paths**) round-trip byte-identically;
+overlapping implementation/configuration names have identical hashes. There are
+**5 gzip tar-stream parts**, **9,906,981 compressed bytes** total; the largest
+part is **4,258,086 bytes**, below the official50MiB cap. This is a partial local
+archive, not complete500 evidence or new quality scoring. Active310 native
+outputs, new443 Batch results, evaluation/native outcomes and publication review
+remain open. A source-only audit verifies all500 evaluator target paths match the
+recorded snapshots, including119 aliases to retained trees; no duplicate source
+checkout or source-path rewrite is needed. Archival work makes zero model/API
+calls and reads no new annotations.
 
 ## Fresh independent32: seven-language retrieval-only validation
 

@@ -41063,5 +41063,26 @@
     "new_model_failures_due_to_capacity_stop": 0,
     "new_API_usage_usd": 0,
     "new_quality_scores": false
+  },
+  "verified500_raw_archive_bundle": {
+    "scope": "Partial originalraw bundle:190disjoint nativepositions incl1failedzero and112standardconsumers. Both archive groups roundtrip independently;overlapping implementation/configmembernames have identical hashes. Current310native/new443Batch/evaluation/outcome/publication work remain open. No model/Gold/quality work added by bundling.",
+    "native_positions": 190,
+    "failed_native_positions": 1,
+    "consumed_standard_message_attempts": 112,
+    "verified_file_members_with_cross_group_duplicates": 639,
+    "distinct_member_names": 598,
+    "gzip_parts": 5,
+    "compressed_bytes": 9906981,
+    "largest_part_bytes": 4258086,
+    "all_parts_below_50MiB": true,
+    "overlapping_members_byte_identical": true,
+    "full500_submission_ready": false,
+    "new_model_calls": 0,
+    "new_annotation_reads": 0,
+    "new_API_usage_usd": 0,
+    "partial_bundle_index_sha256": "eac01d64a6202950e9c9fd2315a829f4619deb0ec79ae0f992ba938e1f93941f",
+    "additional65_archive_index_sha256": "b3120d52a5b2ba1c5b83b26d710c44ac7328cc2fff6cf90585d3ef7919c94a1b",
+    "additional65_verification_sha256": "9908c2801cb9d5e65ad7e8d20c2a64b087babab4f6e20719a4fb24760df6112f",
+    "new_quality_scores": false
   }
 }
