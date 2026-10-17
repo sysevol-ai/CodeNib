@@ -1,6 +1,6 @@
 # ContextBench retrieval experiments
 
-The late physical 4K source strategy **passes** its frozen Recall-first gate
+The historical late physical 4K source strategy **passes** its frozen Recall-first gate
 on a new task-level independent32 after a disclosed pre-label encoding amendment.
 Confirmed cumulative Recall is **74.94% → 79.09%**,
 F1 **30.13% → 22.32%**; repository-cluster 95% Recall difference
@@ -46,15 +46,28 @@ resolution results are not matched. Local re-scoring adds no model/API calls.
 
 The current baseline uses CodeNib's bounded `read`/`grep`/`glob` tools,
 repository-bound adapters and consumed-source trajectory/evaluator bridge.
-It uses no semantic graph, vector retrieval, BM25 or Jev reranking. The planned
-late4K compiler packs unread source from already located files; its outputs
-have not yet been consumed on these122 tasks. High native scores therefore do
-not establish a gain from that compiler or CodeNib's indexed retrieval.
+It uses no semantic graph, vector retrieval, BM25 or Jev reranking. High native
+scores therefore do not establish a gain from CodeNib's indexed retrieval.
+The unstarted443 late4K consumer plan is cancelled and its $40 API reservation
+is released; historical consumed calls and their costs remain unchanged.
+
+Current development connects the existing `explore_context_impl` directly to
+the SDK agent as an explicit on-demand tool. The compiler builds vector and
+symbol-graph artifacts; no BM25 or Jev backend is selected. An adapter numbers
+only complete projected lines verified against authenticated source bytes, so
+omitted, partial and index-only fallback text receives no source credit. The
+first pilot selects the first previously exposed122 task in each of Python,
+JavaScript, TypeScript and Go, without selecting by quality. It uses isolated
+source checkouts and cached local Jina embeddings, retains the same main Opus
+model/turn/$0.75 guard, and makes no repair calls. **109 focused local tests
+pass**; actual core-tool usage and matched pilot scores remain open. There is
+no explicit Haiku controller in this pilot; SDK auxiliary usage is not evidence
+of a context policy. No indexed-context gain is established yet.
 
 The user-requested interim report prospectively changes the annotation schedule:
 these122 actual-source predictions were sealed before their selected Gold was
-read, while remaining investigations and all443 new candidate consumers are
-still incomplete. Preserve the original full500-before-first-new-Gold schedule
+read, while remaining native investigations are
+still incomplete. The later443 consumer plan has since been cancelled. Preserve the original full500-before-first-new-Gold schedule
 as **not followed**. Runtime gold stays empty; the frozen model, tools, compiler,
 population and budgets do not change or use these results. Final full500 results
 must disclose this prior annotation access and keep the three32 cohorts sealed.
@@ -768,26 +781,21 @@ establish only the baseline reported above. No new enhanced comparison is
 available. Quota metadata is not a provider billing cap/reservation.
 
 The cumulative baseline uses source already consumed by the investigator.
-All56 original native-packet source unions equal those prefixes. **443** new
-candidate inputs plus56 reused complete pairs plus the one failed zero-source
-position account for all500. There is no redundant baseline review call for new
-positions and no model-input credit for an unsent packet. Report the extra
-candidate call/tokens/cost; do not claim matched final review reasoning,
-autonomous paired search or repair benefit. Existing56 standard-request costs
-remain actual historical costs, without rebilling or retrospective Batch discount.
+All56 historical native-packet source unions equal those prefixes; existing
+standard-request costs remain actual costs without rebilling or retrospective
+Batch discounts. The unstarted443 extra consumers are cancelled. Known API usage
+stays **$59.09398873** under the **$100** ceiling, leaving **$40.90601127**;
+the previous $40 reservation is released. No new Batch/count/repair call starts.
 
-After terminal native receipt reconciliation, prepare all **443** eligible exact
-candidate inputs, retaining the failed position explicitly. Free provider counts,
-full output caps, margin and headroom must fit the same **$40** reservation before
-one paid Batch create. Known API usage stays **$59.09398873** under the **$100**
-ceiling. No new Batch/free-count/repair call has started at this checkpoint.
-Freeze all500 terminal predictions and raw receipts before final all500 scoring,
-then report all500 file/block/line Recall, F1 and costs with the operational
-amendments, earlier122-case annotation access and failed case disclosed. The
-original no-interim-Gold timing gate must not be reported as passed. Formal
-submission separately needs real
-native outcomes and complete raw archives. Draft
-[PR #834](https://github.com/sysevol-ai/CodeNib/pull/834) remains unmerged.
+Freeze terminal native predictions and raw receipts before final all500 baseline
+scoring, disclose the earlier122-case annotation access and failed case, and
+report official validity separately from fixed-population failure accounting.
+The original no-interim-Gold timing gate must not be reported as passed.
+Actual indexed-context usage, a small matched development comparison and later
+validation are separate gates; the plain native baseline cannot satisfy them.
+Formal submission separately needs real native outcomes and complete raw
+archives. Draft [PR #834](https://github.com/sysevol-ai/CodeNib/pull/834) stays
+unmerged; context research proceeds before repair batches.
 
 Raw archival preparation now covers **243 ended native attempts**, including the
 original interrupted one, and **112 already consumed standard Messages**. The
@@ -798,8 +806,8 @@ overlapping implementation/configuration names have identical hashes. There are
 **7 gzip tar-stream parts**, **11,568,526 compressed bytes** total; the largest
 part is **4,258,086 bytes**, below the official50MiB cap. This is a partial local
 archive, not complete500 evidence or new quality scoring. Current257 native
-outputs, new443 Batch results, evaluation/native outcomes and publication review
-remain open. A source-only audit verifies all500 evaluator target paths match the
+outputs, baseline evaluation/native outcomes and publication review remain
+open. No new443 Batch archive is expected after cancellation. A source-only audit verifies all500 evaluator target paths match the
 recorded snapshots, including119 aliases to retained trees; no duplicate source
 checkout or source-path rewrite is needed. Archival work makes zero model/API
 calls and reads no new annotations.
