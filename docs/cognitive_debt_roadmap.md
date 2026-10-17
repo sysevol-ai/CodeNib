@@ -453,29 +453,40 @@ catalog. Preserve their initial strict empty-catalog failure. Reuse every matchi
 case without new scoring: 88 native prefixes, including 56 complete pairs,
 leave 412 fresh investigations and 444 candidate inputs.
 
-Canonical500 context-only protocol `cf2f2e47`, runtime `e8f6b675`, is now running
-in an immutable worktree, with empty runtime gold and all source-gap denominators
-retained. It includes exposed cases and is not fresh independent500. At the
-2026-10-17 18:16 UTC checkpoint, 29/412 fresh investigations are accepted for
-$2.88826660 additional Max nominal SDK usage, zero new API/repair calls or terminal
-metering gaps. The default-off included-only guard requires actual Max auth and
-supported rate receipts explicitly disabling overage; it changes no query
-options or account settings. The first request can precede the rate event, so it
-is not a billing cap. Thirty-three boundary tests, then 132 relevant units pass
-(eight integration cases deselected). Per-case durable intent prevents automatic
-relaunch; unexpected receipts stop later dispatch. Current live quota receipts
-are not a whole-run quota reservation.
+The original canonical500 native execution `cf2f2e47`/`e8f6b675` fails after37
+attempts/36accepted when assistant output precedes the optional quota event and
+the guard interrupts before terminal usage. Preserve the failed gate and one
+unknown Max terminal usage; do not substitute partial tokens or rerun the case.
+It calls no source tools, so both arms retain zero source for that case within
+all500 denominators.
 
-Baseline cumulative source is already consumed by the investigator; all56
-original native-packet source unions equal its prefix. The444 remaining cases
-add only an actual candidate final input, with extra volume/cost disclosed and
-no matched final-reasoning or repair claim. Exact provider counts and full
-output-cap/margin/headroom must fit the separately reserved $40 before one Batch
-create. Known API usage stays $59.09398873 under the same $100 ceiling; no new
-Batch/count calls or interim quality scores at this checkpoint. Freeze all500
-terminal predictions before annotation access. All three32 cohorts stay sealed.
-Formal native outcomes/raw archives remain later submission gates; context
-research does not wait for repairs. No product lifecycle promotion follows.
+Prospective quota-order protocol `21456878`, immutable runtime `1b0ad5ac`,
+continues only375unstarted IDs. All124 qualified native prefixes (88original plus
+36initial500 accepted) are reused, including56complete context pairs. SDK query,
+options, source policy and compiler are unchanged. Pending output now drains to
+terminal metering before a missing-event rejection; explicit unsafe rate events
+still stop immediately. Require actual included-only quota receipts before case
+acceptance, without account setting changes/API fallback. This is not a billing
+cap. Thirty-six SDK boundary tests, then142relevant local tests and pinned hooks
+pass without billed tests.
+
+At **2026-10-17 18:24 UTC**, the continuation has **3/375 accepted**, **372remaining**,
+for **$4.21292300 known new Max nominal usage** including the initial36, plus the
+one unknown terminal usage. New API/Batch/count/repair calls remain zero. Runtime
+gold is empty, source gaps and all500denominators retained, and all three32cohorts
+stay sealed. This canonical population includes exposed cases; no fresh
+independent500 or new quality result is claimed. Durable per-case intent prevents
+relaunch; unexpected receipts stop later dispatch.
+
+Baseline source is already consumed by the investigator. All56old native-packet
+source unions equal those prefixes. The443new candidate inputs plus56reused pairs
+plus1failedzero position account for500, with asymmetric extra calls/tokens/cost
+and no matched final-reasoning/repair claim. Complete exact provider counts,
+full output caps/margin/headroom within the same40USD reservation before one
+Batchcreate. Known API usage stays59.09398873USD under100USD. Freeze all500terminal
+predictions before annotation access and disclose the operational amendment and
+failed case. Formal native outcomes/raw archives remain later submission gates;
+context research does not wait for repairs. No product lifecycle promotion follows.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates
