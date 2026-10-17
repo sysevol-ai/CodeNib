@@ -27,7 +27,13 @@ from codenib.agent.runner import _MAX_RESULT_CHARS
 from codenib.agent.tools.spec import ToolInputSpec, ToolSpec
 from codenib.graph.traverse_graph import NeighborScanBudget, RepoDependencySearcher
 from codenib.languages import normalize_graph_language
-from codenib.types import EDGE_TYPE_REFERENCE, is_symbol_node, node_has_definition
+from codenib.types import (
+    EDGE_TYPE_REFERENCE,
+    NODE_TYPE_FUNCTION,
+    NODE_TYPE_METHOD,
+    is_symbol_node,
+    node_has_definition,
+)
 
 
 def prepare_graphs(args):
@@ -169,6 +175,7 @@ def graph_options(args, cases):
         "prepared": str(prepared.resolve()) if prepared else None,
         "manifest_sha256": digest(prepared / "manifest.json") if prepared else None,
         "tokens": tokens,
+        "policy": "targeted_reference_hop_before_handoff",
     }
 
 
@@ -258,7 +265,18 @@ class GraphNavigation:
         ]
         if not seeds:
             return json.dumps([{"status": "no_definition_at_line", "content": ""}])
-        seed = min(seeds, key=lambda n: (n["end_line"] - n["start_line"], n["name"]))
+        # A local variable/parameter definition can occupy the queried line.
+        # Prefer its enclosing callable so outgoing navigation follows that
+        # callable's references instead of a leaf variable with no outgoing edge.
+        callables = [
+            node
+            for node in seeds
+            if node["type"] in {NODE_TYPE_FUNCTION, NODE_TYPE_METHOD}
+        ]
+        seed = min(
+            callables or seeds,
+            key=lambda n: (n["end_line"] - n["start_line"], n["name"]),
+        )
         scanner = RepoDependencySearcher(self.graph)
         budget = NeighborScanBudget(self.edge_limit)
         records, seen = [], {seed["name"]}
@@ -335,6 +353,7 @@ class GraphNavigation:
             description="Read definitions connected by one directed compiler reference hop.",
             tool_doc=(
                 "Choose an observed source file and 1-based line inside a definition. "
+                "Inside a function or method, navigate from that enclosing callable. "
                 "Outgoing follows its references; incoming finds definitions referencing "
                 "it, including tests. These are compiler references, not a complete "
                 "runtime call graph. Only numbered content has been read. A missing "
