@@ -7,11 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts._contextbench_solver_read import read_source
+from scripts import _contextbench_solver_read as source_helper
+from scripts._contextbench_solver_read import read_source, search_line, search_source
 from scripts.contextbench_solver_sources import (
     SourceEnvironment,
     initial_source_receipt,
     receipt_digest,
+    search_output,
     source_attribution,
     source_output,
 )
@@ -115,6 +117,51 @@ def test_reader_rejects_unattributable_files(source_repo, tmp_path, kind):
         read_source(repo, commit, str(file), 1, 1)
 
 
+def test_search_includes_tests_and_versions_changed_and_new_files(source_repo):
+    repo, commit = source_repo
+    (repo / "tests").mkdir()
+    (repo / "tests/test_source.py").write_text("original test\n")
+    (repo / "binary.dat").write_bytes(b"original\0binary")
+    (repo / ".gitignore").write_text("ignored.txt\n")
+    (repo / "ignored.txt").write_text("original ignored\n")
+    result = search_source(repo, commit, "original", ".")
+    files = {file["file"]: file for file in result["sources"]}
+    assert set(files) == {"source.txt", "tests/test_source.py"}
+    assert files["source.txt"]["source_sha256"] == files["source.txt"]["base_sha256"]
+    assert files["tests/test_source.py"]["base_sha256"] is None
+    assert result["skipped_files"] == 1 and not result["limits_reached"]
+    (repo / "source.txt").write_text("inserted\noriginal first\n")
+    changed = search_source(repo, commit, "original", "source.txt")["sources"][0]
+    assert changed["matches"] == [{"line": 2, "text": "original first"}]
+    assert changed["source_sha256"] != changed["base_sha256"]
+
+
+@pytest.mark.parametrize("path", ["..", ".git", ".git/config", "escape"])
+def test_search_rejects_paths_outside_source(source_repo, path):
+    repo, commit = source_repo
+    (repo / "escape").symlink_to(repo.parent, target_is_directory=True)
+    with pytest.raises(ValueError, match="inside the checkout"):
+        search_source(repo, commit, "original", path)
+
+
+def test_search_limits_are_explicit_and_preserve_complete_records(
+    source_repo, monkeypatch
+):
+    repo, commit = source_repo
+    result = search_source(repo, commit, "original", ".", limit=1)
+    assert result["matches_returned"] == 1 and result["limits_reached"] == [
+        "match_limit"
+    ]
+    monkeypatch.setattr(source_helper, "MAX_SEARCH_OUTPUT_CHARS", 1)
+    result = search_source(repo, commit, "original", ".")
+    assert result["sources"] == [] and result["limits_reached"] == ["output_limit"]
+    monkeypatch.setattr(source_helper, "MAX_SEARCH_FILES", 1)
+    (repo / "a.txt").write_text("no match\n")
+    result = search_source(repo, commit, "original", ".")
+    assert result["sources"] == [] and result["limits_reached"] == ["file_scan_limit"]
+    assert result["files_considered"] == 2 and result["files_scanned"] == 1
+
+
 def envelope(receipt):
     return {"receipt": receipt, "sha256": receipt_digest(receipt)}
 
@@ -132,6 +179,20 @@ def observed(source, rendered=None):
                 if rendered is not None
                 else "<output>\n" + output + "</output>"
             ),
+        }
+    )
+
+
+def observed_search(search, rendered=None):
+    output = search_output(search)
+    return envelope(
+        {
+            "kind": "source_search",
+            "source": None,
+            "search": search,
+            "output": {"returncode": 0, "output": output},
+            "message_index": 3,
+            "rendered_observation": rendered if rendered is not None else output,
         }
     )
 
@@ -186,6 +247,47 @@ def test_modified_version_and_elided_or_partial_lines_have_no_base_credit(source
     assert result["base_source_line_count"] == 0
     assert result["events"][0]["visible_source_lines"] == [2, 3]
     assert not result["events"][0]["base_version"]
+
+
+def test_search_credit_requires_complete_file_qualified_lines_and_confirmed_input(
+    source_repo,
+):
+    repo, _ = source_repo
+    (repo / "a.py").write_text("original first\n")
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    tree = subprocess.check_output(
+        ["git", "-C", str(repo), "write-tree"], text=True
+    ).strip()
+    search = search_source(repo, tree, "original first", ".")
+    event = observed_search(
+        search,
+        "<output_head>\n"
+        + search_line("a.py", 1, "original first")[:20]
+        + "\n</output_head>\n<output_tail>\n"
+        + search_line("source.txt", 1, "original first")
+        + "\n</output_tail>",
+    )
+    row = {"execution_receipts": [event]}
+    assert source_attribution(row, [])["base_source_line_count"] == 0
+    result = source_attribution(row, confirmed(event))
+    assert result["base_source_lines"] == {"source.txt": [1]}
+    assert result["events"][0]["visible_source_lines"] == []
+    # Even a freshly hashed receipt must agree with its own complete source output.
+    event["receipt"]["output"]["output"] += "invented\n"
+    row["execution_receipts"] = [envelope(event["receipt"])]
+    with pytest.raises(ValueError, match="search receipt output differs"):
+        source_attribution(row, confirmed(row["execution_receipts"][0]))
+
+
+def test_search_modified_and_new_files_never_gain_base_credit(source_repo):
+    repo, commit = source_repo
+    (repo / "source.txt").write_text("inserted\noriginal first\n")
+    (repo / "new.txt").write_text("original first\n")
+    event = observed_search(search_source(repo, commit, "original", "."))
+    result = source_attribution({"execution_receipts": [event]}, confirmed(event))
+    assert result["base_source_line_count"] == 0
+    assert [e["visible_source_lines"] for e in result["events"]] == [[1], [2]]
+    assert not any(e["base_version"] for e in result["events"])
 
 
 def test_initial_context_is_validated_and_not_credited_without_model_delivery(
@@ -270,8 +372,46 @@ def test_wrapper_uses_controlled_read_and_never_executes_shell_in_reader_args(
     assert checkpoints == [1, 2, 3, 4]
 
 
+def test_wrapper_search_runs_stdlib_helper_with_literal_arguments(source_repo):
+    repo, commit = source_repo
+    shell, receipts = LocalEnvironment(repo), []
+    env = SourceEnvironment(
+        shell,
+        root=str(repo),
+        commit=commit,
+        receipts=receipts,
+        checkpoint=lambda: None,
+        observation=lambda command, output, timeout: (3, output["output"]),
+    )
+    result = env.execute("codenib-grep 'original (first|third)' . 2")
+    assert result["returncode"] == 0
+    event = receipts[-1]
+    result = source_attribution({"execution_receipts": [event]}, confirmed(event))
+    assert result["base_source_lines"] == {"source.txt": [1, 3]}
+    assert result["events"][0]["search_limits_reached"] == ["match_limit"]
+    for command in (
+        "codenib-grep '[' .",  # Invalid regex is actionable feedback, not a crash.
+        "codenib-grep original . 201",
+        "codenib-grep original . && touch escaped",
+        "codenib-grep '$(touch escaped)' '$(touch escaped)'",
+    ):
+        assert env.execute(command)["returncode"] == 1
+    assert not (repo / "escaped").exists()
+    assert env.execute("grep original source.txt")["returncode"] == 0
+    event = receipts[-1]
+    result = source_attribution({"execution_receipts": [event]}, confirmed(event))
+    assert result["base_source_line_count"] == 0
+    assert result["events"][0]["kind"] == "shell_unattributed"
+
+
 @pytest.mark.parametrize("prefix", ["cd {repo} && ", "pwd;\n", "echo ready | "])
-def test_compound_reader_attempt_explains_available_interface(source_repo, prefix):
+@pytest.mark.parametrize(
+    "tool,arguments",
+    [("codenib-read", "source.txt 1 2"), ("codenib-grep", "original .")],
+)
+def test_compound_reader_attempt_explains_available_interface(
+    source_repo, prefix, tool, arguments
+):
     repo, commit = source_repo
     shell = LocalEnvironment(repo)
     receipts = []
@@ -286,29 +426,26 @@ def test_compound_reader_attempt_explains_available_interface(source_repo, prefi
     # The real adoption probe first combined cd, two reads and git status. An
     # ordinary command-not-found error incorrectly tells the model to abandon
     # an available tool; reject the invocation with its actual interface.
-    command = prefix.format(repo=repo) + (
-        "codenib-read source.txt 1 2 && codenib-read source.txt 3 3 "
-        "&& git status --short"
-    )
+    command = prefix.format(repo=repo) + f"{tool} {arguments} && git status --short"
     result = env.execute(command)
     assert result["returncode"] == 1 and "whole bash action" in result["output"]
     assert not shell.commands
-    assert receipts[-1]["receipt"]["kind"] == "source_read"
-    assert receipts[-1]["receipt"]["source"] is None
-    assert env.execute("codenib-read source.txt 1 2")["returncode"] == 0
-    # A quoted mention of the command is ordinary shell output, not an attempt.
-    assert env.execute("printf '%s\\n' 'codenib-read'")["output"] == "codenib-read\n"
-    assert receipts[-1]["receipt"]["kind"] == "shell_unattributed"
-    assert (
-        env.execute("printf '%s %s\\n' '&&' codenib-read")["output"]
-        == "&& codenib-read\n"
+    assert receipts[-1]["receipt"]["kind"] == (
+        "source_read" if tool == "codenib-read" else "source_search"
     )
+    assert receipts[-1]["receipt"]["source"] is None
+    assert env.execute(f"{tool} {arguments}")["returncode"] == 0
+    # A quoted mention of the command is ordinary shell output, not an attempt.
+    assert env.execute(f"printf '%s\\n' {tool!r}")["output"] == f"{tool}\n"
+    assert receipts[-1]["receipt"]["kind"] == "shell_unattributed"
+    assert env.execute(f"printf '%s %s\\n' '&&' {tool}")["output"] == f"&& {tool}\n"
     assert receipts[-1]["receipt"]["kind"] == "shell_unattributed"
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("search", [False, True], ids=["read", "search"])
 def test_native_loop_receipts_cover_truncation_edits_timeouts_and_terminal_output(
-    monkeypatch, source_repo
+    monkeypatch, source_repo, search
 ):
     import yaml
 
@@ -348,11 +485,20 @@ def test_native_loop_receipts_cover_truncation_edits_timeouts_and_terminal_outpu
     calls, receipts = [], []
     commands = iter(
         [
-            "codenib-read large.txt 1 300",
+            "codenib-grep line large.txt" if search else "codenib-read large.txt 1 300",
             "printf 'inserted\\noriginal first\\n' > source.txt",
-            "codenib-read source.txt 1 2",
+            (
+                "codenib-grep original source.txt"
+                if search
+                else "codenib-read source.txt 1 2"
+            ),
             "fixture-timeout",
-            "codenib-read large.txt 140 160",  # The next request is unconfirmed.
+            # The next request is unconfirmed.
+            (
+                "codenib-grep '^line 15[0-9]:' large.txt"
+                if search
+                else "codenib-read large.txt 140 160"
+            ),
             "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && cat source.txt",
         ]
     )
@@ -434,9 +580,14 @@ def test_native_loop_receipts_cover_truncation_edits_timeouts_and_terminal_outpu
     assert report["unconfirmed_inputs"] == [6]
     assert 0 < coverage["base_source_line_count"] < 300
     visible = coverage["base_source_lines"]["large.txt"]
-    assert 1 in visible and 300 in visible and 150 not in visible
+    captured = receipts[0]["receipt"].get("search")
+    last_line = captured["sources"][0]["matches"][-1]["line"] if search else 300
+    assert 1 in visible and last_line in visible and 150 not in visible
+    if search:
+        assert captured["limits_reached"] == ["output_limit"]
+        assert len(visible) < captured["matches_returned"]
     assert "source.txt" not in coverage["base_source_lines"]
-    assert coverage["events"][2]["visible_source_lines"] == [1, 2]
+    assert coverage["events"][2]["visible_source_lines"] == ([2] if search else [1, 2])
     assert coverage["events"][3]["confirmed_turns"] == [5]
     assert not coverage["events"][4]["confirmed_turns"]
     assert not coverage["events"][5]["confirmed_turns"]

@@ -253,6 +253,9 @@ Black or isort can produce changes that fail the release all-files check.
   Keep arbitrary shell output and modified-file coordinates explicitly
   unattributed until their original-source mapping is verified; partial coverage
   must not be presented as a complete ContextBench score.
+  Multi-file search observations must bind each complete visible match to its
+  file and captured version; a shared line number/text is not file identity.
+  Report scan/output caps and skipped files rather than implying full coverage.
 
 ## Directory-Specific Rules
 
