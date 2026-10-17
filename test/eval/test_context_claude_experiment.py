@@ -102,6 +102,82 @@ def test_graph_sdk_tool_requires_explicit_run_allowlist():
     assert "unavailable" not in normalized[0]["tool_calls"][0]["function"]
 
 
+@pytest.mark.parametrize("policy", ["definitions", "unseen"])
+def test_sdk_completion_uses_streamed_source_receipts(monkeypatch, tmp_path, policy):
+    (tmp_path / "a.py").write_text("def found():\n    value = 3\n    return value\n")
+    row = {"instance_id": "case", "messages": [], "sdk_events": []}
+    replies = []
+
+    def event(kind, **fields):
+        return make_dataclass(kind, [(key, object) for key in fields])(**fields)
+
+    async def query(*, prompt, options):
+        handlers = dict(options.mcp_servers["source"])
+        yield event(
+            "SystemMessage", subtype="init", data={"tools": options.allowed_tools}
+        )
+        for offset in (1, 2):
+            arguments = {"file_path": "a.py", "offset": offset, "limit": 1}
+            identifier = str(offset)
+            yield event(
+                "AssistantMessage",
+                content=[
+                    {
+                        "id": identifier,
+                        "name": "mcp__source__read",
+                        "input": arguments,
+                    }
+                ],
+                model="test-model",
+            )
+            reply = await handlers["read"](arguments)
+            assert not reply["isError"]
+            replies.append(reply["content"][0]["text"])
+            yield event(
+                "UserMessage",
+                content=[{"tool_use_id": identifier, "content": reply["content"]}],
+            )
+        yield event("AssistantMessage", content=[{"text": "Done"}], model="test-model")
+        yield event(
+            "ResultMessage",
+            subtype="success",
+            is_error=False,
+            num_turns=3,
+            total_cost_usd=0.03,
+            result="Done",
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            tool=lambda name, *args: lambda handler: (name, handler),
+        ),
+    )
+    asyncio.run(
+        claude.retrieve(
+            repo=tmp_path,
+            query_text="Inspect found",
+            row=row,
+            checkpoint=lambda: None,
+            cli="test",
+            model="test-model",
+            max_turns=5,
+            source_policy="functions",
+            completion_source_policy=policy,
+        )
+    )
+    assert "return value" in replies[0] and "value = 3" in replies[1]
+    assert ("return value" in replies[1]) == (policy == "definitions")
+    assert row["status"] == "ok" and row["sdk_reported_cost_usd"] == 0.03
+    assert claude.native.contextbench_prediction(
+        instance_id="case", messages=row["messages"], repo_path=tmp_path
+    )["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 3}]}
+
+
 @pytest.mark.parametrize("unexpected_inventory", [False, True])
 def test_sdk_unknown_attempt_retains_usage_but_rejects_extra_capability(
     monkeypatch, tmp_path, unexpected_inventory
