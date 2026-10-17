@@ -193,9 +193,16 @@ historical controls. A fresh three-arm late-relationship pilot completes all
 eight development tasks per arm. Recall changes 39.85% → 41.62% and F1
 32.85% → 35.29%, with both primary intervals crossing zero. Nine graph calls add
 200 annotated C lines, 197 absent from native, but no other language gains
-annotated graph source. Its two-language gate fails. Bounded oversized-neighbor
-delivery and definition coverage at observed anchors are the next mechanism
-checks; no new independent or official-500 run follows. The fmt pilot now
+annotated graph source. Its two-language gate fails. A zero-model diagnosis
+reproduces all nine replies and three cached C++ graphs. Choosing the smallest
+containing parsed range fixes 38 clangd graph spans without changing compiler
+identities or edges. The affected query now selects the observed constructor,
+but adds no source; eight replies remain identical. Nearby reference windows
+provide little unseen source, and the JavaScript compiler index lacks the
+assigned-function definitions despite chunker support. Useful graph delivery
+across languages and provider definition coverage remain open; no new independent
+or official-500 run follows. The shared clangd materializer gains this correctness
+fix without a new parser, route, schema or benchmark-label dependency. The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair
 resolves one C++ task in both arms, 1/1 each, passing 18 tests with ten confirmed

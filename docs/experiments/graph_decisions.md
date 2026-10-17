@@ -39,7 +39,7 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. Optional conversation-aware completion removes 726 repeated line deliveries in the fixed 24-task replay with identical cumulative source, reducing reply characters 3.63%. It preserves the original callable selection and has no online quality result. | Preserve useful grep completion; validate the changed policy in fresh matched development runs before any new independent selection. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
-| Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The fresh late-check eight-task pilot completes all three arms: Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero. Only C gains annotated graph source beyond native, so its two-language gate fails. | Diagnose oversized-neighbor delivery and definition coverage at observed anchors before a revised matched candidate. Preserve canonical annotation paths, all failed gates and the sealed independent 32. No product promotion or full-500 launch. |
+| Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model diagnosis fixes 38 overlapping C++ definition ranges with unchanged compiler identities/edges and no added source on the nine fixed queries. | Establish useful graph delivery across languages and reliable assigned-function definitions in JavaScript before another matched candidate. Nearby anchor windows do not justify a new delivery policy. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
 | Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt native adapter passes its reference/control check, and its one-task development solver pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. | Extend other Multi repositories, Poly/Pro coverage and source-line attribution from actual solver observations. The fmt retrieval had no available graph, so the pair establishes neither a graph-source contribution nor a broader comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -526,8 +526,8 @@ seven available graphs. They return 220 new physical lines: 200 C and 20 Rust.
 Canonical annotation overlap is 200 C lines, 197 absent from the matched native
 trace, and zero on Rust. The two-language gate fails; the point-score gates pass.
 Python/Go report no unseen neighbors, TypeScript/C++ have oversized source,
-Java has no graph, and JavaScript has two missing-definition responses. The next
-mechanism checks concern bounded neighbor source and definition coverage.
+Java has no graph, and JavaScript has two missing-definition responses. The
+completed mechanism diagnosis is recorded below; it does not change this gate.
 
 The fixed-trajectory source-removal audit reproduces all eight original
 predictions. Removing graph replies while preserving every later call changes
@@ -549,6 +549,37 @@ results and publishes explicit amendments in
 `docs/assets/contextbench_annotation_correction.json`. The late pilot remains
 rejected under its original two-language criterion. Independent validation and
 official-500 gates remain closed.
+
+The zero-model diagnosis in
+`verification/contextbench-graph-range-diagnostic-20261016/` reproduces all nine
+old graph replies and all three C++ graphs from unchanged cached clangd shards.
+Its protocol hash is
+`0e34596e4799ee11710da7713eb1173bebb850d23255b768d88cd096cb9ce34f`.
+The range materializer previously chose the first containing tree-sitter chunk,
+assigning several distinct methods the same macro-confused 520-line span. It now
+chooses the smallest containing range; missing chunks retain the compiler point.
+The three graphs change 33, five and zero ranges, respectively. Every compiler
+identity, selection point and edge remains exact, and every changed span still
+contains its definition point. At `include/fmt/color.h:411`, the seed changes
+from an unrelated `rgb` constructor to the observed `ansi_color_escape` overload.
+The corrected incoming query has no returned neighbors, and the other eight
+replies remain identical. There is no added physical or annotated source and no
+new online result. Historical graphs and scores stay frozen.
+
+Reference-anchor windows provide zero unseen C++ lines through radius 64; the
+TypeScript anchor provides zero through radius 16, five at 32 and 37 at 64.
+Do not introduce a window-delivery policy on this evidence alone. The JavaScript
+file has 36 field definitions and 42 file-owned references. Raw SCIP emits its
+assigned property names as local references without callable definitions or
+enclosing ranges; assignment-function syntax is already supported by the
+chunker. Do not invent compiler-defined callables or call edges to hide the
+provider gap. This patch changes no graph schema or native query contract; full
+graph construction is shared by the Python and native-provider routes. The
+regression first fails on the old range choice, then passes for both chunk
+orders; 41 related tests and 48 compiled native-query tests pass. Useful graph
+delivery across languages, provider definition coverage and revised matched
+quality evidence remain the open gates. This diagnosis uses no model calls or
+additional API spend.
 
 ### Broader offline graph preparation outcome
 

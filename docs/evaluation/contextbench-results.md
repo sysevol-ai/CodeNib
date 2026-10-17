@@ -239,12 +239,32 @@ A zero-model fixed-trajectory check reproduces every original prediction, then
 removes graph replies while keeping all later calls fixed. Macro Recall changes
 41.62% → 39.80% and F1 35.29% → 34.00%. All Recall loss is on the C task. This
 confirms direct source-score contribution, not what an agent would do without
-graph feedback or a population improvement. The next diagnosis is bounded source
-delivery for oversized neighbors and definition coverage at observed anchors.
+graph feedback or a population improvement.
 All runtime/input hashes match. The [24-row CSV](../assets/contextbench_late_graph_8.csv)
 and [protocol, intervals, gate and source attribution](../assets/contextbench_late_graph_summary.json)
 retain the complete result, the original raw-path audit's correction, and the
 failed gate. The independent 32 remains sealed; the official 500 is not launched.
+
+A subsequent zero-model diagnosis reproduces all nine original graph replies and
+all three cached C++ development graphs before changing range selection. The
+clangd graph materializer now chooses the smallest containing parsed range,
+instead of the first overlapping chunk. This corrects 38 ranges across the three
+graphs while preserving every compiler symbol, definition point and edge. At
+`color.h:411`, navigation now selects the observed `ansi_color_escape` constructor
+instead of an unrelated `rgb` constructor assigned a 520-line range. The corrected
+query returns no neighbors; the other eight replies remain identical. No source
+coverage or online score improvement is established. Existing frozen graphs and
+scores remain unchanged; future graphs need regeneration to adopt the fix.
+
+The oversized TypeScript neighbor has no unseen source within 16 lines of its
+reference anchor, five lines within 32 and 37 within 64. The old C++ anchor has
+none within 64 lines. These windows do not justify a new delivery policy. The
+JavaScript file has 36 defined field nodes and 42 references owned by its file
+node. Its compiler index lacks callable definitions for the assigned functions;
+the chunker already supports their syntax. Adding inferred call edges would not
+repair that compiler evidence gap. Useful graph delivery across languages and
+JavaScript definition coverage remain open. The linked summary includes this
+diagnostic's hashes and aggregate evidence; it adds no model calls or API spend.
 
 ## Historical post-run 24-task results
 

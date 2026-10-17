@@ -1649,5 +1649,305 @@
   },
   "csv_sha256": "0751d4428130411bd778b1095497d7bec8fb82e0efb9a41a582add7a1fcb3aaf",
   "cost_scope": "Existing Claude Max only; SDK estimates are not invoiced charges. No standalone API-key inference or fallback. Account-level actual subscription billing is unknown.",
-  "artifact_scope": "Sanitized counters, task identities, scores, hashes and protocol only. No source text, reference patches, prompts, credentials or private paths."
+  "artifact_scope": "Sanitized counters, task identities, scores, hashes and protocol only. No source text, reference patches, prompts, credentials or private paths.",
+  "posthoc_clangd_range_diagnostic": {
+    "scope": "Post-hoc zero-model mechanism diagnosis on disclosed development tasks. Fixed queries and original preceding messages; not a new online outcome or a counterfactual agent.",
+    "model_calls": 0,
+    "additional_API_spend_usd": 0,
+    "baseline_commit": "489c9878c8d4ca3a890bd48793e3659f0fde3b8d",
+    "repair": "Choose the smallest containing tree-sitter span when materializing clangd definitions. Preserve compiler selection, symbol identity and every edge. Missing chunks retain point definitions.",
+    "protocol_sha256": "0e34596e4799ee11710da7713eb1173bebb850d23255b768d88cd096cb9ce34f",
+    "driver_sha256": "e1a9be6b7fd87c434b2fc93e136a77bf7aca4ec61b0bf04923d9edc37231d153",
+    "baseline_input_receipts_sha256": "63c30d61dc6916935741f4462fd19239b20558ac4e03ac647b9515bc90b726fc",
+    "candidate_input_receipts_sha256": "63c30d61dc6916935741f4462fd19239b20558ac4e03ac647b9515bc90b726fc",
+    "candidate_implementation": {
+      "codenib/ls_index/clangd_decode.py": "2af2bf0cc403bc6723805dcf30fe6f82d6e416f53b1ede6722c80f9c63c880bc",
+      "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+      "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+      "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+      "scripts/contextbench_graph_navigation.py": "bf27c49e1688d1f2a9fb8e42240c4e96556baa4f9bc7dec03cfb69a50f287775",
+      "scripts/benchmark_context_agent.py": "8f36741dd042d0213961357ffd12539665d9c6d2404e9f96d95086de47bd7375"
+    },
+    "inputs_unchanged": true,
+    "original_responses_exactly_reproduced": 9,
+    "graphs": [
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "nodes": 7935,
+        "edges": 29266,
+        "compiler_identity_and_edges_exact": true,
+        "changed_range_count": 33
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "nodes": 2900,
+        "edges": 78577,
+        "compiler_identity_and_edges_exact": true,
+        "changed_range_count": 5
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "nodes": 3151,
+        "edges": 36891,
+        "compiler_identity_and_edges_exact": true,
+        "changed_range_count": 0
+      }
+    ],
+    "cpp_seed_at_color_header_line_411": {
+      "baseline": {
+        "node_id": "03fc482f22c774b5",
+        "unified_name": "include/fmt/color.h:fmt.rgb.rgb()",
+        "selection_line": 198,
+        "range": [
+          23,
+          542
+        ],
+        "containing_callables": 40
+      },
+      "candidate": {
+        "node_id": "32d00a22096b3864",
+        "unified_name": "include/fmt/color.h:fmt.detail.ansi_color_escape.ansi_color_escape<Char>()",
+        "selection_line": 411,
+        "range": [
+          411,
+          429
+        ],
+        "containing_callables": 35
+      }
+    },
+    "queries": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "arguments": {
+          "file_path": "pylint/checkers/variables.py",
+          "line": 1823,
+          "direction": "incoming"
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "no_unseen_neighbors"
+        ],
+        "replayed_statuses": [
+          "no_unseen_neighbors"
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "arguments": {
+          "file_path": "packages/runtime-core/src/hydration.ts",
+          "line": 720,
+          "direction": "incoming"
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [
+          {
+            "node_id": "@vue/runtime-core@3.4.15:src/hydration.ts:createHydrationFunctions()",
+            "anchor_file": "packages/runtime-core/src/hydration.ts",
+            "anchor_line": 452,
+            "unseen_lines_by_radius": {
+              "8": 0,
+              "16": 0,
+              "32": 5,
+              "64": 37
+            }
+          }
+        ],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "source_not_returned"
+        ],
+        "replayed_statuses": [
+          "source_not_returned"
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "arguments": {
+          "file_path": "src/libponyc/codegen/gencall.c",
+          "line": 1066,
+          "direction": "incoming"
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 200,
+        "new_annotated_absent_native": 197,
+        "new_physical_lines": 200,
+        "original_statuses": [
+          "source_returned"
+        ],
+        "replayed_statuses": [
+          "source_returned"
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "arguments": {
+          "file_path": "include/fmt/color.h",
+          "line": 411,
+          "direction": "incoming"
+        },
+        "response_identical": false,
+        "oversized_anchor_windows": [
+          {
+            "node_id": "8b8b84c8fff3fd8b",
+            "anchor_file": "include/fmt/color.h",
+            "anchor_line": 405,
+            "unseen_lines_by_radius": {
+              "8": 0,
+              "16": 0,
+              "32": 0,
+              "64": 0
+            }
+          }
+        ],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "source_not_returned"
+        ],
+        "replayed_statuses": [
+          "no_returned_neighbors"
+        ]
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "arguments": {
+          "file_path": "models/scanresults.go",
+          "line": 294,
+          "direction": "incoming",
+          "limit": 10
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "no_unseen_neighbors"
+        ],
+        "replayed_statuses": [
+          "no_unseen_neighbors"
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "arguments": {
+          "file_path": "src/main/java/com/fasterxml/jackson/databind/deser/impl/FieldProperty.java",
+          "line": 189,
+          "direction": "incoming",
+          "limit": 10
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "graph_unavailable"
+        ],
+        "replayed_statuses": [
+          "graph_unavailable"
+        ]
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "arguments": {
+          "file_path": "src/user/email.js",
+          "line": 194,
+          "direction": "incoming",
+          "limit": 10
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "no_definition_at_line"
+        ],
+        "replayed_statuses": [
+          "no_definition_at_line"
+        ]
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "arguments": {
+          "file_path": "src/user/email.js",
+          "line": 48,
+          "direction": "incoming",
+          "limit": 10
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 0,
+        "original_statuses": [
+          "no_definition_at_line"
+        ],
+        "replayed_statuses": [
+          "no_definition_at_line"
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "arguments": {
+          "file_path": "src/parse/validator.rs",
+          "line": 272,
+          "direction": "outgoing",
+          "limit": 6
+        },
+        "response_identical": true,
+        "oversized_anchor_windows": [],
+        "new_annotated": 0,
+        "new_annotated_absent_native": 0,
+        "new_physical_lines": 20,
+        "original_statuses": [
+          "source_returned",
+          "source_returned",
+          "source_returned",
+          "source_returned",
+          "source_returned",
+          "source_returned"
+        ],
+        "replayed_statuses": [
+          "source_returned",
+          "source_returned",
+          "source_returned",
+          "source_returned",
+          "source_returned",
+          "source_returned"
+        ]
+      }
+    ],
+    "javascript": {
+      "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+      "file": "src/user/email.js",
+      "defined_node_types": {
+        "field": 36
+      },
+      "reference_owner_types": {
+        "file": 42
+      },
+      "decision": "Provider emits assigned property names only as local references without a callable definition/enclosing range. Do not invent compiler-defined callables or calls. Chunker assignment support already exists."
+    },
+    "outcome": "38 ranges shrink across three C++ graphs, with identical compiler identities, selection points and edges. The changed late C++ query selects the observed constructor instead of rgb; it has no returned neighbors. No query gains physical or annotated source. Eight of nine replies stay identical. No online quality claim, relaxed gate, or full-500 launch.",
+    "limits": "Smallest containing parsed span does not repair every macro parse error. JavaScript callable definition coverage and useful multi-language graph delivery remain open. Prior failed gates and official scores stay unchanged."
+  }
 }
