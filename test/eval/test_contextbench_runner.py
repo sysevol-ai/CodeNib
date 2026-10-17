@@ -277,7 +277,10 @@ def test_native_agent_pipeline_keeps_gold_out_of_prompts(
 
 @pytest.mark.integration
 @pytest.mark.parametrize("with_patch", [False, True])
-def test_official_evaluator_scores_native_trajectory(checkout, tmp_path, with_patch):
+@pytest.mark.parametrize("gold_prefix", ["", "/testbed/", "/workspace/owner__repo/"])
+def test_official_evaluator_scores_native_trajectory(
+    checkout, tmp_path, with_patch, gold_prefix
+):
     import sys
     from pathlib import Path
 
@@ -286,6 +289,14 @@ def test_official_evaluator_scores_native_trajectory(checkout, tmp_path, with_pa
         pytest.skip("set CONTEXTBENCH_CHECKOUT to the pinned official checkout")
     repo, commit = checkout
     case = task(commit)
+    case = ContextBenchCase.from_mapping(
+        {
+            **case.to_record(),
+            "gold_context": [
+                {"file": gold_prefix + "a.py", "start_line": 1, "end_line": 2}
+            ],
+        }
+    )
     root = tmp_path / "repos"
     root.mkdir()
     repo.rename(root / case.instance_id)
@@ -316,6 +327,10 @@ def test_official_evaluator_scores_native_trajectory(checkout, tmp_path, with_pa
         ),
     )
     assert report["summary"]["num_valid"] == 1
+    # The historical raw string intersection missed container-prefixed gold,
+    # despite the official scorer correctly crediting those same source lines.
+    assert report["cases"][0]["gold_line_spans"] == {"a.py": [[1, 2]]}
+    assert "gold_line_spans" not in prediction
     assert report["cases"][0]["final"]["symbol"]["gold_size"] == 1
     assert report["cases"][0]["final"]["symbol"]["pred_size"] == 1
     for granularity in ("file", "symbol", "span", "line"):

@@ -106,11 +106,15 @@ def main() -> int:
             prediction = dict(item["prediction"])
             prediction["repo_url"] = str(repo)
             prediction["commit"] = expected
-            results.append(
-                evaluate.evaluate_instance(
-                    instance_id, Gold(gold), prediction, str(repo)
-                )
+            official_gold = Gold(gold)
+            result = evaluate.evaluate_instance(
+                instance_id, official_gold, prediction, str(repo)
             )
+            # Auxiliary source-overlap audits must use the same path normalization
+            # as scoring: raw annotations may contain /workspace/<repo>/ prefixes.
+            # Keep this evaluation-only metadata out of model-facing predictions.
+            result["gold_line_spans"] = official_gold.line_spans_init()
+            results.append(result)
         except Exception as exc:
             results.append(
                 {
