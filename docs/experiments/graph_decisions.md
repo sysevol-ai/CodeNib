@@ -53,8 +53,8 @@ The evaluation sequence remains:
    development IDs. Its SHA-256 is
    `49e0370ff0f384aed1691cb8dd3f071cf900c9020fadd3608d3f1955912be64a`.
    Selection uses only metadata and a fixed seed; no reference scores or labels
-   were inspected for selection. Source preparation for its frozen three-arm
-   validation has started; inference and scoring are still pending. It is
+   were inspected for selection. Its frozen three-arm validation is running,
+   with scoring pending. It is
    task-held-out rather than repository-held-out, and not a population-weighted
    500-task estimate.
    Source preparation has 31 ready cases and one unconfigured Git submodule
@@ -62,7 +62,7 @@ The evaluation sequence remains:
    accounting so that this known preparation failure remains zero without
    cancelling unrelated cases. The retrieval prompt and graph policy remain
    byte-identical to `3f04993f`; snapshot checks are not weakened. All 32 tasks
-   remain in every arm.
+   remain in every arm. Eleven cases have an available compiler graph.
 3. For a SOTA claim, freeze implementation, model and evaluator versions and run
    the official verified 500. Recheck the then-current leaderboard and denominator
    conventions (the current leader has 499 valid retrieval records). Report

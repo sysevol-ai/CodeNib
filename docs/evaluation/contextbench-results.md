@@ -210,8 +210,9 @@ candidate-selection gate fixed before scoring: actual graph use, higher Recall
 and non-decreasing F1. The intervals still do not establish a reliable gain.
 
 The policy at `3f04993f` is frozen for independent 32-task validation with native,
-functions and functions-plus-graph arms. Source preparation has started; inference
-and scoring are pending. The primary contrast is the complete graph-enabled route
+functions and functions-plus-graph arms. Eleven cases have available graphs;
+inference is running and scoring is pending. The primary contrast is the complete
+graph-enabled route
 against native source tools, with the other two contrasts as explanatory ablations.
 The 32 tasks remain excluded from tuning. Neither graph development trial is
 directly comparable with the earlier native/functions implementation freeze.
