@@ -221,11 +221,20 @@ evidence are retained; no optional product surface is added. Evaluation-only
 annotation diagnostics identify 331 unavailable lines across nine development
 tasks, preserve official paths/denominators, and enter the existing evaluator
 bridge rather than a new framework. Future experiment archives include that
-bridge. Source attribution now has one controlled reader at the existing native
-solver environment boundary. It records exact file versions and rendered input
-positions, preserves native truncation, and credits only complete lines in
-confirmed inputs. A scripted source-only container verifies the boundary with
-no model calls. Existing fmt receipts validate 411/375 initial source lines;
+bridge. The current BM25 feasibility check also fails on the disclosed 24 tasks:
+a 2K source union adds 38 annotated lines, but F1 falls 31.18% to 26.62%; the
+overlapping latest eight add none. Its source and candidate hashes are frozen
+before annotation analysis. No automatic injection or new retrieval tool follows.
+Source attribution now reuses one environment adapter for controlled reads and
+searches in the existing native solver loop. It records exact per-file versions
+and rendered input positions, preserves native truncation, and credits only
+complete file-qualified matches in confirmed inputs. Search caps and skipped
+files stay explicit. A scripted source-only container verifies the boundary with
+no model calls: 94 of 113 larger-search matches survive native truncation;
+changed files and ordinary shell output receive no base-source credit. The first
+fixture edit failed because of its command string and remains recorded; the
+corrected fixture passes and both containers are removed. Existing fmt receipts
+validate 411/375 initial source lines;
 their shell reads remain unattributed rather than reconstructed from requests.
 This source-checkout adapter creates no product tool or persistence boundary.
 Its partial coverage is not an official trajectory: arbitrary shell output and

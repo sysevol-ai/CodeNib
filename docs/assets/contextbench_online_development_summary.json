@@ -15666,5 +15666,1109 @@
     "official_scores_unchanged": true,
     "official_500_started": false,
     "decision": "Keep the general compiler correctness fixes. Availability and added source do not establish relevance: the unchanged eight-query replay adds 146 physical lines and zero annotated lines. No new online batch is justified by this diagnostic; independent-32 and earlier failed gates remain intact."
+  },
+  "sparse_discovery_followup": {
+    "scope": "Zero-model discovery feasibility on all 24 disclosed tasks, using the authenticated existing bounded source corpus and current production BM25. No graph or labels select candidates. This is not an online tool trial or an independent result.",
+    "runtime_commit": "c893aefd6fc987c36d5fe94cdd6f7f99d44228c9",
+    "protocol_sha256": "b39b7a80bc2d55131f063f4a0de4aea928c632578a96a89358493fa1c08ef72d",
+    "candidate_receipts_sha256": "9bbe10258afaa8b3f9e6ab41a413e5b57b3e967605277608ea7de1a113caae63",
+    "analysis_sha256": "7799e62f6e3a6225e1821b6bdd485ccbd41c99d513dd26eec2c5062931fe68cc",
+    "completed_tasks": 24,
+    "corpus_nodes": 352494,
+    "query": "Original issue prefix capped at the production 16000-character search limit; one query, no rewrites.",
+    "retrieval": {
+      "candidates": 40,
+      "filter_test": false,
+      "packed_nodes": 10,
+      "reply_tokens": 2048,
+      "content": "Existing source-only packer, whole lines, no repeated lines. All corpus source checked before retrieval."
+    },
+    "packages": {
+      "rank-bm25": "0.2.2",
+      "tiktoken": "0.9.0",
+      "numpy": "1.26.4"
+    },
+    "annotation_contract": "Freeze every candidate pool and bounded reply before reading canonical annotations or native source sets. Preserve official paths; unavailable annotation source receives no credit.",
+    "primary_static_addition_gate": {
+      "new_annotated_source_absent_from_native_in_at_least_two_languages": true,
+      "positive_macro_recall_in_both_cohorts": true,
+      "nondecreasing_macro_f1_in_both_cohorts": true
+    },
+    "optional_discovery_opportunity_gate": "At least three languages have annotated source absent from full native among the first five results. This gate justifies inspecting a selective discovery tool, not automatic source injection or a quality claim.",
+    "static_addition_gate_passed": false,
+    "optional_discovery_opportunity_gate_passed": false,
+    "summaries": [
+      {
+        "cohort": "first_source_24",
+        "tasks": 24,
+        "metrics": {
+          "baseline": {
+            "recall": 0.5335256710568391,
+            "precision": 0.3162405037274296,
+            "f1": 0.31176405157915116
+          },
+          "static_addition": {
+            "recall": 0.535697144630244,
+            "precision": 0.2305213243523746,
+            "f1": 0.2662291669102204
+          }
+        },
+        "added_annotated_lines": 38,
+        "novel_annotated_languages": [
+          "c",
+          "cpp"
+        ],
+        "top5_novel_annotated_languages": [
+          "c",
+          "cpp"
+        ]
+      },
+      {
+        "cohort": "late_opposite_8",
+        "tasks": 8,
+        "metrics": {
+          "baseline": {
+            "recall": 0.7789736557074383,
+            "precision": 0.3054811929734058,
+            "f1": 0.3367010488676228
+          },
+          "static_addition": {
+            "recall": 0.7789736557074383,
+            "precision": 0.24185985641402824,
+            "f1": 0.29514328845435506
+          }
+        },
+        "added_annotated_lines": 0,
+        "novel_annotated_languages": [],
+        "top5_novel_annotated_languages": []
+      }
+    ],
+    "rows": [
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.3651452282157676,
+          "precision": 0.704,
+          "f1": 0.4808743169398907
+        },
+        "static_addition": {
+          "recall": 0.3651452282157676,
+          "precision": 0.2913907284768212,
+          "f1": 0.3241252302025783
+        },
+        "added_physical_lines": 177,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.40816326530612246,
+          "precision": 0.10854816824966079,
+          "f1": 0.1714898177920686
+        },
+        "static_addition": {
+          "recall": 0.40816326530612246,
+          "precision": 0.0866738894907909,
+          "f1": 0.14298480786416443
+        },
+        "added_physical_lines": 186,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.06455142231947483,
+          "f1": 0.12127440904419322
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.05432780847145488,
+          "f1": 0.10305676855895196
+        },
+        "added_physical_lines": 172,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.3169642857142857,
+          "f1": 0.48135593220338985
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.21385542168674698,
+          "f1": 0.3523573200992556
+        },
+        "added_physical_lines": 108,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.36303871439006574,
+          "precision": 0.3066008636644047,
+          "f1": 0.33244147157190634
+        },
+        "static_addition": {
+          "recall": 0.3754565376186998,
+          "precision": 0.2903954802259887,
+          "f1": 0.32749283211213764
+        },
+        "added_physical_lines": 149,
+        "added_annotated_lines": 17,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 17,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.8706140350877193,
+          "precision": 0.5251322751322751,
+          "f1": 0.6551155115511551
+        },
+        "static_addition": {
+          "recall": 0.8706140350877193,
+          "precision": 0.45423340961098396,
+          "f1": 0.5969924812030075
+        },
+        "added_physical_lines": 118,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.5362694300518135,
+          "precision": 0.5036496350364964,
+          "f1": 0.5194479297365119
+        },
+        "static_addition": {
+          "recall": 0.5362694300518135,
+          "precision": 0.3683274021352313,
+          "f1": 0.43670886075949367
+        },
+        "added_physical_lines": 151,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.425,
+          "precision": 0.8326530612244898,
+          "f1": 0.5627586206896552
+        },
+        "static_addition": {
+          "recall": 0.425,
+          "precision": 0.5930232558139535,
+          "f1": 0.49514563106796117
+        },
+        "added_physical_lines": 99,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.14889123548046462,
+          "precision": 0.2256,
+          "f1": 0.17938931297709923
+        },
+        "static_addition": {
+          "recall": 0.14889123548046462,
+          "precision": 0.18479685452162517,
+          "f1": 0.1649122807017544
+        },
+        "added_physical_lines": 138,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.0392156862745098,
+          "f1": 0.07547169811320754
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.029806259314456036,
+          "f1": 0.05788712011577424
+        },
+        "added_physical_lines": 161,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.29678638941398866,
+          "precision": 0.48606811145510836,
+          "f1": 0.3685446009389671
+        },
+        "static_addition": {
+          "recall": 0.33648393194706994,
+          "precision": 0.39732142857142855,
+          "f1": 0.36438075742067555
+        },
+        "added_physical_lines": 125,
+        "added_annotated_lines": 21,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 21,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.5,
+          "precision": 0.23148148148148148,
+          "f1": 0.31645569620253167
+        },
+        "static_addition": {
+          "recall": 0.5,
+          "precision": 0.1358695652173913,
+          "f1": 0.21367521367521367
+        },
+        "added_physical_lines": 152,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.2047244094488189,
+          "precision": 0.19030192131747484,
+          "f1": 0.19724988146040778
+        },
+        "static_addition": {
+          "recall": 0.2047244094488189,
+          "precision": 0.17007358953393295,
+          "f1": 0.18579723090665476
+        },
+        "added_physical_lines": 130,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.3528399311531842,
+          "precision": 0.2074898785425101,
+          "f1": 0.26131293817718293
+        },
+        "static_addition": {
+          "recall": 0.3528399311531842,
+          "precision": 0.1843525179856115,
+          "f1": 0.24217365623154163
+        },
+        "added_physical_lines": 124,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.5795795795795796,
+          "precision": 0.1643952299829642,
+          "f1": 0.25613802256138024
+        },
+        "static_addition": {
+          "recall": 0.5795795795795796,
+          "precision": 0.1461014383043149,
+          "f1": 0.23337363966142685
+        },
+        "added_physical_lines": 147,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.5652173913043478,
+          "precision": 0.03117505995203837,
+          "f1": 0.05909090909090909
+        },
+        "static_addition": {
+          "recall": 0.5652173913043478,
+          "precision": 0.022727272727272728,
+          "f1": 0.043697478991596636
+        },
+        "added_physical_lines": 155,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.8996282527881041,
+          "precision": 0.36890243902439024,
+          "f1": 0.5232432432432432
+        },
+        "static_addition": {
+          "recall": 0.8996282527881041,
+          "precision": 0.31145431145431146,
+          "f1": 0.4627151051625239
+        },
+        "added_physical_lines": 121,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.7195767195767195,
+          "precision": 0.1348314606741573,
+          "f1": 0.22710826607291956
+        },
+        "static_addition": {
+          "recall": 0.7195767195767195,
+          "precision": 0.12846347607052896,
+          "f1": 0.21800694629975956
+        },
+        "added_physical_lines": 150,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.46819787985865724,
+          "precision": 0.828125,
+          "f1": 0.5981941309255079
+        },
+        "static_addition": {
+          "recall": 0.46819787985865724,
+          "precision": 0.5888888888888889,
+          "f1": 0.5216535433070866
+        },
+        "added_physical_lines": 130,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.04105571847507331,
+          "f1": 0.07887323943661972
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.034739454094292806,
+          "f1": 0.0671462829736211
+        },
+        "added_physical_lines": 62,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "static_addition": {
+          "recall": 0.0,
+          "precision": 0.0,
+          "f1": 0.0
+        },
+        "added_physical_lines": 137,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.2745664739884393,
+          "precision": 0.1317614424410541,
+          "f1": 0.1780693533270853
+        },
+        "static_addition": {
+          "recall": 0.2745664739884393,
+          "precision": 0.10638297872340426,
+          "f1": 0.15334947538337368
+        },
+        "added_physical_lines": 172,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.23621323529411764,
+          "precision": 0.7427745664739884,
+          "f1": 0.3584379358437936
+        },
+        "static_addition": {
+          "recall": 0.23621323529411764,
+          "precision": 0.4732965009208103,
+          "f1": 0.31514408338442673
+        },
+        "added_physical_lines": 197,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.5901639344262295,
+          "precision": 0.4044943820224719,
+          "f1": 0.48
+        },
+        "static_addition": {
+          "recall": 0.5901639344262295,
+          "precision": 0.2660098522167488,
+          "f1": 0.366723259762309
+        },
+        "added_physical_lines": 139,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.04223335719398712,
+          "f1": 0.08104395604395605
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.03760356915232632,
+          "f1": 0.07248157248157248
+        },
+        "added_physical_lines": 172,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.21846153846153846,
+          "f1": 0.35858585858585856
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.17149758454106281,
+          "f1": 0.2927835051546392
+        },
+        "added_physical_lines": 89,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.8706140350877193,
+          "precision": 0.5357624831309041,
+          "f1": 0.6633249791144528
+        },
+        "static_addition": {
+          "recall": 0.8706140350877193,
+          "precision": 0.46216530849825377,
+          "f1": 0.6038022813688213
+        },
+        "added_physical_lines": 118,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.2570888468809074,
+          "precision": 0.3646112600536193,
+          "f1": 0.30155210643015523
+        },
+        "static_addition": {
+          "recall": 0.2570888468809074,
+          "precision": 0.2918454935622318,
+          "f1": 0.2733668341708543
+        },
+        "added_physical_lines": 93,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.7391304347826086,
+          "precision": 0.04028436018957346,
+          "f1": 0.07640449438202247
+        },
+        "static_addition": {
+          "recall": 0.7391304347826086,
+          "precision": 0.029513888888888888,
+          "f1": 0.05676126878130217
+        },
+        "added_physical_lines": 154,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.8773234200743495,
+          "precision": 0.36251920122887865,
+          "f1": 0.5130434782608696
+        },
+        "static_addition": {
+          "recall": 0.8773234200743495,
+          "precision": 0.30569948186528495,
+          "f1": 0.45341018251681076
+        },
+        "added_physical_lines": 121,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "status": "ok",
+        "baseline": {
+          "recall": 0.4876325088339223,
+          "precision": 0.8363636363636363,
+          "f1": 0.6160714285714286
+        },
+        "static_addition": {
+          "recall": 0.4876325088339223,
+          "precision": 0.6,
+          "f1": 0.5380116959064327
+        },
+        "added_physical_lines": 130,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      },
+      {
+        "cohort": "late_opposite_8",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "status": "ok",
+        "baseline": {
+          "recall": 1.0,
+          "precision": 0.04361370716510903,
+          "f1": 0.08358208955223881
+        },
+        "static_addition": {
+          "recall": 1.0,
+          "precision": 0.03655352480417755,
+          "f1": 0.07052896725440806
+        },
+        "added_physical_lines": 62,
+        "added_annotated_lines": 0,
+        "added_annotated_in_unseen_files": 0,
+        "top5_annotated_absent_native": 0,
+        "official_baseline_counts_exact": true
+      }
+    ],
+    "candidate_source_receipts": [
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "source_commit": "a505463710aa34bccafd268c44064c129cdfb3e2",
+        "corpus_sha256": "49f210d74b969b94234c53969a497a3eb3ba9fd638088ba607547e1a8fb94d61",
+        "corpus_nodes": 8404,
+        "corpus_files": 253,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2042,
+        "status": "ok",
+        "candidate_sha256": "612b002240fdeb716dd30465e682ffeb33dfbbb23f29f54a1a540c16555153c2"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "source_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+        "corpus_sha256": "093f3c15cb892fc100f7551d570eb027447765917f6b19e95e28cc99ce08e9a2",
+        "corpus_nodes": 9073,
+        "corpus_files": 401,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2042,
+        "status": "ok",
+        "candidate_sha256": "5f9754eb034f4d329f4824c38efc8915a3e4422275b5614242b188d28da60753"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "source_commit": "7f547827e47b5ade563a293329deb4226496d72f",
+        "corpus_sha256": "b2c11803454e7467f0eee1d86b84e1134f93d19737374cfccc24bfbb75007951",
+        "corpus_nodes": 2481,
+        "corpus_files": 81,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2032,
+        "status": "ok",
+        "candidate_sha256": "dcb820cb31f6c3d103dc3088643dcd396a6535387ef80894fc3e24f56ac62d21"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "source_commit": "2d48a4d9c5e8f0a5ce914922eb2a45dc0ec93ee3",
+        "corpus_sha256": "3ad72f66deb77d9ce3c701a581282eafa0dde8818aba9feae2162ff83787baa9",
+        "corpus_nodes": 6427,
+        "corpus_files": 414,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2035,
+        "status": "ok",
+        "candidate_sha256": "5a681f0cfa555da22fd599c4531d9812f3b3ebb7d62240f1639ac44eed386f2a"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "source_commit": "cfc05e05f08dc0b6fe619831c96f00ee27d99613",
+        "corpus_sha256": "a348bde3b4a846b51d794d26b580c1399705abd0ba24d228d68aa1d4bc438046",
+        "corpus_nodes": 6478,
+        "corpus_files": 71,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2030,
+        "status": "ok",
+        "candidate_sha256": "5028cb676f24a0c4662b6d83bd5a34cce2f42df31e68a11d1e3cef7e71571aec"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "source_commit": "979bbf03bb00bc55ca09783791b5091a2247df68",
+        "corpus_sha256": "28f649ca51c5627bae36aca5a94234acf96fb1e6e8404ed9cb2f39227f67b9d9",
+        "corpus_nodes": 3176,
+        "corpus_files": 265,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2048,
+        "status": "ok",
+        "candidate_sha256": "fd6be5a0e0307cea01539c3c069040b6bd47ed86ee400784d4563b1bc5cefcff"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "source_commit": "e6ff77ce73c201b0ee36d2b802ea45e9e1ad1822",
+        "corpus_sha256": "929f30209c599d9174ca7f50cbcea7699f0f64612b485ec9d50e1e5acbdda436",
+        "corpus_nodes": 4000,
+        "corpus_files": 372,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2047,
+        "status": "ok",
+        "candidate_sha256": "ba593293f9dc915654ae45fe4908e4e8144c901d76a137cc2047649cdca9d185"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "source_commit": "7c9e7c1e2acd9c55926b9d2592fc65234d9c3ff7",
+        "corpus_sha256": "95bdb186587d6cd0b5e6a982b2fcb7a330e1f49994f079fd327075d743ee5028",
+        "corpus_nodes": 32820,
+        "corpus_files": 1183,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2025,
+        "status": "ok",
+        "candidate_sha256": "7a173f8feda62d2076f99a972e425da9ca8f05dd33b5b09148c5395970712072"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "source_commit": "3f4ac29f9112799a7374a99b18acabd0232ff075",
+        "corpus_sha256": "52473777a00786f79460ab8d1650634b06aa84d653271a63aa84e4940e257518",
+        "corpus_nodes": 4821,
+        "corpus_files": 207,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2048,
+        "status": "ok",
+        "candidate_sha256": "133e9964e536939cd491ac47a00326676220329ceef1f0144b071176200ac6da"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "source_commit": "12b40c7ba3e7c30e35977195770c80beb34715c5",
+        "corpus_sha256": "d169e4c2efc857c1da9269175e82bb40a75bbb9e5dfbf91ccd8a4eb07df2c8b8",
+        "corpus_nodes": 66078,
+        "corpus_files": 4130,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2041,
+        "status": "ok",
+        "candidate_sha256": "20b41e05d25b998067e93c6a75734c73dafc8573a8e81050a90153ce62337633"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "source_commit": "0abc70564746496eb211bbd951041b4655aec268",
+        "corpus_sha256": "72a4f6227939971f90ba7f3e9dc420a03ea32a7f03f7b6390eb444c1d4bda9a2",
+        "corpus_nodes": 821,
+        "corpus_files": 137,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2045,
+        "status": "ok",
+        "candidate_sha256": "10c1f2b0b4f057967132e94f6142bbcf792ca9877cca3cf1268198549fe18b96"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "source_commit": "9965a04b5684079bb614addd750340ffc165a9f5",
+        "corpus_sha256": "99bd2cef9b881a0c80d8622a50818d04980e5272431891319325ca3fb8e4f2cb",
+        "corpus_nodes": 1122,
+        "corpus_files": 33,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2044,
+        "status": "ok",
+        "candidate_sha256": "ed6f76e8c2479cbfd4e8c2ef95675524982d727d4f26514193b8fd224932a2e2"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "source_commit": "5417c89387b67c3192ae9043473b556cd669ee15",
+        "corpus_sha256": "423615ab75fbd283ace6c06af3d86db1d884f3dcf6d7f43a63a69db0ea7e881a",
+        "corpus_nodes": 24841,
+        "corpus_files": 1342,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2029,
+        "status": "ok",
+        "candidate_sha256": "6d087a0d4cb9f6df55b1654fdd218c48ca5957653c8063c27cd4ebda756b0b83"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "source_commit": "135b15467eda2394b017f2a7d25cda1417c0feec",
+        "corpus_sha256": "5f18806de2eb66936273cde26dff21bd6620ce51133a778fe500ae63e864525e",
+        "corpus_nodes": 4134,
+        "corpus_files": 250,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2034,
+        "status": "ok",
+        "candidate_sha256": "8e7d2a0f2964ee3eb4e8e6de4f247f313212996de2104cda4d4877bcb851486e"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "source_commit": "991883df4d5910851130e3dc0e21fcbce604ea7d",
+        "corpus_sha256": "153a0f5f415caec09bb498ef058282754020a996a36c6cfea25870307895b397",
+        "corpus_nodes": 2121,
+        "corpus_files": 243,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2047,
+        "status": "ok",
+        "candidate_sha256": "7a506eb5bfb1b97a4036b8ccdc45e66424345222135f35c2f1b547259be44158"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "source_commit": "d276a4f3e914aaccc291f7b2513e5d978919d0f9",
+        "corpus_sha256": "22b1c68e52ff6d1b611406e916e9db4a26d7113cbf9dcb34a00a7741990e1596",
+        "corpus_nodes": 4359,
+        "corpus_files": 499,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2041,
+        "status": "ok",
+        "candidate_sha256": "b44b41076e65a964c92c9766949d4ff46a201f0aee00656737b8de09cae3d59d"
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "source_commit": "43b46cb324f64076e4d9e807c0b60c4b9ce11a82",
+        "corpus_sha256": "7539b5da1dd3dac6eabadefc3ba691d4f057fc2be2eb79e833c6c05a0eb233d0",
+        "corpus_nodes": 2147,
+        "corpus_files": 138,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2046,
+        "status": "ok",
+        "candidate_sha256": "c1d379677ff3fb69e97d8065c49ef4612fbebb81e99bfd6dad7572f0eb36355c"
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "source_commit": "e432032cf2d11e3bb6f558748a5ee41a90640daa",
+        "corpus_sha256": "f556f35fc18107bcc43fd672fe9c7dc6e6b98111b3992f161912cfeecd2783f8",
+        "corpus_nodes": 2008,
+        "corpus_files": 73,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2045,
+        "status": "ok",
+        "candidate_sha256": "49d35b3c0843b3313070ad1f3ab436f255746a3e27d8cf98b7645e4246622ab8"
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "source_commit": "1e137b07052bc3ea0da44ed201702c94055b8ad2",
+        "corpus_sha256": "600de0ecac2df9f06a8ca1d6e9290c45f06c34ee21963c3fbc1c62e01cc3c3c6",
+        "corpus_nodes": 9158,
+        "corpus_files": 761,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2037,
+        "status": "ok",
+        "candidate_sha256": "17b5374a224abb9c43b1f0ee800a6b46882dae4e1471ab455018d55a2b2a2e1e"
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "source_commit": "1e55ae64624d28c5fe8b63ad7979880ee2e6ef3f",
+        "corpus_sha256": "f559e6e8c331d2167567c09415f011b790adc17beec9599773351e9647c5268d",
+        "corpus_nodes": 9223,
+        "corpus_files": 784,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2032,
+        "status": "ok",
+        "candidate_sha256": "e644eb5b279f1f3920e236fdc4859d7a53c62b1e7f763723c0e2466855dbd2a6"
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "source_commit": "7c4e2ac83f7b4306296ff9b7b51aaf016e5ad614",
+        "corpus_sha256": "ce6b07a46e21f39b23c72910d4b350da2356c2d9c170526bd33701c07ebfc2ac",
+        "corpus_nodes": 9066,
+        "corpus_files": 149,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2037,
+        "status": "ok",
+        "candidate_sha256": "d63e0bd7e659d5f3f31ff6dae47b70b395e4205b19366cdaf07ed8349f04897f"
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "source_commit": "37c5b8c07be104fd5288cd87f101e48cb7a40298",
+        "corpus_sha256": "5a8ee8bdc34a5913bc7e376ce46e0e9c9950579c32d2425e226b9571295da9cc",
+        "corpus_nodes": 53731,
+        "corpus_files": 2207,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2024,
+        "status": "ok",
+        "candidate_sha256": "3e9d7a4b95e87419f886c85c8e48a2ccd3d697d3933d9d8059e6409e1740742a"
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "source_commit": "fea269947104889165e3ebb0f64638921caf2052",
+        "corpus_sha256": "ed205c618b2955db6e5a37b1fc8e8c17041c4d4beebf3deddee36b13256ec65d",
+        "corpus_nodes": 2200,
+        "corpus_files": 268,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2048,
+        "status": "ok",
+        "candidate_sha256": "ae3f69d634710f65cbce13ee06fb147c17ca63d1e1c6c4474cb223582b0b34f4"
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "source_commit": "a993ada9300a531c09dfa6a1be772b1abc1492ad",
+        "corpus_sha256": "a3b1b4b148827510f46fe93a54316c6eb6a74eb485f14c20485ab514fbcac944",
+        "corpus_nodes": 83805,
+        "corpus_files": 3602,
+        "all_corpus_source_exact": true,
+        "query_was_clipped": false,
+        "reply_tokens": 2043,
+        "status": "ok",
+        "candidate_sha256": "ae11204f682bf1f1b7a68d6fa63ead1da57b3a1a231d274dcd49dcef3bebafac"
+      }
+    ],
+    "all_inputs_match": true,
+    "model_calls": 0,
+    "new_api_charges_usd": 0,
+    "conclusion": "Both declared gates fail. No automatic injection, new BM25 agent tool, online comparison, revised official score or independent result follows from this evidence."
+  },
+  "solver_controlled_search": {
+    "protocol_sha256": "f021546301b2de156824eb1124cabea163b7b95aa63515d73cbfb59fb2e98c2a",
+    "scope": "Instrumentation-only scripted replies in the native Docker solver loop. No LLM calls, annotation inspection, scoring, policy comparison or repair success claim.",
+    "scripted_native_container": {
+      "simulated_model_calls": 8,
+      "real_model_calls": 0,
+      "original_search_complete_lines": 20,
+      "large_search_returned_matches": 113,
+      "large_search_complete_visible_lines": 94,
+      "large_search_limits_reached": [
+        "output_limit"
+      ],
+      "test_search_complete_lines": 6,
+      "changed_file_visible_lines": 20,
+      "changed_file_base_credit": 0,
+      "ordinary_grep_credit": 0,
+      "unconfirmed_search_credit": 0,
+      "terminal_diff_credit": 0,
+      "base_source_line_count": 120,
+      "source_attribution_status": "partial",
+      "container_python": "Python 3.11.2"
+    },
+    "all_frozen_hashes_match": true,
+    "all_owned_containers_removed": true,
+    "model_calls": 0,
+    "new_api_charges_usd": 0,
+    "passed": true,
+    "image": "sha256:0c36ed672e54cd9a7f09b03d60a29d3731fd34e5250227f9154306aaf81013bf",
+    "source_tree": "c793e859f77f2ef96bcc8f1b1804f06ebce087aa",
+    "upstream_revision": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+    "implementation_sha256": {
+      "scripts/benchmark_context_solver.py": "007f29c32d324606f9de013744548d4ac1aa68dbac25ee4adca7140c39c6632b",
+      "scripts/contextbench_solver_sources.py": "1a503d2c233b0006e0c63dc5357567ffac71110476a977fd1a0c55afd3157faa",
+      "scripts/_contextbench_solver_read.py": "c10cabdcf9a4fb69339686e7e92564914dbc375d22b6e7680f2644ce84c9915f"
+    },
+    "interface": "codenib-grep PATTERN PATH [LIMIT], standalone only; Python regex, tracked and non-ignored untracked text including tests.",
+    "limits": {
+      "default_matches": 100,
+      "max_matches": 200,
+      "scanned_paths": 512,
+      "match_output_characters": 12000,
+      "file_bytes": 2097152
+    },
+    "failed_prior_attempt": {
+      "passed": false,
+      "protocol_sha256": "c08cf1fc50581ff0036e6d1e83b5612d1be80dffab068f85c9146861623e7adb",
+      "reason": "The scripted edit contained an unescaped newline in a Python string literal, so the changed-file precondition was not reached. Search commands succeeded; no instrumentation pass claimed.",
+      "container_removed": true,
+      "model_calls": 0,
+      "new_api_charges_usd": 0
+    },
+    "verification": {
+      "related_unit_passed": 104,
+      "pinned_upstream_integration_passed": 3,
+      "actual_model_adoption_tested": false
+    },
+    "open_gate": "Fresh matched solver protocol must include the common reader/search instructions; ordinary shell output and modified-file base coordinates remain unattributed. Partial coverage is not an official score.",
+    "implementation_commit": "8d26e841c07ead8ca4b0d05d7d6016faba289b97"
   }
 }
