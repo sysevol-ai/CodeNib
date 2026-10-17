@@ -266,6 +266,24 @@ def load_navigation(
     )
 
 
+def graph_definitions(graph):
+    """Index compiler-observed definition ranges, without reading source bodies."""
+    definitions = defaultdict(list)
+    if graph is not None:
+        for vertex in graph.graph.vs:
+            attributes = vertex.attributes()
+            if (
+                is_symbol_node(attributes.get("type"))
+                and node_has_definition(attributes)
+                and isinstance(attributes.get("file"), str)
+                and type(attributes.get("start_line")) is int
+                and type(attributes.get("end_line")) is int
+                and 0 <= attributes["start_line"] <= attributes["end_line"]
+            ):
+                definitions[attributes["file"]].append(attributes)
+    return definitions
+
+
 class GraphNavigation:
     """Read exact definitions along one directed reference hop, including tests.
 
@@ -308,19 +326,7 @@ class GraphNavigation:
         self.observed_source = observed_source
         self.empty_fallback = empty_fallback
         self.encoder = tiktoken.get_encoding("cl100k_base")
-        self.definitions = defaultdict(list)
-        if graph is not None:
-            for vertex in graph.graph.vs:
-                attributes = vertex.attributes()
-                if (
-                    is_symbol_node(attributes.get("type"))
-                    and node_has_definition(attributes)
-                    and isinstance(attributes.get("file"), str)
-                    and type(attributes.get("start_line")) is int
-                    and type(attributes.get("end_line")) is int
-                    and 0 <= attributes["start_line"] <= attributes["end_line"]
-                ):
-                    self.definitions[attributes["file"]].append(attributes)
+        self.definitions = graph_definitions(graph)
 
     def _fits(self, records):
         text = json.dumps(records, ensure_ascii=False)

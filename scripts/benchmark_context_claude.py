@@ -261,6 +261,7 @@ async def retrieve(
     file_source_view=None,
     max_included_only=False,
     context_tool=None,
+    read_hints=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -291,6 +292,8 @@ async def retrieve(
         or file_source_view is not None
     ):
         raise ValueError("CodeNib context requires an otherwise native source arm")
+    if read_hints is not None and context_tool is None:
+        raise ValueError("Reference hints require the explicit CodeNib context tool")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -337,6 +340,10 @@ async def retrieve(
             execute = file_source_view.wrap(
                 execute, observed_messages=lambda: tuple(row["messages"])
             )
+        if spec.tool_id == "read" and read_hints is not None:
+            execute = read_hints.wrap(
+                execute, observed_messages=lambda: tuple(row["messages"])
+            )
 
         def bind(function):
             async def handler(arguments):
@@ -360,6 +367,10 @@ async def retrieve(
             schema["description"] = (
                 FILE_SOURCE_DESCRIPTION + "\n" + schema["description"]
             )
+        if spec.tool_id == "read" and read_hints is not None:
+            from scripts.contextbench_context_hints import DESCRIPTION
+
+            schema["description"] = DESCRIPTION + "\n" + schema["description"]
         sdk_tools.append(
             tool(spec.tool_id, schema["description"], schema["parameters"])(
                 bind(execute)
@@ -378,6 +389,12 @@ async def retrieve(
             CONTEXT_GUIDANCE,
         )
         row["context_system_prompt"] = system_prompt
+    if read_hints is not None:
+        from scripts.contextbench_context_hints import DESCRIPTION
+
+        system_prompt += "\n" + DESCRIPTION
+        row["context_system_prompt"] = system_prompt
+        row["read_context_hints"] = True
     options = ClaudeAgentOptions(
         cli_path=cli,
         cwd=repo,

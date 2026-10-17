@@ -507,14 +507,26 @@ builds vector/symbol-graph views through the existing compiler and registers
 `explore_context_impl` in the actual SDK loop. The adapter returns only exact
 complete projected source lines after content authentication; elided, partial
 or index-only fallback text gets no source credit. No BM25/Jev, generic storage,
-memory framework or explicit Haiku controller is added. **307 focused compiler/MCP/SDK tests
-pass**. The four-task pilot uses the first already exposed122 case per
-Python/JavaScript/TypeScript/Go, isolated checkouts and cached local Jina
-embeddings. Actual tool consumption and matched Recall/F1/token/cost outcomes
-remain open. The pilot reproduces and fixes JS/TS alias-collapsed
-artifact receipt layout. SDK/CLI checks now precede indexing/model intent;
-initial preparation failures made no model request and stay retained. Missing graph providers stay explicit; a loaded tool alone is not
-an advantage. Product lifecycle and dependency direction stay unchanged.
+memory framework or explicit Haiku controller is added. The first source-sealed four-case development comparison has four valid cases per
+arm: native versus optional core-tool Recall **71.61% → 73.69%**, F1
+**33.68% → 40.92%**, source3,209→2,927lines and Max nominal1.1760282→1.1217879USD;
+new API usage and repair calls are zero. This does not establish core benefit:
+only JavaScript invokes the tool, and its Recall/F1 both decline. The other
+three never invoke it. Python's graph times out at600seconds and Go has no
+`scip-go`; only JavaScript/TypeScript have graphs. Preserve all four cases and
+cold preparation costs; no favorable subset or independent-gate claim.
+
+Independent main-based draft [#835](https://github.com/sysevol-ai/CodeNib/pull/835)
+fixes exact query-symbol preservation and named-route source admission.
+105 focused tests and same-query/index/source/budget replay pass without new
+model/Gold calls. The original trajectories remain unchanged. The next labs
+policy appends bounded, source-authenticated reference metadata after reads and
+uses existing context tools for on-demand bodies. It adds no source merely for
+volume, runtime/test coverage claims, generic memory framework or new persistence.
+Actual metadata replay preserves official source geometry; its outputs are not
+claimed as historical model inputs. Real matched development scoring remains
+open; warm cache latency/cost stays separate from the recorded cold builds.
+Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays
 59.09398873USD under100USD, leaving40.90601127USD with the former40USD reservation
