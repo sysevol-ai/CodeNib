@@ -211,6 +211,18 @@ quality claim. Useful relationship selection across languages and active SCIP
 definition coverage remain open; no new independent or official-500 run follows.
 The shared clangd and LSP consumers gain correctness fixes with 206 related LSP
 tests passing, without a new parser, route, schema or benchmark-label dependency.
+The 72-record development source-gap audit reproduces every prediction and
+official line count. Most recoverable missing source is outside the callables
+already touched. A bounded whole-file remainder hypothesis preserves existing
+replies and uses the same completion budget, but its fixed-trajectory F1 falls
+on both the 24-task and eight-task cohorts. It is rejected before agent
+implementation or new inference. Its private replay and negative aggregate
+evidence are retained; no optional product surface is added. Evaluation-only
+annotation diagnostics identify 331 unavailable lines across nine development
+tasks, preserve official paths/denominators, and enter the existing evaluator
+bridge rather than a new framework. Future experiment archives include that
+bridge. The next priority is source attribution from confirmed solver inputs
+and actual repair/test feedback, alongside broader native harness coverage.
 The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair

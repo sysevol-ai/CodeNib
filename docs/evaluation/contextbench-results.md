@@ -292,6 +292,47 @@ tests pass. Useful relationship selection across languages and the active SCIP
 definition gap remain open; this correction adds no model calls or API spend
 and establishes no online quality gain.
 
+A broader zero-model diagnosis reproduces all 72 frozen source predictions and
+official line totals/intersections: both complete 24-task arms and all three
+late eight-task arms. In the first-source candidate's 5,917 missed annotated
+physical lines, 653 are in touched but incomplete callables, 3,476 elsewhere in
+already observed files, and 1,457 in untouched files. The remaining 331 of 9,904
+annotated lines have unavailable source locations: 303 refer to missing
+canonical paths and 28 exceed the source reader's line count. Nine of the 24
+tasks are affected. Eleven of the 28 out-of-range positions are just after a
+file's final line. These pooled counts are not macro Recall averages.
+
+For example, a Pylint annotation names `pylint/tests/...` while the source is
+under `tests/...`; the pinned [official path normalizer](https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/contextbench/parsers/gold.py)
+also removes leading dots from four Go configuration paths. The upstream main
+revision remains the pinned revision as checked on October 17. The evaluator
+now exports evaluation-only `gold_source_issues`, retaining every official path,
+line and denominator. It does not remap plausible alternatives or grant them
+read credit. Regression evaluation retains five gold lines and 40% Recall when
+only two annotated lines exist and were read. The metadata matches the separate
+24-task location audit; future runtime archives also include the evaluator bridge.
+
+A predeclared follow-up spends only unused space in the same 2,048-token
+completion budget on a whole remainder of an already touched short file. It
+preserves every original reply, reproduces 310 source controls and all 32
+original trajectory predictions, and adds no model calls. The unchanged official
+evaluator scores the fixed-trajectory replay as follows:
+
+| Fixed trajectory cohort | Recall, original → replay | F1, original → replay | Added physical / annotated lines |
+| --- | ---: | ---: | ---: |
+| First-source 24 | 54.02% → 56.08% | 30.15% → 29.36% | 1,918 / 153 |
+| Late graph eight | 41.62% → 43.97% | 35.29% → 35.07% | 731 / 155 |
+
+The eight tasks repeat from the 24; these are neither 32 independent tasks nor
+new online outcomes. Source additions absent from matched native contain
+annotations across Go, Java and Rust, but F1 falls in both cohorts. The declared
+feasibility gate fails, so the file-remainder policy is not added to the agent
+or advanced to model inference. The linked aggregate summary retains all rows,
+protocol hashes, the initial diagnostic's missing-path failure and the amended
+source classification. The next priority is useful relationship selection and
+source attribution from actual solver/test feedback. All earlier failed gates,
+the sealed independent 32 and the unlaunched official 500 remain unchanged.
+
 ## Historical post-run 24-task results
 
 The sample contains three tasks per language, 24 repositories and eight languages,

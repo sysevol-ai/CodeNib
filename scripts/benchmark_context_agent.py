@@ -844,6 +844,7 @@ def freeze(output):
         "codenib/agent/tool_schema.py",
         "codenib/eval/benchmarks/contextbench.py",
         "codenib/eval/benchmarks/contextbench_runner.py",
+        "codenib/eval/benchmarks/_contextbench_evaluate.py",
         "codenib/types.py",
         "codenib/agent/rerank_agent.py",
         "codenib/agent/decision_rerank.py",

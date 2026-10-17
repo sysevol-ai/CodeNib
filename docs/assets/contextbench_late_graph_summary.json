@@ -2238,5 +2238,2658 @@
     },
     "outcome": "Compiler-backed reference coverage is recovered, but the same original two queries add no annotated source under the unchanged delivery policy. Omitted neighbor ranges also contain zero unseen annotated lines, so this diagnosis does not support a larger graph budget. Correctness is established, not a new online quality gain. Failed quality gates and the sealed independent 32 remain unchanged; official 500 is not launched.",
     "open_gate": "Establish useful relationship queries and multi-language delivery before a newly frozen matched candidate. Active SCIP assigned-function coverage, broader repository validation and downstream repair effects remain open."
+  },
+  "posthoc_source_gap_diagnostic": {
+    "scope": "Fixed-trajectory source gap decomposition, preserving official annotation paths and counts. Missing source locations are reported separately; suffix candidates never receive read credit.",
+    "protocol_sha256": "a741f36e56130d2bf8a49c68b1b2f573f921f30aa1716640003eae0c80ea70fc",
+    "source_sets_sha256": "27b0614833f9e1687405f459b7c86644ed1fd9e458214c72f698acb7d9dc84ae",
+    "canonical_gold_sha256": "680fae306f038de45ff8af9dd8113f4ca9a3bde4f318703f47fa682d2e88af21",
+    "all_inputs_and_runtime_unchanged": true,
+    "original_predictions_exact": 72,
+    "official_line_counts_exact": 72,
+    "source_snapshots_clean": 24,
+    "totals": [
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "annotated": 9904,
+        "observed_annotated": 3979,
+        "missing_annotated": 5925,
+        "annotation_path_missing": 303,
+        "annotation_line_outside_source": 28,
+        "bounded_touched_callable": 990,
+        "oversized_touched_callable": 0,
+        "untouched_file": 1523,
+        "other_in_seen_file": 3081
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "annotated": 9904,
+        "observed_annotated": 3987,
+        "missing_annotated": 5917,
+        "annotation_path_missing": 303,
+        "annotation_line_outside_source": 28,
+        "bounded_touched_callable": 653,
+        "oversized_touched_callable": 0,
+        "untouched_file": 1457,
+        "other_in_seen_file": 3476
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "annotated": 4533,
+        "observed_annotated": 1593,
+        "missing_annotated": 2940,
+        "annotation_path_missing": 121,
+        "annotation_line_outside_source": 4,
+        "bounded_touched_callable": 791,
+        "oversized_touched_callable": 0,
+        "untouched_file": 861,
+        "other_in_seen_file": 1163
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "annotated": 4533,
+        "observed_annotated": 1814,
+        "missing_annotated": 2719,
+        "annotation_path_missing": 121,
+        "annotation_line_outside_source": 4,
+        "bounded_touched_callable": 381,
+        "oversized_touched_callable": 0,
+        "untouched_file": 957,
+        "other_in_seen_file": 1256
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "annotated": 4533,
+        "observed_annotated": 1812,
+        "missing_annotated": 2721,
+        "annotation_path_missing": 121,
+        "annotation_line_outside_source": 4,
+        "bounded_touched_callable": 378,
+        "oversized_touched_callable": 0,
+        "untouched_file": 968,
+        "other_in_seen_file": 1250
+      }
+    ],
+    "unique_tasks": 24,
+    "rows": [
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 2,
+          "read": 3
+        },
+        "annotated": 241,
+        "observed_annotated": 88,
+        "missing_annotated": 153,
+        "annotation_path_missing": 34,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 57,
+        "oversized_touched_callable": 0,
+        "untouched_file": 12,
+        "other_in_seen_file": 50,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 2,
+          "graph_neighbors": 1,
+          "read": 3,
+          "glob": 1
+        },
+        "annotated": 241,
+        "observed_annotated": 137,
+        "missing_annotated": 104,
+        "annotation_path_missing": 34,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 12,
+        "other_in_seen_file": 58,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "turns": 17,
+        "tool_counts": {
+          "grep": 7,
+          "read": 9
+        },
+        "annotated": 196,
+        "observed_annotated": 80,
+        "missing_annotated": 116,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 21,
+        "oversized_touched_callable": 0,
+        "untouched_file": 94,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "turns": 16,
+        "tool_counts": {
+          "grep": 8,
+          "graph_neighbors": 1,
+          "read": 6
+        },
+        "annotated": 196,
+        "observed_annotated": 50,
+        "missing_annotated": 146,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 26,
+        "oversized_touched_callable": 0,
+        "untouched_file": 94,
+        "other_in_seen_file": 25,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "turns": 14,
+        "tool_counts": {
+          "grep": 6,
+          "read": 7
+        },
+        "annotated": 59,
+        "observed_annotated": 59,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "turns": 11,
+        "tool_counts": {
+          "grep": 5,
+          "graph_neighbors": 1,
+          "read": 4
+        },
+        "annotated": 59,
+        "observed_annotated": 59,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "turns": 4,
+        "tool_counts": {
+          "grep": 2,
+          "read": 1
+        },
+        "annotated": 71,
+        "observed_annotated": 71,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "turns": 5,
+        "tool_counts": {
+          "grep": 2,
+          "graph_neighbors": 1,
+          "read": 1
+        },
+        "annotated": 71,
+        "observed_annotated": 71,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "turns": 23,
+        "tool_counts": {
+          "grep": 7,
+          "read": 13,
+          "glob": 2
+        },
+        "annotated": 1369,
+        "observed_annotated": 497,
+        "missing_annotated": 872,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 180,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 689,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "turns": 22,
+        "tool_counts": {
+          "grep": 11,
+          "graph_neighbors": 1,
+          "read": 7,
+          "glob": 2
+        },
+        "annotated": 1369,
+        "observed_annotated": 632,
+        "missing_annotated": 737,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 734,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "turns": 9,
+        "tool_counts": {
+          "grep": 3,
+          "read": 5
+        },
+        "annotated": 456,
+        "observed_annotated": 397,
+        "missing_annotated": 59,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 11,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 48,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "turns": 10,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 4
+        },
+        "annotated": 456,
+        "observed_annotated": 249,
+        "missing_annotated": 207,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 5,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 202,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 2,
+          "read": 3
+        },
+        "annotated": 386,
+        "observed_annotated": 207,
+        "missing_annotated": 179,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 157,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 22,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 3,
+          "read": 1,
+          "graph_neighbors": 1
+        },
+        "annotated": 386,
+        "observed_annotated": 207,
+        "missing_annotated": 179,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 157,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 22,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "turns": 11,
+        "tool_counts": {
+          "grep": 5,
+          "read": 5
+        },
+        "annotated": 480,
+        "observed_annotated": 204,
+        "missing_annotated": 276,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 71,
+        "oversized_touched_callable": 0,
+        "untouched_file": 149,
+        "other_in_seen_file": 56,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 2
+        },
+        "annotated": 480,
+        "observed_annotated": 234,
+        "missing_annotated": 246,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 54,
+        "oversized_touched_callable": 0,
+        "untouched_file": 163,
+        "other_in_seen_file": 29,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "turns": 14,
+        "tool_counts": {
+          "grep": 7,
+          "read": 6
+        },
+        "annotated": 947,
+        "observed_annotated": 141,
+        "missing_annotated": 806,
+        "annotation_path_missing": 87,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 73,
+        "oversized_touched_callable": 0,
+        "untouched_file": 234,
+        "other_in_seen_file": 412,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "turns": 14,
+        "tool_counts": {
+          "grep": 6,
+          "graph_neighbors": 1,
+          "read": 5,
+          "glob": 1
+        },
+        "annotated": 947,
+        "observed_annotated": 186,
+        "missing_annotated": 761,
+        "annotation_path_missing": 87,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 234,
+        "other_in_seen_file": 440,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "turns": 12,
+        "tool_counts": {
+          "grep": 6,
+          "glob": 2,
+          "read": 3
+        },
+        "annotated": 20,
+        "observed_annotated": 20,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 3,
+          "glob": 1,
+          "read": 2,
+          "graph_neighbors": 1
+        },
+        "annotated": 20,
+        "observed_annotated": 20,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "turns": 12,
+        "tool_counts": {
+          "grep": 5,
+          "read": 5,
+          "glob": 1
+        },
+        "annotated": 529,
+        "observed_annotated": 157,
+        "missing_annotated": 372,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 36,
+        "other_in_seen_file": 333,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "turns": 11,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 4,
+          "glob": 1
+        },
+        "annotated": 529,
+        "observed_annotated": 132,
+        "missing_annotated": 397,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 36,
+        "other_in_seen_file": 358,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "turns": 7,
+        "tool_counts": {
+          "grep": 3,
+          "read": 3
+        },
+        "annotated": 100,
+        "observed_annotated": 50,
+        "missing_annotated": 50,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 50,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "turns": 10,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 4
+        },
+        "annotated": 100,
+        "observed_annotated": 44,
+        "missing_annotated": 56,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 50,
+        "other_in_seen_file": 6,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "turns": 23,
+        "tool_counts": {
+          "grep": 5,
+          "read": 17
+        },
+        "annotated": 1016,
+        "observed_annotated": 208,
+        "missing_annotated": 808,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 275,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 532,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "turns": 23,
+        "tool_counts": {
+          "grep": 6,
+          "graph_neighbors": 1,
+          "read": 15
+        },
+        "annotated": 1016,
+        "observed_annotated": 180,
+        "missing_annotated": 836,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 293,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 542,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "turns": 18,
+        "tool_counts": {
+          "read": 11,
+          "grep": 6
+        },
+        "annotated": 581,
+        "observed_annotated": 205,
+        "missing_annotated": 376,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 8,
+        "oversized_touched_callable": 0,
+        "untouched_file": 340,
+        "other_in_seen_file": 28,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "turns": 16,
+        "tool_counts": {
+          "grep": 7,
+          "graph_neighbors": 1,
+          "read": 7
+        },
+        "annotated": 581,
+        "observed_annotated": 211,
+        "missing_annotated": 370,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 12,
+        "oversized_touched_callable": 0,
+        "untouched_file": 353,
+        "other_in_seen_file": 5,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "turns": 21,
+        "tool_counts": {
+          "grep": 11,
+          "read": 9
+        },
+        "annotated": 333,
+        "observed_annotated": 193,
+        "missing_annotated": 140,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 5,
+        "oversized_touched_callable": 0,
+        "untouched_file": 101,
+        "other_in_seen_file": 34,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "turns": 17,
+        "tool_counts": {
+          "grep": 9,
+          "graph_neighbors": 1,
+          "read": 6
+        },
+        "annotated": 333,
+        "observed_annotated": 188,
+        "missing_annotated": 145,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 101,
+        "other_in_seen_file": 44,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "turns": 9,
+        "tool_counts": {
+          "grep": 3,
+          "read": 5
+        },
+        "annotated": 23,
+        "observed_annotated": 13,
+        "missing_annotated": 10,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 10,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "turns": 11,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 5
+        },
+        "annotated": 23,
+        "observed_annotated": 15,
+        "missing_annotated": 8,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 8,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "turns": 12,
+        "tool_counts": {
+          "grep": 5,
+          "glob": 1,
+          "read": 5
+        },
+        "annotated": 269,
+        "observed_annotated": 242,
+        "missing_annotated": 27,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 27,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 2
+        },
+        "annotated": 269,
+        "observed_annotated": 236,
+        "missing_annotated": 33,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 7,
+        "oversized_touched_callable": 0,
+        "untouched_file": 3,
+        "other_in_seen_file": 23,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "turns": 35,
+        "tool_counts": {
+          "grep": 13,
+          "read": 20,
+          "glob": 1
+        },
+        "annotated": 567,
+        "observed_annotated": 408,
+        "missing_annotated": 159,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 55,
+        "oversized_touched_callable": 0,
+        "untouched_file": 50,
+        "other_in_seen_file": 54,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "turns": 22,
+        "tool_counts": {
+          "grep": 7,
+          "graph_neighbors": 1,
+          "read": 13
+        },
+        "annotated": 567,
+        "observed_annotated": 411,
+        "missing_annotated": 156,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 46,
+        "oversized_touched_callable": 0,
+        "untouched_file": 44,
+        "other_in_seen_file": 66,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "turns": 7,
+        "tool_counts": {
+          "grep": 2,
+          "read": 4
+        },
+        "annotated": 566,
+        "observed_annotated": 265,
+        "missing_annotated": 301,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 8,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 292,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 3,
+          "graph_neighbors": 1,
+          "read": 2,
+          "glob": 1
+        },
+        "annotated": 566,
+        "observed_annotated": 254,
+        "missing_annotated": 312,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 311,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "turns": 4,
+        "tool_counts": {
+          "grep": 1,
+          "read": 2
+        },
+        "annotated": 14,
+        "observed_annotated": 14,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "turns": 7,
+        "tool_counts": {
+          "grep": 2,
+          "graph_neighbors": 1,
+          "read": 3
+        },
+        "annotated": 14,
+        "observed_annotated": 14,
+        "missing_annotated": 0,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "turns": 10,
+        "tool_counts": {
+          "grep": 3,
+          "read": 3,
+          "glob": 3
+        },
+        "annotated": 64,
+        "observed_annotated": 0,
+        "missing_annotated": 64,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 64,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "turns": 11,
+        "tool_counts": {
+          "grep": 6,
+          "graph_neighbors": 1,
+          "read": 2,
+          "glob": 1
+        },
+        "annotated": 64,
+        "observed_annotated": 24,
+        "missing_annotated": 40,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 40,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "turns": 13,
+        "tool_counts": {
+          "glob": 2,
+          "grep": 7,
+          "read": 3
+        },
+        "annotated": 346,
+        "observed_annotated": 95,
+        "missing_annotated": 251,
+        "annotation_path_missing": 43,
+        "annotation_line_outside_source": 17,
+        "bounded_touched_callable": 37,
+        "oversized_touched_callable": 0,
+        "untouched_file": 90,
+        "other_in_seen_file": 64,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "turns": 15,
+        "tool_counts": {
+          "glob": 2,
+          "grep": 5,
+          "graph_neighbors": 1,
+          "read": 6
+        },
+        "annotated": 346,
+        "observed_annotated": 79,
+        "missing_annotated": 267,
+        "annotation_path_missing": 43,
+        "annotation_line_outside_source": 17,
+        "bounded_touched_callable": 53,
+        "oversized_touched_callable": 0,
+        "untouched_file": 79,
+        "other_in_seen_file": 75,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 2,
+          "read": 3
+        },
+        "annotated": 1088,
+        "observed_annotated": 257,
+        "missing_annotated": 831,
+        "annotation_path_missing": 139,
+        "annotation_line_outside_source": 2,
+        "bounded_touched_callable": 24,
+        "oversized_touched_callable": 0,
+        "untouched_file": 289,
+        "other_in_seen_file": 377,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "turns": 7,
+        "tool_counts": {
+          "grep": 2,
+          "graph_neighbors": 1,
+          "read": 3
+        },
+        "annotated": 1088,
+        "observed_annotated": 247,
+        "missing_annotated": 841,
+        "annotation_path_missing": 139,
+        "annotation_line_outside_source": 2,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 247,
+        "other_in_seen_file": 453,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "turns": 11,
+        "tool_counts": {
+          "grep": 4,
+          "read": 6
+        },
+        "annotated": 183,
+        "observed_annotated": 108,
+        "missing_annotated": 75,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 8,
+        "oversized_touched_callable": 0,
+        "untouched_file": 41,
+        "other_in_seen_file": 26,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "first_source_24",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 4,
+          "graph_neighbors": 1,
+          "read": 2
+        },
+        "annotated": 183,
+        "observed_annotated": 107,
+        "missing_annotated": 76,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 41,
+        "other_in_seen_file": 35,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "turns": 8,
+        "tool_counts": {
+          "grep": 3,
+          "read": 4
+        },
+        "annotated": 241,
+        "observed_annotated": 118,
+        "missing_annotated": 123,
+        "annotation_path_missing": 34,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 27,
+        "oversized_touched_callable": 0,
+        "untouched_file": 12,
+        "other_in_seen_file": 50,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "turns": 7,
+        "tool_counts": {
+          "grep": 3,
+          "read": 3
+        },
+        "annotated": 241,
+        "observed_annotated": 138,
+        "missing_annotated": 103,
+        "annotation_path_missing": 34,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 12,
+        "other_in_seen_file": 57,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 3,
+          "read": 1,
+          "graph_neighbors": 1
+        },
+        "annotated": 241,
+        "observed_annotated": 137,
+        "missing_annotated": 104,
+        "annotation_path_missing": 34,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 12,
+        "other_in_seen_file": 58,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "turns": 16,
+        "tool_counts": {
+          "grep": 6,
+          "read": 9
+        },
+        "annotated": 196,
+        "observed_annotated": 61,
+        "missing_annotated": 135,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 25,
+        "oversized_touched_callable": 0,
+        "untouched_file": 94,
+        "other_in_seen_file": 15,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "turns": 13,
+        "tool_counts": {
+          "grep": 4,
+          "read": 7,
+          "glob": 1
+        },
+        "annotated": 196,
+        "observed_annotated": 3,
+        "missing_annotated": 193,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 25,
+        "oversized_touched_callable": 0,
+        "untouched_file": 94,
+        "other_in_seen_file": 73,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "turns": 15,
+        "tool_counts": {
+          "grep": 6,
+          "read": 7,
+          "graph_neighbors": 1
+        },
+        "annotated": 196,
+        "observed_annotated": 50,
+        "missing_annotated": 146,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 1,
+        "bounded_touched_callable": 26,
+        "oversized_touched_callable": 0,
+        "untouched_file": 94,
+        "other_in_seen_file": 25,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "turns": 17,
+        "tool_counts": {
+          "grep": 8,
+          "read": 7,
+          "glob": 1
+        },
+        "annotated": 1369,
+        "observed_annotated": 419,
+        "missing_annotated": 950,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 385,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 562,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "turns": 23,
+        "tool_counts": {
+          "grep": 9,
+          "read": 11,
+          "glob": 2
+        },
+        "annotated": 1369,
+        "observed_annotated": 679,
+        "missing_annotated": 690,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 153,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 534,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "turns": 17,
+        "tool_counts": {
+          "grep": 5,
+          "read": 8,
+          "glob": 2,
+          "graph_neighbors": 1
+        },
+        "annotated": 1369,
+        "observed_annotated": 651,
+        "missing_annotated": 718,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 3,
+        "bounded_touched_callable": 153,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 562,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 2,
+          "read": 3
+        },
+        "annotated": 386,
+        "observed_annotated": 207,
+        "missing_annotated": 179,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 157,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 22,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "turns": 4,
+        "tool_counts": {
+          "grep": 2,
+          "read": 1
+        },
+        "annotated": 386,
+        "observed_annotated": 207,
+        "missing_annotated": 179,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 157,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 22,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 3,
+          "read": 1,
+          "graph_neighbors": 1
+        },
+        "annotated": 386,
+        "observed_annotated": 207,
+        "missing_annotated": 179,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 157,
+        "oversized_touched_callable": 0,
+        "untouched_file": 0,
+        "other_in_seen_file": 22,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "turns": 9,
+        "tool_counts": {
+          "grep": 4,
+          "read": 4
+        },
+        "annotated": 480,
+        "observed_annotated": 169,
+        "missing_annotated": 311,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 83,
+        "oversized_touched_callable": 0,
+        "untouched_file": 163,
+        "other_in_seen_file": 65,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 4,
+          "read": 1
+        },
+        "annotated": 480,
+        "observed_annotated": 215,
+        "missing_annotated": 265,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 163,
+        "other_in_seen_file": 102,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "turns": 6,
+        "tool_counts": {
+          "grep": 3,
+          "read": 1,
+          "graph_neighbors": 1
+        },
+        "annotated": 480,
+        "observed_annotated": 220,
+        "missing_annotated": 260,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 173,
+        "other_in_seen_file": 87,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "turns": 15,
+        "tool_counts": {
+          "read": 10,
+          "grep": 3,
+          "glob": 1
+        },
+        "annotated": 947,
+        "observed_annotated": 205,
+        "missing_annotated": 742,
+        "annotation_path_missing": 87,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 36,
+        "oversized_touched_callable": 0,
+        "untouched_file": 234,
+        "other_in_seen_file": 385,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "turns": 12,
+        "tool_counts": {
+          "grep": 6,
+          "glob": 1,
+          "read": 4
+        },
+        "annotated": 947,
+        "observed_annotated": 146,
+        "missing_annotated": 801,
+        "annotation_path_missing": 87,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 28,
+        "oversized_touched_callable": 0,
+        "untouched_file": 234,
+        "other_in_seen_file": 452,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "turns": 15,
+        "tool_counts": {
+          "grep": 7,
+          "read": 5,
+          "graph_neighbors": 1,
+          "glob": 1
+        },
+        "annotated": 947,
+        "observed_annotated": 172,
+        "missing_annotated": 775,
+        "annotation_path_missing": 87,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 42,
+        "oversized_touched_callable": 0,
+        "untouched_file": 234,
+        "other_in_seen_file": 412,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "turns": 17,
+        "tool_counts": {
+          "read": 10,
+          "grep": 6
+        },
+        "annotated": 581,
+        "observed_annotated": 208,
+        "missing_annotated": 373,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 78,
+        "oversized_touched_callable": 0,
+        "untouched_file": 257,
+        "other_in_seen_file": 38,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "turns": 19,
+        "tool_counts": {
+          "read": 10,
+          "grep": 8
+        },
+        "annotated": 581,
+        "observed_annotated": 210,
+        "missing_annotated": 371,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 18,
+        "oversized_touched_callable": 0,
+        "untouched_file": 353,
+        "other_in_seen_file": 0,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "turns": 16,
+        "tool_counts": {
+          "read": 8,
+          "grep": 5,
+          "graph_neighbors": 2
+        },
+        "annotated": 581,
+        "observed_annotated": 212,
+        "missing_annotated": 369,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 340,
+        "other_in_seen_file": 29,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "turns": 16,
+        "tool_counts": {
+          "grep": 6,
+          "read": 9
+        },
+        "annotated": 333,
+        "observed_annotated": 206,
+        "missing_annotated": 127,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 101,
+        "other_in_seen_file": 26,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "turns": 15,
+        "tool_counts": {
+          "grep": 6,
+          "read": 8
+        },
+        "annotated": 333,
+        "observed_annotated": 216,
+        "missing_annotated": 117,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 101,
+        "other_in_seen_file": 16,
+        "official_counts_exact": true
+      },
+      {
+        "cohort": "late_graph_8",
+        "arm": "functions_graph",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "turns": 12,
+        "tool_counts": {
+          "grep": 7,
+          "read": 3,
+          "graph_neighbors": 1
+        },
+        "annotated": 333,
+        "observed_annotated": 163,
+        "missing_annotated": 170,
+        "annotation_path_missing": 0,
+        "annotation_line_outside_source": 0,
+        "bounded_touched_callable": 0,
+        "oversized_touched_callable": 0,
+        "untouched_file": 115,
+        "other_in_seen_file": 55,
+        "official_counts_exact": true
+      }
+    ],
+    "annotation_location_issues": {
+      "SWE-Bench-Verified__python__maintenance__bugfix__1409977d": [
+        {
+          "file": "pylint/tests/functional/u/unused/unused_typing_imports.py",
+          "reason": "path_missing",
+          "annotated_lines": 34,
+          "existing_suffixes_diagnostic_only": [
+            "tests/functional/u/unused/unused_typing_imports.py"
+          ]
+        }
+      ],
+      "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b": [
+        {
+          "file": "packages/shared/src/normalizeProp.ts",
+          "reason": "line_outside_source",
+          "source_lines": 94,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            95
+          ]
+        }
+      ],
+      "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8": [
+        {
+          "file": "src/libponyc/codegen/genexpr.c",
+          "reason": "line_outside_source",
+          "source_lines": 367,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            368
+          ]
+        },
+        {
+          "file": "src/libponyc/expr/ffi.c",
+          "reason": "line_outside_source",
+          "source_lines": 200,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            201
+          ]
+        },
+        {
+          "file": "src/libponyc/pkg/ifdef.c",
+          "reason": "line_outside_source",
+          "source_lines": 490,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            491
+          ]
+        }
+      ],
+      "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b": [
+        {
+          "file": "ReproduceIssue.java",
+          "reason": "path_missing",
+          "annotated_lines": 87,
+          "existing_suffixes_diagnostic_only": []
+        }
+      ],
+      "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c": [
+        {
+          "file": "docs/examples/json_pointer__back.cpp",
+          "reason": "line_outside_source",
+          "source_lines": 15,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            16
+          ]
+        },
+        {
+          "file": "docs/examples/json_pointer__pop_back.cpp",
+          "reason": "line_outside_source",
+          "source_lines": 21,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            22
+          ]
+        },
+        {
+          "file": "include/nlohmann/detail/json_pointer.hpp",
+          "reason": "line_outside_source",
+          "source_lines": 886,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            887
+          ]
+        }
+      ],
+      "Multi-SWE-Bench__c__maintenance__bugfix__0f495035": [
+        {
+          "file": "programs/zstdcli.c",
+          "reason": "line_outside_source",
+          "source_lines": 1200,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            1201
+          ]
+        }
+      ],
+      "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60": [
+        {
+          "file": "gson/src/test/java/com/google/gson/internal/bind/RecursiveTypesResolveTest.java",
+          "reason": "line_outside_source",
+          "source_lines": 114,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            115
+          ]
+        }
+      ],
+      "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd": [
+        {
+          "file": "github/workflows/benchmark.yml",
+          "reason": "path_missing",
+          "annotated_lines": 14,
+          "existing_suffixes_diagnostic_only": []
+        },
+        {
+          "file": "github/workflows/codeql-analysis.yml",
+          "reason": "path_missing",
+          "annotated_lines": 8,
+          "existing_suffixes_diagnostic_only": []
+        },
+        {
+          "file": "golangci.yml",
+          "reason": "path_missing",
+          "annotated_lines": 7,
+          "existing_suffixes_diagnostic_only": []
+        },
+        {
+          "file": "goreleaser.yml",
+          "reason": "path_missing",
+          "annotated_lines": 14,
+          "existing_suffixes_diagnostic_only": []
+        },
+        {
+          "file": "go.mod",
+          "reason": "line_outside_source",
+          "source_lines": 48,
+          "annotated_lines": 17,
+          "invalid_line_numbers": [
+            327,
+            328,
+            329,
+            330,
+            331,
+            332,
+            333,
+            334,
+            335,
+            336,
+            337,
+            338,
+            339,
+            340,
+            341,
+            342,
+            343
+          ]
+        }
+      ],
+      "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2": [
+        {
+          "file": "index.js",
+          "reason": "line_outside_source",
+          "source_lines": 41,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            42
+          ]
+        },
+        {
+          "file": "package.json",
+          "reason": "line_outside_source",
+          "source_lines": 206,
+          "annotated_lines": 1,
+          "invalid_line_numbers": [
+            207
+          ]
+        },
+        {
+          "file": "repro.js",
+          "reason": "path_missing",
+          "annotated_lines": 139,
+          "existing_suffixes_diagnostic_only": []
+        }
+      ]
+    },
+    "evaluation_metadata": {
+      "cases": 24,
+      "affected_cases": 9,
+      "all_prior_diagnostic_issues_match": true,
+      "unavailable_annotated_lines": 331,
+      "worker_sha256": "26b82cc9e800759469c52d972ac2f4b5cfda69f052601841f026f05e28cf222c",
+      "diagnostic_sha256": "70630859beacd6b5333b9a9ce56bf64d422fdb10b06132f239f23267d3087064",
+      "model_calls": 0,
+      "API_spend_usd": 0,
+      "official_scores_unchanged": true,
+      "previous_verification_sha256": "95d4a8bf87fcde875c6ab513a029cc4bfd1a4bce7f5de9579aea801172bd9e1d",
+      "verification": {
+        "related_unit_passed": 88,
+        "pinned_integration_passed": 8,
+        "unresolvable_path_regression_reproduced": true
+      },
+      "future_archives_include_evaluator_bridge": true
+    },
+    "official_evaluator_revision": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+    "upstream_main_checked_2026_10_17": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+    "normalizer_example": "The pinned official normalizer strips leading dots from .github/.golangci/.goreleaser paths. These paths and score denominators remain untouched; unavailable source is reported as evaluation-only metadata.",
+    "initial_attempt": "Source observations and completion sets were frozen for all 72 records, then the first analysis stopped because it assumed every canonical annotation file existed. The separate v2 analysis preserves that failure and classifies missing source locations explicitly.",
+    "limits": "Pooled physical-line counts, including blank/comment lines, are not macro averages. Out-of-range means beyond the source reader splitlines count; 11 of the 28 such lines are the single position after a file terminates. No paths are remapped and no annotation lines are removed.",
+    "model_calls": 0,
+    "additional_API_spend_usd": 0
+  },
+  "bounded_file_remainder_replay": {
+    "scope": "Fixed-trajectory feasibility only, not a new online outcome.",
+    "protocol_sha256": "4ad6ba7d13217669b82744d309dde0775af75a21c4a10e541200c251be372dce",
+    "all_input_and_runtime_hashes_match": true,
+    "cohort_metrics": {
+      "first_source_24": {
+        "control": {
+          "recall": 0.5401686329564104,
+          "precision": 0.2860920178829965,
+          "f1": 0.3014815297089224
+        },
+        "file_remainder_replay": {
+          "recall": 0.560807686345976,
+          "precision": 0.26919458104581334,
+          "f1": 0.2936116430300187
+        }
+      },
+      "late_graph_8": {
+        "control": {
+          "recall": 0.4162128649381706,
+          "precision": 0.3456469534940558,
+          "f1": 0.3529206038528339
+        },
+        "file_remainder_replay": {
+          "recall": 0.439709041244694,
+          "precision": 0.31896994130317075,
+          "f1": 0.35070094377919614
+        }
+      }
+    },
+    "positive_languages": [
+      "go",
+      "java",
+      "rust"
+    ],
+    "advance_to_fresh_development_hypothesis": false,
+    "source_loss": 0,
+    "model_calls": 0,
+    "API_spend_usd": 0,
+    "policy": "Preserve original function-completed replies, then add an entire unseen remainder only for a file touched by the current original read/content-grep reply and only within the same total 2048-token completion budget and output limit. Files are at most 1500 lines and 2 MB; no annotation or issue-based selection.",
+    "control": "234 first-source and 76 late-pilot source replies reproduce exactly. All 32 original trajectory predictions reproduce exactly; eight tasks repeat from the 24 and are not independent.",
+    "cohort_source_totals": {
+      "first_source_24": {
+        "added_physical": 1918,
+        "added_annotated": 153,
+        "added_annotated_absent_native": 113
+      },
+      "late_graph_8": {
+        "added_physical": 731,
+        "added_annotated": 155,
+        "added_annotated_absent_native": 119
+      }
+    },
+    "rows": [
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "control": {
+          "recall": 0.5684647302904564,
+          "precision": 0.6116071428571429,
+          "f1": 0.589247311827957
+        },
+        "file_remainder_replay": {
+          "recall": 0.5684647302904564,
+          "precision": 0.6116071428571429,
+          "f1": 0.589247311827957
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 6,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "control": {
+          "recall": 0.25510204081632654,
+          "precision": 0.06297229219143577,
+          "f1": 0.101010101010101
+        },
+        "file_remainder_replay": {
+          "recall": 0.25510204081632654,
+          "precision": 0.06297229219143577,
+          "f1": 0.101010101010101
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 14,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "control": {
+          "recall": 1.0,
+          "precision": 0.09104938271604938,
+          "f1": 0.1669024045261669
+        },
+        "file_remainder_replay": {
+          "recall": 1.0,
+          "precision": 0.08651026392961877,
+          "f1": 0.15924426450742243
+        },
+        "added_physical": 34,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 9,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "control": {
+          "recall": 1.0,
+          "precision": 0.3641025641025641,
+          "f1": 0.5338345864661653
+        },
+        "file_remainder_replay": {
+          "recall": 1.0,
+          "precision": 0.3641025641025641,
+          "f1": 0.5338345864661653
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 3,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "control": {
+          "recall": 0.4616508400292184,
+          "precision": 0.36155606407322655,
+          "f1": 0.4055181264035932
+        },
+        "file_remainder_replay": {
+          "recall": 0.4616508400292184,
+          "precision": 0.3095004897159647,
+          "f1": 0.3705658164761067
+        },
+        "added_physical": 294,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 20,
+          "changed_replies": 4,
+          "completed_file_remainders": 4
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "control": {
+          "recall": 0.5460526315789473,
+          "precision": 0.41089108910891087,
+          "f1": 0.4689265536723164
+        },
+        "file_remainder_replay": {
+          "recall": 0.5460526315789473,
+          "precision": 0.41089108910891087,
+          "f1": 0.4689265536723164
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 8,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "control": {
+          "recall": 0.5362694300518135,
+          "precision": 0.552,
+          "f1": 0.5440210249671484
+        },
+        "file_remainder_replay": {
+          "recall": 0.5362694300518135,
+          "precision": 0.4641255605381166,
+          "f1": 0.49759615384615385
+        },
+        "added_physical": 71,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 4,
+          "changed_replies": 2,
+          "completed_file_remainders": 3
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "control": {
+          "recall": 0.4875,
+          "precision": 0.45792563600782776,
+          "f1": 0.47225025227043393
+        },
+        "file_remainder_replay": {
+          "recall": 0.5354166666666667,
+          "precision": 0.460573476702509,
+          "f1": 0.4951830443159923
+        },
+        "added_physical": 47,
+        "added_annotated": 23,
+        "added_annotated_absent_native": 18,
+        "counts": {
+          "controls_reproduced": 6,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "control": {
+          "recall": 0.19640971488912354,
+          "precision": 0.3089700996677741,
+          "f1": 0.24015493867010976
+        },
+        "file_remainder_replay": {
+          "recall": 0.3199577613516367,
+          "precision": 0.3462857142857143,
+          "f1": 0.3326015367727772
+        },
+        "added_physical": 273,
+        "added_annotated": 117,
+        "added_annotated_absent_native": 89,
+        "counts": {
+          "controls_reproduced": 12,
+          "changed_replies": 4,
+          "completed_file_remainders": 4
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "control": {
+          "recall": 1.0,
+          "precision": 0.047619047619047616,
+          "f1": 0.0909090909090909
+        },
+        "file_remainder_replay": {
+          "recall": 1.0,
+          "precision": 0.032520325203252036,
+          "f1": 0.06299212598425198
+        },
+        "added_physical": 195,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 6,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "control": {
+          "recall": 0.2495274102079395,
+          "precision": 0.5076923076923077,
+          "f1": 0.3346007604562738
+        },
+        "file_remainder_replay": {
+          "recall": 0.2495274102079395,
+          "precision": 0.5076923076923077,
+          "f1": 0.3346007604562738
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 9,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "control": {
+          "recall": 0.44,
+          "precision": 0.16356877323420074,
+          "f1": 0.2384823848238482
+        },
+        "file_remainder_replay": {
+          "recall": 0.5,
+          "precision": 0.07331378299120235,
+          "f1": 0.1278772378516624
+        },
+        "added_physical": 413,
+        "added_annotated": 6,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 8,
+          "changed_replies": 5,
+          "completed_file_remainders": 6
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "control": {
+          "recall": 0.17716535433070865,
+          "precision": 0.14551333872271624,
+          "f1": 0.15978695073235685
+        },
+        "file_remainder_replay": {
+          "recall": 0.17716535433070865,
+          "precision": 0.14551333872271624,
+          "f1": 0.15978695073235685
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 21,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "control": {
+          "recall": 0.36316695352839934,
+          "precision": 0.18672566371681415,
+          "f1": 0.24663939216832265
+        },
+        "file_remainder_replay": {
+          "recall": 0.36316695352839934,
+          "precision": 0.1497515968772179,
+          "f1": 0.21206030150753769
+        },
+        "added_physical": 279,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 14,
+          "changed_replies": 6,
+          "completed_file_remainders": 6
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "control": {
+          "recall": 0.5645645645645646,
+          "precision": 0.1551155115511551,
+          "f1": 0.24336569579288025
+        },
+        "file_remainder_replay": {
+          "recall": 0.5675675675675675,
+          "precision": 0.14685314685314685,
+          "f1": 0.23333333333333334
+        },
+        "added_physical": 75,
+        "added_annotated": 1,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 15,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "control": {
+          "recall": 0.6521739130434783,
+          "precision": 0.02697841726618705,
+          "f1": 0.05181347150259066
+        },
+        "file_remainder_replay": {
+          "recall": 0.9130434782608695,
+          "precision": 0.03559322033898305,
+          "f1": 0.06851549755301795
+        },
+        "added_physical": 34,
+        "added_annotated": 6,
+        "added_annotated_absent_native": 6,
+        "counts": {
+          "controls_reproduced": 9,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "control": {
+          "recall": 0.8773234200743495,
+          "precision": 0.36932707355242567,
+          "f1": 0.5198237885462554
+        },
+        "file_remainder_replay": {
+          "recall": 0.8773234200743495,
+          "precision": 0.35119047619047616,
+          "f1": 0.5015940488841657
+        },
+        "added_physical": 33,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 6,
+          "changed_replies": 2,
+          "completed_file_remainders": 2
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "control": {
+          "recall": 0.7248677248677249,
+          "precision": 0.1282371294851794,
+          "f1": 0.21792152704135737
+        },
+        "file_remainder_replay": {
+          "recall": 0.7248677248677249,
+          "precision": 0.12775878147342246,
+          "f1": 0.21723044397463004
+        },
+        "added_physical": 12,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 20,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "control": {
+          "recall": 0.44876325088339225,
+          "precision": 0.8639455782312925,
+          "f1": 0.5906976744186048
+        },
+        "file_remainder_replay": {
+          "recall": 0.44876325088339225,
+          "precision": 0.8639455782312925,
+          "f1": 0.5906976744186048
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 6,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "control": {
+          "recall": 1.0,
+          "precision": 0.036458333333333336,
+          "f1": 0.07035175879396986
+        },
+        "file_remainder_replay": {
+          "recall": 1.0,
+          "precision": 0.03636363636363636,
+          "f1": 0.07017543859649122
+        },
+        "added_physical": 1,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 5,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "control": {
+          "recall": 0.375,
+          "precision": 0.05647058823529412,
+          "f1": 0.098159509202454
+        },
+        "file_remainder_replay": {
+          "recall": 0.375,
+          "precision": 0.05647058823529412,
+          "f1": 0.098159509202454
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 9,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "control": {
+          "recall": 0.22832369942196531,
+          "precision": 0.11318051575931232,
+          "f1": 0.15134099616858238
+        },
+        "file_remainder_replay": {
+          "recall": 0.22832369942196531,
+          "precision": 0.11033519553072625,
+          "f1": 0.1487758945386064
+        },
+        "added_physical": 18,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 13,
+          "changed_replies": 2,
+          "completed_file_remainders": 2
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "control": {
+          "recall": 0.2270220588235294,
+          "precision": 0.5678160919540229,
+          "f1": 0.3243598161523309
+        },
+        "file_remainder_replay": {
+          "recall": 0.2270220588235294,
+          "precision": 0.43031358885017423,
+          "f1": 0.2972322503008424
+        },
+        "added_physical": 139,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 5,
+          "changed_replies": 2,
+          "completed_file_remainders": 3
+        }
+      },
+      {
+        "cohort": "first_source_24",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "control": {
+          "recall": 0.5846994535519126,
+          "precision": 0.27648578811369506,
+          "f1": 0.375438596491228
+        },
+        "file_remainder_replay": {
+          "recall": 0.5846994535519126,
+          "precision": 0.27648578811369506,
+          "f1": 0.375438596491228
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 6,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "control": {
+          "recall": 0.5684647302904564,
+          "precision": 0.7653631284916201,
+          "f1": 0.6523809523809525
+        },
+        "file_remainder_replay": {
+          "recall": 0.5684647302904564,
+          "precision": 0.5780590717299579,
+          "f1": 0.5732217573221757
+        },
+        "added_physical": 58,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 4,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "control": {
+          "recall": 0.25510204081632654,
+          "precision": 0.05107252298263534,
+          "f1": 0.0851063829787234
+        },
+        "file_remainder_replay": {
+          "recall": 0.25510204081632654,
+          "precision": 0.05107252298263534,
+          "f1": 0.0851063829787234
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 13,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "control": {
+          "recall": 0.47552958363769177,
+          "precision": 0.3559322033898305,
+          "f1": 0.4071294559099437
+        },
+        "file_remainder_replay": {
+          "recall": 0.47552958363769177,
+          "precision": 0.32978723404255317,
+          "f1": 0.38947053544720306
+        },
+        "added_physical": 145,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 15,
+          "changed_replies": 3,
+          "completed_file_remainders": 3
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "control": {
+          "recall": 0.5362694300518135,
+          "precision": 0.5376623376623376,
+          "f1": 0.5369649805447471
+        },
+        "file_remainder_replay": {
+          "recall": 0.5362694300518135,
+          "precision": 0.45394736842105265,
+          "f1": 0.491686460807601
+        },
+        "added_physical": 71,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 4,
+          "changed_replies": 2,
+          "completed_file_remainders": 3
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "control": {
+          "recall": 0.4583333333333333,
+          "precision": 0.47619047619047616,
+          "f1": 0.4670912951167728
+        },
+        "file_remainder_replay": {
+          "recall": 0.50625,
+          "precision": 0.4774066797642436,
+          "f1": 0.49140546006066727
+        },
+        "added_physical": 47,
+        "added_annotated": 23,
+        "added_annotated_absent_native": 23,
+        "counts": {
+          "controls_reproduced": 4,
+          "changed_replies": 1,
+          "completed_file_remainders": 1
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "control": {
+          "recall": 0.1816261879619852,
+          "precision": 0.2551928783382789,
+          "f1": 0.2122146822948797
+        },
+        "file_remainder_replay": {
+          "recall": 0.3199577613516367,
+          "precision": 0.3713235294117647,
+          "f1": 0.34373227453204763
+        },
+        "added_physical": 142,
+        "added_annotated": 131,
+        "added_annotated_absent_native": 96,
+        "counts": {
+          "controls_reproduced": 13,
+          "changed_replies": 2,
+          "completed_file_remainders": 2
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "control": {
+          "recall": 0.3648881239242685,
+          "precision": 0.18275862068965518,
+          "f1": 0.24353819643882826
+        },
+        "file_remainder_replay": {
+          "recall": 0.36660929432013767,
+          "precision": 0.14915966386554622,
+          "f1": 0.212045793927327
+        },
+        "added_physical": 268,
+        "added_annotated": 1,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 13,
+          "changed_replies": 5,
+          "completed_file_remainders": 5
+        }
+      },
+      {
+        "cohort": "late_graph_8",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "control": {
+          "recall": 0.4894894894894895,
+          "precision": 0.14100346020761245,
+          "f1": 0.2189388851578241
+        },
+        "file_remainder_replay": {
+          "recall": 0.4894894894894895,
+          "precision": 0.14100346020761245,
+          "f1": 0.2189388851578241
+        },
+        "added_physical": 0,
+        "added_annotated": 0,
+        "added_annotated_absent_native": 0,
+        "counts": {
+          "controls_reproduced": 10,
+          "changed_replies": 0,
+          "completed_file_remainders": 0
+        }
+      }
+    ],
+    "decision": "Rejected before product implementation or model inference: F1 falls in both fixed-trajectory cohorts despite Recall gains and annotated additions across three languages. Do not substitute these arithmetic replay results for new online evidence.",
+    "next": "Prioritize relationship selection and source attribution from actual solver/test feedback; preserve all failed gates and sealed independent tasks. No official-500 launch."
   }
 }
