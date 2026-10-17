@@ -46,6 +46,11 @@ class SurfaceContext:
     def __init__(self, ctx, *, observed_messages, token_budget=2048):
         # Retain the established experiment's backend/source admission checks.
         make_context_tool(ctx)
+        self._initialize_source_session(ctx, observed_messages, token_budget)
+
+    def _initialize_source_session(self, ctx, observed_messages, token_budget):
+        if ctx.source_verified is not True:
+            raise ValueError("Surface context requires authenticated repository source")
         if not 256 <= token_budget <= 4096:
             raise ValueError("Invalid surface token budget")
         self.ctx, self.observed_messages = ctx, observed_messages
@@ -53,6 +58,26 @@ class SurfaceContext:
         self.token_budget = token_budget
         self.identity = (ctx.manifest.commit, ctx.manifest.source_fingerprint)
         self.locations = {}
+
+    def _location_entry(self, location, declaration, origins):
+        identity = json.dumps(
+            [
+                *self.identity,
+                location.file,
+                location.start,
+                location.end,
+                location.symbol,
+            ],
+            ensure_ascii=True,
+        )
+        return {
+            "handle": "ctx:" + hashlib.sha256(identity.encode()).hexdigest()[:24],
+            "file": location.file,
+            "lines": [location.start, location.end],
+            "symbol": location.symbol,
+            "declaration_excerpt": declaration,
+            "origins": origins,
+        }
 
     def _check_identity(self):
         if self.identity != (
@@ -100,25 +125,10 @@ class SurfaceContext:
                     declaration = read_source_impl(
                         self.ctx, location.file, location.start, location.start
                     )["content"].strip()[:240]
-                    identity = json.dumps(
-                        [
-                            *self.identity,
-                            location.file,
-                            location.start,
-                            location.end,
-                            location.symbol,
-                        ],
-                        ensure_ascii=True,
+                    entry = self._location_entry(
+                        location, declaration, anchor["origins"]
                     )
-                    handle = "ctx:" + hashlib.sha256(identity.encode()).hexdigest()[:24]
-                    entry = {
-                        "handle": handle,
-                        "file": location.file,
-                        "lines": [location.start, location.end],
-                        "symbol": location.symbol,
-                        "declaration_excerpt": declaration,
-                        "origins": anchor["origins"],
-                    }
+                    handle = entry["handle"]
                     if any(x["handle"] == handle for x in payload["entries"]):
                         continue
                     candidate = {**payload, "entries": [*payload["entries"], entry]}

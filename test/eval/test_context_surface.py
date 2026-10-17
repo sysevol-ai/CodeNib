@@ -17,6 +17,8 @@ from codenib.mcp.context import ServerContext
 from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
 from codenib.types import NODE_TYPE_FUNCTION, NodeInfo
 from scripts import benchmark_context_claude as claude
+from scripts.contextbench_file_surface import GUIDANCE as FILE_GUIDANCE
+from scripts.contextbench_file_surface import FileSurfaceContext
 from scripts.contextbench_surface import GUIDANCE, SurfaceContext
 
 
@@ -164,20 +166,34 @@ def test_oversized_partial_line_is_explicit_unavailable_and_cannot_gain_credit(i
     }
 
 
-def test_sdk_surface_then_body_is_real_tool_delivery(indexed, tmp_path, monkeypatch):
+@pytest.mark.parametrize("source_only", [False, True])
+def test_sdk_surface_then_body_is_real_tool_delivery(
+    indexed, tmp_path, monkeypatch, source_only
+):
     ctx, _node = indexed
     row = {"instance_id": "case", "messages": [], "sdk_events": []}
-    surface = SurfaceContext(ctx, observed_messages=lambda: tuple(row["messages"]))
+    if source_only:
+        ctx.vector = None
+    surface_type = FileSurfaceContext if source_only else SurfaceContext
+    guidance = FILE_GUIDANCE if source_only else GUIDANCE
+    surface = surface_type(ctx, observed_messages=lambda: tuple(row["messages"]))
 
     def event(kind, **fields):
         return make_dataclass(kind, [(k, object) for k in fields])(**fields)
 
     async def query(*, prompt, options):
-        assert GUIDANCE in options.system_prompt
+        assert guidance in options.system_prompt
         handlers = dict(options.mcp_servers["source"])
         handle = None
         for call_id, args in [
-            ("surface", {"query": "answer implementation"}),
+            (
+                "surface",
+                (
+                    {"file_path": "a.py"}
+                    if source_only
+                    else {"query": "answer implementation"}
+                ),
+            ),
             ("body", {"view": "body"}),
         ]:
             if call_id == "body":
@@ -237,7 +253,7 @@ def test_sdk_surface_then_body_is_real_tool_delivery(indexed, tmp_path, monkeypa
             model="test-model",
             max_turns=5,
             context_tool=surface.tool(),
-            context_guidance=GUIDANCE,
+            context_guidance=guidance,
         )
     )
     assert row["status"] == "ok"
