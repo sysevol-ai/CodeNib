@@ -104,6 +104,10 @@ def prepare_manifest(args, record, repo, languages):
             },
         )
         write_json(args.output / "index-outcomes.json", manifest.to_dict())
+        # Retain manifest pointers so this verified preparation can itself be
+        # reused. Payloads stay at their recorded producer paths, not copied.
+        (args.output / "indexes").mkdir()
+        manifest.save(args.output / "indexes/repo_manifest.json")
         return manifest, "contextbench-explicit-owned-cache-reuse"
     registry = IndexBuilderRegistry()
     register_default_builders(

@@ -106,4 +106,8 @@ def test_cache_producer_identity_checked_before_native_load(tmp_path, status, mu
         assert loaded.to_dict() == manifest.to_dict()
         assert evidence == "contextbench-explicit-owned-cache-reuse"
         assert (output / "cache-producer.json").exists()
+        assert (
+            RepoManifest.load(output / "indexes/repo_manifest.json").to_dict()
+            == manifest.to_dict()
+        )
     assert not (output / "model-intent.json").exists()
