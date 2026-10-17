@@ -244,6 +244,9 @@ Black or isort can produce changes that fail the release all-files check.
   `/workspace/<repo>/` or `/testbed/` annotations otherwise silently lose credit
   in auxiliary counts even when official scores are correct. Preserve frozen
   results and label any retrospective diagnostic correction explicitly.
+  If canonical annotations do not resolve in the pinned source, retain official
+  paths and denominators and report evaluation-only `gold_source_issues`;
+  do not silently remap paths or discard unavailable annotation lines.
 
 ## Directory-Specific Rules
 
