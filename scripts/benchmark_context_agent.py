@@ -258,6 +258,7 @@ def retrieve(
     max_turns=20,
     source_policy="native",
     completion_tokens=2048,
+    completion_source_policy="definitions",
     graph_tool=None,
 ):
     """Only source tools and the original issue enter the shared native loop."""
@@ -286,6 +287,10 @@ def retrieve(
             tool_id=tool_id,
             source_policy=source_policy,
             completion_tokens=completion_tokens,
+            completion_source_policy=completion_source_policy,
+            observed_source=lambda: observed_nodes(
+                tuple(chat.delivered_messages), repo
+            ),
         )
     if graph_tool is not None:
         runner.tool_registry.register(graph_tool)
@@ -511,7 +516,14 @@ def complete_observed_functions(nodes, repo, max_function_lines=1500):
 
 
 def bind_context_source_tool(
-    execute, *, repo, tool_id, source_policy="native", completion_tokens=2048
+    execute,
+    *,
+    repo,
+    tool_id,
+    source_policy="native",
+    completion_tokens=2048,
+    completion_source_policy="definitions",
+    observed_source=None,
 ):
     """Complete touched callables inside a real tool response, before inference.
 
@@ -519,12 +531,27 @@ def bind_context_source_tool(
     callables touched by this response; never recursively expand additions. Each
     callable's missing lines must fit both the extra-token budget and the native
     runner's response limit in full. No annotation or reference patch is read.
-    This stateless wrapper also works with exact tool-response replay and the SDK.
+    Under ``unseen``, omit lines verified in the delivered conversation snapshot;
+    earlier source plus this reply must still complete each selected callable.
+    Only the current response selects callables. Old observations cannot trigger
+    expansion in other files or functions. The caller supplies verified NodeInfo
+    ranges, as for graph navigation, never requested or declared-only ranges.
+    No mutable ledger or lock is kept here. Parallel calls may conservatively
+    repeat source absent from their snapshots, but cannot hide unreturned source.
+    The original ``definitions`` policy remains available for matched controls.
     """
     if source_policy not in {"native", "functions"}:
         raise ValueError("Unknown source policy")
     if not 1 <= completion_tokens <= 8192:
         raise ValueError("completion_tokens must be in [1, 8192]")
+    if completion_source_policy not in {"definitions", "unseen"}:
+        raise ValueError("Unknown completion source policy")
+    if (
+        source_policy == "functions"
+        and completion_source_policy == "unseen"
+        and not callable(observed_source)
+    ):
+        raise ValueError("Unseen function completion requires observed source receipts")
     confined = _bind_source_tool(
         execute,
         repo=repo.resolve(),
@@ -575,6 +602,12 @@ def bind_context_source_tool(
             for node in nodes
             for line in range(node.start_line, node.end_line + 1)
         }
+        if completion_source_policy == "unseen":
+            seen.update(
+                (node.file, line)
+                for node in observed_source()
+                for line in range(node.start_line, node.end_line + 1)
+            )
         extra = ""
         for node in additions:
             lines = []
@@ -620,6 +653,12 @@ def source_policy_arguments(parser):
         "--source-policy", choices=("native", "functions"), default="native"
     )
     parser.add_argument("--completion-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--completion-source-policy",
+        choices=("definitions", "unseen"),
+        default="definitions",
+        help="Optionally omit completion lines already verified in model inputs",
+    )
     graph_arguments(parser)
 
 
@@ -854,9 +893,11 @@ def run(args):
         raise ValueError("workers must be in [1, 4]")
     source_policy = getattr(args, "source_policy", "native")
     completion_tokens = getattr(args, "completion_tokens", 2048)
+    completion_source_policy = getattr(args, "completion_source_policy", "definitions")
     if (
         source_policy not in {"native", "functions"}
         or not 1 <= completion_tokens <= 8192
+        or completion_source_policy not in {"definitions", "unseen"}
     ):
         raise ValueError("Invalid source policy or completion token budget")
     manifest, cases = load_inputs(args.prepared)
@@ -885,6 +926,8 @@ def run(args):
             or parent["max_turns"] != args.max_turns
             or parent.get("source_policy", "native") != source_policy
             or parent.get("completion_tokens", 2048) != completion_tokens
+            or parent.get("completion_source_policy", "definitions")
+            != completion_source_policy
             or parent.get("graph", {**graph_config, "enabled": False}) != graph_config
         ):
             raise ValueError("Resume configuration differs from original model policy")
@@ -943,6 +986,7 @@ def run(args):
             "max_turns": args.max_turns,
             "source_policy": source_policy,
             "completion_tokens": completion_tokens,
+            "completion_source_policy": completion_source_policy,
             "graph": graph_config,
             "context_safety_tokens": 120000,
             "max_cost_usd": args.max_cost_usd,
@@ -1038,6 +1082,7 @@ def run(args):
                 max_turns=args.max_turns,
                 source_policy=source_policy,
                 completion_tokens=completion_tokens,
+                completion_source_policy=completion_source_policy,
                 graph_tool=graph_tool,
             )
             messages = result.messages
@@ -1265,7 +1310,21 @@ def compare(args):
     left_graph = left["config"].get("graph", {"enabled": False})
     right_graph = right["config"].get("graph", {"enabled": False})
     policies = tuple(run["config"].get("source_policy", "native") for run in runs)
-    if (
+    completion_policies = tuple(
+        run["config"].get("completion_source_policy", "definitions") for run in runs
+    )
+    completion_contrast = (
+        policies == ("functions", "functions")
+        and completion_policies == ("definitions", "unseen")
+        and left_graph == right_graph
+    )
+    if completion_policies[0] != completion_policies[1] and not completion_contrast:
+        raise ValueError("Paired policies differ in completion_source_policy")
+    if completion_contrast:
+        contrast = "unseen_function_source_over_definitions"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
         policies == ("native", "functions")
         and left_graph == right_graph
         and not left_graph["enabled"]

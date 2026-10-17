@@ -133,6 +133,7 @@ async def retrieve(
     max_turns,
     source_policy="native",
     completion_tokens=2048,
+    completion_source_policy="definitions",
     case_meter_usd=3.0,
     graph_tool=None,
 ):
@@ -155,6 +156,10 @@ async def retrieve(
                 tool_id=spec.tool_id,
                 source_policy=source_policy,
                 completion_tokens=completion_tokens,
+                completion_source_policy=completion_source_policy,
+                observed_source=lambda: native.observed_nodes(
+                    tuple(row["messages"]), repo
+                ),
             )
 
         def bind(function):
@@ -241,12 +246,14 @@ def run(args):
         raise ValueError("max_turns must be in [1, 40]")
     source_policy = getattr(args, "source_policy", "native")
     completion_tokens = getattr(args, "completion_tokens", 2048)
+    completion_source_policy = getattr(args, "completion_source_policy", "definitions")
     max_meter_usd = getattr(args, "max_meter_usd", 100.0)
     case_meter_usd = getattr(args, "case_meter_usd", 3.0)
     case_timeout = getattr(args, "case_timeout", 900.0)
     if (
         source_policy not in {"native", "functions"}
         or not 1 <= completion_tokens <= 8192
+        or completion_source_policy not in {"definitions", "unseen"}
     ):
         raise ValueError("Invalid source policy or completion token budget")
     if not all(
@@ -274,6 +281,7 @@ def run(args):
             "max_turns": args.max_turns,
             "source_policy": source_policy,
             "completion_tokens": completion_tokens,
+            "completion_source_policy": completion_source_policy,
             "graph": graph_config,
             "max_meter_usd": max_meter_usd,
             "case_meter_usd": case_meter_usd,
@@ -352,6 +360,7 @@ def run(args):
                             max_turns=args.max_turns,
                             source_policy=source_policy,
                             completion_tokens=completion_tokens,
+                            completion_source_policy=completion_source_policy,
                             case_meter_usd=min(case_meter_usd, max_meter_usd - metered),
                             graph_tool=graph_tool,
                         ),

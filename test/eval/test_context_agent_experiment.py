@@ -313,6 +313,98 @@ def test_function_completion_grep_keeps_file_identity_and_source_limits(tmp_path
         bound(path="..", pattern="def")
 
 
+@pytest.mark.parametrize("policy", ["definitions", "unseen"])
+def test_completion_uses_prior_model_inputs_without_hiding_original_reads(
+    monkeypatch, tmp_path, policy
+):
+    (tmp_path / "a.py").write_text("def found():\n    value = 3\n    return value\n")
+    sent = fake_post(
+        monkeypatch,
+        [
+            tool("read", {"file_path": "a.py", "offset": 1, "limit": 1}, "first"),
+            tool("read", {"file_path": "a.py", "offset": 2, "limit": 1}, "second"),
+            {"role": "assistant", "content": "Found it."},
+            {"role": "assistant", "content": "Reviewed."},
+        ],
+    )
+    result = agent.retrieve(
+        repo=tmp_path,
+        query="Inspect found",
+        chat=chat(),
+        max_turns=5,
+        source_policy="functions",
+        completion_source_policy=policy,
+    )
+    second = next(
+        message["content"]
+        for message in sent[2]["messages"]
+        if message.get("tool_call_id") == "second"
+    )
+    assert "value = 3" in second
+    assert ("return value" in second) == (policy == "definitions")
+    assert ("def found" in second) == (policy == "definitions")
+    assert agent.contextbench_prediction(
+        instance_id="case", messages=result.messages, repo_path=tmp_path
+    )["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 3}]}
+
+
+def test_unseen_completion_only_uses_actual_prior_source_and_current_targets(tmp_path):
+    (tmp_path / "a.py").write_text("def found():\n    value = 3\n    return value\n")
+    (tmp_path / "b.py").write_text("def unrelated():\n    return 'not requested'\n")
+    history = [
+        tool("read", {"file_path": "a.py", "limit": 100}, "prior"),
+        {"role": "tool", "tool_call_id": "prior", "content": "2 |     value = 3"},
+        tool("read", {"file_path": "b.py", "limit": 100}, "other"),
+        {"role": "tool", "tool_call_id": "other", "content": "1 | def unrelated():"},
+    ]
+    original = "a.py:1: def found():"
+    bound = agent.bind_context_source_tool(
+        lambda **kw: original,
+        repo=tmp_path,
+        tool_id="grep",
+        source_policy="functions",
+        completion_source_policy="unseen",
+        observed_source=lambda: agent.observed_nodes(history, tmp_path),
+    )
+    result = bound(path="a.py", pattern="found")
+    assert result.startswith(original)
+    assert "return value" in result
+    assert "value = 3" not in result and "not requested" not in result
+    # Stale or truncated text cannot count as observed, even with a large request.
+    history[1]["content"] = "2 |     value = 3 ... [truncated]"
+    assert "value = 3" in bound(path="a.py", pattern="found")
+    with pytest.raises(ValueError, match="observed source receipts"):
+        agent.bind_context_source_tool(
+            lambda **kw: original,
+            repo=tmp_path,
+            tool_id="grep",
+            source_policy="functions",
+            completion_source_policy="unseen",
+        )
+
+
+def test_prior_source_allows_remaining_function_to_fit_small_response(tmp_path):
+    middle = "    value = '" + "long existing source " * 100 + "'"
+    (tmp_path / "a.py").write_text(f"def found():\n{middle}\n    return value\n")
+    history = [
+        tool("read", {"file_path": "a.py"}, "prior"),
+        {"role": "tool", "tool_call_id": "prior", "content": f"2 | {middle}"},
+    ]
+    for policy in ("definitions", "unseen"):
+        bound = agent.bind_context_source_tool(
+            lambda **kw: "a.py:1: def found():",
+            repo=tmp_path,
+            tool_id="grep",
+            source_policy="functions",
+            completion_source_policy=policy,
+            completion_tokens=64,
+            observed_source=lambda: agent.observed_nodes(history, tmp_path),
+        )
+        result = bound(path="a.py", pattern="found")
+        assert ("return value" in result) == (policy == "unseen")
+        assert "long existing" not in result
+
+
 @pytest.mark.parametrize("budget,huge", [(1, False), (8192, True)])
 def test_function_completion_never_partially_delivers_an_added_callable(
     tmp_path, budget, huge
@@ -413,6 +505,27 @@ def test_paired_online_comparison_keeps_failures_and_macro_f1(paired_runs):
     assert result["metrics"]["f1"]["candidate"] == 0.25
     assert all(arm["scoring_failures"] == 1 for arm in result["arms"])
     assert "pass_at_1" not in result
+
+
+def test_completion_source_comparison_rejects_confounded_graph_change(paired_runs):
+    for directory, policy in (
+        (paired_runs.baseline, "definitions"),
+        (paired_runs.candidate, "unseen"),
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(source_policy="functions", completion_source_policy=policy)
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "unseen_function_source_over_definitions"
+    )
+    path = paired_runs.candidate / "config.json"
+    config["graph"] = {"enabled": True}
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="completion_source_policy"):
+        agent.compare(paired_runs)
 
 
 def test_graph_source_comparison_keeps_inputs_budgets_and_tools_matched(paired_runs):
