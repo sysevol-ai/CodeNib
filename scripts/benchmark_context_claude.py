@@ -262,6 +262,7 @@ async def retrieve(
     max_included_only=False,
     context_tool=None,
     read_hints=None,
+    context_guidance=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -294,6 +295,10 @@ async def retrieve(
         raise ValueError("CodeNib context requires an otherwise native source arm")
     if read_hints is not None and context_tool is None:
         raise ValueError("Reference hints require the explicit CodeNib context tool")
+    if context_guidance is not None and (
+        context_tool is None or not isinstance(context_guidance, str)
+    ):
+        raise ValueError("Context guidance requires the explicit context tool")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -386,7 +391,7 @@ async def retrieve(
 
         system_prompt = system_prompt.replace(
             "Use grep and glob to locate implementations, then read their actual source.",
-            CONTEXT_GUIDANCE,
+            CONTEXT_GUIDANCE if context_guidance is None else context_guidance,
         )
         row["context_system_prompt"] = system_prompt
     if read_hints is not None:
