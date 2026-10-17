@@ -221,8 +221,17 @@ evidence are retained; no optional product surface is added. Evaluation-only
 annotation diagnostics identify 331 unavailable lines across nine development
 tasks, preserve official paths/denominators, and enter the existing evaluator
 bridge rather than a new framework. Future experiment archives include that
-bridge. The next priority is source attribution from confirmed solver inputs
-and actual repair/test feedback, alongside broader native harness coverage.
+bridge. Source attribution now has one controlled reader at the existing native
+solver environment boundary. It records exact file versions and rendered input
+positions, preserves native truncation, and credits only complete lines in
+confirmed inputs. A scripted source-only container verifies the boundary with
+no model calls. Existing fmt receipts validate 411/375 initial source lines;
+their shell reads remain unattributed rather than reconstructed from requests.
+This source-checkout adapter creates no product tool or persistence boundary.
+Its partial coverage is not an official trajectory: arbitrary shell output and
+modified-file base coordinates remain open. Fresh matched solver runs must
+validate the changed common reader instructions before using actual repair/test
+feedback to guide retrieval, alongside broader native harness coverage.
 The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair

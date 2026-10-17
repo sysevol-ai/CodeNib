@@ -247,6 +247,12 @@ Black or isort can produce changes that fail the release all-files check.
   If canonical annotations do not resolve in the pinned source, retain official
   paths and denominators and report evaluation-only `gold_source_issues`;
   do not silently remap paths or discard unavailable annotation lines.
+- Solver source credit requires a version-bound execution receipt and an exact
+  observation in a confirmed model input. Requested shell ranges, assistant
+  summaries, elided output and undelivered submission diffs are not read evidence.
+  Keep arbitrary shell output and modified-file coordinates explicitly
+  unattributed until their original-source mapping is verified; partial coverage
+  must not be presented as a complete ContextBench score.
 
 ## Directory-Specific Rules
 

@@ -63,6 +63,7 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/contextbench_late_graph_8.csv",
     "assets/contextbench_late_graph_summary.json",
     "assets/contextbench_annotation_correction.json",
+    "assets/contextbench_solver_source_summary.json",
     "assets/arb_smoke.json",
     "assets/grep_jev_range_audit.json",
     "assets/grep_jev_product_audit.json",

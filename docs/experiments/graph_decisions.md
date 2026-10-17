@@ -41,7 +41,7 @@ The current milestones and remaining gates are:
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
 | Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model fixes correct 38 overlapping C++ ranges and recover compiler-backed JavaScript LSP name selections. The complete 764-file NodeBB graph makes 31,351 reference queries without errors; its two fixed queries add 132 physical lines and zero annotated lines. | Establish useful relationship selection and graph delivery across languages before another matched candidate. Nearby anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget. Active SCIP assigned-function definitions remain incomplete. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt native adapter passes its reference/control check, and its one-task development solver pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. | Prioritize source-line attribution from confirmed solver observations and source state, then use actual repair/test feedback to guide retrieval. Extend other Multi repositories and Poly/Pro coverage. The fmt retrieval had no graph, so its pair establishes neither a graph-source contribution nor a broader comparative Pass@1 gain. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. A controlled source reader now binds source versions and exact rendered observations to confirmed input positions; a scripted native-container loop verifies truncation, edits and submission exclusion without inference. | Validate the changed reader protocol in fresh matched solver runs and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Extend other Multi repositories and Poly/Pro coverage. The fmt retrieval had no graph and establishes no comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -287,6 +287,29 @@ inputs and eleven candidate-context inputs are confirmed and exported, with no
 missing usage; SDK estimates are $0.485857 and $0.881937. Both owned containers
 are removed. This revisits one development task, not two new independent tasks.
 The public development summary retains this complete trial and its failed gate.
+
+The October 17 source-receipt follow-up adds a single controlled reader at that
+existing environment boundary. `codenib-read PATH START END` records a bounded
+UTF-8 byte snapshot and its original blob digest, then binds the native rendered
+output to its input position. Initial delivered source is validated separately.
+Only complete lines in confirmed inputs and unchanged base-file versions receive
+base coordinates. Ordinary shell observations, missing receipts, partial lines,
+changed-file coordinates and undelivered submission output remain explicit.
+The same reader instructions apply to both arms; their addition changes the
+solver protocol and needs a fresh matched run, not retrospective rescoring.
+
+The no-inference verification is retained at
+`verification/contextbench-solver-source-receipts-20261017/` with protocol hash
+`4c519cd6a84dd00b995379e5ef4555d4f53ce021840bf5b064a52f4c2e194853`.
+It preserves ten historical fmt model inputs and validates 411/375 initial
+source lines, without assigning any of the eight unreceipted shell observations.
+A scripted loop in the exact source-only image verifies native truncation,
+current-file edits and terminal exclusion; all hashes match and its one owned
+container is removed. These simulated replies add no model calls, usage,
+resolution result or official score. The public aggregate identifies the
+scripted scope and partial-coverage limitations. A small real adoption check
+must precede a broader solver comparison; arbitrary shell attribution and other
+native harnesses remain open.
 
 ### First-callable graph mechanism check
 

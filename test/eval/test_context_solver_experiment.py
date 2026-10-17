@@ -323,8 +323,10 @@ def test_solver_failure_removes_only_owned_container_before_completion(
             "source",
             "sha",
             "tree",
+            tmp_path,
         ),
     )
+    monkeypatch.setattr(solver, "initial_source_receipt", lambda *args: None)
     monkeypatch.setattr(solver, "freeze_solver", lambda *args: {})
     monkeypatch.setattr(solver.importlib.metadata, "version", lambda name: "fixture")
     monkeypatch.setattr(

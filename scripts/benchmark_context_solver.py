@@ -6,7 +6,7 @@
 
 Supports SWE-bench Verified and the Multi-SWE-bench fmt C++ pilot, one task per
 invocation. Uses the existing solver loop and pinned, already-local Docker
-images. Native grading is separate; shell observations are not ContextBench reads.
+images. Native grading is separate; source receipts cover controlled reads only.
 """
 
 from __future__ import annotations
@@ -37,6 +37,11 @@ from scripts import benchmark_context_agent as native
 from scripts.benchmark_context_claude import subscription_auth
 from scripts.benchmark_jev_base import digest, write_json
 from scripts.contextbench_multiswe import solver_cwd, validate_source_only_image
+from scripts.contextbench_solver_sources import (
+    SourceEnvironment,
+    initial_source_receipt,
+    source_attribution,
+)
 
 _HISTORY_PREFIX = (
     "Continue this shell-agent conversation. Return the next assistant reply "
@@ -58,8 +63,8 @@ def model_observations(row):
     message. A request without that evidence stays explicitly unconfirmed; it
     may still have consumed usage. mini's final messages can contain submission
     output that no subsequent model call received, so they are not a substitute.
-    These exact inputs are the raw boundary for future shell-source attribution,
-    not inferred source ranges or a complete ContextBench line-score artifact.
+    Source receipts can attribute controlled reads within these exact inputs;
+    arbitrary shell output remains outside that partial coverage artifact.
     """
     confirmed, missing, unconfirmed = [], [], []
     for call in row["calls"]:
@@ -102,7 +107,7 @@ def model_observations(row):
         "missing_input_receipts": missing,
         "unconfirmed_inputs": unconfirmed,
         "all_model_inputs_confirmed": bool(confirmed) and not (missing or unconfirmed),
-        "source_attribution": "Pending; no shell source-line credit inferred.",
+        "source_attribution": source_attribution(row, confirmed),
         "scope": (
             "Exact model inputs after output formatting/truncation; terminal output "
             "is excluded unless a later confirmed model request contains it."
@@ -231,7 +236,7 @@ def delivered_input(run, instance_id, budget):
     tree = subprocess.check_output(
         ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"], text=True
     ).strip()
-    return case, payload["context"], digest(path), tree
+    return case, payload["context"], digest(path), tree, repo
 
 
 def validate_image_snapshot(result, expected_tree):
@@ -247,6 +252,13 @@ def freeze_solver(output, mini_root):
     paths = {
         "scripts/benchmark_context_solver.py": Path(__file__),
         "scripts/contextbench_multiswe.py": ROOT / "scripts/contextbench_multiswe.py",
+        **{
+            f"scripts/{name}": ROOT / "scripts" / name
+            for name in (
+                "contextbench_solver_sources.py",
+                "_contextbench_solver_read.py",
+            )
+        },
         **{
             f"mini/{name}": mini_root / "minisweagent" / name
             for name in (
@@ -280,7 +292,7 @@ def run(args):
     ).strip()
     if commit != CONTEXTBENCH_UPSTREAM_REVISION:
         raise ValueError("mini SWE-agent requires the pinned ContextBench checkout")
-    case, context, retrieval_sha, source_tree = delivered_input(
+    case, context, retrieval_sha, source_tree, source_repo = delivered_input(
         args.retrieval, args.instance_id, args.budget
     )
     cwd = solver_cwd(case.source, case.repo)
@@ -331,6 +343,10 @@ def run(args):
             "<retrieved_source>\n{{retrieved_source}}\n</retrieved_source>\n"
             f"Work in {cwd}. Verify this initial source against the checkout, "
             "implement a general fix in production source, and run relevant tests. "
+            "For source inspection use a standalone command: "
+            "codenib-read PATH START END (1-based inclusive lines, at most 2000). "
+            "Paths resolve from the repository root. Use ordinary shell commands "
+            "for searches, edits and tests. "
             "Keep existing tests and configuration unchanged. The container has "
             "no network access. When finished, submit with:\n```bash\n"
             "echo COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT && git add -A && git diff --cached\n"
@@ -344,6 +360,10 @@ def run(args):
         "original_inst_id": case.original_inst_id,
         "status": "starting",
         "calls": [],
+        "execution_receipts": [],
+        "initial_source_receipt": initial_source_receipt(
+            context, source_repo, case.base_commit
+        ),
         "actual_bill_usd": None,
         "native_resolution": None,
     }
@@ -373,8 +393,8 @@ def run(args):
             "max_meter_usd": args.max_meter_usd,
             "sdk_version": importlib.metadata.version("claude-agent-sdk"),
             "scope": (
-                "Downstream solver only; native grading required. Shell reads are "
-                "not ContextBench trajectory credit."
+                "Downstream solver; native grading required. Controlled source reads "
+                "have partial attribution; arbitrary shell output has no line credit."
             ),
             "implementation": freeze_solver(args.output, mini_root),
         },
@@ -423,7 +443,29 @@ def run(args):
                 calls=row["calls"],
                 checkpoint=checkpoint,
             )
-            agent = DefaultAgent(model, environment, **config["agent"])
+
+            def observation(command, output, timeout):
+                if timeout:
+                    rendered = agent.render_template(
+                        agent.config.timeout_template,
+                        action={"action": command},
+                        output=output["output"],
+                    )
+                else:
+                    rendered = agent.render_template(
+                        agent.config.action_observation_template, output=output
+                    )
+                return len(agent.messages), rendered
+
+            observed_environment = SourceEnvironment(
+                environment,
+                root=cwd,
+                commit=row["image_snapshot"]["commit"],
+                receipts=row["execution_receipts"],
+                checkpoint=checkpoint,
+                observation=observation,
+            )
+            agent = DefaultAgent(model, observed_environment, **config["agent"])
             status, answer = agent.run(case.problem_statement, retrieved_source=context)
             row.update(status=status, answer=answer)
         patch = environment.execute("git add -A && git diff --cached --binary")
