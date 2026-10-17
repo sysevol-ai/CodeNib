@@ -74,6 +74,26 @@ def test_subscription_auth_refuses_api_route_and_omits_identity(monkeypatch):
     assert status["subscriptionType"] == "max" and "email" not in status
 
 
+def test_graph_sdk_tool_requires_explicit_run_allowlist():
+    event = {
+        "content": [
+            {
+                "id": "graph",
+                "name": "mcp__source__graph_neighbors",
+                "input": {"file_path": "a.py", "line": 1},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="Unexpected SDK tool"):
+        claude.normalize_event("AssistantMessage", event)
+    normalized = claude.normalize_event(
+        "AssistantMessage",
+        event,
+        {**claude.TOOLS, "mcp__source__graph_neighbors": "graph_neighbors"},
+    )
+    assert normalized[0]["tool_calls"][0]["function"]["name"] == "graph_neighbors"
+
+
 @pytest.mark.parametrize(
     "first_status,expected_calls",
     [

@@ -35,6 +35,7 @@ from codenib.agent.tool_schema import tool_to_schema
 from codenib.agent.tools.defaults import get_default_tool_specs
 from scripts import benchmark_context_agent as native
 from scripts.benchmark_jev_base import digest, write_json
+from scripts.contextbench_graph_navigation import graph_options, load_navigation
 
 TOOLS = {f"mcp__source__{name}": name for name in ("read", "grep", "glob")}
 
@@ -70,21 +71,22 @@ def subscription_auth(cli):
     }
 
 
-def normalize_event(kind, event):
+def normalize_event(kind, event, tool_map=None):
     """Convert actual SDK tool-result text, never requested ranges, into views."""
     messages = []
+    tool_map = TOOLS if tool_map is None else tool_map
     if kind == "AssistantMessage":
         text, calls = [], []
         for block in event["content"]:
             if "name" in block and "input" in block:
-                if block["name"] not in TOOLS:
+                if block["name"] not in tool_map:
                     raise ValueError(f"Unexpected SDK tool: {block['name']}")
                 calls.append(
                     {
                         "id": block["id"],
                         "type": "function",
                         "function": {
-                            "name": TOOLS[block["name"]],
+                            "name": tool_map[block["name"]],
                             "arguments": json.dumps(block["input"]),
                         },
                     }
@@ -127,20 +129,28 @@ async def retrieve(
     source_policy="native",
     completion_tokens=2048,
     case_meter_usd=3.0,
+    graph_tool=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
     sdk_tools = []
-    for spec in get_default_tool_specs():
-        if spec.tool_id not in TOOLS.values():
-            continue
-        execute = native.bind_context_source_tool(
-            spec.executor_fn,
-            repo=repo.resolve(),
-            tool_id=spec.tool_id,
-            source_policy=source_policy,
-            completion_tokens=completion_tokens,
-        )
+    tool_map = dict(TOOLS)
+    specs = [
+        spec for spec in get_default_tool_specs() if spec.tool_id in TOOLS.values()
+    ]
+    if graph_tool is not None:
+        specs.append(graph_tool)
+        tool_map[f"mcp__source__{graph_tool.tool_id}"] = graph_tool.tool_id
+    for spec in specs:
+        execute = spec.executor_fn
+        if spec.tool_id in TOOLS.values():
+            execute = native.bind_context_source_tool(
+                execute,
+                repo=repo.resolve(),
+                tool_id=spec.tool_id,
+                source_policy=source_policy,
+                completion_tokens=completion_tokens,
+            )
 
         def bind(function):
             async def handler(arguments):
@@ -172,7 +182,7 @@ async def retrieve(
             "20 model turns", f"{max_turns} model turns"
         ),
         tools=[],
-        allowed_tools=list(TOOLS),
+        allowed_tools=list(tool_map),
         permission_mode="default",
         setting_sources=[],
         skills=[],
@@ -188,9 +198,9 @@ async def retrieve(
         row["sdk_events"].append({"kind": kind, "data": data})
         if kind == "SystemMessage" and data.get("subtype") == "init":
             advertised = set(data["data"].get("tools", []))
-            if advertised != set(TOOLS):
+            if advertised != set(tool_map):
                 raise ValueError(f"SDK tool isolation differs: {sorted(advertised)}")
-        row["messages"].extend(normalize_event(kind, data))
+        row["messages"].extend(normalize_event(kind, data, tool_map))
         if kind == "ResultMessage":
             row["sdk_result"] = data
         checkpoint()
@@ -234,6 +244,7 @@ def run(args):
         raise ValueError("SDK meter and timeout limits must be finite and positive")
     auth = subscription_auth(cli)
     manifest, cases = native.load_inputs(args.prepared)
+    graph_records, graph_config = graph_options(args, cases)
     args.output.mkdir(parents=True, exist_ok=False)
     write_json(
         args.output / "config.json",
@@ -251,10 +262,12 @@ def run(args):
             "max_turns": args.max_turns,
             "source_policy": source_policy,
             "completion_tokens": completion_tokens,
+            "graph": graph_config,
             "max_meter_usd": max_meter_usd,
             "case_meter_usd": case_meter_usd,
             "case_timeout": case_timeout,
-            "tools": list(TOOLS),
+            "tools": list(TOOLS)
+            + (["mcp__source__graph_neighbors"] if graph_config["enabled"] else []),
             "scope": (
                 "Subscription-backed SDK harness using only CodeNib source tools. "
                 "Runtime differs from native AgentRunner; report actual returned model "
@@ -293,6 +306,16 @@ def run(args):
                 row["snapshot_before"] = native.audit_contextbench_snapshot(
                     repo, case.base_commit
                 )
+                graph_tool = None
+                if graph_config["enabled"]:
+                    graph_record = graph_records[case.instance_id]
+                    graph_tool = load_navigation(
+                        graph_record,
+                        args.graphs,
+                        repo,
+                        token_budget=graph_config["tokens"],
+                    ).tool_spec()
+                    row["graph_available"] = graph_record["available"]
                 asyncio.run(
                     asyncio.wait_for(
                         retrieve(
@@ -306,6 +329,7 @@ def run(args):
                             source_policy=source_policy,
                             completion_tokens=completion_tokens,
                             case_meter_usd=min(case_meter_usd, max_meter_usd - metered),
+                            graph_tool=graph_tool,
                         ),
                         timeout=case_timeout,
                     )

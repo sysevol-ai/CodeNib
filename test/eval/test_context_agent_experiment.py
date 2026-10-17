@@ -233,6 +233,58 @@ def test_function_reads_reach_next_model_turn_and_official_trajectory(
     }
 
 
+def test_graph_source_reaches_model_and_delivery_without_crediting_declared_range(
+    monkeypatch, tmp_path
+):
+    from codenib.agent.tools.spec import ToolSpec
+
+    (tmp_path / "dependency.py").write_text("def target():\n    return 1\nunseen = 2\n")
+    observed = json.dumps(
+        [
+            {
+                "file": "dependency.py",
+                "definition_start": 1,
+                "definition_end": 3,
+                "content": "1 | def target():\n2 |     return 1",
+            }
+        ]
+    )
+    spec = ToolSpec(
+        tool_id="graph_neighbors",
+        description="Graph source",
+        executor_fn=lambda: observed,
+        inputs=[],
+    )
+    sent = fake_post(
+        monkeypatch,
+        [
+            tool("graph_neighbors", {}, "graph"),
+            {"role": "assistant", "content": "Found target."},
+            {"role": "assistant", "content": "Reviewed."},
+        ],
+    )
+    result = agent.retrieve(
+        repo=tmp_path,
+        query="Find dependency",
+        chat=chat(),
+        max_turns=4,
+        graph_tool=spec,
+        source_policy="functions",
+    )
+    assert "graph_neighbors" in {item["function"]["name"] for item in sent[0]["tools"]}
+    assert observed in [
+        m.get("content") for m in sent[1]["messages"] if m["role"] == "tool"
+    ]
+    nodes = agent.observed_nodes(result.messages, tmp_path)
+    assert len(nodes) == 1 and nodes[0].end_line == 1
+    prediction = agent.contextbench_prediction(
+        instance_id="case", messages=result.messages, repo_path=tmp_path
+    )
+    assert prediction["traj_data"]["pred_spans"] == {
+        "dependency.py": [{"start": 1, "end": 2}]
+    }
+
+
 def test_function_completion_grep_keeps_file_identity_and_source_limits(tmp_path):
     (tmp_path / "a.py").write_text("def found():\n    return 3\n")
     (tmp_path / "b.py").write_text("def other():\n    return 4\n")
@@ -359,6 +411,46 @@ def test_paired_online_comparison_keeps_failures_and_macro_f1(paired_runs):
     assert result["metrics"]["f1"]["candidate"] == 0.25
     assert all(arm["scoring_failures"] == 1 for arm in result["arms"])
     assert "pass_at_1" not in result
+
+
+def test_graph_comparison_permits_only_the_declared_tool_difference(
+    paired_runs, monkeypatch
+):
+    graph_dir = paired_runs.output.parent / "graphs"
+    graph_dir.mkdir()
+    (graph_dir / "manifest.json").write_text("frozen graphs")
+    monkeypatch.setattr(agent, "load_graph_records", lambda *a: {})
+    for directory, enabled in (
+        (paired_runs.baseline, False),
+        (paired_runs.candidate, True),
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(
+            source_policy="functions",
+            backend="claude-agent-sdk",
+            tools=["mcp__source__read", "mcp__source__grep", "mcp__source__glob"],
+        )
+        config["graph"] = {
+            "enabled": enabled,
+            "prepared": str(graph_dir),
+            "manifest_sha256": agent.digest(graph_dir / "manifest.json"),
+            "tokens": 2048,
+        }
+        if enabled:
+            config["tools"].append("mcp__source__graph_neighbors")
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "directed_graph_over_function_completion"
+    )
+    path = paired_runs.candidate / "config.json"
+    config = json.loads(path.read_text())
+    config["tools"].append("Bash")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="Only graph_neighbors"):
+        agent.compare(paired_runs)
 
 
 @pytest.mark.parametrize(
