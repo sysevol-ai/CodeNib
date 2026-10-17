@@ -40,8 +40,8 @@ The current milestones and remaining gates are:
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. Conversation-aware completion removes 726 repeated deliveries with identical fixed-trajectory source. A further bounded file-remainder replay preserves original source and raises Recall on the 24/eight-task cohorts, but F1 falls 30.15% → 29.36% and 35.29% → 35.07%; its predeclared feasibility gate fails. | Retain useful grep completion. Do not ship the rejected file-remainder policy or advance it to model calls. Prioritize relevant source selection and fresh matched validation over more automatic source volume. |
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
-| Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model fixes correct 38 overlapping C++ ranges and recover compiler-backed JavaScript LSP name selections. The complete 764-file NodeBB graph makes 31,351 reference queries without errors; its two fixed queries add 132 physical lines and zero annotated lines. | Establish useful relationship selection and graph delivery across languages before another matched candidate. Nearby anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget. Active SCIP assigned-function definitions remain incomplete. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. The C ponyc pilot passes native/source gates, but its fresh native/functions repairs fail (12/11 tests); its graph arm ends in a retained budget error with no prediction. Terminal usage is recovered offline and the accounting bug is fixed. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Use the C preservation failures and duplicated function/graph source to improve relevant selection before more paid comparisons; establish broader matched outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
+| Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model fixes correct 38 overlapping C++ ranges and recover compiler-backed JavaScript LSP name selections. The complete 764-file NodeBB graph makes 31,351 reference queries without errors; its two fixed queries add 132 physical lines and zero annotated lines. | A 33-query opportunity audit rules out current-direction ranking as a multi-language candidate. General empty-response opposite fallback fails its two-cohort replay gate despite a positive late-eight result. Evaluate any separately frozen late-only hypothesis with fresh matched controls on the eight other metadata-selected development tasks; do not promote the failed general fallback. Nearby anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget. Active SCIP assigned-function definitions remain incomplete. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. The C ponyc pilot passes native/source gates, but its fresh native/functions repairs fail (12/11 tests); its graph arm ends in a retained budget error with no prediction. Terminal usage is recovered offline and the accounting bug is fixed. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. The C compatibility cases are grader-added and the casting/call implementation was already delivered; do not infer a missing source gap or expand those functions again. Use separately supported retrieval hypotheses before more paid comparisons; establish broader matched outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -811,6 +811,60 @@ Artifacts are under
 Use the retained required/preservation failures and source redundancy to improve
 selection before another paid comparison. Independent quality, broader native
 coverage and full-500 gates remain open; the sealed 32 is unchanged.
+
+### Fixed-query opportunity and failed opposite-hop replay
+
+The no-model audit at
+`verification/contextbench-graph-opportunity-audit-20261017/` freezes original
+anchors, compiler artifacts and preceding messages under protocol
+`6bd6e9e95bce2ec542321859ddd68c0870a1d05cf220f0574e1462c06cfd3fb9`.
+All 33 graph replies reproduce across the 24 early and overlapping eight late
+traces. With 1,000 raw edges per direction and the existing source bounds,
+individually fitting original-direction omissions add canonical annotated source
+absent from both completed trajectories only in Rust. This fails the
+multi-language opportunity gate for source ranking. Opposite-direction unions
+have opportunity in C/Go/TypeScript, but are non-deliverable upper bounds, not
+retrieval credit or quality scores.
+
+Protocol `61fc2c4b8fec90aa5495507759e6978d9cf05c3565817aaaa067e9ccdfe73691`
+then freezes a general empty-response fallback: at most once per task, use the
+same anchor in the opposite direction only after no source is returned. Keep
+existing ordering, original source, the original definition limit and a shared
+2K reply bound, and record both requested and actual directions. Later messages
+stay fixed. All 32 original predictions reproduce and source loss is zero.
+Five changed replies add 1/90 physical lines to early/late cohorts. The late
+additions include 71 annotated lines and 59 absent from matched native in Go/TS.
+Early Recall stays 54.017%, F1 falls 30.148% → 30.143%; late Recall rises
+41.621% → 45.659% and F1 35.292% → 36.591%. The predeclared requirement for higher
+Recall and non-decreasing F1 in both cohorts fails. No runtime option or model
+run is added for this general fallback. The first scoring step failed because
+its output directory was absent; scoring-only follow-up protocol
+`32073d075b4b41002ef469d2fe06ece9aee96b8bfbdd1298989752b3a53f2f55`
+uses every unchanged frozen prediction and the unchanged gate. All input/runtime
+hashes match after scoring; no model calls or new API charges occur.
+
+The separate C failure diagnostic, protocol
+`495511f28b27f83f922e11de2d7b6f50c3e1a039b36cbfe8b877a6838ee80b4f`,
+uses the already disclosed development task only; it is not independent validation.
+Five failing preservation cases are new test-patch declarations in a file absent
+from base source. Six native preservation labels are absent from baseline labels,
+while both submitted solvers execute and pass 1,005 base compiler tests. Their
+initial contexts, and the graph arm's, already contain all 25 lines of
+`cast_ffi_arg` and all 91 lines of `gen_ffi`. The evidence does not justify another
+source expansion of those functions. Grading-only test identities are diagnostic
+metadata, never retrieval/solver input; reference patches are not interpreted.
+
+A separate late-only hypothesis remains open because of the exploratory late
+result; it does not inherit a passing general-fallback gate. Metadata-only
+selection under
+`verification/contextbench-late-opposite-followup-8-20261017/` locks the first
+remaining task per language in the 24-task file order, excluding the earlier
+late eight and applying no score or availability filter. Selection SHA-256 is
+`fa7fb9cd3cc93b39387e936df67d3da0dd1ccc68c577305800508488cec5ec06`.
+These are already disclosed development tasks. Freeze the new late-only runtime,
+source budgets and fresh native/function/graph controls before any model run;
+require a new matched development result before independent validation. The
+failed general gate, sealed independent 32 and full-500 requirements stand.
 
 ### October 16 online development result
 

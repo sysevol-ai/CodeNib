@@ -12819,6 +12819,2026 @@
       "all_owned_containers_removed_and_absent": true,
       "readiness_input_hashes_match": true
     },
-    "conclusion": "One outcome-informed C development task: native/functions both fail required tests and introduce preservation failures; functions_graph has a retained budget error and no prediction. Function completion already covers the earlier graph-returned source range. No comparative repair gain, graph-only causal effect or independent quality claim; no retry or official-500 launch."
+    "conclusion": "One outcome-informed C development task: native/functions both fail required tests and introduce preservation failures; functions_graph has a retained budget error and no prediction. Function completion already covers the earlier graph-returned source range. No comparative repair gain, graph-only causal effect or independent quality claim; no retry or official-500 launch.",
+    "failure_source_diagnostic": {
+      "protocol": {
+        "scope": "Offline diagnosis of the completed disclosed C comparison. No new model, context selection, grading run or independent result.",
+        "inputs": {
+          "verification/contextbench-graph-opportunity-audit-20261017/ponyc_failure.py": "6062f1957d888f724fbcb3037e5c89af835ed486092a2e149e37819b0cdd38e0",
+          "verification/context-serving-100/repos/Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8/src/libponyc/codegen/gencall.c": "b2fbd32dabce1adbbfb0cdbac65533a9f597f1a093f8fdc1d95c5b22a8cfd039",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/protocol.json": "ea199d9940f8bc77a2cdaaba917117af1e8349fd2e9bf1cf85e6ec7bf33d26c1",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/native-test-counts.json": "db37774f6df2efdefbe7ce22d977b8461374e4db29edf21867060fb351b2e91d",
+          "verification/contextbench-multiswe-pony-readiness-20261017/ponylang__ponyc-2205.jsonl": "2967a9f7095b07c8a586150c6c426951e39353b5982eb0a7ca566c78c424c222",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/native/solver.json": "03f9a4500f970e1437e7cc148250105588d9deff760b176ad21fef0ab73660ff",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/native/model-observations.json": "1f7e3ebefacada1da2a06de31d7d0f1116c8a34f728d5c83e8e98b37fa34ccda",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/grade-native/parsed-tests.json": "cceb051224022fabd6d754205ce3857a54482d5338c5d2b7d21de7c2aafb1fe0",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/functions/solver.json": "9b31bbbb0f3d0d8bd5814af72c5e2d5510ebc44e0ca8e304ef3603bcf20953d2",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/functions/model-observations.json": "14d6fab66b5e3766eeb9d841653d61290316d369b7316f7fb907c1b9d9b79c1d",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/grade-functions/parsed-tests.json": "450212ff1b5325d0a1b7effddbe8be5717449f3ba89b461fa14b265797a192a3",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/functions_graph/solver.json": "06224fe5ba00d427832211da1ca285ad8e1e6117eb51f6a506dae8a14bd82ab0",
+          "verification/contextbench-multiswe-pony-solver-three-arm-20261017/functions_graph/model-observations.json": "115de5966d6b0266c13ee89fb2ded3fc76b6fd190ce5bba2d37e7e19f96a3068"
+        },
+        "annotation_boundary": "Native failed-test identities and test-patch declaration metadata diagnose provenance only. Never include grading-only tests or reference patches in solver/retriever inputs. No reference patch is interpreted by this script.",
+        "source_evidence": "Use only original base source and already-confirmed model inputs to establish delivered compatibility code. Named helper ranges are diagnostic observations, not a new retrieval rule.",
+        "model_calls": 0,
+        "new_api_charges_usd": 0
+      },
+      "analysis": {
+        "protocol_sha256": "495511f28b27f83f922e11de2d7b6f50c3e1a039b36cbfe8b877a6838ee80b4f",
+        "scope": "No new repair or quality score; separates source availability, local validation and native grading labels.",
+        "source_commit": "25fa3b158281bee9fd0778de618ad8968d5ed026",
+        "source_tree_clean": true,
+        "source_sha256": "b2fbd32dabce1adbbfb0cdbac65533a9f597f1a093f8fdc1d95c5b22a8cfd039",
+        "required_preservation_total": 1010,
+        "preservation_labels_present_in_pinned_baseline": 1004,
+        "preservation_labels_not_in_pinned_baseline": 6,
+        "new_codegen_ffi_file_absent_from_base": true,
+        "arms": {
+          "native": {
+            "original_status": "Submitted",
+            "all_model_inputs_confirmed": true,
+            "regions": {
+              "cast_ffi_arg": {
+                "range": [
+                  1040,
+                  1064
+                ],
+                "lines_present": 25,
+                "complete": true
+              },
+              "gen_ffi": {
+                "range": [
+                  1066,
+                  1156
+                ],
+                "lines_present": 91,
+                "complete": true
+              }
+            },
+            "local_base_test_observations": [
+              {
+                "command_sha256": "c98f7fdc3d458e73211c2b19e65466be3a25f6dd86ddfffbb7b6652edd769d14",
+                "observation_sha256": "ceda3737739a4c01b216ebef08c77edaa7d8005e45be1a18e346ca312b461c30",
+                "reported_pass_counts": [
+                  67
+                ],
+                "reported_failure_counts": []
+              },
+              {
+                "command_sha256": "f3c4efde822b8b0af81ab41fec81432af60623263ce5d9ab5bbdc1704ca74b18",
+                "observation_sha256": "52e96bdcccffd7b85f6411da919858df95ff27ae6d366a39e7b0d5631760c519",
+                "reported_pass_counts": [
+                  1005
+                ],
+                "reported_failure_counts": []
+              }
+            ],
+            "failed_preservation_tests": [
+              "CodegenFFITest.PointerPointerCompatibility",
+              "CodegenFFITest.PointerUSizeCompatibility",
+              "CodegenFFITest.ReferencePointerCompatibility",
+              "CodegenFFITest.ReferenceReferenceCompatibility",
+              "CodegenFFITest.ReferenceUSizeCompatibility"
+            ],
+            "failed_preservation_present_in_baseline": [],
+            "failed_preservation_introduced_by_test_patch": [
+              "CodegenFFITest.PointerPointerCompatibility",
+              "CodegenFFITest.PointerUSizeCompatibility",
+              "CodegenFFITest.ReferencePointerCompatibility",
+              "CodegenFFITest.ReferenceReferenceCompatibility",
+              "CodegenFFITest.ReferenceUSizeCompatibility"
+            ]
+          },
+          "functions": {
+            "original_status": "Submitted",
+            "all_model_inputs_confirmed": true,
+            "regions": {
+              "cast_ffi_arg": {
+                "range": [
+                  1040,
+                  1064
+                ],
+                "lines_present": 25,
+                "complete": true
+              },
+              "gen_ffi": {
+                "range": [
+                  1066,
+                  1156
+                ],
+                "lines_present": 91,
+                "complete": true
+              }
+            },
+            "local_base_test_observations": [
+              {
+                "command_sha256": "bcdc23e59c069ac1a3292bef4652df00a4fdb299c59c75f2a399e778a3e9689a",
+                "observation_sha256": "f2b84abaa501c08bcab33194bb5b5b497e636d9789a8ca9fb7233cef7521933e",
+                "reported_pass_counts": [
+                  108
+                ],
+                "reported_failure_counts": []
+              },
+              {
+                "command_sha256": "f5c5f4b4dbd1f739be2cab09e720f8b96c30cea108c99a9b3a363ae66df64945",
+                "observation_sha256": "c83a805718e31c4941fe6711978e3c208057f24dc072712fd3f3266894438e4b",
+                "reported_pass_counts": [
+                  1005
+                ],
+                "reported_failure_counts": []
+              }
+            ],
+            "failed_preservation_tests": [
+              "CodegenFFITest.PointerPointerCompatibility",
+              "CodegenFFITest.PointerUSizeCompatibility",
+              "CodegenFFITest.ReferencePointerCompatibility",
+              "CodegenFFITest.ReferenceReferenceCompatibility",
+              "CodegenFFITest.ReferenceUSizeCompatibility"
+            ],
+            "failed_preservation_present_in_baseline": [],
+            "failed_preservation_introduced_by_test_patch": [
+              "CodegenFFITest.PointerPointerCompatibility",
+              "CodegenFFITest.PointerUSizeCompatibility",
+              "CodegenFFITest.ReferencePointerCompatibility",
+              "CodegenFFITest.ReferenceReferenceCompatibility",
+              "CodegenFFITest.ReferenceUSizeCompatibility"
+            ]
+          },
+          "functions_graph": {
+            "original_status": "error",
+            "all_model_inputs_confirmed": true,
+            "regions": {
+              "cast_ffi_arg": {
+                "range": [
+                  1040,
+                  1064
+                ],
+                "lines_present": 25,
+                "complete": true
+              },
+              "gen_ffi": {
+                "range": [
+                  1066,
+                  1156
+                ],
+                "lines_present": 91,
+                "complete": true
+              }
+            },
+            "local_base_test_observations": [
+              {
+                "command_sha256": "c2131e02110273b8aed442a8de953e85a3e2ccc71113bf5a07382ca3904e9e93",
+                "observation_sha256": "c609373a1fb1ff8503f5788a7ac49de13561b601e40400a933d8b34ae5ab1b1b",
+                "reported_pass_counts": [
+                  96
+                ],
+                "reported_failure_counts": []
+              },
+              {
+                "command_sha256": "67329f325ca192cd89066da6f501094687b2eea1b15441420cb0a5b5efa21abc",
+                "observation_sha256": "dc6efa4d13bd11ada262a8ad064c81c5f9113cd699a39dca76a93a01bba13937",
+                "reported_pass_counts": [
+                  1005
+                ],
+                "reported_failure_counts": []
+              }
+            ]
+          }
+        },
+        "model_calls": 0,
+        "new_api_charges_usd": 0,
+        "all_frozen_inputs_unchanged": true,
+        "interpretation": "Both submitted patches pass the 1005 base compiler tests they execute but fail five compatibility tests newly supplied by the grader. All three initial contexts already contain the complete argument-casting helper and FFI call implementation. The failures do not establish missing delivery of those source constraints or justify another automatic expansion of the same functions."
+      }
+    }
+  },
+  "fixed_query_graph_opportunity_audit": {
+    "protocol": {
+      "scope": "Offline source opportunity audit of every original graph query in the disclosed first-source 24 and late-graph eight traces. Eight repeated tasks are not independent observations. No model calls or new online quality outcome.",
+      "queries": "Freeze original anchor, arguments, preceding normalized messages and original compiler artifacts. Reproduce the actual original response. Enumerate bounded candidates for that direction and its opposite; no alternative anchor selection.",
+      "bounds": {
+        "raw_edges_per_direction": 1000,
+        "definition_max_lines": 1500,
+        "file_max_bytes": 2000000,
+        "individual_reply_tokens": 2048
+      },
+      "source_contract": "Source candidates require valid pinned ranges and actual source bytes. Union of independently fitting definitions is a non-deliverable upper bound, not a feasible response or retrieved source credit.",
+      "annotation_use": "Freeze all candidate/source observations before inspecting canonical annotations. Measure additions absent from original candidate and matched-native full trajectories. No held-out data, test patches or reference patches enter this graph audit.",
+      "decision": "Only consider a frozen source-ranking hypothesis if individually fitting omitted candidates have novel canonical annotated source across at least two languages. Even that authorizes no model run without a feasible matched replay gate.",
+      "runtime": {
+        "scripts/benchmark_context_agent.py": "5c4f9c451af797558174d19829f7f59f7ee8188b270295d9789ad4bbaee47721",
+        "scripts/benchmark_context_claude.py": "ca2feb3556e5ec46f656f70ba1175334a71a1600eb25c8b8ff59bce7c84c9b6d",
+        "scripts/contextbench_graph_navigation.py": "bf27c49e1688d1f2a9fb8e42240c4e96556baa4f9bc7dec03cfb69a50f287775",
+        "scripts/benchmark_context_serving.py": "6fa40f7ad145938efcb1edceddcad864b2febe0c1c61dda315d9cd5122048fe2",
+        "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+        "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+        "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+        "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+        "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+        "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+        "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+        "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+        "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+        "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+        "codenib/eval/benchmarks/contextbench.py": "1d6d1718d24abaccb46e4f6743ac8033e145628fbc55ceec85d07c0390b39609",
+        "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+        "codenib/eval/benchmarks/_contextbench_evaluate.py": "26b82cc9e800759469c52d972ac2f4b5cfda69f052601841f026f05e28cf222c",
+        "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+        "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+        "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+        "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+        "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+        "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+        "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+        "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+        "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+        "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+        "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+        "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+        "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+        "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+        "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+        "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+        "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+        "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+        "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+        "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+        "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+        "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+      },
+      "model_calls": 0,
+      "new_api_charges_usd": 0,
+      "input_receipts_sha256": "7e4db37d4a13462de048d42d6607a40d8f75304e8068015378140f03f533345d"
+    },
+    "analysis": {
+      "protocol_sha256": "6bd6e9e95bce2ec542321859ddd68c0870a1d05cf220f0574e1462c06cfd3fb9",
+      "frozen_observations_sha256": "bedd1dced723668ec1b6efeb6f1e97ad25aac0a81c915b946d62d3b856be4175",
+      "scope": "Source opportunity upper bounds only; no feasible selection or model outcome.",
+      "queries_reproduced": 33,
+      "unique_tasks": 24,
+      "cohort_records": 32,
+      "positive_languages": {
+        "same_direction_fit": [
+          "rust"
+        ],
+        "opposite_direction_fit": [
+          "c",
+          "go",
+          "typescript"
+        ],
+        "same_direction_all": [
+          "cpp",
+          "rust",
+          "typescript"
+        ],
+        "opposite_direction_all": [
+          "c",
+          "cpp",
+          "go",
+          "typescript"
+        ]
+      },
+      "ranking_hypothesis_has_multilanguage_opportunity": false,
+      "cases": [
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 1,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 1,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 10,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 10,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 11,
+              "novel_annotated": 1,
+              "novel_annotated_absent_native": 1
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 11,
+              "novel_annotated": 1,
+              "novel_annotated_absent_native": 1
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 9,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 9,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 56,
+              "novel_annotated": 12,
+              "novel_annotated_absent_native": 10
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 56,
+              "novel_annotated": 12,
+              "novel_annotated_absent_native": 10
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 1,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 1,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 226,
+              "novel_annotated": 58,
+              "novel_annotated_absent_native": 58
+            },
+            "same_direction_all": {
+              "novel_physical": 496,
+              "novel_annotated": 26,
+              "novel_annotated_absent_native": 25
+            },
+            "opposite_direction_all": {
+              "novel_physical": 226,
+              "novel_annotated": 58,
+              "novel_annotated_absent_native": 58
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 132,
+              "novel_annotated": 21,
+              "novel_annotated_absent_native": 21
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 132,
+              "novel_annotated": 21,
+              "novel_annotated_absent_native": 21
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 189,
+              "novel_annotated": 157,
+              "novel_annotated_absent_native": 157
+            },
+            "opposite_direction_all": {
+              "novel_physical": 189,
+              "novel_annotated": 157,
+              "novel_annotated_absent_native": 157
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 23,
+              "novel_annotated": 13,
+              "novel_annotated_absent_native": 1
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 23,
+              "novel_annotated": 13,
+              "novel_annotated_absent_native": 1
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "graph_available": false,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "graph_available": true,
+          "queries": 2,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "graph_available": true,
+          "queries": 1,
+          "invalid_queries": 0,
+          "opportunities": {
+            "same_direction_fit": {
+              "novel_physical": 3,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_fit": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "same_direction_all": {
+              "novel_physical": 3,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            },
+            "opposite_direction_all": {
+              "novel_physical": 0,
+              "novel_annotated": 0,
+              "novel_annotated_absent_native": 0
+            }
+          }
+        }
+      ],
+      "all_input_runtime_source_hashes_match": true,
+      "model_calls": 0,
+      "new_api_charges_usd": 0,
+      "quality_score": null
+    },
+    "source_receipts_sha256": "aff5ba201d9b183abf74ff47dfee84a9b69a835e017674ce379b6c5f3d187bb0",
+    "conclusion": "Current-direction source-ranking lacks individually fitting novel annotated candidates in two languages; do not implement or run a ranking policy from this audit. Opposite-direction opportunity is only an upper bound, not delivered source or a quality score."
+  },
+  "opposite_empty_graph_replay": {
+    "protocol": {
+      "scope": "Offline fixed-trace feasibility only. All 24 development tasks and the overlapping late eight are retained; no independent or online score.",
+      "hypothesis": "At most one fallback per task: if an original graph query returns no numbered source and has an available anchor, try the opposite reference direction on the same anchor. Retain source-bearing original replies unchanged. Keep actual and requested directions explicit.",
+      "selection": "Use the existing opposite-direction ordering and definition semantics, with no issue/annotation ranking. Select only definitions already returned by that opposite call; retain whole missing source and skip records whose metadata would exceed the common reply bound. Later actual messages stay fixed.",
+      "budgets": {
+        "reply_tokens": 2048,
+        "reply_definition_limit": "original query limit (default five)",
+        "raw_edges_per_direction": 1000,
+        "automatic_fallbacks_per_task": 1
+      },
+      "gate": "Require higher fixed-trace macro Recall and non-decreasing F1 in both cohorts, no original source loss, and new canonical annotated source absent from native in at least two languages. Passing authorizes only implementation and a newly frozen matched development test.",
+      "controls": "Reproduce every original graph response and original prediction; preserve every original source line. Freeze candidate replies before annotation use and official evaluation.",
+      "runtime": {
+        "scripts/benchmark_context_agent.py": "5c4f9c451af797558174d19829f7f59f7ee8188b270295d9789ad4bbaee47721",
+        "scripts/benchmark_context_claude.py": "ca2feb3556e5ec46f656f70ba1175334a71a1600eb25c8b8ff59bce7c84c9b6d",
+        "scripts/contextbench_graph_navigation.py": "bf27c49e1688d1f2a9fb8e42240c4e96556baa4f9bc7dec03cfb69a50f287775",
+        "scripts/benchmark_context_serving.py": "6fa40f7ad145938efcb1edceddcad864b2febe0c1c61dda315d9cd5122048fe2",
+        "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+        "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+        "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+        "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+        "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+        "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+        "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+        "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+        "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+        "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+        "codenib/eval/benchmarks/contextbench.py": "1d6d1718d24abaccb46e4f6743ac8033e145628fbc55ceec85d07c0390b39609",
+        "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+        "codenib/eval/benchmarks/_contextbench_evaluate.py": "26b82cc9e800759469c52d972ac2f4b5cfda69f052601841f026f05e28cf222c",
+        "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+        "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+        "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+        "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+        "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+        "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+        "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+        "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+        "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+        "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+        "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+        "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+        "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+        "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+        "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+        "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+        "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+        "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+        "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+        "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+        "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+        "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+      },
+      "model_calls": 0,
+      "new_api_charges_usd": 0,
+      "input_receipts_sha256": "54aa46e3c141bc8425f69947b484655e046f6202fdc2fb6c4bd5b73b973675fa"
+    },
+    "analysis": {
+      "protocol_sha256": "61fc2c4b8fec90aa5495507759e6978d9cf05c3565817aaaa067e9ccdfe73691",
+      "scoring_followup_protocol_sha256": "32073d075b4b41002ef469d2fe06ece9aee96b8bfbdd1298989752b3a53f2f55",
+      "scope": "Fixed-trajectory feasibility only, not an online quality result.",
+      "cohort_metrics": {
+        "first_source_24": {
+          "control": {
+            "recall": 0.5401686329564104,
+            "precision": 0.2860920178829965,
+            "f1": 0.3014815297089224
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5401686329564104,
+            "precision": 0.2859787573009859,
+            "f1": 0.30142884307517526
+          }
+        },
+        "late_graph_8": {
+          "control": {
+            "recall": 0.4162128649381706,
+            "precision": 0.3456469534940558,
+            "f1": 0.3529206038528339
+          },
+          "opposite_empty_replay": {
+            "recall": 0.4565880775232046,
+            "precision": 0.3524017662722136,
+            "f1": 0.3659118936254601
+          }
+        }
+      },
+      "positive_languages": [
+        "go",
+        "typescript"
+      ],
+      "advance_to_fresh_development_hypothesis": false,
+      "original_source_loss": 0,
+      "original_predictions_exact": 32,
+      "graph_replies_reproduced": 33,
+      "rows": [
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "control": {
+            "recall": 0.5684647302904564,
+            "precision": 0.6116071428571429,
+            "f1": 0.589247311827957
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5684647302904564,
+            "precision": 0.6088888888888889,
+            "f1": 0.5879828326180258
+          },
+          "added_physical": 1,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 1
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "control": {
+            "recall": 0.25510204081632654,
+            "precision": 0.06297229219143577,
+            "f1": 0.101010101010101
+          },
+          "opposite_empty_replay": {
+            "recall": 0.25510204081632654,
+            "precision": 0.06297229219143577,
+            "f1": 0.101010101010101
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "control": {
+            "recall": 1.0,
+            "precision": 0.09104938271604938,
+            "f1": 0.1669024045261669
+          },
+          "opposite_empty_replay": {
+            "recall": 1.0,
+            "precision": 0.09104938271604938,
+            "f1": 0.1669024045261669
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "control": {
+            "recall": 1.0,
+            "precision": 0.3641025641025641,
+            "f1": 0.5338345864661653
+          },
+          "opposite_empty_replay": {
+            "recall": 1.0,
+            "precision": 0.3641025641025641,
+            "f1": 0.5338345864661653
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "control": {
+            "recall": 0.4616508400292184,
+            "precision": 0.36155606407322655,
+            "f1": 0.4055181264035932
+          },
+          "opposite_empty_replay": {
+            "recall": 0.4616508400292184,
+            "precision": 0.36155606407322655,
+            "f1": 0.4055181264035932
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "control": {
+            "recall": 0.5460526315789473,
+            "precision": 0.41089108910891087,
+            "f1": 0.4689265536723164
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5460526315789473,
+            "precision": 0.41089108910891087,
+            "f1": 0.4689265536723164
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "control": {
+            "recall": 0.5362694300518135,
+            "precision": 0.552,
+            "f1": 0.5440210249671484
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5362694300518135,
+            "precision": 0.552,
+            "f1": 0.5440210249671484
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "control": {
+            "recall": 0.4875,
+            "precision": 0.45792563600782776,
+            "f1": 0.47225025227043393
+          },
+          "opposite_empty_replay": {
+            "recall": 0.4875,
+            "precision": 0.45792563600782776,
+            "f1": 0.47225025227043393
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "control": {
+            "recall": 0.19640971488912354,
+            "precision": 0.3089700996677741,
+            "f1": 0.24015493867010976
+          },
+          "opposite_empty_replay": {
+            "recall": 0.19640971488912354,
+            "precision": 0.3089700996677741,
+            "f1": 0.24015493867010976
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "language": "typescript",
+          "control": {
+            "recall": 1.0,
+            "precision": 0.047619047619047616,
+            "f1": 0.0909090909090909
+          },
+          "opposite_empty_replay": {
+            "recall": 1.0,
+            "precision": 0.047619047619047616,
+            "f1": 0.0909090909090909
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "control": {
+            "recall": 0.2495274102079395,
+            "precision": 0.5076923076923077,
+            "f1": 0.3346007604562738
+          },
+          "opposite_empty_replay": {
+            "recall": 0.2495274102079395,
+            "precision": 0.5076923076923077,
+            "f1": 0.3346007604562738
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "language": "cpp",
+          "control": {
+            "recall": 0.44,
+            "precision": 0.16356877323420074,
+            "f1": 0.2384823848238482
+          },
+          "opposite_empty_replay": {
+            "recall": 0.44,
+            "precision": 0.16356877323420074,
+            "f1": 0.2384823848238482
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "language": "c",
+          "control": {
+            "recall": 0.17716535433070865,
+            "precision": 0.14551333872271624,
+            "f1": 0.15978695073235685
+          },
+          "opposite_empty_replay": {
+            "recall": 0.17716535433070865,
+            "precision": 0.14551333872271624,
+            "f1": 0.15978695073235685
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "control": {
+            "recall": 0.36316695352839934,
+            "precision": 0.18672566371681415,
+            "f1": 0.24663939216832265
+          },
+          "opposite_empty_replay": {
+            "recall": 0.36316695352839934,
+            "precision": 0.18672566371681415,
+            "f1": 0.24663939216832265
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "control": {
+            "recall": 0.5645645645645646,
+            "precision": 0.1551155115511551,
+            "f1": 0.24336569579288025
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5645645645645646,
+            "precision": 0.1551155115511551,
+            "f1": 0.24336569579288025
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "control": {
+            "recall": 0.6521739130434783,
+            "precision": 0.02697841726618705,
+            "f1": 0.05181347150259066
+          },
+          "opposite_empty_replay": {
+            "recall": 0.6521739130434783,
+            "precision": 0.02697841726618705,
+            "f1": 0.05181347150259066
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "control": {
+            "recall": 0.8773234200743495,
+            "precision": 0.36932707355242567,
+            "f1": 0.5198237885462554
+          },
+          "opposite_empty_replay": {
+            "recall": 0.8773234200743495,
+            "precision": 0.36932707355242567,
+            "f1": 0.5198237885462554
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "language": "rust",
+          "control": {
+            "recall": 0.7248677248677249,
+            "precision": 0.1282371294851794,
+            "f1": 0.21792152704135737
+          },
+          "opposite_empty_replay": {
+            "recall": 0.7248677248677249,
+            "precision": 0.1282371294851794,
+            "f1": 0.21792152704135737
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "control": {
+            "recall": 0.44876325088339225,
+            "precision": 0.8639455782312925,
+            "f1": 0.5906976744186048
+          },
+          "opposite_empty_replay": {
+            "recall": 0.44876325088339225,
+            "precision": 0.8639455782312925,
+            "f1": 0.5906976744186048
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "control": {
+            "recall": 1.0,
+            "precision": 0.036458333333333336,
+            "f1": 0.07035175879396986
+          },
+          "opposite_empty_replay": {
+            "recall": 1.0,
+            "precision": 0.036458333333333336,
+            "f1": 0.07035175879396986
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 1
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "language": "java",
+          "control": {
+            "recall": 0.375,
+            "precision": 0.05647058823529412,
+            "f1": 0.098159509202454
+          },
+          "opposite_empty_replay": {
+            "recall": 0.375,
+            "precision": 0.05647058823529412,
+            "f1": 0.098159509202454
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "language": "go",
+          "control": {
+            "recall": 0.22832369942196531,
+            "precision": 0.11318051575931232,
+            "f1": 0.15134099616858238
+          },
+          "opposite_empty_replay": {
+            "recall": 0.22832369942196531,
+            "precision": 0.11318051575931232,
+            "f1": 0.15134099616858238
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "language": "javascript",
+          "control": {
+            "recall": 0.2270220588235294,
+            "precision": 0.5678160919540229,
+            "f1": 0.3243598161523309
+          },
+          "opposite_empty_replay": {
+            "recall": 0.2270220588235294,
+            "precision": 0.5678160919540229,
+            "f1": 0.3243598161523309
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "first_source_24",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "language": "python",
+          "control": {
+            "recall": 0.5846994535519126,
+            "precision": 0.27648578811369506,
+            "f1": 0.375438596491228
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5846994535519126,
+            "precision": 0.27648578811369506,
+            "f1": 0.375438596491228
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "control": {
+            "recall": 0.5684647302904564,
+            "precision": 0.7653631284916201,
+            "f1": 0.6523809523809525
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5684647302904564,
+            "precision": 0.7611111111111111,
+            "f1": 0.6508313539192399
+          },
+          "added_physical": 1,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 1
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "control": {
+            "recall": 0.25510204081632654,
+            "precision": 0.05107252298263534,
+            "f1": 0.0851063829787234
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5510204081632653,
+            "precision": 0.10315186246418338,
+            "f1": 0.1737731295253419
+          },
+          "added_physical": 68,
+          "added_annotated": 58,
+          "added_annotated_absent_native": 58,
+          "changed_queries": 1
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "control": {
+            "recall": 0.47552958363769177,
+            "precision": 0.3559322033898305,
+            "f1": 0.4071294559099437
+          },
+          "opposite_empty_replay": {
+            "recall": 0.47552958363769177,
+            "precision": 0.3559322033898305,
+            "f1": 0.4071294559099437
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "control": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5376623376623376,
+            "f1": 0.5369649805447471
+          },
+          "opposite_empty_replay": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5376623376623376,
+            "f1": 0.5369649805447471
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "control": {
+            "recall": 0.4583333333333333,
+            "precision": 0.47619047619047616,
+            "f1": 0.4670912951167728
+          },
+          "opposite_empty_replay": {
+            "recall": 0.48541666666666666,
+            "precision": 0.4824016563146998,
+            "f1": 0.48390446521287644
+          },
+          "added_physical": 21,
+          "added_annotated": 13,
+          "added_annotated_absent_native": 1,
+          "changed_queries": 1
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "control": {
+            "recall": 0.1816261879619852,
+            "precision": 0.2551928783382789,
+            "f1": 0.2122146822948797
+          },
+          "opposite_empty_replay": {
+            "recall": 0.1816261879619852,
+            "precision": 0.2551928783382789,
+            "f1": 0.2122146822948797
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "control": {
+            "recall": 0.3648881239242685,
+            "precision": 0.18275862068965518,
+            "f1": 0.24353819643882826
+          },
+          "opposite_empty_replay": {
+            "recall": 0.3648881239242685,
+            "precision": 0.18275862068965518,
+            "f1": 0.24353819643882826
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        },
+        {
+          "cohort": "late_graph_8",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "control": {
+            "recall": 0.4894894894894895,
+            "precision": 0.14100346020761245,
+            "f1": 0.2189388851578241
+          },
+          "opposite_empty_replay": {
+            "recall": 0.4894894894894895,
+            "precision": 0.14100346020761245,
+            "f1": 0.2189388851578241
+          },
+          "added_physical": 0,
+          "added_annotated": 0,
+          "added_annotated_absent_native": 0,
+          "changed_queries": 0
+        }
+      ],
+      "all_input_runtime_hashes_match": true,
+      "model_calls": 0,
+      "new_api_charges_usd": 0
+    },
+    "scoring_followup_protocol": {
+      "scope": "Score the immutable candidate responses already frozen by the original protocol. Original source-generation phase is not rerun; the missing evaluation directory is the only corrected setup.",
+      "original_protocol_sha256": "61fc2c4b8fec90aa5495507759e6978d9cf05c3565817aaaa067e9ccdfe73691",
+      "frozen_predictions_sha256": "df3b0c5850a13d98606de1bb7fff9c068b64927ddcd5804a081bba98d42a4a54",
+      "failed_scoring_log_sha256": "1ce8228affa14eb8bcdfe88da77548d80e465a5f1f6fc96446ec2e30c16f20c1",
+      "driver_sha256": "a73085bf8de154c57d68a9de6fbd9eb54bf0e58090cf37ed99f4dfd92a9e2c40",
+      "selection_or_gate_changes": false,
+      "model_calls": 0,
+      "new_api_charges_usd": 0
+    },
+    "original_scoring_failure": "Candidate generation and freezing completed; the first evaluator call failed because its output directory was absent. Only scoring was rerun after creating a separate output directory, with no changed prediction, gate or selection.",
+    "conclusion": "The general empty-response opposite-hop hypothesis fails its predeclared two-cohort gate and is not implemented or run online. The late-eight improvement is exploratory fixed-trajectory evidence only; a separate late-only hypothesis needs fresh matched development controls."
+  },
+  "late_opposite_followup_selection": {
+    "scope": "Prospective metadata-only selection for a separate late-stage fallback development hypothesis. These eight tasks are already disclosed development data, not untouched or independent validation. No runtime, model or paid batch is started by this selection.",
+    "selection_rule": "First remaining task per language in the frozen 24-task file order, excluding every task in the completed late-eight cohort. No graph-availability, repair score, annotation or replay gain filters.",
+    "source_selection_sha256": "122a70d4c61abcea5c27f87781fc204db768d933dd0d3bb7516e20117866f513",
+    "excluded_selection_sha256": "3f271fffc1394591c485e4eee5e2501e39e07e0e6146263392ee8ab0e889f568",
+    "selected_sha256": "fa7fb9cd3cc93b39387e936df67d3da0dd1ccc68c577305800508488cec5ec06",
+    "cases": [
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript"
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust"
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java"
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go"
+      }
+    ],
+    "scope_reason": "The general empty-response fallback failed its two-cohort feasibility gate. Positive late-stage fixed-trace evidence is exploratory; a separate late-only policy must be implemented, frozen and tested with fresh matched controls on this different development selection before any promotion.",
+    "open_gates": [
+      "The general fallback remains rejected by its failed replay; this selection establishes no runtime readiness or quality gain.",
+      "A new late-only hypothesis requires explicit runtime and source budgets frozen before fresh native/functions/graph calls.",
+      "Independent 32 remains sealed; broader independent quality and full-500 gates stay unchanged."
+    ],
+    "model_calls": 0,
+    "new_api_charges_usd": 0
   }
 }
