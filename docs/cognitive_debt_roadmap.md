@@ -412,16 +412,34 @@ all failed SDK studies/gates remain, with no retrospective source-credit change.
 The source opportunity was already scored: not independent quality or fresh paired
 adaptive-agent behavior. A new 32 task-level cohort is fixed from untouched metadata across six languages
 and 23 repositories; all 32 exact-source checks pass with empty runtime gold.
-No new independent labels or model calls; freeze its execution/quality/budget protocol; both old 32 cohorts stay sealed. No product default/lifecycle change or
-repair/full500 advancement. See the [current results](evaluation/contextbench-results.md)
+Its original execution fails locally before labels after eight native investigations
+and 14 consumers ($2.56634860); that failure remains. Runtime `8d5e0b87` corrects
+tokenizer-marker literal counting, with 129 focused tests and seven byte-identical
+pair replays. A pre-label amendment reuses all completed calls, changes no source
+selection or quality gate and completes 32 native/64 source-consumer calls for
+$11.18372580 under the same $24 whole-study cap. Recall 74.94% →
+79.09%, F1 30.13% → 22.32%; repository 95% Recall
+interval [+1.99,+6.85] points across 22 clusters.
+The amended gate passes; labels load only after terminal source-prediction
+receipts. All three 32 cohorts are sealed. This is source coverage with extra
+volume/cost, not fresh paired adaptive agents or repair gain. No product lifecycle
+change or repair/full500 starts automatically; verified500 still needs a measured
+budget and source/native readiness plan. See [current results](evaluation/contextbench-results.md)
 and draft [PR #834](https://github.com/sysevol-ai/CodeNib/pull/834).
+The measured context500 plan leaves the $100 ceiling unchanged ($41.33622927
+known allowance remaining). A candidate-only API route projects arithmetically
+to $137.95, versus $24.31 for
+Max investigation plus Batch review, before repairs and unmeasured quota/source
+coverage. Max login passes an unpaid check; Batch receipt parity, exact-input
+reservation, native readiness and formal artifacts remain open. No full500 or
+repair batch starts; real solver outcomes are required for leaderboard Pass@1.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
-53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The historical 331
-verified candidates become 329 after quarantining documentation preview exposures.
-The broader CodeNib Base source-identity audit leaves 324 verified candidates and
-623 additional default-config candidates. Pinned-file and quarantined-format checks
-pass; selected-source readiness and a new population protocol remain open. No product lifecycle
+53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. A post-sealing metadata-only exposure audit leaves 292 verified candidates
+(Python 194, JavaScript 36, TypeScript 40, C 3, Go 18 and Rust 1) and 623 additional
+default-only candidates. Known IDs, original issue identities and exact source
+commits are excluded across aliases. All three validation cohorts stay sealed;
+future population choices and full500 source, quota and reservation gates remain open. No product lifecycle
 promotion or dependency-direction change is authorized by these results.
 Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
