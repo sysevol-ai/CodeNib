@@ -41,7 +41,7 @@ The current milestones and remaining gates are:
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
 | Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The late-check eight-task pilot changes Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero; its two-language novelty gate fails. Zero-model fixes correct 38 overlapping C++ ranges and recover compiler-backed JavaScript LSP name selections. The complete 764-file NodeBB graph makes 31,351 reference queries without errors; its two fixed queries add 132 physical lines and zero annotated lines. | Establish useful relationship selection and graph delivery across languages before another matched candidate. Nearby anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget. Active SCIP assigned-function definitions remain incomplete. Preserve canonical paths, failed gates and the sealed independent 32. No promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. A controlled source reader now binds source versions and exact rendered observations to confirmed input positions; a scripted native-container loop verifies truncation, edits and submission exclusion without inference. | Validate the changed reader protocol in fresh matched solver runs and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Extend other Multi repositories and Poly/Pro coverage. The fmt retrieval had no graph and establishes no comparative Pass@1 gain. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. A controlled source reader binds file versions and rendered inputs; scripted native-container checks pass, but the first real adoption probe falls back to shell reads. Its repeated fmt repair passes 18 native tests. Compound-invocation feedback is fixed locally. | Verify real adoption of the corrected reader feedback before fresh matched solver runs, then use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. Extend other Multi repositories and Poly/Pro coverage. The fmt retrieval had no graph and establishes no comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -102,7 +102,9 @@ can exceed an observed guard. Unknown or invalid metering stops later cases.
 The completed independent retrieval arms report **$23.673179** in SDK estimates;
 their one-task paired solver check adds **$0.828001**. Across this October 16
 program, known metering totals **$71.960832**, plus one aborted development solver
-attempt and one interrupted retrieval case with unknown metering.
+attempt and one interrupted retrieval case with unknown metering. The October 17
+reader-adoption check adds $0.695992, bringing known cumulative metering to
+**$72.656824** with the same two historical unknowns.
 Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
 quality gate fails, so this policy does not advance to the full-500 run.
@@ -307,9 +309,29 @@ A scripted loop in the exact source-only image verifies native truncation,
 current-file edits and terminal exclusion; all hashes match and its one owned
 container is removed. These simulated replies add no model calls, usage,
 resolution result or official score. The public aggregate identifies the
-scripted scope and partial-coverage limitations. A small real adoption check
-must precede a broader solver comparison; arbitrary shell attribution and other
-native harnesses remain open.
+scripted scope and partial-coverage limitations.
+
+The predeclared real adoption check at
+`verification/contextbench-solver-reader-adoption-20261017/` reuses the native
+fmt 16K context, actual Opus 5.5, 12 turns and a $2 SDK-meter guard. Protocol hash
+`18a526e32ca402b62bc00c169b262945df64ce717bdcc02404e38a779741ab87`
+pins implementation `0a153397`. Five actual calls cost $0.695992 in SDK estimates.
+The first action chains two readers after `cd`, receives command-not-found, and
+falls back to `sed`: controlled-reader adoption fails, with zero confirmed
+controlled reads. All four delivered shell observations have execution receipts
+but remain unattributed; only 411 initial source lines receive partial coverage.
+The production patch resolves the same development task with 18 native tests;
+this supplies no comparative gain. Both owned containers are removed and frozen
+runtime/input hashes match after grading. No retry or follow-on model batch is
+part of this protocol.
+
+The old command-not-found behavior is reproduced locally before fixing the
+existing environment adapter. Compound command-position attempts now explain
+that the reader is available as a standalone action; quoted shell mentions are
+unchanged. The fix passes 29 related unit and two native-loop integration tests.
+Real adoption of the corrected feedback is unvalidated and remains a gate before
+broader matched solver runs. Arbitrary shell attribution and other native
+harnesses remain open.
 
 ### First-callable graph mechanism check
 

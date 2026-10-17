@@ -229,9 +229,15 @@ no model calls. Existing fmt receipts validate 411/375 initial source lines;
 their shell reads remain unattributed rather than reconstructed from requests.
 This source-checkout adapter creates no product tool or persistence boundary.
 Its partial coverage is not an official trajectory: arbitrary shell output and
-modified-file base coordinates remain open. Fresh matched solver runs must
-validate the changed common reader instructions before using actual repair/test
-feedback to guide retrieval, alongside broader native harness coverage.
+modified-file base coordinates remain open. A real one-task reader-adoption
+check fails: a compound invocation is reported as a missing shell command, so
+the model falls back to ordinary reads. Its production patch passes all 18
+native tests, but supplies no controlled-reader or comparative quality evidence.
+The exact invocation regression is fixed in the same adapter with explicit usage
+feedback; no shell interpreter or product tool is added. Real adoption of the
+corrected interface remains a gate before fresh matched solver runs and broader
+native harness coverage. The failed check retains its five calls, $0.695992 SDK
+estimate and zero new API-key charges; no model retry follows that protocol.
 The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair

@@ -423,8 +423,10 @@ and $1.367794 for its paired solver check. Two later one-task graph mechanism
 versions add $0.327116. The first-source 24-task attempt adds $12.831086 in known
 retrieval estimates and its separate receipt-fix smoke adds $0.426619.
 The late relationship-check pilot adds **$6.796707** in SDK estimates.
-Known program metering totals **$71.960832**, excluding one aborted development
-solver attempt and one interrupted retrieval case with no terminal usage.
+Known October 16 metering totals **$71.960832**. The October 17 reader-adoption
+check adds **$0.695992**, bringing known cumulative metering to **$72.656824**,
+excluding one aborted development solver attempt and one interrupted retrieval
+case with no terminal usage.
 These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
@@ -770,7 +772,9 @@ instructions. Each read records the exact file version, pinned original blob,
 rendered observation and its position in the conversation. Only complete lines
 in a later confirmed model input receive coverage; native output truncation
 still applies. Initial delivered context is also checked against its pinned
-source before inference. Edits and tests continue through the existing shell.
+source before inference. Use the reader as the entire bash action; compound
+invocations receive an explicit usage error. Edits and tests continue through
+the existing shell.
 
 `model-observations.json` labels this source attribution **partial**. Ordinary
 shell output remains explicitly unattributed, and changed files retain their
@@ -779,7 +783,7 @@ coverage records are not submitted to the official scorer as full trajectories.
 The added instruction changes the solver protocol and therefore requires fresh
 matched runs; earlier results remain frozen.
 
-The [source-receipt verification](../assets/contextbench_solver_source_summary.json)
+The initial [source-receipt verification](../assets/contextbench_solver_source_summary.json)
 makes no model calls. An audit of the existing fmt pair preserves all ten actual
 model-input receipts and verifies 411/375 initial source lines. Each arm still
 has four delivered shell observations without execution receipts; none gains
@@ -790,8 +794,27 @@ original-source credit, and the final submission diff is excluded. Scripted
 replies test the instrumentation only; they are not additional model runs or
 repair outcomes. The container is removed and source/runtime hashes match.
 
-An earlier development solver pair using the model-input recorder is **0/1 resolved in each
-arm** on the same previously disclosed Python task. All seven native-context
+A separate, predeclared real adoption check then reuses that fmt task and the
+native 16K context. With the frozen reader implementation, actual Opus 5.5,
+12 turns and a $2 SDK-meter guard, it makes five model calls at **$0.695992** in
+SDK estimates. The first action chains the reader after `cd` and combines two
+reads; the standalone-only adapter forwards it to the shell, which reports the
+command missing. The model falls back to `sed`. **Reader adoption fails**:
+there are no confirmed controlled reads, and four delivered shell observations
+remain unattributed. The original 411 initial-source lines retain credit only
+in the explicitly partial coverage artifact.
+
+The submitted production patch resolves this repeated development task and
+passes all 18 native tests; it establishes no comparative improvement. Both
+containers are removed and all frozen hashes still match after grading. The
+compound-invocation bug is reproduced, then fixed with explicit feedback about
+the available reader's standalone interface. Quoted mentions remain ordinary
+shell output. The corrected feedback has local regression coverage; real
+adoption remains unvalidated. No retry or further model batch follows this
+protocol, and no earlier quality gate or official score changes.
+
+An earlier development solver pair using the model-input recorder is **0/1
+resolved in each arm** on the same previously disclosed Python task. All seven native-context
 inputs and eleven graph-enabled-context inputs have confirmed receipts. These
 are repeated development attempts, not additional independent solver tasks.
 
