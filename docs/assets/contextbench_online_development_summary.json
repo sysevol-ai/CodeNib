@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 175.26951246000002,
+    "known_sdk_reported_estimate_usd": 182.31928416,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "As-of verified500_context_execution:known freshMax nominal includes original36,quota-order65 andcapacityacceptedcases once;one originalunknownterminal notzero. Add topriorMax113.75041130/mixed162.32272866,pendingexcluded. API59.09398873unchanged,no newBatch/count/repair. Maxnominal notcash;historical2Max gaps plus1neworiginalgap remain,accountbilling/creditbalanceunverified.",
+    "scope": "As-of verified500_context_execution:knownfreshMax nominal includesoriginal36/quota65/capacity53(allknownincloneSDKrejectedaction) pluscurrentcases once. Oneoriginalunknownterminal retained,notzero. AddtopriorMax113.75041130/mixed162.32272866,pendingexcluded. API59.09398873unchanged,no newBatch/count/repair. Maxnominalnotcash;historical2Maxgaps plusoriginal1gapremain;billing/creditbalanceunverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2803,7 +2803,7 @@
     "jev_rerank_api_cost_usd": 0.025743857999999994,
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
-    "known_claude_max_sdk_estimate_usd": 126.6971951,
+    "known_claude_max_sdk_estimate_usd": 133.7469668,
     "known_anthropic_api_sdk_estimate_usd": 48.57231736,
     "standalone_api_call_count_scope": "1012 Jev decisions;216 retrieval SDK sessions,36 packet-review SDK sessions and55 historical repair SDK queries.112 Messages inference requests and160 free token counts are separate; SDK sessions are not HTTP request counts.",
     "anthropic_api_sdk_sessions": 307,
@@ -2849,9 +2849,9 @@
     "max_batch_development_Max_sdk_sessions": 4,
     "max_batch_development_Max_nominal_sdk_usd": 1.2485557,
     "unmetered_batch_requests": 0,
-    "verified500_native_checkpoint": "2026-10-17T18:55:33+00:00",
-    "verified500_new_Max_nominal_sdk_usd": 12.946783800000002,
-    "verified500_new_Max_sdk_terminal_sessions": 106,
+    "verified500_native_checkpoint": "2026-10-17T19:25:39+00:00",
+    "verified500_new_Max_nominal_sdk_usd": 19.996555500000007,
+    "verified500_new_Max_sdk_terminal_sessions": 158,
     "verified500_unknown_Max_terminal_cases": 1
   },
   "first_callable_source_24_development": {
@@ -23794,7 +23794,7 @@
       "frozen_source_resolved": true
     }
   },
-  "current_priority": "Context metrics first,Recall primary,F1/cost reported. Complete only310originalunclaimed investigations onlarge-volume outputs/TMPDIR aftervalid65case disk-admission stop. Reuse189prefixes incl56completepairs;retainoriginal1failedzero-source case/all500denominators,no retry. Same model/source/compiler/consumer policy. No interimGold/quality/repairs;443exactinput preflight<=same40reservation beforeonepaidBatch.",
+  "current_priority": "Context metrics first,Recallprimary,F1/costreported. Preserve original strict attempt gatefailure andtheSDKrejectedaction/error;qualifyonlyactualregistered3tool observations withproofrejectedaction contributeszero source. Continueonly257unclaimed originals,reuse242prefixes/56pairs,retain1originalzero-source/unmeteredcase/all500denominators. Same1bmodel/prompt/source/compiler/budget,all3cohortssealed. NoGold/interimscore/repairs.443exactinputcount/fullreserve<=40beforeonepaidBatch.",
   "source_gap_diagnosis": {
     "scope": "Evaluation-only diagnosis of eight disclosed native trajectories. Canonical official paths and scores unchanged. No model calls; no annotation-driven runtime choices.",
     "totals": {
@@ -27436,7 +27436,7 @@
     },
     "consequence": "No untouched C++ or Java remains. Do not recycle either validation cohort or imply that future samples preserve the current language coverage."
   },
-  "latest_context_strategy_status": "Independent32 sourcecoverage unchanged:Recall74.94to79.09,F130.13to22.32,repository95Recall delta[+1.99,+6.85]points. Canonical500 ongoing underdisclosed quota-order thenartifact-capacity continuations,no newquality/repairresult. All3sealed32s untouched;known canonicalpopulation,notfresh independent500.",
+  "latest_context_strategy_status": "Independent32 sourcecoverage unchanged:Recall74.94to79.09,F130.13to22.32,repository95Recall delta[+1.99,+6.85]points. Canonical500 ongoing;oneSDK-rejected misspelledtool action stoppedstrictgate despite normalterminal/knownusage/validsource. Preservefailedstrictgate;newprelabel sourcequalification givesrejectedaction0credit,retainsotherprovenreads withoutretry/model/compilerchanges. No newquality/repair/freshindependent500claim.",
   "preserved_source_cached_ranking": {
     "scope": "Fixed-query actual-source union opportunity only, using shared historical real observations. No new agent behavior, paid calls or independent/leaderboard claim. No retrospective change to earlier failed online or independent gates.",
     "protocol_sha256": "707b197e50de1591e9ca6abfbb0213b7682440d74043e51ab944161f6e5a1428",
@@ -40130,9 +40130,9 @@
     "per_committed_file_cap_mib": 50,
     "external_links_or_lfs_pointers_suffice": false,
     "open_gates": [
-      "Finish only310originalunclaimed nativecases undercapacity protocol;reuse189qualifiedprefixes/56pairs andretain1originalfailedzero-source task/unknownterminal without retry.",
-      "All443eligible exact candidate inputs withfree counts,fulloutputcaps/margin/headroom<=same40USD reservation beforeonepaidBatchcreate;all500denominators unchanged.",
-      "Freeze all500terminal sourcepredictions/rawreceipts beforeannotation access;report Recall/F1/cost andofficialvalidity/failures separately,discloseoperationalcontinuations/knowncases,no repair/freshindependent500claim.",
+      "Finishonly257unclaimed natives,reuse242sourcequalifiedprefixes/56pairs,retain1originalfailedzero-source/unmeteredcase. Preserveallfailedstrictgates andSDKrejectedactions/errors;eachrejectedaction0source,onlyexactSDKrejectionsqualify.",
+      "BeforeonepaidBatchcreate,countALL443exacteligiblecandidateinputs andfulloutputcap/margin/headroom<=same40USDreserve;all500positionsretained.",
+      "Sealall500predictions/rawreceiptsbeforeGold;reportfixed500RPF1andvalidity/errors separately,discloseoperationalqualifications/knowncases,no repair/freshindependent500claim.",
       "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
       "Complete original raw trajectories,failed attempts,evaluation and outcome archives committed within official file limits."
     ],
@@ -40140,9 +40140,9 @@
     "new_api_cost_usd": 0,
     "official500_started": false,
     "context500_open_gates": [
-      "Finish only310originalunclaimed nativecases undercapacity protocol;reuse189qualifiedprefixes/56pairs andretain1originalfailedzero-source task/unknownterminal without retry.",
-      "All443eligible exact candidate inputs withfree counts,fulloutputcaps/margin/headroom<=same40USD reservation beforeonepaidBatchcreate;all500denominators unchanged.",
-      "Freeze all500terminal sourcepredictions/rawreceipts beforeannotation access;report Recall/F1/cost andofficialvalidity/failures separately,discloseoperationalcontinuations/knowncases,no repair/freshindependent500claim."
+      "Finishonly257unclaimed natives,reuse242sourcequalifiedprefixes/56pairs,retain1originalfailedzero-source/unmeteredcase. Preserveallfailedstrictgates andSDKrejectedactions/errors;eachrejectedaction0source,onlyexactSDKrejectionsqualify.",
+      "BeforeonepaidBatchcreate,countALL443exacteligiblecandidateinputs andfulloutputcap/margin/headroom<=same40USDreserve;all500positionsretained.",
+      "Sealall500predictions/rawreceiptsbeforeGold;reportfixed500RPF1andvalidity/errors separately,discloseoperationalqualifications/knowncases,no repair/freshindependent500claim."
     ],
     "official_submission_additional_gates": [
       "Real mini SWE-agent/native resolution outcomes and supported native grading for Pass@1.",
@@ -40942,46 +40942,41 @@
     "new_api_usage_usd": 0
   },
   "verified500_context_execution": {
-    "observed_at_utc": "2026-10-17T18:55:33+00:00",
+    "observed_at_utc": "2026-10-17T19:25:39+00:00",
     "state": "running",
-    "phase": "capacity_only_continuation",
+    "phase": "SDK_rejected_action_source_receipt_continuation",
     "runtime_commit": "1b0ad5ac835ce4ce8a2ed46e0b6fa47ce27ade58",
-    "protocol_sha256": "ac478f8956de831e7776212176f1dac617e4e2888a54362348c57fa3d926253a",
+    "protocol_sha256": "4daea3d3d39ce1fd9a1f06e653c32edfaeaac899cba415aab3750d083a9f7b0d",
     "population": 500,
+    "qualified_source_prefixes_reused": 242,
     "complete_context_pairs_reused": 56,
-    "qualified_prefixes_at_continuation_start": 189,
-    "original_native_attempts": 37,
-    "original_native_accepted": 36,
-    "original_native_failed": 1,
-    "original_native_execution_strict_gate_passed": false,
-    "original_failed_case_retried_or_replaced": false,
-    "failed_native_source_credit": "zero in both arms;no source tools called",
-    "failed_position_retained_in_all500_denominators": true,
-    "quota_order_parent_accepted_native": 65,
-    "quota_order_parent_stop": "4GiB artifact admission reached before next dispatch;all65receipts valid,allintents reconciled/children terminal",
-    "capacity_stop_added_failed_model_cases": 0,
-    "capacity_continuation_positions": 310,
-    "capacity_completed": 5,
-    "capacity_accepted": 5,
-    "capacity_remaining": 305,
-    "all500_native_terminal_records": 195,
+    "original_failed_zero_source_positions": 1,
+    "original_unknown_Max_terminal_cases": 1,
+    "capacity_parent_completed": 53,
+    "capacity_parent_strict_attempt_gate_accepted": 52,
+    "capacity_parent_original_strict_gate_remains_failed": true,
+    "capacity_parent_source_receipts_qualified": 53,
+    "SDK_rejected_unavailable_actions": 1,
+    "rejected_action_source_credit": 0,
+    "tool_alias_rewrite_or_execution_added": false,
+    "current_native_positions": 257,
+    "current_completed": 4,
+    "current_accepted": 4,
+    "current_remaining": 253,
+    "all500_native_terminal_records": 247,
     "new_candidate_consumers": 443,
-    "failed_candidate_positions_without_a_packet": 1,
-    "known_new_Max_nominal_sdk_usd": 12.946783800000002,
-    "new_terminal_Max_metering_gaps": 1,
+    "known_new_Max_nominal_sdk_usd": 19.996555500000007,
+    "new_Max_terminal_metering_gaps": 1,
     "new_API_usage_usd": 0,
-    "new_paid_Batch_requests": 0,
-    "new_free_count_requests": 0,
-    "new_repairs": 0,
-    "new_quality_scores": false,
-    "same_API_reservation_for_all443_usd": 40,
     "known_prior_API_usage_usd": 59.09398873,
-    "total_API_ceiling_usd": 100,
-    "fresh_independent500_claim": false,
-    "source_unavailable_gitlink_cases": 3,
-    "source_or_model_or_compiler_policy_changed": false,
-    "output_and_temp_on_data_volume": true,
-    "source_histories_retained_unchanged": true
+    "same_API_reservation_usd": 40,
+    "API_ceiling_usd": 100,
+    "new_Batch_or_count_requests": 0,
+    "new_quality_scores": false,
+    "new_repairs": 0,
+    "fresh_independent500": false,
+    "all_three32_cohorts_sealed": true,
+    "source_model_prompt_compiler_budget_unchanged": true
   },
   "verified500_additional_native_prefix_reuse": {
     "scope": "Metadata/profile/source/code-path audit of every matching original prefix, without new calls, quality scoring, label access or favorable-case selection. Original strict empty advertised-catalog requirement remains failed; separate exact validated-reference catalog equality qualifies all32. All sealed study quality conclusions remain unchanged.",
@@ -41084,5 +41079,30 @@
     "additional65_archive_index_sha256": "b3120d52a5b2ba1c5b83b26d710c44ac7328cc2fff6cf90585d3ef7919c94a1b",
     "additional65_verification_sha256": "9908c2801cb9d5e65ad7e8d20c2a64b087babab4f6e20719a4fb24760df6112f",
     "new_quality_scores": false
+  },
+  "verified500_rejected_action_source_qualification": {
+    "scope": "Label-blind source receipt qualification only. Keep original strict no-unavailable-attempt gate failed; no modelretry,toolalias rewrite,newcapability ornewsource from SDK-rejected action. Registered/executed source boundary remains read/grep/glob;other confirmed inputs survive an unsuccessful model action.",
+    "original_strict_gate_passed": false,
+    "source_qualification_before_Gold": true,
+    "qualified_parent_streams": 53,
+    "strict_parent_accepted": 52,
+    "SDK_error": "No such tool available: mcp__source:read",
+    "SDK_error_is_error": true,
+    "registered_source_tools": [
+      "mcp__source__read",
+      "mcp__source__grep",
+      "mcp__source__glob"
+    ],
+    "rejected_action_source_credit": 0,
+    "no_alias_mapping_or_extra_execution": true,
+    "native_geometry_equal_without_rejected_action": true,
+    "compiled_packet_bytes_equal_without_rejected_action": true,
+    "adversarial_boundaries_rejected": 5,
+    "all53_streams_checked": true,
+    "all242_prefixes_replay": true,
+    "all56_prior_pairs_replay": true,
+    "qualification_sha256": "aee417dd780a427e9738b6088dcbaa35cecc6c04af43e02c8a9cc844909736e4",
+    "new_model_calls": 0,
+    "new_Gold_or_quality_reads": false
   }
 }
