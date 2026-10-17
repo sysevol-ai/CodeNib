@@ -11,6 +11,128 @@ import pytest
 from scripts import benchmark_context_claude as claude
 
 
+@pytest.mark.parametrize(
+    "info",
+    [
+        {
+            "status": "rejected",
+            "raw": {"overageEnabled": False, "isUsingOverage": False},
+        },
+        {"status": "allowed", "raw": {"overageEnabled": True, "isUsingOverage": False}},
+        {"status": "allowed", "raw": {"overageEnabled": False, "isUsingOverage": True}},
+        {"status": "allowed", "raw": {"isUsingOverage": False}},
+    ],
+)
+def test_included_max_requires_explicit_unpaid_allowance(info):
+    with pytest.raises(RuntimeError, match="included usage only"):
+        claude.included_max_rate({"rate_limit_info": info})
+
+
+@pytest.mark.parametrize("mode", ["allowed", "credits", "missing_rate", "result_only"])
+def test_max_quota_stream_preserves_receipts_and_stops_before_continuing(
+    monkeypatch, tmp_path, mode
+):
+    row = {"instance_id": "case", "messages": [], "sdk_events": []}
+    advanced = []
+    checkpoints = []
+
+    def event(kind, **fields):
+        return make_dataclass(kind, [(key, object) for key in fields])(**fields)
+
+    async def query(*, prompt, options):
+        yield event(
+            "SystemMessage",
+            subtype="init",
+            data={"tools": options.allowed_tools, "apiKeySource": "none"},
+        )
+        if mode not in {"missing_rate", "result_only"}:
+            yield event(
+                "RateLimitEvent",
+                rate_limit_info={
+                    "status": "allowed_warning",
+                    "raw": {
+                        "overageEnabled": mode == "credits",
+                        "isUsingOverage": False,
+                    },
+                },
+            )
+            advanced.append("after_rate")
+        if mode != "result_only":
+            yield event(
+                "AssistantMessage", content=[{"text": "Done"}], model="test-model"
+            )
+            advanced.append("after_assistant")
+        yield event(
+            "ResultMessage",
+            subtype="success",
+            is_error=False,
+            num_turns=1,
+            total_cost_usd=0.03,
+            result="Done",
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            tool=lambda name, description, schema: lambda handler: (name, handler),
+        ),
+    )
+    call = claude.retrieve(
+        repo=tmp_path,
+        query_text="Inspect",
+        row=row,
+        checkpoint=lambda: checkpoints.append(json.loads(json.dumps(row))),
+        cli="claude",
+        model="test-model",
+        max_turns=20,
+        max_included_only=True,
+    )
+    if mode == "allowed":
+        asyncio.run(call)
+        assert row["status"] == "ok" and row["sdk_reported_cost_usd"] == 0.03
+        assert row["max_included_rate_info"]["raw"]["overageEnabled"] is False
+    else:
+        with pytest.raises(RuntimeError, match="Max"):
+            asyncio.run(call)
+        assert not advanced
+        assert checkpoints[-1]["sdk_events"][-1] == row["sdk_events"][-1]
+        if mode == "credits":
+            assert row["sdk_events"][-1]["kind"] == "RateLimitEvent"
+        if mode == "result_only":
+            assert checkpoints[-1]["sdk_reported_cost_usd"] == 0.03
+
+
+def test_included_max_rejects_api_route_before_auth(monkeypatch):
+    monkeypatch.setattr(claude.shutil, "which", lambda _: "claude")
+    with pytest.raises(ValueError, match="subscription route"):
+        claude.run(
+            SimpleNamespace(
+                live=True,
+                max_turns=20,
+                billing_route="anthropic-api",
+                max_included_only=True,
+            )
+        )
+
+
+def test_included_max_requires_max_account_before_source_or_model(monkeypatch):
+    monkeypatch.setattr(claude.shutil, "which", lambda _: "claude")
+    monkeypatch.setattr(
+        claude,
+        "subscription_auth",
+        lambda _: {
+            "subscriptionType": "pro",
+            "apiProvider": "firstParty",
+        },
+    )
+    with pytest.raises(ValueError, match="first-party Max login"):
+        claude.run(SimpleNamespace(live=True, max_turns=20, max_included_only=True))
+
+
 def test_sdk_tool_results_count_returned_lines_only(tmp_path):
     (tmp_path / "a.py").write_text("visible\nunseen\n")
     messages = claude.normalize_event(
