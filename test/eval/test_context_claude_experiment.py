@@ -28,8 +28,19 @@ def test_included_max_requires_explicit_unpaid_allowance(info):
         claude.included_max_rate({"rate_limit_info": info})
 
 
-@pytest.mark.parametrize("mode", ["allowed", "credits", "missing_rate", "result_only"])
-def test_max_quota_stream_preserves_receipts_and_stops_before_continuing(
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "allowed",
+        "credits",
+        "missing_rate",
+        "result_only",
+        "late_rate",
+        "rate_after_result",
+        "late_credits",
+    ],
+)
+def test_max_quota_stream_preserves_metering_across_event_orders(
     monkeypatch, tmp_path, mode
 ):
     row = {"instance_id": "case", "messages": [], "sdk_events": []}
@@ -39,29 +50,36 @@ def test_max_quota_stream_preserves_receipts_and_stops_before_continuing(
     def event(kind, **fields):
         return make_dataclass(kind, [(key, object) for key in fields])(**fields)
 
+    def rate():
+        return event(
+            "RateLimitEvent",
+            rate_limit_info={
+                "status": "allowed_warning",
+                "raw": {
+                    "overageEnabled": mode in {"credits", "late_credits"},
+                    "isUsingOverage": False,
+                },
+            },
+        )
+
     async def query(*, prompt, options):
         yield event(
             "SystemMessage",
             subtype="init",
             data={"tools": options.allowed_tools, "apiKeySource": "none"},
         )
-        if mode not in {"missing_rate", "result_only"}:
-            yield event(
-                "RateLimitEvent",
-                rate_limit_info={
-                    "status": "allowed_warning",
-                    "raw": {
-                        "overageEnabled": mode == "credits",
-                        "isUsingOverage": False,
-                    },
-                },
-            )
+        if mode in {"allowed", "credits"}:
+            yield rate()
             advanced.append("after_rate")
         if mode != "result_only":
             yield event(
                 "AssistantMessage", content=[{"text": "Done"}], model="test-model"
             )
             advanced.append("after_assistant")
+        if mode in {"late_rate", "late_credits"}:
+            yield event("UserMessage", content=[])
+            yield rate()
+            advanced.append("after_rate")
         yield event(
             "ResultMessage",
             subtype="success",
@@ -70,6 +88,8 @@ def test_max_quota_stream_preserves_receipts_and_stops_before_continuing(
             total_cost_usd=0.03,
             result="Done",
         )
+        if mode == "rate_after_result":
+            yield rate()
 
     monkeypatch.setitem(
         sys.modules,
@@ -91,19 +111,23 @@ def test_max_quota_stream_preserves_receipts_and_stops_before_continuing(
         max_turns=20,
         max_included_only=True,
     )
-    if mode == "allowed":
+    if mode in {"allowed", "late_rate", "rate_after_result"}:
         asyncio.run(call)
         assert row["status"] == "ok" and row["sdk_reported_cost_usd"] == 0.03
         assert row["max_included_rate_info"]["raw"]["overageEnabled"] is False
+        assert row["max_included_rate_confirmed"] is True
     else:
         with pytest.raises(RuntimeError, match="Max"):
             asyncio.run(call)
-        assert not advanced
+        assert row["max_included_rate_confirmed"] is False
         assert checkpoints[-1]["sdk_events"][-1] == row["sdk_events"][-1]
-        if mode == "credits":
+        if mode in {"credits", "late_credits"}:
             assert row["sdk_events"][-1]["kind"] == "RateLimitEvent"
-        if mode == "result_only":
+            assert "after_rate" not in advanced
+            assert ("after_assistant" in advanced) == (mode == "late_credits")
+        if mode in {"missing_rate", "result_only"}:
             assert checkpoints[-1]["sdk_reported_cost_usd"] == 0.03
+            assert row["sdk_result"]["subtype"] == "success"
 
 
 def test_included_max_rejects_api_route_before_auth(monkeypatch):

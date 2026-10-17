@@ -318,6 +318,8 @@ async def retrieve(
         extra_args={"no-session-persistence": None},
     )
     max_rate_seen = False
+    if max_included_only:
+        row["max_included_rate_confirmed"] = False
     async for message in query(prompt=query_text, options=options):
         kind = type(message).__name__
         data = dataclasses.asdict(message)
@@ -332,12 +334,6 @@ async def retrieve(
                 checkpoint()
                 row["max_included_rate_info"] = included_max_rate(data)
                 max_rate_seen = True
-            elif kind in {"AssistantMessage", "UserMessage", "ResultMessage"}:
-                if not max_rate_seen:
-                    checkpoint()
-                    raise RuntimeError(
-                        "No included Max quota event before model output"
-                    )
         if kind == "SystemMessage" and data.get("subtype") == "init":
             if max_included_only and data["data"].get("apiKeySource") != "none":
                 checkpoint()
@@ -365,6 +361,15 @@ async def retrieve(
             raise RuntimeError("File-source selection failed; stop this SDK stream")
     if "sdk_result" not in row:
         raise RuntimeError("SDK stream ended without a terminal result")
+    # Quota events can follow assistant output. Retain those raw observations
+    # pending validation and drain to terminal usage rather than interrupting a
+    # valid event ordering. No case is accepted without an included-only event;
+    # an explicitly unsafe quota event still stops the stream immediately above.
+    if max_included_only:
+        if not max_rate_seen:
+            checkpoint()
+            raise RuntimeError("No included Max quota event in terminal SDK stream")
+        row["max_included_rate_confirmed"] = True
     result = row["sdk_result"]
     row.update(
         status=(
