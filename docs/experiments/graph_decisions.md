@@ -40,7 +40,7 @@ The current milestones and remaining gates are:
 | Online source completion | Function-only completion has no demonstrated gain: independent-32 Recall/F1 is 68.56%/28.22% versus native 69.64%/29.01%; the latest separate development eight is 72.14%/32.95% versus native 77.90%/33.67%. Conversation-aware completion removes duplicate delivery while preserving fixed-trace source. The bounded file-remainder replay remains rejected by its F1 gate. | Retain useful grep completion. Do not ship the rejected file-remainder policy or advance it to model calls. Prioritize relevant source selection and fresh matched validation over more automatic source volume. |
 | Evaluation source diagnostics | All 72 development predictions and official line totals/intersections reproduce. The 24-task source audit finds 303 missing-path and 28 out-of-range annotated lines across nine tasks. Evaluation-only `gold_source_issues` reports these without remapping paths or changing scores; future archives include the evaluator bridge. | Preserve official paths and denominators. Do not treat nonexistent annotation locations as recoverable retrieval omissions or use diagnostic alternatives for source credit. |
 | Matched experiment | The latest eight-task native/function/late-graph controls are complete: 24/24 runs and official scores, no missing usage, matching runtime/source hashes and no API-key route. The independent 32-task validation remains complete and negative; the earlier interrupted first-source ablation remains preserved. | Retain every failed gate and interrupted attempt. A completed run establishes reliability, not a policy effect. Keep all 32 validation tasks sealed and require useful fresh matched evidence plus a new independent protocol for a revised policy. |
-| Directed graph navigation | The separate late-only eight-task comparison completes all 24 runs, scores and usage records. Recall is 77.90% → 80.57%, F1 33.67% → 37.55%, but both intervals include zero and the declared mechanism gate fails: no fallback source and no annotated graph line absent from native. All eight fixed replies are identical with fallback disabled. Prior first-source, late-check and general replay gates remain failed. | Do not retry or promote this policy. Diagnose unavailable source-bound compiler artifacts, the missing C++ anchor and JavaScript reference coverage before another online hypothesis. Nearby-anchor windows and the NodeBB omitted-neighbor audit do not justify more source budget; active SCIP assigned-function definitions remain incomplete. Preserve canonical paths and the sealed independent 32. No promotion or full-500 launch. |
+| Directed graph navigation | The late-only eight-task comparison completes all 24 runs and scores, but fails its mechanism gate and both primary intervals include zero. Disabling fallback reproduces every reply. Source-bound C++ callable fixes and TypeScript/Java preparation raise available graphs from five to seven; the same eight queries add 146 physical lines and zero annotated lines. C correctly fails on seven tracked submodule build-helper changes. Prior quality gates remain failed. | Keep the compiler correctness fixes without claiming retrieval gains. Do not retry or promote the policy from availability alone. Relevant source selection, active SCIP assigned-function coverage and explicit treatment of tracked build overlays remain open. Nearby-anchor windows and earlier omitted-neighbor audits do not justify more source budget. Preserve canonical paths, sealed independent 32 and full-500 gates. |
 | Complete solver | The independent Verified task resolves in both arms, 1/1 each; the repeated development pair remains unresolved, 0/1 each. The Multi fmt pair resolves in both arms with 18 passing tests. A separately frozen corrected-reader check obtains two confirmed reads and another resolved fmt repair, but adds zero source lines beyond the initial context. The earlier reader-adoption failure is retained. Gson passes native readiness checks; its fresh real pair resolves 1/1 in both arms with 96 required classes passing and eleven confirmed inputs. The C ponyc pilot passes native/source gates, but its fresh native/functions repairs fail (12/11 tests); its graph arm ends in a retained budget error with no prediction. Terminal usage is recovered offline and the accounting bug is fixed. | Freeze fresh matched solver runs with the common reader and use actual repair/test feedback to guide retrieval. Source coverage remains partial: arbitrary shell output and modified-file base coordinates are unattributed. The C compatibility cases are grader-added and the casting/call implementation was already delivered; do not infer a missing source gap or expand those functions again. Use separately supported retrieval hypotheses before more paid comparisons; establish broader matched outcomes and extend other Multi repositories and Poly/Pro coverage. Jackson's preparation changes tracked build configuration and needs an explicit source-overlay treatment. Environment readiness and repeated one-task repairs establish no comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -900,8 +900,33 @@ metering regression is reproduced against the prior retrieval implementation,
 then fixed before inference. Current verification is 209 related unit tests and
 10 pinned integration tests. The checkout-only option is retained for
 reproduction, with no product/default promotion or additional online retry.
-Investigate unavailable compiler artifacts and missing source anchors before
-another policy trial. The failed general gate, sealed independent 32 and
+The source-bound follow-up now repairs C++ callable extraction and maps clangd
+conversion kind 24 to methods in Python and native queries. Normalization v4
+rejects old native interpretations. Rebuilding all three disclosed C++ graphs
+at `9880b0d7` corrects 2,127 ranges and 101 conversion kinds, while preserving
+all compiler IDs, file identities, selection points and edges. The missing
+conversion anchor now covers its body. Ten pre-fix regressions reproduce;
+195 related unit tests and three C++ integration tests pass after rebuilding
+the native binding.
+
+Existing tools also recover TypeScript in 268.17 seconds within the original
+300-second bound, and Gson Java in 22.28 seconds using explicit Maven and a
+command-line Java 8 override. No tracked Java POM or source bytes change.
+These readiness diagnostics are not controlled acceleration comparisons. The C
+probe confirms seven actual tracked changes inside the pinned oniguruma
+submodule; its rejection remains correct and the source guard is unchanged.
+Earlier failed probes remain recorded, as does the initial C++ assertion that
+mistook the expected callable display suffix for a changed compiler identity.
+
+Under combined replay protocol
+`c46e0f96d511fb106fe98ed6d7ab75ef9d27b18d3ad31d2a5861e858be6907b3`,
+all eight queries, preceding source and reply budgets remain fixed. Availability
+rises five to seven, but the additional 108 TypeScript, 37 Java and one C++
+physical lines contain zero annotated lines. Replies are frozen before canonical
+annotation analysis; no revised agent outcome is inferred. There are still zero
+languages with annotated graph source absent from matched native, so another
+online batch is unsupported. All follow-up checks make zero model calls and
+leave costs unchanged. The failed general gate, sealed independent 32 and
 full-500 requirements stand.
 
 ### October 16 online development result

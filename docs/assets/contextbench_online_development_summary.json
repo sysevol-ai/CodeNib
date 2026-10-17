@@ -116,7 +116,7 @@
       "actual_bill_usd": null
     }
   },
-  "conclusion": "The independent-32 policy remains rejected and sealed. The separate late-only empty fallback also fails its declared eight-task development gate: no fallback returns source and no annotated graph line is absent from matched native. Point-score gains have intervals spanning zero. No further online retry, official-500 launch or product promotion is justified by this result.",
+  "conclusion": "Independent-32 and later development policies remain rejected. Source-bound C++ fixes and TypeScript/Java availability recovery improve graph readiness, but fixed queries add no annotated source and justify no new online batch. Official scores, sealed validation tasks and API spending remain unchanged.",
   "cost_scope": "SDK metering estimates are not paid receipts. Actual account billing is unknown. No separate API-key inference in these arms.",
   "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle.",
   "implementation_commit": "a853d8d1",
@@ -15466,5 +15466,204 @@
       "sdk_estimate_usd": 0,
       "inference": "The response/source effect of the optional fallback was not exercised on these saved anchors. Online point-score differences cannot be attributed to extra fallback source; the changed tool guidance and agent trajectory remain part of the contrast."
     }
+  },
+  "compiler_coverage_followup": {
+    "scope": "Zero-model compiler/source diagnostics on disclosed development tasks. Fixed queries are not counterfactual agent trajectories or revised official scores.",
+    "runtime_commit": "9880b0d7e3ac65dbbb59dbca6e370e6716b21a4f",
+    "environment_runtime_commit": "de691eecff0b959fdd78562469eb0d1ce1f02a85",
+    "protocol_sha256": {
+      "initial_index": "58a2d48ad0d429a2d205343b64cd6678e112fe774f2c48a926cd0e3df67b7c91",
+      "environment_followup": "c2d8dda569ca270a00f3a3868112d88c4bf5d0428103b354805aa097c7d22626",
+      "tracked_source_followup": "b2c42effc761ad7cc01bcdbde90df5368f649fd8f80c5dcd2ae93595390fb763",
+      "cpp_repair_replay": "58b5e8c9bb77fcff317c44fd69d8a640a15350e5165f855bfe66243ef9216509",
+      "combined_fixed_queries": "c46e0f96d511fb106fe98ed6d7ab75ef9d27b18d3ad31d2a5861e858be6907b3"
+    },
+    "analysis_sha256": "bbf1a1a2495827ea9f7c33aee2cc75babc2940a33469f0dc167b521feeaa32fd",
+    "implementation": "Follow C/C++ callable declarators and classify compiler ConversionFunction kind 24 as method in both Python and native query paths. Native normalization profile advances to v4; cached materialized graphs require regeneration.",
+    "cpp_rebuilt": [
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "nodes": 7935,
+        "edges": 29266,
+        "changed_nodes": 1123,
+        "changed_ranges": 1089,
+        "conversion_kind_changes": 81,
+        "compiler_identity_file_selection_exact": true,
+        "edges_exact": true
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "nodes": 2900,
+        "edges": 78577,
+        "changed_nodes": 480,
+        "changed_ranges": 477,
+        "conversion_kind_changes": 7,
+        "compiler_identity_file_selection_exact": true,
+        "edges_exact": true
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "nodes": 3151,
+        "edges": 36891,
+        "changed_nodes": 566,
+        "changed_ranges": 561,
+        "conversion_kind_changes": 13,
+        "compiler_identity_file_selection_exact": true,
+        "edges_exact": true
+      }
+    ],
+    "typescript": {
+      "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+      "available": true,
+      "wall_s": 268.1705442479579,
+      "nodes": 212904,
+      "edges": 467440,
+      "graph_sha256": "50969b963a10c5830ba6951d669402211abe59c090cbbf8c567485e3cf4c8091",
+      "source_unchanged": true,
+      "preparation": "Existing native decoder, read-only dependency policy, original 300-second bound. This is readiness, not a causal speed benchmark."
+    },
+    "java": {
+      "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+      "available": true,
+      "wall_s": 22.276822463958524,
+      "nodes": 4385,
+      "edges": 31158,
+      "graph_sha256": "d72e723f92a5fc20b185bec42dae4a9f91cb29db2445c07a47bd95f5f10c3142",
+      "tracked_files": 345,
+      "tracked_bytes_exact": true,
+      "tracked_byte_manifest_sha256": "dcae9dcb8b9fd36e9d73851d5e849c9e0d7184d53fc32a2f649369ffce7f8c1d",
+      "preparation": "Existing managed scip-java, explicit Maven selection, java.version=8 command-line override and test-compile. No tracked POM/source edits."
+    },
+    "c": {
+      "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+      "available": false,
+      "wall_s": 57.340631401049905,
+      "original_source_unchanged": true,
+      "root_tracked_bytes_exact": true,
+      "submodules": [
+        {
+          "path": "modules/oniguruma",
+          "expected_head": "d2f1a14ced5d5d461acac0da0d477ab240a7ab5f",
+          "initialized": true,
+          "actual_head": "d2f1a14ced5d5d461acac0da0d477ab240a7ab5f",
+          "tracked_changes": "M\tINSTALL\nM\tcompile\nM\tconfig.guess\nM\tconfig.sub\nM\tdepcomp\nM\tmissing\nM\ttest-driver\n",
+          "status": " M INSTALL\n M compile\n M config.guess\n M config.sub\n M depcomp\n M missing\n M test-driver\n",
+          "ignored_output_count": 257
+        }
+      ],
+      "reason": "Private build rewrites seven tracked oniguruma Autotools helper files. Guard rejection is correct; ignored outputs alone do not explain it. No graph accepted and no source guard relaxed."
+    },
+    "retained_prior_attempts": [
+      "Java managed-tool probe needs explicit build-tool selection.",
+      "Explicit Maven without a Java version override fails compilation; the diagnostic snapshot audit also rejects ignored outputs despite an empty tracked diff.",
+      "The first C build failure lacked recursive source details; a separate frozen probe records the actual tracked submodule changes.",
+      "The first C++ replay assertion also compared display labels. It rejects the expected () suffix when a conversion symbol becomes a method. v2 permits only that kind-24 display normalization; IDs, file identity, selections and all edges remain exact."
+    ],
+    "fixed_query_replay": {
+      "queries": 8,
+      "original_replies_reproduced": 8,
+      "available_graphs_before": 5,
+      "available_graphs_after": 7,
+      "additional_physical_lines": 146,
+      "additional_annotated_lines": 0,
+      "novel_annotated_languages": [],
+      "online_novelty_gate_passed": false,
+      "rows": [
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "language": "typescript",
+          "response_identical": false,
+          "new_physical_lines": 108,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 108,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "language": "python",
+          "response_identical": true,
+          "new_physical_lines": 37,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 0,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "language": "c",
+          "response_identical": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 0,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "language": "cpp",
+          "response_identical": false,
+          "new_physical_lines": 1,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 1,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "language": "rust",
+          "response_identical": true,
+          "new_physical_lines": 5,
+          "new_annotated_lines": 5,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 0,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "language": "javascript",
+          "response_identical": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 0,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "language": "java",
+          "response_identical": false,
+          "new_physical_lines": 37,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 37,
+          "added_annotated_over_control": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "language": "go",
+          "response_identical": true,
+          "new_physical_lines": 0,
+          "new_annotated_lines": 0,
+          "new_annotated_absent_native": 0,
+          "added_over_control": 0,
+          "added_annotated_over_control": 0
+        }
+      ]
+    },
+    "validation": {
+      "pre_fix_regression_failures": 10,
+      "targeted_unit_passed": 195,
+      "cpp_integration_passed": 3,
+      "compiled_native_binding_rebuilt": true,
+      "pinned_implementation_hooks_passed": true
+    },
+    "all_inputs_match": true,
+    "model_calls": 0,
+    "sdk_estimate_usd": 0,
+    "new_API_charges_usd": 0,
+    "official_scores_unchanged": true,
+    "official_500_started": false,
+    "decision": "Keep the general compiler correctness fixes. Availability and added source do not establish relevance: the unchanged eight-query replay adds 146 physical lines and zero annotated lines. No new online batch is justified by this diagnostic; independent-32 and earlier failed gates remain intact."
   }
 }

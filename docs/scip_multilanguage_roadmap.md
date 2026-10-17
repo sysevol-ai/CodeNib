@@ -856,6 +856,18 @@ policy: `auto` may build one compatible graph from the then-current generation,
 while `required` fails closed. Callers restart the provider to adopt a later
 generation.
 
+The current normalization profile is `clangd-native-normalization-v4`:
+compiler `ConversionFunction` kind 24 maps to a method in both Python and
+native queries, including the callable display suffix. Old native profile
+contracts are rejected. The accompanying C/C++ declarator fix retains conversion
+and overloaded operators, destructors and wrapped/qualified function names.
+Three source-bound development graphs regenerate with all symbol IDs, file
+identities, selection points and edges unchanged; 2,127 ranges and 101 conversion
+kinds are corrected. Existing materialized graphs require regeneration. The
+195-test targeted unit tier and three C++ integration tests pass with the rebuilt
+binding ([#834](https://github.com/sysevol-ai/CodeNib/pull/834)). This correctness
+repair changes neither the acceleration gate nor the prior performance claim.
+
 The 2026-08-10 snapshot-enabled `cpp_simple` recheck used 223 shards and five
 alternating rounds with exact result parity. Median complete-graph startup was
 157.7 ms versus 23.9 ms for the native path, an 84.8% improvement after both

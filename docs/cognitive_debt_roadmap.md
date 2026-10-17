@@ -285,8 +285,15 @@ fails. Recall/F1 point estimates rise while both intervals include zero; none
 of the eight graph replies changes when the fallback is disabled. No novel
 annotated graph source is absent from matched native. The option stays confined
 to checkout experiments for reproduction, with no product/default promotion or
-further online retry justified by this sample. Current work is source-bound
-compiler coverage and missing-anchor diagnosis before another policy trial.
+further online retry justified by this sample. Source-bound coverage work now
+fixes C++ callable names and conversion-method kinds in both query paths,
+preserving compiler identities and every edge in three rebuilt graphs.
+TypeScript/Java preparation raises latest-eight availability from five to seven,
+but unchanged queries add 146 physical lines and zero annotated lines. No new
+online batch follows. The C source guard correctly rejects seven tracked
+submodule helper changes; an explicit build-overlay treatment remains open.
+Relevant source selection and active SCIP assigned-function coverage remain
+gates before another policy trial. These diagnostics make zero model calls.
 The retrieval runner also checkpoints terminal SDK metering before an iterator
 error; the old loss is reproduced without model calls. Known cumulative SDK
 estimates are $87.881044, not an account bill; new API-key inference remains zero.
