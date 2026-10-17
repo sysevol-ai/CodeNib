@@ -821,29 +821,29 @@
       "development-functions": {
         "n_tasks": 8,
         "totals": {
-          "original_grep": {
-            "new_physical_lines": 451,
-            "annotated_lines": 34,
-            "responses_adding_source": 32,
-            "annotated_fraction": 0.07538802660753881
-          },
           "completed_grep": {
             "new_physical_lines": 1901,
-            "annotated_lines": 255,
+            "annotated_lines": 381,
             "responses_adding_source": 26,
-            "annotated_fraction": 0.13413992635455024
-          },
-          "original_read": {
-            "new_physical_lines": 4409,
-            "annotated_lines": 408,
-            "responses_adding_source": 39,
-            "annotated_fraction": 0.0925379904740304
+            "annotated_fraction": 0.20042083114150447
           },
           "completed_read": {
             "new_physical_lines": 584,
-            "annotated_lines": 98,
+            "annotated_lines": 108,
             "responses_adding_source": 18,
-            "annotated_fraction": 0.1678082191780822
+            "annotated_fraction": 0.18493150684931506
+          },
+          "original_grep": {
+            "new_physical_lines": 451,
+            "annotated_lines": 80,
+            "responses_adding_source": 32,
+            "annotated_fraction": 0.17738359201773837
+          },
+          "original_read": {
+            "new_physical_lines": 4409,
+            "annotated_lines": 1035,
+            "responses_adding_source": 39,
+            "annotated_fraction": 0.23474710818779768
           }
         },
         "cases": [
@@ -887,7 +887,7 @@
               },
               "original_read": {
                 "new_physical_lines": 611,
-                "annotated_lines": 0,
+                "annotated_lines": 60,
                 "responses_adding_source": 7
               },
               "completed_read": {
@@ -902,22 +902,22 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 105,
-                "annotated_lines": 0,
+                "annotated_lines": 17,
                 "responses_adding_source": 6
               },
               "completed_grep": {
                 "new_physical_lines": 420,
-                "annotated_lines": 0,
+                "annotated_lines": 41,
                 "responses_adding_source": 5
               },
               "original_read": {
                 "new_physical_lines": 989,
-                "annotated_lines": 0,
+                "annotated_lines": 328,
                 "responses_adding_source": 7
               },
               "completed_read": {
                 "new_physical_lines": 89,
-                "annotated_lines": 0,
+                "annotated_lines": 10,
                 "responses_adding_source": 4
               }
             }
@@ -927,7 +927,7 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 49,
-                "annotated_lines": 0,
+                "annotated_lines": 11,
                 "responses_adding_source": 1
               },
               "completed_grep": {
@@ -937,7 +937,7 @@
               },
               "original_read": {
                 "new_physical_lines": 310,
-                "annotated_lines": 0,
+                "annotated_lines": 196,
                 "responses_adding_source": 1
               }
             }
@@ -972,17 +972,17 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 53,
-                "annotated_lines": 0,
+                "annotated_lines": 18,
                 "responses_adding_source": 4
               },
               "completed_grep": {
                 "new_physical_lines": 224,
-                "annotated_lines": 0,
+                "annotated_lines": 85,
                 "responses_adding_source": 4
               },
               "original_read": {
                 "new_physical_lines": 364,
-                "annotated_lines": 0,
+                "annotated_lines": 43,
                 "responses_adding_source": 4
               },
               "completed_read": {
@@ -1047,29 +1047,29 @@
       "required-hop-control-functions": {
         "n_tasks": 8,
         "totals": {
-          "original_grep": {
-            "new_physical_lines": 542,
-            "annotated_lines": 38,
-            "responses_adding_source": 35,
-            "annotated_fraction": 0.07011070110701106
-          },
           "completed_grep": {
             "new_physical_lines": 1931,
-            "annotated_lines": 257,
+            "annotated_lines": 335,
             "responses_adding_source": 29,
-            "annotated_fraction": 0.13309166235111342
-          },
-          "original_read": {
-            "new_physical_lines": 3952,
-            "annotated_lines": 376,
-            "responses_adding_source": 37,
-            "annotated_fraction": 0.0951417004048583
+            "annotated_fraction": 0.17348524080787156
           },
           "completed_read": {
             "new_physical_lines": 640,
-            "annotated_lines": 89,
+            "annotated_lines": 102,
             "responses_adding_source": 19,
-            "annotated_fraction": 0.1390625
+            "annotated_fraction": 0.159375
+          },
+          "original_grep": {
+            "new_physical_lines": 542,
+            "annotated_lines": 72,
+            "responses_adding_source": 35,
+            "annotated_fraction": 0.13284132841328414
+          },
+          "original_read": {
+            "new_physical_lines": 3952,
+            "annotated_lines": 1058,
+            "responses_adding_source": 37,
+            "annotated_fraction": 0.26771255060728744
           }
         },
         "cases": [
@@ -1128,22 +1128,22 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 97,
-                "annotated_lines": 0,
+                "annotated_lines": 12,
                 "responses_adding_source": 8
               },
               "completed_grep": {
                 "new_physical_lines": 336,
-                "annotated_lines": 0,
+                "annotated_lines": 41,
                 "responses_adding_source": 5
               },
               "original_read": {
                 "new_physical_lines": 889,
-                "annotated_lines": 0,
+                "annotated_lines": 377,
                 "responses_adding_source": 6
               },
               "completed_read": {
                 "new_physical_lines": 93,
-                "annotated_lines": 0,
+                "annotated_lines": 11,
                 "responses_adding_source": 4
               }
             }
@@ -1153,7 +1153,7 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 50,
-                "annotated_lines": 0,
+                "annotated_lines": 11,
                 "responses_adding_source": 2
               },
               "completed_grep": {
@@ -1163,7 +1163,7 @@
               },
               "original_read": {
                 "new_physical_lines": 310,
-                "annotated_lines": 0,
+                "annotated_lines": 196,
                 "responses_adding_source": 1
               }
             }
@@ -1198,22 +1198,22 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 56,
-                "annotated_lines": 0,
+                "annotated_lines": 11,
                 "responses_adding_source": 7
               },
               "completed_grep": {
                 "new_physical_lines": 197,
-                "annotated_lines": 0,
+                "annotated_lines": 37,
                 "responses_adding_source": 7
               },
               "original_read": {
                 "new_physical_lines": 358,
-                "annotated_lines": 0,
+                "annotated_lines": 109,
                 "responses_adding_source": 4
               },
               "completed_read": {
                 "new_physical_lines": 18,
-                "annotated_lines": 0,
+                "annotated_lines": 2,
                 "responses_adding_source": 3
               }
             }
@@ -1273,29 +1273,35 @@
       "required-hop-candidate": {
         "n_tasks": 8,
         "totals": {
-          "original_grep": {
-            "new_physical_lines": 642,
-            "annotated_lines": 41,
-            "responses_adding_source": 40,
-            "annotated_fraction": 0.06386292834890965
-          },
           "completed_grep": {
             "new_physical_lines": 2123,
-            "annotated_lines": 248,
+            "annotated_lines": 278,
             "responses_adding_source": 30,
-            "annotated_fraction": 0.11681582666038624
-          },
-          "original_read": {
-            "new_physical_lines": 4495,
-            "annotated_lines": 391,
-            "responses_adding_source": 39,
-            "annotated_fraction": 0.08698553948832036
+            "annotated_fraction": 0.13094677343382008
           },
           "completed_read": {
             "new_physical_lines": 382,
-            "annotated_lines": 83,
+            "annotated_lines": 115,
             "responses_adding_source": 16,
-            "annotated_fraction": 0.21727748691099477
+            "annotated_fraction": 0.3010471204188482
+          },
+          "graph": {
+            "new_physical_lines": 0,
+            "annotated_lines": 0,
+            "responses_adding_source": 0,
+            "annotated_fraction": 0
+          },
+          "original_grep": {
+            "new_physical_lines": 642,
+            "annotated_lines": 96,
+            "responses_adding_source": 40,
+            "annotated_fraction": 0.14953271028037382
+          },
+          "original_read": {
+            "new_physical_lines": 4495,
+            "annotated_lines": 1130,
+            "responses_adding_source": 39,
+            "annotated_fraction": 0.25139043381535037
           }
         },
         "cases": [
@@ -1321,6 +1327,11 @@
                 "new_physical_lines": 76,
                 "annotated_lines": 30,
                 "responses_adding_source": 1
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1329,7 +1340,7 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 132,
-                "annotated_lines": 0,
+                "annotated_lines": 2,
                 "responses_adding_source": 6
               },
               "completed_grep": {
@@ -1339,13 +1350,18 @@
               },
               "original_read": {
                 "new_physical_lines": 418,
-                "annotated_lines": 0,
+                "annotated_lines": 59,
                 "responses_adding_source": 7
               },
               "completed_read": {
                 "new_physical_lines": 103,
                 "annotated_lines": 0,
                 "responses_adding_source": 2
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1354,7 +1370,7 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 145,
-                "annotated_lines": 0,
+                "annotated_lines": 22,
                 "responses_adding_source": 9
               },
               "completed_grep": {
@@ -1364,13 +1380,18 @@
               },
               "original_read": {
                 "new_physical_lines": 1110,
-                "annotated_lines": 0,
+                "annotated_lines": 384,
                 "responses_adding_source": 8
               },
               "completed_read": {
                 "new_physical_lines": 47,
-                "annotated_lines": 0,
+                "annotated_lines": 12,
                 "responses_adding_source": 4
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1379,7 +1400,7 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 50,
-                "annotated_lines": 0,
+                "annotated_lines": 11,
                 "responses_adding_source": 2
               },
               "completed_grep": {
@@ -1389,8 +1410,13 @@
               },
               "original_read": {
                 "new_physical_lines": 310,
-                "annotated_lines": 0,
+                "annotated_lines": 196,
                 "responses_adding_source": 1
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1416,6 +1442,11 @@
                 "new_physical_lines": 53,
                 "annotated_lines": 53,
                 "responses_adding_source": 1
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1424,23 +1455,28 @@
             "counts": {
               "original_grep": {
                 "new_physical_lines": 60,
-                "annotated_lines": 0,
+                "annotated_lines": 20,
                 "responses_adding_source": 5
               },
               "completed_grep": {
                 "new_physical_lines": 229,
-                "annotated_lines": 0,
+                "annotated_lines": 30,
                 "responses_adding_source": 5
               },
               "original_read": {
                 "new_physical_lines": 513,
-                "annotated_lines": 0,
+                "annotated_lines": 100,
                 "responses_adding_source": 5
               },
               "completed_read": {
                 "new_physical_lines": 24,
-                "annotated_lines": 0,
+                "annotated_lines": 20,
                 "responses_adding_source": 2
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1466,6 +1502,11 @@
                 "new_physical_lines": 34,
                 "annotated_lines": 0,
                 "responses_adding_source": 3
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           },
@@ -1491,6 +1532,11 @@
                 "new_physical_lines": 45,
                 "annotated_lines": 0,
                 "responses_adding_source": 3
+              },
+              "graph": {
+                "new_physical_lines": 0,
+                "annotated_lines": 0,
+                "responses_adding_source": 0
               }
             }
           }
@@ -1539,7 +1585,8 @@
         "graph_new_physical_lines": 0
       }
     ],
-    "conclusion": "All 220 graph-returned physical lines were already observed in the targeted-hop development trial. Grep completion contributes most new completion lines and most newly observed annotated lines; no causal claim that removing it improves an online agent. Next development gates must measure useful novel source. Do not tune on the completed independent 32."
+    "conclusion": "All 220 graph-returned physical lines were already observed in the targeted-hop development trial. Grep completion contributes most new completion lines and most newly observed annotated lines; no causal claim that removing it improves an online agent. Next development gates must measure useful novel source. Do not tune on the completed independent 32.",
+    "annotation_correction_protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43"
   },
   "early_unseen_development_trial": {
     "n": 8,
@@ -2718,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 65.16412580000001,
+    "known_sdk_reported_estimate_usd": 71.96083230000002,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2738,7 +2785,8 @@
     ],
     "first_source_24_retrieval_sdk_estimate_usd": 12.8310857,
     "post_fix_reliability_sdk_estimate_usd": 0.42661920000000003,
-    "multi_fmt_development_solver_sdk_estimate_usd": 1.3218016000000001
+    "multi_fmt_development_solver_sdk_estimate_usd": 1.3218016000000001,
+    "late_graph_8_retrieval_sdk_estimate_usd": 6.796706500000001
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -4523,8 +4571,8 @@
         "candidate_final_physical": 17254,
         "added_physical": 5151,
         "lost_physical": 4204,
-        "added_annotated": 185,
-        "lost_annotated": 105,
+        "added_annotated": 472,
+        "lost_annotated": 464,
         "graph_new_at_delivery": 358,
         "graph_new_annotated_at_delivery": 139,
         "graph_new_annotated_also_read_by_native": 90,
@@ -4536,8 +4584,8 @@
           "candidate_final_physical": 3591,
           "added_physical": 991,
           "lost_physical": 870,
-          "added_annotated": 0,
-          "lost_annotated": 0,
+          "added_annotated": 170,
+          "lost_annotated": 211,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4548,8 +4596,8 @@
           "candidate_final_physical": 904,
           "added_physical": 149,
           "lost_physical": 195,
-          "added_annotated": 0,
-          "lost_annotated": 6,
+          "added_annotated": 20,
+          "lost_annotated": 51,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4572,8 +4620,8 @@
           "candidate_final_physical": 1321,
           "added_physical": 450,
           "lost_physical": 325,
-          "added_annotated": 24,
-          "lost_annotated": 0,
+          "added_annotated": 121,
+          "lost_annotated": 63,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4585,7 +4633,7 @@
           "added_physical": 561,
           "lost_physical": 347,
           "added_annotated": 8,
-          "lost_annotated": 8,
+          "lost_annotated": 18,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4621,7 +4669,7 @@
           "added_physical": 677,
           "lost_physical": 976,
           "added_annotated": 0,
-          "lost_annotated": 0,
+          "lost_annotated": 30,
           "graph_new_at_delivery": 67,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4651,7 +4699,7 @@
           "added_physical": 350,
           "lost_physical": 293,
           "added_annotated": 0,
-          "lost_annotated": 0,
+          "lost_annotated": 30,
           "graph_new_at_delivery": 52,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4692,8 +4740,8 @@
           "candidate_final_physical": 1748,
           "added_physical": 586,
           "lost_physical": 459,
-          "added_annotated": 0,
-          "lost_annotated": 0,
+          "added_annotated": 159,
+          "lost_annotated": 24,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4706,8 +4754,8 @@
           "candidate_final_physical": 606,
           "added_physical": 27,
           "lost_physical": 177,
-          "added_annotated": 0,
-          "lost_annotated": 0,
+          "added_annotated": 11,
+          "lost_annotated": 159,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4748,8 +4796,8 @@
           "candidate_final_physical": 602,
           "added_physical": 167,
           "lost_physical": 190,
-          "added_annotated": 0,
-          "lost_annotated": 0,
+          "added_annotated": 73,
+          "lost_annotated": 28,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4776,8 +4824,8 @@
           "candidate_final_physical": 260,
           "added_physical": 34,
           "lost_physical": 97,
-          "added_annotated": 0,
-          "lost_annotated": 0,
+          "added_annotated": 20,
+          "lost_annotated": 45,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4805,7 +4853,7 @@
           "added_physical": 378,
           "lost_physical": 234,
           "added_annotated": 0,
-          "lost_annotated": 0,
+          "lost_annotated": 28,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4888,8 +4936,8 @@
           "candidate_final_physical": 294,
           "added_physical": 25,
           "lost_physical": 51,
-          "added_annotated": 0,
-          "lost_annotated": 0,
+          "added_annotated": 24,
+          "lost_annotated": 35,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4945,7 +4993,7 @@
           "added_physical": 110,
           "lost_physical": 21,
           "added_annotated": 0,
-          "lost_annotated": 0,
+          "lost_annotated": 10,
           "graph_new_at_delivery": 0,
           "graph_new_annotated_at_delivery": 0,
           "graph_new_annotated_also_read_by_native": 0,
@@ -4966,7 +5014,8 @@
           "graph_new_annotated_not_read_by_native": 0
         }
       ],
-      "model_calls": 0
+      "model_calls": 0,
+      "annotation_correction_protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43"
     }
   },
   "fresh_validation_pool": {
@@ -5588,12 +5637,12 @@
       "protocol_sha256": "2e9dd19d52891c1d410960dd0d8e66836cec8d0f0416b68b051a0023b05b8da5",
       "totals": {
         "prior": {
-          "new_physical_lines": 687,
-          "new_annotated_physical_lines": 177
+          "new_annotated_physical_lines": 177,
+          "new_physical_lines": 687
         },
         "prepared": {
-          "new_physical_lines": 890,
-          "new_annotated_physical_lines": 43
+          "new_annotated_physical_lines": 44,
+          "new_physical_lines": 890
         }
       },
       "cases": [
@@ -6036,7 +6085,7 @@
             },
             "prepared": {
               "new_physical_lines": 15,
-              "new_annotated_physical_lines": 0
+              "new_annotated_physical_lines": 1
             }
           }
         },
@@ -6612,7 +6661,8 @@
           }
         }
       ],
-      "interpretation": "Fixed native-trace prefixes and identical anchors per task, with annotation overlap checked after source selection. No model calls, autonomous adoption, or Recall/F1. More available graphs do not establish useful source or quality gains."
+      "interpretation": "Canonical annotation overlap changes 177 to 44, including lost Go coverage. This fixed-prefix, zero-model probe does not measure agent adoption or quality.",
+      "annotation_correction_protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43"
     },
     "prospective_composition": {
       "protocol": {
@@ -6959,59 +7009,59 @@
       "n": 24,
       "categories": {
         "completion_grep": {
-          "replies": 73,
-          "unique_physical": 4713,
+          "first_exposure_annotated": 894,
           "first_exposure_physical": 4502,
-          "first_exposure_annotated": 552,
           "repeated_line_deliveries": 310,
-          "unique_physical_absent_from_native": 2353,
-          "unique_annotated_absent_from_native": 87
+          "replies": 73,
+          "unique_annotated_absent_from_native": 148,
+          "unique_physical": 4713,
+          "unique_physical_absent_from_native": 2353
         },
         "completion_read": {
-          "replies": 44,
-          "unique_physical": 1639,
+          "first_exposure_annotated": 219,
           "first_exposure_physical": 1348,
-          "first_exposure_annotated": 17,
           "repeated_line_deliveries": 416,
-          "unique_physical_absent_from_native": 1172,
-          "unique_annotated_absent_from_native": 24
+          "replies": 44,
+          "unique_annotated_absent_from_native": 169,
+          "unique_physical": 1639,
+          "unique_physical_absent_from_native": 1172
         },
         "graph": {
-          "replies": 24,
-          "unique_physical": 358,
-          "first_exposure_physical": 358,
           "first_exposure_annotated": 139,
+          "first_exposure_physical": 358,
           "repeated_line_deliveries": 0,
-          "unique_physical_absent_from_native": 115,
-          "unique_annotated_absent_from_native": 49
+          "replies": 24,
+          "unique_annotated_absent_from_native": 49,
+          "unique_physical": 358,
+          "unique_physical_absent_from_native": 115
         },
         "grep": {
-          "replies": 115,
-          "unique_physical": 1130,
+          "first_exposure_annotated": 204,
           "first_exposure_physical": 1096,
-          "first_exposure_annotated": 108,
           "repeated_line_deliveries": 41,
-          "unique_physical_absent_from_native": 408,
-          "unique_annotated_absent_from_native": 15
+          "replies": 115,
+          "unique_annotated_absent_from_native": 17,
+          "unique_physical": 1130,
+          "unique_physical_absent_from_native": 408
         },
         "read": {
-          "replies": 109,
-          "unique_physical": 10779,
+          "first_exposure_annotated": 2531,
           "first_exposure_physical": 9950,
-          "first_exposure_annotated": 1020,
           "repeated_line_deliveries": 829,
-          "unique_physical_absent_from_native": 1170,
-          "unique_annotated_absent_from_native": 60
+          "replies": 109,
+          "unique_annotated_absent_from_native": 141,
+          "unique_physical": 10779,
+          "unique_physical_absent_from_native": 1170
         }
       },
       "fixed_trace_removal": {
         "without_grep_completion": {
-          "lost_physical": 3858,
-          "lost_annotated": 410
+          "lost_annotated": 635,
+          "lost_physical": 3858
         },
         "without_any_completion": {
-          "lost_physical": 5464,
-          "lost_annotated": 501
+          "lost_annotated": 957,
+          "lost_physical": 5464
         }
       },
       "cases": [
@@ -7115,7 +7165,7 @@
               "replies": 6,
               "unique_physical": 385,
               "first_exposure_physical": 302,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 50,
               "repeated_line_deliveries": 83,
               "unique_physical_absent_from_native": 90,
               "unique_annotated_absent_from_native": 0
@@ -7273,7 +7323,7 @@
               "replies": 11,
               "unique_physical": 111,
               "first_exposure_physical": 108,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 14,
               "repeated_line_deliveries": 4,
               "unique_physical_absent_from_native": 64,
               "unique_annotated_absent_from_native": 0
@@ -7282,7 +7332,7 @@
               "replies": 8,
               "unique_physical": 598,
               "first_exposure_physical": 450,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 40,
               "repeated_line_deliveries": 148,
               "unique_physical_absent_from_native": 217,
               "unique_annotated_absent_from_native": 0
@@ -7300,19 +7350,19 @@
               "replies": 7,
               "unique_physical": 1000,
               "first_exposure_physical": 972,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 404,
               "repeated_line_deliveries": 28,
               "unique_physical_absent_from_native": 150,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 40
             },
             "completion_read": {
               "replies": 3,
               "unique_physical": 220,
               "first_exposure_physical": 218,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 174,
               "repeated_line_deliveries": 2,
               "unique_physical_absent_from_native": 155,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 119
             }
           },
           "completion_characters": {
@@ -7322,11 +7372,11 @@
           "fixed_trace_removal": {
             "without_grep_completion": {
               "lost_physical": 438,
-              "lost_annotated": 0
+              "lost_annotated": 40
             },
             "without_any_completion": {
               "lost_physical": 656,
-              "lost_annotated": 0
+              "lost_annotated": 214
             }
           }
         },
@@ -7338,7 +7388,7 @@
               "replies": 4,
               "unique_physical": 17,
               "first_exposure_physical": 16,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 9,
               "repeated_line_deliveries": 1,
               "unique_physical_absent_from_native": 1,
               "unique_annotated_absent_from_native": 0
@@ -7356,7 +7406,7 @@
               "replies": 4,
               "unique_physical": 511,
               "first_exposure_physical": 502,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 152,
               "repeated_line_deliveries": 9,
               "unique_physical_absent_from_native": 15,
               "unique_annotated_absent_from_native": 0
@@ -7365,10 +7415,10 @@
               "replies": 2,
               "unique_physical": 88,
               "first_exposure_physical": 88,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 88,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 11,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 11
             }
           },
           "completion_characters": {
@@ -7377,11 +7427,11 @@
           "fixed_trace_removal": {
             "without_grep_completion": {
               "lost_physical": 88,
-              "lost_annotated": 0
+              "lost_annotated": 88
             },
             "without_any_completion": {
               "lost_physical": 88,
-              "lost_annotated": 0
+              "lost_annotated": 88
             }
           }
         },
@@ -7393,7 +7443,7 @@
               "replies": 3,
               "unique_physical": 40,
               "first_exposure_physical": 40,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 11,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -7402,7 +7452,7 @@
               "replies": 1,
               "unique_physical": 320,
               "first_exposure_physical": 300,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 196,
               "repeated_line_deliveries": 20,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -7513,7 +7563,7 @@
               "replies": 6,
               "unique_physical": 38,
               "first_exposure_physical": 38,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 16,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -7522,10 +7572,10 @@
               "replies": 4,
               "unique_physical": 231,
               "first_exposure_physical": 231,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 95,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 117,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 50
             },
             "graph": {
               "replies": 1,
@@ -7540,7 +7590,7 @@
               "replies": 5,
               "unique_physical": 296,
               "first_exposure_physical": 281,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 50,
               "repeated_line_deliveries": 15,
               "unique_physical_absent_from_native": 10,
               "unique_annotated_absent_from_native": 0
@@ -7549,10 +7599,10 @@
               "replies": 3,
               "unique_physical": 65,
               "first_exposure_physical": 52,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 25,
               "repeated_line_deliveries": 13,
               "unique_physical_absent_from_native": 40,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 23
             }
           },
           "completion_characters": {
@@ -7562,11 +7612,11 @@
           "fixed_trace_removal": {
             "without_grep_completion": {
               "lost_physical": 211,
-              "lost_annotated": 0
+              "lost_annotated": 75
             },
             "without_any_completion": {
               "lost_physical": 273,
-              "lost_annotated": 0
+              "lost_annotated": 110
             }
           }
         },
@@ -7633,16 +7683,16 @@
               "replies": 4,
               "unique_physical": 26,
               "first_exposure_physical": 26,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 7,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 16,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 2
             },
             "completion_grep": {
               "replies": 1,
               "unique_physical": 8,
               "first_exposure_physical": 8,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 8,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -7660,10 +7710,10 @@
               "replies": 4,
               "unique_physical": 241,
               "first_exposure_physical": 226,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 117,
               "repeated_line_deliveries": 15,
               "unique_physical_absent_from_native": 20,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 20
             }
           },
           "completion_characters": {
@@ -7743,7 +7793,7 @@
               "replies": 6,
               "unique_physical": 122,
               "first_exposure_physical": 117,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 9,
               "repeated_line_deliveries": 6,
               "unique_physical_absent_from_native": 11,
               "unique_annotated_absent_from_native": 0
@@ -7752,7 +7802,7 @@
               "replies": 5,
               "unique_physical": 305,
               "first_exposure_physical": 290,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 1,
               "repeated_line_deliveries": 15,
               "unique_physical_absent_from_native": 169,
               "unique_annotated_absent_from_native": 0
@@ -7770,7 +7820,7 @@
               "replies": 15,
               "unique_physical": 707,
               "first_exposure_physical": 655,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 170,
               "repeated_line_deliveries": 52,
               "unique_physical_absent_from_native": 30,
               "unique_annotated_absent_from_native": 0
@@ -8133,7 +8183,7 @@
               "replies": 3,
               "unique_physical": 29,
               "first_exposure_physical": 28,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 26,
               "repeated_line_deliveries": 1,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -8142,7 +8192,7 @@
               "replies": 3,
               "unique_physical": 129,
               "first_exposure_physical": 129,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 91,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 1,
               "unique_annotated_absent_from_native": 0
@@ -8160,19 +8210,19 @@
               "replies": 2,
               "unique_physical": 204,
               "first_exposure_physical": 134,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 134,
               "repeated_line_deliveries": 70,
               "unique_physical_absent_from_native": 21,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 21
             },
             "completion_read": {
               "replies": 1,
               "unique_physical": 11,
               "first_exposure_physical": 3,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 3,
               "repeated_line_deliveries": 8,
               "unique_physical_absent_from_native": 3,
-              "unique_annotated_absent_from_native": 0
+              "unique_annotated_absent_from_native": 3
             }
           },
           "completion_characters": {
@@ -8182,11 +8232,11 @@
           "fixed_trace_removal": {
             "without_grep_completion": {
               "lost_physical": 60,
-              "lost_annotated": 0
+              "lost_annotated": 22
             },
             "without_any_completion": {
               "lost_physical": 71,
-              "lost_annotated": 0
+              "lost_annotated": 33
             }
           }
         },
@@ -8198,7 +8248,7 @@
               "replies": 2,
               "unique_physical": 13,
               "first_exposure_physical": 13,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 1,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -8207,7 +8257,7 @@
               "replies": 2,
               "unique_physical": 100,
               "first_exposure_physical": 100,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 12,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -8225,7 +8275,7 @@
               "replies": 3,
               "unique_physical": 214,
               "first_exposure_physical": 207,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 1,
               "repeated_line_deliveries": 7,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -8251,7 +8301,7 @@
             },
             "without_any_completion": {
               "lost_physical": 163,
-              "lost_annotated": 0
+              "lost_annotated": 11
             }
           }
         },
@@ -8393,7 +8443,7 @@
               "replies": 2,
               "unique_physical": 33,
               "first_exposure_physical": 33,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 3,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 22,
               "unique_annotated_absent_from_native": 0
@@ -8402,7 +8452,7 @@
               "replies": 1,
               "unique_physical": 95,
               "first_exposure_physical": 95,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 7,
               "repeated_line_deliveries": 0,
               "unique_physical_absent_from_native": 88,
               "unique_annotated_absent_from_native": 0
@@ -8420,7 +8470,7 @@
               "replies": 3,
               "unique_physical": 320,
               "first_exposure_physical": 307,
-              "first_exposure_annotated": 0,
+              "first_exposure_annotated": 237,
               "repeated_line_deliveries": 13,
               "unique_physical_absent_from_native": 0,
               "unique_annotated_absent_from_native": 0
@@ -8507,7 +8557,8 @@
         }
       ],
       "model_calls": 0,
-      "quality_score": null
+      "quality_score": null,
+      "annotation_correction_protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43"
     },
     "prepared_graph_fixed_query_replay": {
       "scope": "Fixed-query graph replay only; annotations checked after retrieving source. Zero model calls, no quality score.",
@@ -8528,9 +8579,9 @@
           "available": 19,
           "queries": 24,
           "new_physical_at_delivery": 932,
-          "new_annotated_at_delivery": 154,
+          "new_annotated_at_delivery": 356,
           "new_physical_absent_from_native": 556,
-          "new_annotated_absent_from_native": 49
+          "new_annotated_absent_from_native": 194
         }
       },
       "cases": [
@@ -8669,9 +8720,9 @@
                 "source_returned": 1
               },
               "new_physical_at_delivery": 202,
-              "new_annotated_at_delivery": 0,
+              "new_annotated_at_delivery": 202,
               "new_physical_absent_from_native": 145,
-              "new_annotated_absent_from_native": 0
+              "new_annotated_absent_from_native": 145
             }
           }
         },
@@ -9211,7 +9262,8 @@
         }
       ],
       "model_calls": 0,
-      "quality_score": null
+      "quality_score": null,
+      "annotation_correction_protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43"
     },
     "validation": {
       "related_unit_passed": 158,
@@ -9220,7 +9272,7 @@
       "model_calls": 0,
       "budget_refill_regression_reproduced": true
     },
-    "next_gate": "Change graph query timing or target selection to demonstrate useful source beyond matched native observations before another quality batch. Retain both failed quality gates and the sealed independent 32.",
+    "next_gate": "Late relationship pilot completes all three arms but graph-source novelty beyond native reaches only C, so its two-language development gate fails. Diagnose oversized definitions and missing graph definitions before a revised controlled candidate; no official 500.",
     "initial_budget_refill_replay": {
       "scope": "Fixed-trajectory source replay only; no model calls or new quality score.",
       "n": 24,
@@ -11455,5 +11507,17 @@
       "model_calls": 0,
       "quality_score": null
     }
+  },
+  "annotation_path_correction": {
+    "scope": "Retrospective auxiliary-overlap correction using the pinned official Gold.line_spans_init() path normalization. Original frozen experiment files remain unchanged. The listed auxiliary count blocks are amended here; official scores, confidence intervals and model outputs are unchanged.",
+    "artifact": "contextbench_annotation_correction.json",
+    "protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43",
+    "amended_blocks": [
+      "development_source_attribution",
+      "first_callable_source_24_development.final_source_set_diagnostic",
+      "offline_graph_preparation_24.source_replay",
+      "completion_source_followup.existing_source_attribution",
+      "completion_source_followup.prepared_graph_fixed_query_replay"
+    ]
   }
 }

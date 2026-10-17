@@ -39,7 +39,7 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. Optional conversation-aware completion removes 726 repeated line deliveries in the fixed 24-task replay with identical cumulative source, reducing reply characters 3.63%. It preserves the original callable selection and has no online quality result. | Preserve useful grep completion; validate the changed policy in fresh matched development runs before any new independent selection. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
-| Directed graph navigation | The 24-task first-source policy fails: Recall 53.35% → 54.02%, F1 31.18% → 30.15%. A fresh preparation attempt has 14/24 graphs; an authenticated composition has 19/24. Replaying the same actual graph queries with that composition increases delivery-time annotated novelty 139 → 154, but annotations absent from the native control remain 49 lines on one Go task. | Improve query timing and target selection; graph availability alone does not justify another quality cohort. Correct remaining PATH/preparation failures without treating availability as quality. No new independent validation, product promotion or full-500 launch. |
+| Directed graph navigation | The 24-task first-source policy fails its quality gate. Canonical-path correction shows composed-graph replay adds 194 annotated lines absent from native across C/Go, versus 49 before. The fresh late-check eight-task pilot completes all three arms: Recall 39.85% → 41.62%, F1 32.85% → 35.29%, both primary intervals crossing zero. Only C gains annotated graph source beyond native, so its two-language gate fails. | Diagnose oversized-neighbor delivery and definition coverage at observed anchors before a revised matched candidate. Preserve canonical annotation paths, all failed gates and the sealed independent 32. No product promotion or full-500 launch. |
 | Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The Multi fmt native adapter passes its reference/control check, and its one-task development solver pair resolves in both arms, 1/1 each, passing 18 tests with ten confirmed model inputs. | Extend other Multi repositories, Poly/Pro coverage and source-line attribution from actual solver observations. The fmt retrieval had no available graph, so the pair establishes neither a graph-source contribution nor a broader comparative Pass@1 gain. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -100,7 +100,7 @@ can exceed an observed guard. Unknown or invalid metering stops later cases.
 
 The completed independent retrieval arms report **$23.673179** in SDK estimates;
 their one-task paired solver check adds **$0.828001**. Across this October 16
-program, known metering totals **$65.164126**, plus one aborted development solver
+program, known metering totals **$71.960832**, plus one aborted development solver
 attempt and one interrupted retrieval case with unknown metering.
 Standalone API-key inference calls and their
 charges remain zero. Actual subscription billing is unknown. The independent
@@ -193,12 +193,14 @@ The targeted-hop candidate's three source-returning graph calls contain 220
 physical lines, **all already observed**. Successful calls alone did not establish
 additional coverage. The next development gate must measure previously unobserved,
 relevant source before spending another independent validation selection.
+The annotation counts below include the retrospective official-path correction;
+the original raw-path receipts remain archived with the correction record.
 
 | Existing eight-task trace | New grep-completion lines / annotated | New read-completion lines / annotated |
 | --- | ---: | ---: |
-| Initial function-completion arm | 1,901 / 255 | 584 / 98 |
-| Targeted-hop function control | 1,931 / 257 | 640 / 89 |
-| Targeted-hop graph candidate | 2,123 / 248 | 382 / 83 |
+| Initial function-completion arm | 1,901 / 381 | 584 / 108 |
+| Targeted-hop function control | 1,931 / 335 | 640 / 102 |
+| Targeted-hop graph candidate | 2,123 / 278 | 382 / 115 |
 
 Grep completion supplies 75–85% of completion's new physical lines, but also most
 of its newly observed annotated lines. Disabling it may lose useful coverage;
@@ -400,8 +402,9 @@ the owned temporary clone; the existing bounded worker owns their cleanup.
 A post-hoc final-source comparison retains every one of the 24 tasks. Of the
 139 annotated graph lines new at delivery, 90 are also read by the native control
 and only 49 are absent from it, all on one Go task. Candidate final source adds
-5,151 physical lines and omits 4,204 native-read lines, including 185 added and
-105 omitted annotated lines. These physical counts are not official macro
+5,151 physical lines and omits 4,204 native-read lines, including 472 added and
+464 omitted annotated lines after canonical path normalization. These physical
+counts are not official macro
 scores; the interrupted function-only arm prevents causal decomposition. The
 next hypothesis should emphasize selective navigation and coverage beyond the
 matched native trajectory, rather than advancing on graph availability alone.
@@ -409,9 +412,9 @@ No new model calls or quality scores are produced by this diagnostic.
 
 ### Conversation-aware completion and fixed-query follow-up
 
-Source attribution on all 24 existing candidate trajectories finds 552 annotated
+Source attribution on all 24 existing candidate trajectories finds 894 annotated
 lines first exposed by grep completion. Removing grep completion while holding
-all later tool calls fixed would lose 410 annotated physical lines, so a blanket
+all later tool calls fixed would lose 635 annotated physical lines, so a blanket
 grep-completion removal is not a supported next policy. Function completion also
 repeats 726 previously delivered physical lines: 310 in grep additions and 416
 in read additions. These counts include physical blank/comment lines and are
@@ -450,14 +453,102 @@ a simultaneous graph-policy change.
 The actual-query graph replay uses the same 24 old candidate queries and
 prefixes for both prior and composed artifacts. All old responses reproduce
 exactly. With 19 available graphs instead of eleven, new physical source rises
-358 → 932 and annotated source at delivery rises 139 → 154. Annotated source
-absent from the complete native trajectory stays at 49 lines on one Go task.
-The next useful graph experiment must change query timing/selection; availability
-alone does not provide the required mechanism evidence. Private diagnostics,
+358 → 932 and canonical annotated source at delivery rises 139 → 356. Annotated
+source absent from the complete native trajectory rises 49 → 194 lines, with
+145 on C and 49 on Go. The earlier 49 → 49 claim missed container-prefixed
+annotations and is withdrawn. This is useful offline source evidence, while
+query timing/selection and fresh agent quality still require measurement. Private diagnostics,
 hashes and source-bearing replay outputs remain under
 `verification/contextbench-completion-source-diagnostic/`; sanitized counts are
 in the existing public development asset. The independent 32 remains sealed and
 both failed quality gates remain in force.
+
+### Late issue-directed graph development control
+
+The offline 24-task anchor probe preserves all source snapshots and the composed
+19-graph inputs. For each available graph it queries incoming and outgoing
+references, at five results, 2,048 tokens and 1,000 raw edges per direction.
+Anchors and replies are fixed before annotations are checked. The first anchor
+comes from the first native read intersecting a callable, with ties by observed
+line count, shorter span and lexical node ID. A late-same control uses that anchor
+with the full native prefix. A late-issue diagnostic ranks all actually observed
+callables with the existing code-tokenized BM25 over symbol/file names.
+
+All three policies make 38 queries. Annotated source absent from the full native
+trajectory is 80 lines for both early-first and late-same, versus 50 for BM25;
+the latter loses 30 Python lines and keeps only Go coverage. This is a negative
+result for delay alone and this static ranking, not an online quality estimate.
+All frozen input/runtime hashes match. Private source-bearing responses stay in
+`verification/contextbench-late-graph-probe-20261016/`.
+
+Runtime `5b91323c` adds an explicit `late_issue_reference_hop` prompt policy to
+both runners, preserving the previous default and common non-graph prompt.
+The model must investigate first, state a concrete unresolved relationship,
+choose a previously observed callable by issue behavior, and query before its
+final handoff. It may make at most two graph calls by prompt; the analysis audits
+that limit rather than implying a hard quota. The model does not use the probe's
+BM25 ranking. Configuration, resume validation and direct timing comparisons
+retain the option and reject confounding source/budget/tool changes. Native and
+SDK regressions verify the actual received prompt, tool inventory and unchanged
+source receipts. The related unit tier has 165 passing tests; four pinned
+integration tests also pass.
+
+The new protocol selects the first task per language in the unchanged 24-task
+development order, with no substitution and no overlap with the sealed 32.
+All eight source records and seven available graphs are authenticated projections
+of existing inputs. Three fresh arms share Opus 5.5, 20 turns, 600 seconds,
+2,048-token completion/graph limits, conversation-aware completion, and $2/case
+and $6/arm SDK-meter guards. The total observed-meter stop threshold is $18;
+this is not an account bill or an exact cap on an in-flight turn. Existing Max
+remains the route, without API fallback. The primary comparison is graph plus
+completion against native; completion/native and graph/completion are separate
+exploratory contrasts. Runtime, source, graph, selection and analysis hashes are
+frozen before inference under `verification/contextbench-late-graph-8-20261016/`.
+
+The predeclared development gate requires all selected tasks to finish and score,
+known terminal metering, use of every available graph, at most two graph calls
+per task, observed anchors after at least two source replies, and confirmed
+delivery. At least two languages must receive annotated graph source absent from
+the complete matched native trajectory. Primary Recall must increase and F1 must
+not decrease. Passing would only select a development candidate; a new independent
+protocol and broader native solver evidence would still be required.
+
+All three arms complete and officially score 8/8, with known terminal usage,
+actual `claude-opus-5-5`, eight Max-authenticated sessions per arm and no API-key
+source or unavailable tool attempts. Native/function/graph Recall is
+39.85%/40.40%/41.62%; F1 is 32.85%/31.38%/35.29%. The primary Recall difference
+is +1.77 points, interval [-4.36, +8.23], and F1 +2.45, interval [-1.06, +7.06].
+The secondary graph/functions F1 difference is +3.91 points, interval
+[+0.33, +8.92], without multiplicity adjustment. This is development evidence.
+
+Nine graph calls respect the count/timing/observed-anchor gates and cover all
+seven available graphs. They return 220 new physical lines: 200 C and 20 Rust.
+Canonical annotation overlap is 200 C lines, 197 absent from the matched native
+trace, and zero on Rust. The two-language gate fails; the point-score gates pass.
+Python/Go report no unseen neighbors, TypeScript/C++ have oversized source,
+Java has no graph, and JavaScript has two missing-definition responses. The next
+mechanism checks concern bounded neighbor source and definition coverage.
+
+The fixed-trajectory source-removal audit reproduces all eight original
+predictions. Removing graph replies while preserving every later call changes
+Recall 41.62% → 39.80% and F1 35.29% → 34.00%; all Recall loss belongs to C.
+This establishes direct source-score contribution only, not a counterfactual
+agent outcome. Runtime and input hashes match through scoring and the audit.
+SDK estimates total $6.796707 ($2.038043 native, $2.433953 functions, $2.324711
+graph), below the $18 stop threshold. Actual subscription billing remains unknown.
+
+The source-removal check exposed an auxiliary diagnostic bug: ten of the 24
+development tasks have container-prefixed annotations. Raw string intersection
+missed them, although official scoring already normalized them. The evaluator
+bridge now emits `Gold.line_spans_init()` as `gold_line_spans`; six native
+integration variants cover relative, `/testbed/` and `/workspace/<repo>/` paths,
+with and without a model patch. A zero-model audit corrects the saved 8/24-task
+source diagnostics using the same pinned normalizer, without rebuilding source,
+rerunning models or changing official metrics. It retains the original frozen
+results and publishes explicit amendments in
+`docs/assets/contextbench_annotation_correction.json`. The late pilot remains
+rejected under its original two-language criterion. Independent validation and
+official-500 gates remain closed.
 
 ### Broader offline graph preparation outcome
 
@@ -472,7 +563,7 @@ changes prevent a causal preparation-policy claim.
 
 A fixed-prefix replay chooses anchors without annotations and tests both edge
 directions before checking annotation overlap. New physical lines change
-687 → 890; annotated lines change 177 → 43, including the lost Go coverage.
+687 → 890; canonical annotated lines change 177 → 44, including the lost Go coverage.
 It makes zero model calls and does not measure online agent adoption or quality.
 A separate future input uses fresh available graphs and otherwise authenticated
 same-source prior artifacts, producing 19/24 available graphs. It retains all
