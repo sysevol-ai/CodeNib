@@ -250,6 +250,7 @@ def freeze_solver(output, mini_root):
         **{
             f"mini/{name}": mini_root / "minisweagent" / name
             for name in (
+                "__init__.py",
                 "agents/default.py",
                 "environments/docker.py",
                 "config/extra/swebench.yaml",
@@ -274,7 +275,6 @@ def run(args):
     cli = shutil.which("claude")
     if not cli:
         raise ValueError("Claude CLI unavailable")
-    auth = subscription_auth(cli)
     commit = subprocess.check_output(
         ["git", "-C", str(args.upstream), "rev-parse", "HEAD"], text=True
     ).strip()
@@ -312,6 +312,9 @@ def run(args):
     from minisweagent.agents.default import DefaultAgent
     from minisweagent.environments.docker import DockerEnvironment
 
+    # The native package initializer can load a user-global dotenv file. Check
+    # the effective provider route after that import, before any model request.
+    auth = subscription_auth(cli)
     config_path = mini_root / "minisweagent/config/extra/swebench.yaml"
     config = yaml.safe_load(config_path.read_text())
     config["agent"].update(
