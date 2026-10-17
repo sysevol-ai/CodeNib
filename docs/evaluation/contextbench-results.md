@@ -15,6 +15,52 @@ repository-held-out. No new repairs or full500 quality result.
 The canonical500 context-only native stage is now running under the separately
 frozen protocol below; it includes known cases and is not a fresh independent500.
 
+An interim **native-only baseline** now scores **122/122 valid cases** with the
+pinned official evaluator. Line Recall is **76.81%**, precision **30.75%**, and
+task-macro F1 **39.00%**. File Recall/F1 is **80.32%/44.33%**; block
+(official symbol) Recall/F1 is **81.78%/35.07%**. This is every completed case in
+one frozen continuation snapshot: 58 Python, 34 JavaScript, 26 TypeScript and
+4 Go tasks across 16 repository clusters. Completion order is not random; this
+is neither all500 nor an enhanced-versus-native comparison, and it cannot be
+compared directly with the earlier32 or used to claim a leaderboard rank.
+Scoring makes **zero model calls and $0 new API usage**.
+
+The published leader's original predictions cover **all the same122 IDs**.
+Re-scoring those predictions with our exact Gold/source inputs and the same
+pinned evaluator/environment gives122 valid cases on both sides:
+
+| Same122 tasks, line-level task macro | Native Opus 5.5 + CodeNib source tools | openJiuwen-JiuwenSwarm + DeepSeek-V4-Pro |
+| --- | ---: | ---: |
+| Recall | 76.81% | 79.24% |
+| Precision | 30.75% | 21.12% |
+| F1 | 39.00% | 29.65% |
+
+Native Recall is **2.43 points lower**, while F1 is **9.35 points higher**.
+The public reported scores have one parser failure in this subset; the common
+environment scores all122 instead of silently dropping that case. Original
+public artifacts and hashes remain. This is a same-task comparison between
+different models/harnesses, not a CodeNib enhancement ablation or all500 rank.
+The [official submission](https://github.com/ContextBench/contextbench.github.io/tree/a40dfa6b16f14cafd2b1cc46faf0969b38ef03b9/submissions/2026-09-12_openjiuwen-jiuwenswarm)
+includes issue resolution, while this native run is context-only; cost and
+resolution results are not matched. Local re-scoring adds no model/API calls.
+
+The current baseline uses CodeNib's bounded `read`/`grep`/`glob` tools,
+repository-bound adapters and consumed-source trajectory/evaluator bridge.
+It uses no semantic graph, vector retrieval, BM25 or Jev reranking. The planned
+late4K compiler packs unread source from already located files; its outputs
+have not yet been consumed on these122 tasks. High native scores therefore do
+not establish a gain from that compiler or CodeNib's indexed retrieval.
+
+The user-requested interim report prospectively changes the annotation schedule:
+these122 actual-source predictions were sealed before their selected Gold was
+read, while remaining investigations and all443 new candidate consumers are
+still incomplete. Preserve the original full500-before-first-new-Gold schedule
+as **not followed**. Runtime gold stays empty; the frozen model, tools, compiler,
+population and budgets do not change or use these results. Final full500 results
+must disclose this prior annotation access and keep the three32 cohorts sealed.
+Earlier untouched-pool counts predate this interim; refresh exposure metadata
+before any future independent selection.
+
 The cheaper Max-to-Batch execution route now **passes a four-task development
 engineering check**: four normal Max investigations and eight normal Batch packet
 inputs cost **$0.430218** in new API usage. The **$1.2485557** Max SDK estimate
@@ -708,15 +754,18 @@ billing cap. **36 mocked SDK boundary tests**, then **142 relevant local tests**
 pass, including late quota events and missing-event terminal metering. Pinned
 hooks pass; no billed test tier runs.
 
-As of **2026-10-17 19:25 UTC**, **4/257** new investigations are accepted,
-with **253** remaining; the source-receipt continuation is live. Known new Max
-nominal usage across all canonical500 execution phases is **$19.99655550**,
+At the **2026-10-17 20:28 UTC** interim snapshot, **122/257** new investigations
+are accepted, with **135** remaining and **365/500 native records** in total;
+the source-receipt continuation is live. Known new Max
+nominal usage across all canonical500 execution phases is **$46.58501650**,
 plus the one original unknown terminal usage. New API usage is **$0**. Source-only
 replay verifies all242 retained prefixes and all56 prior cumulative pairs. Actual
 errors remain in the trajectory, and unavailable/rejected actions gain no source.
 Two workers retain exclusive durable per-case intent; unexpected receipts stop
-later dispatch, with no unreconciled-intent relaunch. No intermediate quality
-scores are computed; quota metadata is not a provider billing cap/reservation.
+later dispatch, with no unreconciled-intent relaunch. The122 native predictions
+are sealed and then scored separately under interim protocol `853d663c`; they
+establish only the baseline reported above. No new enhanced comparison is
+available. Quota metadata is not a provider billing cap/reservation.
 
 The cumulative baseline uses source already consumed by the investigator.
 All56 original native-packet source unions equal those prefixes. **443** new
@@ -732,20 +781,23 @@ candidate inputs, retaining the failed position explicitly. Free provider counts
 full output caps, margin and headroom must fit the same **$40** reservation before
 one paid Batch create. Known API usage stays **$59.09398873** under the **$100**
 ceiling. No new Batch/free-count/repair call has started at this checkpoint.
-Freeze all500 terminal predictions and raw receipts before reading annotations,
+Freeze all500 terminal predictions and raw receipts before final all500 scoring,
 then report all500 file/block/line Recall, F1 and costs with the operational
-amendment and failed case disclosed. Formal submission separately needs real
+amendments, earlier122-case annotation access and failed case disclosed. The
+original no-interim-Gold timing gate must not be reported as passed. Formal
+submission separately needs real
 native outcomes and complete raw archives. Draft
 [PR #834](https://github.com/sysevol-ai/CodeNib/pull/834) remains unmerged.
 
-Raw archival preparation now covers **190 ended native attempts**, including the
+Raw archival preparation now covers **243 ended native attempts**, including the
 original interrupted one, and **112 already consumed standard Messages**. The
-new65-case group and original125-case group have disjoint task IDs. Across them,
-**639 file members** (**598 distinct member paths**) round-trip byte-identically;
+125/65/53-case groups have disjoint task IDs and retain the capacity phase's
+original rejected-action strict gate. Across them,
+**796 file members** (**713 distinct member paths**) round-trip byte-identically;
 overlapping implementation/configuration names have identical hashes. There are
-**5 gzip tar-stream parts**, **9,906,981 compressed bytes** total; the largest
+**7 gzip tar-stream parts**, **11,568,526 compressed bytes** total; the largest
 part is **4,258,086 bytes**, below the official50MiB cap. This is a partial local
-archive, not complete500 evidence or new quality scoring. Active310 native
+archive, not complete500 evidence or new quality scoring. Current257 native
 outputs, new443 Batch results, evaluation/native outcomes and publication review
 remain open. A source-only audit verifies all500 evaluator target paths match the
 recorded snapshots, including119 aliases to retained trees; no duplicate source
