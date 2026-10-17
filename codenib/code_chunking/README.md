@@ -65,6 +65,11 @@ Controlled by the `chunk_depth` parameter in `BaseCodeChunker`:
 | `macro` | L1 | `preproc_def`, `preproc_function_def` | `#define MAX 100` |
 | `method` | L2 | method inside class body | `void start() {}` |
 
+Callable ranges include conversion and overloaded operators, destructors,
+qualified definitions, and pointer/reference declarators. Names follow the
+declarator chain, excluding parameter identifiers; conversion names retain the
+target type and its qualifiers.
+
 ### C# (`csharp_chunker.py`)
 
 | chunk_type | Level | AST node | Example |

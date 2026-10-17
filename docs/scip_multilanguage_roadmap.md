@@ -54,6 +54,18 @@ keep the native config path. Focused regression and SCIP/compiler unit checks
 cover these boundaries; this does not promote a backend or regenerate hosted
 graph artifacts.
 
+Assigned JavaScript function selection in the existing LSP route is corrected
+in draft [#834](https://github.com/sysevol-ai/CodeNib/pull/834). When
+`typescript-language-server` drops a compiler name span before its initializer,
+reference lookup otherwise queries the function body and can return no results.
+The shared LSP client recovers only an unambiguous TypeScript `navtree` name span
+with an exact name/body match, and only when the server advertises the command.
+Existing LSP indexing and incremental updates consume the corrected selection;
+unavailable, stale or conflicting compiler evidence keeps the original symbol.
+The regression reproduces the old failure; 206 related tests pass. This fixes
+LSP selection, while the active SCIP provider's missing property-assignment
+definitions remain a separate limitation. No backend or schema is promoted.
+
 ## Archived Layered Goal
 
 The completed multi-language SCIP cold-start and acceleration program required:
@@ -844,6 +856,18 @@ policy: `auto` may build one compatible graph from the then-current generation,
 while `required` fails closed. Callers restart the provider to adopt a later
 generation.
 
+The current normalization profile is `clangd-native-normalization-v4`:
+compiler `ConversionFunction` kind 24 maps to a method in both Python and
+native queries, including the callable display suffix. Old native profile
+contracts are rejected. The accompanying C/C++ declarator fix retains conversion
+and overloaded operators, destructors and wrapped/qualified function names.
+Three source-bound development graphs regenerate with all symbol IDs, file
+identities, selection points and edges unchanged; 2,127 ranges and 101 conversion
+kinds are corrected. Existing materialized graphs require regeneration. The
+198-test targeted unit tier and three C++ integration tests pass with the rebuilt
+binding ([#834](https://github.com/sysevol-ai/CodeNib/pull/834)). This correctness
+repair changes neither the acceleration gate nor the prior performance claim.
+
 The 2026-08-10 snapshot-enabled `cpp_simple` recheck used 223 shards and five
 alternating rounds with exact result parity. Median complete-graph startup was
 157.7 ms versus 23.9 ms for the native path, an 84.8% improvement after both
@@ -870,6 +894,19 @@ runtime metadata expose the selected backend, fallback reason, capabilities,
 and native snapshot identity. The maintained profiler now validates both raw
 query parity and MCP serialization/public-error parity and publishes a separate
 `mcp_consumer_decision` over startup plus consumer work.
+
+Current graph-range correctness follow-up
+([#834](https://github.com/sysevol-ai/CodeNib/pull/834)): materialized clangd graphs
+choose the smallest containing tree-sitter range for a compiler definition.
+Previously the first overlapping chunk could assign distinct methods one large
+range and select an unrelated symbol for a line query. Three cached development
+graphs reproduce exactly before the fix; 38 ranges shrink afterward while all
+compiler identities, selection points and edges remain exact. The old regression
+fails, then passes for both chunk orders, and all 48 compiled clangd query tests
+pass. Both provider routes share this materializer; the native graph-free index,
+serialized schema and acceleration gates remain unchanged. Frozen benchmark
+graphs retain their original ranges. The fixed-query replay adds no source
+coverage and does not establish a ContextBench quality gain.
 
 The 2026-08-10 consumer-boundary gate used 223 `cpp_simple` shards, five
 alternating measured rounds, and 100 deterministic symbol requests per round.

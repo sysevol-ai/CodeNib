@@ -2241,7 +2241,9 @@ class SymbolGraphBuilder:
             output_dir,
             receipts=result.decoded_input_receipts,
             languages=list(result.available_languages),
-            multi_language_layout=len(graph_languages) != 1,
+            # JS/TS aliases share one router backend and a single-language
+            # artifact layout, even when both source languages were requested.
+            multi_language_layout=len(result.requested_languages) != 1,
         )
         graph_artifact_receipt = graph_output_artifact_fingerprint(
             output_dir,

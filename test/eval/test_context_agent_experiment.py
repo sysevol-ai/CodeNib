@@ -199,6 +199,515 @@ def test_grep_format_separator_does_not_discard_seen_source(tmp_path):
     assert nodes[0].content == "value = 1\n    indented = 2"
 
 
+@pytest.mark.parametrize("policy,last_line", [("native", 1), ("functions", 3)])
+def test_function_reads_reach_next_model_turn_and_official_trajectory(
+    monkeypatch, tmp_path, policy, last_line
+):
+    (tmp_path / "a.py").write_text(
+        "def touched():\n    value = helper()\n    return value\n\n"
+        "def helper():\n    return 1\n"
+    )
+    sent = fake_post(
+        monkeypatch,
+        [
+            tool("read", {"file_path": "a.py", "offset": 1, "limit": 1}, "read"),
+            {"role": "assistant", "content": "Found the implementation."},
+            {"role": "assistant", "content": "Reviewed."},
+        ],
+    )
+    result = agent.retrieve(
+        repo=tmp_path,
+        query="Understand touched",
+        chat=chat(),
+        max_turns=4,
+        source_policy=policy,
+    )
+    delivered = next(m["content"] for m in sent[1]["messages"] if m["role"] == "tool")
+    assert "graph_neighbors" not in sent[0]["messages"][0]["content"]
+    assert ("value = helper()" in delivered) == (policy == "functions")
+    assert "return 1" not in delivered
+    predicted = agent.contextbench_prediction(
+        instance_id="case", messages=result.messages, repo_path=tmp_path
+    )
+    assert predicted["traj_data"]["pred_spans"] == {
+        "a.py": [{"start": 1, "end": last_line}]
+    }
+
+
+@pytest.mark.parametrize("query_policy", agent.GRAPH_QUERY_POLICIES)
+def test_graph_source_reaches_model_and_delivery_without_crediting_declared_range(
+    monkeypatch, tmp_path, query_policy
+):
+    from codenib.agent.tools.spec import ToolSpec
+
+    (tmp_path / "dependency.py").write_text("def target():\n    return 1\nunseen = 2\n")
+    observed = json.dumps(
+        [
+            {
+                "file": "dependency.py",
+                "definition_start": 1,
+                "definition_end": 3,
+                "content": "1 | def target():\n2 |     return 1",
+            }
+        ]
+    )
+    spec = ToolSpec(
+        tool_id="graph_neighbors",
+        description="Graph source",
+        executor_fn=lambda: observed,
+        inputs=[],
+    )
+    sent = fake_post(
+        monkeypatch,
+        [
+            tool("graph_neighbors", {}, "graph"),
+            {"role": "assistant", "content": "Found target."},
+            {"role": "assistant", "content": "Reviewed."},
+        ],
+    )
+    result = agent.retrieve(
+        repo=tmp_path,
+        query="Find dependency",
+        chat=chat(),
+        max_turns=4,
+        graph_tool=spec,
+        graph_query_policy=query_policy,
+        source_policy="functions",
+    )
+    assert "graph_neighbors" in {item["function"]["name"] for item in sent[0]["tools"]}
+    prompt = sent[0]["messages"][0]["content"]
+    assert "graph_neighbors" in prompt
+    early = query_policy == agent.GRAPH_QUERY_POLICIES[0]
+    assert (agent.GRAPH_INSTRUCTIONS in prompt) == early
+    assert (agent.LATE_GRAPH_INSTRUCTIONS in prompt) == (not early)
+    assert observed in [
+        m.get("content") for m in sent[1]["messages"] if m["role"] == "tool"
+    ]
+    nodes = agent.observed_nodes(result.messages, tmp_path)
+    assert len(nodes) == 1 and nodes[0].end_line == 1
+    prediction = agent.contextbench_prediction(
+        instance_id="case", messages=result.messages, repo_path=tmp_path
+    )
+    assert prediction["traj_data"]["pred_spans"] == {
+        "dependency.py": [{"start": 1, "end": 2}]
+    }
+
+
+def test_function_completion_grep_keeps_file_identity_and_source_limits(tmp_path):
+    (tmp_path / "a.py").write_text("def found():\n    return 3\n")
+    (tmp_path / "b.py").write_text("def other():\n    return 4\n")
+    bound = agent.bind_context_source_tool(
+        lambda **kw: "a.py:1: def found():\nb.py:1: def other():",
+        repo=tmp_path,
+        tool_id="grep",
+        source_policy="functions",
+    )
+    result = bound(path=".", pattern="def")
+    assert "a.py:2:     return 3" in result
+    assert "b.py:2:     return 4" in result
+    messages = [
+        tool("grep", {"pattern": "def"}, "grep"),
+        {"role": "tool", "tool_call_id": "grep", "content": result},
+    ]
+    assert agent.contextbench_prediction(
+        instance_id="case", messages=messages, repo_path=tmp_path
+    )["traj_data"]["pred_spans"] == {
+        "a.py": [{"start": 1, "end": 2}],
+        "b.py": [{"start": 1, "end": 2}],
+    }
+    with pytest.raises(ValueError, match="escapes"):
+        bound(path="..", pattern="def")
+
+
+@pytest.mark.parametrize("policy", ["definitions", "unseen"])
+def test_completion_uses_prior_model_inputs_without_hiding_original_reads(
+    monkeypatch, tmp_path, policy
+):
+    (tmp_path / "a.py").write_text("def found():\n    value = 3\n    return value\n")
+    sent = fake_post(
+        monkeypatch,
+        [
+            tool("read", {"file_path": "a.py", "offset": 1, "limit": 1}, "first"),
+            tool("read", {"file_path": "a.py", "offset": 2, "limit": 1}, "second"),
+            {"role": "assistant", "content": "Found it."},
+            {"role": "assistant", "content": "Reviewed."},
+        ],
+    )
+    result = agent.retrieve(
+        repo=tmp_path,
+        query="Inspect found",
+        chat=chat(),
+        max_turns=5,
+        source_policy="functions",
+        completion_source_policy=policy,
+    )
+    second = next(
+        message["content"]
+        for message in sent[2]["messages"]
+        if message.get("tool_call_id") == "second"
+    )
+    assert "value = 3" in second
+    assert ("return value" in second) == (policy == "definitions")
+    assert ("def found" in second) == (policy == "definitions")
+    assert agent.contextbench_prediction(
+        instance_id="case", messages=result.messages, repo_path=tmp_path
+    )["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 3}]}
+
+
+def test_unseen_completion_only_uses_actual_prior_source_and_current_targets(tmp_path):
+    (tmp_path / "a.py").write_text("def found():\n    value = 3\n    return value\n")
+    (tmp_path / "b.py").write_text("def unrelated():\n    return 'not requested'\n")
+    history = [
+        tool("read", {"file_path": "a.py", "limit": 100}, "prior"),
+        {"role": "tool", "tool_call_id": "prior", "content": "2 |     value = 3"},
+        tool("read", {"file_path": "b.py", "limit": 100}, "other"),
+        {"role": "tool", "tool_call_id": "other", "content": "1 | def unrelated():"},
+    ]
+    original = "a.py:1: def found():"
+    bound = agent.bind_context_source_tool(
+        lambda **kw: original,
+        repo=tmp_path,
+        tool_id="grep",
+        source_policy="functions",
+        completion_source_policy="unseen",
+        observed_source=lambda: agent.observed_nodes(history, tmp_path),
+    )
+    result = bound(path="a.py", pattern="found")
+    assert result.startswith(original)
+    assert "return value" in result
+    assert "value = 3" not in result and "not requested" not in result
+    # Stale or truncated text cannot count as observed, even with a large request.
+    history[1]["content"] = "2 |     value = 3 ... [truncated]"
+    assert "value = 3" in bound(path="a.py", pattern="found")
+    with pytest.raises(ValueError, match="observed source receipts"):
+        agent.bind_context_source_tool(
+            lambda **kw: original,
+            repo=tmp_path,
+            tool_id="grep",
+            source_policy="functions",
+            completion_source_policy="unseen",
+        )
+
+
+def test_unseen_completion_does_not_refill_budget_with_unselected_functions(tmp_path):
+    (tmp_path / "a.py").write_text(
+        "def first():\n    value = 3\n    return value\n\n"
+        "def second():\n    return 4\n"
+    )
+    history = [
+        tool("read", {"file_path": "a.py"}, "prior"),
+        {
+            "role": "tool",
+            "tool_call_id": "prior",
+            "content": "1 | def first():\n2 |     value = 3\n3 |     return value",
+        },
+    ]
+    first = "a.py:1: def first():"
+    original = first + "\na.py:5: def second():"
+    probe = agent.bind_context_source_tool(
+        lambda **kw: first, repo=tmp_path, tool_id="grep", source_policy="functions"
+    )(path="a.py", pattern="first")
+    budget = len(tiktoken.get_encoding("cl100k_base").encode(probe[len(first) :]))
+    for policy in ("definitions", "unseen"):
+        bound = agent.bind_context_source_tool(
+            lambda **kw: original,
+            repo=tmp_path,
+            tool_id="grep",
+            source_policy="functions",
+            completion_source_policy=policy,
+            completion_tokens=budget,
+            observed_source=lambda: agent.observed_nodes(history, tmp_path),
+        )
+        result = bound(path="a.py", pattern="first|second")
+        assert result.startswith(original)
+        assert ("return value" in result) == (policy == "definitions")
+        assert "return 4" not in result and "not completed" in result
+
+
+@pytest.mark.parametrize("budget,huge", [(1, False), (8192, True)])
+def test_function_completion_never_partially_delivers_an_added_callable(
+    tmp_path, budget, huge
+):
+    source = (
+        "def found():\n    value = '"
+        + ("x" * 17000 if huge else "small")
+        + "'\n    return value\n"
+    )
+    (tmp_path / "a.py").write_text(source)
+    bound = agent.bind_context_source_tool(
+        lambda **kw: "1 | def found():",
+        repo=tmp_path,
+        tool_id="read",
+        source_policy="functions",
+        completion_tokens=budget,
+    )
+    result = bound(file_path="a.py")
+    assert "value =" not in result
+    assert "not completed" in result
+    assert len(result) <= agent._MAX_RESULT_CHARS
+
+
+def test_completion_does_not_expand_names_only_or_truncated_source(tmp_path):
+    (tmp_path / "a.py").write_text("def found():\n    return 3\n")
+    for tool_id, text, args in (
+        ("grep", "a.py", {"output_mode": "files_with_matches"}),
+        ("read", "1 | def fou ... [line truncated]", {"file_path": "a.py"}),
+        ("glob", "a.py", {}),
+    ):
+        bound = agent.bind_context_source_tool(
+            lambda text=text, **kw: text,
+            repo=tmp_path,
+            tool_id=tool_id,
+            source_policy="functions",
+        )
+        assert bound(**args) == text
+
+
+@pytest.fixture
+def paired_runs(monkeypatch, tmp_path):
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    (prepared / "manifest.json").write_text("frozen")
+    cases = {key: SimpleNamespace(instance_id=key) for key in ("ok", "failed")}
+    monkeypatch.setattr(agent, "load_inputs", lambda path: ({}, cases))
+    paths = []
+    for policy, recall, precision in (("native", 1, 0.2), ("functions", 0.5, 0.5)):
+        directory = tmp_path / policy
+        (directory / "evaluation" / "trajectory").mkdir(parents=True)
+        config = {
+            "prepared": str(prepared),
+            "manifest_sha256": agent.digest(prepared / "manifest.json"),
+            "implementation": {},
+            "source_policy": policy,
+            "parameters": {"model": "same-model"},
+            "max_turns": 20,
+        }
+        (directory / "config.json").write_text(json.dumps(config))
+        scores = []
+        for key in cases:
+            record = {
+                "instance_id": key,
+                "status": "ok" if key == "ok" else "error",
+                "calls": [{"model": "actual-model"}],
+            }
+            (directory / f"{key}.json").write_text(json.dumps(record))
+            scores.append(
+                {
+                    "instance_id": key,
+                    **(
+                        {
+                            "final": {
+                                "line": {"coverage": recall, "precision": precision}
+                            }
+                        }
+                        if key == "ok"
+                        else {"error": "missing_prediction"}
+                    ),
+                }
+            )
+        (directory / "evaluation" / "trajectory" / "metrics.json").write_text(
+            json.dumps({"cases": scores})
+        )
+        (directory / "usage.json").write_text(json.dumps({"new_api_cost_usd": 1}))
+        paths.append(directory)
+    return SimpleNamespace(
+        baseline=paths[0], candidate=paths[1], output=tmp_path / "comparison.json"
+    )
+
+
+def test_paired_online_comparison_keeps_failures_and_macro_f1(paired_runs):
+    agent.compare(paired_runs)
+    result = json.loads(paired_runs.output.read_text())
+    assert result["n"] == 2
+    assert result["metrics"]["recall"]["baseline"] == 0.5
+    assert result["metrics"]["f1"]["baseline"] == pytest.approx(1 / 6)
+    assert result["metrics"]["f1"]["candidate"] == 0.25
+    assert all(arm["scoring_failures"] == 1 for arm in result["arms"])
+    assert "pass_at_1" not in result
+
+
+def test_completion_source_comparison_rejects_confounded_graph_change(paired_runs):
+    for directory, policy in (
+        (paired_runs.baseline, "definitions"),
+        (paired_runs.candidate, "unseen"),
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(source_policy="functions", completion_source_policy=policy)
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "unseen_function_source_over_definitions"
+    )
+    path = paired_runs.candidate / "config.json"
+    config["graph"] = {"enabled": True}
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="completion_source_policy"):
+        agent.compare(paired_runs)
+
+
+def test_graph_timing_comparison_rejects_source_budget_and_tool_confounders(
+    paired_runs,
+):
+    for directory, policy in zip(
+        (paired_runs.baseline, paired_runs.candidate),
+        agent.GRAPH_QUERY_POLICIES,
+        strict=True,
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(source_policy="functions", tools=["read", "graph_neighbors"])
+        config["graph"] = {
+            "enabled": True,
+            "tokens": 2048,
+            "source_policy": "unseen",
+            "policy": policy,
+        }
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "late_graph_query_over_first_source"
+    )
+    path = paired_runs.candidate / "config.json"
+    for key, value in (("tokens", 4096), ("source_policy", "definitions")):
+        changed = copy.deepcopy(config)
+        changed["graph"][key] = value
+        path.write_text(json.dumps(changed))
+        with pytest.raises(ValueError, match="graph-source controls"):
+            agent.compare(paired_runs)
+    config["tools"].append("bash")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="differ in tools"):
+        agent.compare(paired_runs)
+
+
+def test_graph_source_comparison_keeps_inputs_budgets_and_tools_matched(paired_runs):
+    for directory, source_policy in (
+        (paired_runs.baseline, "definitions"),
+        (paired_runs.candidate, "unseen"),
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(
+            source_policy="functions", tools=["read", "grep", "glob", "graph_neighbors"]
+        )
+        config["graph"] = {
+            "enabled": True,
+            "tokens": 2048,
+            "source_policy": source_policy,
+        }
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "unseen_graph_source_over_definitions"
+    )
+    path = paired_runs.candidate / "config.json"
+    config = json.loads(path.read_text())
+    config["graph"]["tokens"] = 4096
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="graph-source controls"):
+        agent.compare(paired_runs)
+    config["graph"]["tokens"] = 2048
+    config["tools"].append("bash")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="differ in tools"):
+        agent.compare(paired_runs)
+
+
+@pytest.mark.parametrize("baseline_policy", ["functions", "native"])
+@pytest.mark.parametrize("empty_fallback", [False, True])
+def test_graph_comparison_permits_only_the_declared_tool_difference(
+    paired_runs, monkeypatch, baseline_policy, empty_fallback
+):
+    graph_dir = paired_runs.output.parent / "graphs"
+    graph_dir.mkdir()
+    (graph_dir / "manifest.json").write_text("frozen graphs")
+    monkeypatch.setattr(agent, "load_graph_records", lambda *a: {})
+    for directory, enabled in (
+        (paired_runs.baseline, False),
+        (paired_runs.candidate, True),
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(
+            source_policy="functions" if enabled else baseline_policy,
+            backend="claude-agent-sdk",
+            tools=["mcp__source__read", "mcp__source__grep", "mcp__source__glob"],
+        )
+        config["graph"] = {
+            "enabled": enabled,
+            "prepared": str(graph_dir),
+            "manifest_sha256": agent.digest(graph_dir / "manifest.json"),
+            "tokens": 2048,
+            "policy": "late_issue_reference_hop",
+            "source_policy": "unseen",
+            "empty_fallback": enabled and empty_fallback,
+        }
+        if enabled:
+            config["tools"].append("mcp__source__graph_neighbors")
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    expected = (
+        "directed_graph_over_function_completion"
+        if baseline_policy == "functions"
+        else "functions_and_directed_graph_over_native"
+    )
+    if empty_fallback:
+        expected = (
+            "late_empty_graph_over_function_completion"
+            if baseline_policy == "functions"
+            else "functions_and_late_empty_graph_over_native"
+        )
+    assert json.loads(paired_runs.output.read_text())["contrast"] == expected
+    path = paired_runs.candidate / "config.json"
+    config = json.loads(path.read_text())
+    for key, value in (("tokens", 4096), ("policy", agent.GRAPH_QUERY_POLICIES[0])):
+        changed = copy.deepcopy(config)
+        changed["graph"][key] = value
+        path.write_text(json.dumps(changed))
+        with pytest.raises(ValueError, match="graph-source controls"):
+            agent.compare(paired_runs)
+    config["tools"].append("Bash")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="Only graph_neighbors"):
+        agent.compare(paired_runs)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("backend", "claude-agent-sdk"),
+        ("max_turns", 40),
+        ("implementation", {"changed.py": "other"}),
+    ],
+)
+def test_paired_comparison_rejects_changed_harness_or_budget(paired_runs, field, value):
+    path = paired_runs.candidate / "config.json"
+    config = json.loads(path.read_text())
+    config[field] = value
+    if field == "implementation":
+        archive = paired_runs.candidate / "implementation"
+        archive.mkdir()
+        (archive / "changed.py").write_text("different")
+        config[field]["changed.py"] = agent.digest(archive / "changed.py")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match=f"differ in {field}"):
+        agent.compare(paired_runs)
+    assert not paired_runs.output.exists()
+
+
+def test_paired_comparison_rejects_missing_score_rows(paired_runs):
+    path = paired_runs.candidate / "evaluation" / "trajectory" / "metrics.json"
+    scores = json.loads(path.read_text())
+    scores["cases"].pop()
+    path.write_text(json.dumps(scores))
+    with pytest.raises(ValueError, match="identities"):
+        agent.compare(paired_runs)
+
+
 def test_budget_stop_retains_last_delivered_history_without_new_call(monkeypatch):
     sent = fake_post(monkeypatch, [{"role": "assistant", "content": "done"}])
     client = chat()

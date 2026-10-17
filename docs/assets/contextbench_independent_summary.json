@@ -1,0 +1,524 @@
+{
+  "date": "2026-10-16",
+  "n": 32,
+  "population": {
+    "selection": "Four per language; repository round-robin and seeded SHA ordering over 395 eligible IDs. No issue text, annotations, scores or preparation outcome used for selection.",
+    "scope": "Independent task-level validation, not repository-held-out or representative full-500 estimate. All 105 prior development IDs excluded; four C++ tasks remain, determining the uniform allocation.",
+    "seed": "context-agent-independent-v1-2026-10-11",
+    "languages": {
+      "typescript": 4,
+      "python": 4,
+      "go": 4,
+      "c": 4,
+      "javascript": 4,
+      "rust": 4,
+      "java": 4,
+      "cpp": 4
+    },
+    "sources": {
+      "Poly": 5,
+      "Multi": 23,
+      "Pro": 3,
+      "Verified": 1
+    },
+    "repositories": 22,
+    "excluded_development_ids": 105,
+    "selected_sha256": "49e0370ff0f384aed1691cb8dd3f071cf900c9020fadd3608d3f1955912be64a",
+    "preparation_failures_retained_as_zero": [
+      "SWE-PolyBench__python__maintenance__bugfix__b52bbc24"
+    ]
+  },
+  "protocol": {
+    "stage": "Independent task-held-out validation, not repository-held-out or weighted verified-500 estimate.",
+    "selection_sha256": "49e0370ff0f384aed1691cb8dd3f071cf900c9020fadd3608d3f1955912be64a",
+    "implementation_commit": "4152c23de51285878705842ad59f899de3c8c54b",
+    "development_gate_sha256": "11f0810f433741ba62e55831c91270182e71df49e66dafade7600427ca3980d7",
+    "arms": {
+      "native": {
+        "source_policy": "native",
+        "graph_navigation": false
+      },
+      "functions": {
+        "source_policy": "functions",
+        "graph_navigation": false
+      },
+      "functions_graph": {
+        "source_policy": "functions",
+        "graph_navigation": true
+      }
+    },
+    "model": "claude-opus-5-5",
+    "max_turns": 20,
+    "case_meter_usd": 3,
+    "max_meter_usd_per_arm": 20,
+    "case_timeout_seconds": 600,
+    "completion_tokens": 2048,
+    "graph_tokens": 2048,
+    "graph_build_timeout_seconds": 120,
+    "billing_route": "existing_claude_subscription",
+    "new_API_spending_ceiling_usd": 100,
+    "automatic_API_fallback": false,
+    "primary_comparison": "functions_graph minus native: complete route comparison, not an isolated graph attribution.",
+    "secondary_comparisons": [
+      "functions minus native",
+      "functions_graph minus functions"
+    ],
+    "metrics": "Per-task macro cumulative observed line Recall, precision, F1; all selected tasks retained, failures zero.",
+    "uncertainty": {
+      "method": "paired task bootstrap",
+      "draws": 10000,
+      "seed": 20261016,
+      "interval": 0.95,
+      "secondary_multiplicity": "Exploratory; no multiple-comparison significance claim."
+    },
+    "independent_quality_gate": "Positive lower Recall interval for the primary contrast, non-decreasing primary F1 point estimate, complete selected-population accounting, and no unexpected SDK/runtime errors or unrun tasks in any arm. Known source-preparation failure remains zero; per-case budget exhaustion retains observed context. Supports further full-agent work, not product promotion or leaderboard submission.",
+    "policy_changes": "None after validation begins; no benchmark labels or feedback enter model prompts.",
+    "source_preparation": "Prepare exact immutable source snapshots without inspecting scores. Stop new checkout work below 8 GiB free; retain every failed preparation.",
+    "policy_commit": "3f04993f15d098df4ee798dc93565ade70fb36ed",
+    "pre_inference_harness_amendment": {
+      "original_protocol_sha256": "3e57bb1921f9f90bb480403a3fc964f6e163079f735f8b930f842d7df796e963",
+      "reason": "Known source-preparation failure must remain a zero result without cancelling unrelated cases. Discovered before held-out model calls or scoring.",
+      "policy_change": false,
+      "changed_runtime_file": "scripts/benchmark_context_claude.py",
+      "regression": "test_turn_limit_retains_next_case_but_sdk_error_stops_batch[preparation_error-1]",
+      "source_population": {
+        "ok": 31,
+        "failed": 1,
+        "all_retained": 32
+      },
+      "failed_case": "SWE-PolyBench__python__maintenance__bugfix__b52bbc24",
+      "failure": "Gitlink test_repo1 has no URL in .gitmodules; strict snapshot checks remain enabled."
+    }
+  },
+  "protocol_sha256": "675b81ecb817c5d1f9cef0b53aeefa615ca2f6fb3a27dda62177c3b699b24419",
+  "implementation": {
+    "scripts/benchmark_context_agent.py": "60eb7f4120ef34f9116fee3de6143f13687fa74ba246b2604c8103abf12293df",
+    "scripts/benchmark_context_claude.py": "388087167fc06c38e9e6c83d67c7ec8d3fb17155c66dd77d9f4870942c60d5d8",
+    "scripts/contextbench_graph_navigation.py": "826b0ca787f9806c67339555e3fe62588abed0781209e5684e35bc35e2d4a535",
+    "scripts/benchmark_context_serving.py": "87f93c9152007e923de6b94fad57d65dce805f6c47e22ede6347a8948141b9ec",
+    "codenib/graph/code_graph.py": "70b393a0218b17598e33df9727b6def9ee13325470a1bcd3f2a5e7d68c9f2a27",
+    "codenib/graph/traverse_graph.py": "4da1112c051a76276e1e5414c07fe8cae0acc94aadce86b9fd5c50c24f797854",
+    "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+    "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+    "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+    "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+    "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+    "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+    "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+    "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+    "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+    "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+    "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+    "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+    "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+    "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+    "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+    "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+    "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+    "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+    "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+    "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+    "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+    "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+    "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+    "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+    "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+    "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+    "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+    "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+    "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+    "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+    "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+    "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+  },
+  "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
+  "evaluator_revision": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+  "sdk_version": "0.2.165",
+  "cli_version": "2.1.301 (Claude Code)",
+  "actual_models": [
+    "claude-opus-5-5"
+  ],
+  "source_manifest_sha256": "a8b8205aa86feb7be97c878c3692dfec1500a0be615599abd1dfbe2048442b43",
+  "graph_manifest_sha256": "6e658c231c49b0a5fc1830ea7140dff6c7ffceeed6e71a6d19efb706dc8496ed",
+  "arms": {
+    "native": {
+      "statuses": {
+        "ok": 31,
+        "preparation_failed": 1
+      },
+      "scores": {
+        "trajectory": {
+          "recall": 0.6964148975031433,
+          "precision": 0.2900578741928987,
+          "f1": 0.2900530961019726,
+          "official_valid": 31
+        },
+        "served_16384": {
+          "recall": 0.6938118869593032,
+          "precision": 0.2903936414320119,
+          "f1": 0.2904739465032226,
+          "official_valid": 31
+        },
+        "served_32768": {
+          "recall": 0.6963854163710679,
+          "precision": 0.29013030361405895,
+          "f1": 0.2901367512764283,
+          "official_valid": 31
+        }
+      },
+      "usage": {
+        "billing_route": "existing_claude_subscription",
+        "actual_bill_usd": null,
+        "sdk_reported_cost_usd": 6.740281599999999,
+        "missing_metering_cases": 0,
+        "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+        "statuses": {
+          "ok": 31,
+          "preparation_failed": 1
+        },
+        "cases": 32
+      },
+      "tools": [
+        "mcp__source__read",
+        "mcp__source__grep",
+        "mcp__source__glob"
+      ]
+    },
+    "functions": {
+      "statuses": {
+        "ok": 31,
+        "preparation_failed": 1
+      },
+      "scores": {
+        "trajectory": {
+          "recall": 0.6856256611376962,
+          "precision": 0.2449925725303244,
+          "f1": 0.2821784178729712,
+          "official_valid": 31
+        },
+        "served_16384": {
+          "recall": 0.6855961800056207,
+          "precision": 0.24849929838221343,
+          "f1": 0.2844043634295989,
+          "official_valid": 31
+        },
+        "served_32768": {
+          "recall": 0.6855961800056207,
+          "precision": 0.24510599079795514,
+          "f1": 0.28235043830413287,
+          "official_valid": 31
+        }
+      },
+      "usage": {
+        "billing_route": "existing_claude_subscription",
+        "actual_bill_usd": null,
+        "sdk_reported_cost_usd": 8.0559227,
+        "missing_metering_cases": 0,
+        "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+        "statuses": {
+          "ok": 31,
+          "preparation_failed": 1
+        },
+        "cases": 32
+      },
+      "tools": [
+        "mcp__source__read",
+        "mcp__source__grep",
+        "mcp__source__glob"
+      ]
+    },
+    "functions_graph": {
+      "statuses": {
+        "ok": 31,
+        "preparation_failed": 1
+      },
+      "scores": {
+        "trajectory": {
+          "recall": 0.6875724282570536,
+          "precision": 0.23579360448835723,
+          "f1": 0.26164196654172395,
+          "official_valid": 31
+        },
+        "served_16384": {
+          "recall": 0.6798569803615911,
+          "precision": 0.23900456939765627,
+          "f1": 0.2638443548275685,
+          "official_valid": 31
+        },
+        "served_32768": {
+          "recall": 0.6875429471249781,
+          "precision": 0.23592762205614629,
+          "f1": 0.2618118322922958,
+          "official_valid": 31
+        }
+      },
+      "usage": {
+        "billing_route": "existing_claude_subscription",
+        "actual_bill_usd": null,
+        "sdk_reported_cost_usd": 8.876974200000001,
+        "missing_metering_cases": 0,
+        "cost_scope": "SDK metering estimate is not a paid API receipt. Subscription limits and any account-level extra usage remain applicable.",
+        "statuses": {
+          "ok": 31,
+          "preparation_failed": 1
+        },
+        "cases": 32
+      },
+      "tools": [
+        "mcp__source__read",
+        "mcp__source__grep",
+        "mcp__source__glob",
+        "mcp__source__graph_neighbors"
+      ]
+    }
+  },
+  "comparisons": {
+    "primary_whole_route": {
+      "n": 32,
+      "contrast": "functions_and_directed_graph_over_native",
+      "metrics": {
+        "recall": {
+          "baseline": 0.6964148975031433,
+          "candidate": 0.6875724282570536,
+          "difference": -0.008842469246089803,
+          "paired_bootstrap_95_interval": [
+            -0.05726187743247014,
+            0.035854203760762426
+          ]
+        },
+        "precision": {
+          "baseline": 0.2900578741928987,
+          "candidate": 0.23579360448835723,
+          "difference": -0.05426426970454148,
+          "paired_bootstrap_95_interval": [
+            -0.08873019799464017,
+            -0.02520991999125493
+          ]
+        },
+        "f1": {
+          "baseline": 0.2900530961019726,
+          "candidate": 0.26164196654172395,
+          "difference": -0.028411129560248636,
+          "paired_bootstrap_95_interval": [
+            -0.04780969855016458,
+            -0.010169507918050326
+          ]
+        }
+      },
+      "bootstrap": {
+        "draws": 10000,
+        "seed": 20261016,
+        "unit": "task"
+      }
+    },
+    "secondary_function_completion": {
+      "n": 32,
+      "contrast": "online_function_completion",
+      "metrics": {
+        "recall": {
+          "baseline": 0.6964148975031433,
+          "candidate": 0.6856256611376962,
+          "difference": -0.010789236365447132,
+          "paired_bootstrap_95_interval": [
+            -0.05775878124849925,
+            0.027898182495324036
+          ]
+        },
+        "precision": {
+          "baseline": 0.2900578741928987,
+          "candidate": 0.2449925725303244,
+          "difference": -0.04506530166257433,
+          "paired_bootstrap_95_interval": [
+            -0.08790555129975273,
+            -0.011449539442488263
+          ]
+        },
+        "f1": {
+          "baseline": 0.2900530961019726,
+          "candidate": 0.2821784178729712,
+          "difference": -0.007874678229001347,
+          "paired_bootstrap_95_interval": [
+            -0.021703298928899196,
+            0.006884438275854476
+          ]
+        }
+      },
+      "bootstrap": {
+        "draws": 10000,
+        "seed": 20261016,
+        "unit": "task"
+      }
+    },
+    "secondary_graph_over_functions": {
+      "n": 32,
+      "contrast": "directed_graph_over_function_completion",
+      "metrics": {
+        "recall": {
+          "baseline": 0.6856256611376962,
+          "candidate": 0.6875724282570536,
+          "difference": 0.0019467671193573264,
+          "paired_bootstrap_95_interval": [
+            -0.01411666204135455,
+            0.016237328711361375
+          ]
+        },
+        "precision": {
+          "baseline": 0.2449925725303244,
+          "candidate": 0.23579360448835723,
+          "difference": -0.009198968041967149,
+          "paired_bootstrap_95_interval": [
+            -0.042213423658427174,
+            0.03226096452497831
+          ]
+        },
+        "f1": {
+          "baseline": 0.2821784178729712,
+          "candidate": 0.26164196654172395,
+          "difference": -0.02053645133124729,
+          "paired_bootstrap_95_interval": [
+            -0.038081873053362705,
+            -0.0048346198155378925
+          ]
+        }
+      },
+      "bootstrap": {
+        "draws": 10000,
+        "seed": 20261016,
+        "unit": "task"
+      }
+    }
+  },
+  "primary_analysis_sha256": "ba8b2e3541aba60beedf83155334fef50dcb784e197143e662237109ae46b2cb",
+  "independent_quality_gate_passed": false,
+  "graph_adoption": {
+    "no_definition_at_line": 1,
+    "calls": 35,
+    "cases_called": 31,
+    "cases_available": 11,
+    "available_cases_called": 11,
+    "cases_receiving_source": 6,
+    "graph_unavailable": 20,
+    "source_returned": 14,
+    "source_not_returned": 6,
+    "invalid_tool_arguments": 4,
+    "no_returned_neighbors": 2
+  },
+  "independent_solver_check": {
+    "protocol": {
+      "scope": "Independent Verified case in the frozen 32-task cohort; primary complete-route downstream check, not population Pass@1.",
+      "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__bdec299d",
+      "original_inst_id": "scikit-learn__scikit-learn-13142",
+      "selection": "Only Verified task in the metadata-selected 32-task cohort; chosen because the current solver adapter supports Verified.",
+      "arms": [
+        "native",
+        "functions_graph"
+      ],
+      "implementation_commit": "4152c23de51285878705842ad59f899de3c8c54b",
+      "image_id": "sha256:8825a4c1a19f60885a47fb3eab8e402f753dff6f913fe596767dfeeb6e227b8e",
+      "source_tree": "96511ff23b1cba0cd610a1cc5969021df9f440d8",
+      "model": "claude-opus-5-5",
+      "context_budget": 16384,
+      "max_turns": 30,
+      "max_meter_usd_per_arm": 3,
+      "runtime": "Pinned upstream mini SWE-agent, existing Claude Max SDK, no host tools or container network; no automatic API fallback.",
+      "grade": "Native SWE-bench 4.1.0; reference data isolated to grading and never fed back to either solver.",
+      "failure_handling": "One attempt per arm. No best-of selection; stop new model attempts on SDK errors or unknown metering. Preserve all outcomes."
+    },
+    "native_dataset_revision": "c104f840cc67f8b6eec6f759ebc8b2693d585d4a",
+    "native_dataset_sha256": "71fb03416a15674d58a03c4b1ed4d13e0251575c9d6dfe91282bc87dc0cee774",
+    "swebench_version": "4.1.0",
+    "image": {
+      "parent_reference": "docker.io/swebench/sweb.eval.x86_64.scikit-learn_1776_scikit-learn-13142@sha256:7c377ff6166931d3c231a0f8ee4db63a3e6581e85b9a5f0fd3be15125810c1f6",
+      "parent_image_id": "sha256:8a2b4984dbe1c6d93b6fb15b5c32f09f8accdff89b2169e53175241674669b51",
+      "image_id": "sha256:8825a4c1a19f60885a47fb3eab8e402f753dff6f913fe596767dfeeb6e227b8e",
+      "source_commit": "1c8668b0a021832386470ddf740d834e02c66f69",
+      "source_tree": "96511ff23b1cba0cd610a1cc5969021df9f440d8",
+      "matches_selected_tree": true,
+      "same_tracked_paths_and_content": true,
+      "file_mode_differences": 1201,
+      "tracked_entries": 1228
+    },
+    "image_normalization": "A no-network derived image resets /testbed to the selected base commit. The official parent had identical tracked content but different file modes; both arms and native graders use the same resulting exact clean tree and pinned image ID.",
+    "arms": {
+      "native": {
+        "status": "Submitted",
+        "resolved": true,
+        "tasks": 1,
+        "model_calls": 5,
+        "known_sdk_reported_cost_usd": 0.35955590000000004,
+        "missing_metering_calls": 0,
+        "container_removed": true,
+        "native_test_counts": {
+          "FAIL_TO_PASS": {
+            "success": 2,
+            "failure": 0
+          },
+          "PASS_TO_PASS": {
+            "success": 54,
+            "failure": 0
+          },
+          "FAIL_TO_FAIL": {
+            "success": 0,
+            "failure": 0
+          },
+          "PASS_TO_FAIL": {
+            "success": 0,
+            "failure": 0
+          }
+        }
+      },
+      "functions_graph": {
+        "status": "Submitted",
+        "resolved": true,
+        "tasks": 1,
+        "model_calls": 5,
+        "known_sdk_reported_cost_usd": 0.4684455,
+        "missing_metering_calls": 0,
+        "container_removed": true,
+        "native_test_counts": {
+          "FAIL_TO_PASS": {
+            "success": 2,
+            "failure": 0
+          },
+          "PASS_TO_PASS": {
+            "success": 54,
+            "failure": 0
+          },
+          "FAIL_TO_FAIL": {
+            "success": 0,
+            "failure": 0
+          },
+          "PASS_TO_FAIL": {
+            "success": 0,
+            "failure": 0
+          }
+        }
+      }
+    },
+    "reference_patch_check": {
+      "resolved": true,
+      "model_calls": 0,
+      "included_in_agent_scores": false
+    },
+    "conclusion": "One independent task, 1/1 resolved in each arm; no comparative or population Pass@1 improvement established.",
+    "source_accounting": "Arbitrary solver shell reads remain outside the retrieval scores; no complete full-agent artifact claim."
+  },
+  "budget": {
+    "authorized_new_api_spend_usd": 100,
+    "standalone_api_key_inference_calls_this_program": 0,
+    "standalone_api_key_cost_usd_this_program": 0,
+    "subscription_actual_bill_usd": null,
+    "sdk_metering_is_actual_billing": false,
+    "independent_retrieval_known_sdk_estimate_usd": 23.6731785,
+    "independent_solver_known_sdk_estimate_usd": 0.8280014,
+    "program_known_sdk_estimate_usd": 41.6235017,
+    "unmetered_solver_attempts": [
+      "solver-smoke-functions-v2"
+    ],
+    "scope": "Known SDK metering only, not an API bill or complete total: one aborted solver attempt returned no metering. Reference/native grading makes no model calls.",
+    "snapshot_scope": "Program totals at completion of this independent validation. Later development costs are recorded in contextbench_online_development_summary.json."
+  },
+  "conclusion": "The frozen candidate fails the independent quality gate. Recall does not improve reliably and the primary F1 interval is negative. Keep the route experimental and do not launch the official 500 with this policy. Return to the development cohort; any revised policy requires a new validation protocol and independent task IDs. Do not tune or select best retries on these 32.",
+  "artifact_scope": "Sanitized summary and per-task metrics only; no source, issue text, prompts, provider/account identifiers, credentials, or complete leaderboard submission bundle.",
+  "per_case_csv_sha256": "ea2a17f16c3a59ca6bc6751008e80aab682a1238dfbcf47da0267b394b82df4c"
+}

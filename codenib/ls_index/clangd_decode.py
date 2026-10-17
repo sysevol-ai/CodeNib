@@ -73,6 +73,7 @@ KIND_CLASS_METHOD = 17
 KIND_STATIC_METHOD = 18
 KIND_CONSTRUCTOR = 22
 KIND_DESTRUCTOR = 23
+KIND_CONVERSION_FUNCTION = 24
 
 # Relation predicates
 RELATION_BASE_OF = 0
@@ -89,7 +90,7 @@ _NATIVE_QUERY_REQUIRED = frozenset({"required", "strict"})
 _NATIVE_QUERY_PROMOTED = True
 _NATIVE_QUERY_ABI_VERSION = 3
 _NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v3"
-_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v3"
+_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v4"
 _NATIVE_QUERY_SNAPSHOT_SCHEMA = "clangd-fact-query-snapshot-v1"
 _NATIVE_QUERY_CAPABILITIES = {
     "definition_by_symbol": True,
@@ -1424,6 +1425,7 @@ class ClangdGraphDecoder:
             KIND_STATIC_METHOD,
             KIND_CONSTRUCTOR,
             KIND_DESTRUCTOR,
+            KIND_CONVERSION_FUNCTION,
         ):
             return NODE_TYPE_METHOD
         elif kind == KIND_FIELD:
@@ -1515,13 +1517,22 @@ class ClangdGraphDecoder:
     # ------------------------------------------------------------------
 
     def _find_range(self, file_path: str, line: int) -> Tuple[int, int]:
-        """Find the scope range for a symbol at the given line."""
-        chunks = self._get_file_chunks(file_path)
-        if chunks:
-            for chunk in chunks:
-                if chunk.start_line <= line <= chunk.end_line:
-                    return (chunk.start_line, chunk.end_line)
-        return (line, line)
+        """Use the narrowest parsed scope containing the compiler definition.
+
+        Nested definitions and macro-heavy headers can produce overlapping
+        chunks. Taking the first match assigns an enclosing range to distinct
+        methods, making line queries select unrelated symbols. Keep the clangd
+        definition point when no parsed scope contains it.
+        """
+        return min(
+            (
+                (chunk.start_line, chunk.end_line)
+                for chunk in self._get_file_chunks(file_path) or ()
+                if chunk.start_line <= line <= chunk.end_line
+            ),
+            key=lambda span: (span[1] - span[0], span[0]),
+            default=(line, line),
+        )
 
     def _get_file_chunks(self, file_path: str):
         """Get code chunks for a file, with caching."""
