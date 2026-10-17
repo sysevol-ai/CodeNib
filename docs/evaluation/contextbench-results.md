@@ -6,6 +6,9 @@ native source tools and reduces F1. All 32 selected tasks remain in the scores.
 This policy will not advance to the official 500-task run or a product default.
 The revised first-source graph policy also fails its 24-task development gate:
 Recall rises slightly, F1 falls, and the function-only ablation is interrupted.
+The later eight-task relationship-check pilot completes all three arms and has
+positive Recall/F1 point differences, but fails its two-language graph-source
+gate. Its primary uncertainty intervals cross zero; it does not advance to 500.
 
 Earlier development experiments found useful missing source by completing
 functions after search. That offline gain has not transferred to the tested
@@ -99,15 +102,15 @@ official line scores.
 A post-hoc comparison with the complete native trajectories finds that 90 of
 those 139 annotated graph lines also appear in the native control; the other 49
 are confined to one Go task. Across all 24 tasks, the candidate adds 5,151
-physical lines and omits 4,204 that the native control reads, including 185 added
-and 105 omitted annotated lines. These are descriptive source-set differences,
+physical lines and omits 4,204 that the native control reads, including 472 added
+and 464 omitted annotated lines. These are descriptive source-set differences,
 not new official scores or causal graph effects. The interrupted function-only
 arm cannot separate completion from graph navigation. Delivery-time novelty and
 broader graph availability therefore remain insufficient evidence of a gain.
 
 A further zero-model diagnostic attributes the existing replies before checking
 annotations. Removing grep completion from the fixed trajectories would remove
-410 annotated physical lines; disabling it is not supported by this evidence.
+635 annotated physical lines; disabling it is not supported by this evidence.
 Completion also repeats 726 previously delivered lines. The optional
 `--completion-source-policy unseen` omits verified prior source while retaining
 the original read/grep reply and completing each selected callable across the
@@ -128,10 +131,11 @@ contexts, token counts and source predictions to the archived historical payload
 
 Keeping the same 24 actual graph queries and source prefixes, the separately
 prepared 19-graph composition returns 932 new physical lines versus 358 with
-the original eleven graphs. Annotated novelty at delivery rises 139 → 154,
-but annotated source absent from the complete native control remains **49
-lines**, on the same Go task. More graph availability alone therefore does not
-justify another quality batch; query timing and target selection remain open.
+the original eleven graphs. After correcting annotation paths, novelty at delivery
+rises 139 → 356, and annotated source absent from the complete native control
+rises **49 → 194 lines**: 145 on C and 49 on Go. This supplies useful offline
+mechanism evidence; fresh matched agent behavior is still required to establish
+quality. Query timing and target selection remain open.
 Both replays retain all tasks, reproduce their historical controls exactly and
 verify frozen inputs and runtime hashes. Neither makes model calls or changes
 the failed development/independent gates.
@@ -165,6 +169,82 @@ The existing [development summary](../assets/contextbench_online_development_sum
 retains all 72 task positions, intervals, failed gates, graph-source counts,
 implementation hashes and the separate reliability check. The negative independent
 32-task record remains sealed; the official 500 has not been launched.
+
+## Query timing and anchor selection follow-up
+
+A retrospective audit found that auxiliary overlap calculations compared raw
+annotation paths with repository-relative source paths. Ten of the 24 tasks have
+container-prefixed annotations. The official scorer already normalizes these
+paths, so official scores and intervals are unchanged. Auxiliary counts in this
+page and the development export now use the pinned official
+`Gold.line_spans_init()` representation. The [correction record](../assets/contextbench_annotation_correction.json)
+retains per-case amendments and original input hashes. Original frozen experiment
+files remain intact. The evaluator bridge now exports canonical `gold_line_spans`
+for future audits; regression checks cover relative, `/testbed/` and
+`/workspace/<repo>/` annotations without exposing them to model inputs.
+
+A zero-model probe retains all 24 development tasks and the 19 available composed
+graphs. It chooses anchors from actual native observations before checking
+annotations, queries both directions with the same 2,048-token bounds, and makes
+38 queries per policy. Deferring the same first-read anchor until after the
+complete native investigation leaves annotated source absent from native unchanged
+at **80 physical lines** across Python and Go. Ranking observed callables by
+symbol/file BM25 instead reduces that coverage to **50 lines**, all on one Go task.
+This does not establish a benefit from delay or name matching. These are different
+anchors and two directions per task, so the counts are not a matched comparison
+with the earlier single-query 49-line result.
+
+The next development control, `--graph-query-policy late_issue_reference_hop`,
+asks the model to investigate first and then name a relationship question that
+could change the fix or its validation. It selects an already observed callable
+for that question and checks incoming or outgoing references before its final
+handoff. The prompt permits at most two graph calls; this is an audited prompt
+constraint, not an executor quota. It does not use the diagnostic BM25 ranking.
+The historical `first_callable_source_reference_hop` remains the default. Both
+runtimes record the policy; direct timing-policy comparisons require every other
+graph setting, completion policy, tool, model and budget to match.
+
+Runtime `5b91323c` freezes three fresh arms on the first task per language in the
+existing 24-task development order. All eight tasks have source; seven have
+authenticated composed graphs. They share Opus 5.5, 20 turns, 600 seconds,
+2,048-token completion and graph budgets, conversation-aware completion, and
+$2/case and $6/arm SDK-meter guards. All 24 task positions finish and score,
+with terminal usage, the same actual model and no API-key route or fallback.
+
+| Cumulative trajectory, all eight selected tasks | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 39.85% | 34.14% | 32.85% | $2.038043 |
+| Function completion | 40.40% | 28.87% | 31.38% | $2.433953 |
+| Function completion + late graph check | 41.62% | 34.56% | 35.29% | $2.324711 |
+
+The primary route changes Recall by **+1.77 points**, paired 95% interval
+**[-4.36, +8.23]**, and F1 by **+2.45 points**, interval **[-1.06, +7.06]**.
+Completion alone changes Recall/F1 by +0.55/-1.47 points. The exploratory graph
+versus completion contrast changes Recall by +1.22 points, interval
+[-5.49, +9.16], and F1 by +3.91 points, interval [+0.33, +8.92], without
+multiple-comparison adjustment. These are reused development tasks, not an
+independent validation or a leaderboard score.
+
+Nine graph calls cover all seven available graphs. Every anchor was already
+observed after at least two source replies; every result is followed by an
+assistant response. No task exceeds the prompt's two-call limit. Only C and Rust
+receive source: 200 and 20 new physical lines respectively. Canonical annotation
+overlap is **200 lines on C, zero on Rust**; 197 of the C lines are absent from
+the matched native trajectory. The two-language novelty gate therefore fails,
+despite passing the point-score and execution gates. Python and Go have no unseen
+neighbors; TypeScript and C++ return metadata for oversized source; Java has no
+graph; both JavaScript probes have no definition at the requested line.
+
+A zero-model fixed-trajectory check reproduces every original prediction, then
+removes graph replies while keeping all later calls fixed. Macro Recall changes
+41.62% → 39.80% and F1 35.29% → 34.00%. All Recall loss is on the C task. This
+confirms direct source-score contribution, not what an agent would do without
+graph feedback or a population improvement. The next diagnosis is bounded source
+delivery for oversized neighbors and definition coverage at observed anchors.
+All runtime/input hashes match. The [24-row CSV](../assets/contextbench_late_graph_8.csv)
+and [protocol, intervals, gate and source attribution](../assets/contextbench_late_graph_summary.json)
+retain the complete result, the original raw-path audit's correction, and the
+failed gate. The independent 32 remains sealed; the official 500 is not launched.
 
 ## Historical post-run 24-task results
 
@@ -255,7 +335,8 @@ $0.828001. The later early-hop/unseen development trial adds $7.266208 for retri
 and $1.367794 for its paired solver check. Two later one-task graph mechanism
 versions add $0.327116. The first-source 24-task attempt adds $12.831086 in known
 retrieval estimates and its separate receipt-fix smoke adds $0.426619.
-Known program metering totals **$65.164126**, excluding one aborted development
+The late relationship-check pilot adds **$6.796707** in SDK estimates.
+Known program metering totals **$71.960832**, excluding one aborted development
 solver attempt and one interrupted retrieval case with no terminal usage.
 These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
@@ -354,10 +435,14 @@ frozen source manifest and graph-file hashes before use.
 Inside a function or method, a selected line navigates from the enclosing callable
 rather than a smaller local-symbol definition. Within the bounded raw-edge scan,
 function/method neighbors precede other defined symbols while preserving direction
-and edge order within each group. The current development prompt requires a hop
+and edge order within each group. The default development prompt requires a hop
 after the first source reply showing a callable, including grep completion,
 before further source tools. This guidance is included only for graph-enabled
 arms. Actual use and new source must still be checked in the recorded trajectory.
+The opt-in `--graph-query-policy late_issue_reference_hop` instead requires a
+relationship check after initial investigation and before the final handoff, as
+described in the timing follow-up above. Neither prompt is a product default or
+evidence that an agent followed the requested timing.
 
 The experimental `--graph-source-policy unseen` skips fully observed definitions
 and returns only the missing lines of partly observed definitions when all of
@@ -487,7 +572,8 @@ and two builds are rejected after changing tracked source. Both the timeout and
 preparation policy also differ, so this is not a policy-only comparison. All
 source checkouts remain clean. On fixed native-trace prefixes, new physical
 source rises from 687 to 890 lines, while newly covered annotated lines fall from
-177 to 43, largely because the Go graphs are unavailable. This replay makes no
+177 to 44 after canonical path normalization, largely because the Go graphs are
+unavailable. This replay makes no
 model calls and is not a Recall/F1 score or an autonomous agent result.
 
 A separate prospective input combines fourteen fresh graphs with five

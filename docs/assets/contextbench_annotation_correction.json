@@ -1,0 +1,6091 @@
+{
+  "scope": "Retrospective correction of auxiliary physical-line annotation overlaps only. Use unchanged saved source replies, trajectories and payloads. Do not rerun a model, rebuild a graph, select new tasks or change official scores.",
+  "protocol_sha256": "12abf234264f904a4b54d4df6615fae1d2b9b6210eed671fdb926644ec96bf43",
+  "normalizer": "Pinned official contextbench.parsers.Gold.line_spans_init(), inclusive merged intervals",
+  "model_calls": 0,
+  "official_scores_changed": false,
+  "affected_annotation_path_tasks_of_24": [
+    "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+    "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+    "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+    "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+    "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+    "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+    "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+    "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+    "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+    "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+    "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2"
+  ],
+  "source_attribution_24": {
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "categories": {
+          "grep": {
+            "replies": 2,
+            "unique_physical": 26,
+            "first_exposure_physical": 26,
+            "first_exposure_annotated": 25,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 1,
+            "unique_annotated_absent_from_native": 1
+          },
+          "completion_grep": {
+            "replies": 1,
+            "unique_physical": 56,
+            "first_exposure_physical": 56,
+            "first_exposure_annotated": 43,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 40,
+            "unique_annotated_absent_from_native": 27
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 3,
+            "unique_physical": 143,
+            "first_exposure_physical": 138,
+            "first_exposure_annotated": 65,
+            "repeated_line_deliveries": 5,
+            "unique_physical_absent_from_native": 103,
+            "unique_annotated_absent_from_native": 30
+          },
+          "completion_read": {
+            "replies": 1,
+            "unique_physical": 4,
+            "first_exposure_physical": 4,
+            "first_exposure_annotated": 4,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 4248,
+          "read": 226
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 56,
+            "lost_annotated": 43
+          },
+          "without_any_completion": {
+            "lost_physical": 60,
+            "lost_annotated": 47
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "categories": {
+          "grep": {
+            "replies": 8,
+            "unique_physical": 109,
+            "first_exposure_physical": 109,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 1,
+            "unique_physical_absent_from_native": 57,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 5,
+            "unique_physical": 234,
+            "first_exposure_physical": 230,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 87,
+            "unique_physical_absent_from_native": 97,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 52,
+            "first_exposure_physical": 52,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 12,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 6,
+            "unique_physical": 385,
+            "first_exposure_physical": 302,
+            "first_exposure_annotated": 50,
+            "repeated_line_deliveries": 83,
+            "unique_physical_absent_from_native": 90,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 1,
+            "unique_physical": 101,
+            "first_exposure_physical": 101,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 96,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 25555,
+          "read": 3317
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 201,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 302,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "categories": {
+          "grep": {
+            "replies": 5,
+            "unique_physical": 59,
+            "first_exposure_physical": 52,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 7,
+            "unique_physical_absent_from_native": 26,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 2,
+            "unique_physical": 161,
+            "first_exposure_physical": 152,
+            "first_exposure_annotated": 2,
+            "repeated_line_deliveries": 9,
+            "unique_physical_absent_from_native": 105,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 4,
+            "unique_physical": 425,
+            "first_exposure_physical": 380,
+            "first_exposure_annotated": 56,
+            "repeated_line_deliveries": 45,
+            "unique_physical_absent_from_native": 30,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 2,
+            "unique_physical": 64,
+            "first_exposure_physical": 64,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 57,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 15819,
+          "read": 3273
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 117,
+            "lost_annotated": 2
+          },
+          "without_any_completion": {
+            "lost_physical": 180,
+            "lost_annotated": 2
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "categories": {
+          "grep": {
+            "replies": 2,
+            "unique_physical": 5,
+            "first_exposure_physical": 5,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 2,
+            "unique_physical": 160,
+            "first_exposure_physical": 160,
+            "first_exposure_annotated": 71,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 49,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 1,
+            "unique_physical": 30,
+            "first_exposure_physical": 30,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 13287
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 160,
+            "lost_annotated": 71
+          },
+          "without_any_completion": {
+            "lost_physical": 160,
+            "lost_annotated": 71
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "categories": {
+          "grep": {
+            "replies": 11,
+            "unique_physical": 111,
+            "first_exposure_physical": 108,
+            "first_exposure_annotated": 14,
+            "repeated_line_deliveries": 4,
+            "unique_physical_absent_from_native": 64,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 8,
+            "unique_physical": 598,
+            "first_exposure_physical": 450,
+            "first_exposure_annotated": 40,
+            "repeated_line_deliveries": 148,
+            "unique_physical_absent_from_native": 217,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 7,
+            "unique_physical": 1000,
+            "first_exposure_physical": 972,
+            "first_exposure_annotated": 404,
+            "repeated_line_deliveries": 28,
+            "unique_physical_absent_from_native": 150,
+            "unique_annotated_absent_from_native": 40
+          },
+          "completion_read": {
+            "replies": 3,
+            "unique_physical": 220,
+            "first_exposure_physical": 218,
+            "first_exposure_annotated": 174,
+            "repeated_line_deliveries": 2,
+            "unique_physical_absent_from_native": 155,
+            "unique_annotated_absent_from_native": 119
+          }
+        },
+        "completion_characters": {
+          "grep": 35791,
+          "read": 6410
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 438,
+            "lost_annotated": 40
+          },
+          "without_any_completion": {
+            "lost_physical": 656,
+            "lost_annotated": 214
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 17,
+            "first_exposure_physical": 16,
+            "first_exposure_annotated": 9,
+            "repeated_line_deliveries": 1,
+            "unique_physical_absent_from_native": 1,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 4,
+            "unique_physical": 511,
+            "first_exposure_physical": 502,
+            "first_exposure_annotated": 152,
+            "repeated_line_deliveries": 9,
+            "unique_physical_absent_from_native": 15,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 2,
+            "unique_physical": 88,
+            "first_exposure_physical": 88,
+            "first_exposure_annotated": 88,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 11,
+            "unique_annotated_absent_from_native": 11
+          }
+        },
+        "completion_characters": {
+          "grep": 5813
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 88,
+            "lost_annotated": 88
+          },
+          "without_any_completion": {
+            "lost_physical": 88,
+            "lost_annotated": 88
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "categories": {
+          "grep": {
+            "replies": 3,
+            "unique_physical": 40,
+            "first_exposure_physical": 40,
+            "first_exposure_annotated": 11,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 1,
+            "unique_physical": 320,
+            "first_exposure_physical": 300,
+            "first_exposure_annotated": 196,
+            "repeated_line_deliveries": 20,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 1,
+            "unique_physical": 35,
+            "first_exposure_physical": 35,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 7,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 2522
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 35,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 35,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 26,
+            "first_exposure_physical": 26,
+            "first_exposure_annotated": 9,
+            "repeated_line_deliveries": 1,
+            "unique_physical_absent_from_native": 14,
+            "unique_annotated_absent_from_native": 1
+          },
+          "completion_grep": {
+            "replies": 3,
+            "unique_physical": 309,
+            "first_exposure_physical": 309,
+            "first_exposure_annotated": 65,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 227,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 132,
+            "first_exposure_physical": 132,
+            "first_exposure_annotated": 132,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 49,
+            "unique_annotated_absent_from_native": 49
+          },
+          "read": {
+            "replies": 2,
+            "unique_physical": 153,
+            "first_exposure_physical": 38,
+            "first_exposure_annotated": 27,
+            "repeated_line_deliveries": 115,
+            "unique_physical_absent_from_native": 35,
+            "unique_annotated_absent_from_native": 30
+          },
+          "completion_read": {
+            "replies": 2,
+            "unique_physical": 25,
+            "first_exposure_physical": 6,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 19,
+            "unique_physical_absent_from_native": 21,
+            "unique_annotated_absent_from_native": 19
+          }
+        },
+        "completion_characters": {
+          "grep": 15404,
+          "read": 910
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 309,
+            "lost_annotated": 65
+          },
+          "without_any_completion": {
+            "lost_physical": 315,
+            "lost_annotated": 66
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "categories": {
+          "grep": {
+            "replies": 6,
+            "unique_physical": 38,
+            "first_exposure_physical": 38,
+            "first_exposure_annotated": 16,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 4,
+            "unique_physical": 231,
+            "first_exposure_physical": 231,
+            "first_exposure_annotated": 95,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 117,
+            "unique_annotated_absent_from_native": 50
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 5,
+            "unique_physical": 296,
+            "first_exposure_physical": 281,
+            "first_exposure_annotated": 50,
+            "repeated_line_deliveries": 15,
+            "unique_physical_absent_from_native": 10,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 3,
+            "unique_physical": 65,
+            "first_exposure_physical": 52,
+            "first_exposure_annotated": 25,
+            "repeated_line_deliveries": 13,
+            "unique_physical_absent_from_native": 40,
+            "unique_annotated_absent_from_native": 23
+          }
+        },
+        "completion_characters": {
+          "grep": 28801,
+          "read": 3365
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 211,
+            "lost_annotated": 75
+          },
+          "without_any_completion": {
+            "lost_physical": 273,
+            "lost_annotated": 110
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "categories": {
+          "grep": {
+            "replies": 3,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 2,
+            "unique_physical": 400,
+            "first_exposure_physical": 400,
+            "first_exposure_annotated": 20,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 99,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 1,
+            "unique_physical": 5,
+            "first_exposure_physical": 5,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 5,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 15,
+            "first_exposure_physical": 15,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 12,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "read": 143
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 0,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 5,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 26,
+            "first_exposure_physical": 26,
+            "first_exposure_annotated": 7,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 16,
+            "unique_annotated_absent_from_native": 2
+          },
+          "completion_grep": {
+            "replies": 1,
+            "unique_physical": 8,
+            "first_exposure_physical": 8,
+            "first_exposure_annotated": 8,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 4,
+            "unique_physical": 241,
+            "first_exposure_physical": 226,
+            "first_exposure_annotated": 117,
+            "repeated_line_deliveries": 15,
+            "unique_physical_absent_from_native": 20,
+            "unique_annotated_absent_from_native": 20
+          }
+        },
+        "completion_characters": {
+          "grep": 682
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 0,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 0,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 76,
+            "first_exposure_physical": 73,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 4,
+            "unique_physical_absent_from_native": 52,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 2,
+            "unique_physical": 27,
+            "first_exposure_physical": 27,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 27,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 4,
+            "unique_physical": 177,
+            "first_exposure_physical": 169,
+            "first_exposure_annotated": 43,
+            "repeated_line_deliveries": 8,
+            "unique_physical_absent_from_native": 30,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 2401
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 27,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 27,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "categories": {
+          "grep": {
+            "replies": 6,
+            "unique_physical": 122,
+            "first_exposure_physical": 117,
+            "first_exposure_annotated": 9,
+            "repeated_line_deliveries": 6,
+            "unique_physical_absent_from_native": 11,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 5,
+            "unique_physical": 305,
+            "first_exposure_physical": 290,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 15,
+            "unique_physical_absent_from_native": 169,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 15,
+            "unique_physical": 707,
+            "first_exposure_physical": 655,
+            "first_exposure_annotated": 170,
+            "repeated_line_deliveries": 52,
+            "unique_physical_absent_from_native": 30,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 4,
+            "unique_physical": 175,
+            "first_exposure_physical": 175,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 170,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 23673,
+          "read": 7847
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 289,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 464,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "categories": {
+          "grep": {
+            "replies": 7,
+            "unique_physical": 72,
+            "first_exposure_physical": 72,
+            "first_exposure_annotated": 17,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 20,
+            "unique_annotated_absent_from_native": 1
+          },
+          "completion_grep": {
+            "replies": 3,
+            "unique_physical": 263,
+            "first_exposure_physical": 263,
+            "first_exposure_annotated": 63,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 151,
+            "unique_annotated_absent_from_native": 6
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 7,
+            "unique_physical": 830,
+            "first_exposure_physical": 757,
+            "first_exposure_annotated": 127,
+            "repeated_line_deliveries": 73,
+            "unique_physical_absent_from_native": 101,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 3,
+            "unique_physical": 60,
+            "first_exposure_physical": 38,
+            "first_exposure_annotated": 4,
+            "repeated_line_deliveries": 22,
+            "unique_physical_absent_from_native": 33,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 15403,
+          "read": 2379
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 206,
+            "lost_annotated": 6
+          },
+          "without_any_completion": {
+            "lost_physical": 265,
+            "lost_annotated": 31
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "categories": {
+          "grep": {
+            "replies": 9,
+            "unique_physical": 30,
+            "first_exposure_physical": 25,
+            "first_exposure_annotated": 6,
+            "repeated_line_deliveries": 5,
+            "unique_physical_absent_from_native": 2,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 8,
+            "unique_physical": 442,
+            "first_exposure_physical": 407,
+            "first_exposure_annotated": 85,
+            "repeated_line_deliveries": 51,
+            "unique_physical_absent_from_native": 111,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 16,
+            "first_exposure_physical": 16,
+            "first_exposure_annotated": 2,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 10,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 6,
+            "unique_physical": 789,
+            "first_exposure_physical": 693,
+            "first_exposure_annotated": 90,
+            "repeated_line_deliveries": 96,
+            "unique_physical_absent_from_native": 70,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 4,
+            "unique_physical": 95,
+            "first_exposure_physical": 71,
+            "first_exposure_annotated": 5,
+            "repeated_line_deliveries": 24,
+            "unique_physical_absent_from_native": 59,
+            "unique_annotated_absent_from_native": 5
+          }
+        },
+        "completion_characters": {
+          "grep": 29178,
+          "read": 4663
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 304,
+            "lost_annotated": 68
+          },
+          "without_any_completion": {
+            "lost_physical": 398,
+            "lost_annotated": 73
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 50,
+            "first_exposure_physical": 50,
+            "first_exposure_annotated": 3,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 6,
+            "unique_annotated_absent_from_native": 2
+          },
+          "completion_grep": {
+            "replies": 3,
+            "unique_physical": 314,
+            "first_exposure_physical": 314,
+            "first_exposure_annotated": 2,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 221,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 12,
+            "first_exposure_physical": 12,
+            "first_exposure_annotated": 5,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 5,
+            "unique_physical": 255,
+            "first_exposure_physical": 166,
+            "first_exposure_annotated": 5,
+            "repeated_line_deliveries": 89,
+            "unique_physical_absent_from_native": 11,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 3,
+            "unique_physical": 14,
+            "first_exposure_physical": 14,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 5,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 17172,
+          "read": 782
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 251,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 265,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 84,
+            "first_exposure_physical": 84,
+            "first_exposure_annotated": 14,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 51,
+            "unique_annotated_absent_from_native": 1
+          },
+          "completion_grep": {
+            "replies": 1,
+            "unique_physical": 35,
+            "first_exposure_physical": 35,
+            "first_exposure_annotated": 35,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 2,
+            "unique_physical": 527,
+            "first_exposure_physical": 514,
+            "first_exposure_annotated": 184,
+            "repeated_line_deliveries": 13,
+            "unique_physical_absent_from_native": 96,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 1,
+            "unique_physical": 6,
+            "first_exposure_physical": 6,
+            "first_exposure_annotated": 3,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 3279,
+          "read": 178
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 35,
+            "lost_annotated": 35
+          },
+          "without_any_completion": {
+            "lost_physical": 41,
+            "lost_annotated": 38
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "categories": {
+          "grep": {
+            "replies": 7,
+            "unique_physical": 106,
+            "first_exposure_physical": 101,
+            "first_exposure_annotated": 22,
+            "repeated_line_deliveries": 5,
+            "unique_physical_absent_from_native": 42,
+            "unique_annotated_absent_from_native": 8
+          },
+          "completion_grep": {
+            "replies": 6,
+            "unique_physical": 509,
+            "first_exposure_physical": 509,
+            "first_exposure_annotated": 53,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 357,
+            "unique_annotated_absent_from_native": 23
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 13,
+            "unique_physical": 2188,
+            "first_exposure_physical": 2150,
+            "first_exposure_annotated": 336,
+            "repeated_line_deliveries": 38,
+            "unique_physical_absent_from_native": 189,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 6,
+            "unique_physical": 493,
+            "first_exposure_physical": 445,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 48,
+            "unique_physical_absent_from_native": 428,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 37954,
+          "read": 21374
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 446,
+            "lost_annotated": 23
+          },
+          "without_any_completion": {
+            "lost_physical": 938,
+            "lost_annotated": 41
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "categories": {
+          "grep": {
+            "replies": 3,
+            "unique_physical": 29,
+            "first_exposure_physical": 28,
+            "first_exposure_annotated": 26,
+            "repeated_line_deliveries": 1,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 3,
+            "unique_physical": 129,
+            "first_exposure_physical": 129,
+            "first_exposure_annotated": 91,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 1,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 2,
+            "unique_physical": 204,
+            "first_exposure_physical": 134,
+            "first_exposure_annotated": 134,
+            "repeated_line_deliveries": 70,
+            "unique_physical_absent_from_native": 21,
+            "unique_annotated_absent_from_native": 21
+          },
+          "completion_read": {
+            "replies": 1,
+            "unique_physical": 11,
+            "first_exposure_physical": 3,
+            "first_exposure_annotated": 3,
+            "repeated_line_deliveries": 8,
+            "unique_physical_absent_from_native": 3,
+            "unique_annotated_absent_from_native": 3
+          }
+        },
+        "completion_characters": {
+          "grep": 14162,
+          "read": 428
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 60,
+            "lost_annotated": 22
+          },
+          "without_any_completion": {
+            "lost_physical": 71,
+            "lost_annotated": 33
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "categories": {
+          "grep": {
+            "replies": 2,
+            "unique_physical": 13,
+            "first_exposure_physical": 13,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 2,
+            "unique_physical": 100,
+            "first_exposure_physical": 100,
+            "first_exposure_annotated": 12,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 3,
+            "unique_physical": 214,
+            "first_exposure_physical": 207,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 7,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 2,
+            "unique_physical": 76,
+            "first_exposure_physical": 64,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 12,
+            "unique_physical_absent_from_native": 44,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 5630,
+          "read": 2929
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 88,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 163,
+            "lost_annotated": 11
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "categories": {
+          "grep": {
+            "replies": 6,
+            "unique_physical": 21,
+            "first_exposure_physical": 21,
+            "first_exposure_annotated": 1,
+            "repeated_line_deliveries": 1,
+            "unique_physical_absent_from_native": 15,
+            "unique_annotated_absent_from_native": 1
+          },
+          "completion_grep": {
+            "replies": 5,
+            "unique_physical": 226,
+            "first_exposure_physical": 226,
+            "first_exposure_annotated": 23,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 185,
+            "unique_annotated_absent_from_native": 23
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 2,
+            "unique_physical": 180,
+            "first_exposure_physical": 152,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 28,
+            "unique_physical_absent_from_native": 40,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 2,
+            "unique_physical": 40,
+            "first_exposure_physical": 26,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 14,
+            "unique_physical_absent_from_native": 19,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 24144,
+          "read": 2131
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 188,
+            "lost_annotated": 23
+          },
+          "without_any_completion": {
+            "lost_physical": 228,
+            "lost_annotated": 23
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "categories": {
+          "grep": {
+            "replies": 5,
+            "unique_physical": 15,
+            "first_exposure_physical": 11,
+            "first_exposure_annotated": 4,
+            "repeated_line_deliveries": 4,
+            "unique_physical_absent_from_native": 2,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 1,
+            "unique_physical": 127,
+            "first_exposure_physical": 127,
+            "first_exposure_annotated": 36,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 131,
+            "first_exposure_physical": 131,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 32,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 6,
+            "unique_physical": 414,
+            "first_exposure_physical": 410,
+            "first_exposure_annotated": 39,
+            "repeated_line_deliveries": 4,
+            "unique_physical_absent_from_native": 10,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 4,
+            "unique_physical": 148,
+            "first_exposure_physical": 19,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 254,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 5587,
+          "read": 8457
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 0,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 144,
+            "lost_annotated": 35
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "categories": {
+          "grep": {
+            "replies": 2,
+            "unique_physical": 33,
+            "first_exposure_physical": 33,
+            "first_exposure_annotated": 3,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 22,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 1,
+            "unique_physical": 95,
+            "first_exposure_physical": 95,
+            "first_exposure_annotated": 7,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 88,
+            "unique_annotated_absent_from_native": 0
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 3,
+            "unique_physical": 320,
+            "first_exposure_physical": 307,
+            "first_exposure_annotated": 237,
+            "repeated_line_deliveries": 13,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 5782
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 88,
+            "lost_annotated": 0
+          },
+          "without_any_completion": {
+            "lost_physical": 88,
+            "lost_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "categories": {
+          "grep": {
+            "replies": 4,
+            "unique_physical": 22,
+            "first_exposure_physical": 22,
+            "first_exposure_annotated": 5,
+            "repeated_line_deliveries": 1,
+            "unique_physical_absent_from_native": 6,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_grep": {
+            "replies": 4,
+            "unique_physical": 261,
+            "first_exposure_physical": 261,
+            "first_exposure_annotated": 74,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 173,
+            "unique_annotated_absent_from_native": 8
+          },
+          "graph": {
+            "replies": 1,
+            "unique_physical": 0,
+            "first_exposure_physical": 0,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 0,
+            "unique_annotated_absent_from_native": 0
+          },
+          "read": {
+            "replies": 2,
+            "unique_physical": 70,
+            "first_exposure_physical": 67,
+            "first_exposure_annotated": 28,
+            "repeated_line_deliveries": 3,
+            "unique_physical_absent_from_native": 20,
+            "unique_annotated_absent_from_native": 0
+          },
+          "completion_read": {
+            "replies": 1,
+            "unique_physical": 37,
+            "first_exposure_physical": 37,
+            "first_exposure_annotated": 0,
+            "repeated_line_deliveries": 0,
+            "unique_physical_absent_from_native": 37,
+            "unique_annotated_absent_from_native": 0
+          }
+        },
+        "completion_characters": {
+          "grep": 18747,
+          "read": 2166
+        },
+        "fixed_trace_removal": {
+          "without_grep_completion": {
+            "lost_physical": 261,
+            "lost_annotated": 74
+          },
+          "without_any_completion": {
+            "lost_physical": 298,
+            "lost_annotated": 74
+          }
+        }
+      }
+    ],
+    "categories": {
+      "completion_grep": {
+        "first_exposure_annotated": 894,
+        "first_exposure_physical": 4502,
+        "repeated_line_deliveries": 310,
+        "replies": 73,
+        "unique_annotated_absent_from_native": 148,
+        "unique_physical": 4713,
+        "unique_physical_absent_from_native": 2353
+      },
+      "completion_read": {
+        "first_exposure_annotated": 219,
+        "first_exposure_physical": 1348,
+        "repeated_line_deliveries": 416,
+        "replies": 44,
+        "unique_annotated_absent_from_native": 169,
+        "unique_physical": 1639,
+        "unique_physical_absent_from_native": 1172
+      },
+      "graph": {
+        "first_exposure_annotated": 139,
+        "first_exposure_physical": 358,
+        "repeated_line_deliveries": 0,
+        "replies": 24,
+        "unique_annotated_absent_from_native": 49,
+        "unique_physical": 358,
+        "unique_physical_absent_from_native": 115
+      },
+      "grep": {
+        "first_exposure_annotated": 204,
+        "first_exposure_physical": 1096,
+        "repeated_line_deliveries": 41,
+        "replies": 115,
+        "unique_annotated_absent_from_native": 17,
+        "unique_physical": 1130,
+        "unique_physical_absent_from_native": 408
+      },
+      "read": {
+        "first_exposure_annotated": 2531,
+        "first_exposure_physical": 9950,
+        "repeated_line_deliveries": 829,
+        "replies": 109,
+        "unique_annotated_absent_from_native": 141,
+        "unique_physical": 10779,
+        "unique_physical_absent_from_native": 1170
+      }
+    },
+    "fixed_trace_removal": {
+      "without_grep_completion": {
+        "lost_annotated": 635,
+        "lost_physical": 3858
+      },
+      "without_any_completion": {
+        "lost_annotated": 957,
+        "lost_physical": 5464
+      }
+    }
+  },
+  "final_source_24": {
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "added_physical": 143,
+        "lost_physical": 44,
+        "added_annotated": 57,
+        "lost_annotated": 8,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "added_physical": 350,
+        "lost_physical": 293,
+        "added_annotated": 0,
+        "lost_annotated": 30,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "added_physical": 211,
+        "lost_physical": 477,
+        "added_annotated": 0,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "added_physical": 49,
+        "lost_physical": 78,
+        "added_annotated": 0,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "added_physical": 586,
+        "lost_physical": 459,
+        "added_annotated": 159,
+        "lost_annotated": 24,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "added_physical": 27,
+        "lost_physical": 177,
+        "added_annotated": 11,
+        "lost_annotated": 159,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "added_physical": 7,
+        "lost_physical": 43,
+        "added_annotated": 0,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "added_physical": 297,
+        "lost_physical": 31,
+        "added_annotated": 50,
+        "lost_annotated": 20,
+        "graph_new_annotated_at_delivery": 132,
+        "graph_new_annotated_also_read_by_native": 83,
+        "graph_new_annotated_not_read_by_native": 49
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "added_physical": 167,
+        "lost_physical": 190,
+        "added_annotated": 73,
+        "lost_annotated": 28,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "added_physical": 116,
+        "lost_physical": 206,
+        "added_annotated": 0,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "added_physical": 34,
+        "lost_physical": 97,
+        "added_annotated": 20,
+        "lost_annotated": 45,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "added_physical": 108,
+        "lost_physical": 55,
+        "added_annotated": 0,
+        "lost_annotated": 6,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "added_physical": 378,
+        "lost_physical": 234,
+        "added_annotated": 0,
+        "lost_annotated": 28,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "added_physical": 304,
+        "lost_physical": 162,
+        "added_annotated": 7,
+        "lost_annotated": 1,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "added_physical": 252,
+        "lost_physical": 214,
+        "added_annotated": 5,
+        "lost_annotated": 10,
+        "graph_new_annotated_at_delivery": 2,
+        "graph_new_annotated_also_read_by_native": 2,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "added_physical": 243,
+        "lost_physical": 104,
+        "added_annotated": 2,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 5,
+        "graph_new_annotated_also_read_by_native": 5,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "added_physical": 147,
+        "lost_physical": 164,
+        "added_annotated": 1,
+        "lost_annotated": 7,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "added_physical": 1015,
+        "lost_physical": 836,
+        "added_annotated": 31,
+        "lost_annotated": 28,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "added_physical": 25,
+        "lost_physical": 51,
+        "added_annotated": 24,
+        "lost_annotated": 35,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "added_physical": 44,
+        "lost_physical": 1,
+        "added_annotated": 0,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "added_physical": 258,
+        "lost_physical": 84,
+        "added_annotated": 24,
+        "lost_annotated": 0,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "added_physical": 44,
+        "lost_physical": 67,
+        "added_annotated": 0,
+        "lost_annotated": 16,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "added_physical": 110,
+        "lost_physical": 21,
+        "added_annotated": 0,
+        "lost_annotated": 10,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "added_physical": 236,
+        "lost_physical": 116,
+        "added_annotated": 8,
+        "lost_annotated": 9,
+        "graph_new_annotated_at_delivery": 0,
+        "graph_new_annotated_also_read_by_native": 0,
+        "graph_new_annotated_not_read_by_native": 0
+      }
+    ],
+    "totals": {
+      "added_annotated": 472,
+      "added_physical": 5151,
+      "graph_new_annotated_also_read_by_native": 90,
+      "graph_new_annotated_at_delivery": 139,
+      "graph_new_annotated_not_read_by_native": 49,
+      "lost_annotated": 464,
+      "lost_physical": 4204
+    }
+  },
+  "fixed_query_graph_replay": {
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_unseen_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_unseen_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 5
+            },
+            "new_physical_at_delivery": 52,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 12,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 5
+            },
+            "new_physical_at_delivery": 52,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 12,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 4,
+              "source_not_returned": 1
+            },
+            "new_physical_at_delivery": 90,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 88,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 202,
+            "new_annotated_at_delivery": 202,
+            "new_physical_absent_from_native": 145,
+            "new_annotated_absent_from_native": 145
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_not_returned": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 132,
+            "new_annotated_at_delivery": 132,
+            "new_physical_absent_from_native": 49,
+            "new_annotated_absent_from_native": 49
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 132,
+            "new_annotated_at_delivery": 132,
+            "new_physical_absent_from_native": 49,
+            "new_annotated_absent_from_native": 49
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 3
+            },
+            "new_physical_at_delivery": 15,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 12,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 3
+            },
+            "new_physical_at_delivery": 15,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 12,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 1,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 1,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 5
+            },
+            "new_physical_at_delivery": 5,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 3,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 2,
+              "source_not_returned": 2
+            },
+            "new_physical_at_delivery": 99,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 48,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_definition_at_line": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_definition_at_line": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 5
+            },
+            "new_physical_at_delivery": 16,
+            "new_annotated_at_delivery": 2,
+            "new_physical_absent_from_native": 10,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 5
+            },
+            "new_physical_at_delivery": 16,
+            "new_annotated_at_delivery": 2,
+            "new_physical_absent_from_native": 10,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 2
+            },
+            "new_physical_at_delivery": 12,
+            "new_annotated_at_delivery": 5,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 2
+            },
+            "new_physical_at_delivery": 12,
+            "new_annotated_at_delivery": 5,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_returned_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_returned_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 19,
+            "new_annotated_at_delivery": 15,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_unseen_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_unseen_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 131,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 32,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 1
+            },
+            "new_physical_at_delivery": 131,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 32,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "artifacts": {
+          "prior": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_definition_at_line": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "no_returned_neighbors": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "artifacts": {
+          "prior": {
+            "available": false,
+            "queries": 1,
+            "statuses": {
+              "graph_unavailable": 1
+            },
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "composed": {
+            "available": true,
+            "queries": 1,
+            "statuses": {
+              "source_returned": 2,
+              "source_not_returned": 1
+            },
+            "new_physical_at_delivery": 158,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 156,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      }
+    ],
+    "totals": {
+      "prior": {
+        "new_annotated_absent_from_native": 49,
+        "new_annotated_at_delivery": 139,
+        "new_physical_absent_from_native": 115,
+        "new_physical_at_delivery": 358,
+        "queries": 24
+      },
+      "composed": {
+        "new_annotated_absent_from_native": 194,
+        "new_annotated_at_delivery": 356,
+        "new_physical_absent_from_native": 556,
+        "new_physical_at_delivery": 932,
+        "queries": 24
+      }
+    }
+  },
+  "late_anchor_probe": {
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "graph_available": true,
+        "observed_callable_candidates": 20,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 32,
+            "new_annotated_at_delivery": 21,
+            "new_physical_absent_from_native": 30,
+            "new_annotated_absent_from_native": 19
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 30,
+            "new_annotated_at_delivery": 19,
+            "new_physical_absent_from_native": 30,
+            "new_annotated_absent_from_native": 19
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "graph_available": true,
+        "observed_callable_candidates": 47,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 14,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 14,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 14,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 14,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 133,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 133,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "graph_available": false,
+        "observed_callable_candidates": 0,
+        "policies": {
+          "early_first": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "graph_available": true,
+        "observed_callable_candidates": 12,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 127,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 125,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 125,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 125,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "graph_available": true,
+        "observed_callable_candidates": 100,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 26,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 26,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 26,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 26,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "graph_available": false,
+        "observed_callable_candidates": 0,
+        "policies": {
+          "early_first": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "graph_available": true,
+        "observed_callable_candidates": 43,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "graph_available": true,
+        "observed_callable_candidates": 12,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 148,
+            "new_annotated_at_delivery": 145,
+            "new_physical_absent_from_native": 53,
+            "new_annotated_absent_from_native": 50
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 76,
+            "new_annotated_at_delivery": 50,
+            "new_physical_absent_from_native": 76,
+            "new_annotated_absent_from_native": 50
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 76,
+            "new_annotated_at_delivery": 50,
+            "new_physical_absent_from_native": 76,
+            "new_annotated_absent_from_native": 50
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "graph_available": false,
+        "observed_callable_candidates": 0,
+        "policies": {
+          "early_first": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "graph_available": true,
+        "observed_callable_candidates": 37,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 36,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 36,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 36,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 36,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 31,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 31,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "graph_available": true,
+        "observed_callable_candidates": 11,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 15,
+            "new_annotated_at_delivery": 1,
+            "new_physical_absent_from_native": 14,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 14,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 14,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 14,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 14,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "graph_available": true,
+        "observed_callable_candidates": 17,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 3,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 3,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 3,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 3,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 15,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 15,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "graph_available": true,
+        "observed_callable_candidates": 45,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 147,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 96,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 134,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 134,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 37,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 37,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "graph_available": true,
+        "observed_callable_candidates": 6,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 38,
+            "new_annotated_at_delivery": 9,
+            "new_physical_absent_from_native": 23,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 23,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 23,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 23,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 23,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "graph_available": true,
+        "observed_callable_candidates": 78,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 46,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 45,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 45,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 45,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 137,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 137,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "graph_available": true,
+        "observed_callable_candidates": 44,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 104,
+            "new_annotated_at_delivery": 2,
+            "new_physical_absent_from_native": 55,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 55,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 55,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "graph_available": true,
+        "observed_callable_candidates": 5,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "graph_available": true,
+        "observed_callable_candidates": 148,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 102,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 102,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 102,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 102,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 19,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 19,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "graph_available": false,
+        "observed_callable_candidates": 0,
+        "policies": {
+          "early_first": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "graph_available": true,
+        "observed_callable_candidates": 4,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 138,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 138,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 138,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 138,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 138,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 138,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "graph_available": false,
+        "observed_callable_candidates": 0,
+        "policies": {
+          "early_first": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 0,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "graph_available": true,
+        "observed_callable_candidates": 8,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 131,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 32,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 32,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 32,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 150,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 150,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "graph_available": true,
+        "observed_callable_candidates": 4,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 0,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 0,
+            "new_annotated_absent_from_native": 0
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 24,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 24,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "graph_available": true,
+        "observed_callable_candidates": 33,
+        "policies": {
+          "early_first": {
+            "queries": 2,
+            "new_physical_at_delivery": 214,
+            "new_annotated_at_delivery": 11,
+            "new_physical_absent_from_native": 212,
+            "new_annotated_absent_from_native": 11
+          },
+          "late_same_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 212,
+            "new_annotated_at_delivery": 11,
+            "new_physical_absent_from_native": 212,
+            "new_annotated_absent_from_native": 11
+          },
+          "late_issue_anchor": {
+            "queries": 2,
+            "new_physical_at_delivery": 5,
+            "new_annotated_at_delivery": 0,
+            "new_physical_absent_from_native": 5,
+            "new_annotated_absent_from_native": 0
+          }
+        }
+      }
+    ],
+    "totals": {
+      "early_first": {
+        "new_annotated_absent_from_native": 80,
+        "new_annotated_at_delivery": 189,
+        "new_physical_absent_from_native": 1004,
+        "new_physical_at_delivery": 1321,
+        "queries": 38
+      },
+      "late_same_anchor": {
+        "new_annotated_absent_from_native": 80,
+        "new_annotated_at_delivery": 80,
+        "new_physical_absent_from_native": 1065,
+        "new_physical_at_delivery": 1065,
+        "queries": 38
+      },
+      "late_issue_anchor": {
+        "new_annotated_absent_from_native": 50,
+        "new_annotated_at_delivery": 50,
+        "new_physical_absent_from_native": 802,
+        "new_physical_at_delivery": 802,
+        "queries": 38
+      }
+    }
+  },
+  "prepared_graph_prefix_replay": {
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "available": {
+          "prior": true,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 31,
+              "statuses": {
+                "source_returned": 2
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 1,
+              "statuses": {
+                "source_returned": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 31,
+              "statuses": {
+                "source_returned": 2
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 1,
+              "statuses": {
+                "source_returned": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 32,
+            "new_annotated_physical_lines": 21
+          },
+          "prepared": {
+            "new_physical_lines": 32,
+            "new_annotated_physical_lines": 21
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "available": {
+          "prior": true,
+          "prepared": false
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 14,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 14,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "language": "typescript",
+        "available": {
+          "prior": false,
+          "prepared": false
+        },
+        "directions": {},
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "language": "python",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 90,
+              "statuses": {
+                "source_returned": 4,
+                "source_not_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 37,
+              "statuses": {
+                "source_returned": 2
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 127,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 26,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 26,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "language": "c",
+        "available": {
+          "prior": false,
+          "prepared": false
+        },
+        "directions": {},
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "source_not_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "source_not_returned": 3
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "available": {
+          "prior": true,
+          "prepared": false
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 132,
+              "statuses": {
+                "source_returned": 1,
+                "source_not_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 16,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 148,
+            "new_annotated_physical_lines": 145
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "available": {
+          "prior": false,
+          "prepared": false
+        },
+        "directions": {},
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "language": "typescript",
+        "available": {
+          "prior": true,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 36,
+              "statuses": {
+                "source_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 36,
+              "statuses": {
+                "source_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 36,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 36,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "language": "cpp",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 1,
+              "statuses": {
+                "source_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 14,
+              "statuses": {
+                "source_returned": 3
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 15,
+            "new_annotated_physical_lines": 1
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "language": "cpp",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 3,
+              "statuses": {
+                "source_returned": 3
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 3,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "language": "c",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 99,
+              "statuses": {
+                "source_returned": 2,
+                "source_not_returned": 2
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 48,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 147,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "available": {
+          "prior": true,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 38,
+              "statuses": {
+                "source_returned": 3
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 38,
+              "statuses": {
+                "source_returned": 3
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 38,
+            "new_annotated_physical_lines": 9
+          },
+          "prepared": {
+            "new_physical_lines": 38,
+            "new_annotated_physical_lines": 9
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "available": {
+          "prior": true,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 46,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 46,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 46,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 46,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "language": "rust",
+        "available": {
+          "prior": true,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 90,
+              "statuses": {
+                "source_not_returned": 1,
+                "source_returned": 4
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 14,
+              "statuses": {
+                "source_returned": 2
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 90,
+              "statuses": {
+                "source_not_returned": 1,
+                "source_returned": 4
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 14,
+              "statuses": {
+                "source_returned": 2
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 104,
+            "new_annotated_physical_lines": 2
+          },
+          "prepared": {
+            "new_physical_lines": 104,
+            "new_annotated_physical_lines": 2
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "language": "javascript",
+        "available": {
+          "prior": true,
+          "prepared": false
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "language": "rust",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 102,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 102,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "language": "java",
+        "available": {
+          "prior": false,
+          "prepared": false
+        },
+        "directions": {},
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "language": "go",
+        "available": {
+          "prior": true,
+          "prepared": false
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 83,
+              "statuses": {
+                "source_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 55,
+              "statuses": {
+                "source_returned": 5
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 138,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "language": "java",
+        "available": {
+          "prior": false,
+          "prepared": false
+        },
+        "directions": {},
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "language": "go",
+        "available": {
+          "prior": true,
+          "prepared": false
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 131,
+              "statuses": {
+                "source_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 131,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "language": "javascript",
+        "available": {
+          "prior": true,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_definition_at_line": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_definition_at_line": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_returned_neighbors": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "no_unseen_neighbors": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "language": "python",
+        "available": {
+          "prior": false,
+          "prepared": true
+        },
+        "directions": {
+          "prior": {
+            "incoming": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 0,
+              "statuses": {
+                "graph_unavailable": 1
+              }
+            }
+          },
+          "prepared": {
+            "incoming": {
+              "new_physical_lines": 158,
+              "statuses": {
+                "source_returned": 2,
+                "source_not_returned": 1
+              }
+            },
+            "outgoing": {
+              "new_physical_lines": 56,
+              "statuses": {
+                "source_returned": 4,
+                "source_not_returned": 1
+              }
+            }
+          }
+        },
+        "union_directions": {
+          "prior": {
+            "new_physical_lines": 0,
+            "new_annotated_physical_lines": 0
+          },
+          "prepared": {
+            "new_physical_lines": 214,
+            "new_annotated_physical_lines": 11
+          }
+        }
+      }
+    ],
+    "totals": {
+      "prior": {
+        "new_annotated_physical_lines": 177,
+        "new_physical_lines": 687
+      },
+      "prepared": {
+        "new_annotated_physical_lines": 44,
+        "new_physical_lines": 890
+      }
+    }
+  },
+  "completion_replays": {
+    "replay": {
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 50,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 13,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        }
+      ],
+      "totals": {
+        "added_annotated": 0,
+        "added_physical": 63,
+        "lost_annotated": 0,
+        "lost_physical": 0
+      }
+    },
+    "replay-preserve-selection": {
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        },
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+          "lost_physical": 0,
+          "lost_annotated": 0,
+          "added_physical": 0,
+          "added_annotated": 0
+        }
+      ],
+      "totals": {
+        "added_annotated": 0,
+        "added_physical": 0,
+        "lost_annotated": 0,
+        "lost_physical": 0
+      }
+    }
+  },
+  "initial_downstream_packing": {
+    "cases": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__typescript__maintenance__bugfix__4f3cb6be",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__60bc9e86",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__cdbc5890",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 50,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 50,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__2fb50735",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__7c9ef76c",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__e43d9aa5",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__0f495035",
+        "budgets": {
+          "16384": {
+            "lost_physical": 14,
+            "lost_annotated": 0,
+            "added_physical": 13,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 13,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__03fdad45",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-PolyBench__javascript__maintenance__bugfix__f4541fb1",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__16860730",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__747c7f60",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__go__maintenance__bugfix__6d48775e",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__8b7cc5e0",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__997c7afd",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__javascript__maintenance__bugfix__98bbaed2",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      },
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__42c77239",
+        "budgets": {
+          "16384": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          },
+          "32768": {
+            "lost_physical": 0,
+            "lost_annotated": 0,
+            "added_physical": 0,
+            "added_annotated": 0
+          }
+        }
+      }
+    ],
+    "totals": {
+      "16384": {
+        "added_annotated": 0,
+        "added_physical": 63,
+        "lost_annotated": 0,
+        "lost_physical": 14
+      },
+      "32768": {
+        "added_annotated": 0,
+        "added_physical": 63,
+        "lost_annotated": 0,
+        "lost_physical": 0
+      }
+    }
+  },
+  "late_graph_8_gate": {
+    "protocol_sha256": "e73c676224ee7b2cef73ae44f3ed6ab9672cc4ccb599ad423a8ea51c7b627b91",
+    "analysis_sha256": "f5b94f6c7f68530de07ea1222effbff1471fb9cc7fecf47c6ebbb2906891aed9",
+    "all_frozen_runtime_and_inputs_match": true,
+    "gates": {
+      "all_selected_tasks_finish_and_score": true,
+      "all_usage_metered": true,
+      "every_available_graph_called": true,
+      "at_most_two_graph_calls_per_task": true,
+      "graph_anchors_were_previously_observed_after_two_source_replies": true,
+      "at_least_two_languages_receive_annotated_graph_source_absent_from_native": false,
+      "primary_recall_point_increased": true,
+      "primary_f1_point_not_lower": true
+    },
+    "passed": false,
+    "graph_adoption": [
+      {
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "graph_available": true,
+        "new_physical_lines": 0,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 0,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 0,
+          "no_unseen_neighbors": 1
+        },
+        "queries": [
+          {
+            "source_replies_before": 3,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "no_unseen_neighbors": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "graph_available": true,
+        "new_physical_lines": 0,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 0,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 0,
+          "source_not_returned": 1
+        },
+        "queries": [
+          {
+            "source_replies_before": 13,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "source_not_returned": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "graph_available": true,
+        "new_physical_lines": 200,
+        "new_annotated_lines": 200,
+        "new_physical_absent_from_native": 197,
+        "new_annotated_absent_from_native": 197,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 200,
+          "source_returned": 1
+        },
+        "queries": [
+          {
+            "source_replies_before": 15,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 200,
+            "new_annotated_lines": 200,
+            "new_annotated_absent_from_native": 197,
+            "statuses": {
+              "source_returned": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "graph_available": true,
+        "new_physical_lines": 0,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 0,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 0,
+          "source_not_returned": 1
+        },
+        "queries": [
+          {
+            "source_replies_before": 3,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "source_not_returned": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "graph_available": true,
+        "new_physical_lines": 0,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 0,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 0,
+          "no_unseen_neighbors": 1
+        },
+        "queries": [
+          {
+            "source_replies_before": 3,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "no_unseen_neighbors": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "graph_available": false,
+        "new_physical_lines": 0,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 0,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 0,
+          "graph_unavailable": 1
+        },
+        "queries": [
+          {
+            "source_replies_before": 9,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "graph_unavailable": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "graph_available": true,
+        "new_physical_lines": 0,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 0,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 2,
+          "confirmed_responses": 2,
+          "returned_physical_lines": 0,
+          "no_definition_at_line": 2
+        },
+        "queries": [
+          {
+            "source_replies_before": 13,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "no_definition_at_line": 1
+            }
+          },
+          {
+            "source_replies_before": 13,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 0,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "no_definition_at_line": 1
+            }
+          }
+        ]
+      },
+      {
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "graph_available": true,
+        "new_physical_lines": 20,
+        "new_annotated_lines": 0,
+        "new_physical_absent_from_native": 15,
+        "new_annotated_absent_from_native": 0,
+        "counts": {
+          "calls": 1,
+          "confirmed_responses": 1,
+          "returned_physical_lines": 20,
+          "source_returned": 6
+        },
+        "queries": [
+          {
+            "source_replies_before": 10,
+            "anchor_previously_observed": true,
+            "confirmed": true,
+            "new_physical_lines": 20,
+            "new_annotated_lines": 0,
+            "new_annotated_absent_from_native": 0,
+            "statuses": {
+              "source_returned": 6
+            }
+          }
+        ]
+      }
+    ],
+    "primary_metrics": {
+      "recall": {
+        "baseline": 0.39854522032438433,
+        "candidate": 0.4162128649381706,
+        "difference": 0.017667644613786265,
+        "paired_bootstrap_95_interval": [
+          -0.0436286937237943,
+          0.08226140049602329
+        ]
+      },
+      "precision": {
+        "baseline": 0.34139459196207783,
+        "candidate": 0.3456469534940558,
+        "difference": 0.004252361531977935,
+        "paired_bootstrap_95_interval": [
+          -0.09686873487212115,
+          0.10347369645560842
+        ]
+      },
+      "f1": {
+        "baseline": 0.32846291218941726,
+        "candidate": 0.3529206038528339,
+        "difference": 0.02445769166341666,
+        "paired_bootstrap_95_interval": [
+          -0.010614238100404731,
+          0.07064668308772286
+        ]
+      }
+    },
+    "sdk_reported_estimate_usd": 6.796706500000001,
+    "scope": "Development selection only; no independent validation, causal source-set effect, Pass@1 or leaderboard claim.",
+    "diagnostic_correction": "Overlap counts corrected after frozen analysis using official path normalization. Original protocol, scores and first gate file remain unchanged; this amendment does not relax a gate."
+  },
+  "earlier_8_source_attribution": {
+    "development-functions": {
+      "n_tasks": 8,
+      "totals": {
+        "completed_grep": {
+          "new_physical_lines": 1901,
+          "annotated_lines": 381,
+          "responses_adding_source": 26,
+          "annotated_fraction": 0.20042083114150447
+        },
+        "completed_read": {
+          "new_physical_lines": 584,
+          "annotated_lines": 108,
+          "responses_adding_source": 18,
+          "annotated_fraction": 0.18493150684931506
+        },
+        "original_grep": {
+          "new_physical_lines": 451,
+          "annotated_lines": 80,
+          "responses_adding_source": 32,
+          "annotated_fraction": 0.17738359201773837
+        },
+        "original_read": {
+          "new_physical_lines": 4409,
+          "annotated_lines": 1035,
+          "responses_adding_source": 39,
+          "annotated_fraction": 0.23474710818779768
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 15,
+              "annotated_lines": 14,
+              "responses_adding_source": 1
+            },
+            "completed_grep": {
+              "new_physical_lines": 64,
+              "annotated_lines": 51,
+              "responses_adding_source": 1
+            },
+            "original_read": {
+              "new_physical_lines": 123,
+              "annotated_lines": 37,
+              "responses_adding_source": 2
+            },
+            "completed_read": {
+              "new_physical_lines": 35,
+              "annotated_lines": 35,
+              "responses_adding_source": 1
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 65,
+              "annotated_lines": 0,
+              "responses_adding_source": 5
+            },
+            "completed_grep": {
+              "new_physical_lines": 158,
+              "annotated_lines": 0,
+              "responses_adding_source": 3
+            },
+            "original_read": {
+              "new_physical_lines": 611,
+              "annotated_lines": 60,
+              "responses_adding_source": 7
+            },
+            "completed_read": {
+              "new_physical_lines": 98,
+              "annotated_lines": 0,
+              "responses_adding_source": 2
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 105,
+              "annotated_lines": 17,
+              "responses_adding_source": 6
+            },
+            "completed_grep": {
+              "new_physical_lines": 420,
+              "annotated_lines": 41,
+              "responses_adding_source": 5
+            },
+            "original_read": {
+              "new_physical_lines": 989,
+              "annotated_lines": 328,
+              "responses_adding_source": 7
+            },
+            "completed_read": {
+              "new_physical_lines": 89,
+              "annotated_lines": 10,
+              "responses_adding_source": 4
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 49,
+              "annotated_lines": 11,
+              "responses_adding_source": 1
+            },
+            "completed_grep": {
+              "new_physical_lines": 35,
+              "annotated_lines": 0,
+              "responses_adding_source": 1
+            },
+            "original_read": {
+              "new_physical_lines": 310,
+              "annotated_lines": 196,
+              "responses_adding_source": 1
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 12,
+              "annotated_lines": 6,
+              "responses_adding_source": 3
+            },
+            "completed_grep": {
+              "new_physical_lines": 250,
+              "annotated_lines": 77,
+              "responses_adding_source": 3
+            },
+            "original_read": {
+              "new_physical_lines": 227,
+              "annotated_lines": 100,
+              "responses_adding_source": 3
+            },
+            "completed_read": {
+              "new_physical_lines": 77,
+              "annotated_lines": 59,
+              "responses_adding_source": 2
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 53,
+              "annotated_lines": 18,
+              "responses_adding_source": 4
+            },
+            "completed_grep": {
+              "new_physical_lines": 224,
+              "annotated_lines": 85,
+              "responses_adding_source": 4
+            },
+            "original_read": {
+              "new_physical_lines": 364,
+              "annotated_lines": 43,
+              "responses_adding_source": 4
+            },
+            "completed_read": {
+              "new_physical_lines": 16,
+              "annotated_lines": 0,
+              "responses_adding_source": 2
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "categories": {
+            "original_read": {
+              "new_physical_lines": 954,
+              "annotated_lines": 167,
+              "responses_adding_source": 10
+            },
+            "original_grep": {
+              "new_physical_lines": 81,
+              "annotated_lines": 8,
+              "responses_adding_source": 4
+            },
+            "completed_grep": {
+              "new_physical_lines": 217,
+              "annotated_lines": 35,
+              "responses_adding_source": 2
+            },
+            "completed_read": {
+              "new_physical_lines": 235,
+              "annotated_lines": 4,
+              "responses_adding_source": 5
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 71,
+              "annotated_lines": 6,
+              "responses_adding_source": 8
+            },
+            "completed_grep": {
+              "new_physical_lines": 533,
+              "annotated_lines": 92,
+              "responses_adding_source": 7
+            },
+            "original_read": {
+              "new_physical_lines": 831,
+              "annotated_lines": 104,
+              "responses_adding_source": 5
+            },
+            "completed_read": {
+              "new_physical_lines": 34,
+              "annotated_lines": 0,
+              "responses_adding_source": 2
+            }
+          }
+        }
+      ]
+    },
+    "required-hop-control-functions": {
+      "n_tasks": 8,
+      "totals": {
+        "completed_grep": {
+          "new_physical_lines": 1931,
+          "annotated_lines": 335,
+          "responses_adding_source": 29,
+          "annotated_fraction": 0.17348524080787156
+        },
+        "completed_read": {
+          "new_physical_lines": 640,
+          "annotated_lines": 102,
+          "responses_adding_source": 19,
+          "annotated_fraction": 0.159375
+        },
+        "original_grep": {
+          "new_physical_lines": 542,
+          "annotated_lines": 72,
+          "responses_adding_source": 35,
+          "annotated_fraction": 0.13284132841328414
+        },
+        "original_read": {
+          "new_physical_lines": 3952,
+          "annotated_lines": 1058,
+          "responses_adding_source": 37,
+          "annotated_fraction": 0.26771255060728744
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 15,
+              "annotated_lines": 14,
+              "responses_adding_source": 1
+            },
+            "completed_grep": {
+              "new_physical_lines": 64,
+              "annotated_lines": 51,
+              "responses_adding_source": 1
+            },
+            "original_read": {
+              "new_physical_lines": 152,
+              "annotated_lines": 43,
+              "responses_adding_source": 3
+            },
+            "completed_read": {
+              "new_physical_lines": 110,
+              "annotated_lines": 30,
+              "responses_adding_source": 2
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 68,
+              "annotated_lines": 0,
+              "responses_adding_source": 4
+            },
+            "completed_grep": {
+              "new_physical_lines": 217,
+              "annotated_lines": 0,
+              "responses_adding_source": 3
+            },
+            "original_read": {
+              "new_physical_lines": 479,
+              "annotated_lines": 0,
+              "responses_adding_source": 6
+            },
+            "completed_read": {
+              "new_physical_lines": 96,
+              "annotated_lines": 0,
+              "responses_adding_source": 1
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 97,
+              "annotated_lines": 12,
+              "responses_adding_source": 8
+            },
+            "completed_grep": {
+              "new_physical_lines": 336,
+              "annotated_lines": 41,
+              "responses_adding_source": 5
+            },
+            "original_read": {
+              "new_physical_lines": 889,
+              "annotated_lines": 377,
+              "responses_adding_source": 6
+            },
+            "completed_read": {
+              "new_physical_lines": 93,
+              "annotated_lines": 11,
+              "responses_adding_source": 4
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 50,
+              "annotated_lines": 11,
+              "responses_adding_source": 2
+            },
+            "completed_grep": {
+              "new_physical_lines": 35,
+              "annotated_lines": 0,
+              "responses_adding_source": 1
+            },
+            "original_read": {
+              "new_physical_lines": 310,
+              "annotated_lines": 196,
+              "responses_adding_source": 1
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 11,
+              "annotated_lines": 6,
+              "responses_adding_source": 4
+            },
+            "completed_grep": {
+              "new_physical_lines": 280,
+              "annotated_lines": 76,
+              "responses_adding_source": 4
+            },
+            "original_read": {
+              "new_physical_lines": 79,
+              "annotated_lines": 79,
+              "responses_adding_source": 1
+            },
+            "completed_read": {
+              "new_physical_lines": 54,
+              "annotated_lines": 54,
+              "responses_adding_source": 1
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 56,
+              "annotated_lines": 11,
+              "responses_adding_source": 7
+            },
+            "completed_grep": {
+              "new_physical_lines": 197,
+              "annotated_lines": 37,
+              "responses_adding_source": 7
+            },
+            "original_read": {
+              "new_physical_lines": 358,
+              "annotated_lines": 109,
+              "responses_adding_source": 4
+            },
+            "completed_read": {
+              "new_physical_lines": 18,
+              "annotated_lines": 2,
+              "responses_adding_source": 3
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "categories": {
+            "original_read": {
+              "new_physical_lines": 928,
+              "annotated_lines": 171,
+              "responses_adding_source": 10
+            },
+            "completed_read": {
+              "new_physical_lines": 213,
+              "annotated_lines": 0,
+              "responses_adding_source": 5
+            },
+            "original_grep": {
+              "new_physical_lines": 118,
+              "annotated_lines": 8,
+              "responses_adding_source": 3
+            },
+            "completed_grep": {
+              "new_physical_lines": 218,
+              "annotated_lines": 35,
+              "responses_adding_source": 2
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 127,
+              "annotated_lines": 10,
+              "responses_adding_source": 6
+            },
+            "completed_grep": {
+              "new_physical_lines": 584,
+              "annotated_lines": 95,
+              "responses_adding_source": 6
+            },
+            "original_read": {
+              "new_physical_lines": 757,
+              "annotated_lines": 83,
+              "responses_adding_source": 6
+            },
+            "completed_read": {
+              "new_physical_lines": 56,
+              "annotated_lines": 5,
+              "responses_adding_source": 3
+            }
+          }
+        }
+      ]
+    },
+    "required-hop-candidate": {
+      "n_tasks": 8,
+      "totals": {
+        "completed_grep": {
+          "new_physical_lines": 2123,
+          "annotated_lines": 278,
+          "responses_adding_source": 30,
+          "annotated_fraction": 0.13094677343382008
+        },
+        "completed_read": {
+          "new_physical_lines": 382,
+          "annotated_lines": 115,
+          "responses_adding_source": 16,
+          "annotated_fraction": 0.3010471204188482
+        },
+        "graph": {
+          "new_physical_lines": 0,
+          "annotated_lines": 0,
+          "responses_adding_source": 0,
+          "annotated_fraction": 0
+        },
+        "original_grep": {
+          "new_physical_lines": 642,
+          "annotated_lines": 96,
+          "responses_adding_source": 40,
+          "annotated_fraction": 0.14953271028037382
+        },
+        "original_read": {
+          "new_physical_lines": 4495,
+          "annotated_lines": 1130,
+          "responses_adding_source": 39,
+          "annotated_fraction": 0.25139043381535037
+        }
+      },
+      "cases": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 17,
+              "annotated_lines": 14,
+              "responses_adding_source": 2
+            },
+            "completed_grep": {
+              "new_physical_lines": 72,
+              "annotated_lines": 51,
+              "responses_adding_source": 2
+            },
+            "original_read": {
+              "new_physical_lines": 48,
+              "annotated_lines": 42,
+              "responses_adding_source": 1
+            },
+            "completed_read": {
+              "new_physical_lines": 76,
+              "annotated_lines": 30,
+              "responses_adding_source": 1
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 132,
+              "annotated_lines": 2,
+              "responses_adding_source": 6
+            },
+            "completed_grep": {
+              "new_physical_lines": 339,
+              "annotated_lines": 0,
+              "responses_adding_source": 4
+            },
+            "original_read": {
+              "new_physical_lines": 418,
+              "annotated_lines": 59,
+              "responses_adding_source": 7
+            },
+            "completed_read": {
+              "new_physical_lines": 103,
+              "annotated_lines": 0,
+              "responses_adding_source": 2
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 145,
+              "annotated_lines": 22,
+              "responses_adding_source": 9
+            },
+            "completed_grep": {
+              "new_physical_lines": 481,
+              "annotated_lines": 0,
+              "responses_adding_source": 6
+            },
+            "original_read": {
+              "new_physical_lines": 1110,
+              "annotated_lines": 384,
+              "responses_adding_source": 8
+            },
+            "completed_read": {
+              "new_physical_lines": 47,
+              "annotated_lines": 12,
+              "responses_adding_source": 4
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 50,
+              "annotated_lines": 11,
+              "responses_adding_source": 2
+            },
+            "completed_grep": {
+              "new_physical_lines": 35,
+              "annotated_lines": 0,
+              "responses_adding_source": 1
+            },
+            "original_read": {
+              "new_physical_lines": 310,
+              "annotated_lines": 196,
+              "responses_adding_source": 1
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 9,
+              "annotated_lines": 6,
+              "responses_adding_source": 3
+            },
+            "completed_grep": {
+              "new_physical_lines": 198,
+              "annotated_lines": 76,
+              "responses_adding_source": 3
+            },
+            "original_read": {
+              "new_physical_lines": 79,
+              "annotated_lines": 79,
+              "responses_adding_source": 1
+            },
+            "completed_read": {
+              "new_physical_lines": 53,
+              "annotated_lines": 53,
+              "responses_adding_source": 1
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 60,
+              "annotated_lines": 20,
+              "responses_adding_source": 5
+            },
+            "completed_grep": {
+              "new_physical_lines": 229,
+              "annotated_lines": 30,
+              "responses_adding_source": 5
+            },
+            "original_read": {
+              "new_physical_lines": 513,
+              "annotated_lines": 100,
+              "responses_adding_source": 5
+            },
+            "completed_read": {
+              "new_physical_lines": 24,
+              "annotated_lines": 20,
+              "responses_adding_source": 2
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 103,
+              "annotated_lines": 16,
+              "responses_adding_source": 6
+            },
+            "completed_grep": {
+              "new_physical_lines": 237,
+              "annotated_lines": 28,
+              "responses_adding_source": 2
+            },
+            "original_read": {
+              "new_physical_lines": 983,
+              "annotated_lines": 175,
+              "responses_adding_source": 10
+            },
+            "completed_read": {
+              "new_physical_lines": 34,
+              "annotated_lines": 0,
+              "responses_adding_source": 3
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "categories": {
+            "original_grep": {
+              "new_physical_lines": 126,
+              "annotated_lines": 5,
+              "responses_adding_source": 7
+            },
+            "completed_grep": {
+              "new_physical_lines": 532,
+              "annotated_lines": 93,
+              "responses_adding_source": 7
+            },
+            "original_read": {
+              "new_physical_lines": 1034,
+              "annotated_lines": 95,
+              "responses_adding_source": 6
+            },
+            "completed_read": {
+              "new_physical_lines": 45,
+              "annotated_lines": 0,
+              "responses_adding_source": 3
+            },
+            "graph": {
+              "new_physical_lines": 0,
+              "annotated_lines": 0,
+              "responses_adding_source": 0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "all_frozen_inputs_and_runtime_hashes_match": true,
+  "input_receipts_sha256": "d3e430f26aaa0edc3a6ba75b154c6b74ed20b371aeabc0ba5738c1252adbd46e"
+}

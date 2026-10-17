@@ -179,14 +179,23 @@ A separate solver image removes reference artifacts and Git history while
 preserving the selected source tree. The broader offline preparation check has
 14/24 graphs, with eight new successes
 and five losses; a separate authenticated composition has 19/24 available.
-Replaying the same actual graph queries with that composition leaves annotated
-source absent from the native control unchanged at 49 lines on one Go task;
-query timing and target selection remain open. Optional conversation-aware
+Replaying the same actual graph queries with that composition increases canonical
+annotated source absent from native from 49 to 194 lines across C and Go. The
+earlier unchanged-49 claim missed container-prefixed annotations; official scores
+remain unchanged. The evaluator now exports the pinned canonical annotation
+intervals, and retrospective corrections preserve original frozen records.
+Optional conversation-aware
 function completion preserves the original callable selection and removes 726
 repeated line deliveries in a fixed 24-task replay, with identical cumulative
 source and 3.63% fewer reply characters. Neither replay establishes an online
 quality gain; all 24 final 16K/32K payloads remain byte-identical to their
-historical controls. The fmt pilot now
+historical controls. A fresh three-arm late-relationship pilot completes all
+eight development tasks per arm. Recall changes 39.85% → 41.62% and F1
+32.85% → 35.29%, with both primary intervals crossing zero. Nine graph calls add
+200 annotated C lines, 197 absent from native, but no other language gains
+annotated graph source. Its two-language gate fails. Bounded oversized-neighbor
+delivery and definition coverage at observed anchors are the next mechanism
+checks; no new independent or official-500 run follows. The fmt pilot now
 has source-only solver preflight and a separate pinned native adapter, with exact
 patch replacement and owned-container cleanup. Its matched development pair
 resolves one C++ task in both arms, 1/1 each, passing 18 tests with ten confirmed
