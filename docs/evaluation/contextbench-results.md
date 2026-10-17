@@ -239,9 +239,22 @@ they fit the response budget, otherwise explicit metadata without source-read
 credit. References are not a runtime call trace. Graphs are verified against a
 frozen source manifest and graph-file hashes before use.
 Inside a function or method, a selected line navigates from the enclosing callable
-rather than a smaller local-symbol definition. The current shared prompt requests
-at least one targeted reference hop before handoff when the tool is available;
-actual tool adoption must still be checked in the recorded trajectory.
+rather than a smaller local-symbol definition. The current development prompt
+requests a targeted hop when a central callable is located and dependencies are
+still unclear, before expanding manual reads. Actual use and new source must
+still be checked in the recorded trajectory.
+
+The experimental `--graph-source-policy unseen` skips fully observed definitions
+and returns only the missing lines of partly observed definitions when all of
+those lines fit. It derives observations from actual, source-checked tool replies,
+not requested ranges. Known neighbors do not consume the result limit; the raw
+edge scan limit remains. The default `definitions` policy returns whole
+definitions. Both options retain the original reference direction and budgets.
+On an offline replay of the eight development calls, `unseen` removes all 220
+repeated lines but adds no new source. This is a mechanism check, not evidence of
+an online quality gain. A new development comparison pairs fresh native,
+function-completion and early-hop/unseen graph arms under one frozen runtime.
+The completed 32-task negative result above remains unchanged.
 
 Prepare graphs locally, then run two fresh `functions` arms with the same
 `--graphs` directory; add `--graph-navigation` only to the candidate. The paired

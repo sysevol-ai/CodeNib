@@ -163,8 +163,11 @@ def graph_options(args, cases):
     enabled = getattr(args, "graph_navigation", False)
     prepared = getattr(args, "graphs", None)
     tokens = getattr(args, "graph_tokens", 2048)
+    source_policy = getattr(args, "graph_source_policy", "definitions")
     if not 1 <= tokens <= 8192:
         raise ValueError("Graph token budget must be between 1 and 8192")
+    if source_policy not in {"definitions", "unseen"}:
+        raise ValueError("Unknown graph source policy")
     if enabled and (not prepared or args.source_policy != "functions"):
         raise ValueError(
             "Graph navigation requires functions policy and prepared graphs"
@@ -175,7 +178,8 @@ def graph_options(args, cases):
         "prepared": str(prepared.resolve()) if prepared else None,
         "manifest_sha256": digest(prepared / "manifest.json") if prepared else None,
         "tokens": tokens,
-        "policy": "targeted_reference_hop_before_handoff",
+        "policy": "early_reference_hop_before_expanding_reads",
+        "source_policy": source_policy,
     }
 
 
@@ -185,9 +189,22 @@ def graph_arguments(parser):
     )
     parser.add_argument("--graph-navigation", action="store_true")
     parser.add_argument("--graph-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--graph-source-policy",
+        choices=("definitions", "unseen"),
+        default="definitions",
+    )
 
 
-def load_navigation(record, graph_prepared, repo, *, token_budget=2048):
+def load_navigation(
+    record,
+    graph_prepared,
+    repo,
+    *,
+    token_budget=2048,
+    source_policy="definitions",
+    observed_source=None,
+):
     from codenib.graph.code_graph import CodeGraph
 
     graph = None
@@ -200,7 +217,13 @@ def load_navigation(record, graph_prepared, repo, *, token_budget=2048):
             raise ValueError("Frozen graph bytes changed")
         # Decode the authenticated bytes, without reopening a mutable pathname.
         graph = CodeGraph.load_graph_stream(io.BytesIO(data), input_label=str(path))
-    return GraphNavigation(graph, repo, token_budget=token_budget)
+    return GraphNavigation(
+        graph,
+        repo,
+        token_budget=token_budget,
+        source_policy=source_policy,
+        observed_source=observed_source,
+    )
 
 
 class GraphNavigation:
@@ -208,17 +231,36 @@ class GraphNavigation:
 
     No file hubs or containment edges participate. Scan at most ``edge_limit``
     raw edges and return at most the requested number of unique definitions.
-    A definition is returned whole or with an explicit source-unavailable status;
-    its declared range is never credited as read without actual numbered source.
+    A definition's source is returned whole, or as all its missing lines under
+    ``unseen``, within the response budget. Its declared range is never credited
+    as read without actual numbered source. ``observed_source`` supplies verified
+    NodeInfo ranges from a snapshot of delivered messages; requested tool ranges
+    and graph metadata cannot mark lines observed. No mutable ledger or shared
+    lock is kept here, and parallel calls may conservatively repeat source.
     """
 
-    def __init__(self, graph, repo, *, token_budget=2048, edge_limit=1000):
+    def __init__(
+        self,
+        graph,
+        repo,
+        *,
+        token_budget=2048,
+        edge_limit=1000,
+        source_policy="definitions",
+        observed_source=None,
+    ):
         if not 1 <= token_budget <= 8192 or not 1 <= edge_limit <= 10000:
             raise ValueError("Invalid graph-navigation budget")
         self.graph = graph
         self.repo = Path(repo).resolve()
         self.token_budget = token_budget
         self.edge_limit = edge_limit
+        if source_policy not in {"definitions", "unseen"}:
+            raise ValueError("Unknown graph source policy")
+        if source_policy == "unseen" and not callable(observed_source):
+            raise ValueError("Unseen graph source requires observed source receipts")
+        self.source_policy = source_policy
+        self.observed_source = observed_source
         self.encoder = tiktoken.get_encoding("cl100k_base")
         self.definitions = defaultdict(list)
         if graph is not None:
@@ -280,6 +322,11 @@ class GraphNavigation:
         scanner = RepoDependencySearcher(self.graph)
         budget = NeighborScanBudget(self.edge_limit)
         records, seen = [], {seed["name"]}
+        observed = defaultdict(set)
+        if self.source_policy == "unseen":
+            for node in self.observed_source():
+                observed[node.file].update(range(node.start_line, node.end_line + 1))
+        skipped_observed = 0
         for name, edge in scanner.iter_neighbors(
             seed["name"],
             direction="forward" if direction == "outgoing" else "backward",
@@ -305,6 +352,19 @@ class GraphNavigation:
             if not target.is_relative_to(self.repo) or not target.is_file():
                 continue
             relative_target = target.relative_to(self.repo).as_posix()
+            if not 0 <= start <= end or end - start >= 1500:
+                missing = None
+            else:
+                missing = [
+                    number
+                    for number in range(start, end + 1)
+                    if number not in observed[relative_target]
+                ]
+            if missing == []:
+                # Fully known neighbors do not consume the definition limit or
+                # response budget. The shared raw-edge scan budget still applies.
+                skipped_observed += 1
+                continue
             record = {
                 "node_id": name,
                 "file": relative_target,
@@ -321,18 +381,12 @@ class GraphNavigation:
                 "content": "",
                 "status": "source_not_returned",
             }
-            if (
-                0 <= start <= end
-                and end - start < 1500
-                and target.stat().st_size <= 2_000_000
-            ):
+            if missing is not None and target.stat().st_size <= 2_000_000:
                 lines = target.read_text(errors="replace").splitlines()
                 if end < len(lines):
                     candidate = {
                         **record,
-                        "content": "\n".join(
-                            f"{i + 1} | {lines[i]}" for i in range(start, end + 1)
-                        ),
+                        "content": "\n".join(f"{i + 1} | {lines[i]}" for i in missing),
                         "status": "source_returned",
                     }
                     if self._fits(records + [candidate]):
@@ -343,7 +397,16 @@ class GraphNavigation:
             if len(records) >= limit:
                 break
         if not records:
-            records = [{"status": "no_returned_neighbors", "content": ""}]
+            records = [
+                {
+                    "status": (
+                        "no_unseen_neighbors"
+                        if skipped_observed
+                        else "no_returned_neighbors"
+                    ),
+                    "content": "",
+                }
+            ]
         return json.dumps(records, ensure_ascii=False)
 
     def tool_spec(self):
@@ -357,7 +420,10 @@ class GraphNavigation:
                 "Outgoing follows its references; incoming finds definitions referencing "
                 "it, including tests. These are compiler references, not a complete "
                 "runtime call graph. Only numbered content has been read. A missing "
-                "graph or omitted source is explicit; continue with read/grep as needed."
+                "graph or omitted source is explicit; continue with read/grep as needed. "
+                "The unseen policy skips fully observed definitions and returns only "
+                "missing lines of partly observed definitions; earlier source remains "
+                "in the conversation. Limit must be between 1 and 10."
             ),
             inputs=[
                 ToolInputSpec("file_path", "str"),

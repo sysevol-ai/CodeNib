@@ -39,7 +39,7 @@ The current milestones and remaining gates are:
 | --- | --- | --- |
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | Frozen native/functions/functions-plus-graph validation is complete. Each arm retains 31 valid scores and one preparation failure as zero; model, implementation, source and budgets match. | Preserve the negative result and frozen protocol; do not tune on or select best retries from the 32 validation tasks. |
-| Directed graph navigation | The complete candidate fails the independent gate: Recall 69.64% → 68.76%, F1 29.01% → 26.16%. All eleven available graphs are called; six tasks receive source. Development replay finds all 220 graph-returned lines were already observed. | Require useful new source, not only successful graph calls, in the next development gate; no product promotion or full-500 launch for this policy. |
+| Directed graph navigation | The prior candidate fails independent validation. The next `unseen` policy skips known definitions and completes only missing source, using verified observations in both runners. Offline development replay removes 220 repeated lines but adds no source; the revised shared prompt requests earlier graph use. | Fresh three-arm development comparison, with novel relevant source and quality gates fixed before inference. No product promotion or full-500 launch. |
 | Complete solver | The one independent Verified task resolves in both arms, 1/1 each, with the same pinned image and native harness. Both earlier paired development attempts remain unresolved. Separate reference-patch checks pass. | Broader matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no comparative or population Pass@1 improvement established. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
@@ -177,7 +177,7 @@ output from automatic completion and counts each physical source line at its
 first observation. It makes no model calls and does not inspect held-out labels.
 The targeted-hop candidate's three source-returning graph calls contain 220
 physical lines, **all already observed**. Successful calls alone did not establish
-additional coverage. The next development gate must measure genuinely new,
+additional coverage. The next development gate must measure previously unobserved,
 relevant source before spending another independent validation selection.
 
 | Existing eight-task trace | New grep-completion lines / annotated | New read-completion lines / annotated |
@@ -197,6 +197,40 @@ are selecting which matched callable to complete and avoiding graph responses
 that only repeat known source. Receipts are in
 `verification/contextbench-online-20261016/development-source-attribution.json`;
 sanitized counts accompany the existing development summary.
+
+### Early graph navigation and unseen-source development gate
+
+The source-checkout graph tool accepts `--graph-source-policy definitions|unseen`.
+`unseen` derives known lines from actual source-checked observations, skips fully
+known neighbors without spending the result limit, and returns all missing lines
+of a partly known definition only when they fit. It keeps the existing raw-edge,
+definition-size, output and source-token limits. Each call snapshots prior
+messages; there is no shared mutable ledger or retained lock. Parallel tool calls
+may conservatively return overlapping source. Metadata alone never marks a line
+observed. Both the native and SDK runners bind this observer to their own case.
+
+The eight-call development replay checks that `definitions` output still equals
+the original recorded output. `unseen` removes all 220 repeated physical lines
+but adds none. Consequently the next model-facing policy requests a graph hop
+as soon as a central callable is found and a caller/dependency/test remains
+unclear, before broadening manual reads. All arms use the same new shared prompt;
+old runs are not reused as controls.
+
+Before inference, freeze the next development trial on the same disclosed eight
+IDs with fresh native, function-completion and functions-plus-unseen-graph arms.
+Use actual Opus 5.5, 20 turns, 600 seconds, $3/case and $10/arm SDK-meter guards,
+2,048 completion/graph source tokens, the same prepared snapshots and graph
+manifest, and no API fallback. The primary contrast is the complete graph route
+against native. Report both adjacent ablations as exploratory.
+
+The gate requires all selected tasks to finish and score, at least one graph
+response to supply previously unseen annotated source, a positive macro Recall
+point difference and non-decreasing F1 for the primary contrast. Annotation
+overlap is computed only after inference, never supplied to graph navigation or
+the model. Report paired intervals even if they cross zero; passing this small
+development gate is candidate selection, not an independent improvement claim.
+The prior 32 tasks stay sealed against tuning. Local receipts live under
+`verification/contextbench-early-unseen-20261016/`.
 
 ### October 16 online development result
 

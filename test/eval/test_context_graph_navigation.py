@@ -14,11 +14,30 @@ from codenib.types import (
     NODE_TYPE_FUNCTION,
     NODE_TYPE_SYMBOL,
 )
+from scripts.benchmark_context_agent import observed_nodes
 from scripts.contextbench_graph_navigation import (
     GraphNavigation,
     load_graph_records,
     load_navigation,
 )
+
+
+def read_receipt(file, content):
+    return [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "read",
+                    "function": {
+                        "name": "read",
+                        "arguments": json.dumps({"file_path": file, "limit": 999}),
+                    },
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "read", "content": content},
+    ]
 
 
 @pytest.fixture
@@ -120,6 +139,100 @@ def test_local_definition_does_not_hide_enclosing_callable_references(navigation
     graph.name_to_vertex["local"] = graph.graph.vcount() - 1
     rebound = GraphNavigation(graph, repo)
     assert json.loads(rebound.neighbors("a.py", 1))[0]["node_id"] == "target"
+
+
+def test_unseen_navigation_skips_known_neighbors_without_using_result_limit(navigation):
+    tool, repo = navigation
+    graph = tool.graph
+    graph.graph.add_edge(
+        1, 3, type=EDGE_TYPE_REFERENCE, anchor_file="a.py", anchor_line=0
+    )
+    messages = read_receipt("b.py", "1 | def target():\n2 |     return 1")
+    unseen = GraphNavigation(
+        graph,
+        repo,
+        source_policy="unseen",
+        observed_source=lambda: observed_nodes(messages, repo),
+    )
+    assert json.loads(tool.neighbors("a.py", 1, limit=1))[0]["node_id"] == "target"
+    result = json.loads(unseen.neighbors("a.py", 1, limit=1))
+    assert [record["node_id"] for record in result] == ["unrelated"]
+    assert result[0]["status"] == "source_returned"
+
+
+def test_unseen_navigation_counts_only_actual_source_and_preserves_gaps(navigation):
+    tool, repo = navigation
+    messages = read_receipt("b.py", "1 | def target():")
+    unseen = GraphNavigation(
+        tool.graph,
+        repo,
+        source_policy="unseen",
+        observed_source=lambda: observed_nodes(messages, repo),
+    )
+    result = unseen.neighbors("a.py", 1)
+    record = json.loads(result)[0]
+    assert record["definition_start"] == 1 and record["definition_end"] == 2
+    assert record["content"] == "2 |     return 1"
+    graph_messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "graph",
+                    "function": {"name": "graph_neighbors", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "graph", "content": result},
+    ]
+    prediction = contextbench_prediction(
+        instance_id="case", messages=graph_messages, repo_path=repo
+    )
+    assert prediction["traj_data"]["pred_spans"] == {"b.py": [{"start": 2, "end": 2}]}
+    messages.extend(graph_messages)
+    assert json.loads(unseen.neighbors("a.py", 1)) == [
+        {"status": "no_unseen_neighbors", "content": ""}
+    ]
+    messages.clear()
+    # A request without its returned source must not suppress any graph lines.
+    messages.extend(read_receipt("b.py", "")[0:1])
+    assert json.loads(unseen.neighbors("a.py", 1))[0]["content"].startswith("1 |")
+
+
+def test_unseen_navigation_can_fit_missing_lines_but_retains_scan_budget(navigation):
+    tool, repo = navigation
+    header = "def target(" + ", ".join(f"arg{i}" for i in range(200)) + "):"
+    (repo / "b.py").write_text(header + "\n    return 1\n")
+    messages = read_receipt("b.py", "1 | " + header)
+    unseen = GraphNavigation(
+        tool.graph,
+        repo,
+        token_budget=200,
+        source_policy="unseen",
+        observed_source=lambda: observed_nodes(messages, repo),
+    )
+    control = GraphNavigation(tool.graph, repo, token_budget=200)
+    assert (
+        json.loads(control.neighbors("a.py", 1))[0]["status"] == "source_not_returned"
+    )
+    assert json.loads(unseen.neighbors("a.py", 1))[0]["content"] == "2 |     return 1"
+    with pytest.raises(ValueError, match="requires observed source"):
+        GraphNavigation(tool.graph, repo, source_policy="unseen")
+    # A known first edge does not remove the independent raw-edge bound.
+    messages[-1]["content"] += "\n2 |     return 1"
+    tool.graph.graph.add_edge(
+        1, 3, type=EDGE_TYPE_REFERENCE, anchor_file="a.py", anchor_line=0
+    )
+    bounded = GraphNavigation(
+        tool.graph,
+        repo,
+        edge_limit=1,
+        source_policy="unseen",
+        observed_source=lambda: observed_nodes(messages, repo),
+    )
+    assert all(
+        "node_id" not in record for record in json.loads(bounded.neighbors("a.py", 1))
+    )
 
 
 def test_frozen_graph_bytes_and_source_population_are_checked(navigation):

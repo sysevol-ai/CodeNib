@@ -413,8 +413,43 @@ def test_paired_online_comparison_keeps_failures_and_macro_f1(paired_runs):
     assert "pass_at_1" not in result
 
 
+def test_graph_source_comparison_keeps_inputs_budgets_and_tools_matched(paired_runs):
+    for directory, source_policy in (
+        (paired_runs.baseline, "definitions"),
+        (paired_runs.candidate, "unseen"),
+    ):
+        path = directory / "config.json"
+        config = json.loads(path.read_text())
+        config.update(
+            source_policy="functions", tools=["read", "grep", "glob", "graph_neighbors"]
+        )
+        config["graph"] = {
+            "enabled": True,
+            "tokens": 2048,
+            "source_policy": source_policy,
+        }
+        path.write_text(json.dumps(config))
+    agent.compare(paired_runs)
+    assert (
+        json.loads(paired_runs.output.read_text())["contrast"]
+        == "unseen_graph_source_over_definitions"
+    )
+    path = paired_runs.candidate / "config.json"
+    config = json.loads(path.read_text())
+    config["graph"]["tokens"] = 4096
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="graph-source controls"):
+        agent.compare(paired_runs)
+    config["graph"]["tokens"] = 2048
+    config["tools"].append("bash")
+    path.write_text(json.dumps(config))
+    with pytest.raises(ValueError, match="differ in tools"):
+        agent.compare(paired_runs)
+
+
+@pytest.mark.parametrize("baseline_policy", ["functions", "native"])
 def test_graph_comparison_permits_only_the_declared_tool_difference(
-    paired_runs, monkeypatch
+    paired_runs, monkeypatch, baseline_policy
 ):
     graph_dir = paired_runs.output.parent / "graphs"
     graph_dir.mkdir()
@@ -427,7 +462,7 @@ def test_graph_comparison_permits_only_the_declared_tool_difference(
         path = directory / "config.json"
         config = json.loads(path.read_text())
         config.update(
-            source_policy="functions",
+            source_policy="functions" if enabled else baseline_policy,
             backend="claude-agent-sdk",
             tools=["mcp__source__read", "mcp__source__grep", "mcp__source__glob"],
         )
@@ -441,9 +476,10 @@ def test_graph_comparison_permits_only_the_declared_tool_difference(
             config["tools"].append("mcp__source__graph_neighbors")
         path.write_text(json.dumps(config))
     agent.compare(paired_runs)
-    assert (
-        json.loads(paired_runs.output.read_text())["contrast"]
-        == "directed_graph_over_function_completion"
+    assert json.loads(paired_runs.output.read_text())["contrast"] == (
+        "directed_graph_over_function_completion"
+        if baseline_policy == "functions"
+        else "functions_and_directed_graph_over_native"
     )
     path = paired_runs.candidate / "config.json"
     config = json.loads(path.read_text())

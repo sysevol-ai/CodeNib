@@ -322,6 +322,10 @@ def run(args):
                         args.graphs,
                         repo,
                         token_budget=graph_config["tokens"],
+                        source_policy=graph_config["source_policy"],
+                        observed_source=lambda row=row, repo=repo: native.observed_nodes(
+                            tuple(row["messages"]), repo
+                        ),
                     ).tool_spec()
                     row["graph_available"] = graph_record["available"]
                 asyncio.run(
