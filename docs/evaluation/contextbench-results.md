@@ -762,7 +762,35 @@ submission diff that never reaches another model request are excluded. Missing
 historical receipts and unconfirmed requests remain explicit; their billing may
 still be unknown. This completes the raw observation boundary, while mapping
 arbitrary shell output to source lines remains an open evaluation gate.
-The fresh development solver pair using this recorder is **0/1 resolved in each
+
+The next adapter adds a controlled source command to the same native loop:
+`codenib-read PATH START END`, with 1-based inclusive lines, a 2 MiB text-file
+limit and at most 2,000 requested lines. Both arms receive the same command and
+instructions. Each read records the exact file version, pinned original blob,
+rendered observation and its position in the conversation. Only complete lines
+in a later confirmed model input receive coverage; native output truncation
+still applies. Initial delivered context is also checked against its pinned
+source before inference. Edits and tests continue through the existing shell.
+
+`model-observations.json` labels this source attribution **partial**. Ordinary
+shell output remains explicitly unattributed, and changed files retain their
+current-version observations without guessed original line numbers. These
+coverage records are not submitted to the official scorer as full trajectories.
+The added instruction changes the solver protocol and therefore requires fresh
+matched runs; earlier results remain frozen.
+
+The [source-receipt verification](../assets/contextbench_solver_source_summary.json)
+makes no model calls. An audit of the existing fmt pair preserves all ten actual
+model-input receipts and verifies 411/375 initial source lines. Each arm still
+has four delivered shell observations without execution receipts; none gains
+retrospective source credit. A separate scripted loop in the pinned source-only
+container delivers 36 complete lines from one read and 217 from a larger,
+627-line file after native truncation. Four lines read after an edit receive no
+original-source credit, and the final submission diff is excluded. Scripted
+replies test the instrumentation only; they are not additional model runs or
+repair outcomes. The container is removed and source/runtime hashes match.
+
+An earlier development solver pair using the model-input recorder is **0/1 resolved in each
 arm** on the same previously disclosed Python task. All seven native-context
 inputs and eleven graph-enabled-context inputs have confirmed receipts. These
 are repeated development attempts, not additional independent solver tasks.

@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-17",
+  "scope": "No-inference source-receipt verification; scripted inputs are not real model calls or repair scores.",
+  "protocol_sha256": "4c519cd6a84dd00b995379e5ef4555d4f53ce021840bf5b064a52f4c2e194853",
+  "historical": {
+    "native": {
+      "confirmed_model_inputs": 5,
+      "initial_base_source_lines": 411,
+      "files": 8,
+      "missing_execution_receipt_indexes": [
+        3,
+        5,
+        7,
+        9
+      ],
+      "new_shell_source_line_credit": 0,
+      "original_artifacts_unchanged": true
+    },
+    "functions_graph": {
+      "confirmed_model_inputs": 5,
+      "initial_base_source_lines": 375,
+      "files": 6,
+      "missing_execution_receipt_indexes": [
+        3,
+        5,
+        7,
+        9
+      ],
+      "new_shell_source_line_credit": 0,
+      "original_artifacts_unchanged": true
+    }
+  },
+  "model_calls": 0,
+  "new_api_charges_usd": 0,
+  "scripted_native_container": {
+    "simulated_model_calls": 5,
+    "source_read_events": 3,
+    "original_read_complete_lines": 36,
+    "large_read_complete_visible_lines": 217,
+    "large_read_line_count": 627,
+    "base_source_line_count": 253,
+    "changed_file_visible_lines": 4,
+    "changed_file_base_line_credit": 0,
+    "submission_received_by_model": false,
+    "python": "Python 3.11.2"
+  },
+  "all_frozen_runtime_and_input_hashes_match": true,
+  "all_owned_containers_removed": true,
+  "passed": true
+}
