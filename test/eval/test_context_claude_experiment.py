@@ -184,6 +184,85 @@ def test_sdk_file_map_guides_a_later_read_without_initial_source_credit(
     assert len(replies) == 2
 
 
+def test_sdk_file_source_reaches_the_next_assistant_and_official_prediction(
+    monkeypatch, tmp_path
+):
+    from scripts.contextbench_file_source import MARKER, FileSourceView
+
+    (tmp_path / "a.py").write_text("visible\nunread_helper\n")
+    row = {"instance_id": "case", "messages": [], "sdk_events": []}
+    source_view = FileSourceView(
+        repo=tmp_path, token_budget=2048, checkpoint=lambda data: None
+    )
+
+    def event(kind, **fields):
+        return make_dataclass(kind, [(key, object) for key in fields])(**fields)
+
+    async def query(*, prompt, options):
+        handlers = dict(options.mcp_servers["source"])
+        assert set(handlers) == {"read", "grep", "glob"}
+        yield event(
+            "SystemMessage", subtype="init", data={"tools": options.allowed_tools}
+        )
+        args = {"file_path": "a.py", "offset": 1, "limit": 1}
+        yield event(
+            "AssistantMessage",
+            content=[{"id": "read", "name": "mcp__source__read", "input": args}],
+            model="test-model",
+        )
+        reply = await handlers["read"](args)
+        assert not reply["isError"]
+        text = reply["content"][0]["text"]
+        assert MARKER in text and "2 | unread_helper" in text
+        yield event(
+            "UserMessage",
+            content=[{"tool_use_id": "read", "content": reply["content"]}],
+        )
+        prediction = claude.native.contextbench_prediction(
+            instance_id="case", messages=row["messages"], repo_path=tmp_path
+        )
+        assert prediction["traj_data"]["pred_spans"] == {
+            "a.py": [{"start": 1, "end": 2}]
+        }
+        yield event(
+            "AssistantMessage",
+            content=[{"text": "Inspected helper"}],
+            model="test-model",
+        )
+        yield event(
+            "ResultMessage",
+            subtype="success",
+            is_error=False,
+            num_turns=2,
+            total_cost_usd=0.03,
+            result="Done",
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            tool=lambda name, description, schema: lambda handler: (name, handler),
+        ),
+    )
+    asyncio.run(
+        claude.retrieve(
+            repo=tmp_path,
+            query_text="Inspect helper",
+            row=row,
+            checkpoint=lambda: None,
+            cli="test",
+            model="test-model",
+            max_turns=5,
+            file_source_view=source_view,
+        )
+    )
+    assert row["status"] == "ok" and len(source_view.ledger["views"]) == 1
+
+
 @pytest.mark.parametrize("policy", ["definitions", "unseen"])
 @pytest.mark.parametrize("query_policy", [None, *claude.GRAPH_QUERY_POLICIES])
 def test_sdk_completion_uses_streamed_source_receipts(
