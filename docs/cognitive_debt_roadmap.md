@@ -398,6 +398,16 @@ cohorts are sealed. This validation covers seven languages, with no C++; future
 untouched tasks also lack Java. Do not promote the unchanged policy into repairs,
 official500 or a product default; the positive point estimate has not established a
 stable independent gain.
+The new default-off `scripts/contextbench_file_source.py` remains labs-only and
+appends exact unread same-file windows while preserving native reads. The unchanged first-read source-window policy fails its complete 24-task development stability gate. Recall 58.39% → 63.91%, F1 31.97% → 27.94%; repository-cluster 95% Recall interval [-2.76, +12.52] points across 24 repository clusters. All 48 selected SDK sessions are retained for $9.86110630, with no repairs. Independent and official500 gains remain unestablished.
+Both new Jev-only ranking probes fail their practical one-point screens; no
+runtime ranker is added. Fixed-history 24 source opportunity improves Recall
+53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The historical 331
+verified candidates become 329 after quarantining documentation preview exposures.
+The broader CodeNib Base source-identity audit leaves 324 verified candidates and
+623 additional default-config candidates. Pinned-file and quarantined-format checks
+pass; selected-source readiness and a new population protocol remain open. No product lifecycle
+promotion or dependency-direction change is authorized by these results.
 Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes

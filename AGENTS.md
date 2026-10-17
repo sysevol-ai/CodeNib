@@ -268,6 +268,11 @@ Black or isort can produce changes that fail the release all-files check.
   is not a byte-for-byte oracle: traversal order and capped hit subsets may
   change on an unchanged checkout. Preserve recorded inputs and scores when a
   diagnostic rerun differs; do not replace observations with the rerun.
+- Preserve prospective benchmark tasks by reading raw dataset READMEs and
+  metadata-only columns instead of HTML dataset viewers, which may automatically
+  render gold contexts and reference patches. Record any exposed preview task
+  IDs and exclude them from future unseen validation. Keep completed cohorts and
+  their timing intact rather than retroactively changing their outcomes.
 
 ## Directory-Specific Rules
 
