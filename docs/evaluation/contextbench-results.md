@@ -450,7 +450,8 @@ alone. Its 19 available graphs have not undergone new online quality evaluation;
 all prior build failures and negative quality results remain in the record.
 
 `scripts/benchmark_context_solver.py` provides an initial downstream adapter for
-**SWE-bench Verified only**. It runs the pinned upstream mini SWE-agent loop with
+**SWE-bench Verified and the Multi-SWE-bench fmt C++ pilot**. It runs the
+pinned upstream mini SWE-agent loop with
 the already-observed 16K/32K context, an existing Claude subscription and an
 already-local Docker image identified by digest. The image must have the same
 clean source tree as the selected base commit. The solver container has no
@@ -472,7 +473,8 @@ The first completed development attempt produced a patch that applied but failed
 the required native tests: **0/1 resolved**. Its generation reported $0.555974 in
 SDK metering; preliminary aborted attempts include missing usage, so this is not
 a total paid-cost figure. This single attempt is not a comparative Pass@1 result.
-Multi/Poly/Pro adapters and full-agent source accounting remain open. Arbitrary
+Other Multi repositories, Poly/Pro adapters and full-agent source accounting
+remain open. Arbitrary
 shell reads from this solver are not added to the retrieval trajectory or claimed
 as a complete leaderboard artifact.
 
@@ -485,9 +487,36 @@ use the exact selected source tree and native patch hashes in the same official
 image; both owned containers are removed. This check makes no model calls and
 produces no CodeNib repair score. A separate solver image removes the reference
 patches and scripts, retains only one source commit, and verifies an identical
-clean tree. The reusable Multi solver adapter remains pending. The public
-development summary retains its native dataset revision, image provenance,
-module hashes and reports separately from agent quality results.
+clean tree. The fmt pilot now has a source-only solver route and a separate native
+grader. The solver checks for retained reference files and history before any
+model request. The grader authenticates native patches, replaces the production
+reference with the exact solver patch, and then runs the original script. Other
+Multi repositories still require native environment validation and adapters.
+The public development summary retains image provenance, module hashes and
+reports separately from agent quality results.
+
+Run Multi grading from the repository root in an isolated environment containing
+the pinned `multi-swe-bench==1.1.0` installation. The native grader entry point
+does not import retrieval or model dependencies:
+
+```bash
+python -m scripts.contextbench_multiswe \
+  --solver-run results/contextbench-dev/solver-fmt \
+  --dataset results/contextbench-dev/native-fmt-case.jsonl \
+  --native-image sha256:EXACT_LOCAL_NATIVE_IMAGE_ID \
+  --output results/contextbench-dev/solver-fmt-grade
+```
+
+The native image must differ from the source-only solver image. Both must match
+the selected source tree; their mutable tags are insufficient. Timeout, failed
+patches, incomplete native reports and cleanup failures remain explicit. This
+pilot supports `fmtlib/fmt`; it does not imply complete Multi benchmark coverage.
+
+The new adapter rejects its unchanged-issue control. Two initial reference checks
+fail at the 60-second container-start bound before tests begin; both containers
+are removed. The bounded startup allowance is now 180 seconds, recorded
+separately from test time. Fresh native validation is pending before any C++
+model pair. These environment attempts make no model calls or agent scores.
 
 New solver runs save each exact model request with a content hash and confirm
 delivery only when the SDK returns an assistant message. The local

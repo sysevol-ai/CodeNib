@@ -176,11 +176,13 @@ have hashed, confirmed receipts including actual output truncation. The first
 Multi C++ native environment check rejects its test-only control and accepts the
 reference repair with 18 passing tests, without model calls or an agent score.
 A separate solver image removes reference artifacts and Git history while
-preserving the selected source tree. The broader offline preparation check has 14/24 graphs, with eight new successes
+preserving the selected source tree. The broader offline preparation check has
+14/24 graphs, with eight new successes
 and five losses; a separate authenticated composition has 19/24 available.
-Fixed-prefix source replay does not establish an online gain. Multi solver
-integration, Poly/Pro harnesses
-and shell-source attribution remain open.
+Fixed-prefix source replay does not establish an online gain. The fmt pilot now
+has source-only solver preflight and a separate pinned native adapter, with exact
+patch replacement and owned-container cleanup. Matched fmt repairs, other Multi
+repositories, Poly/Pro harnesses and shell-source attribution remain open.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

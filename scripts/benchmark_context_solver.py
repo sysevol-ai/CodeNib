@@ -4,9 +4,9 @@
 
 """Validate a delivered context with the pinned mini SWE-agent and Claude Max.
 
-This first adapter supports one SWE-bench Verified task per invocation. It uses
-the existing solver loop and a pinned, already-local Docker image. Native test
-grading is separate; shell observations are not claimed as ContextBench reads.
+Supports SWE-bench Verified and the Multi-SWE-bench fmt C++ pilot, one task per
+invocation. Uses the existing solver loop and pinned, already-local Docker
+images. Native grading is separate; shell observations are not ContextBench reads.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ from codenib.eval.benchmarks.contextbench import CONTEXTBENCH_UPSTREAM_REVISION
 from scripts import benchmark_context_agent as native
 from scripts.benchmark_context_claude import subscription_auth
 from scripts.benchmark_jev_base import digest, write_json
+from scripts.contextbench_multiswe import solver_cwd, validate_source_only_image
 
 _HISTORY_PREFIX = (
     "Continue this shell-agent conversation. Return the next assistant reply "
@@ -211,8 +212,7 @@ def delivered_input(run, instance_id, budget):
         if digest(run / "implementation" / name) != sha:
             raise ValueError("Archived retrieval implementation changed")
     case = cases[instance_id]
-    if case.source != "Verified":
-        raise ValueError("The initial solver adapter supports Verified only")
+    solver_cwd(case.source, case.repo)
     path = run / f"{instance_id}.json"
     row = json.loads(path.read_text())
     if row["instance_id"] != instance_id or row["status"] not in {
@@ -246,6 +246,7 @@ def freeze_solver(output, mini_root):
     implementation = native.freeze(output)
     paths = {
         "scripts/benchmark_context_solver.py": Path(__file__),
+        "scripts/contextbench_multiswe.py": ROOT / "scripts/contextbench_multiswe.py",
         **{
             f"mini/{name}": mini_root / "minisweagent" / name
             for name in (
@@ -282,6 +283,7 @@ def run(args):
     case, context, retrieval_sha, source_tree = delivered_input(
         args.retrieval, args.instance_id, args.budget
     )
+    cwd = solver_cwd(case.source, case.repo)
     image = json.loads(
         subprocess.check_output(["docker", "image", "inspect", args.image], text=True)
     )[0]
@@ -324,7 +326,7 @@ def run(args):
         instance_template=(
             "<issue>\n{{task}}\n</issue>\n"
             "<retrieved_source>\n{{retrieved_source}}\n</retrieved_source>\n"
-            "Work in /testbed. Verify this initial source against the checkout, "
+            f"Work in {cwd}. Verify this initial source against the checkout, "
             "implement a general fix in production source, and run relevant tests. "
             "Keep existing tests and configuration unchanged. The container has "
             "no network access. When finished, submit with:\n```bash\n"
@@ -355,6 +357,9 @@ def run(args):
             "context_budget": args.budget,
             "source_commit": case.base_commit,
             "source_tree": source_tree,
+            "source": case.source,
+            "repo": case.repo,
+            "solver_cwd": cwd,
             "upstream_commit": commit,
             "mini_config_sha256": digest(config_path),
             "image_id": image["Id"],
@@ -376,7 +381,7 @@ def run(args):
     try:
         environment = DockerEnvironment(
             image=image["Id"],
-            cwd="/testbed",
+            cwd=cwd,
             timeout=120,
             env=config["environment"]["env"],
             run_args=[
@@ -401,6 +406,11 @@ def run(args):
             "git rev-parse HEAD HEAD^{tree} && git status --porcelain --untracked-files=all"
         )
         row["image_snapshot"] = validate_image_snapshot(head, source_tree)
+        if case.source == "Multi":
+            row["source_only_image"] = validate_source_only_image(
+                environment, row["image_snapshot"]["commit"]
+            )
+            checkpoint()
         with tempfile.TemporaryDirectory(prefix="codenib-solver-model-") as directory:
             model = SubscriptionModel(
                 cli=cli,
@@ -468,14 +478,21 @@ def run(args):
 
 
 def grade(args):
-    """Use the unmodified native SWE-bench test script and resolution grader."""
+    """Use the selected benchmark's native test script and resolution grader."""
+    config = json.loads((args.solver_run / "config.json").read_text())
+    if config.get("source", "Verified") == "Multi":
+        from scripts.contextbench_multiswe import grade_multi
+
+        grade_multi(args)
+        return
+    if config.get("source", "Verified") != "Verified":
+        raise ValueError("Unsupported native solver benchmark")
     if importlib.metadata.version("swebench") != "4.1.0":
         raise ValueError("Native grading requires isolated swebench==4.1.0")
     import docker
     from swebench.harness import run_evaluation
     from swebench.harness.test_spec.test_spec import TestSpec, make_test_spec
 
-    config = json.loads((args.solver_run / "config.json").read_text())
     solver = json.loads((args.solver_run / "solver.json").read_text())
     predictions = json.loads((args.solver_run / "predictions.json").read_text())
     if (
@@ -566,6 +583,10 @@ def main():
         parser.add_argument("--dataset", type=Path, required=True)
         parser.add_argument("--output", type=Path, required=True)
         parser.add_argument("--timeout", type=int, default=900)
+        parser.add_argument(
+            "--native-image",
+            help="Multi only: separate, pinned local native grading image",
+        )
         grade(parser.parse_args(sys.argv[2:]))
         return
     parser = argparse.ArgumentParser(description=__doc__)
