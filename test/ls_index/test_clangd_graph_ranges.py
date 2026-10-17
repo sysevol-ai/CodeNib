@@ -11,6 +11,7 @@ from codenib.ls_index.clangd_decode import (
     KIND_INSTANCE_METHOD,
     ClangdGraphDecoder,
 )
+from codenib.types import NODE_TYPE_METHOD
 
 
 @pytest.mark.parametrize("reverse_chunks", [False, True])
@@ -74,3 +75,34 @@ def test_nested_overloads_keep_distinct_source_ranges(
 def test_missing_chunk_keeps_compiler_definition_point(tmp_path):
     decoder = ClangdGraphDecoder(str(tmp_path / "index"), str(tmp_path))
     assert decoder._find_range("missing.cpp", 7) == (7, 7)
+
+
+def test_conversion_function_is_a_method_with_an_enclosing_body(tmp_path, monkeypatch):
+    source = tmp_path / "value.hpp"
+    source.write_text(
+        "class Value {\n  operator bool() const {\n    return true;\n  }\n};\n"
+    )
+    decoder = ClangdGraphDecoder(str(tmp_path / "index"), str(tmp_path))
+
+    def collect():
+        decoder._symbols = {
+            "conversion": {
+                "name": "operator bool",
+                # clang/Index/IndexSymbol.h: SymbolKind::ConversionFunction.
+                "kind": 24,
+                "definition": {
+                    "file": source.as_uri(),
+                    "start": (1, 2),
+                    "end": (1, 10),
+                },
+            }
+        }
+
+    monkeypatch.setattr(decoder, "_collect_all_idx", collect)
+    graph = decoder.materialize_code_graph()
+    node = graph.graph.vs[graph.name_to_vertex["conversion"]]
+    assert node["type"] == NODE_TYPE_METHOD
+    assert (node["start_line"], node["end_line"]) == (1, 3)
+    assert {node.name for node in graph.query_range("value.hpp", 2, 2).defined} == {
+        "conversion"
+    }

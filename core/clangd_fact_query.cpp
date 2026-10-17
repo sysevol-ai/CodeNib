@@ -48,6 +48,7 @@ constexpr std::uint8_t KIND_CLASS_METHOD = 17;
 constexpr std::uint8_t KIND_STATIC_METHOD = 18;
 constexpr std::uint8_t KIND_CONSTRUCTOR = 22;
 constexpr std::uint8_t KIND_DESTRUCTOR = 23;
+constexpr std::uint8_t KIND_CONVERSION_FUNCTION = 24;
 
 constexpr std::uint8_t RELATION_BASE_OF = 0;
 constexpr std::uint8_t RELATION_OVERRIDDEN_BY = 1;
@@ -614,7 +615,7 @@ const char *node_type(std::uint8_t kind) {
     return NODE_TYPE_FUNCTION;
   if (kind == KIND_INSTANCE_METHOD || kind == KIND_CLASS_METHOD ||
       kind == KIND_STATIC_METHOD || kind == KIND_CONSTRUCTOR ||
-      kind == KIND_DESTRUCTOR) {
+      kind == KIND_DESTRUCTOR || kind == KIND_CONVERSION_FUNCTION) {
     return NODE_TYPE_METHOD;
   }
   if (kind == KIND_FIELD)

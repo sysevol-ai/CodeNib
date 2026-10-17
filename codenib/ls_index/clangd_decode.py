@@ -73,6 +73,7 @@ KIND_CLASS_METHOD = 17
 KIND_STATIC_METHOD = 18
 KIND_CONSTRUCTOR = 22
 KIND_DESTRUCTOR = 23
+KIND_CONVERSION_FUNCTION = 24
 
 # Relation predicates
 RELATION_BASE_OF = 0
@@ -89,7 +90,7 @@ _NATIVE_QUERY_REQUIRED = frozenset({"required", "strict"})
 _NATIVE_QUERY_PROMOTED = True
 _NATIVE_QUERY_ABI_VERSION = 3
 _NATIVE_QUERY_FORMAT = "clangd-riff-fact-query-v3"
-_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v3"
+_NATIVE_QUERY_NORMALIZATION_PROFILE = "clangd-native-normalization-v4"
 _NATIVE_QUERY_SNAPSHOT_SCHEMA = "clangd-fact-query-snapshot-v1"
 _NATIVE_QUERY_CAPABILITIES = {
     "definition_by_symbol": True,
@@ -1424,6 +1425,7 @@ class ClangdGraphDecoder:
             KIND_STATIC_METHOD,
             KIND_CONSTRUCTOR,
             KIND_DESTRUCTOR,
+            KIND_CONVERSION_FUNCTION,
         ):
             return NODE_TYPE_METHOD
         elif kind == KIND_FIELD:
