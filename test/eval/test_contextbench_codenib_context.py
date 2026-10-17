@@ -14,6 +14,8 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.compiler.manifest import RepoManifest
+from codenib.mcp.context import ServerContext
+from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
 from codenib.types import NODE_TYPE_FUNCTION, NodeInfo
 from scripts import benchmark_context_claude as claude
 from scripts.contextbench_codenib_context import make_context_tool, numbered_context
@@ -150,6 +152,68 @@ def test_numbering_excludes_omitted_and_partial_source(tmp_path):
     }
     assert numbered_context(ctx, "a.py", projected) == "     1 | one\n     4 | four"
     assert numbered_context(ctx, "a.py", {**projected, "verified": False}) == ""
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "x",
+                    "type": "function",
+                    "function": {
+                        "name": "explore_context",
+                        "arguments": '{"query":"four"}',
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "x",
+            "content": json.dumps(
+                [
+                    {
+                        **projected,
+                        "file": "a.py",
+                        "content": numbered_context(ctx, "a.py", projected),
+                    }
+                ]
+            ),
+        },
+        {"role": "assistant", "content": "Inspected"},
+    ]
+    prediction = claude.native.contextbench_prediction(
+        instance_id="case", messages=messages, repo_path=tmp_path
+    )
+    assert prediction["traj_data"]["pred_spans"] == {
+        "a.py": [{"start": 1, "end": 1}, {"start": 4, "end": 4}]
+    }
+
+
+def test_authenticated_source_change_never_delivers_stale_index_text(tmp_path):
+    path = tmp_path / "a.py"
+    path.write_text("def answer():\n    return 42\n")
+    identity = fingerprint_repository(tmp_path)
+    manifest = RepoManifest(
+        repo_path=str(tmp_path),
+        source_fingerprint=identity.value,
+        file_count=identity.file_count,
+    )
+    ctx = ServerContext.load(
+        manifest, views=[], source_binding=capture_repository_source(tmp_path)
+    )
+    try:
+        ctx.vector = context(tmp_path).vector
+        tool = make_context_tool(ctx)
+        before = json.loads(tool.executor_fn(query="answer implementation"))
+        assert "return 42" in before[1]["content"]
+        path.write_text("def answer():\n    return 43\n")
+        after = json.loads(tool.executor_fn(query="answer implementation"))
+        assert not any(node.get("content") for node in after)
+        assert any(d["code"] == "source_read_failed" for d in after[0]["diagnostics"])
+    finally:
+        # The deterministic provider owns no runtime resources.
+        ctx.vector = None
+        ctx.close()
 
 
 def test_literal_omission_marker_is_source_and_changed_source_is_not_substituted(

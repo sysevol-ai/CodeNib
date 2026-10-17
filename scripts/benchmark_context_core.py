@@ -16,9 +16,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
+import importlib.metadata
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -56,6 +58,19 @@ def run(args):
     cli = shutil.which("claude")
     if args.live and not cli:
         raise ValueError("Claude CLI is required")
+    sdk_version = None
+    cli_version = None
+    if args.live:
+        # Check the actual execution interpreter before indexing or claiming an
+        # intent: the base GPU Python may lack the SDK installed in our venv.
+        import claude_agent_sdk  # noqa: F401
+
+        sdk_version = importlib.metadata.version("claude-agent-sdk")
+        cli_version = subprocess.run(
+            [cli, "--version"], check=True, capture_output=True, text=True, timeout=30
+        ).stdout.strip()
+        if sdk_version != "0.2.165" or cli_version != "2.1.301 (Claude Code)":
+            raise ValueError("Pilot SDK/CLI versions must match the native control")
     auth = claude.subscription_auth(cli) if args.live else None
     if args.live and (
         auth.get("subscriptionType") != "max" or auth.get("apiProvider") != "firstParty"
@@ -73,6 +88,8 @@ def run(args):
             Path(__file__).resolve(),
             ROOT / "scripts/contextbench_codenib_context.py",
             ROOT / "scripts/benchmark_context_claude.py",
+            ROOT / "codenib/compiler/index_builders.py",
+            ROOT / "codenib/mcp/tools/explore.py",
         ]
     }
     write_json(
@@ -84,6 +101,13 @@ def run(args):
             ),
             "input_sha256": digest(args.input),
             "implementation": implementation,
+            "source_commit": subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
             "embedding_model": args.embedding_model,
             "embedding_revision": args.embedding_revision,
             "embedding_dimension": 768,
@@ -98,6 +122,9 @@ def run(args):
             "max_turns": 20,
             "case_guard_usd": 0.75,
             "subscription_auth": auth,
+            "sdk_version": sdk_version,
+            "cli_version": cli_version,
+            "python": sys.executable,
             "new_API_usage_usd": 0,
             "live": args.live,
             "repair_calls": 0,
