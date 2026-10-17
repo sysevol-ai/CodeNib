@@ -22,7 +22,8 @@ experiments supplies patches, test outcomes or Pass@1.
 The October 11 development iteration is complete and retained through merged
 [#827](https://github.com/sysevol-ai/CodeNib/pull/827). On October 16 the user
 resumed work on online context completion, matched controls and a complete
-issue-resolution evaluation. The earlier objective
+issue-resolution evaluation in draft
+[#834](https://github.com/sysevol-ai/CodeNib/pull/834). The earlier objective
 of **ContextBench retrieval SOTA** was not achieved; the completed development
 experiments and their limitations are retained here and in the public
 [results report](../evaluation/contextbench-results.md).
@@ -36,10 +37,10 @@ The current milestones and remaining gates are:
 
 | Milestone | Current outcome | Open gate |
 | --- | --- | --- |
-| Online source completion | `native` / `functions` policies share the existing source tools in both native and SDK runners. New lines reach the next model call and the actual trajectory. Complete-callable additions obey per-response token and character bounds. | Fresh matched development results; earlier offline gains do not establish an online gain. |
+| Online source completion | The fresh eight-task SDK comparison is complete: Recall 41.13% → 41.67%, F1 33.67% → 31.91%; both paired intervals cross zero. All eight tasks scored in both arms. New source reaches the next model call, within per-response bounds. | No demonstrated online gain; continue development before consuming the independent selection. |
 | Matched experiment | `compare` requires the same input manifest, implementation, actual model, runtime and budgets; official task scores retain failures and report paired bootstrap intervals. | Independent validation after freezing the development policy. |
-| Directed graph navigation | Earlier graph findings remain development evidence; no new graph route is promoted. | Demonstrate an additional gain over online function completion and account for unavailable graphs. |
-| Complete solver | Pinned upstream mini SWE-agent and native benchmark harnesses are the intended integration boundary. | Implement and verify resolution evaluation for Verified, Multi, Poly and Pro; no measured Pass@1 yet. |
+| Directed graph navigation | Both runners expose an optional one-hop directed compiler-reference tool. Frozen graph digests bind it to the source manifest; only actual returned lines receive credit. Five of the eight development cases have graphs. | Fresh paired comparison against function completion, including the three unavailable graphs; no route promotion. |
+| Complete solver | A source-checkout adapter runs pinned mini SWE-agent through Claude Max in a pinned Verified container and grades its patch with native SWE-bench 4.1.0. The first completed development attempt is unresolved. | Matched downstream outcomes, Multi/Poly/Pro adapters and full-agent source accounting; no leaderboard Pass@1 claim. |
 | Leaderboard submission | Official artifact and population requirements are documented. | Verified 500, measured resolution outcomes, matched aggregation and complete artifact review. |
 
 The evaluation sequence remains:
@@ -93,7 +94,48 @@ Development starts with the first CSV-ordered task per language from the
 disclosed 24-task cohort: eight tasks, selected without consulting their scores.
 A one-task smoke uses the first of those tasks. Artifacts are retained under
 `verification/contextbench-online-20261016/`. The independent 32-task selection
-is not used to tune the policy.
+is not used to tune the policy. The first paired eight-task result does not pass
+the improvement gate, so the independent selection remains unrun.
+
+### October 16 online development result
+
+The eight tasks are the first CSV-ordered task per language in the disclosed
+24-task development selection. Both arms use actual `claude-opus-5-5`, SDK
+0.2.165, CLI 2.1.301, a 20-turn SDK limit, 600-second case timeout, $3/case and
+$15/arm SDK-meter guards. Function completion adds at most 2,048 source tokens
+per response. Both arms have eight `ok` results and eight valid official scores.
+The same implementation and input-manifest hashes were checked by `compare`.
+
+| Cumulative observed trajectory | Recall | Precision | F1 | SDK dollar estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 41.13% | 33.94% | 33.67% | $2.153231 |
+| Online function completion | 41.67% | 29.33% | 31.91% | $2.406782 |
+
+The paired Recall difference is +0.53 percentage points, with a 95% bootstrap
+interval of [-2.03, +3.36]. F1 changes by -1.76 points, interval [-4.94, +1.04].
+These task-level macro scores do not demonstrate an improvement. The offline
+24-task gain cannot be transferred to this online policy or this SDK harness.
+Artifacts and per-task values are in
+`verification/contextbench-online-20261016/development-comparison.json`.
+
+The first completed downstream solver attempt uses the one-task development
+smoke's function-completed 16K context, the pinned upstream mini SWE-agent loop,
+and the same actual Opus model. Its patch applies, but native required tests do
+not pass: **0/1 resolved**, without a comparative or population claim. Generation
+reports $0.555974 in SDK metering. Preliminary aborted attempts are also retained;
+one returned no usage, so total metering and actual billing must not be presented
+as fully known. The adapter checks the image's clean Git tree against the selected
+base tree, allowing the official image's synthetic preparation commit. The native
+dataset is pinned to revision `c104f840cc67f8b6eec6f759ebc8b2693d585d4a`.
+Only the issue and observed retrieval payload enter the solver; reference patches
+and required-test annotations are isolated to the native grading stage.
+
+Directed graph controls use a new shared implementation freeze. Their source
+tools retain function completion in both arms; only the candidate receives
+`graph_neighbors`. Both arms receive the same graph manifest, per-response graph
+budget, runtime, model and case limits. Unavailable graphs remain selected.
+Do not compare a new graph run directly with the earlier frozen eight-task arm
+and attribute all differences to the graph tool.
 
 ## Graph-free feedback and context-budget diagnosis
 
@@ -425,7 +467,8 @@ search/read reference before distilling actions or stopping into a cheaper
 decision controller. This work introduces no product retrieval route or
 persistence boundary. The historical implementation and results were merged in
 [#827](https://github.com/sysevol-ai/CodeNib/pull/827). The online follow-up above
-is active; the promotion gates remain open.
+is active in [#834](https://github.com/sysevol-ai/CodeNib/pull/834); the promotion
+gates remain open.
 
 ## Earlier graph and fixed-payload evidence
 

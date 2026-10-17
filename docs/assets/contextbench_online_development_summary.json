@@ -1,0 +1,122 @@
+{
+  "date": "2026-10-16",
+  "n": 8,
+  "selection": "First CSV-ordered case per language in the disclosed 24-task development cohort; no score-based selection",
+  "selected_sha256": "3f271fffc1394591c485e4eee5e2501e39e07e0e6146263392ee8ab0e889f568",
+  "population": "All selected tasks; scoring failures contribute zero",
+  "metric_scope": "Official cumulative observed trajectory; no Pass@1",
+  "metrics": {
+    "recall": {
+      "baseline": 0.4113320539329563,
+      "candidate": 0.41667420613064926,
+      "difference": 0.005342152197692983,
+      "paired_bootstrap_95_interval": [
+        -0.0203472865542274,
+        0.033622934782938145
+      ]
+    },
+    "precision": {
+      "baseline": 0.33942422425132535,
+      "candidate": 0.2932575950369542,
+      "difference": -0.04616662921437112,
+      "paired_bootstrap_95_interval": [
+        -0.1379765141495276,
+        0.008191522751061005
+      ]
+    },
+    "f1": {
+      "baseline": 0.33666878117993204,
+      "candidate": 0.3190974702230495,
+      "difference": -0.01757131095688256,
+      "paired_bootstrap_95_interval": [
+        -0.04943844041229954,
+        0.01036602904413432
+      ]
+    }
+  },
+  "bootstrap": {
+    "draws": 10000,
+    "seed": 20261016,
+    "unit": "task"
+  },
+  "protocol": {
+    "backend": "claude-agent-sdk",
+    "sdk_version": "0.2.165",
+    "cli_version": "2.1.301 (Claude Code)",
+    "model_requested": "claude-opus-5-5",
+    "max_turns": 20,
+    "completion_tokens": 2048,
+    "max_meter_usd": 15.0,
+    "case_meter_usd": 3.0,
+    "case_timeout": 600.0,
+    "tools": [
+      "mcp__source__read",
+      "mcp__source__grep",
+      "mcp__source__glob"
+    ],
+    "implementation": {
+      "scripts/benchmark_context_agent.py": "a156e5ce9ae0caa60112f1b7887a713b40d0cf6eb5448be7c514ee89a82ec657",
+      "scripts/benchmark_context_claude.py": "d7f5933498fdb0871ec5321aec4d462d688c8205287f11d99a1600d49b1785b5",
+      "scripts/benchmark_decision_loop.py": "39c016e92ac4d8adf6aad96ff1fbffffc6df47f8b6d35fbe3afe50811a3ca138",
+      "scripts/benchmark_graph_decisions.py": "56d3c2db81a716f46bec603620e51c3ac5ee3bf4ef790023e362e859e4a5216d",
+      "codenib/agent/runner.py": "4036c53f8df96b41090b3592f15fe4bad737cef29409552fffb8afff0def9479",
+      "codenib/agent/agent_types.py": "abf5997210ddbb4893ccba2625343058fe8da3cc781afe135337924379821869",
+      "codenib/agent/history.py": "a5029f6750085be346de9f4401ba514eae34360e0cbe1d3638d05c6e9b7c7487",
+      "codenib/agent/tools/defaults.py": "58c27573798677fc83caec0791ebf8c75058adfcc037f8205fcd3abc38d3e3ca",
+      "codenib/agent/boundary.py": "5a2abe8543dcc4b63a2277e1a490eb41796b57b5af6a3f27d74738a212c70ba4",
+      "codenib/agent/tool_schema.py": "537b63bf07d7d1e1d304499a5f949e6b94eafb9da29a757445feeb89fb453302",
+      "codenib/eval/benchmarks/contextbench.py": "2274a7b66faa89492a905eaeed66c046cdfeeb0482769b1bc97793119d633269",
+      "codenib/eval/benchmarks/contextbench_runner.py": "6e7e40026c6d7006153fe3cc69acf72393340010d72c78c96f43c83164656fa3",
+      "codenib/types.py": "8addb60456bf079e09e27160667800b909ed340962eca6fda953118cccba7129",
+      "codenib/agent/rerank_agent.py": "d72b3799d9ff0a4326a1ed78969862966a8724d6e98c8a4111635d3316bea465",
+      "codenib/agent/decision_rerank.py": "fbfb3d30a0d9b2da364d5c46d52e8dba642204f0a93698f30ce84052a6d9edc8",
+      "codenib/llm/decisions.py": "89d5c79ee8005d503cf7f0fbb152d4f9d2ece60dd1ca0cdac16b7de36cca7ed2",
+      "scripts/benchmark_jev_retrieval.py": "7ec3248e96c323f0914df0f54ebaa41fa8577f8df7428257fd0aaf9005522be4",
+      "codenib/code_chunking/__init__.py": "e49eb5d1ff9d2328dd1a9bb4191457594557bde46d7e5d4143380202b615ac68",
+      "codenib/code_chunking/base.py": "32e8637d8f3888bfa15ce33892faca4d0ca4da32be1806b0d8288dc86fe92b6e",
+      "codenib/code_chunking/cpp_chunker.py": "fc104ad074548a0ddad9ac7507bea2a3a06877d450edf5afc67be7444ada7c52",
+      "codenib/code_chunking/csharp_chunker.py": "82990bce7e260c434d50d6be16e786991f9c314cf058287f791ab6e4f92f6f54",
+      "codenib/code_chunking/go_chunker.py": "c9948c5209ee68c6fdd1609e8cb2485ed424ddfbf9248f87c4593fb14fb970a6",
+      "codenib/code_chunking/java_chunker.py": "7d53f12d8e99b91d0a23bae30b85cdb780ad67cc30c82d2c6d17eae046940852",
+      "codenib/code_chunking/js_chunker.py": "b4436ae1df3902e47b0a97b84f0275fb760ca902c7e09c32791dba76a1de8989",
+      "codenib/code_chunking/kotlin_chunker.py": "a1d9456e99953d589ca8d3a053d1d2b7afb987ebbd6706cbbcfc3ccd6dbeea6d",
+      "codenib/code_chunking/lua_chunker.py": "58cd2ea7fed1997d3d1834405ca91d47c138e836d821ac7df5dbc3a511f67333",
+      "codenib/code_chunking/php_chunker.py": "5a0b7990ce5c0b0e941d2953e1aeac31197835c8ffb61a34213b8413555b153b",
+      "codenib/code_chunking/python_chunker.py": "cffd6a7d80dec2842012e664dca26dedc0d84093d4239ec064f4111328bea81a",
+      "codenib/code_chunking/ruby_chunker.py": "fc9b9dbe4dd59d8be98980801bd545efcf31fc9756d97b8b1d42522d11038761",
+      "codenib/code_chunking/rust_chunker.py": "a828e28038a59aba026be4cd15ce4f468786486213130f18fc9a61d8dc8f5e1a",
+      "codenib/code_chunking/scala_chunker.py": "ac778f886df536f3b3f9e0220c582cfb4145c9fe72d642a323ebe11c48d46d06",
+      "codenib/code_chunking/swift_chunker.py": "b81496687cc3faff865005f02fc77d7ad691d945602f0ae318e665b7b34db135",
+      "codenib/code_chunker.py": "06e170ff40486c04011204ad26d9aad5b6bc730b10c816a32529b72f3a60c4c6",
+      "codenib/languages.py": "ff2986d883523071ec3473a7ebde07c663a3b8fd4b971ba780af7882a5776d99"
+    }
+  },
+  "actual_models": [
+    "claude-opus-5-5"
+  ],
+  "dataset_revision": "c2855792b006af41c67202d33883fb9d46362853",
+  "evaluator_revision": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+  "arms": {
+    "native": {
+      "source_policy": "native",
+      "statuses": {
+        "ok": 8
+      },
+      "scoring_failures": 0,
+      "sdk_reported_cost_usd": 2.153231,
+      "actual_bill_usd": null
+    },
+    "functions": {
+      "source_policy": "functions",
+      "statuses": {
+        "ok": 8
+      },
+      "scoring_failures": 0,
+      "sdk_reported_cost_usd": 2.4067818,
+      "actual_bill_usd": null
+    }
+  },
+  "conclusion": "No demonstrated online improvement; independent 32-task validation remains unrun.",
+  "cost_scope": "SDK metering estimates are not paid receipts. Actual account billing is unknown. No separate API-key inference in these arms.",
+  "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle."
+}
