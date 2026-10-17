@@ -423,8 +423,9 @@ and $1.367794 for its paired solver check. Two later one-task graph mechanism
 versions add $0.327116. The first-source 24-task attempt adds $12.831086 in known
 retrieval estimates and its separate receipt-fix smoke adds $0.426619.
 The late relationship-check pilot adds **$6.796707** in SDK estimates.
-Known October 16 metering totals **$71.960832**. The October 17 reader-adoption
-check adds **$0.695992**, bringing known cumulative metering to **$72.656824**,
+Known October 16 metering totals **$71.960832**. The two separately frozen
+October 17 reader-adoption checks add **$0.695992** and **$0.932850**, bringing
+known cumulative metering to **$73.589674**,
 excluding one aborted development solver attempt and one interrupted retrieval
 case with no terminal usage.
 These are not account bills;
@@ -672,7 +673,7 @@ alone. Its 19 available graphs have not undergone new online quality evaluation;
 all prior build failures and negative quality results remain in the record.
 
 `scripts/benchmark_context_solver.py` provides an initial downstream adapter for
-**SWE-bench Verified and the Multi-SWE-bench fmt C++ pilot**. It runs the
+**SWE-bench Verified and the Multi-SWE-bench fmt C++ / Gson Java pilots**. It runs the
 pinned upstream mini SWE-agent loop with
 the already-observed 16K/32K context, an existing Claude subscription and an
 already-local Docker image identified by digest. The image must have the same
@@ -713,7 +714,7 @@ clean tree. The fmt pilot now has a source-only solver route and a separate nati
 grader. The solver checks for retained reference files and history before any
 model request. The grader authenticates native patches, replaces the production
 reference with the exact solver patch, and then runs the original script. Other
-Multi repositories still require native environment validation and adapters.
+Multi repositories require their own native environment validation and adapters.
 The public development summary retains image provenance, module hashes and
 reports separately from agent quality results.
 
@@ -732,7 +733,9 @@ python -m scripts.contextbench_multiswe \
 The native image must differ from the source-only solver image. Both must match
 the selected source tree; their mutable tags are insufficient. Timeout, failed
 patches, incomplete native reports and cleanup failures remain explicit. This
-pilot supports `fmtlib/fmt`; it does not imply complete Multi benchmark coverage.
+adapter supports the validated `fmtlib/fmt` and `google/gson` pilots; it does not
+imply complete Multi benchmark coverage. All three native test entrypoints are
+authenticated against the pinned harness before any submitted patch executes.
 
 The new adapter rejects its unchanged-issue control. Two initial reference checks
 fail at the 60-second container-start bound before tests begin; both containers
@@ -755,6 +758,29 @@ grading. This is one unique development task and does not establish a comparativ
 Pass@1 gain. Its graph was unavailable during the original retrieval, so this
 result cannot establish a contribution from graph-returned source. The negative
 24-task and independent 32-task retrieval gates remain unchanged.
+
+The Java `google__gson-1391` development task now passes the same native readiness
+gates. Its test-only control fails the required regression class while preserving
+95 other required classes; the reference repair passes all 96 required classes.
+Both Maven processes exit 1 because `DefaultDateTypeAdapterTest` also fails in
+the pinned original dataset. Complete passed/failed/skipped class sets match that
+dataset, and the official grader accepts the reference. These are test-class
+counts, not individual JUnit assertion counts.
+
+A separate source-only Gson image retains the exact clean source tree, removes
+reference files and history, and passes a real controlled-reader preflight with
+Python 3.10.12. Grading-only fixtures through the implemented adapter reject a
+behavior-preserving production comment and accept the reference patch; neither
+fixture is an agent repair. All owned containers are removed, frozen hashes
+match, and these checks make zero model calls. The
+[public development summary](../assets/contextbench_online_development_summary.json)
+retains the pinned dataset, image provenance, source-only Dockerfile, parser
+parity and distinct control outcomes. The new entrypoint checks also match the
+existing fmt image. Fresh matched Java solver outcomes remain open.
+
+Jackson-databind remains deferred: its pinned preparation script rewrites tracked
+build configuration, conflicting with the current exact-clean-source gate. This
+is a source-inspection finding; no Jackson image or model probe was run.
 
 New solver runs save each exact model request with a content hash and confirm
 delivery only when the SDK returns an assistant message. The local
@@ -809,9 +835,19 @@ passes all 18 native tests; it establishes no comparative improvement. Both
 containers are removed and all frozen hashes still match after grading. The
 compound-invocation bug is reproduced, then fixed with explicit feedback about
 the available reader's standalone interface. Quoted mentions remain ordinary
-shell output. The corrected feedback has local regression coverage; real
-adoption remains unvalidated. No retry or further model batch follows this
-protocol, and no earlier quality gate or official score changes.
+shell output. No retry or further model batch belongs to that closed protocol.
+
+A new, separately frozen check at `0b2b5964` keeps the same source, native 16K
+context, model, 12-turn limit and $2 guard. After one explicit compound-invocation
+error, the model uses two standalone reads that reach confirmed model inputs.
+The eight calls report **$0.932850** in SDK estimates; every SDK init reports
+`apiKeySource=none`. Reader adoption passes, and the submitted patch passes all
+18 native tests. Both reads cover source already present in the initial context:
+there are **zero new original-source lines**, and coverage stays at 411 lines.
+Four ordinary shell observations remain unattributed. Both containers are removed
+and frozen hashes match after grading. This verifies the corrected interface,
+not a comparative repair or retrieval gain. Fresh matched runs and complete
+source accounting remain open; no earlier quality gate or official score changes.
 
 An earlier development solver pair using the model-input recorder is **0/1
 resolved in each arm** on the same previously disclosed Python task. All seven native-context

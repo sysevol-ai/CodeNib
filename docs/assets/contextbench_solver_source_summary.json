@@ -1,6 +1,6 @@
 {
   "date": "2026-10-17",
-  "scope": "Source-receipt checks only. Scripted verification and the repeated real development adoption probe are separate; neither is independent quality evidence.",
+  "scope": "Source-receipt checks only. Scripted verification and two separately frozen development adoption probes are distinct; none is independent quality evidence.",
   "offline_verification": {
     "protocol_sha256": "4c519cd6a84dd00b995379e5ef4555d4f53ce021840bf5b064a52f4c2e194853",
     "historical": {
@@ -82,13 +82,56 @@
     "adoption_failure": "The compound invocation reached the shell, returned command-not-found, and prompted a sed fallback.",
     "feedback_fix_commit": "7d8b5554",
     "old_behavior_regression_reproduced": true,
-    "feedback_fix_real_adoption": "unvalidated",
+    "feedback_fix_real_adoption": "Outside this closed protocol; see real_reader_adoption_v2 for the separate corrected-feedback check.",
     "retry_model_calls": 0
   },
-  "new_model_calls": 5,
-  "sdk_estimate_usd": 0.6959919,
+  "new_model_calls": 13,
+  "sdk_estimate_usd": 1.6288418999999998,
   "sdk_meter_is_actual_billing": false,
   "new_api_key_charges_usd": 0,
-  "known_program_sdk_estimate_usd": 72.65682420000002,
-  "historical_unmetered_attempts": 2
+  "known_program_sdk_estimate_usd": 73.58967420000002,
+  "historical_unmetered_attempts": 2,
+  "real_reader_adoption_v2": {
+    "protocol_sha256": "3a5fa6cab44908dd4a92ffeac7f57080eb7faffb0f99947b453964756d8fa3c1",
+    "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+    "scope": "One disclosed C++ development mechanism check for the new common controlled-reader protocol. No new retrieval, graph candidate, paired quality claim, independent validation or official score.",
+    "model_calls": 8,
+    "actual_models": [
+      "claude-opus-5-5"
+    ],
+    "source_read_events": 3,
+    "confirmed_original_source_reads": 2,
+    "controlled_reader_adopted": true,
+    "base_source_line_count": 411,
+    "partial_source_coverage": true,
+    "missing_execution_receipt_indexes": [],
+    "unattributed_delivered_shell_events": 4,
+    "sdk_estimate_usd": 0.93285,
+    "new_api_charges_usd": 0,
+    "all_input_receipts_confirmed": true,
+    "all_frozen_runtime_and_input_hashes_match": true,
+    "solver_container_removed": true,
+    "previous_protocol_sha256": "18a526e32ca402b62bc00c169b262945df64ce717bdcc02404e38a779741ab87",
+    "changed_runtime_files": [
+      "scripts/contextbench_solver_sources.py"
+    ],
+    "rejected_reader_invocations": 1,
+    "initial_base_source_lines": 411,
+    "new_original_source_lines": 0,
+    "native_grading": {
+      "status": "graded",
+      "resolved": true,
+      "error": null,
+      "container_removed": true,
+      "process_exit_code": 0
+    },
+    "all_frozen_runtime_and_input_hashes_match_after_grading": true,
+    "max_sdk_meter_usd": 2,
+    "native_tests_passed": 18,
+    "implementation_commit": "0b2b596488db4c0f7c3adc71dbfbb71bcaa3cd77",
+    "sdk_init_api_key_sources": [
+      "none"
+    ],
+    "retry_model_calls": 0
+  }
 }

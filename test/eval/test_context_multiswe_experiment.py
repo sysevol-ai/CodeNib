@@ -38,27 +38,33 @@ def test_multi_solver_rejects_reference_files_and_history(history, artifacts, va
             multi.validate_source_only_image(environment, "selected")
 
 
-def test_multi_task_identity_and_source_remain_bound(tmp_path):
+@pytest.mark.parametrize("repo,number", [("fmtlib/fmt", 2394), ("google/gson", 1391)])
+def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
+    org, name = repo.split("/")
     row = {
-        "instance_id": "fmtlib__fmt-2394",
-        "org": "fmtlib",
-        "repo": "fmt",
-        "number": 2394,
+        "instance_id": f"{org}__{name}-{number}",
+        "org": org,
+        "repo": name,
+        "number": number,
         "base": {"sha": "base"},
     }
     path = tmp_path / "case.jsonl"
     path.write_text(json.dumps(row) + "\n")
     solver = {"original_inst_id": row["instance_id"]}
-    config = {"source": "Multi", "repo": "fmtlib/fmt", "source_commit": "base"}
+    config = {"source": "Multi", "repo": repo, "source_commit": "base"}
     assert multi.selected_native_case(path, solver, config) == row
-    for field, value in (("source_commit", "wrong"), ("repo", "other/repo")):
+    for field, value in (
+        ("source_commit", "wrong"),
+        ("repo", "other/repo"),
+        ("repo", "google/gson" if repo == "fmtlib/fmt" else "fmtlib/fmt"),
+    ):
         with pytest.raises(ValueError, match="source snapshot"):
             multi.selected_native_case(path, solver, {**config, field: value})
     path.write_text((json.dumps(row) + "\n") * 2)
     with pytest.raises(ValueError, match="ambiguous"):
         multi.selected_native_case(path, solver, config)
-    assert multi.solver_cwd("Multi", "fmtlib/fmt") == "/home/fmt"
-    with pytest.raises(ValueError, match="fmt pilot only"):
+    assert multi.solver_cwd("Multi", repo) == f"/home/{name}"
+    with pytest.raises(ValueError, match="validated Multi"):
         multi.solver_cwd("Multi", "other/repo")
 
 
@@ -71,22 +77,26 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path):
         "cleanup_timeout",
         "copy_mismatch",
         "wrong_tree",
+        "wrong_script",
+        "wrong_report_identity",
     ],
 )
+@pytest.mark.parametrize("repo,number", [("fmtlib/fmt", 2394), ("google/gson", 1391)])
 def test_native_grader_replaces_reference_before_running_and_removes_owner(
-    monkeypatch, tmp_path, failure
+    monkeypatch, tmp_path, failure, repo, number
 ):
+    org, name = repo.split("/")
     solver_run = tmp_path / "solver"
     solver_run.mkdir()
     patch = "exact solver patch\n"
     row = {
         "instance_id": "context-id",
-        "original_inst_id": "fmtlib__fmt-2394",
+        "original_inst_id": f"{org}__{name}-{number}",
         "model_patch": patch,
     }
     config = {
         "source": "Multi",
-        "repo": "fmtlib/fmt",
+        "repo": repo,
         "source_commit": "base",
         "source_tree": "tree",
         "image_id": "sha256:source-only",
@@ -100,9 +110,9 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
     dataset = tmp_path / "native.jsonl"
     case = {
         "instance_id": row["original_inst_id"],
-        "org": "fmtlib",
-        "repo": "fmt",
-        "number": 2394,
+        "org": org,
+        "repo": name,
+        "number": number,
         "base": {"sha": "base"},
         "fix_patch": "reference fix",
         "test_patch": "native tests",
@@ -117,6 +127,18 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         native_image="sha256:" + "a" * 64,
     )
     monkeypatch.setattr(multi, "native_environment", lambda: multi.HARNESS_HASHES)
+    scripts = {
+        script: f"pinned native {repo} {script}"
+        for script in ("run.sh", "test-run.sh", "fix-run.sh")
+    }
+    monkeypatch.setattr(
+        multi,
+        "native_script_hashes",
+        lambda case: {
+            script: hashlib.sha256(content.encode()).hexdigest()
+            for script, content in scripts.items()
+        },
+    )
     state = {"copied": False, "executed": False, "removed": False}
 
     def command(cmd, **kwargs):
@@ -138,13 +160,20 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
             state["copied"] = True
             return ""
         if "sha256sum" in cmd:
-            if cmd[-1] == "/home/test.patch":
+            if cmd[-1].rsplit("/", 1)[-1] in scripts:
+                content = (
+                    "wrong script"
+                    if failure == "wrong_script"
+                    else scripts[cmd[-1].rsplit("/", 1)[-1]]
+                )
+            elif cmd[-1] == "/home/test.patch":
                 content = case["test_patch"]
             elif not state["copied"]:
                 content = case["fix_patch"]
             else:
                 content = "still reference" if failure == "copy_mismatch" else patch
             return hashlib.sha256(content.encode()).hexdigest() + "  patch"
+        assert cmd[cmd.index("-w") + 1] == f"/home/{name}"
         return "base\nwrong" if failure == "wrong_tree" else "base\ntree"
 
     def run(cmd, **kwargs):
@@ -165,6 +194,9 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
             kwargs["stdout"].write("official native test output\n")
         else:
             assert state["executed"] and "multi_swe_bench.harness.gen_report" in cmd
+            assert (
+                output / "work" / repo / "evals" / f"pr-{number}" / "fix-patch-run.log"
+            ).is_file()
             (output / "grade").mkdir()
             (output / "grade/final_report.json").write_text(
                 json.dumps(
@@ -173,11 +205,21 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
                         "resolved_instances": 1,
                         "completed_instances": 1,
                         "error_instances": 0,
-                        "submitted_ids": ["fmtlib/fmt:pr-2394"],
+                        "submitted_ids": [
+                            (
+                                "other/repo:pr-1"
+                                if failure == "wrong_report_identity"
+                                else f"{repo}:pr-{number}"
+                            )
+                        ],
                     }
                 )
             )
-        return SimpleNamespace(returncode=0)
+        # Gson's pinned reference retains a known unrelated failing class. The
+        # native grader determines resolution from required test labels.
+        return SimpleNamespace(
+            returncode=int(cmd[:2] == ["docker", "exec"] and repo == "google/gson")
+        )
 
     monkeypatch.setattr(multi, "command", command)
     monkeypatch.setattr(multi.subprocess, "run", run)
@@ -191,5 +233,7 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
     assert result["resolved"] == (failure is None)
     assert result["status"] == ("graded" if failure is None else "error")
     assert result["model_calls"] == 0
-    if failure in {"startup_timeout", "copy_mismatch", "wrong_tree"}:
+    if failure is None:
+        assert result["native_exit_code"] == int(repo == "google/gson")
+    if failure in {"startup_timeout", "copy_mismatch", "wrong_tree", "wrong_script"}:
         assert not state["executed"]
