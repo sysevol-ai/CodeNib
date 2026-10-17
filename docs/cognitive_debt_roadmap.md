@@ -314,18 +314,38 @@ Relevant source selection and active SCIP assigned-function coverage remain
 gates before another policy trial. These diagnostics make zero model calls.
 The retrieval runner also checkpoints terminal SDK metering before an iterator
 error; the old loss is reproduced without model calls. Known cumulative SDK
-estimates are $90.165263, not an account bill. The main model remains on Claude
-Max. A separate frozen 24-task Jev ordering control makes 96 API calls for
+estimates before the latest online/repair batch were $90.165263, not an account
+bill. A separate frozen 24-task Jev ordering control makes 96 API calls for
 $0.025743858, with complete usage records. At the same 2K budget it improves
 Recall/F1 from 0.53%/0.83% to 9.11%/7.77%, but the whole BM25 candidate pool
 covers only 11.99% of annotated source. Static addition still reduces F1 on both
 cohorts, so no injection/tool is promoted. The subsequent frozen grep-pool
 control uses 484 existing Opus candidates at 4K: Jev improves Recall/F1 from
 32.46%/22.90% to 36.56%/28.52%, with 55 successful calls for $0.012341112.
-It passes the ranking gate but still fails static addition. Stop BM25 variants
-and prioritize selective grep/Jev source delivery in a fresh matched online
-protocol without graphs. Both controls remain selection experiments with no
-online-agent or independent gain; combined new API usage is $0.038084970.
+It passes the ranking gate but still fails static addition. The subsequent
+eight-task live native/chunks/Jev control completes all 24 sessions and fails
+its retrieval gate: Jev changes Recall/F1 from native 42.36%/36.80% to
+40.97%/31.94%. Main-model API SDK usage is $5.49084920; 55 Jev decisions add
+$0.00552048, with exact source/receipt checks and no missing usage. Runtime
+`cf4bc60b` is checkout-only: bounded source-block selection precedes the next
+model turn, API routing is explicit, and uncertain decision usage stops the
+stream. Do not promote this automatic source-block policy or expand the cohort.
+The two predeclared compatible development repair pairs are complete: both fmt
+repairs pass 18 native tests, while both ponyc attempts reach their SDK guards
+without a prediction. Each arm resolves 1/2 selected tasks. The Jev C attempt
+confirms three searches and four reads adding 130 original-source lines; this
+establishes narrow actual adoption without a repair gain. The recorded continuation
+completes only the previously unrun Jev C arm after a fully metered error, with
+no baseline retry or budget increase. Repair SDK estimates total $7.24264130;
+all frozen hashes and owned-container cleanup verify. The prospective solver fix
+collects existing edits after a fully metered SDK budget exception while retaining
+its error; it makes no extra model call and gives terminal diffs no source credit.
+Historical failed attempts stay unchanged. Known Max SDK estimates now total
+$97.40790440, direct Anthropic SDK estimates $5.49084920, and 206 Jev requests
+$0.04360545; actual account charges/remaining promotional credit are unknown.
+Stop BM25 variants and do not expand the rejected automatic source-block policy.
+Require an actionable search-selection diagnosis and a fresh matched protocol
+with the corrected patch-collection policy. No revised independent gain is established.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

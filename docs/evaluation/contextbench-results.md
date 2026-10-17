@@ -1,27 +1,109 @@
 # ContextBench retrieval experiments
 
-The October 16 independent validation **rejects the earlier online candidate**.
-Function completion plus directed graph navigation does not improve Recall over
-native source tools and reduces F1. All 32 selected tasks remain in the scores.
-This policy will not advance to the official 500-task run or a product default.
-The revised first-source graph policy also fails its 24-task development gate:
-Recall rises slightly, F1 falls, and the function-only ablation is interrupted.
-The later eight-task relationship-check pilot completes all three arms and has
-positive Recall/F1 point differences, but fails its two-language graph-source
-gate. Its primary uncertainty intervals cross zero; it does not advance to 500.
+The latest eight-task online grep/Jev comparison **fails its development gate**:
+Recall falls from 42.36% to 40.97% and F1 from 36.80% to 31.94%. Its matched
+end-to-end check also establishes no repair gain: both arms pass the C++ task,
+and both C attempts stop at their SDK budget without a captured prediction.
+These are disclosed development tasks, not a leaderboard submission.
+
+The October 16 independent validation also rejects the earlier function-plus-graph
+candidate. All 32 selected tasks remain in the scores and sealed against tuning.
+The first-source graph and later relationship-check policies fail their gates
+as documented below. None advances to the official 500 or a product default.
 
 Earlier development experiments found useful missing source by completing
 functions after search. That offline gain has not transferred to the tested
 online agent. These are retrieval experiments, not a leaderboard submission.
 
-Reranking remains a separate candidate with positive development evidence.
+Reranking has positive fixed-pool development evidence.
 The fixed 100-task, 4K ContextBench control below improves Opus Recall/F1 from
 39.88%/22.60% to 45.70%/27.84% using the Perplexity decision scorer. The separate
 [grep/Jev evaluation](grep_jev.md) improves code-block Recall@5 from 58.62% to
 71.40% in research and from 48.37% to 65.57% in a fresh product run. Those use
 CodeNib Base, not ContextBench, and neither establishes an online-agent gain.
-The next selection work prioritizes ranking candidate source before delivery;
-graph expansion is not a prerequisite.
+The online control below tests source ranking before delivery; graph expansion
+is not a prerequisite. This grep/Jev control fails its retrieval gate; positive fixed-pool rankings did not transfer to
+this adaptive source-delivery policy.
+
+## Online grep/Jev on eight development tasks
+
+Runtime `cf4bc60b` runs three fresh arms on the first task per language in the
+existing disclosed 24-task order. All 24 sessions finish with actual Opus 5.5,
+the explicitly authorized first-party Anthropic API route, unchanged source
+snapshots, 20 turns and a 600-second limit. The independent 32 remains sealed.
+No graph, BM25 index or additional search planner enters this comparison.
+
+Native grep keeps its ordinary replies. The two source-block arms use the same
+candidate construction: actual grep hits select at most 40 bounded chunks,
+then at most ten blocks fit a 4,096-token reply. One keeps original order; the
+other applies Jev before the next model turn. Read/glob tools are unchanged.
+The primary comparison measures that complete source-delivery policy; the
+Jev/chunk contrast isolates ordering within identical tools and packing, while
+allowing subsequent agent queries to diverge.
+
+| Cumulative trajectory, all eight selected tasks | Recall | Precision | F1 | Main-model API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 42.36% | 37.88% | 36.80% | $1.644856 |
+| Grep source blocks, original order | 47.29% | 34.49% | 35.02% | $2.056302 |
+| Grep source blocks, Jev order | 40.97% | 29.46% | 31.94% | $1.789692 |
+
+The declared development gate fails. Against native, Jev changes Recall by
+**-1.39 percentage points**, exploratory paired 95% interval **[-8.25, +3.80]**,
+and F1 by **-4.86 points**, **[-9.05, -1.48]**. Against the unranked source-block
+arm, the changes are -6.32 Recall points and -3.07 F1 points. All eight tasks
+are distinct repositories; intervals use 5,000 paired repository resamples and
+seed 20261017. The 16K handoff also loses F1, 37.44% to 32.02%.
+
+Jev makes 55 successful decisions for **$0.00552048**. Main-model SDK usage is
+**$5.49084920**, so total reported API usage value is **$5.49636968**, within the
+shared $10 reservation. SDK values are separate from account billing and credit
+balance. Every source reply is followed by an assistant response; source lines,
+rankings, runtime/input hashes and cost receipts verify without missing usage.
+A retrospective audit of the 38 live Jev views finds 31 reordered pools, but
+only 12 change which source lines fit. This describes the fixed observations,
+not what an unreranked agent would subsequently do.
+
+This source-block policy is not promoted or expanded. End-to-end validation
+uses the already supported fmt C++ and ponyc C tasks, selected for environment
+compatibility before inspecting these scores. Each compares the fresh native
+and Jev 16K handoffs through the same mature solver and separate native tests.
+All four repair attempts are now complete, using Opus 5.5 through the existing
+Claude Max route, common prompts, the same pinned source-only image per task and
+20 turns. fmt has a $2 SDK guard per arm; ponyc has $3. Repair metering is an
+SDK estimate, separate from retrieval API usage and account billing.
+
+| Task | Native outcome | Jev outcome | Repair calls, native / Jev | Repair SDK estimate, native / Jev |
+| --- | --- | --- | ---: | ---: |
+| fmt, C++ | Native tests pass | Native tests pass | 6 / 3 | $0.771102 / $0.361354 |
+| ponyc, C | SDK budget stop; no prediction | SDK budget stop; no prediction | 9 / 13 | $3.081903 / $3.028282 |
+
+The two C stops remain failures in the selected-task denominator: each arm
+resolves one of two tasks. Neither C attempt reaches native grading, so this
+does not show that their in-container edits failed the native tests. The Jev C
+attempt confirms four reads and three searches, adding 130 original-source
+lines beyond its handoff; adoption alone does not establish repair quality.
+Both C++ repairs pass the same 18 required tests. Their retrieval-plus-repair
+meter estimates are $0.878777 and $0.473425. That single paired efficiency
+observation cannot establish a stable saving or a comparative Pass@1 advantage.
+
+The original driver stopped after the fully metered native C budget error.
+An explicit execution amendment completes only the already selected, unrun Jev
+arm with unchanged inputs, model, limits and the original $10 repair reservation.
+There is no baseline retry. The original stop and grading receipts are retained.
+All four attempts total **$7.24264130** in repair SDK estimates, with no missing
+usage; frozen input/runtime hashes, common prompts and container removal verify.
+
+The budget errors also expose an evaluation defect: the SDK exception bypasses
+patch collection before container cleanup. The prospective solver fix `f607ea7c` preserves
+already-executed edits after a fully metered budget stop, keeps the original
+error and usage, and makes no extra model call. Unknown-usage and unrelated
+errors do not use this path. Exported terminal patches receive no source credit.
+The historical C failures remain unchanged; a future comparison must freeze
+this collection policy before inference. These two repeated development tasks
+are not an independent Pass@1 estimate, and arbitrary shell-source attribution
+remains partial.
+The [development summary](../assets/contextbench_online_development_summary.json)
+retains every task, protocol and failed gate.
 
 ## Independent 32-task validation
 
@@ -664,42 +746,35 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The October 16 development and independent-validation program uses the existing
-Claude Max route with **zero standalone API-key inference calls for the main
-model**. The separate October 17 BM25- and grep-candidate Jev controls record
-151 API calls and $0.038084970 in total, with no API fallback. Independent
-retrieval reports $23.673179 in SDK estimates, and its paired solver check reports
-$0.828001. The later early-hop/unseen development trial adds $7.266208 for retrieval
-and $1.367794 for its paired solver check. Two later one-task graph mechanism
-versions add $0.327116. The first-source 24-task attempt adds $12.831086 in known
-retrieval estimates and its separate receipt-fix smoke adds $0.426619.
-The late relationship-check pilot adds **$6.796707** in SDK estimates.
-Known October 16 metering totals **$71.960832**. The two separately frozen
-October 17 reader-adoption checks add **$0.695992** and **$0.932850**, bringing
-the subtotal to $73.589674. The fresh paired Gson solver check adds **$1.088503**,
-bringing the subtotal to $74.678177. The C three-arm solver attempt adds
-**$8.115611** after recovering $0.321885 from an already-preserved terminal event,
-bringing the subtotal to **$82.793787**. The separate late-only eight-task
-three-arm retrieval follow-up adds **$5.087257**, bringing known cumulative
-metering to **$87.881044**. The actual-model controlled-search check adds
-**$2.284219**, bringing known SDK metering to **$90.165263**, excluding one
-aborted development solver attempt and
-one interrupted retrieval case with no terminal usage. The C graph arm remains
-a budget error with no prediction: its original aggregate omitted one terminal cost, now explicitly
-reconciled without changing the original run or rerunning it. A per-call SDK
-budget guard can be exceeded by the terminating call; it is not a hard billing
-cap. These are not account bills;
-actual subscription billing and any account-level extra usage are unknown.
-The authorized ceiling for new API spending remains **$100**. No automatic API
-fallback is enabled, and the failed quality gate does not authorize a 500-task run.
-A separately authorized direct Anthropic API route now passes credential and
-model-access checks, including Opus 5.5; it has not yet run benchmark inference.
-Future comparisons must freeze that billing route for both arms and keep API
-usage separate from subscription estimates and unverified account balances.
-A mechanical projection from the latest eight tasks is about $104–107 in SDK
-estimates for 500 retrieval tasks on one route, or $211 for native plus candidate.
-This is not an account bill or a representative full-run budget; it excludes
-repair/grading work, retries and subscription-quota delays. No full run is started.
+The October 16–17 program now records **$97.40790440** in known Claude Max
+SDK estimates, including **$7.24264130** for the latest four repair attempts.
+Two historical attempts remain unmetered: one aborted development solver and one
+interrupted retrieval case. The earlier C graph-arm receipt correction recovers
+its preserved terminal event without replacing or rerunning that failed attempt.
+
+The explicitly authorized Anthropic API route is used for all 24 sessions in
+the latest eight-task online control. Its main-model SDK usage is
+**$5.49084920**, and 55 Jev decisions add **$0.00552048**, for
+**$5.49636968** against the frozen $10 reservation. All latest-batch usage is
+known. Together, the three dedicated Jev controls make **206 requests** for
+**$0.04360545**. The combined known API usage value is **$5.53445465**;
+SDK estimates across both main-model routes total **$102.89875360**. Session
+counts are not individual API request counts. The development export retains
+per-experiment costs and the two historical unknowns.
+
+These are usage estimates and provider decision receipts, not reconciled account
+bills. Remaining promotional credit, subscription billing and any account-level
+extra usage are unverified. The authorized ceiling for new API spending remains
+**$100**. Provider routes are explicit, with no automatic API fallback. An
+in-flight call can exceed its SDK budget guard, as both C repair attempts do.
+The budget-stop patch-collection fix and final artifact audits make no model calls.
+
+The historical late-only eight-task control projects mechanically to about
+$104–107 in SDK estimates per 500-task retrieval route, or $211 for both arms.
+That is not a representative full-run budget and excludes repair/grading, retries
+and quota delays. The latest rejected policies do not justify scaling; a new
+independent quality result and a separately measured budget are still required.
+No full run is started.
 
 ## Online function-completion controls
 

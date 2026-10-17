@@ -117,7 +117,7 @@
     }
   },
   "conclusion": "Independent-32 and later development policies remain rejected. Source-bound C++ fixes and TypeScript/Java availability recovery improve graph readiness, but fixed queries add no annotated source and justify no new online batch. Official scores, sealed validation tasks and API spending remain unchanged.",
-  "cost_scope": "SDK metering estimates are not paid receipts. Actual account billing is unknown. No separate API-key inference in these arms.",
+  "cost_scope": "SDK metering estimates are not account bills. Historical top-level arms use the subscription route; the latest online grep/Jev control uses explicit direct Anthropic API sessions. Per-experiment scopes and current_program_cost distinguish these routes and Jev decision receipts.",
   "artifact_scope": "Sanitized development metrics only; not a full leaderboard submission bundle.",
   "implementation_commit": "a853d8d1",
   "aggregation": "Macro mean of per-task line recall, precision and F1; all selected tasks retained. The evaluator CLI summary uses separate pooled-count micro aggregates.",
@@ -2765,17 +2765,17 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 90.16526310000002,
+    "known_sdk_reported_estimate_usd": 102.8987536,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
     ],
-    "standalone_api_key_inference_calls": 151,
-    "standalone_api_key_inference_cost_usd": 0.03808497,
+    "standalone_api_key_inference_calls": 206,
+    "standalone_api_key_inference_cost_usd": 0.04360545,
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Known SDK metering only, not an account bill or a complete usage total: one aborted solver attempt and one aborted retrieval case returned no terminal metering. Reference/native grading makes no model calls.",
+    "scope": "Known October 16–17 program SDK estimates across subscription and direct API routes, not an account bill or complete usage total. The same two historical attempts lack terminal metering. Separate Jev decision costs are outside the SDK subtotal. Grading and the patch-collection regression make no model calls.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2802,7 +2802,15 @@
     "solver_search_adoption_sdk_estimate_usd": 2.2842187,
     "jev_rerank_api_cost_usd": 0.025743857999999994,
     "unmetered_api_calls": 0,
-    "jev_grep_api_cost_usd": 0.012341112
+    "jev_grep_api_cost_usd": 0.012341112,
+    "known_claude_max_sdk_estimate_usd": 97.4079044,
+    "known_anthropic_api_sdk_estimate_usd": 5.4908492,
+    "standalone_api_call_count_scope": "Jev decision requests only; direct Anthropic main-model use is recorded separately as SDK sessions, not individual API requests.",
+    "anthropic_api_sdk_sessions": 24,
+    "known_combined_api_usage_value_usd": 5.53445465,
+    "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
+    "online_grep_jev_decision_api_cost_usd": 0.00552048,
+    "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -20721,5 +20729,1405 @@
     "candidate_count": 484,
     "new_planner_calls": 0,
     "conclusion": "The 4K same-pool planned-grep comparison passes the ranking development gate. Keep the positive selection signal separate from an online effect: static source addition still reduces F1. Stop BM25 variants and prioritize selective grep/Jev delivery inside a fresh matched agent protocol without graphs. Independent 32 remains sealed; no full-500 launch."
-  }
+  },
+  "online_grep_jev_development": {
+    "scope": "Fresh online retrieval-agent development controls. Not repair Pass@1, independent validation, or an official leaderboard submission.",
+    "protocol_sha256": "c720694d303ee1ca7fa2170f935766ceeb2791282951454c56f6b88f025b7fe2",
+    "output_receipts_sha256": "45a0c3a6ff65d4441ef5eb42b6e0b32f4d6d584dddec0c0c4fefc9764d05bb9d",
+    "summaries": {
+      "native": {
+        "n": 8,
+        "arms": {
+          "trajectory": {
+            "recall": 0.42359182915762567,
+            "precision": 0.3788476649053235,
+            "f1": 0.3679707734297141,
+            "official_valid": 8
+          },
+          "served_16384": {
+            "recall": 0.4228580106589719,
+            "precision": 0.39068074172096096,
+            "f1": 0.3744360668181256,
+            "official_valid": 8
+          },
+          "served_32768": {
+            "recall": 0.42307315695845554,
+            "precision": 0.3787438157720305,
+            "f1": 0.3676268618345067,
+            "official_valid": 8
+          }
+        },
+        "usage": {
+          "billing_route": "anthropic_api_key",
+          "actual_bill_usd": null,
+          "sdk_reported_cost_usd": 1.6448555,
+          "missing_metering_cases": 0,
+          "jev_api_cost_usd": 0,
+          "jev_api_calls": 0,
+          "jev_unknown_usage_calls": 0,
+          "statuses": {
+            "ok": 8
+          },
+          "cases": 8
+        }
+      },
+      "chunks": {
+        "n": 8,
+        "arms": {
+          "trajectory": {
+            "recall": 0.4728708743584402,
+            "precision": 0.3449488654405801,
+            "f1": 0.3501512339935523,
+            "official_valid": 8
+          },
+          "served_16384": {
+            "recall": 0.4575496150612773,
+            "precision": 0.351683719781227,
+            "f1": 0.3534863444494245,
+            "official_valid": 8
+          },
+          "served_32768": {
+            "recall": 0.4728708743584402,
+            "precision": 0.34504094205055214,
+            "f1": 0.3502337347062103,
+            "official_valid": 8
+          }
+        },
+        "usage": {
+          "billing_route": "anthropic_api_key",
+          "actual_bill_usd": null,
+          "sdk_reported_cost_usd": 2.0563018,
+          "missing_metering_cases": 0,
+          "jev_api_cost_usd": 0.0,
+          "jev_api_calls": 0,
+          "jev_unknown_usage_calls": 0,
+          "statuses": {
+            "ok": 8
+          },
+          "cases": 8
+        }
+      },
+      "jev": {
+        "n": 8,
+        "arms": {
+          "trajectory": {
+            "recall": 0.4097126239086658,
+            "precision": 0.29461198855957627,
+            "f1": 0.31940212027763265,
+            "official_valid": 8
+          },
+          "served_16384": {
+            "recall": 0.40949747760918215,
+            "precision": 0.29556292868064216,
+            "f1": 0.3202382236508917,
+            "official_valid": 8
+          },
+          "served_32768": {
+            "recall": 0.4097126239086658,
+            "precision": 0.294656105424624,
+            "f1": 0.31945249212695315,
+            "official_valid": 8
+          }
+        },
+        "usage": {
+          "billing_route": "anthropic_api_key",
+          "actual_bill_usd": null,
+          "sdk_reported_cost_usd": 1.7896918999999998,
+          "missing_metering_cases": 0,
+          "jev_api_cost_usd": 0.005520479999999999,
+          "jev_api_calls": 55,
+          "jev_unknown_usage_calls": 0,
+          "statuses": {
+            "ok": 8
+          },
+          "cases": 8
+        }
+      }
+    },
+    "comparisons": {
+      "native": {
+        "recall": {
+          "mean_difference": -0.013879205248959844,
+          "exploratory_95_interval": [
+            -0.08253134629314507,
+            0.03802743521026851
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.08423567634574723,
+          "exploratory_95_interval": [
+            -0.18409407795540872,
+            -0.006579258699113934
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.04856865315208148,
+          "exploratory_95_interval": [
+            -0.09045826302253063,
+            -0.014770475107669214
+          ]
+        }
+      },
+      "chunks": {
+        "recall": {
+          "mean_difference": -0.0631582504497744,
+          "exploratory_95_interval": [
+            -0.11545866100396786,
+            -0.02162870483786111
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.05033687688100384,
+          "exploratory_95_interval": [
+            -0.16803406423013373,
+            0.033291948816028955
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.030749113715919634,
+          "exploratory_95_interval": [
+            -0.0763934273997886,
+            0.0014634188299206888
+          ]
+        }
+      }
+    },
+    "rows": [
+      {
+        "arm": "native",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.42738589211618255,
+          "precision": 0.6912751677852349,
+          "f1": 0.5282051282051282
+        },
+        "grep_calls": 3,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.0835748,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 10,
+        "sdk_reported_turns": 8,
+        "tool_calls": {
+          "grep": 3,
+          "read": 3,
+          "glob": 1
+        },
+        "wall_s": 22.508819550042972,
+        "source_lines": 149
+      },
+      {
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.25510204081632654,
+          "precision": 0.072992700729927,
+          "f1": 0.11350737797956868
+        },
+        "grep_calls": 5,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.19352370000000002,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 22,
+        "sdk_reported_turns": 15,
+        "tool_calls": {
+          "grep": 5,
+          "read": 9
+        },
+        "wall_s": 52.83518237003591,
+        "source_lines": 685
+      },
+      {
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5237399561723886,
+          "precision": 0.4076179647527004,
+          "f1": 0.4584398976982097
+        },
+        "grep_calls": 10,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.3881817,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 39,
+        "sdk_reported_turns": 26,
+        "tool_calls": {
+          "grep": 10,
+          "glob": 1,
+          "read": 14
+        },
+        "wall_s": 75.0879469870124,
+        "source_lines": 1759
+      },
+      {
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5362694300518135,
+          "precision": 0.5123762376237624,
+          "f1": 0.5240506329113925
+        },
+        "grep_calls": 3,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.10767510000000001,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 9,
+        "sdk_reported_turns": 6,
+        "tool_calls": {
+          "grep": 3,
+          "read": 2
+        },
+        "wall_s": 24.71202497498598,
+        "source_lines": 404
+      },
+      {
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.4875,
+          "precision": 0.7335423197492164,
+          "f1": 0.5857321652065082
+        },
+        "grep_calls": 4,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.1183334,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 14,
+        "sdk_reported_turns": 11,
+        "tool_calls": {
+          "grep": 4,
+          "read": 6
+        },
+        "wall_s": 31.601712243049406,
+        "source_lines": 319
+      },
+      {
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.20485744456177402,
+          "precision": 0.26216216216216215,
+          "f1": 0.22999407231772376
+        },
+        "grep_calls": 6,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.1850284,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 21,
+        "sdk_reported_turns": 15,
+        "tool_calls": {
+          "read": 8,
+          "grep": 6
+        },
+        "wall_s": 47.26539044594392,
+        "source_lines": 740
+      },
+      {
+        "arm": "native",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.35628227194492257,
+          "precision": 0.1830238726790451,
+          "f1": 0.24182242990654207
+        },
+        "grep_calls": 10,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.2955288,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 28,
+        "sdk_reported_turns": 20,
+        "tool_calls": {
+          "read": 9,
+          "grep": 10
+        },
+        "wall_s": 61.976043528993614,
+        "source_lines": 1131
+      },
+      {
+        "arm": "native",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5975975975975976,
+          "precision": 0.16779089376053963,
+          "f1": 0.26201448321263987
+        },
+        "grep_calls": 8,
+        "ranked_views": 0,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.27300959999999996,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0,
+        "assistant_events": 28,
+        "sdk_reported_turns": 20,
+        "tool_calls": {
+          "grep": 8,
+          "read": 11
+        },
+        "wall_s": 56.14357372093946,
+        "source_lines": 1186
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5269709543568465,
+          "precision": 0.8410596026490066,
+          "f1": 0.6479591836734694
+        },
+        "grep_calls": 2,
+        "ranked_views": 2,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.0806578,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 5,
+        "sdk_reported_turns": 3,
+        "tool_calls": {
+          "grep": 2
+        },
+        "wall_s": 19.846476412029006,
+        "source_lines": 151
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5153061224489796,
+          "precision": 0.0832646331409728,
+          "f1": 0.1433640880056778
+        },
+        "grep_calls": 8,
+        "ranked_views": 7,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.3167561,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 21,
+        "sdk_reported_turns": 15,
+        "tool_calls": {
+          "grep": 8,
+          "read": 5,
+          "glob": 1
+        },
+        "wall_s": 53.519105145009235,
+        "source_lines": 1213
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.34550766983199416,
+          "precision": 0.2986111111111111,
+          "f1": 0.3203521842194379
+        },
+        "grep_calls": 12,
+        "ranked_views": 9,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.39048150000000004,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 31,
+        "sdk_reported_turns": 21,
+        "tool_calls": {
+          "grep": 12,
+          "read": 6,
+          "glob": 2
+        },
+        "wall_s": 68.226258983952,
+        "source_lines": 1584
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5362694300518135,
+          "precision": 0.5061124694376528,
+          "f1": 0.5207547169811321
+        },
+        "grep_calls": 3,
+        "ranked_views": 2,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.10545469999999998,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 7,
+        "sdk_reported_turns": 5,
+        "tool_calls": {
+          "grep": 3,
+          "read": 1
+        },
+        "wall_s": 24.01812545605935,
+        "source_lines": 409
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.55625,
+          "precision": 0.37186629526462395,
+          "f1": 0.44574290484140233
+        },
+        "grep_calls": 4,
+        "ranked_views": 3,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.1564024,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 10,
+        "sdk_reported_turns": 6,
+        "tool_calls": {
+          "grep": 4,
+          "read": 1
+        },
+        "wall_s": 31.407650568988174,
+        "source_lines": 718
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.20380147835269272,
+          "precision": 0.3634651600753296,
+          "f1": 0.26116373477672533
+        },
+        "grep_calls": 7,
+        "ranked_views": 6,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.2300915,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 20,
+        "sdk_reported_turns": 12,
+        "tool_calls": {
+          "grep": 7,
+          "read": 3,
+          "glob": 1
+        },
+        "wall_s": 42.20836838602554,
+        "source_lines": 531
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.49225473321858865,
+          "precision": 0.16361556064073227,
+          "f1": 0.24559896951481322
+        },
+        "grep_calls": 12,
+        "ranked_views": 9,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.42820639999999993,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 30,
+        "sdk_reported_turns": 22,
+        "tool_calls": {
+          "read": 8,
+          "grep": 12,
+          "glob": 1
+        },
+        "wall_s": 91.48264361603651,
+        "source_lines": 1748
+      },
+      {
+        "arm": "chunks",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.6066066066066066,
+          "precision": 0.13159609120521173,
+          "f1": 0.2162740899357602
+        },
+        "grep_calls": 10,
+        "ranked_views": 9,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.34825139999999993,
+        "jev_api_calls": 0,
+        "jev_cost_usd": 0.0,
+        "assistant_events": 26,
+        "sdk_reported_turns": 16,
+        "tool_calls": {
+          "grep": 10,
+          "read": 5
+        },
+        "wall_s": 71.15520703000948,
+        "source_lines": 1535
+      },
+      {
+        "arm": "jev",
+        "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+        "language": "python",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5269709543568465,
+          "precision": 0.42474916387959866,
+          "f1": 0.4703703703703703
+        },
+        "grep_calls": 3,
+        "ranked_views": 1,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.1014428,
+        "jev_api_calls": 1,
+        "jev_cost_usd": 0.000139566,
+        "assistant_events": 11,
+        "sdk_reported_turns": 8,
+        "tool_calls": {
+          "grep": 3,
+          "glob": 1,
+          "read": 3
+        },
+        "wall_s": 23.36581815604586,
+        "source_lines": 299
+      },
+      {
+        "arm": "jev",
+        "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+        "language": "typescript",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.30612244897959184,
+          "precision": 0.07083825265643448,
+          "f1": 0.11505273250239693
+        },
+        "grep_calls": 5,
+        "ranked_views": 4,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.2104763,
+        "jev_api_calls": 7,
+        "jev_cost_usd": 0.0007204259999999999,
+        "assistant_events": 21,
+        "sdk_reported_turns": 15,
+        "tool_calls": {
+          "grep": 5,
+          "read": 9
+        },
+        "wall_s": 46.1273370210547,
+        "source_lines": 847
+      },
+      {
+        "arm": "jev",
+        "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+        "language": "c",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.295836376917458,
+          "precision": 0.420997920997921,
+          "f1": 0.34749034749034746
+        },
+        "grep_calls": 8,
+        "ranked_views": 6,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.28681049999999997,
+        "jev_api_calls": 9,
+        "jev_cost_usd": 0.0008709119999999999,
+        "assistant_events": 24,
+        "sdk_reported_turns": 15,
+        "tool_calls": {
+          "grep": 8,
+          "read": 5,
+          "glob": 1
+        },
+        "wall_s": 57.471231493982486,
+        "source_lines": 962
+      },
+      {
+        "arm": "jev",
+        "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+        "language": "cpp",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5362694300518135,
+          "precision": 0.49640287769784175,
+          "f1": 0.5155666251556662
+        },
+        "grep_calls": 3,
+        "ranked_views": 3,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.1118277,
+        "jev_api_calls": 3,
+        "jev_cost_usd": 0.00024242399999999998,
+        "assistant_events": 8,
+        "sdk_reported_turns": 5,
+        "tool_calls": {
+          "grep": 3,
+          "read": 1
+        },
+        "wall_s": 26.252606361056678,
+        "source_lines": 417
+      },
+      {
+        "arm": "jev",
+        "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+        "language": "go",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.48125,
+          "precision": 0.38372093023255816,
+          "f1": 0.42698706099815165
+        },
+        "grep_calls": 3,
+        "ranked_views": 3,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.1423074,
+        "jev_api_calls": 3,
+        "jev_cost_usd": 0.000296982,
+        "assistant_events": 9,
+        "sdk_reported_turns": 6,
+        "tool_calls": {
+          "grep": 3,
+          "read": 2
+        },
+        "wall_s": 30.61699365102686,
+        "source_lines": 602
+      },
+      {
+        "arm": "jev",
+        "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+        "language": "java",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.19535374868004224,
+          "precision": 0.24601063829787234,
+          "f1": 0.21777516185991758
+        },
+        "grep_calls": 4,
+        "ranked_views": 3,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.20420149999999998,
+        "jev_api_calls": 4,
+        "jev_cost_usd": 0.0004898459999999999,
+        "assistant_events": 15,
+        "sdk_reported_turns": 11,
+        "tool_calls": {
+          "read": 6,
+          "grep": 4
+        },
+        "wall_s": 35.341841981047764,
+        "source_lines": 752
+      },
+      {
+        "arm": "jev",
+        "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+        "language": "javascript",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.3683304647160069,
+          "precision": 0.17174959871589085,
+          "f1": 0.234263820470717
+        },
+        "grep_calls": 10,
+        "ranked_views": 9,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.36851009999999995,
+        "jev_api_calls": 14,
+        "jev_cost_usd": 0.0016803359999999997,
+        "assistant_events": 28,
+        "sdk_reported_turns": 20,
+        "tool_calls": {
+          "read": 9,
+          "grep": 10
+        },
+        "wall_s": 79.9044428669149,
+        "source_lines": 1246
+      },
+      {
+        "arm": "jev",
+        "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+        "language": "rust",
+        "status": "ok",
+        "metrics": {
+          "recall": 0.5675675675675675,
+          "precision": 0.14242652599849284,
+          "f1": 0.22771084337349398
+        },
+        "grep_calls": 10,
+        "ranked_views": 9,
+        "unconfirmed_tool_replies": 0,
+        "sdk_cost_usd": 0.3641156,
+        "jev_api_calls": 14,
+        "jev_cost_usd": 0.0010799879999999998,
+        "assistant_events": 26,
+        "sdk_reported_turns": 17,
+        "tool_calls": {
+          "grep": 10,
+          "read": 6
+        },
+        "wall_s": 81.08305041294079,
+        "source_lines": 1327
+      }
+    ],
+    "gates": {
+      "all_complete": true,
+      "known_usage": true,
+      "one_model_and_api_route": true,
+      "all_replies_followed_by_assistant": true,
+      "jev_greater_recall_vs_both": false,
+      "jev_nondecreasing_f1_vs_both": false
+    },
+    "development_gate_passed": false,
+    "known_anthropic_sdk_usd": 5.4908491999999995,
+    "known_jev_api_usd": 0.005520479999999999,
+    "models": [
+      "claude-opus-5-5"
+    ],
+    "routes": [
+      "ANTHROPIC_API_KEY"
+    ],
+    "all_hashes_and_source_checks_passed": true,
+    "protocol": {
+      "selection": "First task per language in the existing disclosed 24-task order, independent of scores or source availability; eight tasks, no replacements. Sealed independent 32 excluded.",
+      "implementation_commit": "cf4bc60b84622ebe5bf9c89c9d0f47fbc18463c0",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "max_turns": 20,
+      "case_timeout_s": 600,
+      "source_policy": "native",
+      "grep": {
+        "candidate_limit": 40,
+        "block_limit": 10,
+        "response_tokens": 4096,
+        "response_chars": 15900,
+        "candidate_chars": 3000,
+        "candidate_lines": 100
+      },
+      "selection_policy": "Actual native grep hits select files and bounded source chunks. Chunks preserves that order; Jev scores the identical per-query candidate construction with the original issue, batches of ten, stable ties. Read/glob unchanged; no graph, index, BM25 or planner. Agent queries may diverge after feedback.",
+      "primary": "Jev versus native: full source-selection policy effect. Jev versus chunks: online effect of ranking with identical tools and packing; adaptive queries can diverge.",
+      "development_gate": "All 24 positions finish with known usage and one model/route, verified delivered source, strictly higher macro trajectory Recall and nondecreasing F1 for Jev versus both controls. Eight-task intervals are exploratory; no automatic promotion to 500.",
+      "next_e2e_gate": "A passing candidate must be checked through the existing mature solver and native tests on predeclared compatible development tasks; retrieval scores alone are not end-to-end gains.",
+      "analysis": "Freeze outputs before official scoring. Keep all eight tasks, failures and not-run slots. Paired repository bootstrap 5000 draws, seed 20261017. Exact source only; canonical official gold paths."
+    },
+    "billing": {
+      "route": "anthropic_api_key",
+      "batch_reservation_usd": 10,
+      "account_bill_or_credit_balance_verified": false
+    },
+    "selection_diagnostic": {
+      "scope": "Post-result fixed-query selection audit; no rerun, new policy, changed metric or counterfactual agent claim.",
+      "primary_analysis_sha256": "0ad541a9fe264906bc641c5d0eacda1e9fe3aba4a666ae212754e7d0620b2f0d",
+      "diagnostic_driver_sha256": "92ccf2cda065a202f57da5ebce80c6e79d2dac34291608d0592930fa6020247b",
+      "views": 38,
+      "reordered_views": 31,
+      "views_with_changed_source_selection": 12,
+      "rows": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "candidate_count": 9,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 141,
+          "original_order_returned_lines": 141
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "candidate_count": 24,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 137,
+          "removed_lines": 162,
+          "returned_lines": 190,
+          "original_order_returned_lines": 215
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "candidate_count": 4,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 4,
+          "original_order_returned_lines": 4
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "candidate_count": 16,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 4,
+          "removed_lines": 13,
+          "returned_lines": 109,
+          "original_order_returned_lines": 118
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "candidate_count": 2,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 112,
+          "original_order_returned_lines": 112
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "candidate_count": 3,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 3,
+          "original_order_returned_lines": 3
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "candidate_count": 3,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 159,
+          "original_order_returned_lines": 159
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "candidate_count": 4,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 175,
+          "original_order_returned_lines": 175
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "candidate_count": 1,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 83,
+          "original_order_returned_lines": 83
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "candidate_count": 4,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 237,
+          "original_order_returned_lines": 237
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 11,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 1,
+          "removed_lines": 1,
+          "returned_lines": 142,
+          "original_order_returned_lines": 142
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 32,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 221,
+          "removed_lines": 23,
+          "returned_lines": 240,
+          "original_order_returned_lines": 42
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 2,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 37,
+          "original_order_returned_lines": 37
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 1,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 51,
+          "original_order_returned_lines": 51
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 3,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 150,
+          "original_order_returned_lines": 150
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 2,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 17,
+          "original_order_returned_lines": 17
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 3,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 7,
+          "original_order_returned_lines": 7
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 15,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 4,
+          "removed_lines": 4,
+          "returned_lines": 10,
+          "original_order_returned_lines": 10
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "candidate_count": 5,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 138,
+          "original_order_returned_lines": 138
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 20,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 235,
+          "removed_lines": 232,
+          "returned_lines": 244,
+          "original_order_returned_lines": 241
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 6,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 187,
+          "original_order_returned_lines": 187
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 10,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 10,
+          "original_order_returned_lines": 10
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 15,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 154,
+          "removed_lines": 171,
+          "returned_lines": 239,
+          "original_order_returned_lines": 256
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 31,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 7,
+          "removed_lines": 7,
+          "returned_lines": 10,
+          "original_order_returned_lines": 10
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 6,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 6,
+          "original_order_returned_lines": 6
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 7,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 7,
+          "original_order_returned_lines": 7
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 3,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 3,
+          "original_order_returned_lines": 3
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "candidate_count": 1,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 1,
+          "original_order_returned_lines": 1
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "candidate_count": 7,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 110,
+          "original_order_returned_lines": 110
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "candidate_count": 2,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 43,
+          "original_order_returned_lines": 43
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "candidate_count": 8,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 8,
+          "original_order_returned_lines": 8
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "candidate_count": 14,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 57,
+          "removed_lines": 30,
+          "returned_lines": 130,
+          "original_order_returned_lines": 103
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "candidate_count": 8,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 65,
+          "removed_lines": 66,
+          "returned_lines": 124,
+          "original_order_returned_lines": 125
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "candidate_count": 1,
+          "reordered": false,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 15,
+          "original_order_returned_lines": 15
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "candidate_count": 40,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 10,
+          "removed_lines": 10,
+          "returned_lines": 10,
+          "original_order_returned_lines": 10
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "candidate_count": 8,
+          "reordered": true,
+          "source_selection_changed": true,
+          "added_lines": 168,
+          "removed_lines": 154,
+          "returned_lines": 208,
+          "original_order_returned_lines": 194
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "candidate_count": 8,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 120,
+          "original_order_returned_lines": 120
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "candidate_count": 6,
+          "reordered": true,
+          "source_selection_changed": false,
+          "added_lines": 0,
+          "removed_lines": 0,
+          "returned_lines": 6,
+          "original_order_returned_lines": 6
+        }
+      ],
+      "runtime_and_output_hashes_match": true
+    },
+    "e2e_status": "Complete: four preselected attempts, both C++ native tests pass, both C SDK budget stops retain zero. No independent or comparative repair gain.",
+    "e2e_analysis": {
+      "scope": "Two repeated development tasks, fresh matched retrieval-to-repair pipelines. Four attempts maximum, native versus Jev. No independent Pass@1 or leaderboard claim.",
+      "protocol_sha256": "223f487c75dc7dd0243c819e09051d50d163a75decbf05854232fd22c5de3b6f",
+      "implementation_commit": "cf4bc60b84622ebe5bf9c89c9d0f47fbc18463c0",
+      "rows": [
+        {
+          "task": "fmt",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "arm": "native",
+          "status": "Submitted",
+          "resolved": true,
+          "model_calls": 6,
+          "repair_sdk_estimate_usd": 0.7711020000000001,
+          "known_repair_sdk_estimate_usd": 0.7711020000000001,
+          "missing_metering_calls": 0,
+          "retrieval_api_sdk_usd": 0.10767510000000001,
+          "jev_api_usd": 0,
+          "pipeline_meter_estimate_usd": 0.8787771000000001,
+          "pipeline_wall_s_excluding_grading": 254.42253226798493,
+          "repair_wall_s": 229.71050729299895,
+          "grading_wall_s": 193.3281993549317,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "all_model_inputs_confirmed": true,
+          "source_coverage_status": "partial",
+          "base_source_line_count": 404,
+          "initial_base_source_lines": 404,
+          "new_original_source_lines": 0,
+          "controlled_reads": 1,
+          "controlled_searches": 0,
+          "solver_container_removed": true,
+          "native_grading": {
+            "status": "graded",
+            "resolved": true,
+            "native_exit_code": 0,
+            "container_removed": true,
+            "source_snapshot_verified": true,
+            "native_log_sha256": "fd880ade9d5cc1be77433c3df0fa6216f2ebf92bb38798f3dcfb3cdfb715fbf4"
+          },
+          "model_patch_sha256": "9cb9cfa65c12062a8df2b8ccceace08b7549c66bf7655f52051e0bce30cab912"
+        },
+        {
+          "task": "fmt",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "arm": "jev",
+          "status": "Submitted",
+          "resolved": true,
+          "model_calls": 3,
+          "repair_sdk_estimate_usd": 0.36135439999999996,
+          "known_repair_sdk_estimate_usd": 0.36135439999999996,
+          "missing_metering_calls": 0,
+          "retrieval_api_sdk_usd": 0.1118277,
+          "jev_api_usd": 0.00024242399999999998,
+          "pipeline_meter_estimate_usd": 0.47342452399999996,
+          "pipeline_wall_s_excluding_grading": 78.85783060011454,
+          "repair_wall_s": 52.60522423905786,
+          "grading_wall_s": 194.60446256399155,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "all_model_inputs_confirmed": true,
+          "source_coverage_status": "partial",
+          "base_source_line_count": 417,
+          "initial_base_source_lines": 417,
+          "new_original_source_lines": 0,
+          "controlled_reads": 1,
+          "controlled_searches": 0,
+          "solver_container_removed": true,
+          "native_grading": {
+            "status": "graded",
+            "resolved": true,
+            "native_exit_code": 0,
+            "container_removed": true,
+            "source_snapshot_verified": true,
+            "native_log_sha256": "e2d4c65035e2d74738e23653f855a10dbd1db44c63964c4cbc7a68d89f338271"
+          },
+          "model_patch_sha256": "6586e05c941ba3954bba47642028f5476e054508dc48b663581e0ab53a84be28"
+        },
+        {
+          "task": "ponyc",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "arm": "native",
+          "status": "error",
+          "resolved": false,
+          "model_calls": 9,
+          "repair_sdk_estimate_usd": 3.0819029,
+          "known_repair_sdk_estimate_usd": 3.0819029,
+          "missing_metering_calls": 0,
+          "retrieval_api_sdk_usd": 0.3881817,
+          "jev_api_usd": 0,
+          "pipeline_meter_estimate_usd": 3.4700846,
+          "pipeline_wall_s_excluding_grading": 266.39263455499895,
+          "repair_wall_s": 191.30468756798655,
+          "grading_wall_s": null,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "all_model_inputs_confirmed": true,
+          "source_coverage_status": "partial",
+          "base_source_line_count": 1425,
+          "initial_base_source_lines": 1425,
+          "new_original_source_lines": 0,
+          "controlled_reads": 0,
+          "controlled_searches": 0,
+          "solver_container_removed": true,
+          "native_grading": {
+            "status": "no_prediction",
+            "resolved": false,
+            "native_exit_code": null,
+            "container_removed": null,
+            "source_snapshot_verified": null,
+            "native_log_sha256": null
+          },
+          "model_patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "task": "ponyc",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "arm": "jev",
+          "status": "error",
+          "resolved": false,
+          "model_calls": 13,
+          "repair_sdk_estimate_usd": 3.0282820000000004,
+          "known_repair_sdk_estimate_usd": 3.0282820000000004,
+          "missing_metering_calls": 0,
+          "retrieval_api_sdk_usd": 0.28681049999999997,
+          "jev_api_usd": 0.0008709119999999999,
+          "pipeline_meter_estimate_usd": 3.3159634120000003,
+          "pipeline_wall_s_excluding_grading": 255.33172728097998,
+          "repair_wall_s": 197.8604957869975,
+          "grading_wall_s": null,
+          "actual_models": [
+            "claude-opus-5-5"
+          ],
+          "all_model_inputs_confirmed": true,
+          "source_coverage_status": "partial",
+          "base_source_line_count": 1092,
+          "initial_base_source_lines": 962,
+          "new_original_source_lines": 130,
+          "controlled_reads": 4,
+          "controlled_searches": 3,
+          "solver_container_removed": true,
+          "native_grading": {
+            "status": "no_prediction",
+            "resolved": false,
+            "native_exit_code": null,
+            "container_removed": null,
+            "source_snapshot_verified": null,
+            "native_log_sha256": null
+          },
+          "model_patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "resolved": {
+        "native": {
+          "resolved": 1,
+          "selected_tasks": 2
+        },
+        "jev": {
+          "resolved": 1,
+          "selected_tasks": 2
+        }
+      },
+      "known_repair_sdk_usd": 7.242641300000001,
+      "repair_api_key_calls": 0,
+      "missing_metering_calls": 0,
+      "execution_amendment": {
+        "sha256": "09baa070f5a6a8d5b3e3d45d64f0db14cef2cd2e4cbc181b076f5b5f1c577582",
+        "reason": "Original generic error stop prevented the second arm after a fully metered terminal SDK budget error. Complete the already selected, previously unrun Jev arm once at the unchanged budget; do not retry native or inspect reference/grade content. This post-stop execution amendment is explicit and does not replace original records.",
+        "invariants": "Same task, model, initial source receipt, common solver prompt, pinned image, 20 turns and $3 SDK guard. Baseline failure remains zero. No new API route, retry, source-policy change or budget increase. Original maximum total repair SDK reservation remains $10.",
+        "grading_note": "Original scheduling-only grading already began after the primary driver stopped. Its two C no-prediction records are retained. Grade the new candidate only after this attempt ends, in the same separate native harness; no grading content enters model inputs."
+      },
+      "matched_common_prompts_and_configs": true,
+      "all_frozen_hashes_match": true,
+      "all_owned_containers_removed_and_absent": true,
+      "development_resolved_difference": 0,
+      "independent_end_to_end_gain_established": false,
+      "interpretation": "Report paired outcomes and costs; two repeated compatible development tasks cannot establish population or independent end-to-end gain. Source coverage remains partial for arbitrary shell output.",
+      "analysis_sha256": "29616d5f2d6c7611cbaa30cd62dc25757ca58bdccc2276a0acebe62423f2fcd4"
+    },
+    "budget_patch_collection_followup": {
+      "scope": "Prospective harness correction, not a revised result or an agent policy gain.",
+      "failure": "SDK budget exceptions bypassed patch export before container cleanup; both historical C attempts have no captured prediction.",
+      "policy": "Collect executed working-tree edits only after normal agent termination or fully metered SDK budget exhaustion. Keep the original error and cost, make no extra model request, and exclude terminal export from source observations.",
+      "unknown_usage_and_unrelated_errors_excluded": true,
+      "historical_attempts_unchanged": true,
+      "validation": "57 solver/source tests pass, including three pinned-upstream integrations; deterministic budget/error export regression makes no model or container calls.",
+      "implementation_commit": "f607ea7c55054d57f9a340b6109a6a1aaf29f432"
+    }
+  },
+  "latest_evidence_date": "2026-10-17"
 }
