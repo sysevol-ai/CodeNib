@@ -375,14 +375,23 @@ raises the source pipeline estimate to $0.683119 versus issue-only $0.130250,
 so neither resolution nor pipeline-cost gates pass. There are no notes or new
 retrieval calls. Report its repair cost separately from the upstream Opus
 retrieval allocation. No revised independent or leaderboard gain is established.
-The current user-directed priority is pure ContextBench retrieval: no further
-repair or native-harness batch before a useful context strategy passes its
-retrieval gate. The eight-task source-gap audit finds 1,768 missing annotated
-lines inside observed files and 773 in unobserved files, retaining 125 unavailable
-lines in official scores. Source-bound file-symbol navigation passes 91 local
-tests and preserves all source credit on fixed traces. Its frozen four-task
-native/file-map Opus comparison has a $5 API reservation and zero repair calls;
-o quality result is available yet. Native-test issues do not block retrieval.
+The user-directed priority is pure ContextBench retrieval, with Recall first and
+F1/cost reported; preserve historical frozen gates. No further repair or native
+harness batch precedes useful replicated context evidence. The eight-task source
+audit finds 1,768 missing available annotated lines in observed files and 773 in
+unobserved files; 125 unavailable annotated lines remain in official scores.
+The completed four-task file-symbol pilot fails: Recall/F1 40.75%/39.77% →
+39.37%/36.83%, $1.496507 API SDK usage, all reliability checks passing. Reject it.
+The hit-preserving nearby-source policy passes its Recall-first development
+screen and unchanged-policy replication. Across all eight development tasks,
+Recall improves 35.24% → 38.91%, while F1 falls 31.26% → 28.20%; the exploratory
+Recall interval [-8.05, +14.66] points includes zero. All 16 sessions complete
+for $3.64572980 in API SDK estimates, with no repairs. A failed auxiliary grep
+rerun comparison and its separate receipt-only correction remain recorded;
+original attempts and official scores are unchanged. Source/model/route/usage/
+delivery audits pass. Keep this as development evidence; plan fresh independent
+retrieval validation before claiming a stable gain or advancing to official500.
+Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
 remain required before product promotion or distilling the search policy into a

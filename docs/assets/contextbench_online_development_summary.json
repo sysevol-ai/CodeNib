@@ -2765,7 +2765,7 @@
     "conclusion": "The revised source-observation trigger passes a one-task mechanism gate with 132 new annotated physical lines. This establishes no Recall/F1 or Pass@1 gain. Preserve both versions and the earlier negative independent validation. Broader fresh matched development evidence is required before a new independent quality selection."
   },
   "current_program_cost": {
-    "known_sdk_reported_estimate_usd": 124.58833546,
+    "known_sdk_reported_estimate_usd": 128.23406526,
     "mechanism_probes_sdk_estimate_usd": 0.3271157,
     "unmetered_solver_attempts": [
       "solver-smoke-functions-v2"
@@ -2775,7 +2775,7 @@
     "authorized_new_api_spend_usd": 100,
     "sdk_metering_is_actual_billing": false,
     "actual_bill_usd": null,
-    "scope": "Current Claude SDK/Jev experiment ledger through completed four-task file-map retrieval pilot. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
+    "scope": "Current Claude SDK/Jev experiment ledger through completed eight-task nearby-source development comparison. Excludes historical OpenRouter reference/decision controls documented separately in the report. SDK estimates span subscription and direct API routes and exclude separate Jev receipts from the SDK sum. The same two historical SDK attempts lack terminal metering. Actual account charges and credit balance remain unverified.",
     "unmetered_retrieval_cases": [
       {
         "run": "first-source-24/functions",
@@ -2804,10 +2804,10 @@
     "unmetered_api_calls": 0,
     "jev_grep_api_cost_usd": 0.012341112,
     "known_claude_max_sdk_estimate_usd": 112.5018556,
-    "known_anthropic_api_sdk_estimate_usd": 12.08647986,
-    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 56 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
-    "anthropic_api_sdk_sessions": 111,
-    "known_combined_api_usage_value_usd": 12.139678572,
+    "known_anthropic_api_sdk_estimate_usd": 15.73220966,
+    "standalone_api_call_count_scope": "281 Jev decision requests only. Direct Anthropic main-model use is recorded as 72 retrieval SDK sessions plus 55 repair SDK queries, not individual underlying API requests.",
+    "anthropic_api_sdk_sessions": 127,
+    "known_combined_api_usage_value_usd": 15.785408372,
     "online_grep_jev_retrieval_api_sdk_estimate_usd": 5.4908492,
     "online_grep_jev_decision_api_cost_usd": 0.00552048,
     "online_grep_jev_repair_max_sdk_estimate_usd": 7.2426413,
@@ -2816,7 +2816,10 @@
     "online_grep_hints_repair_max_sdk_estimate_usd": 6.0355762,
     "retrieval_notes_repair_max_sdk_estimate_usd": 9.058375,
     "haiku_repair_api_sdk_estimate_usd": 0.26029216,
-    "file_map_retrieval_api_sdk_estimate_usd": 1.496507
+    "file_map_retrieval_api_sdk_estimate_usd": 1.496507,
+    "grep_neighbors_pilot_api_sdk_estimate_usd": 1.7605027,
+    "grep_neighbors_replication_api_sdk_estimate_usd": 1.8852270999999998,
+    "grep_neighbors_total_api_sdk_estimate_usd": 3.6457298
   },
   "first_callable_source_24_development": {
     "scope": "Fresh three-arm development attempt on all 24 previously disclosed tasks. The primary pair is complete; function-only ablations are incomplete. Not independent validation or a leaderboard result.",
@@ -24302,5 +24305,1246 @@
       "independent_gain_established": false
     },
     "analysis_sha256": "f974bd89b90ae94b8d688721b60e0d1d88ef1f8198ef3c8303b9c60fb5a7037f"
+  },
+  "grep_neighbors_retrieval_development": {
+    "status": "Complete; initial Recall-first screen passes with wide uncertainty and lower F1. The Recall-first replication gate passes on both the new four and combined eight. This remains development evidence requiring fresh independent retrieval validation.",
+    "runtime_commit": "0a80e3bf3d0ed6e605e651f809161b608996a381",
+    "protocol_sha256": "e3c9d9d51e74967925857d4889823cdfed5ae8d80120bd8511bba4a69fe6d5f8",
+    "model": "claude-opus-5-5",
+    "sdk_reservation_usd": 5,
+    "selected_tasks_per_arm": 4,
+    "arms": [
+      "native",
+      "neighbors"
+    ],
+    "extra_grep_tokens": 2048,
+    "radius_lines": 20,
+    "repair_calls": 0,
+    "gate": "Prospective user-selected Recall-first primary; report Precision, F1 and cost; require all receipt/reliability audits. Historical gates unchanged.",
+    "offline_opportunity": {
+      "scope": "Fixed-trace opportunity only; no adaptive-agent or new online score. Canonical official gold normalization/denominators retained. No annotation-driven runtime choices or new model calls.",
+      "source_frozen_sha256": "a9a4d5b9a968aafefe8d9e0dfad469491f9b26385fc0899a4777e422a6bc66e1",
+      "rows": [
+        {
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "original": {
+            "recall": 0.4896265560165975,
+            "precision": 0.5244444444444445,
+            "f1": 0.5064377682403433,
+            "source_lines": 225
+          },
+          "replay": {
+            "recall": 0.5767634854771784,
+            "precision": 0.5205992509363296,
+            "f1": 0.547244094488189,
+            "source_lines": 267
+          },
+          "extra_source_lines": 42,
+          "extra_annotated_lines": 21,
+          "extra_tool_reply_tokens": 2038
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "original": {
+            "recall": 0.30612244897959184,
+            "precision": 0.12195121951219512,
+            "f1": 0.17441860465116277,
+            "source_lines": 492
+          },
+          "replay": {
+            "recall": 0.30612244897959184,
+            "precision": 0.07444168734491315,
+            "f1": 0.11976047904191617,
+            "source_lines": 806
+          },
+          "extra_source_lines": 314,
+          "extra_annotated_lines": 0,
+          "extra_tool_reply_tokens": 8909
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "original": {
+            "recall": 0.5091307523739956,
+            "precision": 0.5349194167306216,
+            "f1": 0.5217065868263472,
+            "source_lines": 1303
+          },
+          "replay": {
+            "recall": 0.5193571950328707,
+            "precision": 0.4367321867321867,
+            "f1": 0.47447447447447444,
+            "source_lines": 1628
+          },
+          "extra_source_lines": 325,
+          "extra_annotated_lines": 14,
+          "extra_tool_reply_tokens": 11906
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "original": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5149253731343284,
+            "f1": 0.5253807106598986,
+            "source_lines": 402
+          },
+          "replay": {
+            "recall": 0.5362694300518135,
+            "precision": 0.3354943273905997,
+            "f1": 0.4127617148554337,
+            "source_lines": 617
+          },
+          "extra_source_lines": 215,
+          "extra_annotated_lines": 0,
+          "extra_tool_reply_tokens": 5755
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "original": {
+            "recall": 0.45416666666666666,
+            "precision": 0.8074074074074075,
+            "f1": 0.5813333333333333,
+            "source_lines": 270
+          },
+          "replay": {
+            "recall": 0.4666666666666667,
+            "precision": 0.4266666666666667,
+            "f1": 0.44577114427860703,
+            "source_lines": 525
+          },
+          "extra_source_lines": 255,
+          "extra_annotated_lines": 6,
+          "extra_tool_reply_tokens": 7259
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "original": {
+            "recall": 0.146779303062302,
+            "precision": 0.25272727272727274,
+            "f1": 0.18570474281897129,
+            "source_lines": 550
+          },
+          "replay": {
+            "recall": 0.1921858500527983,
+            "precision": 0.2716417910447761,
+            "f1": 0.2251082251082251,
+            "source_lines": 670
+          },
+          "extra_source_lines": 120,
+          "extra_annotated_lines": 43,
+          "extra_tool_reply_tokens": 4096
+        },
+        {
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "original": {
+            "recall": 0.35456110154905335,
+            "precision": 0.18933823529411764,
+            "f1": 0.24685440383463148,
+            "source_lines": 1088
+          },
+          "replay": {
+            "recall": 0.37005163511187605,
+            "precision": 0.14756348661633492,
+            "f1": 0.21099116781157998,
+            "source_lines": 1457
+          },
+          "extra_source_lines": 369,
+          "extra_annotated_lines": 9,
+          "extra_tool_reply_tokens": 8850
+        },
+        {
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "original": {
+            "recall": 0.6666666666666666,
+            "precision": 0.13503649635036497,
+            "f1": 0.22458270106221548,
+            "source_lines": 1644
+          },
+          "replay": {
+            "recall": 0.9129129129129129,
+            "precision": 0.15012345679012346,
+            "f1": 0.2578456318914334,
+            "source_lines": 2025
+          },
+          "extra_source_lines": 381,
+          "extra_annotated_lines": 82,
+          "extra_tool_reply_tokens": 15051
+        }
+      ],
+      "macro": {
+        "original": {
+          "recall": 0.4329153656708359,
+          "precision": 0.3850937332000941,
+          "f1": 0.3708023564283629
+        },
+        "replay": {
+          "recall": 0.4850412030357135,
+          "precision": 0.29540785669024133,
+          "f1": 0.3367446164937324
+        }
+      },
+      "all_original_source_credit_preserved": true,
+      "new_model_calls": 0
+    },
+    "independent_gain_established": false,
+    "analysis": {
+      "scope": "Pure ContextBench retrieval-agent development pilot. No repairs, mini-swe-agent or native tests. Cumulative verified source is primary; final served context is secondary. No independent or leaderboard claim.",
+      "protocol_sha256": "e3c9d9d51e74967925857d4889823cdfed5ae8d80120bd8511bba4a69fe6d5f8",
+      "runtime_commit": "0a80e3bf3d0ed6e605e651f809161b608996a381",
+      "rows": [
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.0875044,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 219,
+          "tool_calls": {
+            "grep": 3,
+            "read": 4
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.38589211618257263,
+            "precision": 0.4246575342465753,
+            "f1": 0.4043478260869566
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.21698679999999998,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 821,
+          "tool_calls": {
+            "grep": 4,
+            "glob": 1,
+            "read": 9
+          },
+          "sdk_turns": 15,
+          "metrics": {
+            "recall": 0.015306122448979591,
+            "precision": 0.0036540803897685747,
+            "f1": 0.0058997050147492625
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.3311315,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1660,
+          "tool_calls": {
+            "grep": 6,
+            "read": 12,
+            "glob": 1
+          },
+          "sdk_turns": 20,
+          "metrics": {
+            "recall": 0.38641344046749454,
+            "precision": 0.31867469879518073,
+            "f1": 0.349290194783757
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "status": "ok",
+          "sdk_usd": 0.1146597,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 406,
+          "tool_calls": {
+            "grep": 3,
+            "read": 2
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5098522167487685,
+            "f1": 0.5227272727272728
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.10484779999999999,
+          "grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 174,
+          "extra_reply_tokens": 3243,
+          "budget_omitted_line_deliveries": 140,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 268,
+          "tool_calls": {
+            "grep": 2,
+            "read": 2
+          },
+          "sdk_turns": 5,
+          "metrics": {
+            "recall": 0.5643153526970954,
+            "precision": 0.5074626865671642,
+            "f1": 0.5343811394891945
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.3047165,
+          "grep_views": 7,
+          "views_with_added_source": 6,
+          "appended_line_deliveries": 537,
+          "extra_reply_tokens": 10148,
+          "budget_omitted_line_deliveries": 1654,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1036,
+          "tool_calls": {
+            "grep": 8,
+            "read": 6
+          },
+          "sdk_turns": 15,
+          "metrics": {
+            "recall": 0.30612244897959184,
+            "precision": 0.05791505791505792,
+            "f1": 0.09740259740259741
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.4926709,
+          "grep_views": 13,
+          "views_with_added_source": 11,
+          "appended_line_deliveries": 1000,
+          "extra_reply_tokens": 18654,
+          "budget_omitted_line_deliveries": 1378,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 2036,
+          "tool_calls": {
+            "grep": 13,
+            "read": 7,
+            "glob": 1
+          },
+          "sdk_turns": 22,
+          "metrics": {
+            "recall": 0.30094959824689554,
+            "precision": 0.20235756385068762,
+            "f1": 0.24199706314243757
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "status": "ok",
+          "sdk_usd": 0.1079851,
+          "grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 221,
+          "extra_reply_tokens": 3705,
+          "budget_omitted_line_deliveries": 288,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 327,
+          "tool_calls": {
+            "grep": 3,
+            "read": 1
+          },
+          "sdk_turns": 5,
+          "metrics": {
+            "recall": 0.2616580310880829,
+            "precision": 0.308868501529052,
+            "f1": 0.28330995792426367
+          }
+        }
+      ],
+      "primary": {
+        "native": {
+          "recall": 0.33097027728771505,
+          "precision": 0.3142096325450733,
+          "f1": 0.3205662496531839,
+          "official_valid": 4
+        },
+        "neighbors": {
+          "recall": 0.35826135775291645,
+          "precision": 0.2691509524654904,
+          "f1": 0.2892726894896233,
+          "official_valid": 4
+        }
+      },
+      "served_secondary": {
+        "native": {
+          "served_16384": {
+            "recall": 0.33097027728771505,
+            "precision": 0.3315706852480754,
+            "f1": 0.33006067242205267,
+            "official_valid": 4
+          },
+          "served_32768": {
+            "recall": 0.33097027728771505,
+            "precision": 0.3142107465939726,
+            "f1": 0.3205677013522525,
+            "official_valid": 4
+          }
+        },
+        "neighbors": {
+          "served_16384": {
+            "recall": 0.3572484592641742,
+            "precision": 0.2906276510653765,
+            "f1": 0.30193172332812407,
+            "official_valid": 4
+          },
+          "served_32768": {
+            "recall": 0.3572484592641742,
+            "precision": 0.2696918028382232,
+            "f1": 0.28917158093439277,
+            "official_valid": 4
+          }
+        }
+      },
+      "paired_differences": {
+        "recall": {
+          "mean_difference": 0.02729108046520136,
+          "exploratory_95_interval": [
+            -0.1800376205921648,
+            0.23461978152256752
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.04505868007958284,
+          "exploratory_95_interval": [
+            -0.1586504250821048,
+            0.06853306492293912
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.03129356016356062,
+          "exploratory_95_interval": [
+            -0.1733552232221643,
+            0.11076810289504305
+          ]
+        }
+      },
+      "gates": {
+        "all_eight_sessions_complete": true,
+        "known_usage": true,
+        "one_actual_model_route": true,
+        "all_source_replies_confirmed": true,
+        "added_source_in_three_tasks": true,
+        "original_hits_preserved_and_source_receipts_exact": true,
+        "greater_recall": true
+      },
+      "development_gate_passed": true,
+      "known_new_api_sdk_usd": 1.7605027,
+      "new_sdk_sessions": 8,
+      "repair_calls": 0,
+      "all_frozen_hashes_match": true,
+      "independent_gain_established": false,
+      "audit_followup": {
+        "protocol_sha256": "ea0317fbd4d3cfbb15f5204e2566844656dfc27402153e041b1077fedafa07a9",
+        "original_scoring_and_attempts_unchanged": true,
+        "original_analysis_exit_code": 1,
+        "reason": "Auxiliary grep re-execution comparison is invalid for unstable ripgrep order; validate captured originals and delivered replies against frozen source/hash receipts. No gate or selected outcome changed."
+      }
+    },
+    "analysis_sha256": "dec7aec864b204c5062738f547554389ed47121adcb130c7b34c66dd01f838a1",
+    "audit_followup_protocol_sha256": "ea0317fbd4d3cfbb15f5204e2566844656dfc27402153e041b1077fedafa07a9",
+    "audit_followup_preservation": {
+      "all_preserved_official_reports_and_scores": true,
+      "all_preserved_model_attempts": true,
+      "original_protocol_sha256": "e3c9d9d51e74967925857d4889823cdfed5ae8d80120bd8511bba4a69fe6d5f8",
+      "analysis_sha256": "dec7aec864b204c5062738f547554389ed47121adcb130c7b34c66dd01f838a1"
+    }
+  },
+  "grep_neighbors_replication_development": {
+    "status": "The Recall-first replication gate passes on both the new four and combined eight. This remains development evidence requiring fresh independent retrieval validation.",
+    "runtime_commit": "0a80e3bf3d0ed6e605e651f809161b608996a381",
+    "protocol_sha256": "d9834073c3f0021cdb71cdc0158b644ccc0247278b2d7c4a3da4480d9ca8ba3f",
+    "selected_tasks_per_arm": 4,
+    "population": [
+      "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+      "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+      "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+      "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163"
+    ],
+    "sdk_reservation_usd": 5,
+    "repair_calls": 0,
+    "independent_gain_established": false,
+    "gate": "User-approved prospective Recall-first gate: macro cumulative trajectory line Recall must improve versus fresh matched native across all four selected tasks. Report Precision, F1, costs, source lines and repository-paired exploratory 95% intervals regardless of sign; F1 nondecrease is not a veto. Require all eight sessions complete, exact original hit preservation, and valid source/model/route/hash/usage/delivery receipts. Candidate must deliver extra source in at least three tasks; only exact observed returned lines receive source credit. Require positive Recall both on this new four-task cohort and on all eight pilot-plus-replication tasks. Report all eight with failures retained and no independent claim.",
+    "analysis": {
+      "combined_eight_task_primary": {
+        "native": {
+          "recall": 0.35244226555743774,
+          "precision": 0.3350156964981319,
+          "f1": 0.3126216755822505
+        },
+        "neighbors": {
+          "recall": 0.3890903451545774,
+          "precision": 0.25494554576527506,
+          "f1": 0.2819557611014275
+        }
+      },
+      "pilot_analysis_sha256": "dec7aec864b204c5062738f547554389ed47121adcb130c7b34c66dd01f838a1",
+      "scope": "Pure ContextBench retrieval-agent development pilot. No repairs, mini-swe-agent or native tests. Cumulative verified source is primary; final served context is secondary. No independent or leaderboard claim.",
+      "protocol_sha256": "d9834073c3f0021cdb71cdc0158b644ccc0247278b2d7c4a3da4480d9ca8ba3f",
+      "runtime_commit": "0a80e3bf3d0ed6e605e651f809161b608996a381",
+      "rows": [
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.0840732,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 205,
+          "tool_calls": {
+            "grep": 4,
+            "read": 4
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.3625,
+            "precision": 0.848780487804878,
+            "f1": 0.508029197080292
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.1891437,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 849,
+          "tool_calls": {
+            "read": 7,
+            "grep": 7,
+            "glob": 1
+          },
+          "sdk_turns": 16,
+          "metrics": {
+            "recall": 0.20802534318901794,
+            "precision": 0.232037691401649,
+            "f1": 0.21937639198218262
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.2771924,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1137,
+          "tool_calls": {
+            "read": 12,
+            "grep": 4
+          },
+          "sdk_turns": 17,
+          "metrics": {
+            "recall": 0.35456110154905335,
+            "precision": 0.18117854001759015,
+            "f1": 0.23981373690337598
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.24851040000000005,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1178,
+          "tool_calls": {
+            "grep": 9,
+            "read": 7
+          },
+          "sdk_turns": 17,
+          "metrics": {
+            "recall": 0.5705705705705706,
+            "precision": 0.16129032258064516,
+            "f1": 0.2514890800794176
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.12972060000000002,
+          "grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 354,
+          "extra_reply_tokens": 5219,
+          "budget_omitted_line_deliveries": 57,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 473,
+          "tool_calls": {
+            "grep": 3,
+            "read": 3
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.38958333333333334,
+            "precision": 0.3953488372093023,
+            "f1": 0.3924449108079748
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.2522375,
+          "grep_views": 6,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 311,
+          "extra_reply_tokens": 9328,
+          "budget_omitted_line_deliveries": 933,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 681,
+          "tool_calls": {
+            "grep": 7,
+            "read": 4,
+            "glob": 1
+          },
+          "sdk_turns": 13,
+          "metrics": {
+            "recall": 0.17317845828933473,
+            "precision": 0.24082232011747431,
+            "f1": 0.20147420147420145
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.42864769999999996,
+          "grep_views": 8,
+          "views_with_added_source": 8,
+          "appended_line_deliveries": 831,
+          "extra_reply_tokens": 14227,
+          "budget_omitted_line_deliveries": 1233,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1777,
+          "tool_calls": {
+            "read": 8,
+            "grep": 9
+          },
+          "sdk_turns": 18,
+          "metrics": {
+            "recall": 0.504302925989673,
+            "precision": 0.16488463702870004,
+            "f1": 0.24851569126378284
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.2757016,
+          "grep_views": 7,
+          "views_with_added_source": 6,
+          "appended_line_deliveries": 472,
+          "extra_reply_tokens": 7721,
+          "budget_omitted_line_deliveries": 249,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1260,
+          "tool_calls": {
+            "grep": 7,
+            "read": 6
+          },
+          "sdk_turns": 14,
+          "metrics": {
+            "recall": 0.6126126126126126,
+            "precision": 0.1619047619047619,
+            "f1": 0.256120527306968
+          }
+        }
+      ],
+      "primary": {
+        "native": {
+          "recall": 0.3739142538271605,
+          "precision": 0.35582176045119057,
+          "f1": 0.30467710151131705,
+          "official_valid": 4
+        },
+        "neighbors": {
+          "recall": 0.4199193325562384,
+          "precision": 0.24074013906505964,
+          "f1": 0.27463883271323175,
+          "official_valid": 4
+        }
+      },
+      "served_secondary": {
+        "native": {
+          "served_16384": {
+            "recall": 0.3739142538271605,
+            "precision": 0.3559015747860001,
+            "f1": 0.3047469773087831,
+            "official_valid": 4
+          },
+          "served_32768": {
+            "recall": 0.3739142538271605,
+            "precision": 0.3559015747860001,
+            "f1": 0.3047469773087831,
+            "official_valid": 4
+          }
+        },
+        "neighbors": {
+          "served_16384": {
+            "recall": 0.3837747542429854,
+            "precision": 0.24519854354762702,
+            "f1": 0.27298899214338024,
+            "official_valid": 4
+          },
+          "served_32768": {
+            "recall": 0.41905874735830384,
+            "precision": 0.24110010837788876,
+            "f1": 0.2747441699178148,
+            "official_valid": 4
+          }
+        }
+      },
+      "paired_differences": {
+        "recall": {
+          "mean_difference": 0.046005078729077935,
+          "exploratory_95_interval": [
+            -0.015624653164251913,
+            0.11907720166379805
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.11508162138613094,
+          "exploratory_95_interval": [
+            -0.3399201281156526,
+            0.00469953401997103
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.0300382687980853,
+          "exploratory_95_interval": [
+            -0.08553035289735035,
+            0.006666700793978617
+          ]
+        }
+      },
+      "gates": {
+        "all_eight_sessions_complete": true,
+        "known_usage": true,
+        "one_actual_model_route": true,
+        "all_source_replies_confirmed": true,
+        "added_source_in_three_tasks": true,
+        "original_hits_preserved_and_source_receipts_exact": true,
+        "greater_recall": true,
+        "combined_eight_task_recall_positive": true
+      },
+      "development_gate_passed": true,
+      "known_new_api_sdk_usd": 1.8852270999999998,
+      "new_sdk_sessions": 8,
+      "repair_calls": 0,
+      "all_frozen_hashes_match": true,
+      "independent_gain_established": false
+    },
+    "analysis_sha256": "b2f122cf21cbc69ae73eafb7addeb2d50eeaa436c7ebd838cd99582dc4c58c73",
+    "combined_eight": {
+      "scope": "Eight disclosed development tasks; conditional extension after a positive four-task screening point estimate. No independent or leaderboard claim. All selected cases and failures retained. One matched attempt per arm per task.",
+      "pilot_analysis_sha256": "dec7aec864b204c5062738f547554389ed47121adcb130c7b34c66dd01f838a1",
+      "replication_analysis_sha256": "b2f122cf21cbc69ae73eafb7addeb2d50eeaa436c7ebd838cd99582dc4c58c73",
+      "primary": {
+        "native": {
+          "recall": 0.35244226555743774,
+          "precision": 0.3350156964981319,
+          "f1": 0.3126216755822505
+        },
+        "neighbors": {
+          "recall": 0.3890903451545774,
+          "precision": 0.25494554576527506,
+          "f1": 0.2819557611014275
+        }
+      },
+      "paired_differences": {
+        "recall": {
+          "mean_difference": 0.03664807959713964,
+          "exploratory_95_interval": [
+            -0.08052110865272841,
+            0.14662790769465128
+          ]
+        },
+        "precision": {
+          "mean_difference": -0.08007015073285689,
+          "exploratory_95_interval": [
+            -0.2084680797760662,
+            0.020000702376969836
+          ]
+        },
+        "f1": {
+          "mean_difference": -0.03066591448082296,
+          "exploratory_95_interval": [
+            -0.11403388638519144,
+            0.04412107724675366
+          ]
+        }
+      },
+      "api_sdk_usd": {
+        "native": 1.5492020999999998,
+        "neighbors": 2.0965277
+      },
+      "total_api_sdk_usd": 3.6457298,
+      "new_repair_calls": 0,
+      "development_replication_gate_passed": true,
+      "independent_gain_established": false,
+      "rows": [
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.0875044,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 219,
+          "tool_calls": {
+            "grep": 3,
+            "read": 4
+          },
+          "sdk_turns": 8,
+          "metrics": {
+            "recall": 0.38589211618257263,
+            "precision": 0.4246575342465753,
+            "f1": 0.4043478260869566
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.21698679999999998,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 821,
+          "tool_calls": {
+            "grep": 4,
+            "glob": 1,
+            "read": 9
+          },
+          "sdk_turns": 15,
+          "metrics": {
+            "recall": 0.015306122448979591,
+            "precision": 0.0036540803897685747,
+            "f1": 0.0058997050147492625
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.3311315,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1660,
+          "tool_calls": {
+            "grep": 6,
+            "read": 12,
+            "glob": 1
+          },
+          "sdk_turns": 20,
+          "metrics": {
+            "recall": 0.38641344046749454,
+            "precision": 0.31867469879518073,
+            "f1": 0.349290194783757
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "status": "ok",
+          "sdk_usd": 0.1146597,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 406,
+          "tool_calls": {
+            "grep": 3,
+            "read": 2
+          },
+          "sdk_turns": 6,
+          "metrics": {
+            "recall": 0.5362694300518135,
+            "precision": 0.5098522167487685,
+            "f1": 0.5227272727272728
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Verified__python__maintenance__bugfix__1409977d",
+          "language": "python",
+          "status": "ok",
+          "sdk_usd": 0.10484779999999999,
+          "grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 174,
+          "extra_reply_tokens": 3243,
+          "budget_omitted_line_deliveries": 140,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 268,
+          "tool_calls": {
+            "grep": 2,
+            "read": 2
+          },
+          "sdk_turns": 5,
+          "metrics": {
+            "recall": 0.5643153526970954,
+            "precision": 0.5074626865671642,
+            "f1": 0.5343811394891945
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__typescript__maintenance__bugfix__7c41997b",
+          "language": "typescript",
+          "status": "ok",
+          "sdk_usd": 0.3047165,
+          "grep_views": 7,
+          "views_with_added_source": 6,
+          "appended_line_deliveries": 537,
+          "extra_reply_tokens": 10148,
+          "budget_omitted_line_deliveries": 1654,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1036,
+          "tool_calls": {
+            "grep": 8,
+            "read": 6
+          },
+          "sdk_turns": 15,
+          "metrics": {
+            "recall": 0.30612244897959184,
+            "precision": 0.05791505791505792,
+            "f1": 0.09740259740259741
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__c__maintenance__bugfix__b8c88ac8",
+          "language": "c",
+          "status": "ok",
+          "sdk_usd": 0.4926709,
+          "grep_views": 13,
+          "views_with_added_source": 11,
+          "appended_line_deliveries": 1000,
+          "extra_reply_tokens": 18654,
+          "budget_omitted_line_deliveries": 1378,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 2036,
+          "tool_calls": {
+            "grep": 13,
+            "read": 7,
+            "glob": 1
+          },
+          "sdk_turns": 22,
+          "metrics": {
+            "recall": 0.30094959824689554,
+            "precision": 0.20235756385068762,
+            "f1": 0.24199706314243757
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__cpp__maintenance__bugfix__8ebb764e",
+          "language": "cpp",
+          "status": "ok",
+          "sdk_usd": 0.1079851,
+          "grep_views": 2,
+          "views_with_added_source": 2,
+          "appended_line_deliveries": 221,
+          "extra_reply_tokens": 3705,
+          "budget_omitted_line_deliveries": 288,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 327,
+          "tool_calls": {
+            "grep": 3,
+            "read": 1
+          },
+          "sdk_turns": 5,
+          "metrics": {
+            "recall": 0.2616580310880829,
+            "precision": 0.308868501529052,
+            "f1": 0.28330995792426367
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.0840732,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 205,
+          "tool_calls": {
+            "grep": 4,
+            "read": 4
+          },
+          "sdk_turns": 9,
+          "metrics": {
+            "recall": 0.3625,
+            "precision": 0.848780487804878,
+            "f1": 0.508029197080292
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.1891437,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 849,
+          "tool_calls": {
+            "read": 7,
+            "grep": 7,
+            "glob": 1
+          },
+          "sdk_turns": 16,
+          "metrics": {
+            "recall": 0.20802534318901794,
+            "precision": 0.232037691401649,
+            "f1": 0.21937639198218262
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.2771924,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1137,
+          "tool_calls": {
+            "read": 12,
+            "grep": 4
+          },
+          "sdk_turns": 17,
+          "metrics": {
+            "recall": 0.35456110154905335,
+            "precision": 0.18117854001759015,
+            "f1": 0.23981373690337598
+          }
+        },
+        {
+          "arm": "native",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.24851040000000005,
+          "grep_views": 0,
+          "views_with_added_source": 0,
+          "appended_line_deliveries": 0,
+          "extra_reply_tokens": 0,
+          "budget_omitted_line_deliveries": 0,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1178,
+          "tool_calls": {
+            "grep": 9,
+            "read": 7
+          },
+          "sdk_turns": 17,
+          "metrics": {
+            "recall": 0.5705705705705706,
+            "precision": 0.16129032258064516,
+            "f1": 0.2514890800794176
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__go__maintenance__bugfix__720b4d92",
+          "language": "go",
+          "status": "ok",
+          "sdk_usd": 0.12972060000000002,
+          "grep_views": 3,
+          "views_with_added_source": 3,
+          "appended_line_deliveries": 354,
+          "extra_reply_tokens": 5219,
+          "budget_omitted_line_deliveries": 57,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 473,
+          "tool_calls": {
+            "grep": 3,
+            "read": 3
+          },
+          "sdk_turns": 7,
+          "metrics": {
+            "recall": 0.38958333333333334,
+            "precision": 0.3953488372093023,
+            "f1": 0.3924449108079748
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__java__maintenance__bugfix__07d7817b",
+          "language": "java",
+          "status": "ok",
+          "sdk_usd": 0.2522375,
+          "grep_views": 6,
+          "views_with_added_source": 5,
+          "appended_line_deliveries": 311,
+          "extra_reply_tokens": 9328,
+          "budget_omitted_line_deliveries": 933,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 681,
+          "tool_calls": {
+            "grep": 7,
+            "read": 4,
+            "glob": 1
+          },
+          "sdk_turns": 13,
+          "metrics": {
+            "recall": 0.17317845828933473,
+            "precision": 0.24082232011747431,
+            "f1": 0.20147420147420145
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "SWE-Bench-Pro__javascript__maintenance__bugfix__4eb0e647",
+          "language": "javascript",
+          "status": "ok",
+          "sdk_usd": 0.42864769999999996,
+          "grep_views": 8,
+          "views_with_added_source": 8,
+          "appended_line_deliveries": 831,
+          "extra_reply_tokens": 14227,
+          "budget_omitted_line_deliveries": 1233,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1777,
+          "tool_calls": {
+            "read": 8,
+            "grep": 9
+          },
+          "sdk_turns": 18,
+          "metrics": {
+            "recall": 0.504302925989673,
+            "precision": 0.16488463702870004,
+            "f1": 0.24851569126378284
+          }
+        },
+        {
+          "arm": "neighbors",
+          "instance_id": "Multi-SWE-Bench__rust__maintenance__bugfix__3be02163",
+          "language": "rust",
+          "status": "ok",
+          "sdk_usd": 0.2757016,
+          "grep_views": 7,
+          "views_with_added_source": 6,
+          "appended_line_deliveries": 472,
+          "extra_reply_tokens": 7721,
+          "budget_omitted_line_deliveries": 249,
+          "unconfirmed_tool_replies": 0,
+          "source_lines": 1260,
+          "tool_calls": {
+            "grep": 7,
+            "read": 6
+          },
+          "sdk_turns": 14,
+          "metrics": {
+            "recall": 0.6126126126126126,
+            "precision": 0.1619047619047619,
+            "f1": 0.256120527306968
+          }
+        }
+      ]
+    },
+    "combined_analysis_sha256": "a66bc79b34db11286b94b35e7e8a0f3b86a592664be4d1251da11139a9ed589b"
   }
 }

@@ -85,6 +85,86 @@ select its positive subset. The new Recall-first preference does not change
 this result. A future positive pilot still requires larger retrieval replication
 before independent validation or a small repair check.
 
+## Hit-preserving nearby source: Recall-first pilot
+
+Runtime `0a80e3bf` preserves every raw grep reply and appends at most 2,048
+cl100k tokens of exact nearby source. It visits all verified hit anchors at each
+distance, up to 20 physical lines, and omits current matches and lines already
+observed in the conversation. The total reply stays within 15,900 characters;
+an oversized unmodified original is preserved. Files over 2 MiB are explicitly
+skipped. Exact source hashes, original replies, prior observations, delivered
+lines and budget omissions are recorded. Read/glob and the system prompt remain
+unchanged. There is no graph, parser expansion, BM25, Jev or second model.
+
+The fixed-trace source replay freezes every reply before reading annotations.
+It preserves all original source credit across the same eight development
+trajectories. Macro Recall changes **43.29% → 48.50%**, Precision **38.51% →
+29.54%** and F1 **37.08% → 33.67%**. The added coverage motivates a pilot under
+the user's prospective Recall-first preference; the extra noise remains visible.
+This is an opportunity replay with fixed historical calls, not an online result.
+
+A fresh four-task comparison uses protocol
+`e3c9d9d51e74967925857d4889823cdfed5ae8d80120bd8511bba4a69fe6d5f8`.
+It fixes the same first four metadata positions, Opus 5.5, first-party Anthropic
+API, 20 turns, 600 seconds and $0.75 SDK guard plus $0.25 dispatch headroom per
+session, with a $5 batch reservation. Both arms start fresh. Independent32 stays
+sealed. The primary requires higher cumulative line Recall across all four
+selected tasks, plus successful exact source/model/route/usage/delivery audits;
+Precision, F1 and costs are reported without an F1 veto. Final served 16K/32K
+contexts are secondary. No repairs or native tests are run. All eight sessions
+complete and all source/model/route/usage/delivery checks pass.
+
+| Cumulative trajectory, all four selected tasks | Recall | Precision | F1 | API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 33.10% | 31.42% | 32.06% | $0.750282 |
+| Hit-preserving nearby source | 35.83% | 26.92% | 28.93% | $1.010220 |
+
+The Recall-first pilot screen passes with **+2.73 points**, exploratory paired
+95% interval **[-18.00, +23.46]**. F1 changes **-3.13 points**, **[-17.34,
++11.08]**. Python and TypeScript improve Recall; C and C++ decline. The candidate
+uses 34.6% more SDK-estimated dollars. This is a noisy development screen, not
+an established strategy gain or a leaderboard advantage. Total API SDK usage is
+**$1.76050270**, with zero repairs and all selected outcomes retained.
+
+The original auxiliary audit attempted to re-execute grep and compare output
+verbatim. It fails because ripgrep traversal can reorder matches and alter a
+capped subset, a behavior already documented in the pinned runner. A separate
+read-only follow-up keeps original attempts and official scores unchanged and
+verifies captured raw hashes, their complete presence in actual model inputs,
+source versions, prior observations and deterministic appended lines. The failed
+audit and follow-up remain recorded; no paid attempt or evaluator result is replaced.
+
+An unchanged-policy replication selects all remaining four disclosed development tasks
+(Go, Java, JavaScript, Rust) under protocol
+`d9834073c3f0021cdb71cdc0158b644ccc0247278b2d7c4a3da4480d9ca8ba3f`. It reserves another
+$5 with the same model, runtime, turns, timeout and session guards. Require positive
+Recall on this new four-task cohort and the combined eight, while retaining F1/cost and
+every failure. It is development replication, not independent validation. No repair work
+or official500 follows automatically; replication is complete: all eight additional
+sessions finish, source/model/route/usage/delivery audits pass, and API SDK usage is
+**$1.88522710** with zero repairs.
+
+| Cumulative trajectory, remaining four development tasks | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| Native source tools | 37.39% | 35.58% | 30.47% |
+| Hit-preserving nearby source | 41.99% | 24.07% | 27.46% |
+
+The replication Recall difference is **+4.60 points**, exploratory paired 95% interval
+**[-1.56, +11.91]**. F1 changes **-3.00 points**.
+
+| Cumulative trajectory, all eight development tasks | Recall | Precision | F1 | API SDK estimate |
+| --- | ---: | ---: | ---: | ---: |
+| Native source tools | 35.24% | 33.50% | 31.26% | $1.549202 |
+| Hit-preserving nearby source | 38.91% | 25.49% | 28.20% | $2.096528 |
+
+The combined Recall difference is **+3.66 points**, exploratory paired 95% interval
+**[-8.05, +14.66]**; F1 changes **-3.07 points**. The Recall-first replication gate
+passes on both the new four and combined eight. This remains development evidence
+requiring fresh independent retrieval validation. The extension was conditional on the
+first pilot, so the combined interval is descriptive development uncertainty, not
+independent validation. Total nearby-source API SDK usage is **$3.64572980**; every
+selected outcome remains counted.
+
 ## Preserved grep with read-location hints
 
 Runtime `10d1a439` tests the same eight disclosed tasks in three fresh arms,
@@ -938,20 +1018,21 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The current Claude SDK/Jev experiment ledger, through the completed four-task
-file-map retrieval pilot, has the following known usage values. This table excludes the
+The current Claude SDK/Jev experiment ledger, through the completed eight-task
+nearby-source retrieval development comparison, has the following known usage
+values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
 costs remain separate. Actual account charges and credit deductions have not
 been reconciled.
 
 | Route | Known usage value | Billing interpretation |
 | --- | ---: | --- |
-| Direct Anthropic main-model SDK | $12.08647986 | API estimate; promotional-credit deduction unverified |
+| Direct Anthropic main-model SDK | $15.73220966 | API estimate; promotional-credit deduction unverified |
 | Separate Jev decisions | $0.053198712 | Metered API receipts |
-| **Combined API usage** | **$12.139678572** | **Usage value, not confirmed cash spending** |
+| **Combined API usage** | **$15.785408372** | **Usage value, not confirmed cash spending** |
 | Claude Max main-model SDK | $112.50185560 | SDK list-price estimate, not a confirmed subscription bill |
 
-Main-model SDK estimates across both routes sum to $124.58833546; that mixed-route
+Main-model SDK estimates across both routes sum to $128.23406526; that mixed-route
 sum is not a cash-spending total. Two historical attempts remain unmetered: one
 aborted solver and one interrupted retrieval case. The earlier C graph-arm
 receipt correction recovers its preserved terminal event without replacing or
@@ -959,9 +1040,11 @@ rerunning that failed attempt.
 
 The two eight-task API controls complete 48 SDK sessions. Together with the two
 fixed-pool Jev controls, there are **281 Jev requests** for **$0.053198712**.
-Known API usage value totals **$12.139678572**, including the Haiku repairs
-and eight subsequent file-map retrieval sessions ($1.496507).
-The 56 retrieval sessions and 55 repair SDK queries are distinct from
+Known API usage value totals **$15.785408372**, including the Haiku repairs
+and eight subsequent file-map sessions ($1.496507) plus eight nearby-source
+sessions ($1.76050270), plus eight remaining-four replication sessions
+($1.88522710). All nearby-source inference and scoring are terminal.
+The 72 retrieval sessions and 55 repair SDK queries are distinct from
 individual underlying API request counts. The latest read-hint retrieval control costs
 **$4.848424762** against its $10 reservation; its four Max repairs add
 **$6.03557620**. No completed-batch usage is missing beyond the two historical
