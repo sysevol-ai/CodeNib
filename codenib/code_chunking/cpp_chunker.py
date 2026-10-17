@@ -182,7 +182,13 @@ class CppCodeChunker(BaseCodeChunker):
                             .decode("utf-8")
                             .strip()
                         )
-                    declarator = declarator.child_by_field_name("declarator")
+                    child = declarator.child_by_field_name("declarator")
+                    if (
+                        child is None
+                        and declarator.type == "abstract_reference_declarator"
+                    ):
+                        child = next(iter(declarator.named_children), None)
+                    declarator = child
                 return None
             child = node.child_by_field_name("declarator")
             if child is None and node.type in (
