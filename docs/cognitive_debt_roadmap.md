@@ -389,8 +389,15 @@ Recall interval [-8.05, +14.66] points includes zero. All 16 sessions complete
 for $3.64572980 in API SDK estimates, with no repairs. A failed auxiliary grep
 rerun comparison and its separate receipt-only correction remain recorded;
 original attempts and official scores are unchanged. Source/model/route/usage/
-delivery audits pass. Keep this as development evidence; plan fresh independent
-retrieval validation before claiming a stable gain or advancing to official500.
+delivery audits pass. Keep this as development evidence. The unchanged policy now runs a separately
+frozen independent32: eight Python and four each in six other languages, across
+21 repository names, excluding all105 development and the sealed prior32. No
+untouched C++ remains; keep that coverage gap explicit. All source snapshots
+prepare, runtime inputs have empty gold, and annotations stay unread until
+terminal inference and frozen outputs. The $22-reserved, 64-session API batch
+requires a positive lower Recall interval and full receipt checks; F1/cost remain
+reported. No quality result is available yet and no repairs/official500 start
+automatically.
 Native-test issues do not block retrieval.
 The public results and sanitized per-case exports
 live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes

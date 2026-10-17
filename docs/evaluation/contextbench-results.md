@@ -1,5 +1,12 @@
 # ContextBench retrieval experiments
 
+Hit-preserving nearby source passes its Recall-first development screen and
+unchanged-policy replication: across eight disclosed tasks, Recall improves
+35.24% → 38.91% while F1 falls 31.26% → 28.20%. Its interval includes zero.
+A fresh 32-task, seven-language pure-retrieval validation is now frozen and
+running. It excludes all 105 development tasks and the earlier independent32;
+no untouched C++ tasks remain. No independent or leaderboard gain is established.
+
 Both eight-task online grep/Jev policies **fail their development gates**.
 Replacing grep replies with source blocks reduces Recall/F1 from
 42.36%/36.80% to 40.97%/31.94%. The subsequent policy preserves every original
@@ -26,6 +33,46 @@ CodeNib Base, not ContextBench, and neither establishes an online-agent gain.
 The online control below tests source ranking before delivery; graph expansion
 is not a prerequisite. Both grep/Jev controls fail their retrieval gates; positive
 fixed-pool rankings did not transfer to these adaptive source-delivery policies.
+
+## Fresh independent32: seven-language retrieval-only validation
+
+The unchanged `0a80e3bf` neighborhood policy advances to a separately frozen
+32-task validation under protocol
+`b4b92a3e2bd02a7fde3a86b6f86edeb83f23c2492e896ac5f3c6d4e3e0ccf038`.
+Selection uses only IDs, language and repository metadata from the pinned
+verified dataset, excluding 105 development IDs and all 32 earlier validation
+IDs. Fixed seeded SHA ordering and repository round-robin select eight Python
+tasks and four each in C, Go, Java, JavaScript, Rust and TypeScript, spanning
+21 repository names. The extra four Python slots replace unavailable C++ slots;
+this does **not** reproduce eight-language coverage or estimate full500 quality.
+The earlier independent32 stays sealed and is never recycled.
+
+All 32 source snapshots prepare successfully at their exact commits. Runtime
+inputs contain metadata, issue text and explicit empty `gold_context`; no gold,
+reference patches or native test labels are materialized before inference. After
+terminal execution and frozen output hashes, only the selected gold annotations
+will be loaded into a separate evaluation cohort. Preserve raw SDK attempts;
+source from trailing tool results without a later assistant response is excluded
+from a labeled scoring projection, with every exclusion reported.
+
+Both arms use fresh Opus 5.5 sessions, medium effort, 20 turns, 600 seconds and
+4,096 maximum output tokens, with the same native read/glob and system prompt.
+The candidate retains the frozen 2,048-token, 20-line physical grep neighborhood
+policy. There are 64 planned SDK sessions, at most four concurrent. The batch
+reserves **$22**, with $0.75 session guards and $0.25 dispatch headroom; developer
+usage forecasts **$14.58** from the eight-task controls. These are estimates,
+not a provider hard cap or reconciled credit deduction. The existing $100
+additional API authorization still applies; no repairs or native test calls run.
+
+The primary requires a positive lower endpoint of the paired, repository-cluster
+95% Recall interval across **all 32 selected tasks**, with complete source,
+model/route, usage and delivery receipts. Resample canonical repository URLs
+5,000 times with seed 20261017. Report Precision, per-task macro F1, failures and
+cost without an F1 nondecrease veto. Equal-language macro and final 16K/32K
+served contexts are secondary. No interim scoring, outcome-based replacements,
+experiment retries or provider/model fallback is allowed. No quality result is
+available yet. Promotion requires passing independent gates and a separately
+measured official500 plan; neither repairs nor official500 starts automatically.
 
 ## File-structure navigation: pure retrieval priority
 
