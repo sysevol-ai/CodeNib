@@ -30,6 +30,24 @@ publication candidate; candidate-context results, native resolution outcomes
 and submission review remain separate open gates. Historical partial archives
 are unchanged; cancelled443 consumers require no new outputs or archive.
 
+A read-only input audit reconciles499 original native records against their
+terminal SDK counters:3,396 distinct main-model responses and4,202 repeated
+content blocks counted once. The original empty-source case's terminal input
+usage and cost remain unavailable. Among the known499, each task's maximum
+single-response input averages17,540.45tokens, with median14,066, nearest-rank
+P90 31,993 and maximum69,859. These baseline-only statistics use a different
+population from the four-task policy comparison; its input reduction must not
+be extrapolated to all500. Known selected SDK nominal usage remains$91.1558898
+plus one unknown terminal, not a new cash charge or a complete cash bill.
+
+A portable verifier reproduces all500 raw input-accounting records directly
+from the unchanged compressed control archive using Python's standard library.
+It needs no extraction, SDK, GPU, source repository, credentials or labels;
+all499 input summaries and known fees match, with unknown values preserved.
+The supplementary eight-file gzip bundle is323,530bytes and passes round-trip
+hash verification. This completes control usage reproducibility, with candidate
+strategy validation, native resolution outcomes and publication review open.
+
 Re-scoring the pinned September12 public submission on these exact500 Gold/source
 inputs and the same official environment gives:
 

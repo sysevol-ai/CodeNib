@@ -618,6 +618,15 @@ review stay open; no cancelled443 Batch archive is required and no new repair
 batch follows. All500 evaluator source targets match recorded snapshots,
 including119retained aliases. Complete500 baseline scoring and archival coverage
 provide no proof of indexed context gains.
+A supplementary audit reconciles499 native input records (3,396 unique responses,
+4,202 repeated blocks not added); the original case's unknown input/cost stays
+unknown. Known-case maximum single-response input averages17,540.45tokens,
+median14,066/P90 31,993; this baseline population does not establish the four-task
+policy's population-wide savings. A standard-library-only verifier reproduces
+all500 raw input records and known fees directly from the compressed control
+bundle without source repositories, labels or provider calls. The eight-file,
+323,530byte usage supplement passes round-trip verification; original archives,
+quality and recorded$91.1558898 nominal usage plus one unknown remain unchanged.
 Both new Jev-only ranking probes fail their practical one-point screens; no
 runtime ranker is added. Fixed-history 24 source opportunity improves Recall
 53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The refreshed metadata-only audit after whole500 annotation access confirms
