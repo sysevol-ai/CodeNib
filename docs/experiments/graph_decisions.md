@@ -40,7 +40,7 @@ The current milestones and remaining gates are:
 | Online source completion | Independent 32-task comparison: Recall 69.64% → 68.56%, F1 29.01% → 28.22%. New source reaches the next model call, but this policy does not establish a gain. | Diagnose unnecessary added source on development IDs; revised candidates require a new independent validation selection. |
 | Matched experiment | The independent 32-task validation remains complete and negative. The revised 24-task development primary pair completes; its function-only ablation stops after four complete cases and one partial error, retaining 19 not-run cases. Receipt handling is fixed and a separate one-task reliability check passes. | Preserve the interrupted arm; its ablations cannot establish policy effects. Keep all 32 validation tasks sealed and require fresh matched controls for any revised policy. |
 | Directed graph navigation | First-source/callable-first navigation calls all eleven available graphs in the 24-task development set and supplies 139 new annotated physical lines in Go and Rust. Recall changes 53.35% → 54.02%, F1 31.18% → 30.15%; the declared gate fails. The broader offline preparation attempt retains 14/24 graphs, including eight newly available and five lost; a separate authenticated composition has 19/24 available. | Correct invocation PATH and source-preparation failures, then demonstrate useful source selection before another quality cohort. No new independent validation, product promotion or full-500 launch. |
-| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The original Multi native grader rejects a C++ test-only control and accepts its reference repair, passing 18 tests; a separate source-only image matches the selected tree. | Wire the Multi solver/native adapter, then complete Poly/Pro coverage and source-line attribution from actual solver observations. The reference check has no model calls or agent score; broader comparative Pass@1 remains open. |
+| Complete solver | The independent Verified task resolves in both arms, 1/1 each. The repeated development pair remains unresolved, 0/1 each, with 18 confirmed model inputs. The original Multi native grader rejects a C++ test-only control and accepts its reference repair, passing 18 tests; a separate source-only image matches the selected tree. | Validate the fmt solver/native adapter with matched agent repairs, then extend other Multi repositories, Poly/Pro coverage and source-line attribution from actual solver observations. The reference check has no model calls or agent score; broader comparative Pass@1 remains open. |
 | Leaderboard submission | Official artifact and population requirements are documented. The current candidate is rejected before full-scale execution. | A new independently validated policy, verified 500, measured resolution outcomes, complete artifacts and a separate measured budget decision. |
 
 The evaluation sequence remains:
@@ -389,8 +389,8 @@ project preparation even inside its private clone. Under the same 300-second
 bound, the control returns no graph in 4.16 seconds; enabling preparation builds
 8,247 nodes / 39,953 edges in 18.18 seconds. The original checkout stays clean.
 This uses no model calls or label-based selection and does not replace any frozen
-artifact. Broader preparation coverage and a new matched quality candidate remain
-open; the completed independent 32 is not used for tuning.
+artifact. The broader preparation outcome is recorded below; a new matched
+quality candidate remains open. The completed independent 32 is not used for tuning.
 The source-checkout graph preparer now accepts explicit
 `--allow-project-preparation` for fresh private-clone builds and records the
 policy/timeout. It rejects reuse with this option and rejects a prepared graph
@@ -433,13 +433,27 @@ solver image removes those artifacts and their test/prepare scripts, replaces
 Git history with one selected-source commit, and passes the same tree and clean
 checkout checks. Its tree remains
 `c793e859f77f2ef96bcc8f1b1804f06ebce087aa`. Native grading continues to use the
-original image; source-only image preparation does not implement the reusable
-Multi solver adapter or establish that CodeNib resolves the issue.
+original image. The source-checkout solver now accepts the `fmtlib/fmt` pilot,
+checks source-only history/reference isolation before model work, and records the
+source family and container working directory. The separate native adapter
+checks installed harness hashes and source/patch identity, replaces the reference
+production patch with the exact solver patch, and invokes the original native
+script and resolution grader. Every owned container has bounded lifetime and
+synchronous cleanup; errors remain explicit. This does not establish that
+CodeNib resolves the issue or supports other Multi repositories.
+
+The new adapter's unchanged-issue control is correctly unresolved. Two initial
+reference checks time out during Docker creation at the 60-second bound, before
+tests begin, and both owned containers are removed. A separate create/start
+probe succeeds, with creation taking 31.83 seconds amid high host I/O pressure.
+The adapter now allows a bounded 180 seconds for container startup, records that
+limit, and retains its test and cleanup bounds. Fresh native validation remains
+required before the proposed model pair; all these attempts make zero model calls.
 
 Pinned native dataset revision, image IDs, module hashes and reports are retained
 under `verification/contextbench-multiswe-native-20261016/` and summarized in the
-existing public development artifact. The adapter, matched agent outcomes,
-Poly/Pro harnesses and complete solver-source attribution remain open.
+existing public development artifact. Matched fmt agent outcomes, other Multi
+repositories, Poly/Pro harnesses and complete solver-source attribution remain open.
 
 ### October 16 online development result
 

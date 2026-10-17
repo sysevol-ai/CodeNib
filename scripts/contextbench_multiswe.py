@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""Separate native grading for the Multi-SWE-bench fmt C++ development pilot.
+
+Reference patches and native tests enter only this grader, never the solver.
+Other Multi repositories need their own native environment checks before use.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.metadata
+import json
+import re
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+HARNESS_REVISION = "24f493f8a103e72312ded4f6b9c89f081d69cb09"
+HARNESS_HASHES = {
+    "harness/gen_report.py": "02ebc8a5414898d12f4f5a9ba0c11a8f57c9f34a0bdc02c2311afac9f654847d",
+    "harness/report.py": "5a025fd496d42c4b7377fc0702d64c6d0e356b117eaf2face47e73a52c29902f",
+    "harness/test_result.py": (
+        "5411af794920cf4b170fe9dbe8c21c12cc63e2bbe2280d6d82acb850f4808be3"
+    ),
+    "harness/dataset.py": "dd49f55baf63b60fff309b6a5b2a1826697e2b85ad1a9bccff18321dcdc200fc",
+    "harness/repos/cpp/fmtlib/fmt.py": (
+        "d0a5146eb77b4416cccb86216c3df08f200d58c33bb158d953aaac385f922918"
+    ),
+}
+REFERENCE_PATHS = (
+    "/home/fix.patch",
+    "/home/test.patch",
+    "/home/fix-run.sh",
+    "/home/test-run.sh",
+    "/home/prepare.sh",
+    "/home/check_git_changes.sh",
+)
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def write_json(path, value):
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+
+
+def solver_cwd(source, repo):
+    if source == "Verified":
+        return "/testbed"
+    if source == "Multi" and repo == "fmtlib/fmt":
+        return "/home/fmt"
+    raise ValueError("Solver supports Verified and the Multi fmt pilot only")
+
+
+def validate_source_only_image(environment, commit):
+    """Reject known native reference artifacts and retained history before SDK use."""
+    command = (
+        "git rev-list --all --count && git remote && "
+        "git reflog --all --format=%H | sort -u"
+    )
+    result = environment.execute(command)
+    # A reflog may name the initial source commit, never any prior history.
+    if result["returncode"] or result["output"].strip().splitlines() not in (
+        ["1"],
+        ["1", commit],
+    ):
+        raise ValueError(
+            "Multi solver image must have one source commit without prior history"
+        )
+    result = environment.execute(
+        "for path in "
+        + " ".join(REFERENCE_PATHS)
+        + '; do if test -e "$path" || test -L "$path"; then exit 1; fi; done'
+    )
+    if result["returncode"]:
+        raise ValueError("Multi solver image contains native reference artifacts")
+    return {"one_source_commit": True, "reference_artifacts_absent": True}
+
+
+def native_environment():
+    if importlib.metadata.version("multi-swe-bench") != "1.1.0":
+        raise ValueError(
+            "Native Multi grading requires isolated multi-swe-bench==1.1.0"
+        )
+    import multi_swe_bench
+
+    package = Path(multi_swe_bench.__file__).parent
+    hashes = {name: digest(package / name) for name in HARNESS_HASHES}
+    if hashes != HARNESS_HASHES:
+        raise ValueError("Native Multi grading modules differ from the pinned harness")
+    return hashes
+
+
+def selected_native_case(path, solver, config):
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    selected = [
+        row for row in rows if row.get("instance_id") == solver["original_inst_id"]
+    ]
+    if len(selected) != 1:
+        raise ValueError("Native Multi prediction identity is missing or ambiguous")
+    row = selected[0]
+    number = row.get("number")
+    if (
+        config.get("source") != "Multi"
+        or config.get("repo") != "fmtlib/fmt"
+        or row.get("org") != "fmtlib"
+        or row.get("repo") != "fmt"
+        or type(number) is not int
+        or number <= 0
+        or row["instance_id"] != f"fmtlib__fmt-{number}"
+        or row.get("base", {}).get("sha") != config["source_commit"]
+    ):
+        raise ValueError("Native Multi task differs from the supported source snapshot")
+    return row
+
+
+def command(args, *, timeout=60, **kwargs):
+    return subprocess.run(
+        args, text=True, capture_output=True, timeout=timeout, check=True, **kwargs
+    ).stdout.strip()
+
+
+def grade_multi(args):
+    """Own one fresh grader container; remove it synchronously on every exit.
+
+    Only this invocation owns the recorded container; it has no host mounts or
+    network. The finally block's successful removal is the completion boundary.
+    A bounded container sleep also ends an orphan after an abrupt owner death.
+    The reference production patch is authenticated, then replaced by the exact
+    solver patch before the original native test script can execute.
+    """
+    if not 1 <= args.timeout <= 3600:
+        raise ValueError("Native Multi timeout must be between 1 and 3600 seconds")
+    image = getattr(args, "native_image", None)
+    if not image or not re.fullmatch(r"(?:sha256:|.+@sha256:)[a-f0-9]{64}", image):
+        raise ValueError("Multi grading needs a separate pinned --native-image")
+    hashes = native_environment()
+    config = json.loads((args.solver_run / "config.json").read_text())
+    solver = json.loads((args.solver_run / "solver.json").read_text())
+    predictions = json.loads((args.solver_run / "predictions.json").read_text())
+    if (
+        len(predictions) != 1
+        or predictions[0]["instance_id"] != solver["original_inst_id"]
+        or predictions[0]["model_patch"] != solver["model_patch"]
+    ):
+        raise ValueError("Native Multi prediction differs from the solver patch")
+    case = selected_native_case(args.dataset, solver, config)
+    for name, sha in config["implementation"].items():
+        if digest(args.solver_run / "implementation" / name) != sha:
+            raise ValueError("Archived solver implementation changed")
+    metadata = json.loads(command(["docker", "image", "inspect", image]))[0]
+    if metadata["Id"] == config["image_id"]:
+        raise ValueError("Multi solver and native grading images must be separate")
+    args.output.mkdir(parents=True, exist_ok=False)
+    dataset = args.output / "native-case.jsonl"
+    dataset.write_text(json.dumps(case) + "\n")
+    patch = args.output / "prediction.patch"
+    patch.write_text(solver["model_patch"])
+    work = args.output / "work/fmtlib/fmt/evals" / f"pr-{case['number']}"
+    work.mkdir(parents=True)
+    container = "codenib-contextbench-multi-" + uuid.uuid4().hex[:12]
+    write_json(
+        args.output / "config.json",
+        {
+            "solver_sha256": digest(args.solver_run / "solver.json"),
+            "prediction_sha256": digest(args.solver_run / "predictions.json"),
+            "native_case_sha256": digest(dataset),
+            "native_harness_revision": HARNESS_REVISION,
+            "native_harness_hashes": hashes,
+            "image_id": metadata["Id"],
+            "image_repo_digests": metadata.get("RepoDigests", []),
+            "adapter_sha256": digest(Path(__file__)),
+            "timeout": args.timeout,
+            "container_start_timeout": 180,
+            "source_commit": config["source_commit"],
+            "source_tree": config["source_tree"],
+            "scope": "Native Multi fmt grading only; no model calls",
+        },
+    )
+    row = {
+        "instance_id": solver["instance_id"],
+        "status": "starting",
+        "resolved": False,
+        "container": container,
+        "model_calls": 0,
+    }
+    result_path = args.output / "resolution.json"
+    write_json(result_path, row)
+    started = time.monotonic()
+    try:
+        command(
+            [
+                "docker",
+                "run",
+                "--rm",
+                "--detach",
+                "--name",
+                container,
+                "--network",
+                "none",
+                "--memory",
+                "3g",
+                "--cpus",
+                "2",
+                "--pids-limit",
+                "256",
+                metadata["Id"],
+                "sleep",
+                str(args.timeout + 240),
+            ],
+            timeout=180,
+        )
+        snapshot = command(
+            [
+                "docker",
+                "exec",
+                "-w",
+                "/home/fmt",
+                container,
+                "bash",
+                "-c",
+                "git rev-parse HEAD HEAD^{tree} && "
+                "git status --porcelain --untracked-files=no",
+            ]
+        )
+        if snapshot.splitlines() != [config["source_commit"], config["source_tree"]]:
+            raise ValueError("Native Multi image has different or dirty source")
+        row["source_snapshot_verified"] = True
+        row["native_patch_sha256"] = {}
+        for field, path in (
+            ("fix_patch", "/home/fix.patch"),
+            ("test_patch", "/home/test.patch"),
+        ):
+            actual = command(["docker", "exec", container, "sha256sum", path]).split()[
+                0
+            ]
+            if actual != hashlib.sha256(case[field].encode()).hexdigest():
+                raise ValueError("Native image patch differs from selected dataset")
+            row["native_patch_sha256"][field] = actual
+        command(["docker", "cp", str(patch.resolve()), f"{container}:/home/fix.patch"])
+        actual = command(
+            ["docker", "exec", container, "sha256sum", "/home/fix.patch"]
+        ).split()[0]
+        if actual != digest(patch):
+            raise ValueError("Native image did not receive the exact solver patch")
+        row["applied_solver_patch_sha256"] = actual
+        write_json(result_path, row)
+        with (work / "fix-patch-run.log").open("x") as log:
+            process = subprocess.run(
+                ["docker", "exec", container, "bash", "/home/fix-run.sh"],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=args.timeout,
+            )
+        row["native_exit_code"] = process.returncode
+        with (args.output / "grading.log").open("x") as log:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "multi_swe_bench.harness.gen_report",
+                    "--mode",
+                    "evaluation",
+                    "--workdir",
+                    str(args.output / "work"),
+                    "--output_dir",
+                    str(args.output / "grade"),
+                    "--dataset_files",
+                    str(dataset),
+                    "--max_workers",
+                    "1",
+                    "--log_dir",
+                    str(args.output / "grade-logs"),
+                    "--log_to_console",
+                    "false",
+                ],
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=60,
+                check=True,
+            )
+        report = json.loads((args.output / "grade/final_report.json").read_text())
+        if report["total_instances"] != 1 or report["submitted_ids"] != [
+            f"fmtlib/fmt:pr-{case['number']}"
+        ]:
+            raise ValueError("Native Multi grader did not retain exactly one task")
+        if report["completed_instances"] != 1 or report["error_instances"]:
+            row["native_report"] = report
+            raise ValueError("Native Multi grader did not complete the selected task")
+        row.update(
+            status="graded",
+            resolved=report["resolved_instances"] == 1,
+            native_report=report,
+            native_log_sha256=digest(work / "fix-patch-run.log"),
+        )
+    except Exception as exc:
+        row.update(status="error", resolved=False, error=f"{type(exc).__name__}: {exc}")
+    finally:
+        row["container_removed"] = False
+        try:
+            removal = subprocess.run(
+                ["docker", "rm", "-f", container], capture_output=True, timeout=60
+            )
+            row["container_removed"] = removal.returncode == 0
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            row["cleanup_error"] = f"{type(exc).__name__}: {exc}"
+        if not row["container_removed"]:
+            row.update(status="error", resolved=False)
+            row.setdefault("cleanup_error", "Container removal failed")
+        row["wall_s"] = time.monotonic() - started
+        write_json(result_path, row)
+    print(json.dumps({key: row[key] for key in ("instance_id", "status", "resolved")}))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--solver-run", type=Path, required=True)
+    parser.add_argument("--dataset", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--native-image", required=True)
+    parser.add_argument("--timeout", type=int, default=900)
+    grade_multi(parser.parse_args())
+
+
+if __name__ == "__main__":
+    main()

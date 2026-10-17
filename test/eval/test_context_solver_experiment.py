@@ -248,9 +248,9 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
             }
         )
     )
-    case = SimpleNamespace(source="Multi")
+    case = SimpleNamespace(source="Multi", repo="other/repo")
     monkeypatch.setattr(native, "load_inputs", lambda path: ({}, {"case": case}))
-    with pytest.raises(ValueError, match="Verified only"):
+    with pytest.raises(ValueError, match="fmt pilot only"):
         delivered_input(tmp_path, "case", 16384)
     case.source = "Verified"
     path = tmp_path / "case.json"
@@ -259,8 +259,12 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
         delivered_input(tmp_path, "case", 16384)
 
 
+@pytest.mark.parametrize(
+    "source,reference_artifacts",
+    [("Verified", False), ("Multi", False), ("Multi", True)],
+)
 def test_solver_failure_removes_only_owned_container_before_completion(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, source, reference_artifacts
 ):
     from scripts import benchmark_context_solver as solver
 
@@ -288,6 +292,8 @@ def test_solver_failure_removes_only_owned_container_before_completion(
                 original_inst_id="native",
                 base_commit="base",
                 problem_statement="issue",
+                source=source,
+                repo="fmtlib/fmt" if source == "Multi" else "owner/repo",
             ),
             "source",
             "sha",
@@ -318,16 +324,24 @@ def test_solver_failure_removes_only_owned_container_before_completion(
 
     class Environment:
         def __init__(self, **kwargs):
+            assert kwargs["cwd"] == ("/home/fmt" if source == "Multi" else "/testbed")
             self.container_id = "owned-container"
 
         def execute(self, command):
+            if "rev-list" in command:
+                return {"output": "1\nsynthetic\n", "returncode": 0}
+            if "for path" in command:
+                return {"output": "", "returncode": int(reference_artifacts)}
             return {"output": "synthetic\ntree\n", "returncode": 0}
+
+    agent_runs = []
 
     class Agent:
         def __init__(self, *args, **kwargs):
             self.messages = []
 
         def run(self, *args, **kwargs):
+            agent_runs.append(True)
             raise RuntimeError("model failed")
 
     monkeypatch.setitem(
@@ -354,3 +368,4 @@ def test_solver_failure_removes_only_owned_container_before_completion(
     )
     assert removed == ["owned-container"]
     assert json.loads((output / "solver.json").read_text())["container_removed"]
+    assert bool(agent_runs) is not reference_artifacts
