@@ -260,12 +260,20 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
 
 
 @pytest.mark.parametrize(
-    "source,reference_artifacts",
-    [("Verified", False), ("Multi", False), ("Multi", True)],
+    "source,reference_artifacts,imported_provider_route",
+    [
+        ("Verified", False, False),
+        ("Multi", False, False),
+        ("Multi", True, False),
+        ("Multi", False, True),
+    ],
 )
 def test_solver_failure_removes_only_owned_container_before_completion(
-    monkeypatch, tmp_path, source, reference_artifacts
+    monkeypatch, tmp_path, source, reference_artifacts, imported_provider_route
 ):
+    import builtins
+    import os
+
     from scripts import benchmark_context_solver as solver
 
     mini = (
@@ -282,7 +290,24 @@ def test_solver_failure_removes_only_owned_container_before_completion(
     monkeypatch.setattr(
         solver.shutil, "disk_usage", lambda path: SimpleNamespace(free=16 * 1024**3)
     )
-    monkeypatch.setattr(solver, "subscription_auth", lambda cli: {})
+    original_auth = solver.subscription_auth
+    original_import = builtins.__import__
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    def native_import(name, *args, **kwargs):
+        module = original_import(name, *args, **kwargs)
+        if imported_provider_route and name == "minisweagent.environments.docker":
+            # Reproduce the native initializer loading credentials from dotenv.
+            monkeypatch.setenv("ANTHROPIC_API_KEY", "fixture-from-native-dotenv")
+        return module
+
+    def effective_auth(cli):
+        if os.environ.get("ANTHROPIC_API_KEY"):
+            return original_auth(cli)  # Reject before a CLI or model call.
+        return {}
+
+    monkeypatch.setattr(builtins, "__import__", native_import)
+    monkeypatch.setattr(solver, "subscription_auth", effective_auth)
     monkeypatch.setattr(
         solver,
         "delivered_input",
@@ -352,20 +377,24 @@ def test_solver_failure_removes_only_owned_container_before_completion(
         "minisweagent.environments.docker",
         SimpleNamespace(DockerEnvironment=Environment),
     )
-    solver.run(
-        SimpleNamespace(
-            live=True,
-            max_turns=10,
-            max_meter_usd=1,
-            image="sha256:image",
-            upstream=tmp_path,
-            retrieval=tmp_path,
-            instance_id="case",
-            budget=16384,
-            output=output,
-            model="fixed-model",
-        )
+    args = SimpleNamespace(
+        live=True,
+        max_turns=10,
+        max_meter_usd=1,
+        image="sha256:image",
+        upstream=tmp_path,
+        retrieval=tmp_path,
+        instance_id="case",
+        budget=16384,
+        output=output,
+        model="fixed-model",
     )
+    if imported_provider_route:
+        with pytest.raises(ValueError, match="existing CLI login"):
+            solver.run(args)
+        assert not output.exists() and not removed and not agent_runs
+        return
+    solver.run(args)
     assert removed == ["owned-container"]
     assert json.loads((output / "solver.json").read_text())["container_removed"]
     assert bool(agent_runs) is not reference_artifacts
