@@ -79,13 +79,16 @@ uncertainties about the issue. Search new identifiers learned from actual reads;
 revise an unproductive search instead of repeating it. Include error handling and
 behavioral constraints when relevant. Use targeted ranges, often 200-400 lines,
 and continue a truncated read at its indicated offset when more is needed.
-If graph_neighbors is available, before the final handoff make at least one
-targeted graph_neighbors call for a definition central to the issue. Choose
-incoming references for callers or outgoing references for dependencies; use a
-source file and line already found by search/read. In the SDK the tool is named
-mcp__source__graph_neighbors. If its graph is unavailable, do not retry that
-unavailable graph; continue with source search. Inspect returned definitions
-only when they matter to the issue.
+If graph_neighbors is available, use it when you first locate a callable central
+to the issue and still need to understand a caller, dependency or test. Make this
+targeted hop before broadening manual reads, rather than leaving it until the
+final handoff. Choose incoming references for callers or outgoing references for
+dependencies, using a source file and line already found by search/read. In the
+SDK the tool is named mcp__source__graph_neighbors. The tool may omit previously
+observed lines; combine missing lines with the source already in this conversation.
+If its graph is unavailable, do not retry that graph. If no unseen neighbors
+remain, continue with a new relevant source search instead of repeating the hop.
+Inspect returned definitions only when they resolve an uncertainty about the issue.
 
 You have up to 20 model turns and can make several independent tool calls in one
 turn. There is no 4K final-context or ten-chunk limit. Avoid reading unrelated
@@ -1000,7 +1003,14 @@ def run(args):
             if graph_config["enabled"]:
                 graph_record = graph_records[case.instance_id]
                 graph_tool = load_navigation(
-                    graph_record, args.graphs, repo, token_budget=graph_config["tokens"]
+                    graph_record,
+                    args.graphs,
+                    repo,
+                    token_budget=graph_config["tokens"],
+                    source_policy=graph_config["source_policy"],
+                    observed_source=lambda: observed_nodes(
+                        tuple(chat.delivered_messages), repo
+                    ),
                 ).tool_spec()
                 row["graph_available"] = graph_record["available"]
             result = retrieve(
@@ -1247,11 +1257,25 @@ def compare(args):
             raise ValueError("Paired policies differ in tools")
     elif (
         policies == ("functions", "functions")
+        and left_graph["enabled"]
+        and right_graph["enabled"]
+        and left_graph.get("source_policy") == "definitions"
+        and {**left_graph, "source_policy": "unseen"} == right_graph
+    ):
+        contrast = "unseen_graph_source_over_definitions"
+        if left["config"].get("tools") != right["config"].get("tools"):
+            raise ValueError("Paired policies differ in tools")
+    elif (
+        policies in {("functions", "functions"), ("native", "functions")}
         and not left_graph["enabled"]
         and right_graph["enabled"]
         and {**left_graph, "enabled": True} == right_graph
     ):
-        contrast = "directed_graph_over_function_completion"
+        contrast = (
+            "directed_graph_over_function_completion"
+            if policies[0] == "functions"
+            else "functions_and_directed_graph_over_native"
+        )
         if left["config"].get("backend") == "claude-agent-sdk" and (
             right["config"].get("tools")
             != left["config"].get("tools", []) + ["mcp__source__graph_neighbors"]
@@ -1259,7 +1283,7 @@ def compare(args):
             raise ValueError("Only graph_neighbors may differ between paired tools")
     else:
         raise ValueError(
-            "Expected native/functions or functions/directed-graph controls"
+            "Expected native/functions, functions/directed-graph, or graph-source controls"
         )
     ids = sorted(left["values"])
     comparisons = {}

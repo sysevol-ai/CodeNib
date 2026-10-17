@@ -105,6 +105,7 @@ def test_graph_sdk_tool_requires_explicit_run_allowlist():
         ("invalid_meter", 1),
         ("meter_limit", 1),
         ("preparation_error", 1),
+        ("graph_observations", 2),
     ],
 )
 def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
@@ -150,6 +151,23 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     monkeypatch.setattr(claude.native, "contextbench_prediction", lambda **kw: {})
     monkeypatch.setattr(claude.native, "add_delivery", lambda *a: None)
     calls = []
+    if first_status == "graph_observations":
+        monkeypatch.setattr(
+            claude,
+            "graph_options",
+            lambda *args: (
+                {key: {"available": True} for key in cases},
+                {"enabled": True, "tokens": 2048, "source_policy": "unseen"},
+            ),
+        )
+        monkeypatch.setattr(
+            claude,
+            "load_navigation",
+            lambda *args, **kwargs: SimpleNamespace(
+                tool_spec=lambda: kwargs["observed_source"]
+            ),
+        )
+        (tmp_path / "a.py").write_text("visible\nunseen\n")
 
     async def retrieve(**kwargs):
         calls.append(kwargs["row"]["instance_id"])
@@ -158,8 +176,34 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
             if kwargs["row"]["instance_id"] == "first"
             and "snapshot" not in first_status
             and "meter" not in first_status
+            and first_status != "graph_observations"
             else "ok"
         )
+        if first_status == "graph_observations":
+            observe = kwargs["graph_tool"]
+            assert observe() == []  # New task, no shared source state.
+            kwargs["row"]["messages"].extend(
+                [
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "read",
+                                "function": {
+                                    "name": "read",
+                                    "arguments": json.dumps(
+                                        {"file_path": "a.py", "limit": 200}
+                                    ),
+                                },
+                            }
+                        ],
+                    },
+                    {"role": "tool", "tool_call_id": "read", "content": "1 | visible"},
+                ]
+            )
+            nodes = observe()
+            assert len(nodes) == 1 and nodes[0].file == "a.py"
+            assert nodes[0].start_line == nodes[0].end_line == 0
         if "meter" in first_status:
             kwargs["row"]["sdk_events"] = [{"kind": "ResultMessage"}]
             if first_status == "invalid_meter":
@@ -171,7 +215,12 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     output = tmp_path / "result"
     claude.run(
         SimpleNamespace(
-            live=True, prepared=prepared, output=output, model="opus", max_turns=20
+            live=True,
+            prepared=prepared,
+            output=output,
+            model="opus",
+            max_turns=20,
+            graphs=tmp_path if first_status == "graph_observations" else None,
         )
     )
     assert len(calls) == expected_calls
