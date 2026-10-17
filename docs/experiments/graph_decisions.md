@@ -17,10 +17,12 @@ The native search/read control retains the full tool trajectory and separately
 packs 16K/32K delivery from actually observed source. None of these retrieval-only
 experiments supplies patches, test outcomes or Pass@1.
 
-## Closed experiment and gates for resuming
+## Active follow-up and quality gates
 
-The user closed this iteration on 2026-10-11 and requested a results summary and
-push. No further model experiment is running or scheduled. The earlier objective
+The October 11 development iteration is complete and retained through merged
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827). On October 16 the user
+resumed work on online context completion, matched controls and a complete
+issue-resolution evaluation. The earlier objective
 of **ContextBench retrieval SOTA** was not achieved; the completed development
 experiments and their limitations are retained here and in the public
 [results report](../evaluation/contextbench-results.md).
@@ -30,7 +32,17 @@ verified population. Recall is the primary target, with F1 at least as high as
 that same reference under a matched protocol; reading unrelated source alone
 cannot establish a useful quality improvement.
 
-The following gates apply only if this research is resumed:
+The current milestones and remaining gates are:
+
+| Milestone | Current outcome | Open gate |
+| --- | --- | --- |
+| Online source completion | `native` / `functions` policies share the existing source tools in both native and SDK runners. New lines reach the next model call and the actual trajectory. Complete-callable additions obey per-response token and character bounds. | Fresh matched development results; earlier offline gains do not establish an online gain. |
+| Matched experiment | `compare` requires the same input manifest, implementation, actual model, runtime and budgets; official task scores retain failures and report paired bootstrap intervals. | Independent validation after freezing the development policy. |
+| Directed graph navigation | Earlier graph findings remain development evidence; no new graph route is promoted. | Demonstrate an additional gain over online function completion and account for unavailable graphs. |
+| Complete solver | Pinned upstream mini SWE-agent and native benchmark harnesses are the intended integration boundary. | Implement and verify resolution evaluation for Verified, Multi, Poly and Pro; no measured Pass@1 yet. |
+| Leaderboard submission | Official artifact and population requirements are documented. | Verified 500, measured resolution outcomes, matched aggregation and complete artifact review. |
+
+The evaluation sequence remains:
 
 1. Diagnose and iterate on the disclosed 100 development IDs plus the earlier
    five pilot IDs. The 24-task multilingual subset remains development data.
@@ -50,13 +62,38 @@ The following gates apply only if this research is resumed:
 4. Keep retrieval SOTA separate from task-solving SOTA. Pass@1 and promotion to
    the product context route require actual downstream solver evaluation.
 
-The paired decision-selection and touched-function controls below are complete.
+The paired offline decision-selection and touched-function controls below are complete.
 Their development evidence prioritizes missing source over another final rerank.
 The requested Claude subscription alternative is implemented through the official
 Agent SDK and passes an Opus 5.5 smoke with the logged-in Max account. Its follow-up
 batch was stopped at the user's request. There is no automatic paid API fallback.
 The SDK's metered dollar estimate is not a paid receipt, and subscription limits
-still apply.
+still apply. The current online controls start fresh SDK sessions in both arms;
+they do not compare the SDK's quality directly with the earlier native runner.
+
+### Current execution and cost envelope
+
+Prefer the existing Claude Max login. The user authorized at most **$100 in new
+API spending** for development and small-sample validation; a verified-500 run
+is a later budget decision. The SDK runner has no automatic API fallback.
+SDK dollar metering and account billing remain separate. Meter guards and a
+per-case timeout stop new work when a run reaches its limit; an in-flight call
+can exceed an observed guard. Unknown or invalid metering stops later cases.
+
+The historical native search average is $0.9911/task (24 cases; median $0.690554,
+maximum $4.07134). At that unchanged mean, 32 tasks in two arms cost **$63.43**
+for search alone; 500 tasks cost **$495.55 per arm**, or **$991.10 for two arms**.
+These are arithmetic projections, not current quotes or solver measurements.
+The provisional complete-agent planning range is **$1,500–3,000 for two 500-task
+arms**, assuming $1.50–3.00 per task including search and solving. Recalibrate
+that assumption with measured solver cases before authorizing the large run.
+These figures exclude extra cloud compute and any separate subscription charge.
+
+Development starts with the first CSV-ordered task per language from the
+disclosed 24-task cohort: eight tasks, selected without consulting their scores.
+A one-task smoke uses the first of those tasks. Artifacts are retained under
+`verification/contextbench-online-20261016/`. The independent 32-task selection
+is not used to tune the policy.
 
 ## Graph-free feedback and context-budget diagnosis
 
@@ -386,9 +423,9 @@ Promotion remains gated on a frozen held-out comparison and actual downstream
 task outcomes, with all explored development IDs disclosed. Establish the strong
 search/read reference before distilling actions or stopping into a cheaper
 decision controller. This work introduces no product retrieval route or
-persistence boundary. Implementation and recorded results are retained through
-[#827](https://github.com/sysevol-ai/CodeNib/pull/827); the research iteration
-remains closed and the promotion gates remain open.
+persistence boundary. The historical implementation and results were merged in
+[#827](https://github.com/sysevol-ai/CodeNib/pull/827). The online follow-up above
+is active; the promotion gates remain open.
 
 ## Earlier graph and fixed-payload evidence
 

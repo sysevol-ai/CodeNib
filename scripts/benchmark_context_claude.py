@@ -16,6 +16,7 @@ import asyncio
 import dataclasses
 import importlib.metadata
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -114,16 +115,31 @@ def normalize_event(kind, event):
     return messages
 
 
-async def retrieve(*, repo, query_text, row, checkpoint, cli, model, max_turns):
+async def retrieve(
+    *,
+    repo,
+    query_text,
+    row,
+    checkpoint,
+    cli,
+    model,
+    max_turns,
+    source_policy="native",
+    completion_tokens=2048,
+    case_meter_usd=3.0,
+):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
     sdk_tools = []
     for spec in get_default_tool_specs():
         if spec.tool_id not in TOOLS.values():
             continue
-        argument = "file_path" if spec.tool_id == "read" else "path"
-        execute = native._bind_source_tool(
-            spec.executor_fn, repo=repo.resolve(), path_argument=argument
+        execute = native.bind_context_source_tool(
+            spec.executor_fn,
+            repo=repo.resolve(),
+            tool_id=spec.tool_id,
+            source_policy=source_policy,
+            completion_tokens=completion_tokens,
         )
 
         def bind(function):
@@ -151,6 +167,7 @@ async def retrieve(*, repo, query_text, row, checkpoint, cli, model, max_turns):
         model=model,
         effort="medium",
         max_turns=max_turns,
+        max_budget_usd=case_meter_usd,
         system_prompt=native.SYSTEM.replace(
             "20 model turns", f"{max_turns} model turns"
         ),
@@ -183,7 +200,7 @@ async def retrieve(*, repo, query_text, row, checkpoint, cli, model, max_turns):
     row.update(
         status=(
             "budget_exhausted"
-            if result["subtype"] == "error_max_turns"
+            if result["subtype"] in {"error_max_turns", "error_max_budget_usd"}
             else "error" if result["is_error"] else "ok"
         ),
         answer=result.get("result", ""),
@@ -200,6 +217,21 @@ def run(args):
         raise ValueError("Claude Code CLI is not installed")
     if not 1 <= args.max_turns <= 40:
         raise ValueError("max_turns must be in [1, 40]")
+    source_policy = getattr(args, "source_policy", "native")
+    completion_tokens = getattr(args, "completion_tokens", 2048)
+    max_meter_usd = getattr(args, "max_meter_usd", 100.0)
+    case_meter_usd = getattr(args, "case_meter_usd", 3.0)
+    case_timeout = getattr(args, "case_timeout", 900.0)
+    if (
+        source_policy not in {"native", "functions"}
+        or not 1 <= completion_tokens <= 8192
+    ):
+        raise ValueError("Invalid source policy or completion token budget")
+    if not all(
+        math.isfinite(v) and v > 0
+        for v in (max_meter_usd, case_meter_usd, case_timeout)
+    ):
+        raise ValueError("SDK meter and timeout limits must be finite and positive")
     auth = subscription_auth(cli)
     manifest, cases = native.load_inputs(args.prepared)
     args.output.mkdir(parents=True, exist_ok=False)
@@ -217,6 +249,11 @@ def run(args):
             "auth": auth,
             "model_requested": args.model,
             "max_turns": args.max_turns,
+            "source_policy": source_policy,
+            "completion_tokens": completion_tokens,
+            "max_meter_usd": max_meter_usd,
+            "case_meter_usd": case_meter_usd,
+            "case_timeout": case_timeout,
             "tools": list(TOOLS),
             "scope": (
                 "Subscription-backed SDK harness using only CodeNib source tools. "
@@ -227,7 +264,7 @@ def run(args):
         },
     )
     encoder = tiktoken.get_encoding("cl100k_base")
-    rows, stopped = [], False
+    rows, stopped, metered = [], False, 0.0
     for entry in manifest["cases"]:
         case = cases[entry["instance_id"]]
         path = args.output / f"{case.instance_id}.json"
@@ -248,7 +285,7 @@ def run(args):
         }
         started = time.perf_counter()
         repo = None
-        if not stopped:
+        if not stopped and metered < max_meter_usd:
             row["status"] = "running"
             try:
                 source = json.loads(Path(entry["source"]).read_text())
@@ -257,19 +294,40 @@ def run(args):
                     repo, case.base_commit
                 )
                 asyncio.run(
-                    retrieve(
-                        repo=repo,
-                        query_text=case.problem_statement,
-                        row=row,
-                        checkpoint=lambda path=path, row=row: write_json(path, row),
-                        cli=cli,
-                        model=args.model,
-                        max_turns=args.max_turns,
+                    asyncio.wait_for(
+                        retrieve(
+                            repo=repo,
+                            query_text=case.problem_statement,
+                            row=row,
+                            checkpoint=lambda path=path, row=row: write_json(path, row),
+                            cli=cli,
+                            model=args.model,
+                            max_turns=args.max_turns,
+                            source_policy=source_policy,
+                            completion_tokens=completion_tokens,
+                            case_meter_usd=min(case_meter_usd, max_meter_usd - metered),
+                        ),
+                        timeout=case_timeout,
                     )
                 )
             except Exception as exc:
                 row.update(status="error", error=f"{type(exc).__name__}: {exc}")
             if row["status"] not in {"ok", "budget_exhausted"}:
+                stopped = True
+            meter = row.get("sdk_reported_cost_usd")
+            if meter is not None:
+                if (
+                    not isinstance(meter, (int, float))
+                    or isinstance(meter, bool)
+                    or not math.isfinite(meter)
+                    or meter < 0
+                ):
+                    row.update(status="error", error="Invalid SDK metering")
+                    row.pop("sdk_reported_cost_usd", None)
+                    stopped = True
+                else:
+                    metered += meter
+            elif row["sdk_events"]:
                 stopped = True
         if repo is not None and "snapshot_before" in row:
             try:
@@ -323,6 +381,15 @@ def main():
     parser.add_argument("--model", default="opus")
     parser.add_argument("--max-turns", type=int, default=20)
     parser.add_argument("--live", action="store_true")
+    parser.add_argument(
+        "--max-meter-usd",
+        type=float,
+        default=100.0,
+        help="SDK metering guard, not an actual billing measurement",
+    )
+    parser.add_argument("--case-meter-usd", type=float, default=3.0)
+    parser.add_argument("--case-timeout", type=float, default=900.0)
+    native.source_policy_arguments(parser)
     run(parser.parse_args())
 
 

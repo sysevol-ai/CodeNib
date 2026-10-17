@@ -1,6 +1,6 @@
 # ContextBench retrieval experiments
 
-The experiments are closed for now. The useful improvement was **reading missing
+The October 11 experiments are complete. The useful improvement was **reading missing
 source**, especially complete functions, after a strong model's iterative search.
 Decision reranking helped under the earlier 4K delivery constraint but contributed
 almost nothing once most observed source fit in 16K/32K. These are development
@@ -85,7 +85,61 @@ Subscription limits still apply. See the
 
 The subsequent SDK batch was stopped at the user's request after three completed
 tasks and one interrupted task; twenty were not run. It is not reported as a
-24-task quality result. No further model experiment is running or scheduled.
+24-task quality result. A new online comparison was started on October 16;
+the historical results in this page do not describe that new policy.
+
+## Online function-completion controls
+
+The source-checkout runners now accept `--source-policy native|functions`.
+`functions` adds the missing physical lines of a function or method touched by
+a real `read` or content-mode `grep` result **before the next model turn**.
+The added lines are visible to the agent and belong to that actual tool step.
+This differs from the historical post-run serving refinement above.
+
+Original observations stay first. Completion does not follow newly added lines
+recursively or expand entire classes/files. An added callable must fit in full
+within the additional-source budget (`--completion-tokens`, default 2,048) and
+the native runner's 16,000-character response limit; skipped completion is
+reported when space permits. Names-only results cannot trigger reads. These
+policies remain experiments and do not change the product retrieval defaults.
+
+Use a fresh directory for each arm, with the same prepared tasks, model,
+runtime, turn limit and cost settings. Existing clean task checkouts can be
+reused during preparation with `--repos-root`; they are audited, never reset.
+For the optional subscription SDK environment described below:
+
+```bash
+python scripts/benchmark_context_claude.py \
+  --prepared results/contextbench-dev/prepared \
+  --output results/contextbench-dev/sdk-native \
+  --model claude-opus-5-5 --max-turns 20 --source-policy native --live
+python scripts/benchmark_context_claude.py \
+  --prepared results/contextbench-dev/prepared \
+  --output results/contextbench-dev/sdk-functions \
+  --model claude-opus-5-5 --max-turns 20 --source-policy functions --live
+```
+
+`--max-meter-usd` and `--case-meter-usd` bound SDK-reported metering, not measured
+account billing. `--case-timeout` bounds each case. Unknown or invalid metering
+stops later tasks; those tasks remain in the selected population. An in-flight
+request can exceed an observed meter limit. Subscription quotas still apply.
+
+Evaluate both directories using `benchmark_context_agent.py evaluate` and the
+isolated official evaluator, then compare the cumulative observed trajectories:
+
+```bash
+python scripts/benchmark_context_agent.py compare \
+  --baseline results/contextbench-dev/sdk-native \
+  --candidate results/contextbench-dev/sdk-functions \
+  --output results/contextbench-dev/sdk-comparison.json
+```
+
+Comparison rejects different harnesses, actual model identities, code snapshots,
+task selections or budgets, and currently requires fresh runs rather than resumed
+ones. It averages per-task Recall, precision and F1 over every selected task,
+counts scoring failures as zero, preserves runtime failures and usage records,
+and reports paired task-bootstrap intervals. It does not produce Pass@1 or turn
+a development subset into a leaderboard result.
 
 ## Evidence and reproduction
 

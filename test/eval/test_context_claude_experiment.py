@@ -81,6 +81,9 @@ def test_subscription_auth_refuses_api_route_and_omits_identity(monkeypatch):
         ("error", 1),
         ("snapshot_error", 0),
         ("post_snapshot_error", 1),
+        ("missing_meter", 1),
+        ("invalid_meter", 1),
+        ("meter_limit", 1),
     ],
 )
 def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
@@ -124,8 +127,18 @@ def test_turn_limit_retains_next_case_but_sdk_error_stops_batch(
     async def retrieve(**kwargs):
         calls.append(kwargs["row"]["instance_id"])
         kwargs["row"]["status"] = (
-            first_status if len(calls) == 1 and "snapshot" not in first_status else "ok"
+            first_status
+            if len(calls) == 1
+            and "snapshot" not in first_status
+            and "meter" not in first_status
+            else "ok"
         )
+        if "meter" in first_status:
+            kwargs["row"]["sdk_events"] = [{"kind": "ResultMessage"}]
+            if first_status == "invalid_meter":
+                kwargs["row"]["sdk_reported_cost_usd"] = float("nan")
+            elif first_status == "meter_limit":
+                kwargs["row"]["sdk_reported_cost_usd"] = 100.0
 
     monkeypatch.setattr(claude, "retrieve", retrieve)
     output = tmp_path / "result"
