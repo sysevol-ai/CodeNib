@@ -1123,6 +1123,7 @@ def run(args):
                     repo,
                     token_budget=graph_config["tokens"],
                     source_policy=graph_config["source_policy"],
+                    empty_fallback=graph_config.get("empty_fallback", False),
                     observed_source=lambda: observed_nodes(
                         tuple(chat.delivered_messages), repo
                     ),

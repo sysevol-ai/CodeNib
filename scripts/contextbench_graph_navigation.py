@@ -182,6 +182,7 @@ def graph_options(args, cases):
     tokens = getattr(args, "graph_tokens", 2048)
     source_policy = getattr(args, "graph_source_policy", "definitions")
     query_policy = getattr(args, "graph_query_policy", GRAPH_QUERY_POLICIES[0])
+    empty_fallback = getattr(args, "graph_empty_fallback", False)
     if not 1 <= tokens <= 8192:
         raise ValueError("Graph token budget must be between 1 and 8192")
     if source_policy not in {"definitions", "unseen"}:
@@ -192,6 +193,12 @@ def graph_options(args, cases):
         raise ValueError(
             "Graph navigation requires functions policy and prepared graphs"
         )
+    if empty_fallback and (
+        not enabled
+        or query_policy != "late_issue_reference_hop"
+        or source_policy != "unseen"
+    ):
+        raise ValueError("Empty graph fallback requires late unseen graph navigation")
     records = load_graph_records(prepared, args.prepared, cases) if prepared else {}
     return records, {
         "enabled": enabled,
@@ -200,6 +207,7 @@ def graph_options(args, cases):
         "tokens": tokens,
         "policy": query_policy,
         "source_policy": source_policy,
+        "empty_fallback": empty_fallback,
     }
 
 
@@ -208,6 +216,11 @@ def graph_arguments(parser):
         "--graphs", type=Path, help="Frozen source-bound graph artifacts"
     )
     parser.add_argument("--graph-navigation", action="store_true")
+    parser.add_argument(
+        "--graph-empty-fallback",
+        action="store_true",
+        help="During late unseen navigation, check the opposite hop after no source",
+    )
     parser.add_argument("--graph-tokens", type=int, default=2048)
     parser.add_argument(
         "--graph-query-policy",
@@ -229,6 +242,7 @@ def load_navigation(
     token_budget=2048,
     source_policy="definitions",
     observed_source=None,
+    empty_fallback=False,
 ):
     from codenib.graph.code_graph import CodeGraph
 
@@ -248,6 +262,7 @@ def load_navigation(
         token_budget=token_budget,
         source_policy=source_policy,
         observed_source=observed_source,
+        empty_fallback=empty_fallback,
     )
 
 
@@ -275,6 +290,7 @@ class GraphNavigation:
         edge_limit=1000,
         source_policy="definitions",
         observed_source=None,
+        empty_fallback=False,
     ):
         if not 1 <= token_budget <= 8192 or not 1 <= edge_limit <= 10000:
             raise ValueError("Invalid graph-navigation budget")
@@ -286,8 +302,11 @@ class GraphNavigation:
             raise ValueError("Unknown graph source policy")
         if source_policy == "unseen" and not callable(observed_source):
             raise ValueError("Unseen graph source requires observed source receipts")
+        if empty_fallback and source_policy != "unseen":
+            raise ValueError("Empty graph fallback requires unseen source receipts")
         self.source_policy = source_policy
         self.observed_source = observed_source
+        self.empty_fallback = empty_fallback
         self.encoder = tiktoken.get_encoding("cl100k_base")
         self.definitions = defaultdict(list)
         if graph is not None:
@@ -312,6 +331,33 @@ class GraphNavigation:
         )
 
     def neighbors(self, file_path, line, direction="outgoing", limit=5):
+        if not self.empty_fallback:
+            return self._neighbors(file_path, line, direction, limit)
+        # One local snapshot binds both scans; there is no shared mutable ledger.
+        observed = tuple(self.observed_source())
+        primary = self._neighbors(file_path, line, direction, limit, observed)
+        current = json.loads(primary)
+        if any(row.get("content") for row in current) or any(
+            row["status"] in {"graph_unavailable", "no_definition_at_line"}
+            for row in current
+        ):
+            return primary
+        opposite = "incoming" if direction == "outgoing" else "outgoing"
+        other = json.loads(self._neighbors(file_path, line, opposite, limit, observed))
+        records = []
+        for row in other:
+            candidate = {
+                **row,
+                "requested_direction": direction,
+                "primary_status": sorted({item["status"] for item in current}),
+            }
+            if self._fits(records + [candidate]):
+                records.append(candidate)
+        if not any(row.get("content") for row in records):
+            return primary
+        return json.dumps(records, ensure_ascii=False)
+
+    def _neighbors(self, file_path, line, direction, limit, observed_snapshot=None):
         if direction not in {"incoming", "outgoing"}:
             raise ValueError("Direction must be incoming or outgoing")
         if (
@@ -351,7 +397,11 @@ class GraphNavigation:
         records, candidates, seen = [], [], {seed["name"]}
         observed = defaultdict(set)
         if self.source_policy == "unseen":
-            for node in self.observed_source():
+            for node in (
+                self.observed_source()
+                if observed_snapshot is None
+                else observed_snapshot
+            ):
                 observed[node.file].update(range(node.start_line, node.end_line + 1))
         skipped_observed = 0
         for name, edge in scanner.iter_neighbors(
@@ -461,6 +511,17 @@ class GraphNavigation:
                 "The unseen policy skips fully observed definitions and returns only "
                 "missing lines of partly observed definitions; earlier source remains "
                 "in the conversation. Limit must be between 1 and 10."
+                + (
+                    " In this late-check experiment, an empty source response with "
+                    "an available anchor also checks the opposite direction. Both "
+                    "scans share the same observed-source snapshot and reply budget; "
+                    "each scans at most the same raw-edge limit. A successful "
+                    "fallback records requested_direction and the actual direction. "
+                    "Do not repeat that opposite check. This is an exploratory "
+                    "context policy, not evidence that returned source is relevant."
+                    if self.empty_fallback
+                    else ""
+                )
             ),
             inputs=[
                 ToolInputSpec("file_path", "str"),

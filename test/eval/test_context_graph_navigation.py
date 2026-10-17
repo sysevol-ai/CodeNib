@@ -61,6 +61,32 @@ def read_receipt(file, content):
     ]
 
 
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"graph_navigation": False},
+        {"graph_query_policy": GRAPH_QUERY_POLICIES[0]},
+        {"graph_source_policy": "definitions"},
+    ],
+)
+def test_empty_fallback_requires_explicit_late_unseen_navigation(overrides):
+    args = SimpleNamespace(
+        **{
+            **dict(
+                source_policy="functions",
+                graphs="unused",
+                graph_navigation=True,
+                graph_query_policy="late_issue_reference_hop",
+                graph_source_policy="unseen",
+                graph_empty_fallback=True,
+            ),
+            **overrides,
+        }
+    )
+    with pytest.raises(ValueError, match="requires late unseen"):
+        graph_options(args, {})
+
+
 @pytest.fixture
 def navigation(tmp_path):
     graph = CodeGraph()
@@ -130,6 +156,108 @@ def test_unavailable_or_oversized_source_gets_no_read_credit(navigation):
     assert (
         json.loads(GraphNavigation(None, repo).neighbors("a.py", 1))[0]["status"]
         == "graph_unavailable"
+    )
+
+
+def test_empty_fallback_preserves_direction_source_and_one_observation(navigation):
+    tool, repo = navigation
+    messages = read_receipt("b.py", "1 | def target():\n2 |     return 1")
+    snapshots = []
+
+    def observe():
+        snapshots.append(True)
+        return observed_nodes(messages, repo)
+
+    fallback = GraphNavigation(
+        tool.graph,
+        repo,
+        source_policy="unseen",
+        observed_source=observe,
+        empty_fallback=True,
+        edge_limit=1,
+    )
+    result = fallback.neighbors("a.py", 1, limit=1)
+    records = json.loads(result)
+    assert len(snapshots) == 1
+    assert len(records) == 1
+    assert records[0]["direction"] == "incoming"
+    assert records[0]["requested_direction"] == "outgoing"
+    assert records[0]["primary_status"] == ["no_unseen_neighbors"]
+    assert records[0]["content"] == "1 | def caller():\n2 |     return 1"
+    prediction = contextbench_prediction(
+        instance_id="case",
+        messages=[
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "graph",
+                        "function": {"name": "graph_neighbors", "arguments": "{}"},
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "graph", "content": result},
+        ],
+        repo_path=repo,
+    )
+    assert prediction["traj_data"]["pred_spans"] == {
+        "tests/test_a.py": [{"start": 1, "end": 2}]
+    }
+    # Returned primary source stays byte-identical; no opposite source is added.
+    messages.clear()
+    assert fallback.neighbors("a.py", 1) == tool.neighbors("a.py", 1)
+
+
+def test_empty_fallback_metadata_and_whole_source_share_reply_budget(navigation):
+    tool, repo = navigation
+    observed = observed_nodes(
+        read_receipt("b.py", "1 | def target():\n2 |     return 1"), repo
+    )
+    options = dict(source_policy="unseen", observed_source=lambda: observed)
+    plain = GraphNavigation(tool.graph, repo, **options)
+    incoming = plain.neighbors("a.py", 1, "incoming")
+    tokens = len(plain.encoder.encode(incoming, disallowed_special=()))
+    # The source alone fits, but required fallback attribution does not. Never
+    # clip source or omit direction metadata to manufacture extra read credit.
+    bounded = GraphNavigation(
+        tool.graph, repo, token_budget=tokens, empty_fallback=True, **options
+    )
+    assert bounded.neighbors("a.py", 1) == plain.neighbors("a.py", 1)
+    bounded.token_budget = tokens + 100
+    result = bounded.neighbors("a.py", 1)
+    assert len(bounded.encoder.encode(result)) <= bounded.token_budget
+    assert json.loads(result)[0]["content"] == json.loads(incoming)[0]["content"]
+
+
+def test_empty_fallback_does_not_widen_raw_edge_or_missing_anchor_bounds(navigation):
+    tool, repo = navigation
+    # A second incoming definition exists beyond the one-edge scan. The first
+    # incoming definition is already observed, so widening would leak new source.
+    tool.graph.graph.add_edge(
+        3, 1, type=EDGE_TYPE_REFERENCE, anchor_file="c.py", anchor_line=0
+    )
+    observed = observed_nodes(
+        read_receipt("b.py", "1 | def target():\n2 |     return 1")
+        + read_receipt("tests/test_a.py", "1 | def caller():\n2 |     return 1"),
+        repo,
+    )
+    options = dict(
+        source_policy="unseen",
+        observed_source=lambda: observed,
+        empty_fallback=True,
+    )
+    bounded = GraphNavigation(tool.graph, repo, edge_limit=1, **options)
+    assert json.loads(bounded.neighbors("a.py", 1)) == [
+        {"status": "no_unseen_neighbors", "content": ""}
+    ]
+    assert json.loads(bounded.neighbors("a.py", 3))[0]["status"] == (
+        "no_definition_at_line"
+    )
+    with pytest.raises(ValueError, match="escapes"):
+        bounded.neighbors("../outside.py", 1)
+    unavailable = GraphNavigation(None, repo, **options)
+    assert json.loads(unavailable.neighbors("a.py", 1))[0]["status"] == (
+        "graph_unavailable"
     )
 
 

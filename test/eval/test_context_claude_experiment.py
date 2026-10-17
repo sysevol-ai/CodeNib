@@ -197,6 +197,48 @@ def test_sdk_completion_uses_streamed_source_receipts(
     )["traj_data"]["pred_spans"] == {"a.py": [{"start": 1, "end": 3}]}
 
 
+def test_sdk_terminal_meter_is_checkpointed_before_iterator_error(
+    monkeypatch, tmp_path
+):
+    row = {"messages": [], "sdk_events": []}
+    checkpoints = []
+    result_type = make_dataclass(
+        "ResultMessage",
+        [(key, object) for key in ("subtype", "is_error", "total_cost_usd")],
+    )
+
+    async def query(**kwargs):
+        yield result_type("error_max_budget_usd", True, 0.4)
+        assert checkpoints[-1]["sdk_reported_cost_usd"] == 0.4
+        raise RuntimeError("SDK process failed after terminal result")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "claude_agent_sdk",
+        SimpleNamespace(
+            ClaudeAgentOptions=SimpleNamespace,
+            create_sdk_mcp_server=lambda name, tools: tools,
+            query=query,
+            tool=lambda *args: lambda handler: handler,
+        ),
+    )
+    with pytest.raises(RuntimeError, match="failed after terminal result"):
+        asyncio.run(
+            claude.retrieve(
+                repo=tmp_path,
+                query_text="issue",
+                row=row,
+                checkpoint=lambda: checkpoints.append(json.loads(json.dumps(row))),
+                cli="test",
+                model="test-model",
+                max_turns=5,
+            )
+        )
+    assert row["sdk_reported_cost_usd"] == 0.4
+    assert row["sdk_result"]["is_error"]
+    assert row.get("status") != "ok"
+
+
 @pytest.mark.parametrize("unexpected_inventory", [False, True])
 def test_sdk_unknown_attempt_retains_usage_but_rejects_extra_capability(
     monkeypatch, tmp_path, unexpected_inventory

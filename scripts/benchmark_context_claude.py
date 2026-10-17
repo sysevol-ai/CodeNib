@@ -227,6 +227,9 @@ async def retrieve(
                     )
         if kind == "ResultMessage":
             row["sdk_result"] = data
+            # SDK iteration may raise after this terminal event, including on
+            # budget errors. Retain usage before advancing while keeping errors.
+            row["sdk_reported_cost_usd"] = data.get("total_cost_usd")
         checkpoint()
     if "sdk_result" not in row:
         raise RuntimeError("SDK stream ended without a terminal result")
@@ -352,6 +355,7 @@ def run(args):
                         repo,
                         token_budget=graph_config["tokens"],
                         source_policy=graph_config["source_policy"],
+                        empty_fallback=graph_config.get("empty_fallback", False),
                         observed_source=lambda row=row, repo=repo: native.observed_nodes(
                             tuple(row["messages"]), repo
                         ),
