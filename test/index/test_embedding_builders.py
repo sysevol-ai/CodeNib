@@ -113,6 +113,47 @@ def test_schema_8_chunk_source_rejects_symlink_alias(
         )
 
 
+def test_schema_8_builder_discovers_regular_sources_before_embedding(
+    tmp_path, monkeypatch
+):
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    target = repository / "regular.py"
+    target.write_text("def answer():\n    return 42\n")
+    (repository / "alias.py").symlink_to(target)
+    outside = tmp_path / "outside.py"
+    outside.write_text("def outside():\n    return 0\n")
+    (repository / "outside.py").symlink_to(outside)
+    normalized = []
+    normalize = builders._schema_8_repository_chunk
+
+    def record(chunk, root):
+        result = normalize(chunk, root)
+        normalized.append(result.file)
+        return result
+
+    class ReachedEmbedding(Exception):
+        pass
+
+    def embedding_boundary(**_kwargs):
+        raise ReachedEmbedding
+
+    monkeypatch.setattr(builders, "_schema_8_repository_chunk", record)
+    monkeypatch.setattr(builders, "CodeVectorStore", embedding_boundary)
+    with pytest.raises(ReachedEmbedding):
+        builders.build_hierarchical_vector_store(
+            repo_path=str(repository),
+            index_path=str(tmp_path / "index"),
+            languages=["python"],
+            embedding_model="test-model",
+            embedding_provider="huggingface",
+            embedding_dimension=4,
+            artifact_metadata={"builder_schema": 8},
+            strict_chunking=True,
+        )
+    assert normalized and set(normalized) == {"regular.py"}
+
+
 def test_cached_builder_closes_store_when_load_fails(monkeypatch, tmp_path):
     index_path = tmp_path / "index"
     index_path.mkdir()

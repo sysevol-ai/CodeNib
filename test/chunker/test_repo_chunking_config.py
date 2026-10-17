@@ -66,6 +66,36 @@ def test_repo_discovery_normalizes_language_aliases(tmp_path: Path):
     }
 
 
+def test_regular_repository_discovery_skips_aliases_before_content_reads(
+    tmp_path, monkeypatch
+):
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    source = repository / "regular.py"
+    source.write_text("def answer():\n    return 42\n")
+    (repository / "alias.py").symlink_to(source)
+    outside = tmp_path / "outside.java"
+    outside.write_text("class Outside {}\n")
+    (repository / "outside.java").symlink_to(outside)
+    chunker = CodeChunker(repo_config=RepoChunkingConfig(filter_tests=False))
+    inspected = []
+
+    def inspect(file_path):
+        assert not file_path.is_symlink()
+        inspected.append(file_path.name)
+        return False
+
+    monkeypatch.setattr(chunker, "_is_minified_file", inspect)
+    chunks = chunker.chunk_repository(
+        str(repository), strict=True, regular_files_only=True
+    )
+    assert chunks and {Path(c.file).name for c in chunks} == {"regular.py"}
+    assert inspected == ["regular.py"]
+    assert chunker._detect_repo_language(repository, regular_files_only=True) == [
+        "python"
+    ]
+
+
 def test_repo_discovery_respects_custom_extension_overrides(tmp_path: Path):
     (tmp_path / "tool.py").write_text("def ignored():\n    pass\n")
     (tmp_path / "tool.pyw").write_text("def included():\n    pass\n")
