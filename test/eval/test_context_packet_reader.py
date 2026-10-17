@@ -89,6 +89,8 @@ def test_exact_packet_is_confirmed_before_source_credit(monkeypatch, tmp_path):
         assert options.mcp_servers == {} and options.strict_mcp_config
         assert options.setting_sources == options.skills == options.plugins == []
         assert options.max_turns == 1 and options.max_budget_usd == 0.25
+        assert options.thinking == {"type": "disabled"}
+        assert options.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "512"
         yield init()
         yield event(
             "AssistantMessage", model="test-model", content=[{"text": "a.py:2"}]
