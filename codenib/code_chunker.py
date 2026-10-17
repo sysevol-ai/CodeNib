@@ -10,6 +10,7 @@ This file maintains backward compatibility with the old API and adds repository 
 """
 
 import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set
@@ -250,7 +251,11 @@ class CodeChunker:
 
     # Repository-level methods
     def chunk_repository(
-        self, repo_path: str, *, strict: bool = False
+        self,
+        repo_path: str,
+        *,
+        strict: bool = False,
+        regular_files_only: bool = False,
     ) -> List[CodeChunk]:
         """
         Chunk all relevant files in a repository.
@@ -261,6 +266,9 @@ class CodeChunker:
                 from file extensions present in the repo.
             strict: Raise when any discovered source file cannot be chunked instead
                 of returning a partial repository result.
+            regular_files_only: Discover only lexical regular files, as required
+                by native vector producer documents. Symlink aliases are excluded
+                before content reads; final producer validation remains required.
 
         Returns:
             List of CodeChunk objects from all processed files
@@ -279,6 +287,7 @@ class CodeChunker:
         languages = self.repo_config.languages or self._detect_repo_language(
             repo_path,
             source_selection=source_selection,
+            regular_files_only=regular_files_only,
         )
 
         logger.info(f"Chunking repository: {repo_path}")
@@ -289,6 +298,7 @@ class CodeChunker:
             repo_path,
             languages,
             source_selection=source_selection,
+            regular_files_only=regular_files_only,
         )
         logger.info(f"Found {len(files_to_process)} files to process")
 
@@ -587,6 +597,7 @@ class CodeChunker:
         languages: List[str],
         *,
         source_selection: Optional[RepositorySourceSelection] = None,
+        regular_files_only: bool = False,
     ) -> List[tuple]:
         """
         Discover all relevant code files in the repository.
@@ -634,6 +645,10 @@ class CodeChunker:
                 if (
                     selected.allows(relative_path.as_posix())
                     and repository_path_is_visible(relative_path)
+                    and (
+                        not regular_files_only
+                        or self._is_lexical_regular_file(file_path)
+                    )
                     and self._should_process_file(file_path, extension_to_language)
                 ):
                     language = extension_to_language[file_path.suffix]
@@ -643,6 +658,18 @@ class CodeChunker:
             files_to_process,
             key=lambda item: item[0].relative_to(repo_path).as_posix(),
         )
+
+    @staticmethod
+    def _is_lexical_regular_file(file_path: Path) -> bool:
+        """Early discovery filter, not a replacement for producer attestation."""
+        try:
+            regular = stat.S_ISREG(file_path.lstat().st_mode)
+            if regular and file_path.resolve(strict=True) == file_path.absolute():
+                return True
+        except (OSError, RuntimeError):
+            pass
+        logger.debug("Skipping noncanonical/nonregular source: %s", file_path)
+        return False
 
     def _should_include_directory(self, dir_path: Path) -> bool:
         """Check if a directory should be included in processing."""
@@ -903,6 +930,7 @@ class CodeChunker:
         repo_path: Path,
         *,
         source_selection: Optional[RepositorySourceSelection] = None,
+        regular_files_only: bool = False,
     ) -> List[str]:
         """
         Auto-detect the primary programming language(s) in a repository.
@@ -951,6 +979,10 @@ class CodeChunker:
                     selected.allows(relative_path.as_posix())
                     and repository_path_is_visible(relative_path)
                     and file_path.suffix
+                    and (
+                        not regular_files_only
+                        or self._is_lexical_regular_file(file_path)
+                    )
                 ):
                     extension_counts[file_path.suffix] = (
                         extension_counts.get(file_path.suffix, 0) + 1
