@@ -569,6 +569,17 @@ nor cash savings. A separate local replay over seven ready real indexes checks
 14 handles: exact source, zero metadata source credit, repeat suppression and
 unchanged artifact bytes all pass. Those synthetic receipts are never agent
 inputs and add no actual body calls; all selected locations fit one page.
+An audit of actual four-task model inputs finds17 exact unsplit callable surface
+ranges,12 subsequently read in full by native `read`, five unread and none
+partially read. Reopening only these already-exposed canonical annotations finds
+no missed annotation lines inside any surfaced range; the unread five overlap
+none. Body-dump oracle coverage would add zero Recall on these traces, not a
+measured policy gain. Missing-context discovery remains the development target:
+104 missing annotation lines are in already observed files and121 in files
+without dense L2 documents (overlapping raw-line counts, not task-macro scores).
+Retain the one out-of-source Go annotation and all original denominators. No
+pending dense8 policy/input/budget/source score changes follow this diagnosis;
+fresh default-only labels remain untouched.
 
 Keep the labs adapter source-only and its graph-optional pilot distinct from the
 next eight-language dense-only ablation. The new vector-only preparation option

@@ -170,11 +170,35 @@ internally; metadata-only model delivery does not establish a source-I/O saving.
 
 The same four exposed development cases are frozen before four fresh sessions
 under protocol `ede991e4`. All4/4 score valid. Each agent makes one actual surface
-query, receiving22 candidates in total; subsequent source reads overlap15 of those
-locations. This is a later-read proxy, not proof that a candidate changed reasoning
+query, receiving22 candidates in total; subsequent source observations overlap15
+locations (14 through native `read`, one through grep only). This is a later-read
+proxy, not proof that a candidate changed reasoning
 or a patch. All four choose native source tools afterward, with **zero handle body
 fetches**. Body pagination/deduplication therefore have local contract tests, not a
 measured runtime benefit.
+
+A post-hoc source audit distinguishes handle adoption from complete-function
+reading. Of22 surface entries,17 exactly match unsplit AST function/method
+ranges. Subsequent confirmed native `read` replies cover12 of those completely;
+five remain unread and none is partially read. Two other non-callable ranges
+are also fully read. Thus zero body-handle calls does not mean no complete
+function bodies reached the agent; it still does not prove a causal benefit.
+
+Reopening only these four already-exposed official normalized annotations
+finds zero additional annotation lines inside any returned surface range.
+Reading every surfaced body would therefore add zero Recall on these specific
+traces; that is a diagnostic upper bound, not an executed candidate score.
+None of the five unread callable ranges overlaps those annotations. The238
+remaining annotation lines include104 in already observed files and121 in
+files without dense L2 documents, principally Markdown/JSON/YAML. These counts
+overlap and are not task-macro scores. One Go annotation line is outside the
+pinned source; its original denominator/source issue remains unchanged. Dense
+file coverage is not overall graph/native-tool availability, and annotation
+overlap is not semantic usefulness. This directs later development toward
+discovering missing local scopes and non-code context, rather than forcing
+body-handle use or dumping every candidate. The pending eight-case policy,
+source predictions, budgets and scoring remain unchanged; no new task labels,
+models or API calls are added by this four-task diagnosis.
 
 One post-hoc native-only repeat is frozen under `884a5f9b` before its four new
 sessions. It repeats all four once, keeps all original controls/results and never
