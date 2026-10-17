@@ -41014,5 +41014,30 @@
     "new_model_retries": 0,
     "new_gold_reference_or_test_reads": 0,
     "original_unknown_Max_terminal_usage_not_replaced_by_partial_tokens": true
+  },
+  "verified500_reused_raw_archive_preparation": {
+    "scope": "Partial local raw archive of fixed terminal reuse only,not complete500 or a formal submission. No new model calls/annotations/quality scoring. Preserve exact original bytes,including the interrupted native attempt;local source paths remain publication candidates and are not automatically committed/published.",
+    "native_attempts": 125,
+    "native_interrupted_attempts_retained": 1,
+    "already_consumed_standard_messages": 112,
+    "archived_original_files": 464,
+    "gzip_tar_stream_parts": 3,
+    "compressed_bytes": 7964272,
+    "largest_part_bytes": 4258086,
+    "per_part_limit_bytes": 52428800,
+    "all_original_byte_hashes_roundtrip_verified": true,
+    "plan_sha256": "d0f75f708b757873a6447283b842b4307d0f24e0371bd87431f7fd4395dc0f0d",
+    "archive_index_sha256": "0bcebd5001f64e98723c016748607619e7956465b9e2fce84e7290a8c001cfa0",
+    "verification_sha256": "0c47338d9ee7024798395f913ce1f52223a6363619d75d649baf90d6a1f0fa8a",
+    "full500_official_artifact_gate_passed": false,
+    "new_model_calls": 0,
+    "new_annotation_reads": 0,
+    "new_API_usage_usd": 0,
+    "canonical_evaluator_source_binding": {
+      "positions": 500,
+      "retained_source_aliases": 119,
+      "all_targets_match_recorded_sources": true,
+      "audit_sha256": "483b26e1498eb0e3e584ed06263ee20065e5322dc06a3dce65bb592043a323a5"
+    }
   }
 }
