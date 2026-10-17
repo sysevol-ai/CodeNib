@@ -500,9 +500,10 @@ The authorized API ceiling stays **$100**, with **$40.90601127** remaining in
 known usage-value accounting. A two-arm all-API context500 comparison projects
 to $174.75 before repairs and is not the selected route. The separate frozen
 context-only protocol below uses Max for native investigation, reuses every
-qualified existing result and reserves **$40** for all **444** remaining candidate
-Batch inputs. The small-sample estimate is **$21.59** before exact counts,
-output caps, margin and headroom; it is not a representative forecast. The
+qualified existing result and reserves **$40** for all **443** eligible candidate
+Batch inputs, retaining one interrupted zero-source position in all500. Prior 444-position small-sample arithmetic was **$21.59** before exact counts,
+output caps, margin and headroom; it is not a forecast or reservation for the
+current443 inputs. The
 earlier 32-only reuse scenario ($22.75 for 468 positions) remains historical.
 Never choose reuse by a favorable score.
 [Batch processing](https://platform.claude.com/docs/en/build-with-claude/batch-processing)
@@ -510,7 +511,7 @@ offers 50% standard-price savings ($2/$10 per million Opus 5.5 input/output toke
 and may take up to 24 hours. Only the independent final packet requests are directly
 batchable; interactive SDK/tool turns do not automatically receive that discount.
 The four-task route check below passes, but no new full500 Batch has been submitted.
-All 444 exact provider counts and the complete reservation must pass before one
+All 443 eligible exact provider counts and the complete reservation must pass before one
 paid create. No reduced subset or extra repair batch is scheduled.
 
 Live supported Agent SDK rate events verify Max included usage on completed
@@ -653,50 +654,66 @@ case independent of its score.
 
 ## Canonical500 context-only execution in progress
 
-Protocol `cf2f2e47`, immutable runtime `e8f6b675`, freezes all canonical500 IDs,
-source commits, the unchanged source compiler, reuse and cost gates before
-model dispatch. Runtime `gold_context` is empty; no reference patch, test labels
-or annotations enter investigation. The three unavailable child-source cases
-stay explicit, with all tasks and official denominators retained. This is the
-complete canonical population, **not a fresh independent500**. All three
-independent32 cohorts remain sealed against tuning.
+The frozen canonical500 native protocol `cf2f2e47`, runtime `e8f6b675`, stops
+after **37 attempts: 36 accepted and one interrupted**. The optional quota guard
+assumed a rate event must precede assistant output; one assistant message arrived
+first and the guard interrupted before terminal metering. The original execution
+gate **fails and remains failed**. Its **$3.85129110** known Max nominal usage
+excludes that one unknown terminal usage. Partial assistant token metadata is not
+substituted for a terminal bill. The failed case called no source tools and
+receives **zero source in both arms**, retained in all500 denominators without
+retry, replacement or a new packet request.
 
-The new default-off `--max-included-only` guard requires first-party Max auth,
-init `apiKeySource=none` and supported rate events explicitly reporting
-`overageEnabled=false` and `isUsingOverage=false` before accepting model content.
-Raw events and terminal metering persist before validation. It changes no SDK
-query options or account settings and enables no API fallback. The first
-request can precede its rate event, so this guard is not a provider billing cap.
-**33 SDK boundary tests**, then **132 relevant unit tests** pass; eight
-integration tests are deselected and no billed test tier runs.
+A prospective, pre-label quota-order correction uses protocol `21456878`,
+immutable runtime `1b0ad5ac`. SDK options, query and source policy are unchanged.
+It reuses all **124 qualified native prefixes** (88 original plus36 accepted
+initial500), including56 complete context pairs, and continues **only375
+original unstarted IDs**. All canonical500 IDs/source commits and the unchanged
+compiler remain fixed. Runtime gold stays empty; no annotations, reference
+patches or test labels enter investigation. All three32 cohorts remain sealed.
+The three unavailable child-source cases stay explicit, with no denominator
+rewrite. This is the complete canonical population, **not fresh independent500**.
 
-As of **2026-10-17 18:16 UTC**, **29/412** new investigations are accepted,
-with zero new terminal metering gaps. The execution remains live. Completed
-cases add **$2.88826660 Max nominal SDK usage**, while new API usage is **$0**.
-Latest supported rate receipts show 1% five-hour and 56% weekly utilization,
-with extra usage disabled; these snapshots do not guarantee the remaining quota.
-Two workers retain an exclusive durable per-case intent before dispatch; an
-unreconciled intent or an unexpected receipt stops later dispatch rather than
-starting a replacement. Sources and implementation stay pinned in a separate
-immutable worktree. No intermediate quality scores are computed.
+The default-off `--max-included-only` guard still requires first-party Max auth,
+init `apiKeySource=none` and rate events explicitly reporting
+`overageEnabled=false` and `isUsingOverage=false` before terminal case acceptance.
+It retains pending raw messages and drains to terminal usage when event order
+differs; a missing event rejects after metering. An explicitly unsafe event still
+stops immediately. It changes no SDK query options or account settings and enables
+no API fallback. The first request can precede its event, so it is not a provider
+billing cap. **36 mocked SDK boundary tests**, then **142 relevant local tests**
+pass, including late quota events and missing-event terminal metering. Pinned
+hooks pass; no billed test tier runs.
 
-The cumulative baseline uses the source already confirmed as consumed by the
-native investigator. All 56 original native-packet source unions equal those
-prefixes. The remaining 444 cases therefore omit a redundant baseline review
-call and add one actual candidate final-packet input. This evaluates additional
-source coverage with its extra volume/cost; it does not establish matched final
-review reasoning, autonomous paired search or repair benefit. An unsent native
-packet receives no model-input credit. The 56 existing pairs retain their real
-standard-request costs; no retrospective Batch discount or rebilling applies.
+As of **2026-10-17 18:24 UTC**, the amended continuation has **3/375 accepted**
+new investigations, with **372** remaining; it is live. Including the original
+36 accepted calls, known new Max nominal usage is **$4.21292300**, plus the one
+original unknown terminal usage. New API usage is **$0**. The first corrected
+ordinary task has actual included-only rate receipts and normal terminal usage;
+quota snapshots do not reserve the remaining capacity. Two workers keep an
+exclusive durable per-case intent before dispatch. Unexpected receipts stop later
+dispatch; no unreconciled intent is relaunched. The original source/runtime,
+protocol and failed raw attempt remain immutable. No intermediate quality scores
+are computed.
 
-After all native receipts finish, prepare **all 444** exact candidate inputs and
-provider token counts. Reserve full output caps, count margin and headroom
-within **$40** before one paid Batch create. Known API usage remains
-**$59.09398873**, so that reservation fits the same **$100** ceiling. No new Batch,
-free count or repair call has started at this checkpoint. Only after terminal
-predictions and raw receipts are frozen may the evaluator read annotations and
-report all500 file/block/line Recall, F1 and costs. Formal submission separately
-requires real native outcomes and complete raw archives. Draft
+The cumulative baseline uses source already consumed by the investigator.
+All56 original native-packet source unions equal those prefixes. **443** new
+candidate inputs plus56 reused complete pairs plus the one failed zero-source
+position account for all500. There is no redundant baseline review call for new
+positions and no model-input credit for an unsent packet. Report the extra
+candidate call/tokens/cost; do not claim matched final review reasoning,
+autonomous paired search or repair benefit. Existing56 standard-request costs
+remain actual historical costs, without rebilling or retrospective Batch discount.
+
+After terminal native receipt reconciliation, prepare all **443** eligible exact
+candidate inputs, retaining the failed position explicitly. Free provider counts,
+full output caps, margin and headroom must fit the same **$40** reservation before
+one paid Batch create. Known API usage stays **$59.09398873** under the **$100**
+ceiling. No new Batch/free-count/repair call has started at this checkpoint.
+Freeze all500 terminal predictions and raw receipts before reading annotations,
+then report all500 file/block/line Recall, F1 and costs with the operational
+amendment and failed case disclosed. Formal submission separately needs real
+native outcomes and complete raw archives. Draft
 [PR #834](https://github.com/sysevol-ai/CodeNib/pull/834) remains unmerged.
 
 ## Fresh independent32: seven-language retrieval-only validation
