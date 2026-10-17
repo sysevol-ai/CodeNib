@@ -364,14 +364,44 @@ match. A missing output directory interrupted the first scoring step after
 candidate generation; a separate scoring-only follow-up retains the unchanged
 predictions and gate. These diagnostics make zero model calls.
 
-The late improvement motivates a separate late-only hypothesis, whose runtime
-and matched controls are still open work. Eight other disclosed development tasks
-are selected by the first remaining task per language in the frozen file order,
-excluding the prior late eight and using no scores or graph-availability filters.
-They are not independent or untouched tasks. No new inference follows from that
-selection alone; the failed replay, sealed independent 32 and full-500 gate remain
-unchanged. Protocols and aggregate outcomes are retained in the public development
-summary.
+The separate late-only hypothesis now has a completed fresh three-arm comparison
+on eight other disclosed development tasks. Selection takes the first remaining
+task per language in the frozen file order, excludes the prior late eight, and
+uses no score or graph-availability filter. Five graphs are available; all eight
+tasks remain in each arm. Runtime `cf86e0a7`, actual model `claude-opus-5-5`,
+20-turn limits, 2K function/graph replies and the analysis were frozen before
+inference. Only the graph arm enables the explicit late unseen empty fallback:
+if an available anchor returns no source, scan the opposite direction once,
+keeping exact direction attribution and the same reply budget. Each direction
+retains its 1,000-edge limit. This per-call policy is distinct from the failed
+general replay; it inherits no passing gate.
+
+| Fresh follow-up route, all 8 tasks | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| Native | 77.90% | 30.55% | 33.67% |
+| Function completion | 72.14% | 31.55% | 32.95% |
+| Functions + late graph with empty fallback | 80.57% | 31.52% | 37.55% |
+
+All 24 runs finish `ok`, with complete metering and valid official scores.
+The primary Recall difference is +2.67 points, with a paired 95% interval
+[-14.86, +20.23]; F1 changes +3.88 points, with interval [-7.61, +14.89].
+The declared development gate **fails**: no opposite fallback returns source,
+and no annotated graph source is absent from the complete matched native trace.
+The ordinary graph replies add 42 physical lines to the candidate prefix,
+including five annotated Rust lines already read by native. All eight graph
+calls follow observed anchors after initial source investigation; availability,
+call-count, reply-budget and subscription-route checks pass.
+
+A zero-model replay reproduces all eight replies and finds them byte-identical
+with the fallback disabled. Two queries qualify for the opposite scan, but
+neither returns source. The point differences therefore cannot be credited to
+extra fallback source; tool guidance and the resulting search trajectories still
+differ. This is a disclosed development sample, with no repair outcome or new
+independent-validation claim. Do not repeat this fallback online without new
+source-bound evidence of a useful mechanism. Compiler coverage and missing
+anchors remain concrete follow-up work. The failed general replay, sealed
+independent 32 and full-500 gate remain unchanged. Protocols, paired intervals
+and aggregate outcomes are retained in the public development summary.
 
 ## Historical post-run 24-task results
 
@@ -468,16 +498,21 @@ October 17 reader-adoption checks add **$0.695992** and **$0.932850**, bringing
 the subtotal to $73.589674. The fresh paired Gson solver check adds **$1.088503**,
 bringing the subtotal to $74.678177. The C three-arm solver attempt adds
 **$8.115611** after recovering $0.321885 from an already-preserved terminal event,
-bringing known cumulative metering to **$82.793787**,
-excluding one aborted development solver attempt and one interrupted retrieval
-case with no terminal usage. The C graph arm remains a budget error with no
-prediction: its original aggregate omitted one terminal cost, now explicitly
+bringing the subtotal to **$82.793787**. The separate late-only eight-task
+three-arm retrieval follow-up adds **$5.087257**, bringing known cumulative
+metering to **$87.881044**, excluding one aborted development solver attempt and
+one interrupted retrieval case with no terminal usage. The C graph arm remains
+a budget error with no prediction: its original aggregate omitted one terminal cost, now explicitly
 reconciled without changing the original run or rerunning it. A per-call SDK
 budget guard can be exceeded by the terminating call; it is not a hard billing
 cap. These are not account bills;
 actual subscription billing and any account-level extra usage are unknown.
 The authorized ceiling for new API spending remains **$100**. No automatic API
 fallback is enabled, and the failed quality gate does not authorize a 500-task run.
+A mechanical projection from the latest eight tasks is about $104–107 in SDK
+estimates for 500 retrieval tasks on one route, or $211 for native plus candidate.
+This is not an account bill or a representative full-run budget; it excludes
+repair/grading work, retries and subscription-quota delays. No full run is started.
 
 ## Online function-completion controls
 
