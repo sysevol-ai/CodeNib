@@ -53,5 +53,51 @@
       "f1": 0.31548862794718685
     }
   },
-  "same231_reference_is_not_a_strict_causal_ablation": true
+  "same231_reference_is_not_a_strict_causal_ablation": true,
+  "same_ID_descriptive_delta_audit": {
+    "scope": "Same IDs and frozen existing results; not a causal ablation or fresh independent evidence.",
+    "all231": {
+      "cases": 231,
+      "delta_recall": {
+        "improved": 15,
+        "unchanged": 216,
+        "decreased": 0,
+        "macro_delta_percentage_points": 0.5321249853792462
+      },
+      "delta_precision": {
+        "improved": 5,
+        "unchanged": 180,
+        "decreased": 46,
+        "macro_delta_percentage_points": -0.1675733583105727
+      },
+      "delta_f1": {
+        "improved": 7,
+        "unchanged": 180,
+        "decreased": 44,
+        "macro_delta_percentage_points": -0.08320001266449402
+      }
+    },
+    "excluding3_retrospective_reused": {
+      "cases": 228,
+      "delta_recall": {
+        "improved": 15,
+        "unchanged": 213,
+        "decreased": 0,
+        "macro_delta_percentage_points": 0.53912662992371
+      },
+      "delta_precision": {
+        "improved": 5,
+        "unchanged": 178,
+        "decreased": 45,
+        "macro_delta_percentage_points": -0.10124864875280183
+      },
+      "delta_f1": {
+        "improved": 7,
+        "unchanged": 178,
+        "decreased": 43,
+        "macro_delta_percentage_points": -0.045785935461998765
+      }
+    },
+    "diagnostic_sha256": "c84e3151e43befc91ad9697d314d76b0b1fc123ac62d08077b68742b52c7a67f"
+  }
 }

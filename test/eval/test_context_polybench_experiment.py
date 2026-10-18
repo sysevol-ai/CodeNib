@@ -127,6 +127,8 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
         "empty",
         "empty_parse",
         "memory8",
+        "transformer_resources",
+        "code_server_network",
         "offline_cache",
         "cache_upload",
     ],
@@ -134,9 +136,42 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
 def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     study, monkeypatch, fault
 ):
-    args, case, solver, _ = study
+    args, case, solver, config = study
     if fault == "memory8":
         args.native_memory_gib = 8
+    if fault in {"transformer_resources", "code_server_network"}:
+        repo = (
+            "huggingface/transformers"
+            if fault == "transformer_resources"
+            else "coder/code-server"
+        )
+        case["repo"] = config["repo"] = repo
+        case["instance_id"] = solver["original_inst_id"] = (
+            repo.replace("/", "__") + "-123"
+        )
+        args.native_network = "bridge"
+        if fault == "transformer_resources":
+            args.native_thread_workers = 2
+        else:
+            args.native_test_workers = 2
+            case["test_command"] = "yarn test:unit --json --silent"
+        with args.dataset.open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(case))
+            writer.writeheader()
+            writer.writerow(case)
+        monkeypatch.setattr(poly, "DATASET_SHA256", poly.digest(args.dataset))
+        (args.solver_run / "solver.json").write_text(json.dumps(solver))
+        (args.solver_run / "config.json").write_text(json.dumps(config))
+        (args.solver_run / "predictions.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "instance_id": case["instance_id"],
+                        "model_patch": solver["model_patch"],
+                    }
+                ]
+            )
+        )
     resource = b"pinned public tokenizer file\n"
     if fault in {"offline_cache", "cache_upload"}:
         args.cl100k_cache_file = args.solver_run.parent / "cl100k_base.tiktoken"
@@ -195,13 +230,17 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
             del containers[self.name]
 
     def create(**options):
-        assert options["network_disabled"]
+        assert options["network_disabled"] is (
+            fault not in {"transformer_resources", "code_server_network"}
+        )
         assert options["mem_limit"] == ("8g" if fault == "memory8" else "3g")
         assert options["command"] == ["300"]
         if fault in {"offline_cache", "cache_upload"}:
             assert options["environment"] == {
                 "TIKTOKEN_CACHE_DIR": poly.CL100K_CACHE_DIR
             }
+        elif fault == "transformer_resources":
+            assert options["environment"] == poly.native_thread_environment(case, 2)
         else:
             assert "environment" not in options
         result = Container(options)
@@ -253,7 +292,12 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
                 raise TimeoutError("transport failed")
 
         def docker_run(self, command, timeout):
-            assert command == case["test_command"] and timeout == 60
+            expected = (
+                "yarn test:unit --maxWorkers=2 --json --silent"
+                if fault == "code_server_network"
+                else case["test_command"]
+            )
+            assert command == expected and timeout == 60
             if fault == "test_timeout":
                 raise TimeoutError("test timed out")
             self.run_logs = ["native results", "Container exited with status code: 4"]
@@ -294,14 +338,34 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
             )
         ),
     )
+    if fault in {"transformer_resources", "code_server_network"}:
+        native.parser_classes = {case["repo"]: native.parser}
     monkeypatch.setattr(poly, "native_environment", lambda path: native)
     poly.grade_poly(args)
     result = json.loads((args.output / "resolution.json").read_text())
-    assert result["resolved"] is (fault in {None, "offline_cache", "memory8"})
+    assert result["resolved"] is (
+        fault
+        in {
+            None,
+            "offline_cache",
+            "memory8",
+            "transformer_resources",
+            "code_server_network",
+        }
+    )
     assert result["status"] == (
         "graded"
         if fault
-        in (None, "empty", "empty_parse", "invalid_patch", "offline_cache", "memory8")
+        in (
+            None,
+            "empty",
+            "empty_parse",
+            "invalid_patch",
+            "offline_cache",
+            "memory8",
+            "transformer_resources",
+            "code_server_network",
+        )
         else "error"
     )
     assert result["container_removed"] is (fault != "cleanup")
@@ -314,8 +378,16 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
         "memory_gib": 8 if fault == "memory8" else 3,
         "nano_cpus": 2_000_000_000,
         "pids_limit": 256,
-        "network_disabled": True,
+        "network_disabled": fault
+        not in {"transformer_resources", "code_server_network"},
     }
+    if fault == "transformer_resources":
+        graded = json.loads((args.output / "config.json").read_text())
+        assert graded["native_thread_workers"] == 2
+        assert graded["native_thread_environment"] == poly.native_thread_environment(
+            case, 2
+        )
+        assert graded["native_network"] == "bridge"
     assert all(event[1] != case["patch"] for event in events)
     if ("code", solver["model_patch"]) in events:
         assert events.index(("test", case["test_patch"])) < events.index(
@@ -360,6 +432,16 @@ def test_poly_rejects_unsupported_memory_before_native_import(study, monkeypatch
         lambda path: pytest.fail("Invalid resource limits must not import native code"),
     )
     with pytest.raises(ValueError, match="3 or 8 GiB"):
+        poly.grade_poly(args)
+    assert not args.output.exists()
+
+
+@pytest.mark.parametrize("network", ["host", "bridge"])
+def test_native_network_cannot_enable_other_repositories(study, monkeypatch, network):
+    args, _, _, _ = study
+    args.native_network = network
+    monkeypatch.setattr(poly, "native_environment", lambda path: SimpleNamespace())
+    with pytest.raises(ValueError, match="network"):
         poly.grade_poly(args)
     assert not args.output.exists()
 
