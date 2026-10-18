@@ -425,6 +425,35 @@ Verified fee closure and at least$270 of available authorized usage are verified
 the same original pidfd-identified controller resumes. That amount is reserved
 by its existing parent before inference, not charged as measured spending.
 The remaining269 owner stays held for its own source and test-execution gates.
+The Pro source/control inventory now freezes4,656 files and722,239,538 bytes,
+including63 original/recovered Git seed TARs and147 distinct native control/probe
+attempts. All108 original controls and108 selected control hashes remain bound.
+Candidate outputs are inventoried only after their own native/fee closure.
+A separate read-only check authenticates seven actual completed Pro patches:
+their four-file grading snapshots, selected source/native images, original
+harness, CPU/script settings, first patches and unchanged subset scores match.
+Their captured60-file model manifests match the preceding closed cohort; these
+are separate from the21 dispatch-frozen hashes and the four native files.
+This seven-case check is not full54 closure or a new model/native run.
+
+A reusable private closed-increment preview now passes the actual55-case,
+417-request regression with all8,191 original members and8,193 round-trip members.
+Exact requests, observations, patches, selections, fees and outcomes remain
+unchanged. Actual partial122 input and the current unclosed Pro batch are rejected
+before output creation. The corrected producer additionally recognizes16 actual
+submodule Git indexes across the63 Pro seed archives as binary storage; every
+other member classification and the rest of the producer AST are identical.
+Earlier177 publication previews remain unchanged. The queued Pro archive and
+preview owners wait for actual54 native/fee closure, the231-case index and
+original-owner exit; no completed54 archive or preview is claimed yet.
+
+The private submission draft now binds all500 IDs to the pinned
+`contextbench_verified` metadata and the frozen search population. It distinguishes
+HF dataset revision `c2855792b006af41c67202d33883fb9d46362853` from official
+evaluator commit `1436c28a8eb95496da4ea69ad458b9f8a8eb7d61`; all29 frozen
+evaluator source hashes and the actual issue/Gold table hash reauthenticate.
+The draft contains no final results file or submission claim.
+
 The remaining269 first attempts now have a queued owner for nine fixed,
 sequential batches. Isolated synthetic admissions exercise all269 identities,
 source-resource overrides, native controls and known-fee error records. Every
