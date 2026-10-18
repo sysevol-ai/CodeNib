@@ -218,28 +218,42 @@ financial mutations occur during these source-only operations.
 Read-only validation of all82 original nominally passing Poly pairs finds one
 VSCode neutral run with an empty parse after a compile exit137. Its reference
 records all required IDs and passes, but the pair does not satisfy the separate
-execution gate. A fresh8GiB pair is running with the authenticated Electron
-cache and unchanged selectors/scoring; the original remains retained. Full Poly
-admission still waits for this execution proof and explicit handling of the
-three conservative negative cases.
+execution gate. A fresh8GiB pair now records all306 required IDs in both runs,
+with the authenticated Electron cache and unchanged selectors/scoring. Its
+original remains retained. A separate read-only selection now binds all116 Poly
+cases:81 original strict pairs,32 corrected strict pairs and three explicitly
+conservative unresolved pairs. The113 positive-reference cases record all
+required IDs in both controls; the other three receive no execution credit or
+positive-reference claim. Six changed/incomplete selection fixtures are rejected.
+Canonical original cohorts, source records and every failed native log remain
+unchanged. This admission proof is not a candidate repair or a full500 score.
 
-The prospective remaining269 paid preparer passes all nine batch transport and
-accounting fixtures. Generated inference/reservation/settlement hashes match the
-preceding policy. Seven Electron cache proofs, the admitted memory ceiling and
-the eight Prettier worker limits reach only the native grading CLI; changed
-proofs and disagreeing control limits are rejected. These are synthetic admission
-fixtures, not269 real environment qualifications. A separate waiting release
-owner requires both actual source/control execution proofs and completed
-reconciliations before installing the transport. All32 combinations of missing
-cohort, owner-exit and finalization gates preserve that boundary. Only then may
-the release owner retire the three exact stopped, childless predecessor owners
-through pidfd and launch the unchanged dispatcher under its exclusive intent.
-Original intent and installed-file backups remain available; interrupted
-installation requires root recovery rather than automatic retry. The original
-paid parent remains held and alive through Multi source preparation; no
-reservation or request begins early. These nine transport fixtures cover the
-preceding cache/memory/Prettier profiles; paid transport for the new network and
-thread profiles is not yet admitted.
+The prospective remaining269 paid preparer now transports the selected Poly
+admissions, including bridge/thread/CPU-affinity resources and the three known
+negative descriptors. All116 actual Poly argument bindings authenticate; the
+34 prepared Go profiles also bind to the current source builder. Every option
+reaches only the native grading CLI. Generated model-dispatch, reservation and
+settlement sources match the preceding nine variants exactly. Changed selected
+admission/control hashes are rejected, and the real global gate rejects the
+still-missing Multi execution proof before any plan or reservation.
+
+Separate nine-phase lifecycle fixtures inject case admissions and the global
+gate into a temporary root. They exercise all269 fixed IDs, two disjoint shards,
+duplicate-plan rejection, a live preceding owner, insufficient budget and
+idempotent settlement. They do not qualify Multi environments. Copied native
+snapshots import their current CLI in isolated Python; no provider, native test,
+Docker build or real financial mutation occurs in these checks.
+
+A waiting release owner requires both actual cohort admissions, the current
+source finalization and actual source/native qualifier exits. All32 readiness
+gate combinations are checked. Only after these conditions hold may it retire
+six exact stopped, childless obsolete owners through pidfd, retain their original
+intent and installation backups, install the verified transport and start the
+unchanged nine-phase dispatcher under a fresh exclusive intent. Three malformed
+retirement requests are rejected before any signal; all six real owners remain
+held at this preflight. Interrupted installation requires root recovery without
+automatic retry. The original paid parent stays alive and held through Multi
+source preparation. No remaining269 reservation or candidate request has begun.
 
 To make room for remaining environments,104 closed Pro source/native image caches
 are removed with normal Docker reference checks and no forced removal or global
