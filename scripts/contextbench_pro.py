@@ -129,7 +129,62 @@ def native_environment(upstream, instance_id):
     return module, hashes
 
 
-def owned_client(client, image_id, container_name, workspace_root, timeout, receipt):
+def cpu_resources(cpu_count):
+    """Match visible CPUs and pytest auto workers to the existing two-CPU quota."""
+    if cpu_count is None:
+        return {}
+    if type(cpu_count) is not int or not 1 <= cpu_count <= 2:
+        raise ValueError("Native Pro CPU count must be one or two")
+    if not hasattr(os, "sched_getaffinity"):
+        raise ValueError("Native Pro CPU affinity requires a Linux host")
+    available = sorted(os.sched_getaffinity(0))
+    if len(available) < cpu_count:
+        raise ValueError("Native Pro has fewer allowed CPUs than requested")
+    return {
+        "cpuset_cpus": ",".join(str(cpu) for cpu in available[:cpu_count]),
+        "environment": {"PYTEST_XDIST_AUTO_NUM_WORKERS": str(cpu_count)},
+    }
+
+
+def limit_jest_workers(native, instance_id, scripts_dir, cpu_count, output):
+    """Retain the pinned script and record its concurrency-only argument change."""
+    original_loader = native.load_local_script
+    original = original_loader(str(scripts_dir), instance_id, "run_script.sh")
+    if "npx jest " not in original or "--maxWorkers" in original:
+        raise ValueError("Native Pro Jest command differs from the resource profile")
+    effective = original.replace("npx jest ", f"npx jest --maxWorkers={cpu_count} ")
+    (output / "original-run-script.sh").write_text(original)
+    (output / "resource-run-script.sh").write_text(effective)
+
+    def load_script(directory, identity, name):
+        if (
+            identity != instance_id
+            or Path(directory).resolve() != scripts_dir.resolve()
+        ):
+            raise ValueError("Native Pro resource script lookup changed task identity")
+        if name == "run_script.sh":
+            return effective
+        return original_loader(directory, identity, name)
+
+    native.load_local_script = load_script
+    return {
+        "original_run_script_sha256": hashlib.sha256(original.encode()).hexdigest(),
+        "effective_run_script_sha256": hashlib.sha256(effective.encode()).hexdigest(),
+        "added_Jest_max_workers": cpu_count,
+        "only_concurrency_argument_added": True,
+    }
+
+
+def owned_client(
+    client,
+    image_id,
+    container_name,
+    workspace_root,
+    timeout,
+    receipt,
+    *,
+    resources=None,
+):
     """Confine the official runner to its local image, workspace and container."""
 
     def pull(image, **kwargs):
@@ -156,6 +211,11 @@ def owned_client(client, image_id, container_name, workspace_root, timeout, rece
             pids_limit=256,
             labels={"codenib.contextbench.owner": container_name},
         )
+        if resources:
+            environment = dict(kwargs.get("environment") or {})
+            environment.update(resources["environment"])
+            kwargs.update(cpuset_cpus=resources["cpuset_cpus"], environment=environment)
+            receipt["native_cpu_resources"] = resources
         container = client.containers.run(image_id, **kwargs)
 
         def wait():
@@ -181,6 +241,7 @@ def grade_pro(args):
     """
     if not 1 <= args.timeout <= 3600:
         raise ValueError("Native Pro timeout must be between 1 and 3600 seconds")
+    resources = cpu_resources(getattr(args, "cpu_count", None))
     args.output = args.output.resolve()
     args.solver_run = args.solver_run.resolve()
     args.dataset = args.dataset.resolve()
@@ -210,6 +271,15 @@ def grade_pro(args):
     client = docker.from_env(timeout=120)
     client.images.get(args.native_image)
     args.output.mkdir(parents=True, exist_ok=False)
+    script_resources = {}
+    if resources and case["repo"] == "element-hq/element-web":
+        script_resources = limit_jest_workers(
+            native,
+            solver["original_inst_id"],
+            args.native_upstream / "run_scripts",
+            args.cpu_count,
+            args.output,
+        )
     name = "codenib-contextbench-pro-" + uuid.uuid4().hex[:16]
     probe_name = name + "-source"
     row = {
@@ -236,6 +306,8 @@ def grade_pro(args):
             "source_commit": config["source_commit"],
             "source_tree": config["source_tree"],
             "adapter_sha256": digest(Path(__file__)),
+            "native_cpu_resources": resources,
+            "native_run_script_resources": script_resources,
             "scope": "Separate native Pro v1 grading only; no model requests.",
         },
     )
@@ -270,7 +342,13 @@ def grade_pro(args):
 
         native.get_dockerhub_image_uri = pinned_image
         bounded = owned_client(
-            client, args.native_image, name, args.output, args.timeout, row
+            client,
+            args.native_image,
+            name,
+            args.output,
+            args.timeout,
+            row,
+            resources=resources,
         )
         native.docker = SimpleNamespace(from_env=lambda: bounded)
         os.chdir(args.native_upstream)
@@ -334,6 +412,7 @@ def main():
     parser.add_argument("--native-upstream", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--cpu-count", type=int, choices=[1, 2])
     grade_pro(parser.parse_args())
 
 

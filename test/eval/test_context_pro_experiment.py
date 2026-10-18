@@ -113,6 +113,91 @@ def test_pro_owned_client_preserves_native_command_and_bounds_wait(tmp_path):
         )
 
 
+def test_pro_cpu_profile_uses_allowed_affinity_and_bounds_auto_workers(monkeypatch):
+    monkeypatch.setattr(pro.os, "sched_getaffinity", lambda pid: {7, 3, 5})
+    assert pro.cpu_resources(None) == {}
+    assert pro.cpu_resources(2) == {
+        "cpuset_cpus": "3,5",
+        "environment": {"PYTEST_XDIST_AUTO_NUM_WORKERS": "2"},
+    }
+    for count in [0, 3, True]:
+        with pytest.raises(ValueError, match="one or two"):
+            pro.cpu_resources(count)
+    monkeypatch.setattr(pro.os, "sched_getaffinity", lambda pid: {3})
+    with pytest.raises(ValueError, match="fewer allowed CPUs"):
+        pro.cpu_resources(2)
+
+
+def test_pro_cpu_profile_preserves_command_env_and_native_limits(tmp_path):
+    calls = []
+    target = SimpleNamespace(wait=lambda **kwargs: {"StatusCode": 0})
+    client = SimpleNamespace(
+        images=SimpleNamespace(get=lambda name: name),
+        containers=SimpleNamespace(
+            run=lambda *args, **kwargs: calls.append(kwargs) or target
+        ),
+    )
+    resources = {
+        "cpuset_cpus": "3,5",
+        "environment": {"PYTEST_XDIST_AUTO_NUM_WORKERS": "2"},
+    }
+    receipt = {}
+    bounded = pro.owned_client(
+        client, "image", "owned", tmp_path, 60, receipt, resources=resources
+    )
+    command = ["-c", "bash /workspace/entryscript.sh"]
+    bounded.containers.run(
+        "image",
+        volumes={str(tmp_path / "work"): {"bind": "/workspace", "mode": "rw"}},
+        command=command,
+        environment={"LANG": "C.UTF-8"},
+    )
+    assert calls[0]["command"] == command
+    assert calls[0]["cpuset_cpus"] == "3,5"
+    assert calls[0]["environment"] == {
+        "LANG": "C.UTF-8",
+        "PYTEST_XDIST_AUTO_NUM_WORKERS": "2",
+    }
+    assert calls[0]["pids_limit"] == 256
+    assert calls[0]["nano_cpus"] == 2_000_000_000
+    assert calls[0]["network_mode"] == "none"
+    assert receipt["native_cpu_resources"] == resources
+
+
+def test_pro_jest_profile_preserves_pinned_script_and_parser(tmp_path):
+    original = "npx jest --verbose --silent ${test_files[@]} 2>&1\n"
+    native = SimpleNamespace(
+        load_local_script=lambda directory, identity, name: (
+            original if name == "run_script.sh" else "pinned parser"
+        )
+    )
+    profile = pro.limit_jest_workers(native, "case", tmp_path, 2, tmp_path)
+    assert (tmp_path / "original-run-script.sh").read_text() == original
+    effective = native.load_local_script(str(tmp_path), "case", "run_script.sh")
+    assert effective.replace("--maxWorkers=2 ", "") == original
+    assert (tmp_path / "resource-run-script.sh").read_text() == effective
+    assert profile["original_run_script_sha256"] == pro.digest(
+        tmp_path / "original-run-script.sh"
+    )
+    assert profile["effective_run_script_sha256"] == pro.digest(
+        tmp_path / "resource-run-script.sh"
+    )
+    assert (
+        native.load_local_script(str(tmp_path), "case", "parser.py") == "pinned parser"
+    )
+    with pytest.raises(ValueError, match="task identity"):
+        native.load_local_script(str(tmp_path), "different-case", "run_script.sh")
+    with pytest.raises(ValueError, match="task identity"):
+        native.load_local_script(str(tmp_path / "other"), "case", "run_script.sh")
+
+
+def test_pro_jest_profile_rejects_changed_concurrency_command(tmp_path):
+    for script in ["npx other-runner", "npx jest --maxWorkers=10"]:
+        native = SimpleNamespace(load_local_script=lambda *args, value=script: value)
+        with pytest.raises(ValueError, match="resource profile"):
+            pro.limit_jest_workers(native, "case", tmp_path, 2, tmp_path)
+
+
 @pytest.mark.parametrize("fault", [None, "missing_test", "wait", "tree", "cleanup"])
 def test_pro_grader_preserves_outcomes_and_removes_exact_owners(
     tmp_path, monkeypatch, fault

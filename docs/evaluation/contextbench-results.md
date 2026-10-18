@@ -351,11 +351,32 @@ each of the16 submodule gitlinks with one commit and unchanged tracked source.
 One native submodule has an untracked file; retain its rejected recovery and
 remove that untracked artifact before the successful clean-source check. The
 original control owner exits without dispatch when the source gate first fails;
-a new fixture owner reuses its unchanged per-case dispatch. Actual54-case native
-controls are now running. Early Element-Web Jest and Flipt Go controls capture
-zero tests after worker/process exhaustion; their reference patches also fail.
-These environments remain unadmitted and require resource recovery. Neither
-failure is counted as a candidate repair result.
+a new fixture owner reuses its unchanged per-case dispatch. All54 original
+neutral/reference pairs now finish:39 pass the native Boolean gate and15 fail.
+Jest, Go and Ansible workers can see64 host CPUs despite the two-CPU quota;
+their failed fixtures capture missing tests and process/thread exhaustion.
+A separate native-only `--cpu-count 2` profile binds two allowed CPUs and sets
+`PYTEST_XDIST_AUTO_NUM_WORKERS=2`, keeping the existing CPU quota, memory, process
+limit and network isolation. Older Jest still reads64 CPUs after affinity is
+bounded, so Element-Web additionally receives only `--maxWorkers=2` in its pinned
+run script. Archive both original/effective scripts and their hashes; parser,
+test selection and native subset scoring remain unchanged. This concurrency
+argument is a disclosed native command change. Both resource runtime snapshots
+remain separate from the frozen21 model/context implementation files.
+The three real Jest/Go/Ansible pilots now pass neutralFalse/referenceTrue.
+Ansible executes every one of its30 required IDs in both controls. Jest and Go
+still omit required neutral IDs because of test collection or compile conflicts;
+their Boolean success is not full execution qualification. Twelve remaining
+failed environments are undergoing the same explicit resource recovery in
+separate per-case output directories; no original fixture is overwritten.
+The Go pilot's supplementary original-base fixture omits only the evaluation
+test-file checkout, retaining both entryscripts. It records seven actual test IDs,
+including all six required IDs, while the evaluation test overlay fails to compile
+against the old production interface. Its native resolved flag is excluded from
+candidate outcomes and it does not amend readiness or release the paid owner.
+Other test-patch import/collection conflicts still need separate classification
+and evidence; do not relabel them as executed behavioral failures. These native
+fixtures add no model requests, API usage or candidate outcomes.
 A separate execution qualifier also requires every declared test identifier to
 have an actual recorded execution status before resuming the same unpaid owner.
 An existing real NodeBB neutral control is gradedFalse while omitting six required
@@ -368,8 +389,8 @@ solver dispatch AST remains unchanged apart from cohort accounting and Pro nativ
 grading transport. Actual dispatch still requires all54 source admissions,
 all108 native controls, prior Verified fee closure and at least$270 of available
 authorized usage. That amount is a future reservation, not measured spending.
-These orchestration checks establish no additional native-ready environment or
-candidate result.
+These orchestration checks add no candidate result. Actual execution readiness
+and its open conflicts are reported separately above.
 The remaining269 first attempts now have a queued owner for nine fixed,
 sequential batches. Isolated synthetic admissions exercise all269 identities,
 source-resource overrides, native controls and known-fee error records. Every
