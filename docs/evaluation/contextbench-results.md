@@ -1,24 +1,59 @@
 # ContextBench retrieval experiments
 
-The latest **independent32 complementary-search comparison passes its frozen
+The complementary Haiku search pair has completed all **500 canonical tasks**
+under execution protocol `3e20eb64`, with 1,000 accepted worker sessions and no
+retries or repairs. These are context-search results on an already-exposed
+population, not a fresh independent validation or an official leaderboard entry.
+
+| Search configuration | Line Recall | Line Precision | Line F1 | Recorded search usage |
+| --- | ---: | ---: | ---: | --- |
+| CodeNib complementary Haiku pair | 77.07% | 20.52% | 28.16% | $5.680771745; all 1,000 sessions known |
+| Frozen native Opus control | 72.83% | 27.97% | 33.95% | $91.1558898 nominal subscription value on 499 tasks; one fee unknown |
+
+The paired Recall difference is **+4.24 percentage points**, with an unadjusted
+repository-alias bootstrap 95% interval of [+1.59,+6.41] points; F1 falls 5.78
+points, interval [-7.21,-4.22]. The comparison uses 57 alias clusters and 10,000
+resamples. The original failed-zero control position is retained. Different
+models and billing routes, the unknown control fee and prior annotation exposure
+prevent a matched-model efficiency or independent generalization claim.
+
+The [1,000 per-task comparison rows](../assets/contextbench_search_pair_verified_500.csv)
+and [summary with hashes, all metric levels and limitations](../assets/contextbench_search_pair_verified_summary.json)
+preserve the original results. Search usage averages $0.01136 per candidate task;
+it excludes repair, native grading and compute. After once-only fee settlement,
+known cumulative program API usage is $81.01150498, leaving $18.98849502 of the
+$100 allowance with no active reservation. These are recorded model usage values,
+not reconciled cash invoices or the provider's remaining gifted credit.
+
+A final boundary audit found mutable `.git` observations in six candidate tasks,
+adding seven predicted non-source lines. None of the Gold paths is Git metadata,
+so those seven lines add no direct line-Recall hits. This does not rule out an
+indirect effect on worker behavior. Original predictions, metrics and raw bytes
+are unchanged. Git metadata is outside the source fingerprint; complete trace
+replay from fresh public clones and raw-log publication remain unproven. The
+future benchmark boundary rejects explicit VCS metadata paths, including symlink
+aliases, and recursive grep exclusions take precedence over caller globs. This
+fix does not change the frozen runtime or retroactively clean this run.
+
+The preceding **independent32 complementary-search comparison passes its frozen
 Recall/cost gate**. All128 worker sessions and128 configuration positions are
 valid, with every source outcome sealed before selected annotations open.
 The two-Haiku primary scores **40.00% line Recall/27.18% F1 for$0.499195665**,
 versus fresh native Opus **37.91%/31.15% for$6.427971300** on the same32 tasks.
 It uses7.77% of Opus's nominal search-stage cost while losing3.96 F1 points. The Recall
 difference is+2.09 points, paired repository-alias95% interval[-1.91,+6.48];
-stable superiority to Opus is not established. The predeclared primary may
-advance to500. This default-only, language-balanced population differs from
+stable superiority to Opus is not established. This gate authorized the unchanged
+primary's canonical500 run. The default-only, language-balanced population differs from
 verified500;40.00% is not a leaderboard score or directly comparable to the
 72.83% native verified500 control.
 
 **The latest search-pair fees cover context search only.** Both sides of the
 7.77% comparison include their recorded search-session usage and SDK auxiliaries;
-neither includes a downstream repair solver. The running500 batch has the same
+neither includes a downstream repair solver. The completed500 batch has the same
 search-only scope. These are model-reported usage values, not complete task
 resolution costs or reconciled invoices; compute costs remain separate.
 
-The running search batch authenticates and unions source intervals actually
+The completed search batch authenticates and unions source intervals actually
 observed by its two workers; it has no repair stage. The checkout-only
 `scripts/benchmark_context_solver.py --search-pair` adapter now connects those
 receipts to the existing mini SWE-agent loop through version-bound navigation.
@@ -571,12 +606,14 @@ or repairs. The execution guard is$12 within the program's$100 API allowance;
 the guard is a dispatch limit rather than an account-level cash cap. Every
 source snapshot must authenticate before issue-only inputs and execution freeze.
 All500 configuration positions and1,000 worker positions must seal with known
-fees before the same500 annotations reopen. All500 source preparations now pass
-with zero errors, and execution protocol `3e20eb64` has started. The existing
-budget views reserve$12 while keeping closed known usage at$75.330733235 and
-unreserved allowance at$12.669266765; the reservation is not actual consumption.
-No candidate500 score is published here. Original native-control failures,
-unknown fees and annotation-access timing remain disclosed.
+fees before the same500 annotations reopen. All500 source preparations passed
+with zero errors. Execution protocol `3e20eb64` has finished: all500 cases score
+valid, all1,000 actual SDK fees are known, and all source positions sealed before
+the same500 annotations reopened. Line Recall is77.07%, Precision20.52% and
+F1 28.16%. Actual search usage is$5.680771745; the$12 reservation is now closed
+and both existing budget views reconcile to$81.01150498 of known program API
+usage. Original native-control failures, unknown fees and annotation-access
+timing remain disclosed. No new-pair native repair outcome is measured.
 
 `scripts/contextbench_reproduce_search_pair.py` replays archived observations
 and the pinned official evaluator without model requests. It verifies each
@@ -587,6 +624,10 @@ Only derived path labels change when repositories move; source text and original
 evidence stay unchanged. `--repo-map` accepts existing task-to-repository paths;
 `--repos --prepare-repos` instead fetches exact public commits and declared
 submodules. The latter needs Git/network access, but makes no model requests.
+The six Git-metadata cases described above are an explicit limitation: Git
+internals are not pinned source, so source fingerprints alone cannot establish
+their byte-identical replay on fresh clones. Strict replay must report a mismatch
+rather than silently drop those observations or replace the original score.
 
 After the local archive is complete and reviewed for publication, extract its
 bounded parts in filename order into an empty directory. The original archive
@@ -618,9 +659,17 @@ include the official hidden-directory normalization/missing-source diagnostic,
 retained without remapping its annotation. This is a portable setup check;
 the full inventory alone is not a container image. The replayer checks source
 footprints and candidate metrics, not solver repairs or new model behavior.
-Actual500 round-trip reproduction, final fee settlement, contextual privacy
-review, complete native issue-resolution outcomes and formal submission remain
-open. Raw archives stay local at this preparation stage.
+Final fee settlement is complete. The full1,000-trajectory credential scan finds
+no hits for the current key or the five checked credential shapes; this is not a
+complete privacy review. A separate provenance check identifies local reflog
+email material in six worker records, alongside workstation paths and SDK
+identifiers that still require contextual redaction. The completed local archive
+round-trips 8,653 original members in 14 gzip parts, all below50MiB; its index
+SHA-256 is `070148a0f0cbced59984f0429a44aad2a82508056c2b831cc27dec431036c4a1`.
+Full500 offline replay is running against the existing pinned checkouts; it is
+not yet a completed replay or evidence of fresh-clone portability. Contextual
+privacy review, complete native issue-resolution outcomes and formal submission
+remain open. Original raw archives stay local.
 
 ### Fixed500 native control
 

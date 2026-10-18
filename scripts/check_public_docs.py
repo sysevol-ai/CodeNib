@@ -69,6 +69,8 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/contextbench_search_pair_development_summary.json",
     "assets/contextbench_search_pair_independent_32.csv",
     "assets/contextbench_search_pair_independent_summary.json",
+    "assets/contextbench_search_pair_verified_500.csv",
+    "assets/contextbench_search_pair_verified_summary.json",
     "assets/contextbench_online_development_summary.json",
     "assets/contextbench_independent_32.csv",
     "assets/contextbench_independent_summary.json",
