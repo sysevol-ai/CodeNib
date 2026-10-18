@@ -274,6 +274,7 @@ async def retrieve(
     context_tool=None,
     read_hints=None,
     context_guidance=None,
+    continuation_guard=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -310,6 +311,16 @@ async def retrieve(
         context_tool is None or not isinstance(context_guidance, str)
     ):
         raise ValueError("Context guidance requires the explicit context tool")
+    if continuation_guard is not None and (
+        source_policy != "native"
+        or graph_tool is not None
+        or grep_view is not None
+        or file_map_tokens
+        or file_source_view is not None
+        or context_tool is not None
+        or read_hints is not None
+    ):
+        raise ValueError("Continuation guard requires otherwise native source tools")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -411,6 +422,12 @@ async def retrieve(
         system_prompt += "\n" + DESCRIPTION
         row["context_system_prompt"] = system_prompt
         row["read_context_hints"] = True
+    hook_options = {}
+    if continuation_guard is not None:
+        from claude_agent_sdk import HookMatcher
+
+        hook_options["hooks"] = {"Stop": [HookMatcher(hooks=[continuation_guard.stop])]}
+        row["continuation_guard"] = continuation_guard.ledger
     options = ClaudeAgentOptions(
         cli_path=cli,
         cwd=repo,
@@ -429,6 +446,7 @@ async def retrieve(
         mcp_servers={"source": create_sdk_mcp_server("source", tools=sdk_tools)},
         strict_mcp_config=True,
         extra_args={"no-session-persistence": None},
+        **hook_options,
     )
     max_rate_seen = False
     if max_included_only:
@@ -480,6 +498,9 @@ async def retrieve(
             raise RuntimeError("File-source selection failed; stop this SDK stream")
     if "sdk_result" not in row:
         raise RuntimeError("SDK stream ended without a terminal result")
+    if continuation_guard is not None and continuation_guard.ledger["failed"]:
+        checkpoint()
+        raise RuntimeError("Continuation guard source inspection failed")
     # Quota events can follow assistant output. Retain those raw observations
     # pending validation and drain to terminal usage rather than interrupting a
     # valid event ordering. No case is accepted without an included-only event;
