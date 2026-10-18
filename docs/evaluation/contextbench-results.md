@@ -65,6 +65,35 @@ compute is excluded and no full500 repair budget is reserved. Broader native
 environment coverage, an explicit final-context selection/normalization contract
 and review of task/protocol comparability remain open before formal submission.
 
+A subsequent zero-model inventory matches the original native task record and
+base commit for **all500** search tasks. Anonymous registry HEAD requests resolve
+all500 candidate image tags to immutable manifest digests:
+
+| Native source | Matched task records and commits | Accessible image manifests |
+| --- | ---: | ---: |
+| SWE-bench Verified | 174/174 | 174/174 |
+| SWE-bench Pro v1 | 54/54 | 54/54 |
+| Multi-SWE-bench | 156/156 | 156/156 |
+| SWE-PolyBench | 116/116 | 116/116 |
+
+The native harness can construct all174 Verified test specifications and all156
+Multi instances/scripts. Poly has parser mappings for all116 tasks, and Pro has
+the required runner, parser and Dockerfile sources for all54. This is metadata
+and availability coverage, not500 validated environments or native outcomes;
+registry HEAD checks do not download layers or verify their platform. The34
+Multi repository aliases require explicit mapping to their original native
+repository names. Pro uses dataset revision `7ab51149`, which matches these54
+tasks; the upstream default now selects V2, so it must not silently replace v1.
+The [official Pro source](https://github.com/scaleapi/SWE-bench_Pro-os/tree/66f92766bba642462d4bbe5479e83f91f9211862)
+retains the v1 grading pipeline. No additional model requests occur in this
+inventory. General source-image preparation and grader integration remain open.
+A first additional Verified environment restores the exact canonical source over
+the image's single-file `pyproject.toml` setup overlay and verifies clean,
+history-free source. Its native fixture currently stops at the pinned harness's
+strict UTF-8 output decoding; it is not a candidate attempt or native pass.
+Keep that infrastructure failure separate from unresolved model patches before
+starting a broader billed repair batch.
+
 The [upstream unified format](https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/docs/process_trajectories.md#unified-format)
 separates explored `pred_steps` from final `pred_files`/`pred_spans`. The pinned
 mini extractor uses a final `<PATCH_CONTEXT>` block; it does not equate every
