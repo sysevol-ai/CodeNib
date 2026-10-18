@@ -237,6 +237,33 @@ def test_bound_tool_does_not_change_cwd_or_allow_escape(checkout):
         bound(file_path="../secret")
 
 
+@pytest.mark.parametrize("argument", ["path", "file_path"])
+@pytest.mark.parametrize("metadata", [".git/logs/HEAD", ".hg/store", ".svn/entries"])
+def test_source_tool_rejects_vcs_metadata_before_execution(
+    checkout, argument, metadata
+):
+    repo, _ = checkout
+    calls = []
+    bound = runner._bind_source_tool(
+        lambda **kwargs: calls.append(kwargs), repo=repo, path_argument=argument
+    )
+    with pytest.raises(ValueError, match="VCS metadata"):
+        bound(**{argument: metadata})
+    assert not calls
+
+
+def test_source_tool_blocks_git_symlink_but_keeps_public_dotfiles(checkout):
+    repo, _ = checkout
+    (repo / "metadata-link").symlink_to(repo / ".git", target_is_directory=True)
+    bound = runner._bind_source_tool(
+        lambda **kwargs: kwargs, repo=repo, path_argument="file_path"
+    )
+    with pytest.raises(ValueError, match="VCS metadata"):
+        bound(file_path="metadata-link/HEAD")
+    for name in [".gitignore", ".github/workflows/test.yml"]:
+        assert bound(file_path=name)["file_path"] == str(repo / name)
+
+
 def test_search_subdirectory_returns_repository_relative_paths(checkout):
     from codenib.agent.tools.defaults import _grep
 
