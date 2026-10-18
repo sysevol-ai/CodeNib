@@ -62,8 +62,9 @@ Mechanical arithmetic from this three-task mean gives about **$322** for
 500 repairs, or **$328** including the completed500 search usage. This is not a
 representative forecast: five languages are absent, task costs vary, native
 compute is excluded and no full500 repair budget is reserved. Broader native
-environment coverage, an explicit final-context selection/normalization contract
-and review of task/protocol comparability remain open before formal submission.
+environment coverage and review of task/protocol comparability remain open
+before formal submission. A final-context selection contract is now implemented
+before further candidate repair requests, as described below.
 
 A subsequent zero-model inventory matches the original native task record and
 base commit for **all500** search tasks. Anonymous registry HEAD requests resolve
@@ -105,10 +106,19 @@ fixtures, without additional candidate attempts, API usage or Pass@1 results.
 The [upstream unified format](https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/docs/process_trajectories.md#unified-format)
 separates explored `pred_steps` from final `pred_files`/`pred_spans`. The pinned
 mini extractor uses a final `<PATCH_CONTEXT>` block; it does not equate every
-shell observation with that final selection. A submission must disclose the
-CodeNib selection rule and scoring phase for comparability review. The existing
-77.07% remains a search-policy result; partial repair-observation coverage is a
-separate diagnostic and is not silently promoted to a complete-system score.
+shell observation with that final selection. CodeNib's custom unified exporter
+uses `retained-search-plus-confirmed-base-source-v1`: retain every frozen search
+span, then union authenticated original-source ranges actually delivered through
+controlled solver reads/searches. Merge overlapping or adjacent inclusive ranges
+without a body-token cap. Repair additions exclude unconfirmed, elided and
+modified-file coordinates; arbitrary-shell attribution remains partial. Original
+search VCS observations are preserved with their existing disclosure. Selection
+reads no annotations and makes no model requests. All500 search-only projections
+retain identical selected line sets. The three already-completed native cases
+will receive retrospective postprocessing; subsequent repairs use the fixed rule.
+The existing77.07% remains a search-policy result. Full-cohort final-selection
+metrics and protocol comparability still need verification before submission;
+neither custom-format support nor partial observation coverage establishes them.
 
 A final boundary audit found mutable `.git` observations in six candidate tasks,
 adding seven predicted non-source lines. None of the Gold paths is Git metadata,
