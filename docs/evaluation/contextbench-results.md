@@ -139,6 +139,38 @@ its scores. Original failed observations remain intact; no Gold, evaluator,
 model call, new prospective task or API usage is added. The source repair is
 separate from the still-unmeasured cheap-search/evidence-reviewer policy.
 
+The source repair's required unit CI now succeeds at the exact independent
+head `f5f02935`; [#838](https://github.com/sysevol-ai/CodeNib/pull/838) remains
+unmerged. A subsequent **same-session evidence reviewer is implemented and
+locally verified, but has no live quality result**. Runtime `93d5c79a` adds an
+explicit experiment-only SDK argument. At the first eligible Stop, CodeNib
+deduplicates complete source lines already confirmed in the agent's inputs,
+reauthenticates them through the retained source reader, and supplies stable
+snapshot-bound handles together with the issue, handoff and search metadata.
+It never fills in unread source. Both view/reader locks are released before
+network work. One tool-free Opus review may suggest at most two grounded
+search questions; a Stop block asks the same native search agent to continue
+in its existing history. Only subsequent actual tool delivery adds source credit.
+
+The one-attempt latch precedes any await and the hook session must match the
+SDK init receipt. A free provider token count admits at most one paid review
+under a request forecast, with no retry or redirect. Packet/budget/no-evidence
+deferrals retain the native outcome explicitly. A capped review is prospectively
+a metered no-action outcome, even if its text parses. Malformed replies, unknown
+handles/models/usage and stale source reject the attempt after the main SDK
+terminal is drained; known fees remain and unknown fees never become zero.
+Main/auxiliary SDK usage and direct reviewer usage stay separate, with a combined
+estimate only when both are known. Source is checked again after continuation.
+
+All23 new mocked HTTP/source/SDK tests and116 focused checks pass, including
+concurrent callbacks, source mutation and known/unknown terminal-fee retention;
+tests make no billed calls. No real reviewer request, new reservation, cohort,
+annotation or repair is added. Official model-constraint verification and a
+separate prospective same-eight protocol are still required before inference.
+Both native controls must remain; a matched reviewer ablation is required before
+attributing any bundled policy gain to CodeNib. Independent32/500 and leaderboard
+gates remain open.
+
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
 line task-macro Recall/precision/F1 are **72.83%/27.97%/33.95%**. File Recall/F1
