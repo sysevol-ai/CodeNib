@@ -230,8 +230,22 @@ used. The exact authorized credential, declared credential shapes and known
 workstation/Git-operator identifiers yield zero findings. Sensitive named-field
 checks on outer JSON also find none. These are scoped checks on the122 settled
 attempts, not proof that arbitrary personal data or credentials are absent.
-Full500 coverage, broader privacy, portable replay, publication and comparability
-approval remain open.
+Full500 coverage, broader privacy, full500 portable replay, publication and
+comparability approval remain open.
+
+A separate relocated-directory replay now reads only these public-preview parts,
+the search-preview parts and their public digest links. It hashes all25,418
+archive-member occurrences, extracts the required records and1,703 bundled runtime
+files, then imports CodeNib modules from that frozen runtime. All122 selections
+and observation receipts recompile identically;967 repair calls and244 actual
+search SDK fee receipts reproduce1,211 unique sessions and$48.09835812 modeled
+usage. Every native result remains bound to its original first patch. The worker
+uses the installed Python dependencies, with Python opens restricted to the new
+directory and dependencies; networking and external processes are denied.
+Optional Git/font/config probes remain blocked. This is a Python audit guard,
+not an OS sandbox. It makes no model calls or new official scoring. Fresh-clone
+source-footprint replay, native-test reproduction, broader privacy and full500
+publication/comparability approval remain open.
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
