@@ -124,8 +124,12 @@ observation receipts, final source selections, native outcomes and system usage.
 A public digest linkage can reconcile pseudonymous SDK identities to the original
 usage commitments without exposing raw identity values. The exact authorized
 credential is absent. Three bounded archive parts total142,348,276 bytes. These
-checks cover the declared substitutions; broader personal-data/credential review,
-full500 coverage and publication approval remain open. The1000 search-session
+checks cover the declared substitutions. A separate pattern review scans all7,703
+archive members and1,703 nested runtime files, finding no declared credential
+patterns, sensitive JSON fields or known workstation/Git-operator identifiers.
+This establishes only the named checks on this58-case snapshot; it does not prove
+the absence of all possible personal data. Full500 privacy coverage, portable
+replay and publication approval remain open. The1000 search-session
 digest links are also independently reconstructed from the unchanged original
 and redacted search artifacts, preserving all recorded fees.
 
@@ -208,6 +212,16 @@ IPv4-first DNS; all12 recorded grader/probe containers are absent. These are
 zero-model fixtures, without additional candidate outcomes. Per-dispatch source
 preparation and native controls remain open for the other unexecuted tasks. The repair prompt, model loop, budgets and navigation
 delivery are unchanged; only Pro gains the existing source-only preflight.
+A separate54-case Pro first-attempt controller is staged, without a launch or
+reservation. Isolated file fixtures exercise all fixed task identities, two
+disjoint27-case shards, admitted native-image overrides, stale/failed-control
+rejection, exact session accounting and duplicate-owner rejection. The complete
+solver dispatch AST remains unchanged apart from cohort accounting and Pro native
+grading transport. Actual dispatch still requires all54 source admissions,
+all108 native controls, prior Verified fee closure and at least$270 of available
+authorized usage. That amount is a future reservation, not measured spending.
+These orchestration checks establish no additional native-ready environment or
+candidate result.
 A first additional Verified environment restores the exact canonical source over
 the image's single-file `pyproject.toml` setup overlay and verifies clean,
 history-free source. Its native neutral control is unresolved and its reference
