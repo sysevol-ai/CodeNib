@@ -238,6 +238,17 @@ reservations and late metadata writes. The owner waits for actual full-cohort
 source/native admission, reserves only existing authorized usage and never
 retries a model or replaces a task. No remaining269 reservation or model request
 has begun, and the synthetic checks establish no new native-ready environment.
+A separate zero-model result owner now waits for11 successive closed cohorts,
+extending the122-case index through exactly500 first attempts. It authenticates
+patch, native outcome, final context and unique search/repair fees for every case,
+including failures. New Poly/Multi records additionally bind all four archived
+native-runtime files to the actual grading adapter; all58 earlier native adapter
+hashes also match their already-archived source bytes. Changed/missing/symlinked
+snapshots and mismatched index/join/evaluation populations are rejected. The
+original collector's first-attempt/fee/selection authentication and failed-case
+retention remain unchanged. Only actual500-case closure enables the unchanged
+official final-context evaluator and complete-system cost aggregator. No full500
+evaluation or result exists yet; raw publication and comparability remain open.
 A separate resource-reuse admission rechecks the existing AutoGPT and Go377
 solver images through two actual networkless probes. Both retain the exact
 canonical source tree, single-commit history and reference hygiene; the pinned
