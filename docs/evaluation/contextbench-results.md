@@ -153,12 +153,20 @@ These image environment settings also affect any agent pytest reporting;
 that observation change is disclosed. The model/context code and guards remain
 unchanged. All12 corrected neutralFalse/referenceTrue pairs qualify, with every
 required test identifier authenticated. The55-case cohort retains136 actual
-native fixtures:110 admitted runs and26 original/corrective reporting failures.
+native fixtures:110 admitted runs and26 superseded or rejected reporting runs.
 All original fixture outcomes remain available. Canonical records are backed up
 byte-for-byte and replaced only after the original writer exits; an atomic
 last-written reconciliation marker gates the held owner. Deterministic file
 fixtures verify idempotence, staged recovery, rejection of unrelated writes and
 missing/failed/changed release evidence. No candidate model attempt repeats.
+
+A read-only inventory now authenticates all3,471 source/control input files,
+including55 original Git seed TARs and all136 actual control records. Each of the
+110 selected control hashes matches its admission. A separate zero-model
+archiver waits for the actual177-case closed index, the55 first-attempt native
+and fee closure, and the original controller's exit. Actual partial122 input is
+rejected before archive creation. The55 candidate bundle has not been produced;
+full500 raw coverage and publication gates remain open.
 
 The closed64 cohort's final three pytest environments initially fail even with
 reference patches:
