@@ -91,6 +91,7 @@ def load_pair_handoff(root, instance_id, navigation_tokens=2048):
             for prefix, label in [
                 ("SWE-Bench-Verified__", "Verified"),
                 ("Multi-SWE-Bench__", "Multi"),
+                ("SWE-PolyBench__", "Poly"),
             ]
             if instance_id.startswith(prefix)
         ),

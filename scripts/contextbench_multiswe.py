@@ -69,8 +69,10 @@ def solver_cwd(source, repo):
         return "/testbed"
     if source == "Multi" and repo in MULTI_PILOTS:
         return "/home/" + repo.split("/")[1]
+    if source == "Poly" and repo == "sveltejs/svelte":
+        return "/testbed"
     raise ValueError(
-        "Solver supports Verified and the validated Multi fmt/Gson/ponyc pilots"
+        "Solver supports Verified, validated Multi fmt/Gson/ponyc and Poly Svelte pilots"
     )
 
 
@@ -87,7 +89,7 @@ def validate_source_only_image(environment, commit):
         ["1", commit],
     ):
         raise ValueError(
-            "Multi solver image must have one source commit without prior history"
+            "Solver image must have one source commit without prior history"
         )
     result = environment.execute(
         "for path in "
@@ -95,7 +97,7 @@ def validate_source_only_image(environment, commit):
         + '; do if test -e "$path" || test -L "$path"; then exit 1; fi; done'
     )
     if result["returncode"]:
-        raise ValueError("Multi solver image contains native reference artifacts")
+        raise ValueError("Solver image contains native reference artifacts")
     return {"one_source_commit": True, "reference_artifacts_absent": True}
 
 
