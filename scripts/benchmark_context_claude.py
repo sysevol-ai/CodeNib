@@ -444,7 +444,12 @@ async def retrieve(
         from claude_agent_sdk import HookMatcher
 
         hook_options["hooks"] = {
-            "Stop": [HookMatcher(hooks=[evidence_reviewer.stop], timeout=180)]
+            "Stop": [
+                HookMatcher(
+                    hooks=[evidence_reviewer.stop],
+                    timeout=getattr(evidence_reviewer, "hook_timeout_seconds", 180),
+                )
+            ]
         }
         row["evidence_review"] = evidence_reviewer.ledger
     options = ClaudeAgentOptions(

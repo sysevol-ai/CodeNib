@@ -20,7 +20,12 @@ from codenib.compiler.manifest import RepoManifest
 from codenib.mcp.context import ServerContext
 from codenib.source_fingerprint import capture_repository_source, fingerprint_repository
 from scripts import benchmark_context_claude as claude
-from scripts.contextbench_evidence_review import EvidenceReviewGuard
+from scripts.contextbench_evidence_review import (
+    HAIKU,
+    EvidenceReviewGuard,
+    review_usage_cost,
+)
+from scripts.contextbench_haiku_router import HaikuRouterGuard
 from scripts.contextbench_packet_reader import API_URL, MODEL
 
 
@@ -97,6 +102,33 @@ def continue_decision(packet):
     )
 
 
+@pytest.mark.parametrize("fence", [None, "json", ""])
+def test_review_json_allows_only_a_single_whole_response_fence(fence):
+    text = '{"decision":"stop","gaps":[]}'
+    if fence is not None:
+        text = f" \n```{fence}\n{text}\n```\n "
+    assert EvidenceReviewGuard._decision(text, set()) == {
+        "decision": "stop",
+        "gaps": [],
+    }
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'Here is JSON:\n```json\n{"decision":"stop","gaps":[]}\n```',
+        '```json\n{"decision":"stop","gaps":[]}\n```\nDone',
+        '```json\n{"decision":"stop","gaps":[]}\n```\n```json\n{}\n```',
+        '```json\n{"decision":"continue","decision":"stop","gaps":[]}\n```',
+        '```json\n{"decision":"continue","gaps":[]}\n```',
+        '```json\n{"decision":"stop","gaps":[]}',
+    ],
+)
+def test_presentation_normalization_does_not_repair_or_extract_decisions(text):
+    with pytest.raises(ValueError):
+        EvidenceReviewGuard._decision(text, set())
+
+
 def stop_data(ctx, **overrides):
     return {
         "hook_event_name": "Stop",
@@ -107,12 +139,12 @@ def stop_data(ctx, **overrides):
     }
 
 
-def execute(ctx, handler, *, history=None, **kwargs):
+def execute(ctx, handler, *, history=None, guard_type=EvidenceReviewGuard, **kwargs):
     async def run():
         async with httpx.AsyncClient(
             base_url=API_URL, transport=httpx.MockTransport(handler)
         ) as client:
-            guard = EvidenceReviewGuard(
+            guard = guard_type(
                 ctx,
                 issue="Explain the helper return value",
                 observed_messages=lambda: exchange(ctx) if history is None else history,
@@ -355,9 +387,12 @@ def test_hook_identity_mismatch_never_dispatches(source, mismatch):
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("bad_review", [False, "json", "model", "after_continuation"])
+@pytest.mark.parametrize("guard_type", [EvidenceReviewGuard, HaikuRouterGuard])
+@pytest.mark.parametrize(
+    "bad_review", [False, "fenced", "json", "model", "after_continuation"]
+)
 def test_sdk_same_session_continuation_or_failed_review_drains_both_fees(
-    source, monkeypatch, bad_review
+    source, monkeypatch, bad_review, guard_type
 ):
     row = {"messages": [], "sdk_events": []}
     saved = []
@@ -368,18 +403,27 @@ def test_sdk_same_session_continuation_or_failed_review_drains_both_fees(
     def handler(request):
         if request.url.path.endswith("count_tokens"):
             return httpx.Response(200, json={"input_tokens": 1000})
-        packet = json.loads(json.loads(request.content)["messages"][0]["content"])
+        payload = json.loads(request.content)
+        packet = json.loads(payload["messages"][0]["content"])
         data = response(
             "bad JSON" if bad_review == "json" else continue_decision(packet)
         )
         if bad_review == "model":
             data["model"] = "unknown-model"
+        if bad_review == "fenced":
+            data["content"][0]["text"] = (
+                "```json\n" + data["content"][0]["text"] + "\n```"
+            )
+        if payload["model"] == HAIKU:
+            data = response(continue_decision(packet), model=HAIKU)
         return httpx.Response(200, json=data)
 
     async def query(*, prompt, options):
         assert set(options.allowed_tools) == set(claude.TOOLS)
         assert options.agents == {} and options.tools == []
-        assert options.hooks["Stop"][0].timeout == 180
+        assert options.hooks["Stop"][0].timeout == (
+            300 if guard_type is HaikuRouterGuard else 180
+        )
         callback = options.hooks["Stop"][0].hooks[0]
         handlers = dict(options.mcp_servers["source"])
         yield event(
@@ -444,7 +488,7 @@ def test_sdk_same_session_continuation_or_failed_review_drains_both_fees(
         async with httpx.AsyncClient(
             base_url=API_URL, transport=httpx.MockTransport(handler)
         ) as client:
-            guard = EvidenceReviewGuard(
+            guard = guard_type(
                 source,
                 issue="Find helper",
                 observed_messages=lambda: row["messages"],
@@ -462,7 +506,7 @@ def test_sdk_same_session_continuation_or_failed_review_drains_both_fees(
                 billing_route="anthropic-api",
                 evidence_reviewer=guard,
             )
-            if bad_review:
+            if bad_review in {"json", "model", "after_continuation"}:
                 with pytest.raises(RuntimeError, match="both fee receipts retained"):
                     await claude.retrieve(**kwargs)
             else:
@@ -474,11 +518,77 @@ def test_sdk_same_session_continuation_or_failed_review_drains_both_fees(
                 assert row["evidence_review"]["api_usage_estimate_usd"] is None
                 assert row["all_model_usage_estimate_usd"] is None
             else:
+                extra_gate_fee = 0.00015 if guard_type is HaikuRouterGuard else 0
                 assert row["evidence_review"][
                     "api_usage_estimate_usd"
-                ] == pytest.approx(0.006)
-                assert row["all_model_usage_estimate_usd"] == pytest.approx(0.009)
-            assert row["evidence_review"]["paid_message_requests"] == 1
+                ] == pytest.approx(0.006 + extra_gate_fee)
+                assert row["all_model_usage_estimate_usd"] == pytest.approx(
+                    0.009 + extra_gate_fee
+                )
+            assert row["evidence_review"]["paid_message_requests"] == (
+                2 if guard_type is HaikuRouterGuard else 1
+            )
 
     asyncio.run(run())
-    assert any(item.get("evidence_review", {}).get("response") for item in saved)
+    assert any(
+        item.get("evidence_review", {}).get("response")
+        or item.get("evidence_review", {}).get("strong_review", {}).get("response")
+        for item in saved
+    )
+
+
+@pytest.mark.parametrize(
+    "route", ["stop", "continue", "capped", "budget", "invalid", "unknown_model"]
+)
+def test_haiku_router_only_dispatches_strong_review_for_valid_cited_gaps(source, route):
+    paid = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        packet = json.loads(payload["messages"][0]["content"])
+        model = payload["model"]
+        if request.url.path.endswith("count_tokens"):
+            return httpx.Response(
+                200, json={"input_tokens": 200000 if route == "budget" else 1000}
+            )
+        paid.append(model)
+        if model == HAIKU:
+            text = (
+                continue_decision(packet)
+                if route == "continue"
+                else '{"decision":"stop","gaps":[]}'
+            )
+            if route == "invalid":
+                text = "not JSON"
+            return httpx.Response(
+                200,
+                json=response(
+                    text,
+                    model="unknown" if route == "unknown_model" else HAIKU,
+                    stop_reason="max_tokens" if route == "capped" else "end_turn",
+                ),
+            )
+        return httpx.Response(200, json=response(continue_decision(packet)))
+
+    guard, result = execute(source, handler, guard_type=HaikuRouterGuard)
+    if route == "continue":
+        assert paid == [HAIKU, MODEL]
+        assert guard.ledger["strong_dispatched"] and result["decision"] == "block"
+        assert guard.ledger["api_usage_estimate_usd"] == pytest.approx(0.00615)
+    else:
+        assert paid == ([] if route == "budget" else [HAIKU])
+        assert not guard.ledger["strong_dispatched"] and result == {}
+        expected_fee = (
+            None if route == "unknown_model" else 0 if route == "budget" else 0.00015
+        )
+        assert guard.ledger["api_usage_estimate_usd"] == expected_fee or guard.ledger[
+            "api_usage_estimate_usd"
+        ] == pytest.approx(expected_fee)
+    assert guard.ledger["failed"] is (route in {"invalid", "unknown_model"})
+
+
+@pytest.mark.parametrize("tokens,expected", [(100000, 0.01005), (100001, 0.0502505)])
+def test_haiku_review_pricing_keeps_the_actual_prompt_threshold(tokens, expected):
+    assert review_usage_cost(
+        {"input_tokens": tokens, "output_tokens": 100}, HAIKU
+    ) == pytest.approx(expected)
