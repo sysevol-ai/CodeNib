@@ -125,6 +125,7 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
         "wall_deadline",
         "cleanup",
         "empty",
+        "empty_parse",
         "offline_cache",
         "cache_upload",
     ],
@@ -277,12 +278,16 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
         hashes=poly.HARNESS_HASHES,
         score=score,
         parser=lambda text: SimpleNamespace(
-            parse=lambda: {
-                "passed_tests": (
-                    ["fix"] if fault == "partial_success" else ["fix", "stable"]
-                ),
-                "failed_tests": [],
-            }
+            parse=lambda: (
+                {}
+                if fault == "empty_parse"
+                else {
+                    "passed_tests": (
+                        ["fix"] if fault == "partial_success" else ["fix", "stable"]
+                    ),
+                    "failed_tests": [],
+                }
+            )
         ),
     )
     monkeypatch.setattr(poly, "native_environment", lambda path: native)
@@ -291,7 +296,7 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     assert result["resolved"] is (fault in {None, "offline_cache"})
     assert result["status"] == (
         "graded"
-        if fault in (None, "empty", "invalid_patch", "offline_cache")
+        if fault in (None, "empty", "empty_parse", "invalid_patch", "offline_cache")
         else "error"
     )
     assert result["container_removed"] is (fault != "cleanup")
@@ -305,6 +310,11 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
         )
     if fault is None:
         assert result["native_test_returncode"] == 4
+    if fault == "empty_parse":
+        assert json.loads((args.output / "parsed-tests.json").read_text()) == {}
+        assert not result["native_report"]["resolved"]
+        assert result["missing_required_tests"] == ["fix", "stable"]
+        assert result["native_test_collection_observed"] is False
     if fault == "offline_cache":
         assert [event[0] for event in events][:3] == ["create", "offline_cache", "test"]
     if fault in {"offline_cache", "cache_upload"}:
