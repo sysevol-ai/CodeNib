@@ -59,9 +59,20 @@ def included_max_rate(data):
     """
     info = data.get("rate_limit_info") or {}
     raw = info.get("raw") or {}
+    # Some CLI receipts omit overageEnabled and instead explicitly reject
+    # overage at the organization boundary. Require both typed and raw fields
+    # to agree on that observed disabled state, without accepting unknowns or
+    # overriding an explicit overageEnabled=True.
+    overage_disabled = raw.get("overageEnabled") is False or (
+        "overageEnabled" not in raw
+        and info.get("overage_status") == raw.get("overageStatus") == "rejected"
+        and info.get("overage_disabled_reason")
+        == raw.get("overageDisabledReason")
+        == "org_level_disabled"
+    )
     if (
         info.get("status") not in {"allowed", "allowed_warning"}
-        or raw.get("overageEnabled") is not False
+        or not overage_disabled
         or raw.get("isUsingOverage") is not False
     ):
         raise RuntimeError("Max quota event does not confirm included usage only")
