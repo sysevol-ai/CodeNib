@@ -311,6 +311,28 @@ all-model usage, latency and repository-cluster uncertainty. Retain degenerate
 routes. A$16 reservation leaves$24.455432805 unreserved under the cumulative
 $100 ceiling; no repair batch or automatic500 expansion is authorized.
 
+An offline complementarity audit reuses the two completed Haiku searches on
+the same eight exposed development tasks. The first reads4,250 unique lines,
+the second3,867;2,624 overlap and their union contains5,493. The second contributes
+1,243 lines absent from the first, so repeated cheap search can find different
+source. The exact interval union is verified against both actual observed sets;
+no new source is invented. The pinned evaluator scores this hypothetical union
+at **73.54% Recall/34.48% F1**, versus68.07%/36.66% and71.04%/40.17% separately.
+It adds2.50 Recall points over the stronger run while reducing F1 by5.68 points.
+Both historical runs together record$0.088304920, including the second run's
+router overhead. This audit makes zero new model calls and opens no new labels.
+
+The [eight-row opportunity CSV](../assets/contextbench_haiku_pair_opportunity_8.csv)
+reproduces every union score, source overlap and recorded fee. **This is not an
+executed multi-worker policy:** it combines separate historical runs, without
+a joint orchestration/assembly run or independent validation. Source actually
+viewed by CodeNib workers counts as system retrieval; a parent model is not a
+prerequisite for that metric. Concatenated steps here are an offline representation,
+with no efficiency or latency claim. A future policy needs a live execution,
+complete worker/source receipts, a declared return contract and all-worker costs.
+Claims about a repair consumer need its actual handoff and native outcomes.
+The running32 protocol and its unopened annotations remain unchanged.
+
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
 line task-macro Recall/precision/F1 are **72.83%/27.97%/33.95%**. File Recall/F1
