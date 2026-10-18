@@ -4,7 +4,7 @@
 
 """Validate context with pinned mini SWE-agent and an explicit Claude route.
 
-Supports SWE-bench Verified and the Multi fmt/Gson/ponyc pilots, one task per
+Supports SWE-bench Verified, Multi fmt/Gson/ponyc and Poly Svelte pilots, one task per
 invocation. Uses the existing solver loop and pinned, already-local Docker
 images. Native grading is separate; source receipts cover controlled reads/searches.
 """
@@ -368,6 +368,7 @@ def freeze_solver(output, mini_root):
     paths = {
         "scripts/benchmark_context_solver.py": Path(__file__),
         "scripts/contextbench_multiswe.py": ROOT / "scripts/contextbench_multiswe.py",
+        "scripts/contextbench_polybench.py": ROOT / "scripts/contextbench_polybench.py",
         **{
             f"scripts/{name}": ROOT / "scripts" / name
             for name in (
@@ -639,7 +640,7 @@ def run(args):
             "git rev-parse HEAD HEAD^{tree} && git status --porcelain --untracked-files=all"
         )
         row["image_snapshot"] = validate_image_snapshot(head, source_tree)
-        if case.source == "Multi":
+        if case.source in {"Multi", "Poly"}:
             row["source_only_image"] = validate_source_only_image(
                 environment, row["image_snapshot"]["commit"]
             )
@@ -754,6 +755,16 @@ def run(args):
 def grade(args):
     """Use the selected benchmark's native test script and resolution grader."""
     config = json.loads((args.solver_run / "config.json").read_text())
+    if config.get("source") == "Poly":
+        from scripts.contextbench_polybench import grade_poly
+
+        grade_poly(args)
+        if config.get("retrieval_kind") == "search_pair_navigation":
+            write_json(
+                args.output / "whole-run-result.json",
+                joined_native_result(args.solver_run, args.output),
+            )
+        return
     if config.get("source", "Verified") == "Multi":
         from scripts.contextbench_multiswe import grade_multi
 
@@ -869,7 +880,12 @@ def main():
         parser.add_argument("--timeout", type=int, default=900)
         parser.add_argument(
             "--native-image",
-            help="Multi only: separate, pinned local native grading image",
+            help="Multi/Poly: separate, pinned local native grading image",
+        )
+        parser.add_argument(
+            "--native-upstream",
+            type=Path,
+            help="Poly: pinned official harness checkout",
         )
         grade(parser.parse_args(sys.argv[2:]))
         return

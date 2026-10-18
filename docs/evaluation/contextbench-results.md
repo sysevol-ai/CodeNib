@@ -83,10 +83,47 @@ check reconstructs both original workers on one completed500 case without new
 models or annotations. These checks establish wiring, not repair quality.
 
 Native grading remains separate. Existing adapters accept Verified with its
-validated images and the Multi fmt/Gson/ponyc pilots; this is not full500 native
-environment coverage. Source attribution is still partial for arbitrary shell
-output. No new paid repair, complete-system Recall/F1, Pass@1 or end-to-end cost
-advantage is established by this local adapter.
+validated images, the Multi fmt/Gson/ponyc pilots, and now the Poly Svelte pilot;
+this is not full500 native environment coverage. Poly runtime evidence currently
+covers `sveltejs__svelte-510` only. Source attribution is still partial for
+arbitrary shell output. No new paid repair, complete-system Recall/F1, Pass@1 or
+end-to-end cost advantage is established by these local adapters.
+
+The Poly adapter authenticates the complete native CSV at dataset revision
+`d56445f9940eae4e9d2974ec66820c2f1d7754e6`, then selects the exact original
+task/repository/base commit. Its separate grader uses the
+[pinned official harness](https://github.com/amazon-science/SWE-PolyBench/tree/9c836c5d7f3cb991934132b77d29e6941d912a07)
+patch application, parser and scorer, with an already-local image digest and
+bounded container ownership. Native patches and tests never enter solver inputs.
+The `grade` subcommand takes the official native `test.csv` as `--dataset`, plus
+`--native-upstream` and `--native-image`; it does not pull images or fall back to
+building a different environment.
+
+Fresh real-container controls observe both required F2P tests and all598 P2P
+tests. The test-only control fails the two F2P tests; the reference passes them.
+Four other browser-mock tests fail identically on the untouched base and the
+reference, outside the native F2P/P2P sets. The initial stricter zero-exit
+readiness gate remains failed. The official scorer nevertheless resolves the
+reference and rejects the test-only control; the adapter preserves both the
+official judgment and raw exit codes instead of treating a nonzero process exit
+as an automatic resolution failure. Positive resolution also requires a terminal
+native log, all required test identities and completion inside the declared
+native-call wall guard. Timeout/partial-log cases retain the raw scorer output
+but remain incomplete errors; they cannot supply a positive Pass@1 outcome.
+Actual CLI environment fixtures reproduce
+those positive/negative judgments with exact patch and cleanup receipts. These
+are reference controls, not model-produced repairs or candidate Pass@1.
+
+A separate local solver image restores the exact clean source tree, retains one
+source commit and removes source reflogs, remotes and known reference artifacts.
+The completed search pair reconstructs into four metadata-only navigation entries
+for this task. The real pinned mini Docker environment also executes CodeNib
+read/search commands there: read bytes match the original commit, and container
+removal is confirmed. No model receives these probe outputs. A portable source
+image builder and broader Poly environment validation remain open; this local
+image is not an available image for every Poly task. The changed adapter surface
+passes147 checks, including four pinned mini-loop fixtures, with no provider
+requests. Cumulative program API usage remains$81.01150498.
 
 An end-to-end comparison must join search, source handoff, repair and native
 grading by the same task, base commit and frozen configuration. Record source
