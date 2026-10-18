@@ -278,6 +278,29 @@ observed free-space change is+19.4GiB, which is not an isolated reclaim estimate
 Exact private image exports remain unavailable; repetition needs pinned base
 pulls and private rebuilds. These cache operations add no model calls or fees.
 
+The54 early source Git seeds also have a separate private rebuild supplement:
+326 original members in two actual decoded parts totaling90,352,595 bytes,
+each below50MiB. All54 rehydrated Git repositories retain the canonical commit,
+tree and one-commit history without remotes or reflogs. This overlaps the original
+58-case trajectory archive and adds no candidate attempts. It proves source Git
+rehydration, not native-image or test reproduction; publication review remains open.
+
+Another42 superseded source-profile and native-base caches from21 closed cases
+are removed using normal Docker reference checks. All29 original archive parts
+and84 preparation inputs authenticate before and after removal. Multiple known
+owned tags are removed individually; other tags, current/future case references
+and container references remain protected. Concurrent environment pulls prevent
+an isolated reclaimed-space estimate. All original Git seeds and evidence remain.
+
+Temporary host source-build clones are being reclaimed separately after actual
+local rehydration from their retained Git seeds. Every qualifying clone must
+match the restored metadata bytes and all source-file or symlink contents;
+submodules, extra files and other differences stay retained. A separate consumer
+rechecks each complete receipt and the full clone manifest before removing that
+derived clone. Original benchmark checkouts, seeds, source proofs, prepared images,
+model contexts and native results remain unchanged. This cache audit and cleanup
+are still in progress and establish no additional candidate score.
+
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
