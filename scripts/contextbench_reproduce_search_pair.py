@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 
 
@@ -186,6 +187,26 @@ def replay_case(
     return assembler(case["instance_id"], workers)
 
 
+def ordered_replays(cases, operation, jobs=1):
+    """Keep protocol order while parallelizing independent source checks.
+
+    Each operation owns its result and any task-specific clone. It must not
+    invoke the official evaluator, whose checkout callback is shared mutable
+    state. The caller scores only after this iterator exhausts successfully.
+    A failure or closed iterator cancels queued work and joins active readers.
+    """
+    if type(jobs) is not int or not 1 <= jobs <= 16:
+        raise ValueError("Expected 1 to 16 source replay workers")
+    if jobs == 1:
+        yield from map(operation, cases)
+        return
+    pool = ThreadPoolExecutor(max_workers=jobs)
+    try:
+        yield from pool.map(operation, cases)
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", required=True, type=Path)
@@ -198,11 +219,16 @@ def main():
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--evaluator-python", default=sys.executable)
     parser.add_argument(
+        "--jobs", type=int, default=1, help="Source replay workers (1-16)"
+    )
+    parser.add_argument(
         "--prepare-repos",
         action="store_true",
         help="Fetch pinned public commits/submodules; no model requests",
     )
     args = parser.parse_args()
+    if not 1 <= args.jobs <= 16:
+        parser.error("--jobs must be between 1 and 16")
     assert not args.prepare_repos or args.repos, "--prepare-repos requires --repos"
     bundle = args.bundle.resolve()
     verified_members = verify_extracted(bundle)
@@ -251,7 +277,8 @@ def main():
         assert set(repo_map) == set(sealed)
     derived = []
     args.output.mkdir(parents=True, exist_ok=False)
-    for case in plan["cases"]:
+
+    def reproduce(case):
         key = case["instance_id"]
         repo = (
             Path(repo_map[key]).resolve(strict=True)
@@ -291,9 +318,15 @@ def main():
         assert prediction == sealed[key]
         item = copy.deepcopy(by_eval[key])
         item.update(repo_path=str(repo), prediction=prediction)
+        return item
+
+    for item in ordered_replays(plan["cases"], reproduce, args.jobs):
         derived.append(item)
         print(
-            json.dumps({"source_footprint_verified": key, "model_calls": 0}), flush=True
+            json.dumps(
+                {"source_footprint_verified": item["gold"]["inst_id"], "model_calls": 0}
+            ),
+            flush=True,
         )
     input_path = args.output / "derived-evaluation-input.json"
     input_path.write_text(json.dumps(derived))
@@ -329,6 +362,7 @@ def main():
         "extracted_original_members_verified": verified_members,
         "source_footprints_reconstructed": 500,
         "actual_worker_receipts_replayed": 1000,
+        "source_replay_jobs": args.jobs,
         "all_case_file_symbol_line_metrics_match": True,
         "original_evidence_modified": False,
         "new_model_calls": 0,

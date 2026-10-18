@@ -546,9 +546,14 @@ cp /path/to/archive/archive-index.json /path/to/archive/verification.json /path/
 python scripts/contextbench_reproduce_search_pair.py \
   --bundle /path/to/extracted-bundle \
   --repo-map /path/to/task-repositories.json \
+  --jobs 4 \
   --evaluator-python /path/to/pinned-evaluator-env/bin/python \
   --output /path/to/new-reproduction-output
 ```
+
+`--jobs` selects1-16 independent source-replay workers and defaults to1. Results
+retain protocol order even when checks finish out of order. A failed check
+cancels queued work; official scoring runs once after every source replay passes.
 
 The bundle records original Python/package inventories, pinned replay/evaluator
 requirements, source-preparation code and evaluator sources. Fresh Python3.11.5
