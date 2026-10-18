@@ -194,8 +194,8 @@ the unchanged earlier58 parts, and confirms the union covers exactly122 first
 attempts. It explicitly retains all six failed pytest fixtures, six corrected
 fixtures, four baseline-positive concordance fixtures and both original
 source-create timeouts with their owned cleanup. No model request, native test,
-official scoring or financial settlement is repeated. This increment is
-unredacted and private; the58-case privacy review below does not cover it.
+official scoring or financial settlement is repeated. This original increment
+remains unredacted and private; separate publication previews are described below.
 
 A private redacted preview retains all7,700 original members and verifies7,703
 archive members including its support manifests. It substitutes known workstation
@@ -213,6 +213,25 @@ the absence of all possible personal data. Full500 privacy coverage, portable
 replay and publication approval remain open. The1000 search-session
 digest links are also independently reconstructed from the unchanged original
 and redacted search artifacts, preserving all recorded fees.
+
+A matching private next64 preview retains all9,068 original members and verifies
+9,070 archive members across15 bounded parts totaling745,084,879 bytes. Known
+workstation labels and3,011 SDK UUIDs are substituted consistently. All504 exact
+repair requests/request hashes, patches, recomputed observations, final selected
+contexts, native outcomes and usage remain unchanged. All66 nested Git seed TARs
+remain present with normalized owner/time headers; their Git object-storage and
+index bytes remain identical. This preserves the source/admission failures and
+all64 first outcomes. The earlier58 runtime/publication index remains an explicit,
+unchanged dependency. An independent decoder verifies all9,070 members from the
+actual split parts. Its declared-pattern review covers all1,584 nested Git files
+and374,187 decompressed Git objects across65 distinct object-storage sets; all
+object IDs recompute. Archived Git configuration, hooks and alternates are never
+used. The exact authorized credential, declared credential shapes and known
+workstation/Git-operator identifiers yield zero findings. Sensitive named-field
+checks on outer JSON also find none. These are scoped checks on the122 settled
+attempts, not proof that arbitrary personal data or credentials are absent.
+Full500 coverage, broader privacy, portable replay, publication and comparability
+approval remain open.
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
