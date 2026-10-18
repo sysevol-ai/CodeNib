@@ -720,7 +720,7 @@ density: the complementary pair observes6,548 unique source lines versus5,839
 for the independent pair and3,686 for Opus, summed per task. Cross-worker
 repetition is3,979 versus3,141 lines. The scout policy bundles navigation metadata
 and a complementary-search instruction; this contrast does not isolate metadata
-alone. Do not expand directly to500 or reopen the
+alone. That development screen alone does not authorize500 or reopening the
 earlier closed32 for tuning. Fifteen new source-contract tests and56 combined
 focused checks pass; all eight historical source-union identities reproduce
 without new inference.
@@ -730,13 +730,24 @@ the same runtime/policies and selects32 new default-only tasks, four per languag
 across22 repository-alias clusters with at most two per cluster. The591-task
 metadata-only pool leaves559 after reserving this cohort and aliases. All32
 exact-source checks pass with empty issue/Gold fields before selected issue-only
-projection. Execution protocol `914a4a4f` now runs128 SDK searches with the
+projection. Execution protocol `914a4a4f` completes128 SDK searches with the
 unchanged development parameters. Four synthetic postprocessor fixtures verify
 the source seal precedes Gold and source/fee/duplicate failures block grading.
-Seal all128 source outcomes before selected Gold. The complementary pair is the
-primary; do not substitute the secondary repeat pair after a failed primary.
-The$12 API reservation is active; live fees remain pending reconciliation.
-Current8 results and the earlier failed32 remain immutable; no repairs/500 starts.
+All128 source outcomes seal before selected Gold; every configuration scores32/32
+valid. Native Haiku Recall/F1 is **33.98%/26.53% for$0.250863650**, the independent
+pair **38.82%/27.82% for$0.480771855**, the complementary primary
+**40.00%/27.18% for$0.499195665**, and fresh Opus **37.91%/31.15% for$6.427971300**.
+The primary passes the frozen Recall/cost gate and stronger point target at7.77%
+of Opus cost. Its2.09-point Recall difference versus Opus has95% interval
+[-1.91,+6.48]; its1.17-point difference versus the repeat pair has[-2.41,+5.12].
+Neither stable superiority nor metadata-alone causality is established. The
+128-row public CSV/summary retain all file/symbol/line metrics and fees. Source
+volume/repetition rise:30,640 unique and16,234 repeated lines for the primary
+versus24,341 unique for Opus and14,322 repeated for the independent pair. All128
+source intersections reconcile; unavailable Gold stays in the denominators.
+Only the predeclared primary may advance to500. Current8 results and the earlier
+failed32 remain immutable; no new repair batch starts. Candidate500 still needs
+a frozen execution guard and complete live source authentication.
 
 The earlier late-critic policy remains rejected:68.90% Recall/41.14% F1 at
 $0.113543820, one Opus review and zero follow-up searches. Preserve both earlier
@@ -760,10 +771,14 @@ closes with$8.629766530 of budget released. Known cumulative usage is
 **$66.914800665/$100** immediately after that cohort. The live-pair development
 batch then adds **$1.258857400** for its32 distinct sessions, counting the common
 first worker once in the program ledger. Its$10 reservation closes with
-$8.741142600 of budget released. Current known usage is **$68.173658065/$100**,
-leaving **$31.826341935** before the current independent batch's$12 reservation,
-or **$19.826341935** unreserved. Its live fees are not zero and are not yet added
-to this closed-batch total. Historical
+$8.741142600 of budget released. The completed complementary-search independent32
+adds **$7.157075170** for128 distinct SDK sessions. Its$12 reservation closes,
+releasing$4.842924830 of budget. Current known usage is **$75.330733235/$100**,
+leaving **$24.669266765** with no active reservation at closure. Language-weighted
+500 search cost is estimated at$5.905410835; the observed-maximum-per-language
+scenario is$8.702784340. These are arithmetic scenarios, not caps, and exclude
+repairs/compute. Readiness checks verify1,499 original500 files and500 matching
+Git commits; full live source authentication remains required. Historical
 unknown Max fees remain unknown; nominal usage is not a reconciled cash bill.
 Native solver controls, candidate500,
 reproducible candidate/outcome archives and official submission remain open, but
