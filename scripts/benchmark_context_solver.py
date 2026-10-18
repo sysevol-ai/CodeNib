@@ -38,6 +38,14 @@ from scripts import benchmark_context_agent as native
 from scripts.benchmark_context_claude import api_auth, subscription_auth
 from scripts.benchmark_jev_base import digest, write_json
 from scripts.contextbench_multiswe import solver_cwd, validate_source_only_image
+from scripts.contextbench_search_pair_solver import (
+    joined_native_result,
+    load_pair_handoff,
+    navigation_delivery,
+    navigation_template,
+    pair_budget,
+    whole_run_usage,
+)
 from scripts.contextbench_solver_sources import (
     SourceEnvironment,
     initial_source_receipt,
@@ -234,6 +242,13 @@ class SubscriptionModel:
             self.checkpoint()
         if terminal is None:
             raise ValueError("Missing or invalid solver SDK metering; stop inference")
+        actual_models = {
+            event["data"].get("model")
+            for event in record["events"]
+            if event["kind"] == "AssistantMessage"
+        }
+        if actual_models and actual_models != {self.model}:
+            raise ValueError("Solver reply model differs from the configured model")
         if terminal["is_error"] or not response:
             raise RuntimeError(f"Solver model failed: {terminal['subtype']}")
         return "\n".join(response)
@@ -358,6 +373,9 @@ def freeze_solver(output, mini_root):
             for name in (
                 "contextbench_solver_sources.py",
                 "_contextbench_solver_read.py",
+                "contextbench_search_pair_solver.py",
+                "contextbench_search_pair.py",
+                "contextbench_reproduce_search_pair.py",
             )
         },
         **{
@@ -383,12 +401,20 @@ def run(args):
         raise ValueError("Solver inference requires --live")
     billing_route = getattr(args, "billing_route", "subscription")
     initial_context = getattr(args, "initial_context", "retrieved")
+    pair_root = getattr(args, "search_pair", None)
+    handoff = budget = navigation = None
     if billing_route not in {"subscription", "anthropic-api"}:
         raise ValueError("Unknown solver billing route")
     if initial_context not in {"retrieved", "none"}:
         raise ValueError("Unknown initial context policy")
     if initial_context == "none" and getattr(args, "retrieval_notes_tokens", 0):
         raise ValueError("The no-context control cannot receive retrieval notes")
+    if pair_root is not None:
+        if getattr(args, "retrieval_notes_tokens", 0):
+            raise ValueError("Search-pair handoff accepts navigation only, not notes")
+        pair_budget(getattr(args, "total_meter_usd", None), [])
+    elif getattr(args, "total_meter_usd", None) is not None:
+        raise ValueError("Whole-run metering requires the search-pair input")
     if not 1 <= args.max_turns <= 80 or not 0 < args.max_meter_usd <= 100:
         raise ValueError("Invalid solver turn or metering limit")
     if not args.image.startswith("sha256:") and "@sha256:" not in args.image:
@@ -401,16 +427,35 @@ def run(args):
     ).strip()
     if commit != CONTEXTBENCH_UPSTREAM_REVISION:
         raise ValueError("mini SWE-agent requires the pinned ContextBench checkout")
-    case, context, retrieval_sha, source_tree, source_repo = delivered_input(
-        args.retrieval, args.instance_id, args.budget
-    )
+    if pair_root is None:
+        case, context, retrieval_sha, source_tree, source_repo = delivered_input(
+            args.retrieval, args.instance_id, args.budget
+        )
+    else:
+        handoff = load_pair_handoff(
+            pair_root, args.instance_id, getattr(args, "navigation_tokens", 2048)
+        )
+        case, source_repo, source_tree = handoff.case, handoff.repo, handoff.source_tree
+        context, retrieval_sha = "[]", handoff.receipt["case_terminal_sha256"]
+        included = (
+            handoff.receipt["search_sessions"] if initial_context != "none" else []
+        )
+        budget = pair_budget(args.total_meter_usd, included)
+        args.max_meter_usd = budget["repair_meter_usd"]
+        navigation = handoff.navigation if initial_context != "none" else None
+    if args.output.resolve().is_relative_to(source_repo.resolve()):
+        raise ValueError("Solver artifacts must be outside the pinned source checkout")
     if initial_context == "none":
         context = "[]"
-    notes = retrieval_notes(
-        args.retrieval,
-        args.instance_id,
-        getattr(args, "retrieval_notes_tokens", 0),
-        retrieval_sha,
+    notes = (
+        retrieval_notes(
+            args.retrieval,
+            args.instance_id,
+            getattr(args, "retrieval_notes_tokens", 0),
+            retrieval_sha,
+        )
+        if pair_root is None
+        else None
     )
     cwd = solver_cwd(case.source, case.repo)
     image = json.loads(
@@ -489,7 +534,13 @@ def run(args):
             "preserve valid behavior that their hypothesis may overlook.\n",
             1,
         )
+    if navigation is not None:
+        config["agent"]["instance_template"] = navigation_template(
+            config["agent"]["instance_template"]
+        )
     args.output.mkdir(parents=True, exist_ok=False)
+    if handoff is not None:
+        write_json(args.output / "search-pair-handoff.json", handoff.receipt)
     row = {
         "instance_id": case.instance_id,
         "original_inst_id": case.original_inst_id,
@@ -501,6 +552,7 @@ def run(args):
         ),
         "actual_bill_usd": None,
         "native_resolution": None,
+        "billing_route": billing_route,
         "retrieval_notes": notes,
     }
     result_path = args.output / "solver.json"
@@ -511,14 +563,24 @@ def run(args):
     write_json(
         args.output / "config.json",
         {
-            "retrieval": str(args.retrieval.resolve()),
+            "retrieval": str((pair_root or args.retrieval).resolve()),
+            "retrieval_kind": "search_pair_navigation" if pair_root else "saved_source",
+            "whole_run_metering_budget": budget,
             "retrieval_sha256": retrieval_sha,
-            "context_budget": args.budget,
+            "context_budget": args.budget if pair_root is None else None,
+            "navigation_token_budget": (
+                getattr(args, "navigation_tokens", 2048)
+                if navigation is not None
+                else None
+            ),
             "initial_context": initial_context,
             "billing_route": billing_route,
             "retrieval_notes_token_limit": getattr(args, "retrieval_notes_tokens", 0),
             "context_budget_scope": (
-                "Source budget plus separately bounded unverified retrieval notes. "
+                "Navigation metadata only; source bodies are read on demand, "
+                "without an initial source-body token cap."
+                if pair_root is not None
+                else "Source budget plus separately bounded unverified retrieval notes. "
                 "Report their additional input tokens; notes receive no source credit."
             ),
             "source_commit": case.base_commit,
@@ -619,6 +681,7 @@ def run(args):
                 case.problem_statement,
                 retrieved_source=context,
                 retrieval_notes=notes["text"] if notes else "",
+                context_navigation=navigation or "",
             )
             row.update(status=status, answer=answer)
         row["patch_export_reason"] = "agent_termination"
@@ -660,7 +723,18 @@ def run(args):
             environment.container_id = None
             row["container_removed"] = True
             checkpoint()
-    write_json(args.output / "model-observations.json", model_observations(row))
+    observations = model_observations(row)
+    write_json(args.output / "model-observations.json", observations)
+    if handoff is not None:
+        write_json(
+            args.output / "whole-run-usage.json",
+            whole_run_usage(handoff.receipt, row, initial_context != "none"),
+        )
+        if navigation is not None:
+            write_json(
+                args.output / "navigation-delivery.json",
+                navigation_delivery(navigation, observations),
+            )
     print(
         json.dumps(
             {
@@ -684,6 +758,11 @@ def grade(args):
         from scripts.contextbench_multiswe import grade_multi
 
         grade_multi(args)
+        if config.get("retrieval_kind") == "search_pair_navigation":
+            write_json(
+                args.output / "whole-run-result.json",
+                joined_native_result(args.solver_run, args.output),
+            )
         return
     if config.get("source", "Verified") != "Verified":
         raise ValueError("Unsupported native solver benchmark")
@@ -771,6 +850,11 @@ def grade(args):
             "native_report": report,
         }
     write_json(args.output / "resolution.json", record)
+    if config.get("retrieval_kind") == "search_pair_navigation":
+        write_json(
+            args.output / "whole-run-result.json",
+            joined_native_result(args.solver_run, args.output),
+        )
     print(
         json.dumps({key: record[key] for key in ("instance_id", "status", "resolved")})
     )
@@ -790,7 +874,13 @@ def main():
         grade(parser.parse_args(sys.argv[2:]))
         return
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--retrieval", type=Path, required=True)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--retrieval", type=Path)
+    inputs.add_argument(
+        "--search-pair",
+        type=Path,
+        help="Completed search-pair run; deliver locations on demand",
+    )
     parser.add_argument("--instance-id", required=True)
     parser.add_argument("--upstream", type=Path, required=True)
     parser.add_argument("--image", required=True)
@@ -806,6 +896,12 @@ def main():
     )
     parser.add_argument("--budget", type=int, choices=(16384, 32768), default=16384)
     parser.add_argument("--retrieval-notes-tokens", type=int, default=0)
+    parser.add_argument("--navigation-tokens", type=int, default=2048)
+    parser.add_argument(
+        "--total-meter-usd",
+        type=float,
+        help="Required for search-pair runs; includes search and repair",
+    )
     parser.add_argument("--max-turns", type=int, default=30)
     parser.add_argument("--max-meter-usd", type=float, default=3.0)
     parser.add_argument("--live", action="store_true")

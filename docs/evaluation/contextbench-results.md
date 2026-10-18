@@ -18,11 +18,40 @@ neither includes a downstream repair solver. The running500 batch has the same
 search-only scope. These are model-reported usage values, not complete task
 resolution costs or reconciled invoices; compute costs remain separate.
 
-The new pair currently authenticates and unions source intervals actually
-observed by its two search workers. It does not yet deliver that union to the
-repair solver. The existing mini SWE-agent adapter supports earlier saved-source
-handoffs, source-delivery receipts, repair metering and separate native grading;
-that earlier integration does not establish a new search-pair end-to-end result.
+The running search batch authenticates and unions source intervals actually
+observed by its two workers; it has no repair stage. The checkout-only
+`scripts/benchmark_context_solver.py --search-pair` adapter now connects those
+receipts to the existing mini SWE-agent loop through version-bound navigation.
+Initial source is empty: the solver receives filenames, line ranges and handles,
+then pulls bodies through the existing controlled read/search commands. The
+navigation token limit does not cap source bodies read later.
+
+`--total-meter-usd` is required for this adapter. Actual search-session usage is
+subtracted before setting the repair SDK guard. The `--initial-context none`
+control receives neither source bodies nor navigation and excludes the unused
+search stage from its modeled system cost. Reused search receipts are labeled;
+their usage must not be added a second time to cumulative experiment spending.
+The guard is not an account-level cash cap. Saved handoff hashes, confirmed
+navigation delivery and a whole-run session/fee report preserve unknown usage,
+reject repeated SDK sessions and include stopped repair attempts. Per-session
+billing routes distinguish API usage from subscription valuation. Native grading
+also exports a joined result only after task, patch, solver and fee receipts
+match; its native outcome remains separate from the partial source-attribution
+coverage.
+
+Local verification exercises the real pinned mini loop and local shell with
+scripted SDK replies: navigate, read source, edit, read the changed source and
+execute a fixture assertion before submission. Navigation adds no source credit;
+modified-file reads add no guessed original-coordinate credit. The original
+solver path also retains its metered-budget-stop behavior. A read-only handoff
+check reconstructs both original workers on one completed500 case without new
+models or annotations. These checks establish wiring, not repair quality.
+
+Native grading remains separate. Existing adapters accept Verified with its
+validated images and the Multi fmt/Gson/ponyc pilots; this is not full500 native
+environment coverage. Source attribution is still partial for arbitrary shell
+output. No new paid repair, complete-system Recall/F1, Pass@1 or end-to-end cost
+advantage is established by this local adapter.
 
 An end-to-end comparison must join search, source handoff, repair and native
 grading by the same task, base commit and frozen configuration. Record source
