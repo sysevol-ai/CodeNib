@@ -103,6 +103,34 @@ and task population stay unchanged, and the first candidate patch still requires
 ordinary native grading. Disclose this baseline-positive task separately;
 a passing native outcome alone does not demonstrate repair of its reported issue.
 
+A read-only execution audit parses359 original logs: all119 completed Verified
+candidate patches and their240 admitted/control-concordance runs. All107 resolved
+Verified candidate logs record every required test status. Fourteen Django log
+records have official parser identifier gaps; their missing names appear in the
+actual test-output spans, which also record executed unittest suites. Keep the
+original parser and native outcomes unchanged.
+One original boolean admission, `pylint-dev__pylint-4604`, is collection-blocked:
+the reference test patch imports `pylint.constants.IS_PYPY`, which the reference
+production patch adds. The original base and candidate patch lack that symbol;
+both collect zero tests, while the reference runs and passes21. Its candidate
+remains unresolved. This is recorded separately from a behavioral test failure;
+the neutralFalse/referenceTrue pair alone did not establish executable tests.
+No production reference code, grading change or model retry is introduced.
+
+The next55 now have an additional prospective test-execution admission. The
+existing waiting paid owner is held before preparation/reservation while the
+original native controls continue. Every required test identifier must have a
+parsed status, and every `FAIL_TO_PASS` target must have a PASS/FAIL/ERROR execution
+status. Conditional `PASS_TO_PASS` XFAIL/SKIPPED statuses must match between both
+controls and remain explicitly disclosed. They are not described as executed.
+Three actual-log regressions reject the collection-blocked Pylint fixture, accept
+the61-required-test pytest fixture, and preserve the matching scikit-learn XFAIL.
+A separate owned-child test verifies STOP/CONT acknowledgement and rejection of
+a mismatched process identity through Linux pidfd. Only a complete110-log proof
+releases the same existing paid owner; failures retain it for root recovery.
+The original model/context runtime, native criteria, selected population and
+financial ledgers remain unchanged. Actual55-case qualification is still running.
+
 The final three pytest environments initially fail even with reference patches:
 their history-free source snapshots cause editable installation to infer
 `pytest==0.1.dev1`, below the unchanged test configuration's minimum. Preserve all
