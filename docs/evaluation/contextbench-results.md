@@ -1,9 +1,11 @@
 # ContextBench retrieval experiments
 
-The latest **CodeNib agent router** completes8/8 valid on the same exposed
-development tasks: **68.90% Recall/41.14% F1 for$0.113543820** all-model nominal
-usage. It makes one Opus review and zero follow-up searches, so the late-review
-router's incremental benefit is unproven and its intervention screen fails.
+The latest **CodeNib agent configuration** completes8/8 valid on the same
+exposed development tasks: **71.04% Recall/40.17% F1 for$0.044898795** all-model
+nominal usage. Its issue-only router chooses Haiku for all eight actual search
+workers. Retain this as a Haiku repeat with routing overhead; it does not
+establish a mixed-router benefit. Three unchanged system configurations are
+frozen for a separate independent default-only32 comparison.
 
 CodeNib is the system under test: native source tools, agent execution, source
 delivery and model routing are CodeNib system configurations. Embedding and graph
@@ -255,7 +257,58 @@ required; no new independent task or repair batch starts here.
 The successor's$3 reservation closes with$2.886456180 released. Including both
 preserved failed integration attempts, this iteration adds$0.313421295 known
 API usage. Program usage is **$59.499668400/$100**, leaving$40.500331600, with
-no active reservation or unknown fee from these three batches.
+no active reservation or unknown fee from these three batches at their closure.
+
+### Before-search worker routing and independent system comparison
+
+The successor at `0fc02a85` routes before source search. A single tool-free
+Haiku request sees only the original issue and chooses one actual Haiku or
+Opus native search worker. The selected worker receives the unchanged native
+prompt, read/grep/glob tools, medium effort,20turn limit and4096 output cap.
+Each model keeps its native SDK guard: Haiku$0.08 or Opus$0.75. The router uses
+low effort,768 output tokens and a$0.01 request forecast. Known-fee capped or
+malformed decisions default to Haiku without a retry; unknown identity, usage
+or source integrity rejects the attempt. Router reasons are metadata, do not
+enter the worker prompt and receive zero source credit.
+
+Protocol `712569fe` seals all eight new source outcomes before reopening these
+already-exposed annotations. All8 execute and score valid, with no replacement.
+
+| CodeNib system configuration, same exposed eight | Line Recall | F1 | All-model nominal usage |
+| --- | ---: | ---: | ---: |
+| Opus native control | 69.91% | 39.66% | $1.4261087 |
+| Haiku native control | 68.07% | 36.66% | $0.043406125 |
+| Before-search router, all eight workers Haiku | 71.04% | 40.17% | $0.044898795 |
+
+The new SDK main/auxiliary usage is$0.043736595 and routing adds$0.001162200.
+No Opus worker is selected. The2.96 Recall-point difference from the original
+Haiku run is a stochastic between-run difference; it cannot demonstrate
+selection of a better model for difficult issues. The prospective mixed-worker
+screen fails. Never force an Opus quota after seeing these outcomes. The cheap
+CodeNib agent configuration remains worth independent evaluation. These are
+system results even when no indexed context, embedding or graph is exercised.
+
+All24 rows in the [worker-router case CSV](../assets/contextbench_worker_router_development_8.csv)
+match immutable per-case metrics and all-model fees. SDK-loop mean/median is
+22.59/20.84seconds, versus native Haiku21.86/21.26. Source observations total
+3,867 lines and62,090 cl100k tool-reply tokens. Complete main-input attribution
+remains unknown in8/8 because of same-model CLI auxiliaries; lower input or
+compression costs are not established. The$4 reservation closes, releasing
+$3.955101205. Known cumulative API usage is **$59.544567195/$100**; these are
+captured nominal usage values, not a reconciled cash bill or credit balance.
+
+Independent design `cab3bc5a` freezes native Haiku, native Opus and the unchanged
+before-search router before opening new issues. Metadata-only selection
+`059fec72` chooses32 default-only tasks, four per language across23 repository
+alias clusters, at most two per cluster. IDs, original issue identities and
+exact source commits exclude known exposures. This is outside verified500 and
+has different language weighting; it is not a new official leaderboard sample.
+All32 exact sources must be ready before inference; all96 source outcomes must
+seal before selected annotations are opened. Failed/unclaimed positions remain
+zero, with no quality retries or replacement. Compare Recall first, then F1,
+all-model usage, latency and repository-cluster uncertainty. Retain degenerate
+routes. A$16 reservation leaves$24.455432805 unreserved under the cumulative
+$100 ceiling; no repair batch or automatic500 expansion is authorized.
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
