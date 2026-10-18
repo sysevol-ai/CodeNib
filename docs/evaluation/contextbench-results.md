@@ -215,6 +215,14 @@ These eight prepared environments are reused without repeating preparation;
 the next startup manifest schedules145 further source preparations. No model calls or
 financial mutations occur during these source-only operations.
 
+A separate early diagnostic on one prepared MUI environment records all 8,548
+declared required test identifiers with PASS/FAIL statuses in both actual local
+runs. The neutral patch remains unresolved and the reference satisfies the pinned
+native criterion. Raw native exit codes 3 and 1 remain recorded; this does not
+claim a fully passing test suite. Both owned containers are independently absent.
+This diagnostic changes no canonical control or candidate record and does not
+establish the complete Multi execution qualification.
+
 Read-only validation of all82 original nominally passing Poly pairs finds one
 VSCode neutral run with an empty parse after a compile exit137. Its reference
 records all required IDs and passes, but the pair does not satisfy the separate
@@ -292,14 +300,21 @@ owned tags are removed individually; other tags, current/future case references
 and container references remain protected. Concurrent environment pulls prevent
 an isolated reclaimed-space estimate. All original Git seeds and evidence remain.
 
-Temporary host source-build clones are being reclaimed separately after actual
-local rehydration from their retained Git seeds. Every qualifying clone must
-match the restored metadata bytes and all source-file or symlink contents;
-submodules, extra files and other differences stay retained. A separate consumer
-rechecks each complete receipt and the full clone manifest before removing that
-derived clone. Original benchmark checkouts, seeds, source proofs, prepared images,
-model contexts and native results remain unchanged. This cache audit and cleanup
-are still in progress and establish no additional candidate score.
+All 449 qualifying temporary host clones have now been rehydrated from their
+retained Git seeds, compared against the restored metadata and every source-file
+or symlink byte, and removed after a separate consumer rechecks the full manifest.
+Another 25 clones remain: ten involve submodules, two retain original failed
+preparations and thirteen belong to superseded build directories whose prepared
+proofs bind retained recovery seeds. Those thirteen effective recovery-seed hashes
+also authenticate. Original benchmark checkouts, seeds, source proofs, prepared
+images, model contexts and canonical native results remain unchanged.
+
+A retention audit authenticates all 32 original repair archive parts and the two
+overlapping source-supplement parts. All 35,182 indexed loose-member path
+occurrences remain present; five archive-only support members are decoded and
+hashed from the actual earlier58 parts. This verifies original compressed-part
+hashes and loose-file presence, without claiming every loose member was rehashed.
+These zero-model material and cache checks establish no additional candidate score.
 
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
