@@ -509,6 +509,55 @@ The scout-versus-repeat comparison changes both the navigation handoff and the
 instruction to seek complementary evidence. It evaluates that whole policy;
 it does not isolate the causal contribution of metadata alone.
 
+### Canonical500 search-pair execution and reproduction
+
+Design `aabbd7e3` freezes the passing primary for the same canonical500 IDs,
+order and source commits as the native control. This is an already-exposed
+population, not a fresh independent500. The policy and runtime remain unchanged:
+one first Haiku worker followed by one metadata-seeded complementary worker,
+eight concurrent cases, at most1,000 SDK sessions, no retries, replacement tasks
+or repairs. The execution guard is$12 within the program's$100 API allowance;
+the guard is a dispatch limit rather than an account-level cash cap. Every
+source snapshot must authenticate before issue-only inputs and execution freeze.
+All500 configuration positions and1,000 worker positions must seal with known
+fees before the same500 annotations reopen. Source preparation is in progress;
+no candidate500 score is published here. Original native-control failures,
+unknown fees and annotation-access timing remain disclosed.
+
+`scripts/contextbench_reproduce_search_pair.py` replays archived observations
+and the pinned official evaluator without model requests. It verifies each
+extracted member and all1,677 frozen runtime source files, audits clean pinned
+repositories and their full source fingerprints, reconstructs both workers'
+actual observed intervals, and checks every candidate file/symbol/line metric.
+Only derived path labels change when repositories move; source text and original
+evidence stay unchanged. `--repo-map` accepts existing task-to-repository paths;
+`--repos --prepare-repos` instead fetches exact public commits and declared
+submodules. The latter needs Git/network access, but makes no model requests.
+
+After the local archive is complete and reviewed for publication, extract its
+bounded parts in filename order into an empty directory. The original archive
+index and verification receipt must accompany the extracted members:
+
+```bash
+mkdir /path/to/extracted-bundle
+gzip -dc /path/to/archive/logs.tar.part*.gz | tar -xf - -C /path/to/extracted-bundle
+gzip -dc /path/to/archive/trajectories.tar.part*.gz | tar -xf - -C /path/to/extracted-bundle
+cp /path/to/archive/archive-index.json /path/to/archive/verification.json /path/to/extracted-bundle/
+python scripts/contextbench_reproduce_search_pair.py \
+  --bundle /path/to/extracted-bundle \
+  --repo-map /path/to/task-repositories.json \
+  --evaluator-python /path/to/pinned-evaluator-env/bin/python \
+  --output /path/to/new-reproduction-output
+```
+
+The bundle records the original Python/package inventories, source-preparation
+code and evaluator sources. The embedded runtime must run with its compatible
+dependencies; a package inventory alone is not a container image. The replayer
+checks source footprints and candidate metrics, not solver repairs or new model
+behavior. Actual500 round-trip reproduction, final fee settlement, contextual
+privacy review, complete native issue-resolution outcomes and formal submission
+remain open. Raw archives stay local at this preparation stage.
+
 ### Fixed500 native control
 
 The canonical **500-task native baseline** is now sealed and scored. With the
