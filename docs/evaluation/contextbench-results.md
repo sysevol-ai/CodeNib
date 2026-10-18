@@ -1,23 +1,21 @@
 # ContextBench retrieval experiments
 
-The latest **independent32 CodeNib system comparison is complete**, with all
-96 worker runs valid and all fees known. Native Haiku scores **45.17% line
-Recall/28.63% F1 for$0.252892905**; native Opus **49.86%/33.58% for$6.218777900**;
-the before-search router **44.11%/28.40% for$0.898562665**. Every value covers
-the same32 tasks and includes all-model nominal usage. All96 source outcomes
-seal before selected annotations open. The router fails its quality gate and
-is not expanded to500. This default-only, language-balanced sample differs from
-verified500; these percentages are not a new leaderboard score.
+The latest **independent32 complementary-search comparison passes its frozen
+Recall/cost gate**. All128 worker sessions and128 configuration positions are
+valid, with every source outcome sealed before selected annotations open.
+The two-Haiku primary scores **40.00% line Recall/27.18% F1 for$0.499195665**,
+versus fresh native Opus **37.91%/31.15% for$6.427971300** on the same32 tasks.
+It uses7.77% of Opus's nominal cost while losing3.96 F1 points. The Recall
+difference is+2.09 points, paired repository-alias95% interval[-1.91,+6.48];
+stable superiority to Opus is not established. The predeclared primary may
+advance to500. This default-only, language-balanced population differs from
+verified500;40.00% is not a leaderboard score or directly comparable to the
+72.83% native verified500 control.
 
-A subsequent **live two-Haiku development comparison** on the same eight
-exposed tasks identifies a low-cost candidate: a metadata-seeded complementary
-search scores **71.62% Recall/29.29% F1 for$0.100641385**, versus fresh native
-Opus **70.56%/39.69% for$1.119668300**. Two independent Haiku searches score
-70.79%/30.17% for$0.085153860. This is real joint execution, with a shared source
-assembler and all-worker fees. It passes development point-score gates while
-losing F1; uncertainty still crosses zero. A new independent32 comparison is
-required. It does not supersede the failed independent32 result above or
-establish a leaderboard gain.
+The earlier model-only router remains rejected:44.11% Recall versus native
+Haiku45.17% and Opus49.86% on its separate closed32. The exposed-eight
+complementary-search result,71.62% Recall versus Opus70.56%, remains development
+evidence. Neither historical result is replaced or relabeled by the new cohort.
 
 CodeNib is the system under test: native source tools, agent execution, source
 delivery and model routing are CodeNib system configurations. Embedding and graph
@@ -447,32 +445,65 @@ repositories,10,000 draws and seed20261018. Do not claim stable metadata routing
 or global Pareto optimality from these exposed tasks. The declared development
 point-score screens pass. The previous failed model-only router stays rejected.
 
-Successor independent design `bcaf5253` freezes these unchanged policies before
+### Independent32 complementary source search
+
+Independent design `bcaf5253` freezes these unchanged policies before
 metadata selection `34023146` chooses32 new default-only tasks: four per language
 across22 repository-alias clusters, at most two per cluster. Selection excludes
 verified500 and all closed cohorts/issue/source aliases. The metadata-only pool
 has591 eligible tasks before selection and559 after conservatively reserving
 these32. All32 exact-source preparations pass with empty issue and Gold fields
-before selected issue-only projection. Execution protocol `914a4a4f` now runs
-the128 SDK searches with the unchanged development parameters. Four synthetic
+before selected issue-only projection. Execution protocol `914a4a4f` completes
+all128 SDK searches with the unchanged development parameters. Four synthetic
 postprocessor fixtures verify source-before-Gold ordering and reject unaccepted
 source, unknown fees and duplicate positions before annotation projection.
-All128 source outcomes must seal before selected Gold. The primary candidate is
-the complementary pair; a failed primary cannot be replaced retrospectively
-with the secondary repeat pair. A$12 API reservation leaves$19.826341935
-unreserved under the$100 ceiling; live fees are pending batch reconciliation,
-not zero or already added to the closed-batch ledger. No repair or500 run starts.
+All128 source outcomes seal before the selected32 Gold projection. All32 tasks
+remain in each denominator; there are no retries, replacements or repairs.
 
-Actual program usage counts all32 dispatched sessions once: **$1.258857400**.
-The common first worker appears in multiple configuration totals but is not
-rebilled in the program ledger. Close the$10 reservation, releasing$8.741142600
-of budget. Known cumulative API usage at development closure is
-**$68.173658065/$100**, leaving **$31.826341935** before the independent batch's
-$12 reservation described above. Terminal main/auxiliary fees are
-known; incomplete response-input attribution remains explicit. SDK worker
-durations are retained, but declared worker step order is not a global turn
-order; no ensemble AUC, controlled cold-cache or context-compression claim is
-made. Usage estimates are not a reconciled account invoice or credit balance.
+| CodeNib system configuration, same independent32 | Line Recall | Precision | F1 | All-model nominal usage |
+| --- | ---: | ---: | ---: | ---: |
+| One native Haiku search | 33.98% | 27.44% | 26.53% | $0.250863650 |
+| Two independent Haiku searches | 38.82% | 26.19% | 27.82% | $0.480771855 |
+| Primary: metadata-seeded complementary Haiku pair | 40.00% | 24.14% | 27.18% | $0.499195665 |
+| Fresh native Opus | 37.91% | 33.08% | 31.15% | $6.427971300 |
+
+The [128-row case CSV](../assets/contextbench_search_pair_independent_32.csv)
+and [machine-readable summary](../assets/contextbench_search_pair_independent_summary.json)
+reconcile all per-case and aggregate file/symbol/line metrics, validity and fees.
+The primary passes both the predeclared Recall-within-two-points/at-most25%-cost
+gate and the stronger point target of at least Opus Recall for lower cost.
+Recall improves6.02 points over the common native Haiku,95% interval[+3.08,+9.56].
+Against the independent pair it improves1.17 points, interval[-2.41,+5.12];
+against Opus2.09 points, interval[-1.91,+6.48]. Intervals resample22 repository-alias
+clusters10,000 times with seed20261019, without multiplicity adjustment.
+The latter two intervals cross zero: neither stable Opus superiority nor stable
+complementary-policy gain over a simple repeat is established. Only the
+predeclared primary is eligible for500; a secondary is not substituted after scoring.
+
+The primary observes30,640 unique lines, versus28,117 for the independent pair,
+21,362 for one Haiku and24,341 for Opus, summed per task. Cross-worker repetition
+is16,234 versus14,322 lines. This remains an affordable-coverage result, not fewer
+reads, better context density or context compression. Every one of128 source
+intersections reconciles with the official reports. Base-source reachability is
+98.15% on average;290 of22,306 annotated lines are unavailable. These diagnostic
+lines remain in the original denominators and do not change scores or gates.
+
+The actual128 distinct sessions add **$7.157075170** to the program ledger, counting
+the common first worker once. Close the$12 reservation, releasing$4.842924830 of
+budget. Known cumulative API usage is **$75.330733235/$100**, leaving
+**$24.669266765** with no active reservation at this closure. Weighting four cost
+samples per language to verified500 gives an arithmetic primary search estimate
+of **$5.905410835**; using each language's observed maximum gives$8.702784340.
+Neither is a guaranteed cap or includes repairs/compute. A500 run needs its own
+frozen guard and complete live source validation. Existing500 source/control
+readiness verifies1,499 original files and500 matching Git commits; this does not
+replace complete live source authentication or launch inference.
+
+All terminal main/auxiliary fees are known. Main-input attribution remains
+incomplete for all96 Haiku sessions; all32 Opus sessions reconcile. SDK worker
+durations are retained without a global ensemble turn order/AUC or controlled
+cold-cache latency claim. Usage is not a reconciled invoice or credit balance.
+Native issue-resolution outcomes and official submission remain open.
 
 The scout-versus-repeat comparison changes both the navigation handoff and the
 instruction to seek complementary evidence. It evaluates that whole policy;

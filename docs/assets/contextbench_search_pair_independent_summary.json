@@ -1,0 +1,282 @@
+{
+  "scope": "Freshmetadata-onlydefault32, independent ofthe exposed8 and allclosedcohorts includingpriorfailedsystem32. Primarycandidate is the unchanged metadata-seededcomplementaryHaikupair. FixednativeHaiku, independentrepeatpair and freshOpus controls use commonfirstworker; no specificmetadata-alonecausalclaim. Not verified500/officialrank/repair.",
+  "runtime_commit": "71e489e5875ca19d73bd15c417b339fb43225439",
+  "design_sha256": "bcaf5253ecebbe2db753c1071aea84688c1747f34a200df7ab8094ff1af6ecac",
+  "selection_sha256": "340231460713f7bcdfa3db2820c2ffed8916bd5dc56d58cb724350cd6169d7e7",
+  "protocol_sha256": "914a4a4fb060837c6e820427a393c324e2e6829c8b4c42cf730da8ec9a682749",
+  "source_seal_sha256": "94077ff87f856c9354e090cdcf8291a351d1d88c8981bb895759233304d7c523",
+  "annotation_access_sha256": "7e1d87e39501a4d9e808e28d080a252c5b4ec10ef97753b903cb78ae7e49f498",
+  "analysis_sha256": "7568ed36ad0713f6b2dec7608742b45298c541f2af676954a5a5b22abf8eaa7a",
+  "selected": 32,
+  "primary_candidate": "haiku_scout_pair",
+  "secondary_cannot_replace_failed_primary": true,
+  "population_differs_from_verified500": true,
+  "effort": "medium",
+  "max_turns_per_worker": 20,
+  "requested_output_tokens": 4096,
+  "navigation_token_budget": 2048,
+  "navigation_is_source_body_budget": false,
+  "SDK_case_guards_usd": {
+    "claude-haiku-5-5": 0.08,
+    "claude-opus-5-5": 0.75
+  },
+  "SDK_guard_is_account_cash_cap": false,
+  "actual_worker_sessions": 128,
+  "common_first_reused_across_configurations": true,
+  "program_cost_counts_actual_sessions_once": true,
+  "summary": {
+    "haiku_native": {
+      "population": 32,
+      "valid": 32,
+      "macro": {
+        "file": {
+          "recall": 0.67109375,
+          "precision": 0.23866654272682375,
+          "f1": 0.28841045327330345
+        },
+        "symbol": {
+          "recall": 0.48406833289115336,
+          "precision": 0.23634677282288594,
+          "f1": 0.2757633233748599
+        },
+        "line": {
+          "recall": 0.3397753849701674,
+          "precision": 0.274439917946648,
+          "f1": 0.26533655959327057
+        }
+      },
+      "all_model_nominal_usd": 0.25086365,
+      "sum_per_case_unique_observed_source_lines": 21362,
+      "sum_per_worker_unique_source_lines": 21362,
+      "repeated_source_lines_across_workers": 0
+    },
+    "haiku_repeat_pair": {
+      "population": 32,
+      "valid": 32,
+      "macro": {
+        "file": {
+          "recall": 0.7286334325396825,
+          "precision": 0.18671628755589645,
+          "f1": 0.24150908721752523
+        },
+        "symbol": {
+          "recall": 0.5404486323383175,
+          "precision": 0.2004898023946662,
+          "f1": 0.255999256998905
+        },
+        "line": {
+          "recall": 0.38824442217270366,
+          "precision": 0.26193636399022097,
+          "f1": 0.27823341368593046
+        }
+      },
+      "all_model_nominal_usd": 0.48077185499999997,
+      "sum_per_case_unique_observed_source_lines": 28117,
+      "sum_per_worker_unique_source_lines": 42439,
+      "repeated_source_lines_across_workers": 14322
+    },
+    "haiku_scout_pair": {
+      "population": 32,
+      "valid": 32,
+      "macro": {
+        "file": {
+          "recall": 0.7090649801587302,
+          "precision": 0.1603977218433316,
+          "f1": 0.23007384141573511
+        },
+        "symbol": {
+          "recall": 0.5483356815310142,
+          "precision": 0.17945671931847246,
+          "f1": 0.24701558400421522
+        },
+        "line": {
+          "recall": 0.39998299136695337,
+          "precision": 0.241409567069192,
+          "f1": 0.27184457522114286
+        }
+      },
+      "all_model_nominal_usd": 0.499195665,
+      "sum_per_case_unique_observed_source_lines": 30640,
+      "sum_per_worker_unique_source_lines": 46874,
+      "repeated_source_lines_across_workers": 16234
+    },
+    "opus_native": {
+      "population": 32,
+      "valid": 32,
+      "macro": {
+        "file": {
+          "recall": 0.5891989087301587,
+          "precision": 0.31632178208265166,
+          "f1": 0.35486634815998624
+        },
+        "symbol": {
+          "recall": 0.47680827938364967,
+          "precision": 0.29355511218382685,
+          "f1": 0.3137270381900102
+        },
+        "line": {
+          "recall": 0.37909078096219995,
+          "precision": 0.3308491150148242,
+          "f1": 0.3114828363887067
+        }
+      },
+      "all_model_nominal_usd": 6.4279713,
+      "sum_per_case_unique_observed_source_lines": 24341,
+      "sum_per_worker_unique_source_lines": 24341,
+      "repeated_source_lines_across_workers": 0
+    }
+  },
+  "paired_differences": {
+    "haiku_repeat_pair-minus-haiku_native": {
+      "recall": {
+        "difference": 0.04846903720253627,
+        "paired_repo_alias_percentile95": [
+          0.025939607119774007,
+          0.07462312122958643
+        ]
+      },
+      "precision": {
+        "difference": -0.012503553956427021,
+        "paired_repo_alias_percentile95": [
+          -0.041709805682713125,
+          0.015140586525307538
+        ]
+      },
+      "f1": {
+        "difference": 0.0128968540926599,
+        "paired_repo_alias_percentile95": [
+          -0.01250004771362567,
+          0.039000695271790155
+        ]
+      }
+    },
+    "haiku_scout_pair-minus-haiku_native": {
+      "recall": {
+        "difference": 0.06020760639678599,
+        "paired_repo_alias_percentile95": [
+          0.030790253768622385,
+          0.09561028301926673
+        ]
+      },
+      "precision": {
+        "difference": -0.033030350877456,
+        "paired_repo_alias_percentile95": [
+          -0.06003536672546274,
+          -0.008215777024405487
+        ]
+      },
+      "f1": {
+        "difference": 0.006508015627872285,
+        "paired_repo_alias_percentile95": [
+          -0.018876817820925745,
+          0.033842618601555956
+        ]
+      }
+    },
+    "haiku_scout_pair-minus-haiku_repeat_pair": {
+      "recall": {
+        "difference": 0.01173856919424971,
+        "paired_repo_alias_percentile95": [
+          -0.024065121916119234,
+          0.051199886031830365
+        ]
+      },
+      "precision": {
+        "difference": -0.020526796921028982,
+        "paired_repo_alias_percentile95": [
+          -0.04510159695567988,
+          0.002628474574200542
+        ]
+      },
+      "f1": {
+        "difference": -0.006388838464787616,
+        "paired_repo_alias_percentile95": [
+          -0.036100877684872135,
+          0.02530039547234752
+        ]
+      }
+    },
+    "haiku_scout_pair-minus-opus_native": {
+      "recall": {
+        "difference": 0.020892210404753413,
+        "paired_repo_alias_percentile95": [
+          -0.01909515385731398,
+          0.06478584151050597
+        ]
+      },
+      "precision": {
+        "difference": -0.08943954794563219,
+        "paired_repo_alias_percentile95": [
+          -0.1512411940175148,
+          -0.030313694238735443
+        ]
+      },
+      "f1": {
+        "difference": -0.039638261167563874,
+        "paired_repo_alias_percentile95": [
+          -0.0827638893604168,
+          5.2076273372659105e-05
+        ]
+      }
+    },
+    "haiku_repeat_pair-minus-opus_native": {
+      "recall": {
+        "difference": 0.009153641210503712,
+        "paired_repo_alias_percentile95": [
+          -0.03942223080397591,
+          0.06026856764763532
+        ]
+      },
+      "precision": {
+        "difference": -0.06891275102460323,
+        "paired_repo_alias_percentile95": [
+          -0.12609483149307787,
+          -0.015669142503920704
+        ]
+      },
+      "f1": {
+        "difference": -0.03324942270277626,
+        "paired_repo_alias_percentile95": [
+          -0.07588786424589826,
+          0.009117183498849204
+        ]
+      }
+    }
+  },
+  "bootstrap": {
+    "kind": "paired repository-aliascluster",
+    "clusters": 22,
+    "resamples": 10000,
+    "seed": 20261019,
+    "interval": "percentile95unadjusted",
+    "point_estimate_is_significance": false
+  },
+  "gates": {
+    "all128_worker_sessions_and128_config_positions_valid_fee_known": true,
+    "secondary_independent_pair_low_cost_target": true,
+    "PRIMARY_scout_pair_low_cost_target": true,
+    "PRIMARY_strong_quality_target": true,
+    "secondary_whole_scout_policy_increment": true,
+    "advance_predeclared_primary_to500": true
+  },
+  "known_new_API_usage_decimal": "7.1570751699999999950",
+  "program_known_API_usage_after_usd": 75.330733235,
+  "remaining_API_allowance_usd": 24.669266765,
+  "unknown_worker_fees": 0,
+  "main_input_reconciled_counts": {
+    "first": 0,
+    "repeat": 0,
+    "scout": 0,
+    "opus": 32
+  },
+  "latency_limitations": "SDKactiveworkerloopsumsarenotstandalonepolicyendtoendlatency. Workersrunindeclaredorder; nocrossworkerAUC/controlledcoldcache/contextcompressionclaim.",
+  "metadata_alone_causal_gain_established": false,
+  "Jev_requests": 0,
+  "repair_calls": 0,
+  "independent_validation": true,
+  "official_submission_ready": false,
+  "Pass_at_1_evaluated": false,
+  "cash_bill_reconciled": false,
+  "source_bodies_Gold_issues_provider_IDs_local_paths_exported": false,
+  "csv_sha256": "339a5509d92ca5b869219ebd81c5f1ed4d821e17eaa41e883994e0862bc6cc0d"
+}
