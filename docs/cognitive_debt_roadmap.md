@@ -670,6 +670,21 @@ Next work is task-relevant coverage review/selective strong search, with all
 parent/child costs and both native controls; it is unimplemented/unmeasured.
 No router, independent validation, repair or500 gain is claimed or promoted.
 
+The long-anchor source-delivery defect is fixed independently in
+[#838](https://github.com/sysevol-ai/CodeNib/pull/838), main-based and unmerged.
+Composed exploration now selects a query-matching live-source line within a
+located long callable before applying its original40/80/120-line excerpt cap,
+instead of clipping the callable head first. It preserves sequential source
+reads, byte/character/line limits, anchor metadata and explicit omitted scope;
+there is no new public tool, provider, index format or persistence. Runtime
+`33e48384` passes66 focused consumer checks; the independent copy passes298
+MCP/projection checks with7 skips. On unchanged synthetic300-line and actual
+MUI sources with ranking held fixed, all three profiles now deliver the deep
+query terms; MUI fast changes80–119 to785–824. This source-delivery diagnostic
+adds zero model/API/Gold/evaluator work and proves no agent-quality gain.
+Prior Haiku native scores do not use this path. The repair becomes a prerequisite
+for the planned evidence-reviewer ablation; no router or cohort is promoted.
+
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays

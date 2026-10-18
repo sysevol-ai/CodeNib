@@ -119,6 +119,26 @@ against **both** ordinary model baselines with all parent/child costs. It
 remains unimplemented/unmeasured; no router benefit, independent validation
 or full500 expansion is established.
 
+An engineering follow-up fixes a separate long-anchor delivery defect in
+`explore_context`. Previously, a correctly ranked long callable was clipped to
+its first40/80/120 lines before query projection. The independent main-based
+[#838](https://github.com/sysevol-ai/CodeNib/pull/838) selects the strongest
+exact-token line from authenticated live source inside that anchor and returns
+at most the original profile's line/character budget. Sequential `read_source`
+is unchanged. Scope, inspected end and omitted-line metadata remain explicit;
+stale source cannot turn indexed fallback text into verified evidence.
+
+Runtime `33e48384` passes66 focused experiment-consumer checks. Its independent
+main-based copy passes298 MCP/projection checks with7 skips. A zero-model replay
+holds the ranked hit fixed on unchanged synthetic300-line and actual MUI source.
+For `groupBy groupedOptions reduce`, MUI fast mode changes from80–119 to785–824;
+all three budgets now include the reducer terms. This demonstrates source
+delivery after localization, not a ranking or agent-quality gain. The prior
+native Haiku arm does not call this operation, so this defect does not explain
+its scores. Original failed observations remain intact; no Gold, evaluator,
+model call, new prospective task or API usage is added. The source repair is
+separate from the still-unmeasured cheap-search/evidence-reviewer policy.
+
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
 line task-macro Recall/precision/F1 are **72.83%/27.97%/33.95%**. File Recall/F1
