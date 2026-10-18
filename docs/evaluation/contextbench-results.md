@@ -20,10 +20,58 @@ prevent a matched-model efficiency or independent generalization claim.
 The [1,000 per-task comparison rows](../assets/contextbench_search_pair_verified_500.csv)
 and [summary with hashes, all metric levels and limitations](../assets/contextbench_search_pair_verified_summary.json)
 preserve the original results. Search usage averages $0.01136 per candidate task;
-it excludes repair, native grading and compute. After once-only fee settlement,
-known cumulative program API usage is $81.01150498, leaving $18.98849502 of the
-$100 allowance with no active reservation. These are recorded model usage values,
-not reconciled cash invoices or the provider's remaining gifted credit.
+it excludes repair, native grading and compute. The search batch is settled once;
+its summary retains the budget snapshot at that settlement. These are recorded
+model usage values, not reconciled cash invoices or a provider credit balance.
+
+A separate **three-case candidate-only end-to-end pilot** now completes the
+original metadata-selected fmt, Gson and ponyc development tasks. The existing
+mini SWE-agent loop uses Opus 5.5, medium effort, 20 turns and a $4 per-case
+search-plus-repair SDK usage guard. It reuses the Haiku search receipts and
+receives version-bound navigation, then pulls source through CodeNib read/search
+commands. Initial source bodies are empty; the 2,048-token navigation guard does
+not cap later source reads.
+
+| Native task | Native outcome | New repair API usage | Search plus repair usage |
+| --- | --- | ---: | ---: |
+| fmtlib/fmt-2394 | Resolved | $0.34861 | $0.35695 |
+| google/gson-1391 | Resolved | $0.21937 | $0.23041 |
+| ponylang/ponyc-2205 | Unresolved | $1.36353 | $1.38093 |
+
+All three native evaluations complete: **2 resolved, 1 unresolved**. There are
+24 new metered repair sessions, **$1.9315108** new API usage and $0.03678121 of
+reused search usage, for $1.96829201 modeled search-plus-repair usage. Reused
+search is included in system cost without charging experiment spending twice.
+Every solver/native container is removed. There are no model retries, replacement
+tasks or repeated searches. The first native wrapper fails at startup because
+the isolated native environment lacks model-only `tiktoken`; that failure is
+retained, and the exact same first patch is graded with the existing native-only
+`scripts/contextbench_multiswe.py` entrypoint. Its result is joined through the
+existing receipt helper in the solver environment. No scorer changes occur.
+
+The [three per-task records](../assets/contextbench_search_pair_native_pilot_3.csv)
+and [summary with hashes and scope](../assets/contextbench_search_pair_native_pilot_summary.json)
+retain the failed C outcome and all fees. Confirmed CodeNib reads account for
+291, 91 and 827 original-source lines respectively; arbitrary shell output and
+modified-file coordinates remain outside that partial attribution. This is a
+feasibility/cost pilot on already-exposed tasks, without a no-context control.
+It establishes neither comparative repair gains nor independent or full500
+Pass@1. Full-system ContextBench Recall/F1 remains unevaluated.
+
+Mechanical arithmetic from this three-task mean gives about **$322** for
+500 repairs, or **$328** including the completed500 search usage. This is not a
+representative forecast: five languages are absent, task costs vary, native
+compute is excluded and no full500 repair budget is reserved. Broader native
+environment coverage, an explicit final-context selection/normalization contract
+and review of task/protocol comparability remain open before formal submission.
+
+The [upstream unified format](https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/docs/process_trajectories.md#unified-format)
+separates explored `pred_steps` from final `pred_files`/`pred_spans`. The pinned
+mini extractor uses a final `<PATCH_CONTEXT>` block; it does not equate every
+shell observation with that final selection. A submission must disclose the
+CodeNib selection rule and scoring phase for comparability review. The existing
+77.07% remains a search-policy result; partial repair-observation coverage is a
+separate diagnostic and is not silently promoted to a complete-system score.
 
 A final boundary audit found mutable `.git` observations in six candidate tasks,
 adding seven predicted non-source lines. None of the Gold paths is Git metadata,
@@ -34,6 +82,31 @@ replay from fresh public clones and raw-log publication remain unproven. The
 future benchmark boundary rejects explicit VCS metadata paths, including symlink
 aliases, and recursive grep exclusions take precedence over caller globs. This
 fix does not change the frozen runtime or retroactively clean this run.
+
+A separate local publication copy now redacts workstation labels, opaque SDK
+identifiers and local Git identities while preserving all1,000 worker records.
+All500 reconstructed predictions, statuses and fees match the originals.
+Its ten bounded archive parts round-trip8,645 members; the original fourteen
+parts remain unchanged. A before/after hash manifest distinguishes original
+receipt commitments from publication bytes. The historical native-control raw
+archive is excluded with an explicit manifest disclosure; candidate tasks are
+not filtered. No raw logs are published by this PR.
+
+The redacted copy also recomputes every official per-case file/symbol/line metric
+on all500 exact, clean source snapshots, with zero model calls. The archived
+evaluator has no Git checkout: authenticate its pinned source files and invoke
+the unchanged scoring bridge. The checkout-only reproduction entrypoint now
+uses that dispatch, covered by12 focused tests including real subprocess
+regressions. Complete filesystem-fingerprint replay and fresh-clone entire-trace
+portability are separate checks. The source phase has now verified all500
+fingerprints and reconstructed all1,000 worker footprints on the existing
+checkouts. Its old archived-evaluator dispatch then fails at the Git precondition;
+that failed invocation is retained. Recovery proves its decoded evaluation input
+exactly equals the already-successful official scoring input, including all Gold,
+prediction and source-path fields, and reuses that report without rerunning
+source or models. Every case metric matches within an absolute tolerance of
+1e-12. This completes existing-checkout source/metric replay with a disclosed
+scoring recovery; fresh-clone entire-trace byte portability remains unproven.
 
 The preceding **independent32 complementary-search comparison passes its frozen
 Recall/cost gate**. All128 worker sessions and128 configuration positions are
@@ -74,6 +147,12 @@ also exports a joined result only after task, patch, solver and fee receipts
 match; its native outcome remains separate from the partial source-attribution
 coverage.
 
+Subscription CLI runs also require a subscription init and an allowed quota
+event explicitly confirming included Max usage with paid overage disabled.
+Missing or unsafe receipts prevent release of the next shell action and stop
+further inference; a terminal fee remains recorded even if a later event rejects
+the route. The API pilot above uses its separately confirmed API-key route.
+
 Local verification exercises the real pinned mini loop and local shell with
 scripted SDK replies: navigate, read source, edit, read the changed source and
 execute a fixture assertion before submission. Navigation adds no source credit;
@@ -86,8 +165,9 @@ Native grading remains separate. Existing adapters accept Verified with its
 validated images, the Multi fmt/Gson/ponyc pilots, and now the Poly Svelte pilot;
 this is not full500 native environment coverage. Poly runtime evidence currently
 covers `sveltejs__svelte-510` only. Source attribution is still partial for
-arbitrary shell output. No new paid repair, complete-system Recall/F1, Pass@1 or
-end-to-end cost advantage is established by these local adapters.
+arbitrary shell output. The three-case pilot above adds real candidate repair
+outcomes; complete-system Recall/F1, independent/full500 Pass@1 and an end-to-end
+cost advantage remain unestablished.
 
 The Poly adapter authenticates the complete native CSV at dataset revision
 `d56445f9940eae4e9d2974ec66820c2f1d7754e6`, then selects the exact original
@@ -121,9 +201,9 @@ for this task. The real pinned mini Docker environment also executes CodeNib
 read/search commands there: read bytes match the original commit, and container
 removal is confirmed. No model receives these probe outputs. A portable source
 image builder and broader Poly environment validation remain open; this local
-image is not an available image for every Poly task. The changed adapter surface
+image is not an available image for every Poly task. The Poly readiness change
 passes147 checks, including four pinned mini-loop fixtures, with no provider
-requests. Cumulative program API usage remains$81.01150498.
+requests. The later three-case repair pilot is accounted separately above.
 
 An end-to-end comparison must join search, source handoff, repair and native
 grading by the same task, base commit and frozen configuration. Record source
@@ -700,13 +780,19 @@ Final fee settlement is complete. The full1,000-trajectory credential scan finds
 no hits for the current key or the five checked credential shapes; this is not a
 complete privacy review. A separate provenance check identifies local reflog
 email material in six worker records, alongside workstation paths and SDK
-identifiers that still require contextual redaction. The completed local archive
+identifiers. A separate publication copy now redacts those known values, retains
+all1,000 candidate workers and verifies unchanged predictions, statuses and fees.
+The original completed local archive
 round-trips 8,653 original members in 14 gzip parts, all below50MiB; its index
 SHA-256 is `070148a0f0cbced59984f0429a44aad2a82508056c2b831cc27dec431036c4a1`.
-Full500 offline replay is running against the existing pinned checkouts; it is
-not yet a completed replay or evidence of fresh-clone portability. Contextual
-privacy review, complete native issue-resolution outcomes and formal submission
-remain open. Original raw archives stay local.
+All500 source fingerprints and1,000 worker footprints now replay on the existing
+checkouts. The original invocation fails only at the archived-evaluator Git
+precondition, with that failure retained. A separate recovery verifies its decoded
+input is exactly identical to the completed official metric job, reuses that
+report and matches every case metric within1e-12. It restarts neither source nor
+models. Fresh-clone entire-trace portability, final publication review, complete
+native issue-resolution outcomes and formal submission remain open. Original raw
+archives stay local.
 
 ### Fixed500 native control
 
