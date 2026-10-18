@@ -31,6 +31,8 @@ from scripts.contextbench_packet_reader import API_URL, MODEL
 
 @pytest.fixture
 def source(tmp_path):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("UNAUTHENTICATED_CAPTURE_EXCLUSION\n")
     (tmp_path / "a.py").write_text(
         "def caller():\n    return helper()\n\ndef helper():\n    return 'UNREAD_BODY'\n"
     )
@@ -585,6 +587,85 @@ def test_haiku_router_only_dispatches_strong_review_for_valid_cited_gaps(source,
             "api_usage_estimate_usd"
         ] == pytest.approx(expected_fee)
     assert guard.ledger["failed"] is (route in {"invalid", "unknown_model"})
+
+
+def test_source_outside_capture_is_explicit_gap_without_body_or_authority_expansion(
+    source,
+):
+    history = exchange(source)
+    history.extend(
+        [
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": "excluded",
+                        "function": {
+                            "name": "read",
+                            "arguments": json.dumps({"file_path": ".git/config"}),
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "excluded",
+                "content": "1 | UNAUTHENTICATED_CAPTURE_EXCLUSION",
+            },
+            {"role": "assistant", "content": "Observed"},
+        ]
+    )
+
+    def handler(request):
+        packet = json.loads(json.loads(request.content)["messages"][0]["content"])
+        assert packet["coverage_gaps"] == [
+            {
+                "file": ".git/config",
+                "lines": [1, 1],
+                "code": "outside_authenticated_inventory",
+            }
+        ]
+        assert "UNAUTHENTICATED_CAPTURE_EXCLUSION" not in json.dumps(packet)
+        assert [e["file"] for e in packet["evidence"]] == ["a.py"]
+        if request.url.path.endswith("count_tokens"):
+            return httpx.Response(200, json={"input_tokens": 1000})
+        return httpx.Response(200, json=response('{"decision":"stop","gaps":[]}'))
+
+    guard, outcome = execute(source, handler, history=history)
+    assert outcome == {} and not guard.ledger["failed"]
+    assert guard.ledger["api_usage_estimate_usd"] == pytest.approx(0.006)
+
+
+def test_router_sends_only_cited_prior_bodies_and_labels_other_seen_ranges(source):
+    history = exchange(source) + exchange(source, offset=4, limit=2, call_id="helper")
+    seen_packets = []
+
+    def handler(request):
+        payload = json.loads(request.content)
+        packet = json.loads(payload["messages"][0]["content"])
+        if payload["model"] == MODEL:
+            assert [e["lines"] for e in packet["evidence"]] == [[1, 2]]
+            assert packet["known_source_locations"][0]["lines"] == [4, 5]
+            assert packet["known_source_locations"][0]["seen_by_search_agent"] is True
+            assert "UNREAD_BODY" not in json.dumps(packet)
+            assert len(packet["routing_gaps"]) == 1
+        else:
+            assert [e["lines"] for e in packet["evidence"]] == [[1, 2], [4, 5]]
+        if request.url.path.endswith("count_tokens"):
+            return httpx.Response(200, json={"input_tokens": 1000})
+        seen_packets.append(packet)
+        return httpx.Response(
+            200, json=response(continue_decision(packet), model=payload["model"])
+        )
+
+    guard, outcome = execute(
+        source, handler, history=history, guard_type=HaikuRouterGuard
+    )
+    assert outcome["decision"] == "block" and not guard.ledger["failed"]
+    assert len(seen_packets) == 2
+    assert guard.ledger["strong_selected_entries"] == 1
+    assert guard.ledger["strong_locator_entries"] == 1
+    assert guard.ledger["new_source_lines_from_review"] == 0
 
 
 @pytest.mark.parametrize("tokens,expected", [(100000, 0.01005), (100001, 0.0502505)])
