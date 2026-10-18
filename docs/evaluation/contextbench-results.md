@@ -89,10 +89,18 @@ retains the v1 grading pipeline. No additional model requests occur in this
 inventory. General source-image preparation and grader integration remain open.
 A first additional Verified environment restores the exact canonical source over
 the image's single-file `pyproject.toml` setup overlay and verifies clean,
-history-free source. Its native fixture currently stops at the pinned harness's
-strict UTF-8 output decoding; it is not a candidate attempt or native pass.
-Keep that infrastructure failure separate from unresolved model patches before
-starting a broader billed repair batch.
+history-free source. Its native neutral control is unresolved and its reference
+control resolves, as expected. The original strict UTF-8 decoding failure is
+retained; a stream adapter now preserves exact raw bytes and an incremental UTF-8
+text view before calling the unchanged pinned executor, parser and scorer.
+Timeout flags and duration still come from the official executor. A separate
+`scripts/contextbench_verified.py` entrypoint also completes the native reference
+fixture without importing repair-model dependencies. It authenticates ten native
+source files and binds the task, source, patch, pinned image and owned container;
+the solver archives both the grader and transport implementations. The new
+transport/grader checks cover split Unicode, invalid bytes, timeout drainage,
+cleanup failure and the native-only CLI. These are zero-model environment
+fixtures, without additional candidate attempts, API usage or Pass@1 results.
 
 The [upstream unified format](https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/docs/process_trajectories.md#unified-format)
 separates explored `pred_steps` from final `pred_files`/`pred_spans`. The pinned

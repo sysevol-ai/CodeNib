@@ -23,7 +23,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -436,6 +435,8 @@ def freeze_solver(output, mini_root):
                 "contextbench_search_pair_solver.py",
                 "contextbench_search_pair.py",
                 "contextbench_reproduce_search_pair.py",
+                "contextbench_verified.py",
+                "contextbench_verified_output.py",
             )
         },
         **{
@@ -839,98 +840,14 @@ def grade(args):
         return
     if config.get("source", "Verified") != "Verified":
         raise ValueError("Unsupported native solver benchmark")
-    if importlib.metadata.version("swebench") != "4.1.0":
-        raise ValueError("Native grading requires isolated swebench==4.1.0")
-    import docker
-    from swebench.harness import run_evaluation
-    from swebench.harness.test_spec.test_spec import TestSpec, make_test_spec
+    from scripts.contextbench_verified import grade_verified
 
-    solver = json.loads((args.solver_run / "solver.json").read_text())
-    predictions = json.loads((args.solver_run / "predictions.json").read_text())
-    if (
-        len(predictions) != 1
-        or predictions[0]["instance_id"] != solver["original_inst_id"]
-    ):
-        raise ValueError("Native prediction identities differ")
-    if predictions[0]["model_patch"] != solver["model_patch"]:
-        raise ValueError("Native prediction differs from the solver patch")
-    selected = [
-        row
-        for row in json.loads(args.dataset.read_text())
-        if row["instance_id"] == solver["original_inst_id"]
-    ]
-    if len(selected) != 1 or selected[0]["base_commit"] != config["source_commit"]:
-        raise ValueError("Native task differs from the selected source snapshot")
-    for name, sha in config["implementation"].items():
-        if digest(args.solver_run / "implementation" / name) != sha:
-            raise ValueError("Archived solver implementation changed")
-    image_id = config["image_id"]
-    client = docker.from_env()
-    client.images.get(image_id)  # Require the exact already-local solver image.
-
-    class PinnedImageSpec(TestSpec):
-        @property
-        def instance_image_key(self):
-            return image_id
-
-    native_spec = make_test_spec(selected[0], namespace="swebench")
-    spec = PinnedImageSpec(**dataclasses.asdict(native_spec))
-    args.output.mkdir(parents=True, exist_ok=False)
-    run_id = "codenib-" + uuid.uuid4().hex[:12]
-    write_json(
-        args.output / "config.json",
-        {
-            "solver_run": str(args.solver_run.resolve()),
-            "solver_sha256": digest(args.solver_run / "solver.json"),
-            "prediction_sha256": digest(args.solver_run / "predictions.json"),
-            "dataset_sha256": digest(args.dataset),
-            "native_harness_version": "4.1.0",
-            "image_id": image_id,
-            "run_id": run_id,
-            "timeout": args.timeout,
-            "adapter_sha256": digest(Path(__file__)),
-            "scope": (
-                "Native Verified patch application, reference test patch "
-                "and resolution grading"
-            ),
-        },
-    )
-    (args.output / "eval.sh").write_text(spec.eval_script)
-    run_evaluation.RUN_EVALUATION_LOG_DIR = args.output / "logs"
-    result = run_evaluation.run_instance(
-        spec, predictions[0], False, False, client, run_id, timeout=args.timeout
-    )
-    if not result or not result.get("completed"):
-        record = {
-            "instance_id": solver["instance_id"],
-            "status": "error",
-            "resolved": False,
-        }
-    else:
-        report_path = (
-            args.output
-            / "logs"
-            / run_id
-            / predictions[0]["model_name_or_path"].replace("/", "__")
-            / solver["original_inst_id"]
-            / "report.json"
-        )
-        report = json.loads(report_path.read_text())
-        record = {
-            "instance_id": solver["instance_id"],
-            "status": "graded",
-            "resolved": report[solver["original_inst_id"]]["resolved"],
-            "native_report": report,
-        }
-    write_json(args.output / "resolution.json", record)
+    grade_verified(args)
     if config.get("retrieval_kind") == "search_pair_navigation":
         write_json(
             args.output / "whole-run-result.json",
             joined_native_result(args.solver_run, args.output),
         )
-    print(
-        json.dumps({key: record[key] for key in ("instance_id", "status", "resolved")})
-    )
 
 
 def main():
