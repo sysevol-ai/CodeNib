@@ -25,14 +25,14 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The canonical500 batches with completed grading and settled fees retain
-**122 unique first candidate attempts:109 natively resolved and13 unresolved**.
-They include the three original development repairs and119 subsequent Verified
-tasks in canonical metadata order. All122 raw patch/native/selection/fee bindings
-authenticate, including1,211 unique metered search/repair sessions. The remaining378
-are outside these settled cohorts. The next55 source environments and110 native
-execution controls now qualify; their first candidate attempts run in two
-disjoint shards under the same resumed owner. Their fees/outcomes are not yet
-part of the settled122.
+**177 unique first candidate attempts:154 natively resolved and23 unresolved**.
+They include the three original development repairs and174 subsequent Verified
+tasks in canonical metadata order. All177 raw patch/native/selection/fee bindings
+authenticate, including1,738 unique metered search/repair sessions. The remaining323
+are outside these settled cohorts. The latest55 first attempts finish with
+**45 resolved,10 unresolved**, across417 metered repair sessions and
+**$21.4079353** actual API usage. Their$275 reservation closes once and is released;
+it is not an additional charge.
 The earlier58 selected-context exports pass the unchanged official evaluator as
 a format compatibility check. A zero-model provenance replay now reauthenticates
 all244 original search workers and confirmed repair inputs for the completed122,
@@ -69,15 +69,13 @@ controls. No model retry, task replacement or search rerun occurs. The cleanup
 helper bounds removal/absence verification and checkpoints ownership while
 preserving model outputs; dispatch still stops on unconfirmed cleanup.
 
-Across all122 repairs, new API usage totals **$46.9873695**. Their allocated
-original search usage is$1.11098862, for **$48.09835812** modeled search-plus-repair
+Across all177 repairs, new API usage totals **$68.3953048**. Their allocated
+original search usage is$1.607609135, for **$70.002913935** modeled search-plus-repair
 usage, without charging reused search again. At this closure, the new$500
-authorization has **$453.0126305 remaining**, with no active reservation; cumulative
-program API usage including prior work is$127.99887448. These are recorded SDK
+authorization has **$431.6046952 remaining**, with no active reservation; cumulative
+program API usage including prior work is$149.40680978. These are recorded SDK
 usage values; native compute and reconciled invoices remain separate.
-The live next55 batch reserves$275 from that existing allowance. This is a
-reservation rather than measured spending; its actual model usage remains
-unsettled and must be subtracted before quoting a current remaining allowance.
+No Pro or remaining269 candidate request or reservation has begun at this closure.
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
@@ -162,11 +160,14 @@ missing/failed/changed release evidence. No candidate model attempt repeats.
 
 A read-only inventory now authenticates all3,471 source/control input files,
 including55 original Git seed TARs and all136 actual control records. Each of the
-110 selected control hashes matches its admission. A separate zero-model
-archiver waits for the actual177-case closed index, the55 first-attempt native
-and fee closure, and the original controller's exit. Actual partial122 input is
-rejected before archive creation. The55 candidate bundle has not been produced;
-full500 raw coverage and publication gates remain open.
+110 selected control hashes matches its admission. After the actual177-case
+index,55-case native/fee closure and original controller exit, a separate
+zero-model archiver retains8,191 original members in nine decoded, byte-verified
+Zstandard parts totaling418,339,937 bytes. Together with the unchanged earlier58
+and64 archives, their task coverage is exactly177. Actual partial122 input is
+rejected before archive creation. This55-case increment is private and unredacted;
+the publication preview and relocated provenance replay still cover122 only.
+Full500 raw coverage and publication gates remain open.
 
 The closed64 cohort's final three pytest environments initially fail even with
 reference patches:
@@ -341,8 +342,26 @@ IPv4-first DNS; all12 recorded grader/probe containers are absent. These are
 zero-model fixtures, without additional candidate outcomes. Per-dispatch source
 preparation and native controls remain open for the other unexecuted tasks. The repair prompt, model loop, budgets and navigation
 delivery are unchanged; only Pro gains the existing source-only preflight.
-A separate54-case Pro first-attempt controller now has a queued owner; no Pro
-reservation or model request has begun. Isolated file fixtures exercise all fixed task identities, two
+A separate54-case Pro first-attempt controller remains held before any
+reservation or model request. Its source preparation produces46 prepared
+environments and eight OpenLibrary failures: replacing the parent Git metadata
+leaves submodule Git pointers referring to the removed metadata. Original failures
+remain retained. Source-only recovery now prepares all54 environments, retaining
+each of the16 submodule gitlinks with one commit and unchanged tracked source.
+One native submodule has an untracked file; retain its rejected recovery and
+remove that untracked artifact before the successful clean-source check. The
+original control owner exits without dispatch when the source gate first fails;
+a new fixture owner reuses its unchanged per-case dispatch. Actual54-case native
+controls are now running. Early Element-Web Jest and Flipt Go controls capture
+zero tests after worker/process exhaustion; their reference patches also fail.
+These environments remain unadmitted and require resource recovery. Neither
+failure is counted as a candidate repair result.
+A separate execution qualifier also requires every declared test identifier to
+have an actual recorded execution status before resuming the same unpaid owner.
+An existing real NodeBB neutral control is gradedFalse while omitting six required
+tests; the qualifier rejects it. Its corrected neutral/reference controls execute
+all291 required tests and qualify. This fixture creates no new candidate result.
+Isolated file fixtures exercise all fixed task identities, two
 disjoint27-case shards, admitted native-image overrides, stale/failed-control
 rejection, exact session accounting and duplicate-owner rejection. The complete
 solver dispatch AST remains unchanged apart from cohort accounting and Pro native
@@ -367,8 +386,29 @@ reservations and late metadata writes. The owner waits for actual full-cohort
 source/native admission, reserves only existing authorized usage and never
 retries a model or replaces a task. No remaining269 reservation or model request
 has begun, and the synthetic checks establish no new native-ready environment.
+The same original269 controller is now held before creating any paid phase.
+Prospective admission prepares both remaining source cohorts in advance: after
+Pro fee closure and actual Poly source/control execution qualification, the
+unchanged Multi source delegate prepares all153 remaining environments while
+reservations remain zero. Only actual Poly116 and Multi153 execution proofs can
+resume that same controller; its nine paid phases and accounting stay unchanged.
+Poly checks required identifiers against actual parsed test results. Multi needs
+transition-aware qualification: its report's base/test-patch results are historical
+dataset fields; only the current fix-patch result records the local control run.
+The153-case audit identifies21 pure NONE-to-PASS cases and five aggregate-only
+test reports. Expected NONE-to-PASS absence must remain distinct from a broken
+test runner. Ambiguous neutral collection needs extra local base-source execution
+evidence, outside candidate metrics. The Multi qualifier is now queued behind the
+actual153 source admissions and306 controls. A file fixture authenticates the
+existing fmt18-test result, rejects a synthetic empty current reference despite
+its18 historical passes, and verifies that the original test patch plus its
+inverse restore the exact base tree in a private Git index. This adds no model or
+native test call. Actual ambiguous cases still need local base-only execution
+using the unchanged native adapter and test command; their native resolved flag
+is excluded from candidate outcomes. The queued resumer cannot release without
+these actual execution proofs.
 A separate zero-model result owner now waits for11 successive closed cohorts,
-extending the122-case index through exactly500 first attempts. It authenticates
+extending the177-case index through exactly500 first attempts. It authenticates
 patch, native outcome, final context and unique search/repair fees for every case,
 including failures. New Poly/Multi records additionally bind all four archived
 native-runtime files to the actual grading adapter; all58 earlier native adapter
