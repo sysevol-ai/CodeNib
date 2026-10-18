@@ -195,6 +195,90 @@ def parser_for_repo(native, repo):
     raise ValueError("Native Poly parser metadata is unavailable for this repository")
 
 
+def validated_electron_cache(metadata, original, case, config, instance_id, proof):
+    """Bind an explicit Electron cache to its separate original task image.
+
+    Preparation attests unchanged tracked source/tests. Actual image identity,
+    task provenance, layer ancestry and execution settings are checked here.
+    """
+    prefix = (
+        "ghcr.io/timesler/swe-polybench.eval.x86_64."
+        + case["instance_id"].lower()
+        + "@sha256:"
+    )
+    required_true = (
+        "owned_container_removed",
+        "all_tracked_source_and_test_bytes_unchanged",
+        "original_source_and_native_images_unchanged",
+        "native_command_parser_scorer_and_limits_unchanged",
+        "network_enabled_only_during_preparation",
+    )
+    if (
+        case["repo"] != "microsoft/vscode"
+        or proof.get("status") != "prepared"
+        or proof.get("instance_id") != instance_id
+        or proof.get("original_native_image_id") != original["Id"]
+        or proof.get("derived_native_image_id") != metadata["Id"]
+        or proof.get("source_image_unchanged") != config["image_id"]
+        or proof.get("source_commit") != config["source_commit"]
+        or proof.get("source_commit") != case["base_commit"]
+        or proof.get("source_tree") != config["source_tree"]
+        or original["Id"] == config["image_id"]
+        or metadata["Id"] in {original["Id"], config["image_id"]}
+        or not all(proof.get(name) is True for name in required_true)
+        or not any(
+            value.startswith(prefix) for value in original.get("RepoDigests", [])
+        )
+    ):
+        raise ValueError("Electron cache proof differs from its task or source image")
+    version, checksum = proof.get("pinned_Electron_version"), proof.get(
+        "executable_sha256"
+    )
+    if (
+        not isinstance(version, str)
+        or not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version)
+        or proof.get("embedded_executable_Electron_version") != version
+        or not isinstance(checksum, str)
+        or not re.fullmatch(r"[a-f0-9]{64}", checksum)
+    ):
+        raise ValueError("Electron cache executable/version proof is incomplete")
+    old_layers = original.get("RootFS", {}).get("Layers", [])
+    new_layers = metadata.get("RootFS", {}).get("Layers", [])
+    if (
+        not old_layers
+        or len(new_layers) <= len(old_layers)
+        or new_layers[: len(old_layers)] != old_layers
+    ):
+        raise ValueError("Electron cache does not extend its original image layers")
+    settings = (
+        "Cmd",
+        "Entrypoint",
+        "Env",
+        "WorkingDir",
+        "User",
+        "ExposedPorts",
+        "Volumes",
+        "Shell",
+        "StopSignal",
+        "Healthcheck",
+    )
+
+    def setting(image, key):
+        value = image["Config"].get(key)
+        # Docker may represent the absence of an entrypoint as null or [].
+        return None if key == "Entrypoint" and value in (None, []) else value
+
+    if any(setting(metadata, k) != setting(original, k) for k in settings):
+        raise ValueError("Electron cache changes native execution configuration")
+    return {
+        "kind": "native-only-public-Electron-cache-v1",
+        "original_native_image_id": original["Id"],
+        "derived_native_image_id": metadata["Id"],
+        "pinned_Electron_version": version,
+        "executable_sha256": checksum,
+    }
+
+
 def grade_poly(args):
     """Own one bounded grader and verify removal before returning its result.
 
@@ -237,12 +321,33 @@ def grade_poly(args):
     if (
         metadata["Id"] == config["image_id"]
         or metadata["Config"]["WorkingDir"].rstrip("/") != "/testbed"
-        or not any(
-            value.startswith(prefix) for value in metadata.get("RepoDigests", [])
-        )
     ):
         raise ValueError("Native Poly image differs from its separate task image")
+    electron_path = getattr(args, "electron_cache_proof", None)
+    electron_profile, proof_bytes = None, None
+    if electron_path is not None:
+        with electron_path.open("rb") as stream:
+            proof_bytes = stream.read(65537)
+        if len(proof_bytes) > 65536:
+            raise ValueError("Electron cache proof exceeds its metadata size bound")
+        proof = json.loads(proof_bytes)
+        origin = (
+            proof.get("original_native_image_id") if isinstance(proof, dict) else None
+        )
+        if not isinstance(origin, str) or not re.fullmatch(
+            r"sha256:[a-f0-9]{64}", origin
+        ):
+            raise ValueError("Electron cache origin must be a pinned image ID")
+        original = client.images.get(origin).attrs
+        electron_profile = validated_electron_cache(
+            metadata, original, case, config, solver["instance_id"], proof
+        )
+        electron_profile["proof_sha256"] = hashlib.sha256(proof_bytes).hexdigest()
+    elif not any(value.startswith(prefix) for value in metadata.get("RepoDigests", [])):
+        raise ValueError("Native Poly image differs from its separate task image")
     args.output.mkdir(parents=True, exist_ok=False)
+    if proof_bytes is not None:
+        (args.output / "electron-cache-proof.json").write_bytes(proof_bytes)
     write_json(args.output / "native-case.json", case)
     name = "codenib-contextbench-poly-" + uuid.uuid4().hex[:16]
     write_json(
@@ -263,6 +368,7 @@ def grade_poly(args):
             "timeout": args.timeout,
             "native_call_wall_guard_s": args.timeout,
             "offline_tokenizer_cache": cache[1] if cache is not None else None,
+            "native_Electron_cache": electron_profile,
             "scope": "Separate native Poly grading only, no model calls",
         },
     )
@@ -336,7 +442,13 @@ def grade_poly(args):
                 outcome = native.score(
                     case["instance_id"], parsed, f2p, p2p, True, True
                 )
-                observed = set(parsed["passed_tests"]) | set(parsed["failed_tests"])
+                # The pinned scorer already returns unresolved for an empty
+                # parse (for example a candidate that fails to compile). Keep
+                # that judgment and the raw parser output without a KeyError.
+                observed = set(parsed.get("passed_tests", [])) | set(
+                    parsed.get("failed_tests", [])
+                )
+                row["native_test_collection_observed"] = bool(observed)
                 row["missing_required_tests"] = sorted(set(f2p + p2p) - observed)
                 footer = "Container exited with status code: " + str(
                     row["native_test_returncode"]
@@ -388,6 +500,11 @@ def main():
     parser.add_argument("--native-upstream", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument(
+        "--electron-cache-proof",
+        type=Path,
+        help="Explicit native-only Electron cache provenance for a VSCode task image",
+    )
     parser.add_argument(
         "--cl100k-cache-file",
         type=Path,

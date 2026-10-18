@@ -80,6 +80,35 @@ No remaining269 candidate request or reservation has begun at this closure.
 Poly source preparation has started after actual Pro fee closure and original
 controller exit; the remaining paid owner stays held for the full source/native
 execution proofs described below.
+
+The Poly preparation encounters native environment failures before any of the
+remaining269 model requests. A VSCode diagnostic compiles but cannot download
+Electron during the network-isolated test, producing no parsed tests. Preserve
+that failure. Seven native-only cache profiles now preload the public Electron
+version pinned by each task's base revision. Live image checks bind each profile
+to its original task image, unchanged tracked source/tests and execution settings;
+the separate source-only agent images remain unchanged. Four preparation commits
+initially inherit the prewarming container's `sleep` entrypoint and are rejected.
+Separate configuration-only images restore the original empty entrypoint, with
+the failed records retained. One actual cached neutral/reference diagnostic
+records all four required test IDs in both runs and yields False/True as expected.
+This diagnostic does not replace the full232 canonical controls or any candidate
+attempt. The remaining paid owner and automatic release helper remain held.
+
+Source-only recovery also retains two code-server LFS failures and two
+Transformers cleanliness failures. The code-server snapshots preserve the full
+canonical LFS asset through a local object cache; one also retains its exact
+canonical submodule with one commit and no remotes or reflogs. The Transformers
+snapshots remove untracked nested repositories inside the isolated solver
+container. The original native images and failed evidence remain unchanged.
+Whole-cohort reconciliation waits for the original source writer to exit.
+The updated native adapter preserves the pinned scorer's unresolved result for
+an empty parser output instead of raising a `KeyError`; raw output and missing
+test IDs remain explicit. Empty output cannot satisfy the separate required-test
+execution gate. All39 focused unit tests and pinned hooks pass. The full Poly
+source/control cohort, Multi source/control cohort and final500 evaluation remain
+open; these fixes add no model calls or repair score claims.
+
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
