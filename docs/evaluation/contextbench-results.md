@@ -470,6 +470,15 @@ changed bodies with the same paths and headers are rejected. This classifies the
 declared markers without removing them or asserting absence of arbitrary secrets
 or personal data. Broader publication review and full500 submission remain open.
 
+A separate private43-member review-support part retains the later provenance and
+portable tools in994,887 bytes. Its copied-input source verifier reproduces all216
+classifications with system Python, Git, Zstandard and anonymous upstream HTTP,
+without model credentials or Python reads of the original checkout/experiment.
+The standard-library offline part checker binds all344 finding classifications
+and rejects an altered prior classification even with coherently rebuilt archive
+and manifest checksums. These supplementary checks preserve the complete raw
+benchmark parts separately and add no model call, native rerun or new score.
+
 The private submission draft now binds all500 IDs to the pinned
 `contextbench_verified` metadata and the frozen search population. It distinguishes
 HF dataset revision `c2855792b006af41c67202d33883fb9d46362853` from official
