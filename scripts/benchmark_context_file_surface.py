@@ -98,7 +98,7 @@ def run(args):
     write_json(
         args.output / "protocol.json",
         {
-            "strategy": "on_demand_file_surface_v1",
+            "strategy": "on_demand_file_surface_v2",
             "scope": "Exposed development only; no independent or repair gain claim.",
             "input_sha256": digest(args.input),
             "source_commit": commit,

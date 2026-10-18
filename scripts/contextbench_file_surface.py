@@ -19,11 +19,14 @@ from codenib.languages import extension_to_language_map
 from codenib.mcp.tools.source import _repository_relative_source
 from scripts.contextbench_surface import Location, SurfaceContext
 
-GUIDANCE = """Use glob/grep to locate relevant repository files. Ask
-explore_context(view='surface', file_path=...) for a file/definition outline
-before broad source reads, then request relevant handles with view='body'.
-Pass near_line from grep to focus on enclosing/nearby definitions; keep that
-same near_line when paging through the outline.
+GUIDANCE = """Use glob/grep to locate relevant repository files. For each newly
+located relevant file, first call explore_context(view='surface', file_path=...)
+before reading its contents. Pass near_line from grep to focus on enclosing or
+nearby definitions; keep that same near_line when paging through the outline.
+Use the returned handles with explore_context(view='body', handle=...) as the
+primary source-reading path. Select the definitions relevant to the issue rather
+than fetching every body. Native read is available for precise subranges that a
+handle does not cover or when an explicit outline/body error prevents loading.
 Surface replies contain declarations and locations, not behavior evidence.
 Use next_cursor to request more outline entries and next_start_line for large
 bodies. Revisit the outline when other definitions in a located file may matter.
