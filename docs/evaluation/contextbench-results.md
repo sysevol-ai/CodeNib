@@ -29,8 +29,10 @@ The canonical500 batches with completed grading and settled fees retain
 They include the three original development repairs and119 subsequent Verified
 tasks in canonical metadata order. All122 raw patch/native/selection/fee bindings
 authenticate, including1,211 unique metered search/repair sessions. The remaining378
-are outside these settled cohorts. All next55 source environments are prepared;
-their native controls are running before any further repair requests.
+are outside these settled cohorts. The next55 source environments and110 native
+execution controls now qualify; their first candidate attempts run in two
+disjoint shards under the same resumed owner. Their fees/outcomes are not yet
+part of the settled122.
 The earlier58 selected-context exports pass the unchanged official evaluator as
 a format compatibility check. A zero-model provenance replay now reauthenticates
 all244 original search workers and confirmed repair inputs for the completed122,
@@ -73,6 +75,9 @@ usage, without charging reused search again. At this closure, the new$500
 authorization has **$453.0126305 remaining**, with no active reservation; cumulative
 program API usage including prior work is$127.99887448. These are recorded SDK
 usage values; native compute and reconciled invoices remain separate.
+The live next55 batch reserves$275 from that existing allowance. This is a
+reservation rather than measured spending; its actual model usage remains
+unsettled and must be subtracted before quoting a current remaining allowance.
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
@@ -117,21 +122,46 @@ remains unresolved. This is recorded separately from a behavioral test failure;
 the neutralFalse/referenceTrue pair alone did not establish executable tests.
 No production reference code, grading change or model retry is introduced.
 
-The next55 now have an additional prospective test-execution admission. The
-existing waiting paid owner is held before preparation/reservation while the
-original native controls continue. Every required test identifier must have a
-parsed status, and every `FAIL_TO_PASS` target must have a PASS/FAIL/ERROR execution
-status. Conditional `PASS_TO_PASS` XFAIL/SKIPPED statuses must match between both
-controls and remain explicitly disclosed. They are not described as executed.
+The next55 complete the additional prospective test-execution admission before
+inference. Their110 control logs record every required test identifier, and every
+`FAIL_TO_PASS` target has a PASS/FAIL/ERROR execution status. Conditional
+`PASS_TO_PASS` XFAIL/SKIPPED statuses match between both controls and remain
+explicitly disclosed; they are not described as executed.
+The original waiting paid owner is held before preparation/reservation until
+the complete proof is available, then resumes without restart. The two first-attempt
+shards retain the same frozen model/context runtime, native criteria, population
+and budget policy.
 Three actual-log regressions reject the collection-blocked Pylint fixture, accept
 the61-required-test pytest fixture, and preserve the matching scikit-learn XFAIL.
 A separate owned-child test verifies STOP/CONT acknowledgement and rejection of
 a mismatched process identity through Linux pidfd. Only a complete110-log proof
 releases the same existing paid owner; failures retain it for root recovery.
-The original model/context runtime, native criteria, selected population and
-financial ledgers remain unchanged. Actual55-case qualification is still running.
+The final110-log proof passes before its existing$275 reservation and first
+repair requests. Native qualification itself makes no provider call or financial
+mutation.
 
-The final three pytest environments initially fail even with reference patches:
+Twelve Sphinx environments initially omit per-test pass records even when a
+reference patch passes its required tests. Each original native image adds
+`pytest -rA` in its tox configuration, while the canonical source checkout omits
+that reporting-only change. A `PYTEST_ADDOPTS=-rA` source-image profile restores
+the report without changing filesystem layers, code, tests, command, parser or
+scorer. Two older tox files override that variable; a narrowly scoped append
+override restores the same reporting flag while preserving the actual
+materialized `PYTHONWARNINGS` and other variables. The newer tox key alias drops
+that warning setting in a real metadata probe and is rejected.
+These image environment settings also affect any agent pytest reporting;
+that observation change is disclosed. The model/context code and guards remain
+unchanged. All12 corrected neutralFalse/referenceTrue pairs qualify, with every
+required test identifier authenticated. The55-case cohort retains136 actual
+native fixtures:110 admitted runs and26 original/corrective reporting failures.
+All original fixture outcomes remain available. Canonical records are backed up
+byte-for-byte and replaced only after the original writer exits; an atomic
+last-written reconciliation marker gates the held owner. Deterministic file
+fixtures verify idempotence, staged recovery, rejection of unrelated writes and
+missing/failed/changed release evidence. No candidate model attempt repeats.
+
+The closed64 cohort's final three pytest environments initially fail even with
+reference patches:
 their history-free source snapshots cause editable installation to infer
 `pytest==0.1.dev1`, below the unchanged test configuration's minimum. Preserve all
 six original failed fixtures. A pytest-specific
@@ -245,6 +275,13 @@ registry HEAD checks do not download layers or verify their platform. The34
 Multi repository aliases require explicit mapping to their original native
 repository names. Pro uses dataset revision `7ab51149`, which matches these54
 tasks; the upstream default now selects V2, so it must not silently replace v1.
+A separate transport warmup now verifies cached local images for all54 fixed Pro
+tasks: one existing image is reused and53 are downloaded by frozen manifest and
+platform/config identity. Sequential downloads check actual Docker-data headroom
+and defer during a paid phase. No container, source-image commit, native test,
+provider request or financial mutation occurs. This removes future layer-download
+waiting; source hygiene and108 actual native controls remain required before Pro
+inference.
 The [official Pro source](https://github.com/scaleapi/SWE-bench_Pro-os/tree/66f92766bba642462d4bbe5479e83f91f9211862)
 retains the v1 grading pipeline. No additional model requests occur in this
 inventory. The native adapter now resolves the six known Multi alias mappings
