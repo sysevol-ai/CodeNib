@@ -128,7 +128,10 @@ def test_solver_sdk_meter_and_tool_isolation(monkeypatch, tmp_path, meter):
 
 
 @pytest.mark.parametrize("key_source", ["ANTHROPIC_API_KEY", "none"])
-def test_api_solver_requires_actual_sdk_key_route(monkeypatch, tmp_path, key_source):
+@pytest.mark.parametrize("actual_model", ["claude-haiku-5-5", "unexpected-model"])
+def test_api_solver_requires_actual_sdk_key_route(
+    monkeypatch, tmp_path, key_source, actual_model
+):
     def event(kind, **fields):
         return dataclasses.make_dataclass(kind, [(k, object) for k in fields])(**fields)
 
@@ -141,7 +144,7 @@ def test_api_solver_requires_actual_sdk_key_route(monkeypatch, tmp_path, key_sou
         yield event(
             "AssistantMessage",
             content=[{"text": "```bash\npwd\n```"}],
-            model="claude-haiku-5-5",
+            model=actual_model,
         )
         yield event(
             "ResultMessage", total_cost_usd=0.001, is_error=False, subtype="success"
@@ -170,6 +173,10 @@ def test_api_solver_requires_actual_sdk_key_route(monkeypatch, tmp_path, key_sou
             model.query(messages)
         assert "sdk_reported_cost_usd" not in model.calls[0]
         assert not model.calls[0]["input_delivery_confirmed"]
+    elif actual_model == "unexpected-model":
+        with pytest.raises(ValueError, match="configured model"):
+            model.query(messages)
+        assert model.cost == model.calls[0]["sdk_reported_cost_usd"] == 0.001
     else:
         assert model.query(messages)["content"].startswith("```bash")
         assert model.cost == 0.001
@@ -419,6 +426,8 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
         ("Multi", "ponylang/ponyc", False, False, "budget_unknown_usage"),
         ("Multi", "ponylang/ponyc", False, False, "budget_export_failure"),
         ("Multi", "ponylang/ponyc", False, False, "non_budget"),
+        ("Verified", "owner/repo", False, False, "budget_pair"),
+        ("Verified", "owner/repo", False, False, "budget_pair_none"),
     ],
 )
 def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_container(
@@ -505,10 +514,45 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
             "source",
             solver.digest(note_input) if failure == "budget_notes" else "sha",
             "tree",
-            tmp_path,
+            tmp_path / "source",
         ),
     )
     monkeypatch.setattr(solver, "initial_source_receipt", lambda *args: None)
+    if failure in {"budget_pair", "budget_pair_none"}:
+        from hashlib import sha256
+
+        from scripts.contextbench_search_pair_solver import PairHandoff
+
+        pair_handoff = PairHandoff(
+            solver.delivered_input(None, None, None)[0],
+            tmp_path / "source",
+            "tree",
+            json.dumps(
+                {
+                    "source_bodies_included": False,
+                    "entries": [
+                        {
+                            "file": "a.py",
+                            "lines": [1, 2],
+                            "handle": "versioned-location",
+                        }
+                    ],
+                }
+            ),
+            {
+                "instance_id": "case",
+                "case_terminal_sha256": "sha",
+                "search_sessions": [
+                    {
+                        "phase": "search:" + label,
+                        "usage_usd": fee,
+                        "session_id_sha256": sha256(label.encode()).hexdigest(),
+                    }
+                    for label, fee in [("first", 0.04), ("scout", 0.06)]
+                ],
+            },
+        )
+        monkeypatch.setattr(solver, "load_pair_handoff", lambda *args: pair_handoff)
     monkeypatch.setattr(solver, "freeze_solver", lambda *args: {})
     monkeypatch.setattr(solver.importlib.metadata, "version", lambda name: "fixture")
     monkeypatch.setattr(
@@ -563,7 +607,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
     requests = []
     Assistant = dataclasses.make_dataclass("AssistantMessage", ["content", "model"])
     Result = dataclasses.make_dataclass(
-        "ResultMessage", ["total_cost_usd", "is_error", "subtype"]
+        "ResultMessage", ["total_cost_usd", "is_error", "subtype", "session_id"]
     )
 
     async def query(**kwargs):
@@ -576,7 +620,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         command = "edit source" if first else "UNEXECUTED_FAILED_REPLY"
         yield Assistant([{"text": f"```bash\n{command}\n```"}], "fixed-model")
         if first:
-            yield Result(0.1, False, "success")
+            yield Result(0.1, False, "success", "repair-1")
         else:
             yield Result(
                 None if failure == "budget_unknown_usage" else 0.9,
@@ -586,6 +630,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
                     if failure == "non_budget"
                     else "error_max_budget_usd"
                 ),
+                "repair-2",
             )
             raise RuntimeError("SDK iterator failed after terminal result")
 
@@ -647,9 +692,14 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         output=output,
         model="fixed-model",
         retrieval_notes_tokens=128 if failure == "budget_notes" else 0,
-        initial_context="none" if failure == "budget_none" else "retrieved",
+        initial_context=(
+            "none" if failure in {"budget_none", "budget_pair_none"} else "retrieved"
+        ),
         billing_route="anthropic-api" if failure == "budget_api" else "subscription",
     )
+    if failure in {"budget_pair", "budget_pair_none"}:
+        args.search_pair, args.retrieval = tmp_path, None
+        args.total_meter_usd = 1.1
     if imported_provider_route:
         with pytest.raises(ValueError, match="existing CLI login"):
             solver.run(args)
@@ -679,7 +729,14 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         assert row["sdk_reported_cost_usd"] == 1.0
         assert row["missing_metering_calls"] == 0
         assert "SDK iterator failed" in row["error"]
-    captured = {"budget", "budget_notes", "budget_none", "budget_api"}
+    captured = {
+        "budget",
+        "budget_notes",
+        "budget_none",
+        "budget_api",
+        "budget_pair",
+        "budget_pair_none",
+    }
     if failure in captured | {"budget_export_failure"}:
         assert row["budget_exhausted"]
         assert row["patch_export_reason"] == "metered_sdk_budget_stop"
@@ -712,3 +769,23 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         assert "<retrieved_source>\n[]\n</retrieved_source>" in first["content"]
         assert "<retrieved_source>\nsource\n</retrieved_source>" not in first["content"]
         assert row["retrieval_notes"] is None
+    if failure in {"budget_pair", "budget_pair_none"}:
+        included = failure == "budget_pair"
+        usage = json.loads((output / "whole-run-usage.json").read_text())
+        assert usage["search_included"] is included
+        assert usage["total_model_usage_usd"] == pytest.approx(1.1 if included else 1.0)
+        assert usage["native_resolution"] is None and usage["solver_status"] == "error"
+        budget = json.loads((output / "config.json").read_text())[
+            "whole_run_metering_budget"
+        ]
+        config = json.loads((output / "config.json").read_text())
+        assert config["context_budget"] is None
+        assert config["navigation_token_budget"] == (2048 if included else None)
+        assert budget["repair_meter_usd"] == pytest.approx(1.0 if included else 1.1)
+        first = json.loads(observations)["confirmed_inputs"][0]["messages"][1]
+        assert ("<context_navigation>" in first["content"]) is included
+        assert (output / "navigation-delivery.json").exists() is included
+        if included:
+            delivered = json.loads((output / "navigation-delivery.json").read_text())
+            assert delivered["confirmed_turns"] == [1, 2]
+            assert delivered["source_body_credit"] == 0
