@@ -275,6 +275,7 @@ async def retrieve(
     read_hints=None,
     context_guidance=None,
     continuation_guard=None,
+    evidence_reviewer=None,
 ):
     from claude_agent_sdk import ClaudeAgentOptions, create_sdk_mcp_server, query, tool
 
@@ -311,7 +312,12 @@ async def retrieve(
         context_tool is None or not isinstance(context_guidance, str)
     ):
         raise ValueError("Context guidance requires the explicit context tool")
-    if continuation_guard is not None and (
+    if continuation_guard is not None and evidence_reviewer is not None:
+        raise ValueError("Only one Stop intervention may be enabled")
+    stop_guard = (
+        continuation_guard if continuation_guard is not None else evidence_reviewer
+    )
+    if stop_guard is not None and (
         source_policy != "native"
         or graph_tool is not None
         or grep_view is not None
@@ -320,7 +326,13 @@ async def retrieve(
         or context_tool is not None
         or read_hints is not None
     ):
-        raise ValueError("Continuation guard requires otherwise native source tools")
+        raise ValueError("Stop intervention requires otherwise native source tools")
+    if evidence_reviewer is not None and (
+        Path(evidence_reviewer.ctx.manifest.repo_path).resolve() != repo.resolve()
+        or evidence_reviewer.issue != query_text
+        or evidence_reviewer.attempted
+    ):
+        raise ValueError("Evidence reviewer must match this new search session")
     sdk_tools = []
     tool_map = dict(TOOLS)
     specs = [
@@ -428,6 +440,13 @@ async def retrieve(
 
         hook_options["hooks"] = {"Stop": [HookMatcher(hooks=[continuation_guard.stop])]}
         row["continuation_guard"] = continuation_guard.ledger
+    if evidence_reviewer is not None:
+        from claude_agent_sdk import HookMatcher
+
+        hook_options["hooks"] = {
+            "Stop": [HookMatcher(hooks=[evidence_reviewer.stop], timeout=180)]
+        }
+        row["evidence_review"] = evidence_reviewer.ledger
     options = ClaudeAgentOptions(
         cli_path=cli,
         cwd=repo,
@@ -472,6 +491,8 @@ async def retrieve(
                 row["max_included_rate_info"] = included_max_rate(data)
                 max_rate_seen = True
         if kind == "SystemMessage" and data.get("subtype") == "init":
+            if evidence_reviewer is not None:
+                evidence_reviewer.bind_session(data["data"].get("session_id"))
             if max_included_only and data["data"].get("apiKeySource") != "none":
                 checkpoint()
                 raise ValueError("Included Max run did not confirm subscription auth")
@@ -498,6 +519,21 @@ async def retrieve(
             raise RuntimeError("File-source selection failed; stop this SDK stream")
     if "sdk_result" not in row:
         raise RuntimeError("SDK stream ended without a terminal result")
+    if evidence_reviewer is not None:
+        main_fee = row.get("sdk_reported_cost_usd")
+        review_fee = evidence_reviewer.ledger["api_usage_estimate_usd"]
+        row["all_model_usage_estimate_usd"] = (
+            main_fee + review_fee
+            if all(
+                type(fee) in (int, float) and math.isfinite(fee) and fee >= 0
+                for fee in (main_fee, review_fee)
+            )
+            else None
+        )
+        evidence_reviewer.validate_terminal()
+        checkpoint()
+        if evidence_reviewer.ledger["failed"]:
+            raise RuntimeError("Evidence review failed; both fee receipts retained")
     if continuation_guard is not None and continuation_guard.ledger["failed"]:
         checkpoint()
         raise RuntimeError("Continuation guard source inspection failed")
