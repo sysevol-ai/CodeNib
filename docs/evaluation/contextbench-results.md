@@ -17,6 +17,53 @@ path. Further enhancement experiments need a concrete retrieval failure and a
 measured benefit, rather than component use alone. Named-symbol/source-discovery/
 document-admission production fixes remain separately verified dependencies.
 
+A subsequent **native Haiku5.5 model baseline** on the exact same eight tasks
+scores68.07% Recall/33.80% precision/36.66% F1, versus native Opus5.5's
+69.91%/35.47%/39.66%, with8/8 valid in both arms. All eight source outcomes seal
+before current known annotations reopen. This uses the same ordinary source
+tools, prompt,20turn limit, medium effort and4096 output setting, without indexed
+context or a router. The Haiku SDK guard is$0.08 per case, with observed acceptance
+up to$0.15 and a$2 batch guard; every case completes below that guard.
+
+| Same eight exposed tasks, ordinary source tools | Line Recall | F1 | All-model API/list-price usage estimate |
+| --- | ---: | ---: | ---: |
+| Opus5.5 | 69.91% | 39.66% | $1.4261087 |
+| Haiku5.5 | 68.07% | 36.66% | $0.043406125 |
+
+Haiku loses1.84 Recall points and2.99 F1 points while using96.96% less nominal
+API/list-price value. This is a candidate low-cost endpoint on this exposed
+sample, **not a CodeNib enhancement or router gain**, independent result or500
+score. Haiku observes4,250 source lines and65,606 tool-reply cl100k tokens versus
+3,981/57,004 for Opus; lower model cost does not imply fewer source tokens. The
+[case-level CSV](../assets/contextbench_haiku_native_development_8.csv) retains
+all16 outcomes. Haiku is lower in TypeScript/Go, higher in Python/JavaScript/C
+and equal in C++/Java/Rust; these retrospective labels cannot be runtime routing
+inputs or justify language-specific outcome selection.
+
+Both cost estimates retain all terminal model usage, including auxiliaries,
+and their model subtotals match terminal totals. The original Opus route is Max,
+while the new Haiku route is API-key usage: compare captured API/list-price
+valuation, not subscription cash-zero against an API invoice. Account cash/credit
+balance remains unknown. Official Haiku pricing changes above100,000 prompt
+tokens; [published rates and constraints](https://platform.claude.com/docs/en/models/haiku-5-5/overview)
+are checked before the first new inference, and the account's model-metadata API
+confirms the exact model ID without an inference call. SDK loop mean/median is
+32.85/31.68seconds for Opus and21.86/21.26seconds for Haiku. This excludes the fresh
+source-fingerprint preparation and is not a matched cold-start latency study.
+
+Haiku's terminal same-model usage also contains CLI auxiliary work; all eight
+fail the main-response-only input reconciliation check. Preserve that incomplete
+attribution and make no complete main-context maximum claim. The all-model
+terminal usage/costs remain known. No missing counters become zero.
+
+The new eight API sessions use$0.043406125 in recorded SDK/API usage value, with
+zero unknown terminal fees. The unused$1.956593875 of the prospective$2 reservation
+is released. Known program API usage is$59.137394855 under$100, leaving
+$40.862605145; no repair call or fresh default-only task is opened. The next
+hypothesis is a cheap-search continuation guard and evidence-based selective
+upgrade, evaluated against **both** ordinary model baselines. No guard/router
+benefit, independent32 promotion or full500 expansion has been established.
+
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
 line task-macro Recall/precision/F1 are **72.83%/27.97%/33.95%**. File Recall/F1
