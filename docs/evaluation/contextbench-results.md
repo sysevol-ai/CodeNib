@@ -166,7 +166,11 @@ zero-model archiver retains8,191 original members in nine decoded, byte-verified
 Zstandard parts totaling418,339,937 bytes. Together with the unchanged earlier58
 and64 archives, their task coverage is exactly177. Actual partial122 input is
 rejected before archive creation. This55-case increment is private and unredacted;
-the publication preview and relocated provenance replay still cover122 only.
+the completed publication preview and relocated provenance replay still cover122
+only. A new55 semantic fixture verifies all417 exact requests and2,528 SDK UUID
+pseudonyms with unchanged observation receipts, selected contexts, patches,
+native outcomes and fees. Its separate private archive producer and decompressed
+Git-object reviewer are active; no completed177 publication package is claimed.
 Full500 raw coverage and publication gates remain open.
 
 The closed64 cohort's final three pytest environments initially fail even with
@@ -366,16 +370,26 @@ remain separate from the frozen21 model/context implementation files.
 The three real Jest/Go/Ansible pilots now pass neutralFalse/referenceTrue.
 Ansible executes every one of its30 required IDs in both controls. Jest and Go
 still omit required neutral IDs because of test collection or compile conflicts;
-their Boolean success is not full execution qualification. Twelve remaining
-failed environments are undergoing the same explicit resource recovery in
-separate per-case output directories; no original fixture is overwritten.
+their Boolean success is not full execution qualification. All15 original
+resource/dependency failures now have corrected neutralFalse/referenceTrue pairs
+in separate output directories. Two Flipt reference failures need public Go
+module caches: only native preparation has network access, reference changes
+touch only dependency manifests, and canonical source commit/tree/worktree are
+restored before committing separate native cache images. Model source images
+remain unchanged. Both actual corrected native controls pass with networking
+disabled. No original fixture is overwritten.
 The Go pilot's supplementary original-base fixture omits only the evaluation
 test-file checkout, retaining both entryscripts. It records seven actual test IDs,
 including all six required IDs, while the evaluation test overlay fails to compile
 against the old production interface. Its native resolved flag is excluded from
 candidate outcomes and it does not amend readiness or release the paid owner.
-Other test-patch import/collection conflicts still need separate classification
-and evidence; do not relabel them as executed behavioral failures. These native
+All54 selected references execute and pass every required ID. Only34 selected
+neutral/reference pairs satisfy the extra complete-execution gate;20 neutrals
+still omit required execution records. Those import/compile/collection conflicts
+need separate classification and evidence; do not relabel them as executed
+behavioral failures. The strict qualifier exits without releasing the original
+held model owner. A separate prospective protocol for these conflicts is awaiting
+the user's choice; it is not active or a completed admission. These native
 fixtures add no model requests, API usage or candidate outcomes.
 A separate execution qualifier also requires every declared test identifier to
 have an actual recorded execution status before resuming the same unpaid owner.
