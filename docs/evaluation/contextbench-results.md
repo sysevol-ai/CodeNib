@@ -35,10 +35,10 @@ are outside these settled cohorts. The latest55 first attempts finish with
 it is not an additional charge.
 The earlier58 selected-context exports pass the unchanged official evaluator as
 a format compatibility check. A zero-model provenance replay now reauthenticates
-all244 original search workers and confirmed repair inputs for the completed122,
+all354 original search workers and confirmed repair inputs for the completed177,
 then recompiles every selected context and receipt. Each matches its original
 record and exact prepared metric input; each selected patch matches the natively
-tested first patch. All122 have confirmed model-input receipts. This replays
+tested first patch. All177 have confirmed model-input receipts. This replays
 input provenance without rerunning official scoring. Arbitrary-shell attribution
 remains partial, and the original three selections remain disclosed as retrospective.
 These exposed partial results do not establish full500 Pass@1 or complete-system
@@ -165,13 +165,20 @@ index,55-case native/fee closure and original controller exit, a separate
 zero-model archiver retains8,191 original members in nine decoded, byte-verified
 Zstandard parts totaling418,339,937 bytes. Together with the unchanged earlier58
 and64 archives, their task coverage is exactly177. Actual partial122 input is
-rejected before archive creation. This55-case increment is private and unredacted;
-the completed publication preview and relocated provenance replay still cover122
-only. A new55 semantic fixture verifies all417 exact requests and2,528 SDK UUID
-pseudonyms with unchanged observation receipts, selected contexts, patches,
-native outcomes and fees. Its separate private archive producer and decompressed
-Git-object reviewer are active; no completed177 publication package is claimed.
-Full500 raw coverage and publication gates remain open.
+rejected before archive creation. This55-case original increment remains private
+and unredacted. Its separate publication preview now finishes:8,193 members in
+nine parts totaling420,100,144 bytes, each below50 MiB. A55-case semantic fixture
+verifies all417 exact requests and2,528 SDK UUID pseudonyms with unchanged
+observation receipts, selected contexts, patches, native outcomes and fees.
+The actual-part review recomputes93,771 decompressed Git-object IDs and retains
+128 private-key-header findings. All128 reconstruct the exact public Sphinx
+localhost test certificate, authenticated against its pinned upstream Git blob;
+none is silently erased from the original scan. Changed certificate bodies are
+rejected by the classifier. This scoped classification does not establish that
+arbitrary credentials or personal data are absent.
+Composition authenticates the disjoint177 cases across27 repair parts totaling
+1,307,533,299 bytes. All shared extraction paths have identical bytes. Full500
+raw coverage and publication gates remain open.
 
 The closed64 cohort's final three pytest environments initially fail even with
 reference patches:
@@ -246,12 +253,13 @@ attempts, not proof that arbitrary personal data or credentials are absent.
 Full500 coverage, broader privacy, full500 portable replay, publication and
 comparability approval remain open.
 
-A separate relocated-directory replay now reads only these public-preview parts,
-the search-preview parts and their public digest links. It hashes all25,418
+A separate relocated-directory replay now reads only all three private
+publication-preview sets, the search-preview parts and their public digest links.
+It hashes all33,611
 archive-member occurrences, extracts the required records and1,703 bundled runtime
-files, then imports CodeNib modules from that frozen runtime. All122 selections
-and observation receipts recompile identically;967 repair calls and244 actual
-search SDK fee receipts reproduce1,211 unique sessions and$48.09835812 modeled
+files, then imports CodeNib modules from that frozen runtime. All177 selections
+and observation receipts recompile identically;1,384 repair calls and354 actual
+search SDK fee receipts reproduce1,738 unique sessions and$70.002913935 modeled
 usage. Every native result remains bound to its original first patch. The worker
 uses the installed Python dependencies, with Python opens restricted to the new
 directory and dependencies; networking and external processes are denied.
@@ -346,7 +354,7 @@ IPv4-first DNS; all12 recorded grader/probe containers are absent. These are
 zero-model fixtures, without additional candidate outcomes. Per-dispatch source
 preparation and native controls remain open for the other unexecuted tasks. The repair prompt, model loop, budgets and navigation
 delivery are unchanged; only Pro gains the existing source-only preflight.
-A separate54-case Pro first-attempt controller remains held before any
+A separate54-case Pro first-attempt controller was held before any
 reservation or model request. Its source preparation produces46 prepared
 environments and eight OpenLibrary failures: replacing the parent Git metadata
 leaves submodule Git pointers referring to the removed metadata. Original failures
@@ -383,16 +391,24 @@ test-file checkout, retaining both entryscripts. It records seven actual test ID
 including all six required IDs, while the evaluation test overlay fails to compile
 against the old production interface. Its native resolved flag is excluded from
 candidate outcomes and it does not amend readiness or release the paid owner.
-All54 selected references execute and pass every required ID. Only34 selected
-neutral/reference pairs satisfy the extra complete-execution gate;20 neutrals
-still omit required execution records. Those import/compile/collection conflicts
-need separate classification and evidence; do not relabel them as executed
-behavioral failures. The strict qualifier exits without releasing the original
-held model owner. A separate prospective protocol for these conflicts is awaiting
-the user's choice; it is not active or a completed admission. These native
-fixtures add no model requests, API usage or candidate outcomes.
-A separate execution qualifier also requires every declared test identifier to
-have an actual recorded execution status before resuming the same unpaid owner.
+All54 selected references execute and pass every required ID. The pinned parser
+records full neutral execution in34 cases; exact raw Jest failure rows establish
+full execution in two more. The remaining18 have explicit base-source conflicts:
+ten imports, six Go compilations, one missing configuration option and one suite
+registration failure. Missing IDs remain unexecuted. A separate prospective
+admission protocol records these conflicts and replaces the additional strict
+empty-control execution gate; it preserves original tests, parser, PASSED-subset
+scoring, all first attempts, failures and the500 denominator. The strict
+qualifier and all earlier failed fixtures remain retained. The earlier request
+for another user confirmation was unnecessary under the existing task and
+budget authority and is withdrawn; no unanswered question is treated as approval.
+These diagnostic fixtures add no model requests, API usage or candidate outcomes.
+Six Go solver-source profiles additionally set only `GOMAXPROCS=2` and
+`GOFLAGS=-p=2`. Their filesystem layers and other execution settings are
+identical; actual probes authenticate clean canonical Git history and effective
+Go settings. These settings affect agent Go command concurrency and are separate
+from native-only dependency caches. Model/context code and scoring stay frozen.
+The source-aware protocol still requires actual required-ID reference passes.
 An existing real NodeBB neutral control is gradedFalse while omitting six required
 tests; the qualifier rejects it. Its corrected neutral/reference controls execute
 all291 required tests and qualify. This fixture creates no new candidate result.
@@ -400,11 +416,15 @@ Isolated file fixtures exercise all fixed task identities, two
 disjoint27-case shards, admitted native-image overrides, stale/failed-control
 rejection, exact session accounting and duplicate-owner rejection. The complete
 solver dispatch AST remains unchanged apart from cohort accounting and Pro native
-grading transport. Actual dispatch still requires all54 source admissions,
-all108 native controls, prior Verified fee closure and at least$270 of available
-authorized usage. That amount is a future reservation, not measured spending.
-These orchestration checks add no candidate result. Actual execution readiness
-and its open conflicts are reported separately above.
+grading transport and per-case four-file runtime archiving. The actual54-source
+fixture authenticates all selected controls, preserves the exact15 measured CPU
+profiles, exercises two disjoint27-case shards and rejects changed runtime copies.
+Reservation/settlement source bytes and idempotence remain unchanged; real ledgers
+are not mutated by the fixture. After all54 source-aware admissions, prior
+Verified fee closure and at least$270 of available authorized usage are verified,
+the same original pidfd-identified controller resumes. That amount is reserved
+by its existing parent before inference, not charged as measured spending.
+The remaining269 owner stays held for its own source and test-execution gates.
 The remaining269 first attempts now have a queued owner for nine fixed,
 sequential batches. Isolated synthetic admissions exercise all269 identities,
 source-resource overrides, native controls and known-fee error records. Every
