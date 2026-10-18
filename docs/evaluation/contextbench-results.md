@@ -24,17 +24,18 @@ it excludes repair, native grading and compute. The search batch is settled once
 its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
-The frozen canonical500 repair queue now retains all three prior candidate
-repairs and completes its first new task in canonical metadata order,
-`astropy__astropy-13398`. Its patch is submitted and natively graded **unresolved**:
-9 metered repair requests cost **$0.6964131**. No model retry or search rerun
-occurs. There are now four completed candidate native outcomes, two resolved and
-two unresolved, with496 tasks still awaiting repair; this progress count is not
-a full500 Pass@1 estimate. All four retained-context exports also run through
-the unchanged official evaluator successfully, as a format/scoring compatibility
-check on exposed tasks. The next six fixed tasks have clean source images and
-passing neutral/reference native environment controls; those fixtures make no
-model requests and contribute no candidate results.
+The frozen canonical500 repair queue retains all three prior candidate repairs
+and completes seven additional tasks in canonical metadata order. The first,
+`astropy__astropy-13398`, is unresolved and costs **$0.6964131** for nine repair
+requests. The next six complete with **five resolved, one unresolved** and cost
+**$2.0836624** for42 metered repair requests. All seven environment admissions
+pass separate neutral/reference native controls before model requests. There are
+now **ten completed candidate native outcomes: seven resolved, three unresolved**,
+with490 tasks still awaiting repair. This small progress count is not a full500
+Pass@1 estimate. No model retry or search rerun occurs, and every owned solver
+and native container is removed. All ten retained-context exports run through
+the unchanged official evaluator as a format/scoring compatibility check on
+exposed tasks. Model fees are settled once; cached search is not debited again.
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
@@ -99,7 +100,18 @@ repository names. Pro uses dataset revision `7ab51149`, which matches these54
 tasks; the upstream default now selects V2, so it must not silently replace v1.
 The [official Pro source](https://github.com/scaleapi/SWE-bench_Pro-os/tree/66f92766bba642462d4bbe5479e83f91f9211862)
 retains the v1 grading pipeline. No additional model requests occur in this
-inventory. General source-image preparation and grader integration remain open.
+inventory. The native adapter now resolves the six known Multi alias mappings
+and pins all31 native repository classes. Poly chooses the official parser for
+each of its11 repositories, rather than applying the Svelte JavaScript parser
+to other languages. The Pro v1 native-only CLI authenticates its original runner,
+per-task scripts and Dockerfiles against a pinned manifest, preserves the
+official required-test subset criterion and bounds its owned local container.
+All54 Pro task records and their test identities bind to the frozen source
+metadata; loading the original runner verifies six pinned source files. This
+extends metadata and adapter coverage without claiming validated Pro test
+environments. Per-dispatch source preparation and native controls remain open
+for the unexecuted tasks. The repair prompt, model loop, budgets and navigation
+delivery are unchanged; only Pro gains the existing source-only preflight.
 A first additional Verified environment restores the exact canonical source over
 the image's single-file `pyproject.toml` setup overlay and verifies clean,
 history-free source. Its native neutral control is unresolved and its reference
@@ -126,8 +138,8 @@ without a body-token cap. Repair additions exclude unconfirmed, elided and
 modified-file coordinates; arbitrary-shell attribution remains partial. Original
 search VCS observations are preserved with their existing disclosure. Selection
 reads no annotations and makes no model requests. All500 search-only projections
-retain identical selected line sets. The three already-completed native cases
-will receive retrospective postprocessing; subsequent repairs use the fixed rule.
+retain identical selected line sets. The three prior native cases receive
+retrospective postprocessing; subsequent repairs use the fixed rule.
 The existing77.07% remains a search-policy result. Full-cohort final-selection
 metrics and protocol comparability still need verification before submission;
 neither custom-format support nor partial observation coverage establishes them.

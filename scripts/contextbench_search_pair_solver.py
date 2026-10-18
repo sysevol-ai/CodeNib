@@ -22,6 +22,7 @@ from codenib.dataset.contextbench import ContextBenchCase
 from codenib.source_fingerprint import fingerprint_repository
 from scripts import benchmark_context_agent as native
 from scripts.benchmark_jev_base import digest
+from scripts.contextbench_native_repos import native_repository
 from scripts.contextbench_reproduce_search_pair import replay_case
 from scripts.contextbench_search_pair import (
     SCOUT_INSTRUCTION,
@@ -92,13 +93,18 @@ def load_pair_handoff(root, instance_id, navigation_tokens=2048):
                 ("SWE-Bench-Verified__", "Verified"),
                 ("Multi-SWE-Bench__", "Multi"),
                 ("SWE-PolyBench__", "Poly"),
+                ("SWE-Bench-Pro__", "Pro"),
             ]
             if instance_id.startswith(prefix)
         ),
         "",
     )
+    native_repo = native_repository(
+        source, metadata["repo"], metadata["original_inst_id"]
+    )
+    case_metadata = {**metadata, "repo": native_repo}
     case = ContextBenchCase.from_mapping(
-        {**metadata, "source": source, "problem_statement": "", "gold_context": []}
+        {**case_metadata, "source": source, "problem_statement": "", "gold_context": []}
     )
     for name, expected in plan["implementation"].items():
         path = Path(__file__).resolve().parents[1] / name
@@ -121,7 +127,7 @@ def load_pair_handoff(root, instance_id, navigation_tokens=2048):
         raise ValueError("Search-pair issue-only input differs from its task")
     case = ContextBenchCase.from_mapping(
         {
-            **metadata,
+            **case_metadata,
             "source": source,
             "problem_statement": record["problem_statement"],
             "gold_context": [],
@@ -224,6 +230,11 @@ def load_pair_handoff(root, instance_id, navigation_tokens=2048):
             "source_footprints_reconstructed": True,
             "search_workers_reused_from_prior_search_run": True,
             "native_resolution_evaluated": False,
+            **(
+                {"benchmark_repo_alias": metadata["repo"], "native_repo": native_repo}
+                if metadata["repo"] != native_repo
+                else {}
+            ),
         },
     )
 

@@ -397,7 +397,7 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
     )
     case = SimpleNamespace(source="Multi", repo="other/repo")
     monkeypatch.setattr(native, "load_inputs", lambda path: ({}, {"case": case}))
-    with pytest.raises(ValueError, match="validated Multi"):
+    with pytest.raises(ValueError, match="Unsupported native repository"):
         delivered_input(tmp_path, "case", 16384)
     case.source = "Verified"
     path = tmp_path / "case.json"

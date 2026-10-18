@@ -2,11 +2,10 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Separate native grading for validated Multi-SWE-bench development pilots.
+"""Native Multi grading for the frozen canonical500 repository inventory.
 
-Reference patches and native tests enter only this grader, never the solver.
-fmt (C++), Gson (Java) and ponyc (C) have native reference/control checks. Other
-repositories need their own source, environment and grading checks before use.
+Reference patches/tests enter only this grader. All31 registered repo classes
+are pinned; each dispatched case still needs source/native environment checks.
 """
 
 from __future__ import annotations
@@ -22,6 +21,12 @@ import time
 import uuid
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.contextbench_native_repos import MULTI_REPOS, POLY_REPOS, PRO_REPOS
+
 HARNESS_REVISION = "24f493f8a103e72312ded4f6b9c89f081d69cb09"
 HARNESS_HASHES = {
     "harness/gen_report.py": "02ebc8a5414898d12f4f5a9ba0c11a8f57c9f34a0bdc02c2311afac9f654847d",
@@ -35,17 +40,105 @@ HARNESS_HASHES = {
     "harness/pull_request.py": (
         "32b49f48b39124f67727f408898bd96cce91c0a362faa716ac858dcb0b0b47c7"
     ),
-    "harness/repos/c/ponylang/ponyc.py": (
-        "be551b5b2b3bb0367e12b1f46a5bc5a5d7e5ab161cced3921cd05e18f90ae744"
-    ),
-    "harness/repos/cpp/fmtlib/fmt.py": (
-        "d0a5146eb77b4416cccb86216c3df08f200d58c33bb158d953aaac385f922918"
-    ),
-    "harness/repos/java/google/gson.py": (
-        "faec1d6ba360ab902a663718b9a8668d1a46a860bc613980b310107153adf890"
-    ),
 }
-MULTI_PILOTS = {"fmtlib/fmt", "google/gson", "ponylang/ponyc"}
+HARNESS_HASHES.update(
+    {
+        "harness/repos/c/facebook/zstd.py": (
+            "ccb953474042a9f9610a03f0ddb8669b00b4ad39ee6c3f0108ae15fc02ed4ee1"
+        ),
+        "harness/repos/c/jqlang/jq.py": (
+            "e523664fcf8a1b728f5d4d77caeebc7cecd34c575f295fdb66a441b910e3a8b0"
+        ),
+        "harness/repos/c/ponylang/ponyc.py": (
+            "be551b5b2b3bb0367e12b1f46a5bc5a5d7e5ab161cced3921cd05e18f90ae744"
+        ),
+        "harness/repos/cpp/catchorg/catch2.py": (
+            "0f66a695e470a56908ee056e5174a27d4617a8d5da059944bea0f16310771b28"
+        ),
+        "harness/repos/cpp/fmtlib/fmt.py": (
+            "d0a5146eb77b4416cccb86216c3df08f200d58c33bb158d953aaac385f922918"
+        ),
+        "harness/repos/cpp/nlohmann/json.py": (
+            "eb029a49f751d532c8241583ff0e7f60b129a1c637e40aa9ecd68c2d6bc8a79d"
+        ),
+        "harness/repos/cpp/simdjson/simdjson.py": (
+            "90875649cc32fa7dc9ef0f930ef97c05855b47fbea60c02fca06e51d653ba31e"
+        ),
+        "harness/repos/golang/cli/cli.py": (
+            "3d8b89caeebffd4a41791c41af14de467f7074d522a45c5ea87db9c94ca7d913"
+        ),
+        "harness/repos/golang/grpc/grpc_go.py": (
+            "b3e83b2ae82ee196d0cfd99a704e714df4b35e5f4f9bbebf5e97e24ae31da58d"
+        ),
+        "harness/repos/golang/zeromicro/go_zero.py": (
+            "ca72e6d89f078d2b7349d11524f93a7e979f12a485e4620cb6d1262b431e84cf"
+        ),
+        "harness/repos/java/alibaba/fastjson2.py": (
+            "87c3bba2bbb6ee10273034030bac4033544676c5e100ee6c60c90920fe80dafa"
+        ),
+        "harness/repos/java/elastic/logstash.py": (
+            "9656082f97093b6b729f7c26b44a385e72a0e86ea2105096b1be22db1ba5d17d"
+        ),
+        "harness/repos/java/fasterxml/jackson_core.py": (
+            "2d261db299901827c865a4a34345f9a0383c3a0303b49829448263c7d525cf4d"
+        ),
+        "harness/repos/java/fasterxml/jackson_databind.py": (
+            "4423f336b0643e267c0da3eb442bd15558803b248bf3474446b9953d146e7a74"
+        ),
+        "harness/repos/java/fasterxml/jackson_dataformat_xml.py": (
+            "f43e309e6e998e9334ac7d7581e26df7f59da10b5441a6bb197f3061a2bbc65b"
+        ),
+        "harness/repos/java/google/gson.py": (
+            "faec1d6ba360ab902a663718b9a8668d1a46a860bc613980b310107153adf890"
+        ),
+        "harness/repos/java/mockito/mockito.py": (
+            "4fcb4ff8250696964f95a60954a5a5262ac89cea3afdfbee2d85b341dad11405"
+        ),
+        "harness/repos/javascript/axios/axios.py": (
+            "6bd53130e1e974ceae1576d91874e23a0d74b46928f0c34770bc0e3121c6e109"
+        ),
+        "harness/repos/javascript/expressjs/express.py": (
+            "a673518e3b4d9e9e2396f97aacdc5c803d7e2298ce07dfd748cbb9f67ce36291"
+        ),
+        "harness/repos/javascript/iamkun/dayjs.py": (
+            "6ea5cc6572d192d54ad731d8fd3f63c36e60a0918c4df08d379cd85bf2265d70"
+        ),
+        "harness/repos/javascript/sveltejs/svelte.py": (
+            "84e7c46181e5cc0008e326a3581bfdee98793146984266f281db48b818b27e6c"
+        ),
+        "harness/repos/rust/BurntSushi/ripgrep.py": (
+            "aca2ad7ec634a275994c9fe9bf0c91a9cc875b62f90b1c754146b63835c7f8a7"
+        ),
+        "harness/repos/rust/clap_rs/clap.py": (
+            "696693c5804f91bebb7424ebe73d5730f5e865536ee087d454ab948dee5e4cf6"
+        ),
+        "harness/repos/rust/nushell/nushell.py": (
+            "648183c795b6507e209e41252a34d5b3fb0e47dbab91e60a64f96df2d03bcd6a"
+        ),
+        "harness/repos/rust/rayon_rs/rayon.py": (
+            "0e8b6781c51aff395d846ebe8dba66ea20aa0036a6156aed8523654cc5b61a99"
+        ),
+        "harness/repos/rust/tokio_rs/bytes.py": (
+            "9565684b4813e6b7c562071498ffed32c653b427ff3eed39987962383fa2ce37"
+        ),
+        "harness/repos/rust/tokio_rs/tokio.py": (
+            "7b4a826d139bea29fceca37a68e0da3654d88d5cbb2be609489680b115778f62"
+        ),
+        "harness/repos/rust/tokio_rs/tracing.py": (
+            "1cf11f91b0e9df44295785fe2cc1d69a799e05ab3524e67dd4244b57676d210d"
+        ),
+        "harness/repos/typescript/darkreader/darkreader.py": (
+            "ae880afbd389f0356dd533558a9f418afccd183f87eaad8cbdca48832dce2e58"
+        ),
+        "harness/repos/typescript/mui/material_ui.py": (
+            "c321c73cf18bec405aed1381d795967176db0fa17bd2d12dd9f2bb834ddb381b"
+        ),
+        "harness/repos/typescript/vuejs/core.py": (
+            "f154469392f1c52a5d8756c8f5332be35347b8b3bf4dd739a443b5ad4a5f3ce5"
+        ),
+    }
+)
+
 REFERENCE_PATHS = (
     "/home/fix.patch",
     "/home/test.patch",
@@ -67,13 +160,13 @@ def write_json(path, value):
 def solver_cwd(source, repo):
     if source == "Verified":
         return "/testbed"
-    if source == "Multi" and repo in MULTI_PILOTS:
+    if source == "Multi" and repo in MULTI_REPOS:
         return "/home/" + repo.split("/")[1]
-    if source == "Poly" and repo == "sveltejs/svelte":
+    if source == "Poly" and repo in POLY_REPOS:
         return "/testbed"
-    raise ValueError(
-        "Solver supports Verified, validated Multi fmt/Gson/ponyc and Poly Svelte pilots"
-    )
+    if source == "Pro" and repo in PRO_REPOS:
+        return "/app"
+    raise ValueError("Unsupported native repository for solver environment")
 
 
 def validate_source_only_image(environment, commit):
@@ -127,7 +220,7 @@ def selected_native_case(path, solver, config):
     repo = f"{row.get('org')}/{row.get('repo')}"
     if (
         config.get("source") != "Multi"
-        or config.get("repo") not in MULTI_PILOTS
+        or config.get("repo") not in MULTI_REPOS
         or config.get("repo") != repo
         or type(number) is not int
         or number <= 0

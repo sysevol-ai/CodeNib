@@ -67,7 +67,7 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
     with pytest.raises(ValueError, match="ambiguous"):
         multi.selected_native_case(path, solver, config)
     assert multi.solver_cwd("Multi", repo) == f"/home/{name}"
-    with pytest.raises(ValueError, match="validated Multi"):
+    with pytest.raises(ValueError, match="Unsupported native repository"):
         multi.solver_cwd("Multi", "other/repo")
 
 
