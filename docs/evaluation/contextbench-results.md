@@ -60,7 +60,7 @@ Across all58 repairs, new API usage totals **$21.5483648**. At this closure,
 the new$500 authorization has$478.4516352 remaining, with no active reservation.
 These are recorded SDK usage values; native compute and reconciled invoices
 remain separate. All64 source admissions for the next fixed batch are now
-prepared;128 native controls must pass before its budget reservation or model
+prepared; native admission must complete before its budget reservation or model
 requests. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
 initial absence check, so the old cleanup claims are not accepted. Exact-owner,
@@ -73,6 +73,30 @@ repair-model or search request is repeated. The model runtime stays frozen at
 `25d4580c`; source-preparation cleanup and the new Poly cache/aggregation utilities
 have not changed its model, prompts, context policy or budget guards.
 
+One fixed future task, `django__django-7530`, already resolves under the pinned
+native criterion with a neutral patch that changes no business code. Both the
+original official image and the clean-source image produce that result; both
+reference-patch runs also resolve. The issue-specific router regression errors
+before the reference patch and passes afterward, but it is absent from the
+[pinned dataset's required-test lists](https://huggingface.co/datasets/princeton-nlp/SWE-bench_Verified/blob/c104f840cc67f8b6eec6f759ebc8b2693d585d4a/data/test-00000-of-00001.parquet).
+Its recorded `FAIL_TO_PASS` instead names the already-passing
+`test_squashmigrations_initial_attribute`. All four runs use identical official
+evaluation scripts, dataset, harness, parser, scorer and output transport; their
+owned containers are independently confirmed absent. Retain the original failed
+neutral-false admission check. A documented environment-admission exception
+requires this four-fixture original-image concordance, with ten local regression
+checks rejecting missing, changed or ungraded evidence. The native criterion
+and task population stay unchanged, and the first candidate patch still requires
+ordinary native grading. Disclose this baseline-positive task separately;
+a passing native outcome alone does not demonstrate repair of its reported issue.
+
+A separate private original-byte archive now retains all58 completed first
+attempts, including the seven unresolved cases, failed native wrapper logs and
+original cleanup failures/recovery siblings. All7,700 members round-trip with
+matching hashes; its compressed parts are each below50 MiB. Exact runtime source,
+original metric inputs, outcomes, session usage and selection records are
+retained. This unredacted material is not published. Full500 raw coverage,
+publication redaction and portable replay remain open submission gates.
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
