@@ -25,14 +25,15 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The canonical500 batches with completed grading and settled fees retain
-**177 unique first candidate attempts:154 natively resolved and23 unresolved**.
-They include the three original development repairs and174 subsequent Verified
-tasks in canonical metadata order. All177 raw patch/native/selection/fee bindings
-authenticate, including1,738 unique metered search/repair sessions. The remaining323
-are outside these settled cohorts. The latest55 first attempts finish with
-**45 resolved,10 unresolved**, across417 metered repair sessions and
-**$21.4079353** actual API usage. Their$275 reservation closes once and is released;
-it is not an additional charge.
+**231 unique first candidate attempts:188 natively resolved and43 unresolved**.
+They include the three original development repairs,174 Verified tasks and54 Pro
+tasks in canonical metadata order. All231 raw patch/native/selection/fee bindings
+authenticate, including2,521 unique metered search/repair sessions. The remaining269
+are outside these settled cohorts. The latest54 Pro first attempts finish with
+**34 resolved,20 unresolved**, across675 metered repair sessions and
+**$70.9951234** actual API usage. Their$270 reservation closes once and is released;
+it is not an additional charge. The preceding55 Verified attempts retain their
+45 resolved,10 unresolved outcomes and$21.4079353 usage.
 The earlier58 selected-context exports pass the unchanged official evaluator as
 a format compatibility check. A zero-model provenance replay now reauthenticates
 all354 original search workers and confirmed repair inputs for the completed177,
@@ -69,13 +70,16 @@ controls. No model retry, task replacement or search rerun occurs. The cleanup
 helper bounds removal/absence verification and checkpoints ownership while
 preserving model outputs; dispatch still stops on unconfirmed cleanup.
 
-Across all177 repairs, new API usage totals **$68.3953048**. Their allocated
-original search usage is$1.607609135, for **$70.002913935** modeled search-plus-repair
+Across all231 repairs, new API usage totals **$139.3904282**. Their allocated
+original search usage is$2.37271808, for **$141.76314628** modeled search-plus-repair
 usage, without charging reused search again. At this closure, the new$500
-authorization has **$431.6046952 remaining**, with no active reservation; cumulative
-program API usage including prior work is$149.40680978. These are recorded SDK
+authorization has **$360.6095718 remaining**, with no active reservation; cumulative
+program API usage including prior work is$220.40193318. These are recorded SDK
 usage values; native compute and reconciled invoices remain separate.
-No Pro or remaining269 candidate request or reservation has begun at this closure.
+No remaining269 candidate request or reservation has begun at this closure.
+Poly source preparation has started after actual Pro fee closure and original
+controller exit; the remaining paid owner stays held for the full source/native
+execution proofs described below.
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
@@ -422,30 +426,43 @@ profiles, exercises two disjoint27-case shards and rejects changed runtime copie
 Reservation/settlement source bytes and idempotence remain unchanged; real ledgers
 are not mutated by the fixture. After all54 source-aware admissions, prior
 Verified fee closure and at least$270 of available authorized usage are verified,
-the same original pidfd-identified controller resumes. That amount is reserved
-by its existing parent before inference, not charged as measured spending.
+the same original pidfd-identified controller resumes. Its two disjoint shards
+now complete all54 first attempts, retaining34 resolved and20 unresolved outcomes.
+The$270 reservation closes once against$70.9951234 in actual SDK usage; the original
+controller exits after updating both financial ledgers.
 The remaining269 owner stays held for its own source and test-execution gates.
 The Pro source/control inventory now freezes4,656 files and722,239,538 bytes,
 including63 original/recovered Git seed TARs and147 distinct native control/probe
 attempts. All108 original controls and108 selected control hashes remain bound.
 Candidate outputs are inventoried only after their own native/fee closure.
-A separate read-only check authenticates seven actual completed Pro patches:
+A separate read-only check authenticates all54 completed Pro patches:
 their four-file grading snapshots, selected source/native images, original
 harness, CPU/script settings, first patches and unchanged subset scores match.
 Their captured60-file model manifests match the preceding closed cohort; these
 are separate from the21 dispatch-frozen hashes and the four native files.
-This seven-case check is not full54 closure or a new model/native run.
+Actual54 native/fee closure and original-owner exit are verified; this check adds
+no model call, native rerun or financial mutation. The resulting231-case index
+retains all188 resolved and43 unresolved first attempts.
 
 A reusable private closed-increment preview now passes the actual55-case,
 417-request regression with all8,191 original members and8,193 round-trip members.
 Exact requests, observations, patches, selections, fees and outcomes remain
-unchanged. Actual partial122 input and the current unclosed Pro batch are rejected
+unchanged. Actual partial122 input and the then-unclosed Pro batch are rejected
 before output creation. The corrected producer additionally recognizes16 actual
 submodule Git indexes across the63 Pro seed archives as binary storage; every
 other member classification and the rest of the producer AST are identical.
-Earlier177 publication previews remain unchanged. The queued Pro archive and
-preview owners wait for actual54 native/fee closure, the231-case index and
-original-owner exit; no completed54 archive or preview is claimed yet.
+Earlier177 publication previews remain unchanged. After actual54 native/fee
+closure, the231-case index and original-owner exit, the Pro original-byte archive
+retains9,897 byte-identical members in five parts totaling217,914,029 bytes.
+Its private publication preview now round-trips9,899 members in five parts
+totaling218,768,936 bytes, each below50 MiB. All675 exact requests, observations,
+patches, selections, fees and native outcomes pass semantic replay, with5,136 SDK
+UUID pseudonyms and63 rebuilt Git seed archives. Actual-part review verifies
+all79 independent Git roots, including16 submodule roots, and recomputes263,738
+decompressed object IDs. It retains216 private-key-header findings without
+printing matched values; their contextual classification and broader publication
+review remain open. Neither the preview nor these checks constitute publication
+or full500 submission approval.
 
 The private submission draft now binds all500 IDs to the pinned
 `contextbench_verified` metadata and the frozen search population. It distinguishes
@@ -463,7 +480,7 @@ plans are rejected. The complete inference-dispatch AST is preserved apart from
 accounting and explicit native-runtime archiving/transport/status checks. Repair
 code stays at`25d4580c`; each case separately archives the pinned four-file native
 runtime, whose CLI loads under isolated Python without a provider call.
-The first remaining batch waits for the prior Pro owner to exit. Later batches
+The prior Pro owner has exited after actual fee closure. Later batches
 start only after the preceding phase has closed fees and updated both ledgers
 and its handoff; a completion marker is written last. This prevents overlapping
 reservations and late metadata writes. The owner waits for actual full-cohort
@@ -491,8 +508,9 @@ native test call. Actual ambiguous cases still need local base-only execution
 using the unchanged native adapter and test command; their native resolved flag
 is excluded from candidate outcomes. The queued resumer cannot release without
 these actual execution proofs.
-A separate zero-model result owner now waits for11 successive closed cohorts,
-extending the177-case index through exactly500 first attempts. It authenticates
+A separate zero-model result owner authenticates11 successive closed cohorts,
+with the231-case index now complete and exactly500 first attempts required for
+the final result. It authenticates
 patch, native outcome, final context and unique search/repair fees for every case,
 including failures. New Poly/Multi records additionally bind all four archived
 native-runtime files to the actual grading adapter; all58 earlier native adapter
