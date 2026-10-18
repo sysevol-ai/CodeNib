@@ -438,6 +438,9 @@ def freeze_solver(output, mini_root):
                 "contextbench_verified.py",
                 "contextbench_verified_output.py",
                 "contextbench_selected_context.py",
+                "contextbench_native_repos.py",
+                "contextbench_pro.py",
+                "contextbench_pro_sources.json",
             )
         },
         **{
@@ -703,7 +706,7 @@ def run(args):
             "git rev-parse HEAD HEAD^{tree} && git status --porcelain --untracked-files=all"
         )
         row["image_snapshot"] = validate_image_snapshot(head, source_tree)
-        if case.source in {"Multi", "Poly"}:
+        if case.source in {"Multi", "Poly", "Pro"}:
             row["source_only_image"] = validate_source_only_image(
                 environment, row["image_snapshot"]["commit"]
             )
@@ -819,6 +822,16 @@ def run(args):
 def grade(args):
     """Use the selected benchmark's native test script and resolution grader."""
     config = json.loads((args.solver_run / "config.json").read_text())
+    if config.get("source") == "Pro":
+        from scripts.contextbench_pro import grade_pro
+
+        grade_pro(args)
+        if config.get("retrieval_kind") == "search_pair_navigation":
+            write_json(
+                args.output / "whole-run-result.json",
+                joined_native_result(args.solver_run, args.output),
+            )
+        return
     if config.get("source") == "Poly":
         from scripts.contextbench_polybench import grade_poly
 

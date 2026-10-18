@@ -89,7 +89,7 @@ def test_poly_csv_hash_and_source_bind_before_output(study):
         poly.selected_native_case(args.dataset, solver, config)
     assert not args.output.exists()
     assert solver_cwd("Poly", "sveltejs/svelte") == "/testbed"
-    with pytest.raises(ValueError, match="Poly Svelte"):
+    with pytest.raises(ValueError, match="Unsupported native repository"):
         solver_cwd("Poly", "other/repo")
 
 

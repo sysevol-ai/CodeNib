@@ -2,15 +2,16 @@
 # SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
 # SPDX-License-Identifier: Apache-2.0
 
-"""Native PolyBench grading for the Svelte development pilot, without models.
+"""Native PolyBench grading with pinned repository-specific official parsers.
 
 Use the pinned official CSV, parser and scorer. Native reference data stay in
-this separate grader, never the solver. Environment evidence currently covers
-sveltejs__svelte-510 only; other PolyBench tasks still need reference controls.
+this separate grader, never the solver. The canonical corpus has eleven supported
+repository mappings; source-image and reference controls remain per-dispatch gates.
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
 import csv
 import dataclasses
@@ -24,6 +25,12 @@ import time
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.contextbench_native_repos import POLY_REPOS
 
 HARNESS_REVISION = "9c836c5d7f3cb991934132b77d29e6941d912a07"
 DATASET_REVISION = "d56445f9940eae4e9d2974ec66820c2f1d7754e6"
@@ -83,7 +90,7 @@ def native_environment(upstream):
     sys.path.insert(0, str(root / "src"))
     modules = {
         name: importlib.import_module("poly_bench_evaluation." + name)
-        for name in ["docker_utils", "parsers", "scoring"]
+        for name in ["docker_utils", "parsers", "scoring", "constants"]
     }
     if any(
         not Path(module.__file__).resolve().is_relative_to(package.resolve())
@@ -93,6 +100,12 @@ def native_environment(upstream):
     return SimpleNamespace(
         manager=modules["docker_utils"].DockerManager,
         parser=modules["parsers"].JavascriptGenericParser,
+        parser_classes={
+            repo: getattr(
+                modules["parsers"], modules["constants"].REPO_TO_PARSER_CLASS[repo]
+            )
+            for repo in POLY_REPOS
+        },
         score=modules["scoring"].instance_level_scoring,
         hashes=HARNESS_HASHES,
     )
@@ -120,10 +133,13 @@ def selected_native_case(path, solver, config):
     row = selected[0]
     if (
         config.get("source") != "Poly"
-        or config.get("repo") != "sveltejs/svelte"
+        or config.get("repo") not in POLY_REPOS
         or row["repo"] != config["repo"]
         or row["base_commit"] != config["source_commit"]
-        or not re.fullmatch(r"sveltejs__svelte-[1-9][0-9]*", row["instance_id"])
+        or not re.fullmatch(
+            re.escape(row["repo"].replace("/", "__")) + r"-[1-9][0-9]*",
+            row["instance_id"],
+        )
     ):
         raise ValueError("Native Poly task differs from the supported source snapshot")
     f2p, p2p = ast.literal_eval(row["F2P"]), ast.literal_eval(row["P2P"])
@@ -133,6 +149,16 @@ def selected_native_case(path, solver, config):
     ):
         raise ValueError("Native Poly test identities are invalid")
     return row, f2p, p2p
+
+
+def parser_for_repo(native, repo):
+    """Use the pinned upstream repository parser rather than a global JS parser."""
+    if hasattr(native, "parser_classes"):
+        return native.parser_classes[repo]
+    if repo == "sveltejs/svelte":
+        # Retain the existing Svelte pilot harness interface.
+        return native.parser
+    raise ValueError("Native Poly parser metadata is unavailable for this repository")
 
 
 def grade_poly(args):
@@ -174,7 +200,7 @@ def grade_poly(args):
     )
     if (
         metadata["Id"] == config["image_id"]
-        or metadata["Config"]["WorkingDir"] != "/testbed"
+        or metadata["Config"]["WorkingDir"].rstrip("/") != "/testbed"
         or not any(
             value.startswith(prefix) for value in metadata.get("RepoDigests", [])
         )
@@ -261,7 +287,7 @@ def grade_poly(args):
                 row["native_call_wall_s"] = time.monotonic() - native_started
                 text = "\n".join(manager.run_logs)
                 (args.output / "native-test.log").write_text(text)
-                parsed = native.parser(text).parse()
+                parsed = parser_for_repo(native, case["repo"])(text).parse()
                 write_json(args.output / "parsed-tests.json", parsed)
                 outcome = native.score(
                     case["instance_id"], parsed, f2p, p2p, True, True
@@ -308,3 +334,18 @@ def grade_poly(args):
         row["wall_s"] = time.monotonic() - started
         write_json(args.output / "resolution.json", row)
     print(json.dumps({key: row[key] for key in ("instance_id", "status", "resolved")}))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--solver-run", type=Path, required=True)
+    parser.add_argument("--dataset", type=Path, required=True)
+    parser.add_argument("--native-image", required=True)
+    parser.add_argument("--native-upstream", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--timeout", type=int, default=900)
+    grade_poly(parser.parse_args())
+
+
+if __name__ == "__main__":
+    main()
