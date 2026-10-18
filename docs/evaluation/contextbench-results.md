@@ -180,9 +180,12 @@ localhost test certificate, authenticated against its pinned upstream Git blob;
 none is silently erased from the original scan. Changed certificate bodies are
 rejected by the classifier. This scoped classification does not establish that
 arbitrary credentials or personal data are absent.
-Composition authenticates the disjoint177 cases across27 repair parts totaling
-1,307,533,299 bytes. All shared extraction paths have identical bytes. Full500
-raw coverage and publication gates remain open.
+Composition authenticates the disjoint231 cases across32 repair parts totaling
+1,526,302,235 bytes. All shared extraction paths have identical bytes, and13,277
+SDK digest links have no conflicts. All344 findings from the55 Verified and54 Pro
+previews remain retained with exact public-source classifications bound; no
+declared finding remains unclassified. Full500 raw coverage and publication
+gates remain open.
 
 The closed64 cohort's final three pytest environments initially fail even with
 reference patches:
@@ -257,13 +260,13 @@ attempts, not proof that arbitrary personal data or credentials are absent.
 Full500 coverage, broader privacy, full500 portable replay, publication and
 comparability approval remain open.
 
-A separate relocated-directory replay now reads only all three private
+A separate relocated-directory replay now reads only all four private
 publication-preview sets, the search-preview parts and their public digest links.
-It hashes all33,611
+It hashes all43,510
 archive-member occurrences, extracts the required records and1,703 bundled runtime
-files, then imports CodeNib modules from that frozen runtime. All177 selections
-and observation receipts recompile identically;1,384 repair calls and354 actual
-search SDK fee receipts reproduce1,738 unique sessions and$70.002913935 modeled
+files, then imports CodeNib modules from that frozen runtime. All231 selections
+and observation receipts recompile identically;2,059 repair calls and462 actual
+search SDK fee receipts reproduce2,521 unique sessions and$141.76314628 modeled
 usage. Every native result remains bound to its original first patch. The worker
 uses the installed Python dependencies, with Python opens restricted to the new
 directory and dependencies; networking and external processes are denied.
@@ -460,9 +463,12 @@ patches, selections, fees and native outcomes pass semantic replay, with5,136 SD
 UUID pseudonyms and63 rebuilt Git seed archives. Actual-part review verifies
 all79 independent Git roots, including16 submodule roots, and recomputes263,738
 decompressed object IDs. It retains216 private-key-header findings without
-printing matched values; their contextual classification and broader publication
-review remain open. Neither the preview nor these checks constitute publication
-or full500 submission approval.
+printing matched values. Each occurrence binds to its exact seed commit/path and
+one of53 complete files anonymously fetched at pinned public upstream commits
+in Ansible, Element Web and qutebrowser. All full-file bytes compare identically;
+changed bodies with the same paths and headers are rejected. This classifies the
+declared markers without removing them or asserting absence of arbitrary secrets
+or personal data. Broader publication review and full500 submission remain open.
 
 The private submission draft now binds all500 IDs to the pinned
 `contextbench_verified` metadata and the frozen search population. It distinguishes
