@@ -266,6 +266,18 @@ archive parts and121 source Git seeds for those tasks authenticate after cleanup
 Existing context/receipt replay uses the retained raw material and does not
 require those image caches.
 
+A further108 source/native cache images from54 early closed Verified tasks are
+removed with the same normal Docker reference checks. The remaining early case
+lacks this admission metadata and stays excluded. Three original archive parts
+authenticate, and all54 retained Git seed TAR hashes match their archived source
+preparation proofs before and after removal. Anonymous HEAD checks confirm the54
+pinned public base digests are still available. Current/future case references,
+all existing containers and foreign tags remain protected; no forced image,
+container or raw-file deletion occurs. During parallel source preparation the
+observed free-space change is+19.4GiB, which is not an isolated reclaim estimate.
+Exact private image exports remain unavailable; repetition needs pinned base
+pulls and private rebuilds. These cache operations add no model calls or fees.
+
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
