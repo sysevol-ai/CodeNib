@@ -8,12 +8,14 @@ import hashlib
 import io
 import json
 import tarfile
+import threading
 
 import pytest
 
 from codenib.eval.benchmarks.contextbench import contextbench_prediction
 from scripts.contextbench_reproduce_search_pair import (
     acknowledged,
+    ordered_replays,
     rebase_history,
     safe_path,
     verify_extracted,
@@ -141,3 +143,30 @@ def test_runtime_mutation_rejected_before_any_model_or_evaluator_import(tmp_path
         verify_runtime(
             archive, runtime, hashlib.sha256(archive.read_bytes()).hexdigest()
         )
+
+
+def test_parallel_source_completion_keeps_protocol_order():
+    second_finished = threading.Event()
+    completed = []
+
+    def verify(case):
+        if case == 0:
+            assert second_finished.wait(timeout=5)
+        completed.append(case)
+        if case == 1:
+            second_finished.set()
+        return {"verified_case": case}
+
+    results = list(ordered_replays([0, 1], verify, jobs=2))
+    assert completed == [1, 0]
+    assert results == [{"verified_case": 0}, {"verified_case": 1}]
+
+
+def test_parallel_source_failure_prevents_complete_replay_result():
+    def verify(case):
+        if case == 0:
+            raise ValueError("Pinned source snapshot changed")
+        return case
+
+    with pytest.raises(ValueError, match="snapshot changed"):
+        list(ordered_replays([0, 1], verify, jobs=2))
