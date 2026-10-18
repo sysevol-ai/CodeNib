@@ -666,8 +666,9 @@ Retain the rejected experiment and its24-row public comparison; do not expand
 it to32/500 or product. All fees reconcile; Haiku main-input attribution remains
 incomplete. SDK loop mean/median30.33/23.86seconds excludes source preparation.
 The$2 reservation closes with$1.951147750 unused, no unknown API fee or repair.
-Next work is task-relevant coverage review/selective strong search, with all
-parent/child costs and both native controls; it is unimplemented/unmeasured.
+Task-relevant coverage review/selective strong search is now implemented as
+the separate experiment below; its live quality remains unmeasured. Both native
+controls and all parent/child fees remain required.
 No router, independent validation, repair or500 gain is claimed or promoted.
 
 The long-anchor source-delivery defect is fixed independently in
@@ -684,6 +685,26 @@ query terms; MUI fast changes80–119 to785–824. This source-delivery diagnost
 adds zero model/API/Gold/evaluator work and proves no agent-quality gain.
 Prior Haiku native scores do not use this path. The repair becomes a prerequisite
 for the planned evidence-reviewer ablation; no router or cohort is promoted.
+
+The repair's exact independent head `f5f02935` now has successful required unit
+CI and remains unmerged. The source-checkout-only same-session evidence reviewer
+is implemented at `93d5c79a`, behind one explicit SDK argument with no default
+route, storage, graph or embedding dependency. It reuses retained source
+authentication and the existing snapshot-bound handle identity to deduplicate
+only complete, confirmed prior observations. One direct tool-free Opus review
+can ask the same native agent to resolve at most two issue-specific gaps.
+Reviewer metadata adds no source credit; real subsequent tools do. The existing
+view -> reader lease ends before HTTP. One pre-await attempt latch, SDK init
+session identity and deterministic concurrency verification prevent duplicate
+dispatch. Free counting plus a bounded forecast precedes the single paid request;
+packet/budget deferral and capped-response no-action behavior are explicit.
+Malformed/stale review attempts drain main terminal fees before rejection;
+unknown reviewer fees remain unknown, and source is rechecked after continuation.
+All23 new mock HTTP/source/SDK tests and116 focused checks pass without paid calls.
+There is no new live outcome or reservation. Official model constraints and a
+separate prospective same-eight protocol remain gates before inference. Keep
+both native controls and require a matched reviewer ablation before a CodeNib
+incremental-gain claim. Independent32/500 and publication gates stay open.
 
 Product lifecycle and dependency direction stay unchanged.
 
