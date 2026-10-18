@@ -738,12 +738,13 @@ reservations and late metadata writes. The owner waits for actual full-cohort
 source/native admission, reserves only existing authorized usage and never
 retries a model or replaces a task. No remaining269 reservation or model request
 has begun, and the synthetic checks establish no new native-ready environment.
-The same original269 controller is now held before creating any paid phase.
+The obsolete original269 controller stays held before creating any paid phase.
 Prospective admission prepares both remaining source cohorts in advance: after
-Pro fee closure and actual Poly source/control execution qualification, the
-unchanged Multi source delegate prepares all153 remaining environments while
-reservations remain zero. Only actual Poly116 and Multi153 execution proofs can
-resume that same controller; its nine paid phases and accounting stay unchanged.
+Pro fee closure and actual Poly source finalization, the Multi source delegate
+prepares all153 remaining environments while Poly native recovery can continue
+and reservations remain zero. The waiting release owner requires actual Poly116
+and Multi153 admission proofs and source/native owner exits before retiring the
+obsolete owners and starting the unchanged nine paid phases under a fresh intent.
 Poly checks required identifiers against actual parsed test results. Multi needs
 transition-aware qualification: its report's base/test-patch results are historical
 dataset fields; only the current fix-patch result records the local control run.
@@ -759,18 +760,26 @@ native test call. Actual ambiguous cases still need local base-only execution
 using the unchanged native adapter and test command; their native resolved flag
 is excluded from candidate outcomes. The queued resumer cannot release without
 these actual execution proofs.
-A separate zero-model result owner authenticates11 successive closed cohorts,
-with the231-case index now complete and exactly500 first attempts required for
-the final result. It authenticates
-patch, native outcome, final context and unique search/repair fees for every case,
-including failures. New Poly/Multi records additionally bind all four archived
-native-runtime files to the actual grading adapter; all58 earlier native adapter
-hashes also match their already-archived source bytes. Changed/missing/symlinked
-snapshots and mismatched index/join/evaluation populations are rejected. The
-original collector's first-attempt/fee/selection authentication and failed-case
-retention remain unchanged. Only actual500-case closure enables the unchanged
-official final-context evaluator and complete-system cost aggregator. No full500
-evaluation or result exists yet; raw publication and comparability remain open.
+A separate zero-model result owner adopts the unchanged231-case index and waits
+for nine successive closed cohorts, requiring exactly500 first attempts for the
+final result. It authenticates patch, native outcome, final context and unique
+search/repair fees for every case, including failures. New Poly/Multi records bind
+all four archived native-runtime files to the authenticated native-v9 adapter.
+The collector changes only its pinned Poly adapter digest; every authentication,
+population, failure-retention and fee function remains AST-identical. A regression
+fixture reproduces the old digest's rejection of the real v9 runtime and rejects
+changed, missing, symlinked, old-version and misbound snapshots. Its269 future
+runtime bindings are synthetic fixtures, not native-execution or candidate credit.
+A separate actual replay reauthenticates all231 original records, preserving the
+188/43 outcomes,2,521 unique metered sessions and$141.76314628 allocated usage.
+The continuation requires a hash-bound receipt for the previous read-only owner's
+exit and unchanged prefix files before acquiring its new exclusive intent.
+The original full500 provenance observer remains compatible through its unchanged
+index-readiness function. All58 earlier native adapter hashes also match their
+already-archived source bytes. Mismatched index/join/evaluation populations remain
+rejected. Only actual500-case closure enables the unchanged official final-context
+evaluator and complete-system cost aggregator. No full500 evaluation or result
+exists yet; raw publication and comparability remain open.
 A separate read-only owner waits for that actual full500 index and its closed
 official metric record, then replays all1,000 original search workers and confirmed
 repair inputs through the unchanged selection compiler. It requires the exact
