@@ -130,9 +130,57 @@ def test_included_max_requires_explicit_unpaid_allowance(info):
 
 
 @pytest.mark.parametrize(
+    "change",
+    [
+        None,
+        "missing_reason",
+        "missing_raw_reason",
+        "unknown_reason",
+        "raw_status_conflict",
+        "overage_enabled",
+        "using_overage",
+        "quota_rejected",
+    ],
+)
+def test_included_max_organization_disabled_receipt(change):
+    info = {
+        "status": "allowed",
+        "overage_status": "rejected",
+        "overage_disabled_reason": "org_level_disabled",
+        "raw": {
+            "overageStatus": "rejected",
+            "overageDisabledReason": "org_level_disabled",
+            "isUsingOverage": False,
+        },
+    }
+    if change == "missing_reason":
+        del info["overage_disabled_reason"]
+    elif change == "missing_raw_reason":
+        del info["raw"]["overageDisabledReason"]
+    elif change == "unknown_reason":
+        info["overage_disabled_reason"] = info["raw"]["overageDisabledReason"] = (
+            "unknown"
+        )
+    elif change == "raw_status_conflict":
+        info["raw"]["overageStatus"] = "allowed"
+    elif change == "overage_enabled":
+        info["raw"]["overageEnabled"] = True
+    elif change == "using_overage":
+        info["raw"]["isUsingOverage"] = True
+    elif change == "quota_rejected":
+        info["status"] = "rejected"
+    if change is None:
+        assert claude.included_max_rate({"rate_limit_info": info}) == info
+    else:
+        with pytest.raises(RuntimeError, match="included usage only"):
+            claude.included_max_rate({"rate_limit_info": info})
+
+
+@pytest.mark.parametrize(
     "mode",
     [
         "allowed",
+        "org_disabled",
         "credits",
         "missing_rate",
         "result_only",
@@ -152,6 +200,20 @@ def test_max_quota_stream_preserves_metering_across_event_orders(
         return make_dataclass(kind, [(key, object) for key in fields])(**fields)
 
     def rate():
+        if mode == "org_disabled":
+            return event(
+                "RateLimitEvent",
+                rate_limit_info={
+                    "status": "allowed",
+                    "overage_status": "rejected",
+                    "overage_disabled_reason": "org_level_disabled",
+                    "raw": {
+                        "overageStatus": "rejected",
+                        "overageDisabledReason": "org_level_disabled",
+                        "isUsingOverage": False,
+                    },
+                },
+            )
         return event(
             "RateLimitEvent",
             rate_limit_info={
@@ -169,7 +231,7 @@ def test_max_quota_stream_preserves_metering_across_event_orders(
             subtype="init",
             data={"tools": options.allowed_tools, "apiKeySource": "none"},
         )
-        if mode in {"allowed", "credits"}:
+        if mode in {"allowed", "credits", "org_disabled"}:
             yield rate()
             advanced.append("after_rate")
         if mode != "result_only":
@@ -212,10 +274,10 @@ def test_max_quota_stream_preserves_metering_across_event_orders(
         max_turns=20,
         max_included_only=True,
     )
-    if mode in {"allowed", "late_rate", "rate_after_result"}:
+    if mode in {"allowed", "late_rate", "rate_after_result", "org_disabled"}:
         asyncio.run(call)
         assert row["status"] == "ok" and row["sdk_reported_cost_usd"] == 0.03
-        assert row["max_included_rate_info"]["raw"]["overageEnabled"] is False
+        assert row["max_included_rate_info"]["raw"]["isUsingOverage"] is False
         assert row["max_included_rate_confirmed"] is True
     else:
         with pytest.raises(RuntimeError, match="Max"):
