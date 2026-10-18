@@ -550,13 +550,18 @@ python scripts/contextbench_reproduce_search_pair.py \
   --output /path/to/new-reproduction-output
 ```
 
-The bundle records the original Python/package inventories, source-preparation
-code and evaluator sources. The embedded runtime must run with its compatible
-dependencies; a package inventory alone is not a container image. The replayer
-checks source footprints and candidate metrics, not solver repairs or new model
-behavior. Actual500 round-trip reproduction, final fee settlement, contextual
-privacy review, complete native issue-resolution outcomes and formal submission
-remain open. Raw archives stay local at this preparation stage.
+The bundle records original Python/package inventories, pinned replay/evaluator
+requirements, source-preparation code and evaluator sources. Fresh Python3.11.5
+environments built from the pinned requirements, without system-site packages,
+provider SDKs or credential variables, reproduce both cached Python/JavaScript
+source footprints and pass three nonempty synthetic evaluator cases. These
+include the official hidden-directory normalization/missing-source diagnostic,
+retained without remapping its annotation. This is a portable setup check;
+the full inventory alone is not a container image. The replayer checks source
+footprints and candidate metrics, not solver repairs or new model behavior.
+Actual500 round-trip reproduction, final fee settlement, contextual privacy
+review, complete native issue-resolution outcomes and formal submission remain
+open. Raw archives stay local at this preparation stage.
 
 ### Fixed500 native control
 
