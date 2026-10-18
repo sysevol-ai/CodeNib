@@ -29,15 +29,16 @@ The canonical500 batches with completed grading and settled fees retain
 They include the three original development repairs and119 subsequent Verified
 tasks in canonical metadata order. All122 raw patch/native/selection/fee bindings
 authenticate, including1,211 unique metered search/repair sessions. The remaining378
-are outside these settled cohorts. The next55 source owner has started actual
-environment preparation; its repair requests still require complete native gates.
-All58 selected-context exports pass the unchanged official evaluator as a format
-compatibility check. A separate zero-model replay reauthenticates their116 search
-workers and confirmed repair inputs, then recompiles every selected context and
-receipt. Each matches its original record and the exact prediction scored by the
-official evaluator; each selected patch matches the natively tested first patch.
-All58 have confirmed model-input receipts. Arbitrary-shell attribution remains
-partial, and the original three selections remain disclosed as retrospective.
+are outside these settled cohorts. All next55 source environments are prepared;
+their native controls are running before any further repair requests.
+The earlier58 selected-context exports pass the unchanged official evaluator as
+a format compatibility check. A zero-model provenance replay now reauthenticates
+all244 original search workers and confirmed repair inputs for the completed122,
+then recompiles every selected context and receipt. Each matches its original
+record and exact prepared metric input; each selected patch matches the natively
+tested first patch. All122 have confirmed model-input receipts. This replays
+input provenance without rerunning official scoring. Arbitrary-shell attribution
+remains partial, and the original three selections remain disclosed as retrospective.
 These exposed partial results do not establish full500 Pass@1 or complete-system
 Recall/F1. Full500 input provenance and publication replay remain open.
 
@@ -118,13 +119,25 @@ the same metadata preparation. The64-case gate retains136 actual fixture runs:
 130 admitted fixtures, plus the six original failed pytest fixtures. Native data,
 required tests, parser, scorer, model, prompts and context policy are unchanged.
 
-A separate private original-byte archive now retains all58 completed first
+A separate private original-byte archive retains the earlier58 completed first
 attempts, including the seven unresolved cases, failed native wrapper logs and
 original cleanup failures/recovery siblings. All7,700 members round-trip with
 matching hashes; its compressed parts are each below50 MiB. Exact runtime source,
 original metric inputs, outcomes, session usage and selection records are
 retained. This unredacted material is not published. Full500 raw coverage,
 publication redaction and portable replay remain open submission gates.
+
+A separate private increment retains all next64 first attempts, including their
+six unresolved outcomes, original source TARs, admission failures and resource
+amendments. Its9,068 original members round-trip byte-for-byte through15 bounded
+zstd parts totaling740,483,203 bytes. An independent decoder reads the actual
+split parts, verifies every member and the complete stream checksum, rechecks
+the unchanged earlier58 parts, and confirms the union covers exactly122 first
+attempts. It explicitly retains all six failed pytest fixtures, six corrected
+fixtures, four baseline-positive concordance fixtures and both original
+source-create timeouts with their owned cleanup. No model request, native test,
+official scoring or financial settlement is repeated. This increment is
+unredacted and private; the58-case privacy review below does not cover it.
 
 A private redacted preview retains all7,700 original members and verifies7,703
 archive members including its support manifests. It substitutes known workstation
@@ -259,6 +272,15 @@ original collector's first-attempt/fee/selection authentication and failed-case
 retention remain unchanged. Only actual500-case closure enables the unchanged
 official final-context evaluator and complete-system cost aggregator. No full500
 evaluation or result exists yet; raw publication and comparability remain open.
+A separate read-only owner waits for that actual full500 index and its closed
+official metric record, then replays all1,000 original search workers and confirmed
+repair inputs through the unchanged selection compiler. It requires the exact
+canonical500 IDs and binds unchanged evaluation-input, first-patch and metric
+hashes. The existing readiness predicate rejects the actual122 records when
+asked for500; a partial population cannot start the replay. No model request,
+native test, official scoring rerun or financial mutation occurs in this owner.
+Its full500 verification has not executed yet, and it does not approve raw
+publication or comparability.
 A separate resource-reuse admission rechecks the existing AutoGPT and Go377
 solver images through two actual networkless probes. Both retain the exact
 canonical source tree, single-commit history and reference hygiene; the pinned
