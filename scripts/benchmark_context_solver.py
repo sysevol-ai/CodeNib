@@ -437,6 +437,7 @@ def freeze_solver(output, mini_root):
                 "contextbench_reproduce_search_pair.py",
                 "contextbench_verified.py",
                 "contextbench_verified_output.py",
+                "contextbench_selected_context.py",
             )
         },
         **{
