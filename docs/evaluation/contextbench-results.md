@@ -24,18 +24,37 @@ it excludes repair, native grading and compute. The search batch is settled once
 its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
-The frozen canonical500 repair queue retains all three prior candidate repairs
-and completes seven additional tasks in canonical metadata order. The first,
-`astropy__astropy-13398`, is unresolved and costs **$0.6964131** for nine repair
-requests. The next six complete with **five resolved, one unresolved** and cost
-**$2.0836624** for42 metered repair requests. All seven environment admissions
-pass separate neutral/reference native controls before model requests. There are
-now **ten completed candidate native outcomes: seven resolved, three unresolved**,
-with490 tasks still awaiting repair. This small progress count is not a full500
-Pass@1 estimate. No model retry or search rerun occurs, and every owned solver
-and native container is removed. All ten retained-context exports run through
-the unchanged official evaluator as a format/scoring compatibility check on
-exposed tasks. Model fees are settled once; cached search is not debited again.
+The completed, fee-closed canonical500 batches retain **26 unique first candidate
+attempts:22 natively resolved and4 unresolved**. The remaining474 include the
+live batch described below. It
+includes the three original development repairs and23 subsequent tasks in
+canonical metadata order. All26 retained-context exports pass the unchanged
+official evaluator as a format compatibility check on exposed tasks. This is
+partial progress, without a full500 Pass@1 or full-system Recall/F1 claim.
+
+The latest16 fixed tasks complete with **15 resolved,1 unresolved** and
+**$4.9256369** in124 completely metered repair requests. Three original
+model-complete cases encounter Docker cleanup acknowledgement timeouts. Preserve
+the original errors and solver/config/patch bytes; exact-owner absence checks
+and zero-model reconstruction recover the existing observations and usage, then
+grade the same first patches. All three resolve. Only four never-attempted cases
+continue after the cleanup fix, with the same model, prompts, context policy,
+guards and native controls. All four complete, with three resolved and one
+unresolved. No model retry, task replacement or search rerun occurs.
+
+The cleanup helper now bounds removal and exact-container absence verification,
+checkpoints ownership, and preserves observations, fees and patch exports even
+when cleanup remains unconfirmed. Dispatch still stops on unconfirmed cleanup.
+The original16 reservation closes once through authenticated124 session
+receipts and the three original-byte recovery commitments. Across all26 repairs,
+new API usage totals **$9.6372232**; reused search is not debited again. At this
+closure, the new$500 authorization has$490.3627768 remaining. These are recorded
+usage values; native compute and reconciled invoices remain separate. All64
+neutral/reference controls for the next32 fixed tasks now pass. Two disjoint
+model shards run at frozen runtime `25d4580c`; their$160 reservation is not a
+measured charge, and live usage is outside the closed balance above. The new
+Poly cache option has not changed this running runtime.
+
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
@@ -108,9 +127,13 @@ per-task scripts and Dockerfiles against a pinned manifest, preserves the
 official required-test subset criterion and bounds its owned local container.
 All54 Pro task records and their test identities bind to the frozen source
 metadata; loading the original runner verifies six pinned source files. This
-extends metadata and adapter coverage without claiming validated Pro test
-environments. Per-dispatch source preparation and native controls remain open
-for the unexecuted tasks. The repair prompt, model loop, budgets and navigation
+extends metadata and adapter coverage. The first original Pro v1 NodeBB task
+now passes neutralFalse/referenceTrue with unchanged pinned tests/parser/scorer.
+Retain its original uncached npm and localhost IPv6 failures. A separate local
+native image adds only public cached npm dependencies, offline flags and
+IPv4-first DNS; all12 recorded grader/probe containers are absent. These are
+zero-model fixtures, without additional candidate outcomes. Per-dispatch source
+preparation and native controls remain open for the other unexecuted tasks. The repair prompt, model loop, budgets and navigation
 delivery are unchanged; only Pro gains the existing source-only preflight.
 A first additional Verified environment restores the exact canonical source over
 the image's single-file `pyproject.toml` setup overlay and verifies clean,
@@ -126,6 +149,34 @@ the solver archives both the grader and transport implementations. The new
 transport/grader checks cover split Unicode, invalid bytes, timeout drainage,
 cleanup failure and the native-only CLI. These are zero-model environment
 fixtures, without additional candidate attempts, API usage or Pass@1 results.
+
+A fixed Go/Multi fixture for `cli__cli-10048` also passes
+neutralFalse/referenceTrue after bounding compiler parallelism to its container
+CPU quota: `GOMAXPROCS=2` and `GOFLAGS=-p=2`. The derived native image retains
+exactly the original filesystem layers, entrypoints, patches, scripts and native
+scorer. Its original process-limit failure is preserved. Both fixture containers
+are removed. This validates one Go environment, without a candidate repair or a
+general claim about all Go tasks.
+
+The Poly native-only CLI optionally accepts `--cl100k-cache-file` for the public
+`cl100k_base.tiktoken` resource. It requires SHA-256
+`223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7`, reads the
+bytes once, and copies only that fixed resource into the owned container's
+isolated tokenizer-cache directory. The original native image digest and source,
+test command, parser and scorer are unchanged; network access stays disabled.
+The recorded AutoGPT reference fixture previously fails because this public
+cache is unavailable. That original failure remains recorded. With the cache,
+`Significant-Gravitas__AutoGPT-4652` passes neutralFalse/referenceTrue using the
+same native image; both containers are removed. This option does not download
+resources, invoke a provider or add a source/test overlay.
+
+Separate source-only images prepare the same resource conditions for these two
+future solver tasks: bounded Go compiler concurrency and the pinned public
+tokenizer cache. Real isolated probes verify the exact canonical commit/tree,
+clean history-free source and absence of native reference artifacts. The Python
+probe loads `cl100k_base` with network disabled. Both probe containers are
+removed. No candidate model request has run for either case, and no existing
+model prompt, navigation, selection policy, guard or search receipt changes.
 
 The [upstream unified format](https://github.com/EuniAI/ContextBench/blob/1436c28a8eb95496da4ea69ad458b9f8a8eb7d61/docs/process_trajectories.md#unified-format)
 separates explored `pred_steps` from final `pred_files`/`pred_spans`. The pinned
@@ -232,10 +283,11 @@ solver path also retains its metered-budget-stop behavior. A read-only handoff
 check reconstructs both original workers on one completed500 case without new
 models or annotations. These checks establish wiring, not repair quality.
 
-Native grading remains separate. Existing adapters accept Verified with its
-validated images, the Multi fmt/Gson/ponyc pilots, and now the Poly Svelte pilot;
-this is not full500 native environment coverage. Poly runtime evidence currently
-covers `sveltejs__svelte-510` only. Source attribution is still partial for
+Native grading remains separate. Validated environments include the admitted
+Verified tasks, Multi fmt/Gson/ponyc and one Go fixture, the Poly Svelte and
+AutoGPT fixtures, and one Pro v1 NodeBB fixture. This is not full500 native environment coverage.
+Other task records still require their source and native controls before
+candidate dispatch. Source attribution is still partial for
 arbitrary shell output. The three-case pilot above adds real candidate repair
 outcomes; complete-system Recall/F1, independent/full500 Pass@1 and an end-to-end
 cost advantage remain unestablished.

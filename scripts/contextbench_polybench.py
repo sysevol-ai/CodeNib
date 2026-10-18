@@ -17,10 +17,12 @@ import csv
 import dataclasses
 import hashlib
 import importlib
+import io
 import json
 import re
 import subprocess
 import sys
+import tarfile
 import time
 import uuid
 from pathlib import Path
@@ -35,6 +37,9 @@ from scripts.contextbench_native_repos import POLY_REPOS
 HARNESS_REVISION = "9c836c5d7f3cb991934132b77d29e6941d912a07"
 DATASET_REVISION = "d56445f9940eae4e9d2974ec66820c2f1d7754e6"
 DATASET_SHA256 = "17ad661b20e9af1e2067fbbc2e2658a21137d56693570d1d07f966d8bc0408b7"
+CL100K_URL = "https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"
+CL100K_SHA256 = "223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7"
+CL100K_CACHE_DIR = "/tmp/codenib-tiktoken-cache"
 HARNESS_HASHES = {
     "__init__.py": "d76678eeac19673628ed624db32a20db823ca4005b9d499141424ce236cf1452",
     "docker_utils.py": "0b4d763b063b306be0ff1f348740a3bcdfd8b60457bb94a6e5bf400d6056344c",
@@ -73,6 +78,35 @@ def digest(path):
 
 def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+
+
+def verified_cl100k_cache(path):
+    """Stage one pinned public resource, with no network or source/test overlay.
+
+    Read and authenticate the exact bytes once, then retain that same immutable
+    payload for upload. Caller-supplied archive paths or extraction are forbidden.
+    The native image and official test/parser/scorer remain unchanged.
+    """
+    with path.open("rb") as stream:
+        content = stream.read(2 * 1024 * 1024 + 1)
+    if hashlib.sha256(content).hexdigest() != CL100K_SHA256:
+        raise ValueError("Offline cl100k resource differs from its pinned SHA-256")
+    payload = io.BytesIO()
+    with tarfile.open(fileobj=payload, mode="w") as archive:
+        directory = tarfile.TarInfo(Path(CL100K_CACHE_DIR).name)
+        directory.type, directory.mode = tarfile.DIRTYPE, 0o755
+        archive.addfile(directory)
+        filename = directory.name + "/" + hashlib.sha1(CL100K_URL.encode()).hexdigest()
+        member = tarfile.TarInfo(filename)
+        member.size, member.mode = len(content), 0o644
+        archive.addfile(member, io.BytesIO(content))
+    return payload.getvalue(), {
+        "public_resource_url": CL100K_URL,
+        "resource_sha256": CL100K_SHA256,
+        "resource_bytes": len(content),
+        "container_cache_dir": CL100K_CACHE_DIR,
+        "network_calls": 0,
+    }
 
 
 def native_environment(upstream):
@@ -174,6 +208,8 @@ def grade_poly(args):
     image = getattr(args, "native_image", None)
     if not image or not re.fullmatch(r"(?:sha256:|.+@sha256:)[a-f0-9]{64}", image):
         raise ValueError("Poly grading needs a separate pinned --native-image")
+    cache_path = getattr(args, "cl100k_cache_file", None)
+    cache = verified_cl100k_cache(cache_path) if cache_path is not None else None
     native = native_environment(getattr(args, "native_upstream", None))
     config = json.loads((args.solver_run / "config.json").read_text())
     solver = json.loads((args.solver_run / "solver.json").read_text())
@@ -226,6 +262,7 @@ def grade_poly(args):
             "adapter_sha256": digest(Path(__file__)),
             "timeout": args.timeout,
             "native_call_wall_guard_s": args.timeout,
+            "offline_tokenizer_cache": cache[1] if cache is not None else None,
             "scope": "Separate native Poly grading only, no model calls",
         },
     )
@@ -252,8 +289,15 @@ def grade_poly(args):
                 nano_cpus=2_000_000_000,
                 pids_limit=256,
                 labels={"codenib.contextbench.owner": name},
+                **(
+                    {"environment": {"TIKTOKEN_CACHE_DIR": CL100K_CACHE_DIR}}
+                    if cache is not None
+                    else {}
+                ),
             )
             self.container.start()
+            if cache is not None and not self.container.put_archive("/tmp", cache[0]):
+                raise ValueError("Offline cl100k cache upload failed")
 
     manager = OwnedManager(metadata["Id"], delete_image=False, client=client)
     started = time.monotonic()
@@ -344,6 +388,11 @@ def main():
     parser.add_argument("--native-upstream", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument(
+        "--cl100k-cache-file",
+        type=Path,
+        help="Optional local public cl100k resource; require its pinned SHA-256",
+    )
     grade_poly(parser.parse_args())
 
 

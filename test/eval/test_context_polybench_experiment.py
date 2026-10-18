@@ -2,8 +2,11 @@
 
 import csv
 import dataclasses
+import hashlib
+import io
 import json
 import sys
+import tarfile
 from types import SimpleNamespace
 
 import pytest
@@ -122,12 +125,19 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
         "wall_deadline",
         "cleanup",
         "empty",
+        "offline_cache",
+        "cache_upload",
     ],
 )
 def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     study, monkeypatch, fault
 ):
     args, case, solver, _ = study
+    resource = b"pinned public tokenizer file\n"
+    if fault in {"offline_cache", "cache_upload"}:
+        args.cl100k_cache_file = args.solver_run.parent / "cl100k_base.tiktoken"
+        args.cl100k_cache_file.write_bytes(resource)
+        monkeypatch.setattr(poly, "CL100K_SHA256", hashlib.sha256(resource).hexdigest())
     if fault == "wall_deadline":
         ticks = iter([0, 0, 61, 62])
         monkeypatch.setattr(
@@ -160,6 +170,20 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
                 output=b"base\nwrong\n" if fault == "tree" else b"base\ntree\n",
             )
 
+        def put_archive(self, path, data):
+            assert path == "/tmp"
+            with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+                members = archive.getmembers()
+                assert len(members) == 2 and members[0].isdir()
+                assert members[1].name == (
+                    "codenib-tiktoken-cache/"
+                    + hashlib.sha1(poly.CL100K_URL.encode()).hexdigest()
+                )
+                assert members[1].isfile()
+                assert archive.extractfile(members[1]).read() == resource
+            events.append(("offline_cache", self.name))
+            return fault != "cache_upload"
+
         def remove(self, **kwargs):
             if fault == "cleanup":
                 raise RuntimeError("removal failed")
@@ -169,6 +193,12 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     def create(**options):
         assert options["network_disabled"] and options["mem_limit"] == "3g"
         assert options["command"] == ["300"]
+        if fault in {"offline_cache", "cache_upload"}:
+            assert options["environment"] == {
+                "TIKTOKEN_CACHE_DIR": poly.CL100K_CACHE_DIR
+            }
+        else:
+            assert "environment" not in options
         result = Container(options)
         containers[result.name] = result
         events.append(("create", result.name))
@@ -258,9 +288,11 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     monkeypatch.setattr(poly, "native_environment", lambda path: native)
     poly.grade_poly(args)
     result = json.loads((args.output / "resolution.json").read_text())
-    assert result["resolved"] is (fault is None)
+    assert result["resolved"] is (fault in {None, "offline_cache"})
     assert result["status"] == (
-        "graded" if fault in (None, "empty", "invalid_patch") else "error"
+        "graded"
+        if fault in (None, "empty", "invalid_patch", "offline_cache")
+        else "error"
     )
     assert result["container_removed"] is (fault != "cleanup")
     assert "unrelated" in containers
@@ -273,6 +305,14 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
         )
     if fault is None:
         assert result["native_test_returncode"] == 4
+    if fault == "offline_cache":
+        assert [event[0] for event in events][:3] == ["create", "offline_cache", "test"]
+    if fault in {"offline_cache", "cache_upload"}:
+        saved = json.loads((args.output / "config.json").read_text())
+        assert saved["image_id"] == args.native_image
+        assert saved["offline_tokenizer_cache"]["resource_sha256"] == poly.CL100K_SHA256
+    if fault == "cache_upload":
+        assert not any(event[0] in {"test", "code"} for event in events)
     if fault in {
         "returned_timeout",
         "partial_success",
@@ -286,3 +326,19 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
 def test_poly_grader_requires_native_checkout():
     with pytest.raises(ValueError, match="native-upstream"):
         poly.native_environment(None)
+
+
+def test_poly_rejects_wrong_offline_cache_before_native_import(study, monkeypatch):
+    args, _, _, _ = study
+    args.cl100k_cache_file = args.solver_run.parent / "incorrect-tokenizer"
+    args.cl100k_cache_file.write_bytes(b"incorrect public resource")
+    monkeypatch.setattr(
+        poly,
+        "native_environment",
+        lambda path: pytest.fail(
+            "Must reject before importing native harness or Docker"
+        ),
+    )
+    with pytest.raises(ValueError, match="pinned SHA-256"):
+        poly.grade_poly(args)
+    assert not args.output.exists()
