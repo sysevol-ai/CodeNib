@@ -29,8 +29,14 @@ The canonical500 batches with completed grading and settled fees retain
 They include the three original development repairs and55 subsequent Verified
 tasks in canonical metadata order. The remaining442 tasks still need repair.
 All58 selected-context exports pass the unchanged official evaluator as a format
-compatibility check. These exposed partial results do not establish full500
-Pass@1 or complete-system Recall/F1.
+compatibility check. A separate zero-model replay reauthenticates their116 search
+workers and confirmed repair inputs, then recompiles every selected context and
+receipt. Each matches its original record and the exact prediction scored by the
+official evaluator; each selected patch matches the natively tested first patch.
+All58 have confirmed model-input receipts. Arbitrary-shell attribution remains
+partial, and the original three selections remain disclosed as retrospective.
+These exposed partial results do not establish full500 Pass@1 or complete-system
+Recall/F1. Full500 input provenance and publication replay remain open.
 
 The latest32 fixed tasks complete with **29 resolved,3 unresolved** and
 **$11.9111416** across264 fully metered repair sessions. Their64 separate native
@@ -53,12 +59,19 @@ preserving model outputs; dispatch still stops on unconfirmed cleanup.
 Across all58 repairs, new API usage totals **$21.5483648**. At this closure,
 the new$500 authorization has$478.4516352 remaining, with no active reservation.
 These are recorded SDK usage values; native compute and reconciled invoices
-remain separate. The next64 fixed tasks wait for completed source preparation
-and128 native controls before budget reservation or model requests. Two original
-Docker source-build timeouts remain recorded and receive source-only retries;
-these tasks have not received repair-model requests. The model runtime stays
-frozen at `25d4580c`; the new Poly cache and aggregation utilities have not changed
-that running protocol.
+remain separate. All64 source admissions for the next fixed batch are now
+prepared;128 native controls must pass before its budget reservation or model
+requests. Preserve two original Docker create timeouts and their source-only
+recoveries. The timed-out creates leave two containers that appear after an
+initial absence check, so the old cleanup claims are not accepted. Exact-owner,
+image and state checks identify both residual containers; explicit removal and
+subsequent absence checks complete their cleanup. Future source builders keep
+cleanup unconfirmed when creation is not acknowledged. Four deterministic
+regression checks cover that late-create race and removal outcomes. Both retried
+source images retain the original canonical commit/tree and native image. No
+repair-model or search request is repeated. The model runtime stays frozen at
+`25d4580c`; source-preparation cleanup and the new Poly cache/aggregation utilities
+have not changed its model, prompts, context policy or budget guards.
 
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
