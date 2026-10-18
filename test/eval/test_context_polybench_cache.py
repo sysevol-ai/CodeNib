@@ -179,8 +179,84 @@ def test_native_worker_override_cannot_change_other_runner_contracts(
 
 @pytest.mark.parametrize(
     ("repo", "workers"),
-    [("coder/code-server", 2), ("huggingface/transformers", 8)],
+    [
+        ("coder/code-server", 2),
+        ("huggingface/transformers", 8),
+        ("keras-team/keras", 8),
+    ],
 )
 def test_thread_limits_reject_other_repositories_and_unsupported_counts(repo, workers):
     with pytest.raises(ValueError, match="Transformers"):
         poly.native_thread_environment({"repo": repo}, workers)
+
+
+@pytest.fixture
+def identifier_binding():
+    case = {"instance_id": "coder__code-server-4923", "base_commit": "d" * 40}
+    config = {"source_commit": case["base_commit"], "source_tree": "e" * 40}
+    proof = {
+        "schema_version": 1,
+        "kind": "native-identifier-unverifiable",
+        "policy": "conservative_unresolved",
+        "instance_id": "context-fixture",
+        "original_inst_id": case["instance_id"],
+        "native_dataset_sha256": poly.DATASET_SHA256,
+        "source_commit": config["source_commit"],
+        "source_tree": config["source_tree"],
+        "allowed_missing_test_ids": ["stable"],
+        "reference_resolution_sha256": "1" * 64,
+        "reference_test_log_sha256": "2" * 64,
+        "no_full_execution_claim": True,
+        "count_as_unresolved": True,
+    }
+    return case, config, proof
+
+
+def test_known_identifier_proof_only_allows_conservative_unresolved(identifier_binding):
+    case, config, proof = identifier_binding
+    result = poly.validated_identifier_issue(
+        proof, case, config, "context-fixture", ["fix"], ["stable"]
+    )
+    assert result["policy"] == "conservative_unresolved"
+    assert result["count_as_unresolved"] is True
+    assert result["no_full_execution_claim"] is True
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("instance_id", "another-task"),
+        ("source_commit", "0" * 40),
+        ("native_dataset_sha256", "0" * 64),
+        ("allowed_missing_test_ids", ["fix"]),
+        ("allowed_missing_test_ids", ["unknown"]),
+        ("allowed_missing_test_ids", ["stable", "stable"]),
+        ("reference_resolution_sha256", None),
+        ("policy", "accept_as_pass"),
+        ("count_as_unresolved", False),
+        ("no_full_execution_claim", False),
+    ],
+)
+def test_identifier_proof_cannot_cross_task_or_credit_missing_execution(
+    identifier_binding, key, value
+):
+    case, config, proof = identifier_binding
+    proof[key] = value
+    with pytest.raises(ValueError):
+        poly.validated_identifier_issue(
+            proof, case, config, "context-fixture", ["fix"], ["stable"]
+        )
+
+
+@pytest.mark.parametrize(
+    ("repo", "count"), [("coder/code-server", 2), ("keras-team/keras", 4)]
+)
+def test_cpu_affinity_cannot_select_other_repositories_or_expand_quota(repo, count):
+    with pytest.raises(ValueError, match="Keras and two CPUs"):
+        poly.native_cpu_affinity({"repo": repo}, count)
+
+
+def test_cpu_affinity_rejects_insufficient_host_cpus(monkeypatch):
+    monkeypatch.setattr(poly.os, "sched_getaffinity", lambda pid: {4})
+    with pytest.raises(ValueError, match="fewer allowed CPUs"):
+        poly.native_cpu_affinity({"repo": "keras-team/keras"}, 2)

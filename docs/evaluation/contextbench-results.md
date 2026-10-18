@@ -147,7 +147,7 @@ every required test ID observed. Worker overrides accept only the original
 Prettier and code-server Jest commands; unsupported runners and preexisting
 worker overrides are rejected. All nine original failed pairs remain available.
 These native resource profiles change neither model inputs nor scoring rules.
-All57 focused unit tests and pinned hooks pass. Canonical controls run as each
+All76 focused unit tests and pinned hooks pass. Canonical controls run as each
 source becomes ready; complete Poly and Multi execution qualification and
 final500 evaluation remain open. These fixes add no candidate attempts or repair
 score claims.
@@ -159,19 +159,69 @@ available. The pinned upstream manager uses Docker's default networking; the
 earlier adapter adds an offline restriction. An explicit `--native-network bridge`
 now restores upstream networking only for Transformers and code-server integration
 tests, while the default stays `none`. An optional `--native-thread-workers 2`
-bounds Transformers' CPU pools without changing its test command. Both effective
+bounds Transformers' and Keras' CPU pools without changing their test commands. Both effective
 settings are recorded and tested separately from inference. Three fresh
-Transformers pairs qualify with all8,87 and10 required IDs observed in each run.
+Transformers pairs initially qualify with all8,87 and10 required IDs observed in
+each run; twelve further pairs also record every required ID and qualify. The
+latest Whisper reference originally reaches the900-second deadline; its fresh
+bounded-thread pair records all236 required IDs within the unchanged deadline.
 These prospective native-only profiles differ from the earlier offline policy;
 all original failures remain retained. The agent environment, model and context
 policy stay frozen.
 
+Six fresh Keras pairs qualify with bounded CPU pools. A seventh progresses beyond
+the TensorFlow abort but initially aborts while creating JAX's CPU backend. A native-only
+`--native-cpu-count 2` option exposes two allowed host CPUs while retaining the
+two-CPU quota and original backend, test command and test selection. Its fresh
+full neutral/reference pair now qualifies with all2,398 required IDs recorded in
+both runs. These seven recoveries leave the original failures available.
+
 Two code-server worker2 pairs progress beyond process exhaustion but remain
-unqualified. Their logs expose localhost DNS failures, and native annotation
-names differ from actual Jest titles/paths. The original native parser, scorer,
-missing IDs and failed outcomes are retained; diagnostics neither remap grading
-IDs nor assert missing tests executed. Full-cohort qualification and the remaining
-paid transport must account for these unresolved cases before launch.
+unqualified. Bridge-network diagnostics expose remaining test errors and native
+annotation names that differ from actual Jest titles/paths. One Transformers
+task also has missing annotated identifiers and dependency errors. The pinned
+native scorer reports the reference patches resolved despite186,269 and19
+missing required identifiers respectively. The adapter retains their unresolved
+outcomes and original raw scorer output; no identifier remapping or claim of
+complete execution is made.
+
+A prospective conservative policy binds these three known P2P identifier defects
+to their exact task, dataset, source and reference-log hashes. Completed matching
+runs may close as unresolved first attempts; the policy cannot create a positive
+outcome or hide a deadline/cleanup failure. Fresh neutral/reference executions
+under this policy all close unresolved, while retaining their failed positive
+control checks. All500 tasks still require actual candidate attempts and remain
+in the denominator. This is explicit conservative failure accounting, not positive
+environment qualification. Remaining paid admission must consume this separate
+policy and its actual receipts before launch; none of these three cases has a
+candidate repair yet.
+
+Multi source preparation can now run after actual Poly source finalization while
+Poly native recovery continues; all paid owners remain held and all native
+qualification gates still precede inference. Initial Multi preparation rejects
+reference artifacts left under `/home` by the native images. The interrupted
+19 source preparations and original intent remain retained. A corrected builder
+removes only the eight already-prohibited artifact paths before canonical reset,
+preserving source-tree, single-commit and artifact-absence checks and leaving the
+original native images unchanged. All153 generated builders and source-dispatch
+boundaries pass local checks. A live first-case canary passes before parallel
+preparation continues; a preparation error stops new dispatch. Seven sources
+prepare before two jq snapshots fail because Python3 is absent. A source-only
+runtime profile uses a checksum-verified public Python archive; it leaves native
+grading images unchanged. The jq snapshot also retains its exact oniguruma
+Gitlink using the earlier Pro submodule recipe: source files stay intact, with
+one commit and no remotes or reflogs. Its live canary now prepares successfully.
+These eight prepared environments are reused without repeating preparation;
+the next startup manifest schedules145 further source preparations. No model calls or
+financial mutations occur during these source-only operations.
+
+Read-only validation of all82 original nominally passing Poly pairs finds one
+VSCode neutral run with an empty parse after a compile exit137. Its reference
+records all required IDs and passes, but the pair does not satisfy the separate
+execution gate. A fresh8GiB pair is running with the authenticated Electron
+cache and unchanged selectors/scoring; the original remains retained. Full Poly
+admission still waits for this execution proof and explicit handling of the
+three conservative negative cases.
 
 The prospective remaining269 paid preparer passes all nine batch transport and
 accounting fixtures. Generated inference/reservation/settlement hashes match the

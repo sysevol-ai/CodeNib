@@ -19,6 +19,7 @@ import hashlib
 import importlib
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -305,11 +306,16 @@ def native_test_command(case, workers):
 
 
 def native_thread_environment(case, workers):
-    """Bound Transformers' native CPU pools without changing its test command."""
+    """Bound admitted native CPU pools without changing the test command."""
     if workers is None:
         return {}
-    if workers != 2 or case["repo"] != "huggingface/transformers":
-        raise ValueError("Native thread limits require Transformers and two workers")
+    if workers != 2 or case["repo"] not in {
+        "huggingface/transformers",
+        "keras-team/keras",
+    }:
+        raise ValueError(
+            "Native thread limits require Transformers or Keras and two workers"
+        )
     return {
         "OMP_NUM_THREADS": "2",
         "OPENBLAS_NUM_THREADS": "2",
@@ -320,13 +326,83 @@ def native_thread_environment(case, workers):
     }
 
 
+def native_cpu_affinity(case, count):
+    """Expose two actual CPUs to Keras/JAX while retaining the two-CPU quota."""
+    if count is None:
+        return None
+    if type(count) is not int or count != 2 or case["repo"] != "keras-team/keras":
+        raise ValueError("Native CPU affinity requires Keras and two CPUs")
+    if not hasattr(os, "sched_getaffinity"):
+        raise ValueError("Native CPU affinity requires a Linux host")
+    available = sorted(os.sched_getaffinity(0))
+    if len(available) < count:
+        raise ValueError("Native CPU affinity has fewer allowed CPUs than requested")
+    return ",".join(str(cpu) for cpu in available[:count])
+
+
+def validated_identifier_issue(proof, case, config, instance_id, f2p, p2p):
+    """Bind a known P2P identifier defect to conservative unresolved accounting.
+
+    This never supplies execution credit, changes native scoring or permits a
+    positive outcome. It only lets a completed, otherwise unverifiable run be
+    recorded as an unresolved first attempt instead of stopping the batch.
+    """
+    if not isinstance(proof, dict):
+        raise ValueError("Unverifiable identifier proof must be an object")
+    names = proof.get("allowed_missing_test_ids")
+    if (
+        proof.get("schema_version") != 1
+        or proof.get("kind") != "native-identifier-unverifiable"
+        or proof.get("policy") != "conservative_unresolved"
+        or proof.get("instance_id") != instance_id
+        or proof.get("original_inst_id") != case["instance_id"]
+        or proof.get("native_dataset_sha256") != DATASET_SHA256
+        or proof.get("source_commit") != config["source_commit"]
+        or proof.get("source_commit") != case["base_commit"]
+        or proof.get("source_tree") != config["source_tree"]
+        or proof.get("no_full_execution_claim") is not True
+        or proof.get("count_as_unresolved") is not True
+        or not isinstance(names, list)
+        or not names
+        or any(not isinstance(name, str) or not name for name in names)
+        or len(set(names)) != len(names)
+        or not set(names) <= set(p2p)
+        or set(names) & set(f2p)
+    ):
+        raise ValueError("Unverifiable identifier proof differs from its native task")
+    for key in ["reference_resolution_sha256", "reference_test_log_sha256"]:
+        if not isinstance(proof.get(key), str) or not re.fullmatch(
+            r"[a-f0-9]{64}", proof[key]
+        ):
+            raise ValueError("Unverifiable identifier proof lacks reference hashes")
+    return {
+        "kind": proof["kind"],
+        "policy": proof["policy"],
+        "allowed_missing_test_ids": sorted(names),
+        "no_full_execution_claim": True,
+        "count_as_unresolved": True,
+    }
+
+
+def is_unverifiable_identifier_failure(profile, missing, observed, f2p, incomplete):
+    """Recognize only a bound identifier defect after the native process closes."""
+    return bool(
+        profile
+        and not incomplete
+        and missing
+        and set(f2p) <= set(observed)
+        and set(missing) <= set(profile["allowed_missing_test_ids"])
+    )
+
+
 def grade_poly(args):
     """Own one bounded grader and verify removal before returning its result.
 
     Only this invocation creates the unique labeled container. Its successful
     removal is the completion boundary; root owns recovery from a cleanup error.
     A bounded sleep terminates an orphan after owner death. Source-only solver
-    images remain separate; no host mount, network or provider input is supplied.
+    images remain separate; no host mount or provider input is supplied. Native
+    networking is explicit and recorded independently of the source-only agent.
     """
     if not 1 <= args.timeout <= 3600:
         raise ValueError("Native Poly timeout must be between 1 and 3600 seconds")
@@ -361,8 +437,23 @@ def grade_poly(args):
         )
     thread_workers = getattr(args, "native_thread_workers", None)
     thread_environment = native_thread_environment(case, thread_workers)
+    cpu_count = getattr(args, "native_cpu_count", None)
+    cpu_affinity = native_cpu_affinity(case, cpu_count)
     workers = getattr(args, "native_test_workers", None)
     test_command = native_test_command(case, workers)
+    identifier_path = getattr(args, "native_identifier_issue_proof", None)
+    identifier_profile, identifier_bytes = None, None
+    if identifier_path is not None:
+        with identifier_path.open("rb") as stream:
+            identifier_bytes = stream.read(65537)
+        if len(identifier_bytes) > 65536:
+            raise ValueError("Native identifier proof exceeds its metadata size bound")
+        identifier_profile = validated_identifier_issue(
+            json.loads(identifier_bytes), case, config, solver["instance_id"], f2p, p2p
+        )
+        identifier_profile["proof_sha256"] = hashlib.sha256(
+            identifier_bytes
+        ).hexdigest()
     for name, expected in config["implementation"].items():
         if digest(args.solver_run / "implementation" / name) != expected:
             raise ValueError("Archived solver implementation changed")
@@ -406,6 +497,10 @@ def grade_poly(args):
     args.output.mkdir(parents=True, exist_ok=False)
     if proof_bytes is not None:
         (args.output / "electron-cache-proof.json").write_bytes(proof_bytes)
+    if identifier_bytes is not None:
+        (args.output / "native-identifier-issue-proof.json").write_bytes(
+            identifier_bytes
+        )
     write_json(args.output / "native-case.json", case)
     name = "codenib-contextbench-poly-" + uuid.uuid4().hex[:16]
     write_json(
@@ -434,6 +529,9 @@ def grade_poly(args):
             "native_network": network,
             "native_thread_workers": thread_workers,
             "native_thread_environment": thread_environment,
+            "native_cpu_count": cpu_count,
+            "native_cpu_affinity": cpu_affinity,
+            "native_identifier_issue": identifier_profile,
             "native_test_workers": workers,
             "native_test_command_original": case["test_command"],
             "native_test_command_effective": test_command,
@@ -465,6 +563,7 @@ def grade_poly(args):
                 nano_cpus=2_000_000_000,
                 pids_limit=256,
                 labels={"codenib.contextbench.owner": name},
+                **({"cpuset_cpus": cpu_affinity} if cpu_affinity is not None else {}),
                 **(
                     {
                         "environment": {
@@ -487,6 +586,7 @@ def grade_poly(args):
     manager = OwnedManager(metadata["Id"], delete_image=False, client=client)
     started = time.monotonic()
     incomplete = False
+    unverifiable = False
     try:
         if not solver["model_patch"].strip():
             # This is the official empty-generation outcome, not a test run.
@@ -535,18 +635,28 @@ def grade_poly(args):
                 # Upstream can return partial logs after a timeout, and its
                 # scorer does not reject missing P2P names. Preserve that raw
                 # judgment, but never publish an incomplete run as resolved.
-                incomplete = (
+                execution_incomplete = (
                     row["native_call_wall_s"] >= args.timeout
                     or "Container operation timed out" in manager.run_logs
                     or not manager.run_logs
                     or manager.run_logs[-1] != footer
-                    or (outcome.resolved and bool(row["missing_required_tests"]))
+                )
+                incomplete = execution_incomplete or (
+                    outcome.resolved and bool(row["missing_required_tests"])
+                )
+                unverifiable = is_unverifiable_identifier_failure(
+                    identifier_profile,
+                    row["missing_required_tests"],
+                    observed,
+                    f2p,
+                    execution_incomplete,
                 )
         row.update(
-            status="error" if incomplete else "graded",
+            status="error" if incomplete and not unverifiable else "graded",
             resolved=outcome.resolved and not incomplete,
             native_report=dataclasses.asdict(outcome),
             native_execution_incomplete=incomplete,
+            native_identifier_unverifiable=unverifiable,
         )
     except Exception as exc:
         row.update(status="error", resolved=False, error=f"{type(exc).__name__}: {exc}")
@@ -596,13 +706,24 @@ def main():
         "--native-thread-workers",
         type=int,
         choices=(2,),
-        help="Bound native Transformers CPU pools; retain the original test command",
+        help="Bound native Transformers/Keras CPU pools; retain the test command",
     )
     parser.add_argument(
         "--native-network",
         choices=("none", "bridge"),
         default="none",
         help="Opt into upstream networking for admitted integration tests only",
+    )
+    parser.add_argument(
+        "--native-cpu-count",
+        type=int,
+        choices=(2,),
+        help="Expose two CPUs to Keras/JAX without changing the CPU quota",
+    )
+    parser.add_argument(
+        "--native-identifier-issue-proof",
+        type=Path,
+        help="Count a bound known P2P identifier defect as unresolved; never as a pass",
     )
     parser.add_argument(
         "--electron-cache-proof",
