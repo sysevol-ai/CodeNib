@@ -212,8 +212,8 @@ IPv4-first DNS; all12 recorded grader/probe containers are absent. These are
 zero-model fixtures, without additional candidate outcomes. Per-dispatch source
 preparation and native controls remain open for the other unexecuted tasks. The repair prompt, model loop, budgets and navigation
 delivery are unchanged; only Pro gains the existing source-only preflight.
-A separate54-case Pro first-attempt controller is staged, without a launch or
-reservation. Isolated file fixtures exercise all fixed task identities, two
+A separate54-case Pro first-attempt controller now has a queued owner; no Pro
+reservation or model request has begun. Isolated file fixtures exercise all fixed task identities, two
 disjoint27-case shards, admitted native-image overrides, stale/failed-control
 rejection, exact session accounting and duplicate-owner rejection. The complete
 solver dispatch AST remains unchanged apart from cohort accounting and Pro native
@@ -222,6 +222,21 @@ all108 native controls, prior Verified fee closure and at least$270 of available
 authorized usage. That amount is a future reservation, not measured spending.
 These orchestration checks establish no additional native-ready environment or
 candidate result.
+A separate resource-reuse admission rechecks the existing AutoGPT and Go377
+solver images through two actual networkless probes. Both retain the exact
+canonical source tree, single-commit history and reference hygiene; the pinned
+public tokenizer and bounded Go environment remain available, and both probe
+containers are removed with acknowledged creation and verified absence. Eight
+configuration mutations are rejected. No image is rebuilt or candidate retried.
+The other33 Go environments still require their own resource/native admission.
+An actual frozen-image metadata check also reproduces a Multi startup mismatch:
+the native image starts at`/home`, while its project is`/home/cli`. A separate
+Multi-only builder now accepts`/home` or the exact project startup directory,
+while source commands, committed solver working directories and tree/history
+checks still use the exact project path; owned-container cleanup is unchanged. All153 generated builder
+ASTs differ only in that startup admission. ENV-only Go profiles preserve every
+filesystem layer and reject existing nontrivial compiler flags. These corrected
+Multi paths are staged; no additional Multi environment or candidate is qualified.
 A first additional Verified environment restores the exact canonical source over
 the image's single-file `pyproject.toml` setup overlay and verifies clean,
 history-free source. Its native neutral control is unresolved and its reference
