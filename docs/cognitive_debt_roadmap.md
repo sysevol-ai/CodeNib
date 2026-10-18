@@ -651,15 +651,30 @@ cost does not prove context reduction. Same-model CLI auxiliary usage prevents
 complete Haiku main-input attribution in all eight cases; preserve unknown
 completeness while retaining known all-model fees. The$2 API reservation closes
 with$1.956593875 unused, and known program API usage becomes$59.137394855/$100.
-Next work is source-only failure diagnosis, then a separately frozen cheap
-continuation guard/selective escalation against both native models. No router,
-independent validation, repair or500 gain is claimed or promoted.
+The subsequent source-only callable-tail Stop guard is implemented behind an
+explicit experiment argument, with90 focused context/SDK/input tests passing.
+Runtime `d998fa25`, frozen protocol `e39ffad3`, keeps the same8 sources/model/
+native prompt and tools, one intervention,80-line/16-file/2MiB inspection caps,
+no source injection/index/model fallback, and terminal usage on source failure.
+All8 outcomes source-seal before current known labels; all8 score valid with no
+retry. Recall/F1 is67.14%/41.03% versus Haiku native68.07%/36.66%, at$0.048852250
+versus$0.043406125 nominal usage. Five interventions deliver59 new requested
+tail lines, but observed before/after-intervention Recall adds only0.025points,
+entirely C. That post-hoc diagnostic is not a no-hook counterfactual; other run
+changes are unattributed. The Recall-priority screen fails, despite higher F1.
+Retain the rejected experiment and its24-row public comparison; do not expand
+it to32/500 or product. All fees reconcile; Haiku main-input attribution remains
+incomplete. SDK loop mean/median30.33/23.86seconds excludes source preparation.
+The$2 reservation closes with$1.951147750 unused, no unknown API fee or repair.
+Next work is task-relevant coverage review/selective strong search, with all
+parent/child costs and both native controls; it is unimplemented/unmeasured.
+No router, independent validation, repair or500 gain is claimed or promoted.
 
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays
-59.137394855USD under100USD, leaving40.862605145USD with the former40USD reservation
-and the unused Haiku pilot reservation released. Historical calls/costs and all
+59.186247105USD under100USD, leaving40.813752895USD with the former40USD reservation
+and both unused Haiku pilot reservations released. Historical calls/costs and all
 three sealed32 cohorts are retained.
 Native500 remains a frozen control; completed scoring discloses earlier122-case
 annotation access and the original failed case. A standalone control archive now
