@@ -117,28 +117,59 @@ records all four required test IDs in both runs and yields False/True as expecte
 This diagnostic does not replace the full232 canonical controls or any candidate
 attempt. The remaining paid owner and automatic release helper remain held.
 
-Source-only recovery also retains two code-server LFS failures and two
-Transformers cleanliness failures. The code-server snapshots preserve the full
+All116 Poly source environments are now prepared, including two code-server LFS
+recoveries and three Transformers cleanliness recoveries. The code-server
+snapshots preserve the full
 canonical LFS asset through a local object cache; one also retains its exact
 canonical submodule with one commit and no remotes or reflogs. The Transformers
 snapshots remove untracked nested repositories inside the isolated solver
 container. The original native images and failed evidence remain unchanged.
-Whole-cohort reconciliation waits for the original source writer to exit.
+Whole-cohort source reconciliation completes only after the original source
+writer exits; the five original failures remain available separately.
 The updated native adapter preserves the pinned scorer's unresolved result for
 an empty parser output instead of raising a `KeyError`; raw output and missing
 test IDs remain explicit. Empty output cannot satisfy the separate required-test
-execution gate. All39 focused unit tests and pinned hooks pass. The full Poly
-source/control cohort, Multi source/control cohort and final500 evaluation remain
-open; these fixes add no model calls or repair score claims.
+execution gate.
 
-The prospective remaining269 paid preparer also passes all nine batch transport
-and accounting fixtures. All generated inference/reservation/settlement hashes
-match the preceding policy; seven cache proofs reach only the native grading CLI,
-and changed proofs are rejected. These are synthetic admission fixtures, not269
-real environment qualifications. A separate waiting release owner requires both
-actual source/control execution proofs before installing the transport and
-replacing the original zero-request parent. The original parent remains held and
-alive through Multi source preparation; no reservation or request begins early.
+Native grading records explicit container limits and supports an opt-in8GiB
+memory ceiling while retaining the3GiB default. One Svelte reference run exits137
+under3GiB; a fresh neutral/reference pair under8GiB records all876 required test
+IDs and qualifies. No independent kernel OOM event or peak-memory measurement is
+claimed. Eight Prettier environments hit the256-process limit because Jest sizes
+its worker pool from the host CPU count. An opt-in `--native-test-workers 2`
+inserts only `--maxWorkers=2` into their original test command, preserving test
+selectors and the JSON reporter. All eight fresh control pairs qualify, with
+every required test ID observed. Other repositories and preexisting worker
+overrides are rejected. All nine original failed pairs remain available.
+These native resource profiles change neither model inputs nor scoring rules.
+All47 focused unit tests and pinned hooks pass. Canonical controls run as each
+source becomes ready; complete Poly and Multi execution qualification and
+final500 evaluation remain open. These fixes add no candidate attempts or repair
+score claims.
+
+The prospective remaining269 paid preparer passes all nine batch transport and
+accounting fixtures. Generated inference/reservation/settlement hashes match the
+preceding policy. Seven Electron cache proofs, the admitted memory ceiling and
+the eight Prettier worker limits reach only the native grading CLI; changed
+proofs and disagreeing control limits are rejected. These are synthetic admission
+fixtures, not269 real environment qualifications. A separate waiting release
+owner requires both actual source/control execution proofs and completed
+reconciliations before installing the transport. All32 combinations of missing
+cohort, owner-exit and finalization gates preserve that boundary. Only then may
+the release owner retire the three exact stopped, childless predecessor owners
+through pidfd and launch the unchanged dispatcher under its exclusive intent.
+Original intent and installed-file backups remain available; interrupted
+installation requires root recovery rather than automatic retry. The original
+paid parent remains held and alive through Multi source preparation; no
+reservation or request begins early.
+
+To make room for remaining environments,104 closed Pro source/native image caches
+are removed with normal Docker reference checks and no forced removal or global
+prune. Their original raw archive parts, source Git seeds and preparation inputs
+remain hash verified. Repeating native tests requires re-pulling pinned public
+bases and rebuilding private derived images, whose IDs can change; exact private
+Docker exports are not retained. Existing context/receipt replay uses the retained
+raw material and does not require those image caches.
 
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only

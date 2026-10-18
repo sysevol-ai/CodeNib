@@ -126,6 +126,7 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
         "cleanup",
         "empty",
         "empty_parse",
+        "memory8",
         "offline_cache",
         "cache_upload",
     ],
@@ -134,6 +135,8 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     study, monkeypatch, fault
 ):
     args, case, solver, _ = study
+    if fault == "memory8":
+        args.native_memory_gib = 8
     resource = b"pinned public tokenizer file\n"
     if fault in {"offline_cache", "cache_upload"}:
         args.cl100k_cache_file = args.solver_run.parent / "cl100k_base.tiktoken"
@@ -192,7 +195,8 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
             del containers[self.name]
 
     def create(**options):
-        assert options["network_disabled"] and options["mem_limit"] == "3g"
+        assert options["network_disabled"]
+        assert options["mem_limit"] == ("8g" if fault == "memory8" else "3g")
         assert options["command"] == ["300"]
         if fault in {"offline_cache", "cache_upload"}:
             assert options["environment"] == {
@@ -293,16 +297,25 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     monkeypatch.setattr(poly, "native_environment", lambda path: native)
     poly.grade_poly(args)
     result = json.loads((args.output / "resolution.json").read_text())
-    assert result["resolved"] is (fault in {None, "offline_cache"})
+    assert result["resolved"] is (fault in {None, "offline_cache", "memory8"})
     assert result["status"] == (
         "graded"
-        if fault in (None, "empty", "empty_parse", "invalid_patch", "offline_cache")
+        if fault
+        in (None, "empty", "empty_parse", "invalid_patch", "offline_cache", "memory8")
         else "error"
     )
     assert result["container_removed"] is (fault != "cleanup")
     assert "unrelated" in containers
     assert set(containers) == {"unrelated"} or fault == "cleanup"
     assert ("remove", "unrelated") not in events
+    assert json.loads((args.output / "config.json").read_text())[
+        "container_limits"
+    ] == {
+        "memory_gib": 8 if fault == "memory8" else 3,
+        "nano_cpus": 2_000_000_000,
+        "pids_limit": 256,
+        "network_disabled": True,
+    }
     assert all(event[1] != case["patch"] for event in events)
     if ("code", solver["model_patch"]) in events:
         assert events.index(("test", case["test_patch"])) < events.index(
@@ -336,6 +349,19 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
 def test_poly_grader_requires_native_checkout():
     with pytest.raises(ValueError, match="native-upstream"):
         poly.native_environment(None)
+
+
+def test_poly_rejects_unsupported_memory_before_native_import(study, monkeypatch):
+    args, _, _, _ = study
+    args.native_memory_gib = 16
+    monkeypatch.setattr(
+        poly,
+        "native_environment",
+        lambda path: pytest.fail("Invalid resource limits must not import native code"),
+    )
+    with pytest.raises(ValueError, match="3 or 8 GiB"):
+        poly.grade_poly(args)
+    assert not args.output.exists()
 
 
 def test_poly_rejects_wrong_offline_cache_before_native_import(study, monkeypatch):
