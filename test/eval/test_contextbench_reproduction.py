@@ -7,6 +7,7 @@ import copy
 import hashlib
 import io
 import json
+import sys
 import tarfile
 import threading
 
@@ -15,6 +16,7 @@ import pytest
 from codenib.eval.benchmarks.contextbench import contextbench_prediction
 from scripts.contextbench_reproduce_search_pair import (
     acknowledged,
+    evaluate_verified_archive,
     ordered_replays,
     rebase_history,
     safe_path,
@@ -170,3 +172,53 @@ def test_parallel_source_failure_prevents_complete_replay_result():
 
     with pytest.raises(ValueError, match="snapshot changed"):
         list(ordered_replays([0, 1], verify, jobs=2))
+
+
+@pytest.mark.parametrize("exit_code", [0, 1, 2])
+def test_verified_archive_evaluator_runs_without_git_checkout(tmp_path, exit_code):
+    runtime = tmp_path / "runtime"
+    bridge = runtime / "codenib/eval/benchmarks/_contextbench_evaluate.py"
+    bridge.parent.mkdir(parents=True)
+    # A real subprocess imports the archived evaluator and writes its report.
+    # The previous Git-checkout gate rejected these verified archive layouts
+    # before the subprocess could run.
+    upstream = tmp_path / "official sources"
+    upstream.mkdir()
+    (upstream / "archived_evaluator.py").write_text(
+        f"EXIT_CODE = {exit_code}\n"
+        "REPORT = {'cases': [{'instance_id': 'retained-task'}]}\n"
+    )
+    bridge.write_text(
+        "import argparse, json, sys\n"
+        "from pathlib import Path\n"
+        "parser = argparse.ArgumentParser()\n"
+        "for name in ['upstream', 'input', 'output']:\n"
+        "    parser.add_argument('--' + name, required=True)\n"
+        "args = parser.parse_args()\n"
+        "assert json.loads(Path(args.input).read_text()) == ['retained-task']\n"
+        "sys.path.insert(0, args.upstream)\n"
+        "from archived_evaluator import EXIT_CODE, REPORT\n"
+        "Path(args.output).write_text(json.dumps(REPORT))\n"
+        "print('archived evaluator ran')\n"
+        "sys.exit(EXIT_CODE)\n"
+    )
+    input_path = tmp_path / "input.json"
+    input_path.write_text('["retained-task"]')
+    metrics_path, log_path = tmp_path / "metrics.json", tmp_path / "evaluation.log"
+    assert not (runtime / ".git").exists() and not (upstream / ".git").exists()
+    if exit_code == 2:
+        with pytest.raises(RuntimeError, match="exit code 2"):
+            evaluate_verified_archive(
+                runtime, upstream, sys.executable, input_path, metrics_path, log_path
+            )
+    else:
+        assert (
+            evaluate_verified_archive(
+                runtime, upstream, sys.executable, input_path, metrics_path, log_path
+            )
+            == exit_code
+        )
+    assert json.loads(metrics_path.read_text()) == {
+        "cases": [{"instance_id": "retained-task"}]
+    }
+    assert log_path.read_text() == "archived evaluator ran\n"

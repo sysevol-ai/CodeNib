@@ -207,6 +207,40 @@ def ordered_replays(cases, operation, jobs=1):
         pool.shutdown(wait=True, cancel_futures=True)
 
 
+def evaluate_verified_archive(
+    runtime, upstream, python, input_path, metrics_path, log_path
+):
+    """Run already-authenticated evaluator files without requiring Git metadata.
+
+    main has verified the runtime archive and every official evaluator file.
+    Their extracted directories deliberately contain no .git checkout. The
+    unmodified bridge still checks each selected source repository's commit.
+    """
+    bridge = runtime / "codenib/eval/benchmarks/_contextbench_evaluate.py"
+    with log_path.open("x") as stream:
+        result = subprocess.run(
+            [
+                python,
+                str(bridge),
+                "--upstream",
+                str(upstream),
+                "--input",
+                str(input_path),
+                "--output",
+                str(metrics_path),
+            ],
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            timeout=7200,
+        )
+    if result.returncode not in (0, 1):
+        raise RuntimeError(
+            f"Archived evaluator failed with exit code {result.returncode}; "
+            "see the preserved evaluation log"
+        )
+    return result.returncode
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bundle", required=True, type=Path)
@@ -257,7 +291,6 @@ def main():
     from codenib.eval.benchmarks.contextbench import contextbench_prediction
     from codenib.eval.benchmarks.contextbench_runner import (
         audit_contextbench_snapshot,
-        contextbench_evaluator_command,
         prepare_contextbench_repo,
     )
     from codenib.source_fingerprint import fingerprint_repository
@@ -331,15 +364,14 @@ def main():
     input_path = args.output / "derived-evaluation-input.json"
     input_path.write_text(json.dumps(derived))
     metrics_path = args.output / "official-metrics.json"
-    command = contextbench_evaluator_command(upstream, args.evaluator_python)
-    with (args.output / "official-evaluation.log").open("x") as stream:
-        result = subprocess.run(
-            [*command, "--input", str(input_path), "--output", str(metrics_path)],
-            stdout=stream,
-            stderr=subprocess.STDOUT,
-            timeout=7200,
-        )
-    assert result.returncode in (0, 1)
+    evaluate_verified_archive(
+        runtime,
+        upstream,
+        args.evaluator_python,
+        input_path,
+        metrics_path,
+        args.output / "official-evaluation.log",
+    )
     report = load(metrics_path)
     scored = {r["instance_id"]: r for r in report["cases"]}
     assert len(scored) == len(report["cases"]) == 500
