@@ -520,8 +520,11 @@ or repairs. The execution guard is$12 within the program's$100 API allowance;
 the guard is a dispatch limit rather than an account-level cash cap. Every
 source snapshot must authenticate before issue-only inputs and execution freeze.
 All500 configuration positions and1,000 worker positions must seal with known
-fees before the same500 annotations reopen. Source preparation is in progress;
-no candidate500 score is published here. Original native-control failures,
+fees before the same500 annotations reopen. All500 source preparations now pass
+with zero errors, and execution protocol `3e20eb64` has started. The existing
+budget views reserve$12 while keeping closed known usage at$75.330733235 and
+unreserved allowance at$12.669266765; the reservation is not actual consumption.
+No candidate500 score is published here. Original native-control failures,
 unknown fees and annotation-access timing remain disclosed.
 
 `scripts/contextbench_reproduce_search_pair.py` replays archived observations
