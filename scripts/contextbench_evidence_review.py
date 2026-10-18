@@ -181,10 +181,11 @@ class EvidenceReviewGuard:
             )
         if not isinstance(handoff, str):
             raise ValueError("Last assistant handoff must be text")
-        entries = []
+        entries, coverage_gaps = [], []
         with self.ctx._view_lock:
             self._check_identity()
             with self.ctx.borrow_source_reader().read_session() as reader:
+                authenticated_paths = reader.file_paths
                 # Candidate parsing is not source authority. Every published
                 # range is independently authenticated by the retained reader.
                 nodes = native.observed_nodes(
@@ -192,6 +193,19 @@ class EvidenceReviewGuard:
                 )
                 for node in nodes:
                     start, end = node.start_line + 1, node.end_line + 1
+                    if node.file not in authenticated_paths:
+                        # Native tools may observe files excluded by the
+                        # retained capture policy. Do not widen that authority
+                        # or copy their bodies into a verified packet. This is
+                        # an explicit coverage gap, not a stale captured file.
+                        coverage_gaps.append(
+                            {
+                                "file": node.file,
+                                "lines": [start, end],
+                                "code": "outside_authenticated_inventory",
+                            }
+                        )
+                        continue
                     original = reader.read_line_range(
                         node.file,
                         start_line=start,
@@ -218,6 +232,7 @@ class EvidenceReviewGuard:
             "handoff": handoff,
             "search_history": searches,
             "evidence": entries,
+            "coverage_gaps": coverage_gaps,
         }
 
     def _revalidate(self, packet):

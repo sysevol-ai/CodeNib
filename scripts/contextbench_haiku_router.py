@@ -54,7 +54,7 @@ class HaikuRouterGuard(EvidenceReviewGuard):
         )
         self.ledger.pop("model")
         self.ledger.update(
-            policy="haiku_gate_optional_opus_review_v1",
+            policy="haiku_gate_selected_opus_review_v2",
             system_under_test="CodeNib agent",
             models=[HAIKU, MODEL],
             router=self.router.ledger,
@@ -104,10 +104,31 @@ class HaikuRouterGuard(EvidenceReviewGuard):
             self.ledger.update(status="router_stop", review_decision=decision)
             return decision
         self.ledger.update(status="strong_review_pending", strong_dispatched=True)
-        # Same verified packet; no unread source or model-authored source is
-        # inserted. Opus makes an independent evidence judgment, without taking
-        # the router's guess as established behavior.
-        decision = await self._stage(self.strong, packet)
+        # Route only the exact prior source cited by Haiku's concrete gaps.
+        # Other already-seen ranges remain locators, preventing an accidental
+        # claim of complete reviewer coverage. Router questions are hypotheses,
+        # never new source. This is selected evidence, not unread body padding.
+        selected = {h for gap in decision["gaps"] for h in gap["evidence"]}
+        strong_packet = {
+            **packet,
+            "evidence": [e for e in packet["evidence"] if e["handle"] in selected],
+            "known_source_locations": [
+                {
+                    "handle": e["handle"],
+                    "file": e["file"],
+                    "lines": e["lines"],
+                    "seen_by_search_agent": True,
+                }
+                for e in packet["evidence"]
+                if e["handle"] not in selected
+            ],
+            "routing_gaps": decision["gaps"],
+        }
+        self.ledger["strong_selected_entries"] = len(strong_packet["evidence"])
+        self.ledger["strong_locator_entries"] = len(
+            strong_packet["known_source_locations"]
+        )
+        decision = await self._stage(self.strong, strong_packet)
         self.ledger["status"] = "strong_" + self.strong.ledger["status"]
         if decision is not None:
             self.ledger["review_decision"] = decision
