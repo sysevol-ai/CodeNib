@@ -211,8 +211,13 @@ runtime profile uses a checksum-verified public Python archive; it leaves native
 grading images unchanged. The jq snapshot also retains its exact oniguruma
 Gitlink using the earlier Pro submodule recipe: source files stay intact, with
 one commit and no remotes or reflogs. Its live canary now prepares successfully.
-These eight prepared environments are reused without repeating preparation;
-the next startup manifest schedules145 further source preparations. No model calls or
+The eight earlier prepared environments are reused without repeating preparation;
+all153 Multi sources now prepare successfully. A read-only closure audit
+reauthenticates every source proof, builder and canonical commit/tree binding,
+all34 source resource profiles and307 required solver/source/native image IDs.
+The original source owner exits and the unchanged four-worker native controller
+starts306 canonical neutral/reference executions. This closes source preparation,
+not native execution qualification or any candidate repair. No model calls or
 financial mutations occur during these source-only operations.
 
 A separate early diagnostic on one prepared MUI environment records all 8,548
@@ -780,6 +785,15 @@ already-archived source bytes. Mismatched index/join/evaluation populations rema
 rejected. Only actual500-case closure enables the unchanged official final-context
 evaluator and complete-system cost aggregator. No full500 evaluation or result
 exists yet; raw publication and comparability remain open.
+A separate private raw-archive owner waits for the actual500 index, all nine
+native/fee phase closures and the paid/result-collection owners' exits. Its prior
+231 cases remain four disjoint archive dependencies; the overlapping54-case
+source-rebuild supplement adds no candidate attempts. A boundary fixture rejects
+the actual231 prefix as500 and a synthetic complete index with a live paid owner.
+Failed-output and binary-seed bytes roundtrip through actual split zstd parts;
+symlinked inputs and corrupted parts are rejected. Archive completion requires
+decoding every actual part and hashing every member. The remaining269 archive
+has not executed, and private archival does not approve publication.
 A separate read-only owner waits for that actual full500 index and its closed
 official metric record, then replays all1,000 original search workers and confirmed
 repair inputs through the unchanged selection compiler. It requires the exact
