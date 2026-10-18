@@ -29,7 +29,7 @@ from ._validation import (
 from .dependency import dependency_subgraph_impl
 from .lsp import lsp_route_impl, normalize_lsp_route_symbols
 from .search import search_context_impl
-from .source import read_source_impl
+from .source import read_source_excerpt_impl, read_source_impl
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,8 +258,20 @@ def _admit_windows(
             anchor,
             window_lines=window_lines,
         )
+        focus_end = (
+            anchor.end_line
+            if anchor.start_line is not None
+            and anchor.end_line is not None
+            and anchor.end_line - anchor.start_line + 1 > window_lines
+            else None
+        )
         merged = False
         for window in windows:
+            # A long anchor selects live source later. Its eventual excerpt
+            # can move away from this head, so merging a neighbour now would
+            # incorrectly promise that both anchors' text was delivered.
+            if focus_end is not None or "focus_end_line" in window:
+                continue
             if window["file"] != anchor.file:
                 continue
             if (
@@ -288,6 +300,8 @@ def _admit_windows(
                 "anchors": [anchor],
             }
         )
+        if focus_end is not None:
+            windows[-1]["focus_end_line"] = focus_end
     return windows
 
 
@@ -548,12 +562,22 @@ def explore_context_impl(
     for window in windows:
         if source_identity["verified"]:
             try:
-                payload = read_source_impl(
-                    ctx,
-                    str(window["file"]),
-                    int(window["start_line"]),
-                    int(window["end_line"]),
-                )
+                if "focus_end_line" in window:
+                    payload = read_source_excerpt_impl(
+                        ctx,
+                        str(window["file"]),
+                        int(window["start_line"]),
+                        int(window["focus_end_line"]),
+                        query=normalized_query,
+                        window_lines=profile.source_window_lines,
+                    )
+                else:
+                    payload = read_source_impl(
+                        ctx,
+                        str(window["file"]),
+                        int(window["start_line"]),
+                        int(window["end_line"]),
+                    )
             except (OSError, RuntimeError, ValueError) as exc:
                 diagnostics.append(
                     _diagnostic("source_read_failed", f"{window['file']}: {exc}")

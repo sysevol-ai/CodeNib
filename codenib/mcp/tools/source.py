@@ -10,9 +10,11 @@ from collections.abc import Mapping
 from pathlib import PurePosixPath
 from typing import Any
 
+from ...context_delivery import query_focus_line
 from ..context import ServerContext
 from ._validation import (
     MAX_LSP_POSITION,
+    MAX_SEARCH_QUERY_CHARS,
     MAX_SOURCE_CONTENT_CHARS,
     MAX_SOURCE_PATH_CHARS,
     MAX_SOURCE_WINDOW_LINES,
@@ -97,6 +99,44 @@ def read_source_impl(
     end_line: int | None = None,
 ) -> dict[str, Any]:
     """Read one content-authenticated repository-relative source window."""
+    return _read_source_window(ctx, file_path, start_line, end_line)
+
+
+def read_source_excerpt_impl(
+    ctx: ServerContext,
+    file_path: str,
+    start_line: int,
+    end_line: int,
+    *,
+    query: str,
+    window_lines: int,
+) -> dict[str, Any]:
+    """Select a bounded excerpt inside an anchor, using authenticated live bytes.
+
+    Only composed exploration calls this helper; the public sequential source
+    tool keeps its existing range limit. Selection starts at the strongest
+    matching line so a sequential character cap cannot discard an unseen
+    prefix and lose that line. A partial overlong line remains explicitly
+    truncated. The caller retains the declaration/range as anchor metadata.
+    """
+    query = required_text(query, name="query", maximum=MAX_SEARCH_QUERY_CHARS)
+    window_lines = bounded_integer(
+        window_lines, name="window_lines", maximum=MAX_SOURCE_WINDOW_LINES
+    )
+    return _read_source_window(
+        ctx, file_path, start_line, end_line, query=query, window_lines=window_lines
+    )
+
+
+def _read_source_window(
+    ctx: ServerContext,
+    file_path: str,
+    start_line: int,
+    end_line: int | None,
+    *,
+    query: str | None = None,
+    window_lines: int | None = None,
+) -> dict[str, Any]:
 
     if getattr(ctx, "source_verified", False) is not True:
         detail = getattr(ctx, "source_error", None) or "source binding is unverified"
@@ -118,7 +158,7 @@ def read_source_impl(
         )
     if last < first:
         raise ValueError("end_line must be greater than or equal to start_line.")
-    if last - first + 1 > MAX_SOURCE_WINDOW_LINES:
+    if window_lines is None and last - first + 1 > MAX_SOURCE_WINDOW_LINES:
         raise ValueError(
             f"source windows may contain at most {MAX_SOURCE_WINDOW_LINES} lines."
         )
@@ -134,6 +174,19 @@ def read_source_impl(
         ) from exc
     all_lines = source_bytes.decode("utf-8", errors="replace").splitlines(keepends=True)
     selected = all_lines[first - 1 : last]
+    selection = None
+    if window_lines is not None:
+        offset, matches = query_focus_line(selected, query)
+        selection = {
+            "strategy": "query_window" if matches else "scope_head",
+            "scope_start_line": first,
+            "scope_end_line": last,
+            "inspected_end_line": min(last, len(all_lines)),
+            "matched_query_terms": matches,
+            "window_lines": window_lines,
+        }
+        first += offset
+        selected = selected[offset : offset + window_lines]
     payload = {
         "file": relative,
         "start_line": first,
@@ -143,6 +196,12 @@ def read_source_impl(
     if int(payload["end_line"]) < first:
         raise ValueError("start_line exceeds the source file length.")
     payload = _bounded_source_content(payload)
+    if selection is not None:
+        selection["omitted_before_lines"] = first - selection["scope_start_line"]
+        selection["omitted_after_lines"] = max(
+            0, selection["inspected_end_line"] - payload["end_line"]
+        )
+        payload["content_projection"]["selection"] = selection
     artifact = ctx.artifact if isinstance(ctx.artifact, Mapping) else {}
     payload["source"] = {
         "repository": artifact.get("repository") or ctx.manifest.repo_path,
