@@ -222,6 +222,22 @@ all108 native controls, prior Verified fee closure and at least$270 of available
 authorized usage. That amount is a future reservation, not measured spending.
 These orchestration checks establish no additional native-ready environment or
 candidate result.
+The remaining269 first attempts now have a queued owner for nine fixed,
+sequential batches. Isolated synthetic admissions exercise all269 identities,
+source-resource overrides, native controls and known-fee error records. Every
+batch partitions each task once; reservation and settlement variants are
+idempotent, and insufficient budget, stale metadata, changed controls and duplicate
+plans are rejected. The complete inference-dispatch AST is preserved apart from
+accounting and explicit native-runtime archiving/transport/status checks. Repair
+code stays at`25d4580c`; each case separately archives the pinned four-file native
+runtime, whose CLI loads under isolated Python without a provider call.
+The first remaining batch waits for the prior Pro owner to exit. Later batches
+start only after the preceding phase has closed fees and updated both ledgers
+and its handoff; a completion marker is written last. This prevents overlapping
+reservations and late metadata writes. The owner waits for actual full-cohort
+source/native admission, reserves only existing authorized usage and never
+retries a model or replaces a task. No remaining269 reservation or model request
+has begun, and the synthetic checks establish no new native-ready environment.
 A separate resource-reuse admission rechecks the existing AutoGPT and Go377
 solver images through two actual networkless probes. Both retain the exact
 canonical source tree, single-commit history and reference hygiene; the pinned
