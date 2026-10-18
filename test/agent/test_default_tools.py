@@ -227,6 +227,28 @@ class TestGrep:
         assert "readme.md" not in result
         assert "a.py" in result or "b.py" in result
 
+    @pytest.mark.parametrize("backend", ["ripgrep", "python"])
+    def test_caller_glob_preserves_recursive_exclusions(
+        self, tmp_path, monkeypatch, backend
+    ):
+        if backend == "ripgrep" and shutil.which("rg") is None:
+            pytest.skip("ripgrep is unavailable")
+        if backend == "python":
+            monkeypatch.setattr(
+                "codenib.agent.tools.defaults.shutil.which", lambda _command: None
+            )
+        for directory in ["src", ".github", ".git", ".hg", ".svn", "node_modules"]:
+            (tmp_path / directory).mkdir()
+            (tmp_path / directory / "example.txt").write_text(
+                "needle\n", encoding="utf-8"
+            )
+
+        result = _grep(
+            "needle", path=str(tmp_path), glob="**/*", output_mode="files_with_matches"
+        )
+
+        assert set(result.splitlines()) == {"src/example.txt", ".github/example.txt"}
+
     def test_type_filter(self, sample_dir):
         """type='py' restricts to Python files by extension."""
         result = _grep("foo", path=str(sample_dir), type="py")

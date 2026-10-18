@@ -174,6 +174,10 @@ def _bind_source_tool(execute, *, repo: Path, path_argument: str):
         target = (repo / raw).resolve()
         if not target.is_relative_to(repo):
             raise ValueError("tool path escapes benchmark checkout")
+        if any(
+            part in {".git", ".hg", ".svn"} for part in target.relative_to(repo).parts
+        ):
+            raise ValueError("VCS metadata is outside the benchmark source view")
         kwargs[path_argument] = str(target)
         result = execute(**kwargs)
         if path_argument == "path" and target != repo:
