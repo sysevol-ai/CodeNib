@@ -24,6 +24,18 @@ it excludes repair, native grading and compute. The search batch is settled once
 its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
+The frozen canonical500 repair queue now retains all three prior candidate
+repairs and completes its first new task in canonical metadata order,
+`astropy__astropy-13398`. Its patch is submitted and natively graded **unresolved**:
+9 metered repair requests cost **$0.6964131**. No model retry or search rerun
+occurs. There are now four completed candidate native outcomes, two resolved and
+two unresolved, with496 tasks still awaiting repair; this progress count is not
+a full500 Pass@1 estimate. All four retained-context exports also run through
+the unchanged official evaluator successfully, as a format/scoring compatibility
+check on exposed tasks. The next six fixed tasks have clean source images and
+passing neutral/reference native environment controls; those fixtures make no
+model requests and contribute no candidate results.
+
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
 mini SWE-agent loop uses Opus 5.5, medium effort, 20 turns and a $4 per-case
