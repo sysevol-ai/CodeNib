@@ -5,12 +5,34 @@ Recall/cost gate**. All128 worker sessions and128 configuration positions are
 valid, with every source outcome sealed before selected annotations open.
 The two-Haiku primary scores **40.00% line Recall/27.18% F1 for$0.499195665**,
 versus fresh native Opus **37.91%/31.15% for$6.427971300** on the same32 tasks.
-It uses7.77% of Opus's nominal cost while losing3.96 F1 points. The Recall
+It uses7.77% of Opus's nominal search-stage cost while losing3.96 F1 points. The Recall
 difference is+2.09 points, paired repository-alias95% interval[-1.91,+6.48];
 stable superiority to Opus is not established. The predeclared primary may
 advance to500. This default-only, language-balanced population differs from
 verified500;40.00% is not a leaderboard score or directly comparable to the
 72.83% native verified500 control.
+
+**The latest search-pair fees cover context search only.** Both sides of the
+7.77% comparison include their recorded search-session usage and SDK auxiliaries;
+neither includes a downstream repair solver. The running500 batch has the same
+search-only scope. These are model-reported usage values, not complete task
+resolution costs or reconciled invoices; compute costs remain separate.
+
+The new pair currently authenticates and unions source intervals actually
+observed by its two search workers. It does not yet deliver that union to the
+repair solver. The existing mini SWE-agent adapter supports earlier saved-source
+handoffs, source-delivery receipts, repair metering and separate native grading;
+that earlier integration does not establish a new search-pair end-to-end result.
+
+An end-to-end comparison must join search, source handoff, repair and native
+grading by the same task, base commit and frozen configuration. Record source
+actually delivered to model requests, subsequent reads and edits, the final
+patch and native test outcomes. Report search-only retrieval metrics separately
+from retrieval metrics reconstructed from the complete system trajectory, plus
+real Pass@1. Count every participating model session once in total cost,
+including search workers and repair auxiliaries; missing usage remains unknown.
+Use common declared model and budget limits for the paired system comparison,
+and retain failed or stopped attempts in their fixed task denominators.
 
 The earlier model-only router remains rejected:44.11% Recall versus native
 Haiku45.17% and Opus49.86% on its separate closed32. The exposed-eight
