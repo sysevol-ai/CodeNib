@@ -515,8 +515,9 @@ not an enhancement gain. It uses CodeNib read/grep/glob and source/trajectory
 adapters, with no indexed graph, vector/BM25 or Jev retrieval. The unstarted443 late4K consumers are cancelled, releasing the $40 reservation.
 No new model/API calls are needed for these comparisons.
 
-Current development must exercise actual CodeNib indexed context before claiming
-core capability benefits. The source-only `benchmark_context_core.py` consumer
+Component-specific indexed-context claims require actual indexed-tool evidence;
+CodeNib system agent configurations do not require an index. The earlier
+source-only `benchmark_context_core.py` consumer
 builds vector/symbol-graph views through the existing compiler and registers
 `explore_context_impl` in the actual SDK loop. The adapter returns only exact
 complete projected source lines after content authentication; elided, partial
@@ -640,119 +641,86 @@ remain separate. New16 Max sessions report$3.2396939 nominal, with zero new
 API-key/repair usage. Fresh default-only validation, candidate500, native outcomes
 and submission evidence remain open.
 
-A subsequent native Haiku5.5 SEARCH-ONLY baseline keeps the same eight sources,
-ordinary tools, prompt, effort and turn/output settings; no index or router is
-added. All eight source outcomes seal before known-label evaluation. Haiku versus
-Opus line Recall/F1 is68.07%/36.66% versus69.91%/39.66%, both8/8 valid. All-model
-API/list-price usage is$0.043406125 versus$1.4261087, a96.96% reduction for1.84
-Recall points lost. This model-only low-cost candidate does not establish
-CodeNib routing value. Source lines/reply estimates increase, so cheap model
-cost does not prove context reduction. Same-model CLI auxiliary usage prevents
-complete Haiku main-input attribution in all eight cases; preserve unknown
-completeness while retaining known all-model fees. The$2 API reservation closes
-with$1.956593875 unused, and known program API usage becomes$59.137394855/$100.
-The subsequent source-only callable-tail Stop guard is implemented behind an
-explicit experiment argument, with90 focused context/SDK/input tests passing.
-Runtime `d998fa25`, frozen protocol `e39ffad3`, keeps the same8 sources/model/
-native prompt and tools, one intervention,80-line/16-file/2MiB inspection caps,
-no source injection/index/model fallback, and terminal usage on source failure.
-All8 outcomes source-seal before current known labels; all8 score valid with no
-retry. Recall/F1 is67.14%/41.03% versus Haiku native68.07%/36.66%, at$0.048852250
-versus$0.043406125 nominal usage. Five interventions deliver59 new requested
-tail lines, but observed before/after-intervention Recall adds only0.025points,
-entirely C. That post-hoc diagnostic is not a no-hook counterfactual; other run
-changes are unattributed. The Recall-priority screen fails, despite higher F1.
-Retain the rejected experiment and its24-row public comparison; do not expand
-it to32/500 or product. All fees reconcile; Haiku main-input attribution remains
-incomplete. SDK loop mean/median30.33/23.86seconds excludes source preparation.
-The$2 reservation closes with$1.951147750 unused, no unknown API fee or repair.
-Task-relevant coverage review/selective strong search is now implemented as
-the separate experiment below; its live quality remains unmeasured. Both native
-controls and all parent/child fees remain required.
-No router, independent validation, repair or500 gain is claimed or promoted.
+Current ContextBench agent milestone: implemented and measured in draft
+[#834](https://github.com/sysevol-ai/CodeNib/pull/834), lifecycle `labs`.
+CodeNib is the system, including native source tools, agent execution, context
+delivery and model routing. Embedding and graph are optional mechanisms. Native
+agent configurations belong to CodeNib; component-specific causal claims need
+matched ablations. Product lifecycle and dependency direction stay unchanged.
 
-The long-anchor source-delivery defect is fixed independently in
-[#838](https://github.com/sysevol-ai/CodeNib/pull/838), main-based and unmerged.
-Composed exploration now selects a query-matching live-source line within a
-located long callable before applying its original40/80/120-line excerpt cap,
-instead of clipping the callable head first. It preserves sequential source
-reads, byte/character/line limits, anchor metadata and explicit omitted scope;
-there is no new public tool, provider, index format or persistence. Runtime
-`33e48384` passes66 focused consumer checks; the independent copy passes298
-MCP/projection checks with7 skips. On unchanged synthetic300-line and actual
-MUI sources with ranking held fixed, all three profiles now deliver the deep
-query terms; MUI fast changes80–119 to785–824. This source-delivery diagnostic
-adds zero model/API/Gold/evaluator work and proves no agent-quality gain.
-Prior Haiku native scores do not use this path. The repair becomes a prerequisite
-for the planned evidence-reviewer ablation; no router or cohort is promoted.
+The fixed native500 control is complete: line Recall/F1 **72.83%/33.95%**, with
+499 valid and the original empty-source failure retained as zero. All500 source
+outcomes and raw archives are sealed; earlier122 annotation timing is disclosed.
+All2,070 control archive members round-trip correctly in eight gzip parts totaling
+28,479,415bytes. A separate323,530byte supplement reproduces499 input accounts
+with standard-library-only code; the original case's unknown input/fee remains
+unknown. These are CodeNib native system baselines, not indexed-context gains or
+an official submission. Full verified500 is now exposed; metadata-only scope
+confirms623 default-only candidates across62 repositories. Future independent32
+must freeze that separate scope and exclude the three closed32 cohorts, known
+IDs, issue aliases and exact source aliases. Do not reopen unseen labels early.
 
-The repair's exact independent head `f5f02935` now has successful required unit
-CI and remains unmerged. The source-checkout-only same-session evidence reviewer
-is implemented at `93d5c79a`, behind one explicit SDK argument with no default
-route, storage, graph or embedding dependency. It reuses retained source
-authentication and the existing snapshot-bound handle identity to deduplicate
-only complete, confirmed prior observations. One direct tool-free Opus review
-can ask the same native agent to resolve at most two issue-specific gaps.
-Reviewer metadata adds no source credit; real subsequent tools do. The existing
-view -> reader lease ends before HTTP. One pre-await attempt latch, SDK init
-session identity and deterministic concurrency verification prevent duplicate
-dispatch. Free counting plus a bounded forecast precedes the single paid request;
-packet/budget deferral and capped-response no-action behavior are explicit.
-Malformed/stale review attempts drain main terminal fees before rejection;
-unknown reviewer fees remain unknown, and source is rechecked after continuation.
-All23 new mock HTTP/source/SDK tests and116 focused checks pass without paid calls.
-There is no new live outcome or reservation. Official model constraints and a
-separate prospective same-eight protocol remain gates before inference. Keep
-both native controls and require a matched reviewer ablation before a CodeNib
-incremental-gain claim. Independent32/500 and publication gates stay open.
+On the same eight exposed development tasks, CodeNib Haiku native has
+**68.07% Recall/36.66% F1 at$0.043406125**, versus Opus native
+**69.91%/39.66% at$1.4261087**. The cheaper model is a system configuration;
+lower model cost does not establish context compression. Complete main-input
+attribution is unavailable in8/8 Haiku cases because terminal usage includes
+same-model auxiliaries; known all-model fees remain recorded.
 
-Product lifecycle and dependency direction stay unchanged.
+The callable-tail policy remains rejected:67.14% Recall/41.03% F1 at
+$0.048852250, despite59 additional read lines. The file-outline policy remains
+rejected on adoption/Recall gates. No rejected policy is expanded to32/500.
+The first always-Opus-review trial and the first Haiku-router trial each stop
+after two attempts with one valid case and six unclaimed positions. Preserve
+those complete selected-eight outcomes and their$0.186311920/$0.013565555 usage.
+Presentation normalization or offline source replay does not retroactively
+qualify a stopped attempt or add source credit.
 
-The unstarted443 paid consumers remain cancelled. Known API usage stays
-59.186247105USD under100USD, leaving40.813752895USD with the former40USD reservation
-and both unused Haiku pilot reservations released. Historical calls/costs and all
-three sealed32 cohorts are retained.
-Native500 remains a frozen control; completed scoring discloses earlier122-case
-annotation access and the original failed case. A standalone control archive now
-retains all500 original attempts,499 source packets, configurations/frozen code
-and completed control evaluation. All2,070 members and every case reference pass
-round-trip/hash verification; eight gzip parts total28,479,415bytes, largest
-5,219,150bytes below50MiB. Original failures and exposure/qualification records
-remain. Historical partial archives retain243 native attempts and112 consumed
-standard Messages unchanged. Candidate-context/outcome archives and publication
-review stay open; no cancelled443 Batch archive is required and no new repair
-batch follows. All500 evaluator source targets match recorded snapshots,
-including119retained aliases. Complete500 baseline scoring and archival coverage
-provide no proof of indexed context gains.
-A supplementary audit reconciles499 native input records (3,396 unique responses,
-4,202 repeated blocks not added); the original case's unknown input/cost stays
-unknown. Known-case maximum single-response input averages17,540.45tokens,
-median14,066/P90 31,993; this baseline population does not establish the four-task
-policy's population-wide savings. A standard-library-only verifier reproduces
-all500 raw input records and known fees directly from the compressed control
-bundle without source repositories, labels or provider calls. The eight-file,
-323,530byte usage supplement passes round-trip verification; original archives,
-quality and recorded$91.1558898 nominal usage plus one unknown remain unchanged.
-Both new Jev-only ranking probes fail their practical one-point screens; no
-runtime ranker is added. Fixed-history 24 source opportunity improves Recall
-53.35% → 62.32%, F1 31.18% → 27.59%, with no new model calls. The refreshed metadata-only audit after whole500 annotation access confirms
-**zero unexposed verified cases** and **623 default-only candidates across62
-repositories**, with all eight languages present. No additional source/issue or
-annotation columns are read and no new tasks selected by that audit. A future
-independent sample must use separately declared default-only scope and cannot be
-called a fresh verified500 validation. All three32 cohorts stay sealed. Known IDs, original issue identities and exact source
-commits are excluded across aliases. All three validation cohorts stay sealed;
-future independent population choices remain open; current500 baseline completion,
-actual indexed-context validation and formal submission gates remain open. No product lifecycle
-promotion or dependency-direction change is authorized by these results.
-The earlier untouched-pool inventory predates the122-case interim Gold access;
-refresh exposure metadata before any future independent selection.
-Native-test issues do not block retrieval.
-The public results and sanitized per-case exports
-live in `docs/evaluation/contextbench-results.md`. Controlled downstream outcomes
-remain required before product promotion or distilling the search policy into a
-cheaper controller. Historical fixed payload controls remain experimental inputs,
-not product defaults.
+The selected-evidence router `b0256f8f`, frozen protocol `2963114d`, completes
+8/8 valid after all-source sealing: **68.90% Recall/41.14% F1 at$0.113543820**.
+A Haiku gate may route only gap-cited prior source to Opus; other seen ranges
+remain locators. Source outside retained authority is an explicit coverage gap,
+never a verified body. One whole-response JSON fence is accepted without prose
+extraction, malformed-object repair, duplicate keys or unknown citations.
+All48 review/router cases and141 focused checks pass; cached source replay covers
+all eight native histories plus both stopped router histories without inference.
+
+Eight gates pay for one TypeScript Opus review of7selected source entries plus
+42seen-range locators, but every review stops. **No case continues source search.**
+The positive0.83 Recall-point/4.48 F1-point difference from the original Haiku
+run is not a demonstrated router effect. This late-critic policy fails both its
+actual-intervention screen and the Opus Recall/half-cost target; do not expand it
+to32/500 or product. SDK-loop mean/median is30.18/24.11seconds, excluding source
+preparation; C totals115.86seconds. All fees reconcile, while main-input
+completeness remains unknown. Keep all40 public case rows, including both
+failed cohorts, in `docs/evaluation/contextbench-results.md` and its CSV.
+
+Production fixes remain independently reviewable and unmerged:
+[#835](https://github.com/sysevol-ai/CodeNib/pull/835) named-symbol routing,
+[#836](https://github.com/sysevol-ai/CodeNib/pull/836) regular lexical discovery,
+[#837](https://github.com/sysevol-ai/CodeNib/pull/837) canonical-document
+pre-admission, and [#838](https://github.com/sysevol-ai/CodeNib/pull/838)
+query-focused source delivery inside long anchors. Their exact heads have
+successful required unit CI. The source-window fix has298 MCP/projection checks
+with7 skips and an unchanged-source fixed-hit MUI replay; it proves delivery,
+not ranking or agent-quality gains. #834 remains draft with an incomplete
+skipped required unit gate. Do not merge draft or dependent work prematurely.
+
+The next experiment must route work to an actual search worker rather than
+paying only to judge already-found evidence. Freeze a separate agent policy,
+models, budget, validity/cap rules and same-task controls before inference;
+include every parent/router/worker/auxiliary fee. A positive system screen can
+motivate independent default-only32, then a frozen candidate500 and reproducible
+submission. Specific context-mechanism attribution still needs matched ablation.
+Native solver resolution/collection controls and candidate/outcome archives stay
+open; they do not block retrieval research, and no new repair batch is started.
+The unstarted443 late4K consumers remain cancelled. Known API usage is
+**$59.499668400/$100**, leaving$40.500331600 with no active reservation. Both stopped
+integration reservations and the completed router reservation are closed, with
+all unused amounts released. Historical Max unknown fees stay unknown. No
+package lifecycle promotion, new storage boundary or mandatory graph/embedding
+path is authorized by these experiments. Detailed historical implementation and
+measurement traces remain in the evaluation report and immutable receipts.
 
 ```text
 source and manifest contracts

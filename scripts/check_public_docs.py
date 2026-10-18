@@ -60,6 +60,7 @@ ALLOWED_PUBLIC_STATIC_FILES = {
     "assets/contextbench_file_surface_development_8.csv",
     "assets/contextbench_haiku_native_development_8.csv",
     "assets/contextbench_continuation_development_8.csv",
+    "assets/contextbench_agent_router_development_8.csv",
     "assets/contextbench_online_development_summary.json",
     "assets/contextbench_independent_32.csv",
     "assets/contextbench_independent_summary.json",

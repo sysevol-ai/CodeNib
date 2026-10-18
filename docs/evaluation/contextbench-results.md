@@ -1,5 +1,17 @@
 # ContextBench retrieval experiments
 
+The latest **CodeNib agent router** completes8/8 valid on the same exposed
+development tasks: **68.90% Recall/41.14% F1 for$0.113543820** all-model nominal
+usage. It makes one Opus review and zero follow-up searches, so the late-review
+router's incremental benefit is unproven and its intervention screen fails.
+
+CodeNib is the system under test: native source tools, agent execution, source
+delivery and model routing are CodeNib system configurations. Embedding and graph
+are optional mechanisms, not the definition of the system. The native agent
+results below therefore belong to CodeNib. Distinguish system-level Recall,
+F1, cost and latency from claims that one particular index, graph or context
+projection caused an improvement; the latter require matched component ablations.
+
 The latest **cheap-search callable-tail guard fails its Recall screen**:
 67.14% Recall/41.03% F1 versus native Haiku68.07%/36.66%, on the same eight
 exposed tasks. Its five interventions deliver59 new tail lines but add only
@@ -37,7 +49,8 @@ up to$0.15 and a$2 batch guard; every case completes below that guard.
 
 Haiku loses1.84 Recall points and2.99 F1 points while using96.96% less nominal
 API/list-price value. This is a candidate low-cost endpoint on this exposed
-sample, **not a CodeNib enhancement or router gain**, independent result or500
+sample: a **CodeNib low-cost native agent configuration**, not evidence of an
+incremental indexed-context/router gain, independent result or500
 score. Haiku observes4,250 source lines and65,606 tool-reply cl100k tokens versus
 3,981/57,004 for Opus; lower model cost does not imply fewer source tokens. The
 [case-level CSV](../assets/contextbench_haiku_native_development_8.csv) retains
@@ -63,7 +76,8 @@ terminal usage/costs remain known. No missing counters become zero.
 
 The native Haiku eight API sessions use$0.043406125 in recorded SDK/API usage value, with
 zero unknown terminal fees. The unused$1.956593875 of the prospective$2 reservation
-is released. This is a model-only cost candidate; no router value is established.
+is released. This is a CodeNib model-configuration cost candidate; incremental
+router value is not yet established.
 
 A subsequent **bounded callable-tail Stop guard fails its Recall screen** on
 these same eight exposed tasks. Runtime `d998fa25`, protocol `e39ffad3`, registers
@@ -116,7 +130,7 @@ is now$59.186247105 under$100, leaving$40.813752895 with no active reservation.
 No repair or fresh default-only task is opened. The next hypothesis is
 task-relevant coverage review and selective strong-model search, evaluated
 against **both** ordinary model baselines with all parent/child costs. It
-remains unimplemented/unmeasured; no router benefit, independent validation
+is now implemented in a separate experiment; no router benefit, independent validation
 or full500 expansion is established.
 
 An engineering follow-up fixes a separate long-anchor delivery defect in
@@ -142,7 +156,8 @@ separate from the still-unmeasured cheap-search/evidence-reviewer policy.
 The source repair's required unit CI now succeeds at the exact independent
 head `f5f02935`; [#838](https://github.com/sysevol-ai/CodeNib/pull/838) remains
 unmerged. A subsequent **same-session evidence reviewer is implemented and
-locally verified, but has no live quality result**. Runtime `93d5c79a` adds an
+locally verified; its first live batch stops at an integration failure**.
+Runtime `93d5c79a` adds an
 explicit experiment-only SDK argument. At the first eligible Stop, CodeNib
 deduplicates complete source lines already confirmed in the agent's inputs,
 reauthenticates them through the retained source reader, and supplies stable
@@ -164,12 +179,83 @@ estimate only when both are known. Source is checked again after continuation.
 
 All23 new mocked HTTP/source/SDK tests and116 focused checks pass, including
 concurrent callbacks, source mutation and known/unknown terminal-fee retention;
-tests make no billed calls. No real reviewer request, new reservation, cohort,
-annotation or repair is added. Official model-constraint verification and a
-separate prospective same-eight protocol are still required before inference.
-Both native controls must remain; a matched reviewer ablation is required before
-attributing any bundled policy gain to CodeNib. Independent32/500 and leaderboard
-gates remain open.
+tests make no billed calls. The subsequent separately frozen same-eight live
+batch makes two search/review attempts, then stops: Python returns a single
+Markdown-fenced JSON decision which the strict adapter rejects; JavaScript
+validly stops without continuation. Six tasks remain unclaimed. Preserve the
+one failure, one valid attempt and six unclaimed zeros in the selected-eight
+denominator; this is not a usable strategy-quality estimate. All outcomes seal
+before existing labels reopen. Main/auxiliary SDK usage is$0.009603920 and direct
+Opus reviews are$0.176708, totaling **$0.186311920**, all known. The$3 reservation
+closes and releases$2.813688080. No original outcome is retried or reinterpreted.
+Offline presentation normalization validates the two cited Python gaps but adds
+zero source or quality credit.
+
+The first **CodeNib Haiku-router** integration batch at `f40a2f31` also stops
+after two attempts, retaining six unclaimed tasks. Python's native observations
+include a file outside the retained source inventory, so packet authentication
+fails before a reviewer request. JavaScript pays only for its Haiku gate; the
+full-packet Opus count exceeds the prospective$0.15 review forecast and defers.
+Known main/auxiliary/gate usage totals **$0.013565555**, with zero Opus reviews
+and no unknown fees. Its$3 reservation closes with$2.986434445 released. This is
+another failed integration screen, not evidence against the agent strategy.
+
+The local successor keeps uncaptured files as explicit coverage gaps, never
+verified bodies, without widening source authority. A Haiku gap gate selects
+already-seen source by existing handles for the optional Opus review; other
+seen ranges remain labeled locators. Subsequent search stays in the original
+native agent session. A single whole-response JSON fence is accepted, while
+prose extraction, malformed objects, duplicate keys, unknown handles and capped
+decisions remain rejected. All48 review/router cases and141 focused checks pass
+without billed calls. The old failures remain immutable. Both native controls
+remain required; specific context-selection attribution needs a matched ablation,
+whereas the whole router policy is a CodeNib system configuration. Independent32/
+500 and leaderboard gates remain open.
+
+A separate successor at `b0256f8f`, protocol `2963114d`, now completes and seals
+all eight source outcomes before existing annotations reopen. All eight execute
+and score valid, without retry or replacement. Before dispatch, a zero-model
+replay authenticates all eight cached native histories plus the two stopped
+router histories; missing authority is explicit, never restored as source.
+
+| CodeNib agent configuration, same eight exposed tasks | Line Recall | F1 | All-model nominal usage |
+| --- | ---: | ---: | ---: |
+| Opus native control | 69.91% | 39.66% | $1.4261087 |
+| Haiku native control | 68.07% | 36.66% | $0.043406125 |
+| Haiku + selected-evidence late router | 68.90% | 41.14% | $0.113543820 |
+
+Seven cases stay Haiku-only; TypeScript pays for one Opus review of seven
+selected prior source entries with42 other seen ranges retained as locators.
+The strong review also says stop. **No case receives a Stop block or reads
+additional source after review.** The observed0.83 Recall-point/4.48 F1-point
+difference from Haiku native cannot be assigned to a route that caused no
+continuation. The policy costs161.58% more than Haiku native and remains1.01
+Recall points below Opus, although nominal usage is92.04% lower than Opus.
+Both the actual-intervention screen and the target of matching Opus Recall at
+half its nominal usage fail. Do not expand this late-critic policy to32/500.
+
+All fees reconcile: main/auxiliary SDK usage totals$0.038414820, and direct
+gate/strong reviews add$0.075129000. All eight main-response-only input audits
+remain incomplete due to same-model CLI auxiliary usage; do not infer complete
+main-context savings. Observed source/reply estimates are3,542 lines/56,303
+cl100k tokens versus native Haiku4,250/65,606, with no compression attribution.
+SDK-loop mean/median is30.18/24.11seconds versus native Haiku21.86/21.26; this is
+not a matched cold-start study. C additionally takes37.27seconds for source
+preparation and115.86seconds total, including terminal source checks.
+
+The [40-row case CSV](../assets/contextbench_agent_router_development_8.csv)
+retains both native controls, both stopped integration cohorts, all failed/
+unclaimed zeros and the complete successor. This is a CodeNib system experiment;
+it does not require an embedding/graph gain to belong to CodeNib. It also supplies
+no evidence that late self-review is better than simpler native search. The
+next agent hypothesis should route work to an actual search worker, rather than
+paying to judge only the evidence already found. A new prospective protocol is
+required; no new independent task or repair batch starts here.
+
+The successor's$3 reservation closes with$2.886456180 released. Including both
+preserved failed integration attempts, this iteration adds$0.313421295 known
+API usage. Program usage is **$59.499668400/$100**, leaving$40.500331600, with
+no active reservation or unknown fee from these three batches.
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
