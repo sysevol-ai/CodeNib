@@ -403,6 +403,56 @@ def validate_image_snapshot(result, expected_tree):
     return {"commit": lines[0], "tree": lines[1], "matches_selected_tree": True}
 
 
+def remove_owned_solver_container(environment, row, checkpoint):
+    """Finalize only the recorded source container, preserving completed work.
+
+    Removal acknowledgement or a verified missing-container response is the
+    completion boundary. A timed-out Docker request may already have removed
+    it. Persist its exact identity and uncertainty before detaching the native
+    environment; otherwise its destructor can start an unbounded second removal.
+    If absence is unconfirmed, the dispatcher owns recovery from this receipt
+    and must not launch another case. No model request or patch is repeated.
+    """
+    container = environment.container_id
+    if not container:
+        return
+    receipt = {"container": container, "remove_complete": False}
+    row.update(
+        container_id=container, container_removed=False, container_cleanup=receipt
+    )
+    checkpoint()
+    try:
+        subprocess.run(
+            ["docker", "rm", "-f", container],
+            capture_output=True,
+            check=True,
+            timeout=60,
+        )
+        receipt["remove_complete"] = True
+        row["container_removed"] = True
+    except (OSError, subprocess.SubprocessError) as error:
+        receipt["remove_error"] = f"{type(error).__name__}: {error}"
+        try:
+            result = subprocess.run(
+                ["docker", "container", "inspect", container],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            missing = result.returncode == 1 and any(
+                marker + container in result.stderr
+                for marker in ["No such container: ", "No such object: "]
+            )
+            receipt["absence_confirmed"] = missing
+            row["container_removed"] = missing
+        except (OSError, subprocess.SubprocessError) as inspection_error:
+            receipt["inspection_error"] = (
+                f"{type(inspection_error).__name__}: {inspection_error}"
+            )
+    checkpoint()
+    environment.container_id = None
+
+
 def export_prediction(args, environment, row):
     """Save executed edits before cleanup, without adding a model observation."""
     patch = environment.execute("git add -A && git diff --cached --binary")
@@ -782,15 +832,7 @@ def run(args):
         )
         checkpoint()
         if environment is not None and environment.container_id:
-            subprocess.run(
-                ["docker", "rm", "-f", environment.container_id],
-                capture_output=True,
-                check=True,
-                timeout=60,
-            )
-            environment.container_id = None
-            row["container_removed"] = True
-            checkpoint()
+            remove_owned_solver_container(environment, row, checkpoint)
     observations = model_observations(row)
     write_json(args.output / "model-observations.json", observations)
     if handoff is not None:
@@ -812,6 +854,7 @@ def run(args):
                     "status",
                     "error",
                     "sdk_reported_cost_usd",
+                    "container_removed",
                     "native_resolution",
                 )
             }
