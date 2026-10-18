@@ -78,6 +78,31 @@ def _render_line_selection(lines: Sequence[str], selected: set[int]) -> str:
     return "\n".join(rendered)
 
 
+def _query_terms(query: str) -> set[str]:
+    return {
+        term
+        for term in re.findall(r"[a-z0-9_]+", query.lower())
+        if len(term) >= 3 and term not in _QUERY_STOP_TERMS
+    }
+
+
+def query_focus_line(lines: Sequence[str], query: str) -> tuple[int, int]:
+    """Return the strongest exact-token line and its distinct query-term count.
+
+    Ties keep the earlier line; no match keeps the scope head. Token-set
+    intersection scans source once rather than once per query term. This is a
+    lexical location hint, not a relevance probability or evidence expansion.
+    """
+    terms = _query_terms(query)
+    best_line, best_score = 0, 0
+    if terms:
+        for index, line in enumerate(lines):
+            score = len(terms.intersection(re.findall(r"[a-z0-9_]+", line.lower())))
+            if score > best_score:
+                best_line, best_score = index, score
+    return best_line, best_score
+
+
 def focus_source_content(content: str, query: str, max_chars: int) -> str:
     """Project a large source chunk into query-relevant, line-stable windows."""
 
@@ -89,11 +114,7 @@ def focus_source_content(content: str, query: str, max_chars: int) -> str:
     lines = content.splitlines()
     if not lines:
         return content[:max_chars]
-    query_terms = {
-        term
-        for term in re.findall(r"[a-z0-9_]+", query.lower())
-        if len(term) >= 3 and term not in _QUERY_STOP_TERMS
-    }
+    query_terms = _query_terms(query)
     selected = set(range(min(5, len(lines))))
     ranked_lines = sorted(
         (
