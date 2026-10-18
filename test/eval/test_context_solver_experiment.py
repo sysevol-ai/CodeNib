@@ -428,6 +428,8 @@ def test_delivered_input_rejects_other_native_harnesses_and_failed_retrieval(
         ("Multi", "ponylang/ponyc", False, False, "non_budget"),
         ("Verified", "owner/repo", False, False, "budget_pair"),
         ("Verified", "owner/repo", False, False, "budget_pair_none"),
+        ("Verified", "owner/repo", False, False, "submitted_pair_cleanup_absent"),
+        ("Verified", "owner/repo", False, False, "submitted_pair_cleanup_pending"),
     ],
 )
 def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_container(
@@ -444,6 +446,9 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
 
     from scripts import benchmark_context_solver as solver
 
+    pair_run = failure in {"budget_pair", "budget_pair_none"} or failure.startswith(
+        "submitted_pair_cleanup_"
+    )
     mini = (
         tmp_path
         / "agent-frameworks/mini-swe-agent/multi-poly-pro-verified"
@@ -518,7 +523,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         ),
     )
     monkeypatch.setattr(solver, "initial_source_receipt", lambda *args: None)
-    if failure in {"budget_pair", "budget_pair_none"}:
+    if pair_run:
         from hashlib import sha256
 
         from scripts.contextbench_search_pair_solver import PairHandoff
@@ -568,9 +573,20 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
 
     def execute(command, **kwargs):
         if command[0] == "docker":
+            if command[1:3] == ["container", "inspect"]:
+                absent = failure == "submitted_pair_cleanup_absent"
+                return SimpleNamespace(
+                    returncode=1 if absent else 0,
+                    stderr="Error: No such object: owned-container" if absent else "",
+                )
             assert command == ["docker", "rm", "-f", "owned-container"]
             row = json.loads((output / "solver.json").read_text())
-            assert row["status"] == "error" and not row.get("container_removed")
+            assert row["status"] in {"error", "Submitted"}
+            assert not row.get("container_removed")
+            if failure.startswith("submitted_pair_cleanup_"):
+                if failure.endswith("absent"):
+                    removed.append(command[-1])
+                raise solver.subprocess.TimeoutExpired(command, 60)
             removed.append(command[-1])
 
     monkeypatch.setattr(solver.subprocess, "run", execute)
@@ -681,6 +697,8 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
             self.messages.append({"role": "assistant", "content": reply["content"]})
             observation = self.environment.execute("edit source")
             self.messages.append({"role": "user", "content": observation["output"]})
+            if failure.startswith("submitted_pair_cleanup_"):
+                return "Submitted", "Completed first model candidate"
             self.model.query(self.messages)
             pytest.fail("The budget/error reply must not reach the solver loop")
 
@@ -709,7 +727,7 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         ),
         billing_route="anthropic-api" if failure == "budget_api" else "subscription",
     )
-    if failure in {"budget_pair", "budget_pair_none"}:
+    if pair_run:
         args.search_pair, args.retrieval = tmp_path, None
         args.total_meter_usd = 1.1
     if imported_provider_route:
@@ -718,8 +736,29 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
         assert not output.exists() and not removed and not agent_runs
         return
     solver.run(args)
-    assert removed == ["owned-container"]
+    assert removed == (
+        [] if failure == "submitted_pair_cleanup_pending" else ["owned-container"]
+    )
     row = json.loads((output / "solver.json").read_text())
+    if failure.startswith("submitted_pair_cleanup_"):
+        assert row["status"] == "Submitted" and "error" not in row
+        assert row["container_removed"] is failure.endswith("absent")
+        assert "TimeoutExpired" in row["container_cleanup"]["remove_error"]
+        assert len(requests) == len(row["calls"]) == 1
+        assert row["model_patch"] == exported_patch
+        assert row["missing_metering_calls"] == 0
+        assert row["sdk_reported_cost_usd"] == 0.1
+        observed = json.loads((output / "model-observations.json").read_text())
+        assert len(observed["confirmed_inputs"]) == 1
+        usage = json.loads((output / "whole-run-usage.json").read_text())
+        assert usage["solver_status"] == "Submitted"
+        assert usage["total_model_usage_usd"] == pytest.approx(0.2)
+        assert (output / "navigation-delivery.json").is_file()
+        assert (
+            json.loads((output / "predictions.json").read_text())[0]["model_patch"]
+            == exported_patch
+        )
+        return
     assert row["status"] == "error" and row["container_removed"]
     assert bool(api_auth_calls) is (failure == "budget_api")
     assert bool(agent_runs) is not reference_artifacts
