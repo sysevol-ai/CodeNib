@@ -653,8 +653,8 @@ The fixed native500 control is complete: line Recall/F1 **72.83%/33.95%**, with
 audit archives reproduce the captured controls, including the earlier122-case
 annotation-timing disclosure and unknown terminal fees. This is a CodeNib native
 system baseline, not an indexed-context gain or official submission. Verified500
-is now exposed. Future independent validation uses the separately audited
-623 default-only candidates and excludes closed cohorts and issue/source aliases.
+is now exposed. After the completed independent32 comparison,591 metadata-only
+default candidates remain, excluding closed cohorts and issue/source aliases.
 
 The current before-search router at `0fc02a85`, protocol `712569fe`, selects one
 actual native Haiku/Opus source-search worker from the issue alone. Worker
@@ -670,18 +670,32 @@ repeats, not evidence that the router selects better workers. Main-input
 completeness remains unknown because of same-model CLI auxiliaries. Keep all24
 case rows and known all-model costs in the evaluation report.
 
-The cheap CodeNib system configuration advances to a frozen independent
-comparison, not further tuning on the exposed eight. Design `cab3bc5a` fixes
-native Haiku, native Opus and the unchanged issue-only router. Metadata selection
-`059fec72` fixes32 default-only tasks, four per language across23 repository-alias
-clusters, at most two per cluster. Selection precedes new issue/source/label
-access. All32 source preparations pass before inference. Execution protocol
-`63d57a66` is frozen and the96-query comparison is running. All96 source outcomes
-must seal before selected Gold access. Retain
-failed/unclaimed zeros, no retries or replacement, and report Recall, F1,
-all-model usage, latency and paired repository-cluster uncertainty. Default-only
-language balancing differs from verified500; this is not a leaderboard score.
-No router-specific gain is established when routing degenerates to one model.
+The independent CodeNib system comparison is complete. Design `cab3bc5a`,
+metadata selection `059fec72` and execution protocol `63d57a66` retain32
+default-only tasks, four per language across23 repository-alias clusters and
+at most two per cluster. Selection precedes issue/source/label access; all32
+source preparations pass before inference and all96 worker source outcomes seal
+before selected Gold opens. All96 execute and score valid, with known fees and
+no retries or replacements. Native Haiku Recall/F1 is **45.17%/28.63% for
+$0.252892905**, native Opus **49.86%/33.58% for$6.218777900**, and the unchanged
+issue-only router **44.11%/28.40% for$0.898562665**. Routing is29 Haiku/3 Opus.
+All predeclared quality gates fail. The router is dominated by Haiku on point
+Recall/cost; Haiku and Opus are nondominated among these three only. Router minus
+Haiku Recall has a repository-cluster95% interval[-3.49,+1.71] points, so do not
+claim a reliable harm or a demonstrated gain. No failed policy expands to500.
+Default-only language balancing differs from verified500; this is not a new
+leaderboard score. Keep all96 public case rows and aggregate/bootstrap receipts.
+
+The completed32 supports a post-seal retrieval diagnosis, without changing any
+official score or reopening it for tuning. Only140/22,359 annotated lines are
+unavailable in the base source. Of the original Gold denominator, native Haiku
+observes45.17%;37.16% remains unread in files with some source already observed,
+16.73% is in unlocated files and0.94% is unavailable, averaged by task. All96
+observed-source intersections match official reports. This motivates a real
+candidate-selection/on-demand-reading experiment with a shared source organizer,
+not another model-only router sweep or a promise to recover the whole gap.
+Keep closed tasks excluded from new independent validation and distinguish
+source relevance routing from predicting which model will search successfully.
 
 The earlier late-critic policy remains rejected:68.90% Recall/41.14% F1 at
 $0.113543820, one Opus review and zero follow-up searches. Preserve both earlier
@@ -700,10 +714,11 @@ unit CI succeeds; #838 has298 local checks with7 skips and unchanged-source MUI
 replay. This proves delivery, not ranking or agent-quality gains. #834 remains
 draft with its required unit gate skipped/incomplete; do not merge it prematurely.
 
-API usage before the running32 cohort is **$59.544567195/$100**. The worker-eight
-$4 reservation is closed with$3.955101205 released. Independent32 reserves$16,
-leaving$24.455432805 unreserved. Historical unknown Max fees remain unknown;
-nominal usage is not a reconciled cash bill. Native solver controls, candidate500,
+Independent32 adds **$7.370233470** in known nominal API usage; the$16 reservation
+closes with$8.629766530 of budget released. Known cumulative usage is
+**$66.914800665/$100**, leaving **$33.085199335**, with no active reservation or
+model job. Historical unknown Max fees remain unknown; nominal usage is not a
+reconciled cash bill. Native solver controls, candidate500,
 reproducible candidate/outcome archives and official submission remain open, but
 no new repair batch starts. The unstarted443 late4K consumers remain cancelled.
 No package lifecycle promotion, storage boundary or mandatory embedding/graph

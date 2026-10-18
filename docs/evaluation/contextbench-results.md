@@ -1,11 +1,13 @@
 # ContextBench retrieval experiments
 
-The latest **CodeNib agent configuration** completes8/8 valid on the same
-exposed development tasks: **71.04% Recall/40.17% F1 for$0.044898795** all-model
-nominal usage. Its issue-only router chooses Haiku for all eight actual search
-workers. Retain this as a Haiku repeat with routing overhead; it does not
-establish a mixed-router benefit. Three unchanged system configurations are
-frozen for a separate independent default-only32 comparison.
+The latest **independent32 CodeNib system comparison is complete**, with all
+96 worker runs valid and all fees known. Native Haiku scores **45.17% line
+Recall/28.63% F1 for$0.252892905**; native Opus **49.86%/33.58% for$6.218777900**;
+the before-search router **44.11%/28.40% for$0.898562665**. Every value covers
+the same32 tasks and includes all-model nominal usage. All96 source outcomes
+seal before selected annotations open. The router fails its quality gate and
+is not expanded to500. This default-only, language-balanced sample differs from
+verified500; these percentages are not a new leaderboard score.
 
 CodeNib is the system under test: native source tools, agent execution, source
 delivery and model routing are CodeNib system configurations. Embedding and graph
@@ -303,13 +305,62 @@ before-search router before opening new issues. Metadata-only selection
 alias clusters, at most two per cluster. IDs, original issue identities and
 exact source commits exclude known exposures. This is outside verified500 and
 has different language weighting; it is not a new official leaderboard sample.
-All32 exact sources are ready. Execution protocol `63d57a66` is frozen and the
-96-query comparison is running; all96 source outcomes must seal before selected
-annotations are opened. Failed/unclaimed positions remain
-zero, with no quality retries or replacement. Compare Recall first, then F1,
-all-model usage, latency and repository-cluster uncertainty. Retain degenerate
-routes. A$16 reservation leaves$24.455432805 unreserved under the cumulative
-$100 ceiling; no repair batch or automatic500 expansion is authorized.
+All32 exact sources are prepared before inference. Execution protocol `63d57a66`
+completes96/96 valid worker runs with no retries or replacement, plus32 issue-only
+classifier calls. Source seal `64b5eac1` precedes selected annotation access.
+Actual routing is29 Haiku/3 Opus, with model identity, execution and all-model
+fees reconciled. Compare all three on the fixed32 denominator:
+
+| CodeNib system configuration, independent32 | Line Recall | Precision | F1 | All-model nominal usage |
+| --- | ---: | ---: | ---: | ---: |
+| Native Haiku | 45.17% | 27.66% | 28.63% | $0.252892905 |
+| Native Opus | 49.86% | 32.15% | 33.58% | $6.218777900 |
+| Before-search router,29 Haiku/3 Opus | 44.11% | 26.94% | 28.40% | $0.898562665 |
+
+The [96-row case CSV](../assets/contextbench_system_agent_independent_32.csv)
+and [machine-readable summary](../assets/contextbench_system_agent_independent_summary.json)
+reproduce all individual and aggregate line metrics and fees. Paired
+repository-alias-cluster bootstrap intervals use23 clusters,10,000 draws and
+seed20261018. Router minus Haiku Recall is **-1.06 points**, with an unadjusted
+95% interval **[-3.49,+1.71]**; Haiku minus Opus is **-4.68 points**, interval
+**[-9.67,-0.42]**. The router has no demonstrated gain; its point estimate is
+dominated by Haiku on Recall and cost. Haiku and Opus are nondominated among
+these three configurations only. Every predeclared quality gate fails, including
+Haiku within two Recall points of Opus at at most25% of its usage. Do not expand
+this failed router policy or reinterpret the gates.
+
+A retrospective decomposition of the same frozen outcomes separates model
+choice from same-model repeats. The29 routed Haiku searches contribute
+-1.5012 Recall points relative to the native Haiku controls. The three routed
+Opus searches contribute -0.9006 points relative to their native Opus controls;
+choosing those three native Opus controls instead of Haiku would contribute
++1.3419 points. These sum to the observed -1.0599 points. This algebra uses
+separate stochastic searches and is not causal identification or evidence that
+a live router can realize the offline composition. It does not justify saying
+that all loss is misrouting or that randomness proves a benefit.
+
+Post-seal source diagnostics retain the official normalized paths, all32 tasks
+and every original denominator. Across the cohort only140 of22,359 annotated
+lines are unavailable at the base source; mean per-task source reachability is
+99.06%. Those boundary issues cannot explain the low Recall. Partitioning every
+Gold line also reconciles all96 observed-source intersections with the official
+reports. Native Haiku's task-macro Gold fractions are **45.17% observed,
+37.16% unread in files with some observed source,16.73% in unlocated files,
+and0.94% unavailable**. A file may have only one grep line observed. This is a
+descriptive retrieval gap, not an achievable-gain estimate or permission to
+inject whole files. It motivates testing candidate-block selection and on-demand
+reading; closed32 tasks stay excluded from future independent validation.
+
+SDK-loop mean/median is31.82/30.51seconds for Haiku,39.22/41.30 for Opus and
+32.14/28.85 for the router. These exclude Python imports and initial CLI/auth
+checks, and do not establish a controlled cold-start comparison. Main-input
+reconciliation remains incomplete in32 Haiku and29 routed Haiku runs because
+of same-model auxiliaries; all terminal main/auxiliary fees are known. Lower
+fees do not establish context compression. New nominal API usage totals
+**$7.370233470**; the$16 reservation is closed, releasing$8.629766530 of budget.
+Known cumulative usage is **$66.914800665/$100**, leaving **$33.085199335**
+with no active reservation or model job. This is not an invoice or credit-balance
+reconciliation. No repair batch starts.
 
 An offline complementarity audit reuses the two completed Haiku searches on
 the same eight exposed development tasks. The first reads4,250 unique lines,
@@ -331,7 +382,7 @@ prerequisite for that metric. Concatenated steps here are an offline representat
 with no efficiency or latency claim. A future policy needs a live execution,
 complete worker/source receipts, a declared return contract and all-worker costs.
 Claims about a repair consumer need its actual handoff and native outcomes.
-The running32 protocol and its unopened annotations remain unchanged.
+This offline eight-task audit does not change the completed32 results or gates.
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
