@@ -27,7 +27,8 @@ model usage values, not reconciled cash invoices or a provider credit balance.
 The canonical500 batches with completed grading and settled fees retain
 **58 unique first candidate attempts:51 natively resolved and7 unresolved**.
 They include the three original development repairs and55 subsequent Verified
-tasks in canonical metadata order. The remaining442 tasks still need repair.
+tasks in canonical metadata order. The remaining442 are outside these settled
+cohorts; the next64 fixed cases are now running in two disjoint shards.
 All58 selected-context exports pass the unchanged official evaluator as a format
 compatibility check. A separate zero-model replay reauthenticates their116 search
 workers and confirmed repair inputs, then recompiles every selected context and
@@ -59,9 +60,10 @@ preserving model outputs; dispatch still stops on unconfirmed cleanup.
 Across all58 repairs, new API usage totals **$21.5483648**. At this closure,
 the new$500 authorization has$478.4516352 remaining, with no active reservation.
 These are recorded SDK usage values; native compute and reconciled invoices
-remain separate. All64 source admissions for the next fixed batch are now
-prepared; native admission must complete before its budget reservation or model
-requests. Preserve two original Docker create timeouts and their source-only
+remain separate. The next64 fixed cases now run in two metadata-order shards
+after completed source admission and native environment validation. Their$320
+reservation is a budget allocation, not a charge; actual SDK fees remain unsettled
+until this cohort closes. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
 initial absence check, so the old cleanup claims are not accepted. Exact-owner,
 image and state checks identify both residual containers; explicit removal and
@@ -90,6 +92,22 @@ and task population stay unchanged, and the first candidate patch still requires
 ordinary native grading. Disclose this baseline-positive task separately;
 a passing native outcome alone does not demonstrate repair of its reported issue.
 
+The final three pytest environments initially fail even with reference patches:
+their history-free source snapshots cause editable installation to infer
+`pytest==0.1.dev1`, below the unchanged test configuration's minimum. Preserve all
+six original failed fixtures. A pytest-specific
+[setuptools-scm version override](https://github.com/pypa/setuptools-scm/blob/main/docs/config.md#environment-variables)
+uses each original native image's installed distribution metadata. The derived
+source images retain identical filesystem layers, canonical source/tree and
+reference-artifact hygiene; only that package metadata environment setting is
+added. Empty Docker entrypoints normalize from `[]` to `null`; five local checks
+accept that equivalence while rejecting other command, environment, entrypoint
+or filesystem changes. All three corrected environments pass
+neutralFalse/referenceTrue before inference. Future pytest source admission uses
+the same metadata preparation. The64-case gate retains136 actual fixture runs:
+130 admitted fixtures, plus the six original failed pytest fixtures. Native data,
+required tests, parser, scorer, model, prompts and context policy are unchanged.
+
 A separate private original-byte archive now retains all58 completed first
 attempts, including the seven unresolved cases, failed native wrapper logs and
 original cleanup failures/recovery siblings. All7,700 members round-trip with
@@ -97,6 +115,19 @@ matching hashes; its compressed parts are each below50 MiB. Exact runtime source
 original metric inputs, outcomes, session usage and selection records are
 retained. This unredacted material is not published. Full500 raw coverage,
 publication redaction and portable replay remain open submission gates.
+
+A private redacted preview retains all7,700 original members and verifies7,703
+archive members including its support manifests. It substitutes known workstation
+labels and2,602 SDK session/event UUIDs consistently. All463 actual repair model
+requests and their request hashes remain identical, as do patches, recomputed
+observation receipts, final source selections, native outcomes and system usage.
+A public digest linkage can reconcile pseudonymous SDK identities to the original
+usage commitments without exposing raw identity values. The exact authorized
+credential is absent. Three bounded archive parts total142,348,276 bytes. These
+checks cover the declared substitutions; broader personal-data/credential review,
+full500 coverage and publication approval remain open. The1000 search-session
+digest links are also independently reconstructed from the unchanged original
+and redacted search artifacts, preserving all recorded fees.
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
 original metadata-selected fmt, Gson and ponyc development tasks. The existing
