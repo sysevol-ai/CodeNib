@@ -9,6 +9,16 @@ seal before selected annotations open. The router fails its quality gate and
 is not expanded to500. This default-only, language-balanced sample differs from
 verified500; these percentages are not a new leaderboard score.
 
+A subsequent **live two-Haiku development comparison** on the same eight
+exposed tasks identifies a low-cost candidate: a metadata-seeded complementary
+search scores **71.62% Recall/29.29% F1 for$0.100641385**, versus fresh native
+Opus **70.56%/39.69% for$1.119668300**. Two independent Haiku searches score
+70.79%/30.17% for$0.085153860. This is real joint execution, with a shared source
+assembler and all-worker fees. It passes development point-score gates while
+losing F1; uncertainty still crosses zero. A new independent32 comparison is
+required. It does not supersede the failed independent32 result above or
+establish a leaderboard gain.
+
 CodeNib is the system under test: native source tools, agent execution, source
 delivery and model routing are CodeNib system configurations. Embedding and graph
 are optional mechanisms, not the definition of the system. The native agent
@@ -383,6 +393,87 @@ with no efficiency or latency claim. A future policy needs a live execution,
 complete worker/source receipts, a declared return contract and all-worker costs.
 Claims about a repair consumer need its actual handoff and native outcomes.
 This offline eight-task audit does not change the completed32 results or gates.
+
+### Live two-worker source search on the exposed eight
+
+Runtime `71e489e5` and protocol `f2bba747` turn the earlier complementarity
+opportunity into actual execution on the same eight exposed development tasks.
+Every task runs one common first Haiku search, an independent Haiku repeat,
+a complementary Haiku search and a fresh native Opus control. Secondary worker
+order is fixed by a pre-run hash. Both two-worker configurations use the same
+first receipt, source assembler, native read/grep/glob tools and per-worker
+medium effort,20-turn/4096-output limits. Native Haiku/Opus SDK guards remain
+$0.08/$0.75. All32 actual workers and32 configuration positions are valid;
+every source outcome seals before these eight known annotations reopen.
+
+The complementary worker receives the unchanged original issue plus at most
+2,048 cl100k tokens of source-version-bound navigation metadata: filenames,
+observed line intervals and stable handles. **This is a metadata cap, not a
+source-body budget.** The first worker's bodies and generated explanation are
+not copied into the second model window. The worker reads required source with
+the ordinary tools; navigation itself adds zero source credit. The shared
+assembler verifies one source identity and unions only authenticated observed
+intervals. A parent model does not reread the union. This is a live CodeNib
+system policy, without a new embedding, graph, Jev request or repair batch.
+
+| CodeNib system configuration, same exposed eight | Line Recall | Precision | F1 | All-model nominal usage |
+| --- | ---: | ---: | ---: | ---: |
+| One native Haiku search, common first worker | 68.83% | 25.48% | 32.26% | $0.046606145 |
+| Two independent Haiku searches | 70.79% | 23.03% | 30.17% | $0.085153860 |
+| Haiku plus metadata-seeded complementary search | 71.62% | 22.10% | 29.29% | $0.100641385 |
+| Fresh native Opus | 70.56% | 35.75% | 39.69% | $1.119668300 |
+
+The [32-row case CSV](../assets/contextbench_search_pair_development_8.csv)
+and [machine-readable summary](../assets/contextbench_search_pair_development_summary.json)
+reproduce every per-case metric and configuration fee. Both pair configurations
+pass the prospective development target: Recall within two points of Opus and
+usage at most25% of Opus. The complementary pair costs8.99% of Opus and its
+Recall is1.06 points higher on these eight, while F1 is10.40 points lower.
+This is a measured Recall/cost tradeoff, not evidence of better repair quality.
+
+Summed per-task unique observed source is4,992 lines for the first Haiku worker,
+5,839 for the independent pair,6,548 for the complementary pair and3,686 for
+Opus. Counting each worker's own reads before cross-worker dedup gives8,980
+lines for the independent pair and10,527 for the complementary pair, including
+3,141 versus3,979 repeated lines. The full cohort therefore does not establish
+fewer source reads, better context density or less repetition from metadata.
+The demonstrated opportunity is affordable extra coverage; improved selection
+quality still needs evidence.
+
+The complementary-search policy increment over the independent pair is **+0.83 Recall
+points**, exploratory paired-repository95% interval **[-3.69,+5.26]**. Against
+Opus it is **+1.06 points**, interval **[-4.51,+6.65]**. Intervals use eight
+repositories,10,000 draws and seed20261018. Do not claim stable metadata routing
+or global Pareto optimality from these exposed tasks. The declared development
+point-score screens pass. The previous failed model-only router stays rejected.
+
+Successor independent design `bcaf5253` freezes these unchanged policies before
+metadata selection `34023146` chooses32 new default-only tasks: four per language
+across22 repository-alias clusters, at most two per cluster. Selection excludes
+verified500 and all closed cohorts/issue/source aliases. The metadata-only pool
+has591 eligible tasks before selection and559 after conservatively reserving
+these32. Exact-source preparation starts with empty issue and Gold fields;
+all32 must be ready before issue projection or any of the128 planned SDK
+sessions. All128 source outcomes must seal before selected Gold. The primary
+candidate is the complementary pair; a failed primary cannot be replaced
+retrospectively with the secondary repeat pair. The planned$12 API guard is
+not yet an active reservation or a billed batch. No new repair or500 run starts.
+
+Actual program usage counts all32 dispatched sessions once: **$1.258857400**.
+The common first worker appears in multiple configuration totals but is not
+rebilled in the program ledger. Close the$10 reservation, releasing$8.741142600
+of budget. Known cumulative API usage is **$68.173658065/$100**, leaving
+**$31.826341935** with no active reservation. Terminal main/auxiliary fees are
+known; incomplete response-input attribution remains explicit. SDK worker
+durations are retained, but declared worker step order is not a global turn
+order; no ensemble AUC, controlled cold-cache or context-compression claim is
+made. Usage estimates are not a reconciled account invoice or credit balance.
+
+The scout-versus-repeat comparison changes both the navigation handoff and the
+instruction to seek complementary evidence. It evaluates that whole policy;
+it does not isolate the causal contribution of metadata alone.
+
+### Fixed500 native control
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
