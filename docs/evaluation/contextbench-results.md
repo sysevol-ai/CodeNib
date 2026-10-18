@@ -24,36 +24,41 @@ it excludes repair, native grading and compute. The search batch is settled once
 its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
-The completed, fee-closed canonical500 batches retain **26 unique first candidate
-attempts:22 natively resolved and4 unresolved**. The remaining474 include the
-live batch described below. It
-includes the three original development repairs and23 subsequent tasks in
-canonical metadata order. All26 retained-context exports pass the unchanged
-official evaluator as a format compatibility check on exposed tasks. This is
-partial progress, without a full500 Pass@1 or full-system Recall/F1 claim.
+The canonical500 batches with completed grading and settled fees retain
+**58 unique first candidate attempts:51 natively resolved and7 unresolved**.
+They include the three original development repairs and55 subsequent Verified
+tasks in canonical metadata order. The remaining442 tasks still need repair.
+All58 selected-context exports pass the unchanged official evaluator as a format
+compatibility check. These exposed partial results do not establish full500
+Pass@1 or complete-system Recall/F1.
 
-The latest16 fixed tasks complete with **15 resolved,1 unresolved** and
-**$4.9256369** in124 completely metered repair requests. Three original
-model-complete cases encounter Docker cleanup acknowledgement timeouts. Preserve
-the original errors and solver/config/patch bytes; exact-owner absence checks
-and zero-model reconstruction recover the existing observations and usage, then
-grade the same first patches. All three resolve. Only four never-attempted cases
-continue after the cleanup fix, with the same model, prompts, context policy,
-guards and native controls. All four complete, with three resolved and one
-unresolved. No model retry, task replacement or search rerun occurs.
+The latest32 fixed tasks complete with **29 resolved,3 unresolved** and
+**$11.9111416** across264 fully metered repair sessions. Their64 separate native
+neutral/reference controls pass before inference. Exact model/patch/selection
+hashes authenticate the completed results, and all64 owned solver/native
+containers are independently confirmed absent. Fees close once; reused search
+is not debited again.
 
-The cleanup helper now bounds removal and exact-container absence verification,
-checkpoints ownership, and preserves observations, fees and patch exports even
-when cleanup remains unconfirmed. Dispatch still stops on unconfirmed cleanup.
-The original16 reservation closes once through authenticated124 session
-receipts and the three original-byte recovery commitments. Across all26 repairs,
-new API usage totals **$9.6372232**; reused search is not debited again. At this
-closure, the new$500 authorization has$490.3627768 remaining. These are recorded
-usage values; native compute and reconciled invoices remain separate. All64
-neutral/reference controls for the next32 fixed tasks now pass. Two disjoint
-model shards run at frozen runtime `25d4580c`; their$160 reservation is not a
-measured charge, and live usage is outside the closed balance above. The new
-Poly cache option has not changed this running runtime.
+The preceding16 tasks retain their **15 resolved,1 unresolved** outcomes and
+**$4.9256369** across124 repair sessions. Three model-complete cases encounter
+Docker cleanup acknowledgement timeouts. Preserve the original errors and
+solver/config/patch bytes; exact-owner absence checks and zero-model
+reconstruction recover observations/usage and grade the same first patches.
+Only four cases never attempted by the failed controller continue after the
+cleanup fix, with unchanged model, prompts, context policy, guards and native
+controls. No model retry, task replacement or search rerun occurs. The cleanup
+helper bounds removal/absence verification and checkpoints ownership while
+preserving model outputs; dispatch still stops on unconfirmed cleanup.
+
+Across all58 repairs, new API usage totals **$21.5483648**. At this closure,
+the new$500 authorization has$478.4516352 remaining, with no active reservation.
+These are recorded SDK usage values; native compute and reconciled invoices
+remain separate. The next64 fixed tasks wait for completed source preparation
+and128 native controls before budget reservation or model requests. Two original
+Docker source-build timeouts remain recorded and receive source-only retries;
+these tasks have not received repair-model requests. The model runtime stays
+frozen at `25d4580c`; the new Poly cache and aggregation utilities have not changed
+that running protocol.
 
 
 A separate **three-case candidate-only end-to-end pilot** now completes the
@@ -194,6 +199,19 @@ retrospective postprocessing; subsequent repairs use the fixed rule.
 The existing77.07% remains a search-policy result. Full-cohort final-selection
 metrics and protocol comparability still need verification before submission;
 neither custom-format support nor partial observation coverage establishes them.
+
+The checkout-only `scripts/contextbench_submission_results.py` aggregates the
+canonical500 final-context report, all500 joined native outcomes and their
+search-plus-repair session usage. It requires the exact declared instance set,
+retains unresolved cases in the Pass@1 denominator, rejects unknown or duplicate
+metering, and computes F1 per instance before averaging. First run the unchanged
+official evaluator on the500 selected-context exports; use that report as the
+aggregation input. Input provenance, raw-artifact replay and maintainer review
+remain separate submission gates. The tool does not rerun native tests or claim
+publication approval. Its macro file/symbol/line arithmetic matches all500
+frozen search scores. An actual26-case context report with16 joined native
+records is rejected without producing score files; it cannot stand in for the
+complete500 run.
 
 A final boundary audit found mutable `.git` observations in six candidate tasks,
 adding seven predicted non-source lines. None of the Gold paths is Git metadata,
