@@ -1,6 +1,11 @@
 # ContextBench retrieval experiments
 
-The latest **eight-task file/function-outline development policy fails**:
+The latest **cheap-search callable-tail guard fails its Recall screen**:
+67.14% Recall/41.03% F1 versus native Haiku68.07%/36.66%, on the same eight
+exposed tasks. Its five interventions deliver59 new tail lines but add only
+0.025 Recall points within those executed trajectories. It is not expanded.
+
+The **eight-task file/function-outline development policy fails**:
 line Recall/F1 are **69.40%/37.35%**, versus **69.91%/39.66%** for the exact
 original native controls. Seven agents query CodeNib outlines, one fetches a
 body, and mean per-task maximum provider input rises15.58%. This policy is not
@@ -56,13 +61,63 @@ fail the main-response-only input reconciliation check. Preserve that incomplete
 attribution and make no complete main-context maximum claim. The all-model
 terminal usage/costs remain known. No missing counters become zero.
 
-The new eight API sessions use$0.043406125 in recorded SDK/API usage value, with
+The native Haiku eight API sessions use$0.043406125 in recorded SDK/API usage value, with
 zero unknown terminal fees. The unused$1.956593875 of the prospective$2 reservation
-is released. Known program API usage is$59.137394855 under$100, leaving
-$40.862605145; no repair call or fresh default-only task is opened. The next
-hypothesis is a cheap-search continuation guard and evidence-based selective
-upgrade, evaluated against **both** ordinary model baselines. No guard/router
-benefit, independent32 promotion or full500 expansion has been established.
+is released. This is a model-only cost candidate; no router value is established.
+
+A subsequent **bounded callable-tail Stop guard fails its Recall screen** on
+these same eight exposed tasks. Runtime `d998fa25`, protocol `e39ffad3`, registers
+one explicit SDK Stop intervention. It requires a confirmed native read with a
+continuation footer and an already-read callable signature, then returns only
+the remaining location, at most80 lines. It parses at most16 authenticated
+files with a2MiB per-file parse cap; oversized files are explicit coverage gaps.
+The existing reader still authenticates complete file bytes. Native
+tools/prompt, Haiku model, medium effort,20turn/4096output and case guards stay
+fixed. There is no index, embedding, graph, Gold/language routing or repair call.
+All eight source outcomes seal before current known annotations reopen; all
+eight execute and score valid, with no retry or replacement.
+
+| Same eight exposed tasks | Line Recall | F1 | All-model API/list-price usage estimate |
+| --- | ---: | ---: | ---: |
+| Opus native, original control | 69.91% | 39.66% | $1.4261087 |
+| Haiku native, original control | 68.07% | 36.66% | $0.043406125 |
+| Haiku + callable-tail guard | 67.14% | 41.03% | $0.048852250 |
+
+The guard arm loses0.94 Recall points versus Haiku native, while F1 rises4.37
+points and nominal usage rises12.55%. Recall remains2.77 points below Opus.
+It fails the declared Recall-priority screen and the target of matching Opus
+Recall at half its nominal usage; it is not promoted to independent32 or500.
+The [24-row case CSV](../assets/contextbench_continuation_development_8.csv)
+preserves all three arms, including unchanged controls.
+
+Five cases receive a single metadata intervention and actually read all59
+requested new tail lines:30 Python,15 JavaScript,1 TypeScript,3 C and10 Java.
+The TypeScript tail is only a closing delimiter; structural completeness is
+not task relevance. A post-hoc official evaluation of the same executed
+trajectories before their first intervention versus final source shows only
+0.025 Recall points added, entirely in C. This is observed within-trajectory
+coverage, not a causal comparison against a no-hook run. Other between-run
+score changes, including the F1 increase, cannot be attributed to the guard.
+The CLI emits `stop-hook-error` notifications for the deliberate block; all
+five are followed by actual requested reads, and guard source-failure flags
+are false. The metadata itself receives zero unread-source credit.
+
+Guard-arm source lines/reply estimates total3,600/57,508, versus4,250/65,606 for
+Haiku native; this descriptive difference does not establish a compression
+effect. SDK loop mean/median is30.33/23.86seconds versus21.86/21.26. These exclude
+fresh source preparation and are not matched cold-start timings. All terminal
+model subtotals reconcile with fees, while all eight Haiku main-response input
+attributions remain incomplete due to same-model auxiliary usage. No complete
+main-context maximum or physical KV saving is inferred.
+
+The eight new sessions use$0.048852250, with zero unknown terminal fees; the
+unused$1.951147750 of their$2 reservation is released. Known program API usage
+is now$59.186247105 under$100, leaving$40.813752895 with no active reservation.
+No repair or fresh default-only task is opened. The next hypothesis is
+task-relevant coverage review and selective strong-model search, evaluated
+against **both** ordinary model baselines with all parent/child costs. It
+remains unimplemented/unmeasured; no router benefit, independent validation
+or full500 expansion is established.
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
@@ -2297,12 +2352,14 @@ tasks and one interrupted task; twenty were not run. It is not reported as a
 24-task quality result. A new online comparison was started on October 16;
 the historical results in this page do not describe that new policy.
 
-The current Claude SDK/Jev experiment ledger, through the completed first-read
+The historical Claude SDK/Jev subtotal, through the completed first-read
 source-window comparisons, early/late Jev probes and the amended late-source
 independent32, including all terminal failed packet attempts, has the
 following known usage values. This table excludes the
 historical OpenRouter reference and decision controls above; their recorded
-costs remain separate. Actual account charges and credit deductions have not
+costs remain separate. The subsequent native-Haiku and callable-tail sessions
+bring known program API usage to$59.186247105 as reported above; this historical
+table is unchanged. Actual account charges and credit deductions have not
 been reconciled.
 
 | Route | Known usage value | Billing interpretation |
