@@ -38,6 +38,10 @@ The [partial231 score summary](../assets/contextbench_final_context_partial231_s
 retains exact metrics and evaluator/input hashes. The same231 IDs in the original
 search table have80.12% line Recall and31.55% F1. Final selection adds about0.53
 Recall points while F1 decreases about0.08 points; the observed gain is modest.
+The same-ID descriptive audit finds15 tasks with higher line Recall and216
+unchanged, with none lower. Line F1 improves on7 tasks, falls on44 and remains
+unchanged on180. Adding confirmed source can increase Recall while reducing
+Precision; a higher final F1 is not guaranteed.
 This is not a strict causal ablation: three reused development repairs have
 different original search inputs and retrospective selections. Source attribution
 for arbitrary shell output remains partial. The231 source mix differs from
@@ -139,13 +143,35 @@ claimed. Eight Prettier environments hit the256-process limit because Jest sizes
 its worker pool from the host CPU count. An opt-in `--native-test-workers 2`
 inserts only `--maxWorkers=2` into their original test command, preserving test
 selectors and the JSON reporter. All eight fresh control pairs qualify, with
-every required test ID observed. Other repositories and preexisting worker
-overrides are rejected. All nine original failed pairs remain available.
+every required test ID observed. Worker overrides accept only the original
+Prettier and code-server Jest commands; unsupported runners and preexisting
+worker overrides are rejected. All nine original failed pairs remain available.
 These native resource profiles change neither model inputs nor scoring rules.
-All47 focused unit tests and pinned hooks pass. Canonical controls run as each
+All57 focused unit tests and pinned hooks pass. Canonical controls run as each
 source becomes ready; complete Poly and Multi execution qualification and
 final500 evaluation remain open. These fixes add no candidate attempts or repair
 score claims.
+
+Further original controls expose Transformers public-model download failures and
+CPU-thread exhaustion. A read-only diagnostic loads all six BERT, RoBERTa and
+GPT-2 config/tokenizer combinations when networking and bounded threads are
+available. The pinned upstream manager uses Docker's default networking; the
+earlier adapter adds an offline restriction. An explicit `--native-network bridge`
+now restores upstream networking only for Transformers and code-server integration
+tests, while the default stays `none`. An optional `--native-thread-workers 2`
+bounds Transformers' CPU pools without changing its test command. Both effective
+settings are recorded and tested separately from inference. Three fresh
+Transformers pairs qualify with all8,87 and10 required IDs observed in each run.
+These prospective native-only profiles differ from the earlier offline policy;
+all original failures remain retained. The agent environment, model and context
+policy stay frozen.
+
+Two code-server worker2 pairs progress beyond process exhaustion but remain
+unqualified. Their logs expose localhost DNS failures, and native annotation
+names differ from actual Jest titles/paths. The original native parser, scorer,
+missing IDs and failed outcomes are retained; diagnostics neither remap grading
+IDs nor assert missing tests executed. Full-cohort qualification and the remaining
+paid transport must account for these unresolved cases before launch.
 
 The prospective remaining269 paid preparer passes all nine batch transport and
 accounting fixtures. Generated inference/reservation/settlement hashes match the
@@ -161,15 +187,20 @@ through pidfd and launch the unchanged dispatcher under its exclusive intent.
 Original intent and installed-file backups remain available; interrupted
 installation requires root recovery rather than automatic retry. The original
 paid parent remains held and alive through Multi source preparation; no
-reservation or request begins early.
+reservation or request begins early. These nine transport fixtures cover the
+preceding cache/memory/Prettier profiles; paid transport for the new network and
+thread profiles is not yet admitted.
 
 To make room for remaining environments,104 closed Pro source/native image caches
 are removed with normal Docker reference checks and no forced removal or global
 prune. Their original raw archive parts, source Git seeds and preparation inputs
 remain hash verified. Repeating native tests requires re-pulling pinned public
 bases and rebuilding private derived images, whose IDs can change; exact private
-Docker exports are not retained. Existing context/receipt replay uses the retained
-raw material and does not require those image caches.
+Docker exports are not retained. A further221 caches from119 closed Verified
+tasks are removed, while17 remain protected by Docker references. All24 original
+archive parts and121 source Git seeds for those tasks authenticate after cleanup.
+Existing context/receipt replay uses the retained raw material and does not
+require those image caches.
 
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only

@@ -146,6 +146,17 @@ def test_prettier_worker_limit_preserves_selected_tests_and_json_reporter():
     )
 
 
+def test_code_server_worker_limit_preserves_unit_script_and_reporters():
+    case = {
+        "repo": "coder/code-server",
+        "test_command": "yarn test:unit --json --silent",
+    }
+    assert poly.native_test_command(case, None) == case["test_command"]
+    assert poly.native_test_command(case, 2) == (
+        "yarn test:unit --maxWorkers=2 --json --silent"
+    )
+
+
 @pytest.mark.parametrize(
     ("repo", "command", "workers"),
     [
@@ -154,6 +165,9 @@ def test_prettier_worker_limit_preserves_selected_tests_and_json_reporter():
         ("prettier/prettier", "node && yarn test --maxWorkers=4 a.js --json", 2),
         ("prettier/prettier", "node && yarn test a.js && yarn test b.js", 2),
         ("prettier/prettier", "node && yarn test a.js --json", 8),
+        ("coder/code-server", "yarn test:unit --maxWorkers=4 --json --silent", 2),
+        ("coder/code-server", "yarn test:e2e --json --silent", 2),
+        ("coder/code-server", "yarn test:unit --json --silent && yarn test:e2e", 2),
     ],
 )
 def test_native_worker_override_cannot_change_other_runner_contracts(
@@ -161,3 +175,12 @@ def test_native_worker_override_cannot_change_other_runner_contracts(
 ):
     with pytest.raises(ValueError, match="Prettier Jest"):
         poly.native_test_command({"repo": repo, "test_command": command}, workers)
+
+
+@pytest.mark.parametrize(
+    ("repo", "workers"),
+    [("coder/code-server", 2), ("huggingface/transformers", 8)],
+)
+def test_thread_limits_reject_other_repositories_and_unsupported_counts(repo, workers):
+    with pytest.raises(ValueError, match="Transformers"):
+        poly.native_thread_environment({"repo": repo}, workers)

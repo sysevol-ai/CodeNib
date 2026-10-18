@@ -280,10 +280,16 @@ def validated_electron_cache(metadata, original, case, config, instance_id, proo
 
 
 def native_test_command(case, workers):
-    """Bound Prettier's Jest workers while preserving test selectors/reporting."""
+    """Bound admitted Jest workers while preserving test selectors/reporting."""
     original = case["test_command"]
     if workers is None:
         return original
+    if (
+        workers == 2
+        and case["repo"] == "coder/code-server"
+        and original == "yarn test:unit --json --silent"
+    ):
+        return "yarn test:unit --maxWorkers=2 --json --silent"
     marker = "&& yarn test "
     if (
         workers != 2
@@ -291,8 +297,27 @@ def native_test_command(case, workers):
         or original.count(marker) != 1
         or "--maxWorkers" in original
     ):
-        raise ValueError("Native worker override requires unmodified Prettier Jest")
+        raise ValueError(
+            "Native worker override requires unmodified Prettier Jest "
+            "or code-server Jest"
+        )
     return original.replace(marker, marker + "--maxWorkers=2 ", 1)
+
+
+def native_thread_environment(case, workers):
+    """Bound Transformers' native CPU pools without changing its test command."""
+    if workers is None:
+        return {}
+    if workers != 2 or case["repo"] != "huggingface/transformers":
+        raise ValueError("Native thread limits require Transformers and two workers")
+    return {
+        "OMP_NUM_THREADS": "2",
+        "OPENBLAS_NUM_THREADS": "2",
+        "MKL_NUM_THREADS": "2",
+        "TF_NUM_INTEROP_THREADS": "2",
+        "TF_NUM_INTRAOP_THREADS": "2",
+        "RAYON_NUM_THREADS": "2",
+    }
 
 
 def grade_poly(args):
@@ -308,6 +333,9 @@ def grade_poly(args):
     memory_gib = getattr(args, "native_memory_gib", 3)
     if memory_gib not in (3, 8):
         raise ValueError("Native Poly memory must be 3 or 8 GiB")
+    network = getattr(args, "native_network", "none")
+    if network not in ("none", "bridge"):
+        raise ValueError("Native Poly network must be none or bridge")
     image = getattr(args, "native_image", None)
     if not image or not re.fullmatch(r"(?:sha256:|.+@sha256:)[a-f0-9]{64}", image):
         raise ValueError("Poly grading needs a separate pinned --native-image")
@@ -324,6 +352,15 @@ def grade_poly(args):
     ):
         raise ValueError("Native Poly prediction differs from the solver patch")
     case, f2p, p2p = selected_native_case(args.dataset, solver, config)
+    if network == "bridge" and case["repo"] not in {
+        "huggingface/transformers",
+        "coder/code-server",
+    }:
+        raise ValueError(
+            "Native network access requires admitted integration-test repositories"
+        )
+    thread_workers = getattr(args, "native_thread_workers", None)
+    thread_environment = native_thread_environment(case, thread_workers)
     workers = getattr(args, "native_test_workers", None)
     test_command = native_test_command(case, workers)
     for name, expected in config["implementation"].items():
@@ -392,8 +429,11 @@ def grade_poly(args):
                 "memory_gib": memory_gib,
                 "nano_cpus": 2_000_000_000,
                 "pids_limit": 256,
-                "network_disabled": True,
+                "network_disabled": network == "none",
             },
+            "native_network": network,
+            "native_thread_workers": thread_workers,
+            "native_thread_environment": thread_environment,
             "native_test_workers": workers,
             "native_test_command_original": case["test_command"],
             "native_test_command_effective": test_command,
@@ -420,14 +460,23 @@ def grade_poly(args):
                 working_dir="/testbed",
                 entrypoint="sleep",
                 command=[str(args.timeout + 240)],
-                network_disabled=True,
+                network_disabled=network == "none",
                 mem_limit=f"{memory_gib}g",
                 nano_cpus=2_000_000_000,
                 pids_limit=256,
                 labels={"codenib.contextbench.owner": name},
                 **(
-                    {"environment": {"TIKTOKEN_CACHE_DIR": CL100K_CACHE_DIR}}
-                    if cache is not None
+                    {
+                        "environment": {
+                            **thread_environment,
+                            **(
+                                {"TIKTOKEN_CACHE_DIR": CL100K_CACHE_DIR}
+                                if cache is not None
+                                else {}
+                            ),
+                        }
+                    }
+                    if cache is not None or thread_environment
                     else {}
                 ),
             )
@@ -541,7 +590,19 @@ def main():
         "--native-test-workers",
         type=int,
         choices=(2,),
-        help="Limit Prettier Jest workers; retain the original test selectors",
+        help="Limit admitted Jest workers; retain the original test selectors",
+    )
+    parser.add_argument(
+        "--native-thread-workers",
+        type=int,
+        choices=(2,),
+        help="Bound native Transformers CPU pools; retain the original test command",
+    )
+    parser.add_argument(
+        "--native-network",
+        choices=("none", "bridge"),
+        default="none",
+        help="Opt into upstream networking for admitted integration tests only",
     )
     parser.add_argument(
         "--electron-cache-proof",
