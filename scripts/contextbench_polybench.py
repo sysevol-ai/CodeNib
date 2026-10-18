@@ -279,6 +279,22 @@ def validated_electron_cache(metadata, original, case, config, instance_id, proo
     }
 
 
+def native_test_command(case, workers):
+    """Bound Prettier's Jest workers while preserving test selectors/reporting."""
+    original = case["test_command"]
+    if workers is None:
+        return original
+    marker = "&& yarn test "
+    if (
+        workers != 2
+        or case["repo"] != "prettier/prettier"
+        or original.count(marker) != 1
+        or "--maxWorkers" in original
+    ):
+        raise ValueError("Native worker override requires unmodified Prettier Jest")
+    return original.replace(marker, marker + "--maxWorkers=2 ", 1)
+
+
 def grade_poly(args):
     """Own one bounded grader and verify removal before returning its result.
 
@@ -289,6 +305,9 @@ def grade_poly(args):
     """
     if not 1 <= args.timeout <= 3600:
         raise ValueError("Native Poly timeout must be between 1 and 3600 seconds")
+    memory_gib = getattr(args, "native_memory_gib", 3)
+    if memory_gib not in (3, 8):
+        raise ValueError("Native Poly memory must be 3 or 8 GiB")
     image = getattr(args, "native_image", None)
     if not image or not re.fullmatch(r"(?:sha256:|.+@sha256:)[a-f0-9]{64}", image):
         raise ValueError("Poly grading needs a separate pinned --native-image")
@@ -305,6 +324,8 @@ def grade_poly(args):
     ):
         raise ValueError("Native Poly prediction differs from the solver patch")
     case, f2p, p2p = selected_native_case(args.dataset, solver, config)
+    workers = getattr(args, "native_test_workers", None)
+    test_command = native_test_command(case, workers)
     for name, expected in config["implementation"].items():
         if digest(args.solver_run / "implementation" / name) != expected:
             raise ValueError("Archived solver implementation changed")
@@ -367,6 +388,15 @@ def grade_poly(args):
             "adapter_sha256": digest(Path(__file__)),
             "timeout": args.timeout,
             "native_call_wall_guard_s": args.timeout,
+            "container_limits": {
+                "memory_gib": memory_gib,
+                "nano_cpus": 2_000_000_000,
+                "pids_limit": 256,
+                "network_disabled": True,
+            },
+            "native_test_workers": workers,
+            "native_test_command_original": case["test_command"],
+            "native_test_command_effective": test_command,
             "offline_tokenizer_cache": cache[1] if cache is not None else None,
             "native_Electron_cache": electron_profile,
             "scope": "Separate native Poly grading only, no model calls",
@@ -391,7 +421,7 @@ def grade_poly(args):
                 entrypoint="sleep",
                 command=[str(args.timeout + 240)],
                 network_disabled=True,
-                mem_limit="3g",
+                mem_limit=f"{memory_gib}g",
                 nano_cpus=2_000_000_000,
                 pids_limit=256,
                 labels={"codenib.contextbench.owner": name},
@@ -432,7 +462,7 @@ def grade_poly(args):
             else:
                 native_started = time.monotonic()
                 row["native_test_returncode"] = manager.docker_run(
-                    case["test_command"], timeout=args.timeout
+                    test_command, timeout=args.timeout
                 )
                 row["native_call_wall_s"] = time.monotonic() - native_started
                 text = "\n".join(manager.run_logs)
@@ -500,6 +530,19 @@ def main():
     parser.add_argument("--native-upstream", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument(
+        "--native-memory-gib",
+        type=int,
+        choices=(3, 8),
+        default=3,
+        help="Explicit native test memory ceiling; recorded separately from inference",
+    )
+    parser.add_argument(
+        "--native-test-workers",
+        type=int,
+        choices=(2,),
+        help="Limit Prettier Jest workers; retain the original test selectors",
+    )
     parser.add_argument(
         "--electron-cache-proof",
         type=Path,

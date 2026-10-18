@@ -134,3 +134,30 @@ def test_cache_is_not_the_source_image_or_original_image(cache_binding):
     ]
     with pytest.raises(ValueError, match="task or source"):
         validate(cache_binding)
+
+
+def test_prettier_worker_limit_preserves_selected_tests_and_json_reporter():
+    command = "nvm use 20 && yarn test tests/a.js tests/b.snap --json"
+    case = {"repo": "prettier/prettier", "test_command": command}
+    assert poly.native_test_command(case, None) == command
+    effective = poly.native_test_command(case, 2)
+    assert effective == (
+        "nvm use 20 && yarn test --maxWorkers=2 tests/a.js tests/b.snap --json"
+    )
+
+
+@pytest.mark.parametrize(
+    ("repo", "command", "workers"),
+    [
+        ("sveltejs/svelte", "node && yarn test a.js --json", 2),
+        ("prettier/prettier", "node && npm test a.js --json", 2),
+        ("prettier/prettier", "node && yarn test --maxWorkers=4 a.js --json", 2),
+        ("prettier/prettier", "node && yarn test a.js && yarn test b.js", 2),
+        ("prettier/prettier", "node && yarn test a.js --json", 8),
+    ],
+)
+def test_native_worker_override_cannot_change_other_runner_contracts(
+    repo, command, workers
+):
+    with pytest.raises(ValueError, match="Prettier Jest"):
+        poly.native_test_command({"repo": repo, "test_command": command}, workers)
