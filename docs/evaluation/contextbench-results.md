@@ -25,10 +25,12 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The canonical500 batches with completed grading and settled fees retain
-**58 unique first candidate attempts:51 natively resolved and7 unresolved**.
-They include the three original development repairs and55 subsequent Verified
-tasks in canonical metadata order. The remaining442 are outside these settled
-cohorts; the next64 fixed cases are now running in two disjoint shards.
+**122 unique first candidate attempts:109 natively resolved and13 unresolved**.
+They include the three original development repairs and119 subsequent Verified
+tasks in canonical metadata order. All122 raw patch/native/selection/fee bindings
+authenticate, including1,211 unique metered search/repair sessions. The remaining378
+are outside these settled cohorts. The next55 source owner has started actual
+environment preparation; its repair requests still require complete native gates.
 All58 selected-context exports pass the unchanged official evaluator as a format
 compatibility check. A separate zero-model replay reauthenticates their116 search
 workers and confirmed repair inputs, then recompiles every selected context and
@@ -39,7 +41,14 @@ partial, and the original three selections remain disclosed as retrospective.
 These exposed partial results do not establish full500 Pass@1 or complete-system
 Recall/F1. Full500 input provenance and publication replay remain open.
 
-The latest32 fixed tasks complete with **29 resolved,3 unresolved** and
+The latest64 fixed tasks complete with **58 resolved,6 unresolved** and
+**$25.4390047** across504 fully metered repair sessions. Every first patch,
+native result and source selection authenticates, and all128 owned solver/native
+containers are independently confirmed absent. The$320 reservation closes once;
+reused search is not debited again. This includes the disclosed native
+baseline-positive django-7530 task; a native pass alone does not prove its issue fixed.
+
+The preceding32 fixed tasks retain **29 resolved,3 unresolved** and
 **$11.9111416** across264 fully metered repair sessions. Their64 separate native
 neutral/reference controls pass before inference. Exact model/patch/selection
 hashes authenticate the completed results, and all64 owned solver/native
@@ -57,13 +66,14 @@ controls. No model retry, task replacement or search rerun occurs. The cleanup
 helper bounds removal/absence verification and checkpoints ownership while
 preserving model outputs; dispatch still stops on unconfirmed cleanup.
 
-Across all58 repairs, new API usage totals **$21.5483648**. At this closure,
-the new$500 authorization has$478.4516352 remaining, with no active reservation.
-These are recorded SDK usage values; native compute and reconciled invoices
-remain separate. The next64 fixed cases now run in two metadata-order shards
-after completed source admission and native environment validation. Their$320
-reservation is a budget allocation, not a charge; actual SDK fees remain unsettled
-until this cohort closes. Preserve two original Docker create timeouts and their source-only
+Across all122 repairs, new API usage totals **$46.9873695**. Their allocated
+original search usage is$1.11098862, for **$48.09835812** modeled search-plus-repair
+usage, without charging reused search again. At this closure, the new$500
+authorization has **$453.0126305 remaining**, with no active reservation; cumulative
+program API usage including prior work is$127.99887448. These are recorded SDK
+usage values; native compute and reconciled invoices remain separate.
+The closed64 metadata-order cohort completes source/native admission before any
+request. Preserve two original Docker create timeouts and their source-only
 recoveries. The timed-out creates leave two containers that appear after an
 initial absence check, so the old cleanup claims are not accepted. Exact-owner,
 image and state checks identify both residual containers; explicit removal and
@@ -75,7 +85,7 @@ repair-model or search request is repeated. The model runtime stays frozen at
 `25d4580c`; source-preparation cleanup and the new Poly cache/aggregation utilities
 have not changed its model, prompts, context policy or budget guards.
 
-One fixed future task, `django__django-7530`, already resolves under the pinned
+One fixed task, `django__django-7530`, already resolves under the pinned
 native criterion with a neutral patch that changes no business code. Both the
 original official image and the clean-source image produce that result; both
 reference-patch runs also resolve. The issue-specific router regression errors
