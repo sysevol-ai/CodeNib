@@ -452,18 +452,23 @@ metadata selection `34023146` chooses32 new default-only tasks: four per languag
 across22 repository-alias clusters, at most two per cluster. Selection excludes
 verified500 and all closed cohorts/issue/source aliases. The metadata-only pool
 has591 eligible tasks before selection and559 after conservatively reserving
-these32. Exact-source preparation starts with empty issue and Gold fields;
-all32 must be ready before issue projection or any of the128 planned SDK
-sessions. All128 source outcomes must seal before selected Gold. The primary
-candidate is the complementary pair; a failed primary cannot be replaced
-retrospectively with the secondary repeat pair. The planned$12 API guard is
-not yet an active reservation or a billed batch. No new repair or500 run starts.
+these32. All32 exact-source preparations pass with empty issue and Gold fields
+before selected issue-only projection. Execution protocol `914a4a4f` now runs
+the128 SDK searches with the unchanged development parameters. Four synthetic
+postprocessor fixtures verify source-before-Gold ordering and reject unaccepted
+source, unknown fees and duplicate positions before annotation projection.
+All128 source outcomes must seal before selected Gold. The primary candidate is
+the complementary pair; a failed primary cannot be replaced retrospectively
+with the secondary repeat pair. A$12 API reservation leaves$19.826341935
+unreserved under the$100 ceiling; live fees are pending batch reconciliation,
+not zero or already added to the closed-batch ledger. No repair or500 run starts.
 
 Actual program usage counts all32 dispatched sessions once: **$1.258857400**.
 The common first worker appears in multiple configuration totals but is not
 rebilled in the program ledger. Close the$10 reservation, releasing$8.741142600
-of budget. Known cumulative API usage is **$68.173658065/$100**, leaving
-**$31.826341935** with no active reservation. Terminal main/auxiliary fees are
+of budget. Known cumulative API usage at development closure is
+**$68.173658065/$100**, leaving **$31.826341935** before the independent batch's
+$12 reservation described above. Terminal main/auxiliary fees are
 known; incomplete response-input attribution remains explicit. SDK worker
 durations are retained, but declared worker step order is not a global turn
 order; no ensemble AUC, controlled cold-cache or context-compression claim is
