@@ -640,11 +640,27 @@ remain separate. New16 Max sessions report$3.2396939 nominal, with zero new
 API-key/repair usage. Fresh default-only validation, candidate500, native outcomes
 and submission evidence remain open.
 
+A subsequent native Haiku5.5 SEARCH-ONLY baseline keeps the same eight sources,
+ordinary tools, prompt, effort and turn/output settings; no index or router is
+added. All eight source outcomes seal before known-label evaluation. Haiku versus
+Opus line Recall/F1 is68.07%/36.66% versus69.91%/39.66%, both8/8 valid. All-model
+API/list-price usage is$0.043406125 versus$1.4261087, a96.96% reduction for1.84
+Recall points lost. This model-only low-cost candidate does not establish
+CodeNib routing value. Source lines/reply estimates increase, so cheap model
+cost does not prove context reduction. Same-model CLI auxiliary usage prevents
+complete Haiku main-input attribution in all eight cases; preserve unknown
+completeness while retaining known all-model fees. The$2 API reservation closes
+with$1.956593875 unused, and known program API usage becomes$59.137394855/$100.
+Next work is source-only failure diagnosis, then a separately frozen cheap
+continuation guard/selective escalation against both native models. No router,
+independent validation, repair or500 gain is claimed or promoted.
+
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays
-59.09398873USD under100USD, leaving40.90601127USD with the former40USD reservation
-released. Historical calls/costs and all three sealed32 cohorts are retained.
+59.137394855USD under100USD, leaving40.862605145USD with the former40USD reservation
+and the unused Haiku pilot reservation released. Historical calls/costs and all
+three sealed32 cohorts are retained.
 Native500 remains a frozen control; completed scoring discloses earlier122-case
 annotation access and the original failed case. A standalone control archive now
 retains all500 original attempts,499 source packets, configurations/frozen code
