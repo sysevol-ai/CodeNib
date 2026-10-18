@@ -121,6 +121,8 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
         "test_timeout",
         "returned_timeout",
         "partial_success",
+        "classified_partial_success",
+        "classified_partial_timeout",
         "no_terminal_footer",
         "wall_deadline",
         "cleanup",
@@ -128,6 +130,8 @@ def test_poly_csv_large_unselected_field_restores_limit(study, monkeypatch):
         "empty_parse",
         "memory8",
         "transformer_resources",
+        "keras_resources",
+        "keras_affinity",
         "code_server_network",
         "offline_cache",
         "cache_upload",
@@ -137,24 +141,56 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
     study, monkeypatch, fault
 ):
     args, case, solver, config = study
+    if fault in {"classified_partial_success", "classified_partial_timeout"}:
+        args.native_identifier_issue_proof = args.solver_run.parent / "identifier.json"
+        args.native_identifier_issue_proof.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "native-identifier-unverifiable",
+                    "policy": "conservative_unresolved",
+                    "instance_id": solver["instance_id"],
+                    "original_inst_id": case["instance_id"],
+                    "native_dataset_sha256": poly.DATASET_SHA256,
+                    "source_commit": config["source_commit"],
+                    "source_tree": config["source_tree"],
+                    "allowed_missing_test_ids": ["stable"],
+                    "reference_resolution_sha256": "1" * 64,
+                    "reference_test_log_sha256": "2" * 64,
+                    "no_full_execution_claim": True,
+                    "count_as_unresolved": True,
+                }
+            )
+        )
     if fault == "memory8":
         args.native_memory_gib = 8
-    if fault in {"transformer_resources", "code_server_network"}:
-        repo = (
-            "huggingface/transformers"
-            if fault == "transformer_resources"
-            else "coder/code-server"
-        )
+    if fault in {
+        "transformer_resources",
+        "keras_resources",
+        "keras_affinity",
+        "code_server_network",
+    }:
+        repo = {
+            "transformer_resources": "huggingface/transformers",
+            "keras_resources": "keras-team/keras",
+            "keras_affinity": "keras-team/keras",
+            "code_server_network": "coder/code-server",
+        }[fault]
         case["repo"] = config["repo"] = repo
         case["instance_id"] = solver["original_inst_id"] = (
             repo.replace("/", "__") + "-123"
         )
-        args.native_network = "bridge"
-        if fault == "transformer_resources":
+        args.native_network = (
+            "none" if fault in {"keras_resources", "keras_affinity"} else "bridge"
+        )
+        if fault in {"transformer_resources", "keras_resources", "keras_affinity"}:
             args.native_thread_workers = 2
         else:
             args.native_test_workers = 2
             case["test_command"] = "yarn test:unit --json --silent"
+        if fault == "keras_affinity":
+            args.native_cpu_count = 2
+            monkeypatch.setattr(poly.os, "sched_getaffinity", lambda pid: {4, 7, 8})
         with args.dataset.open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=list(case))
             writer.writeheader()
@@ -235,11 +271,15 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
         )
         assert options["mem_limit"] == ("8g" if fault == "memory8" else "3g")
         assert options["command"] == ["300"]
+        if fault == "keras_affinity":
+            assert options["cpuset_cpus"] == "4,7"
+        else:
+            assert "cpuset_cpus" not in options
         if fault in {"offline_cache", "cache_upload"}:
             assert options["environment"] == {
                 "TIKTOKEN_CACHE_DIR": poly.CL100K_CACHE_DIR
             }
-        elif fault == "transformer_resources":
+        elif fault in {"transformer_resources", "keras_resources", "keras_affinity"}:
             assert options["environment"] == poly.native_thread_environment(case, 2)
         else:
             assert "environment" not in options
@@ -301,7 +341,7 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
             if fault == "test_timeout":
                 raise TimeoutError("test timed out")
             self.run_logs = ["native results", "Container exited with status code: 4"]
-            if fault == "returned_timeout":
+            if fault in {"returned_timeout", "classified_partial_timeout"}:
                 self.run_logs.append("Container operation timed out")
                 return 1
             if fault == "no_terminal_footer":
@@ -331,14 +371,26 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
                 if fault == "empty_parse"
                 else {
                     "passed_tests": (
-                        ["fix"] if fault == "partial_success" else ["fix", "stable"]
+                        ["fix"]
+                        if fault
+                        in {
+                            "partial_success",
+                            "classified_partial_success",
+                            "classified_partial_timeout",
+                        }
+                        else ["fix", "stable"]
                     ),
                     "failed_tests": [],
                 }
             )
         ),
     )
-    if fault in {"transformer_resources", "code_server_network"}:
+    if fault in {
+        "transformer_resources",
+        "keras_resources",
+        "keras_affinity",
+        "code_server_network",
+    }:
         native.parser_classes = {case["repo"]: native.parser}
     monkeypatch.setattr(poly, "native_environment", lambda path: native)
     poly.grade_poly(args)
@@ -350,6 +402,8 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
             "offline_cache",
             "memory8",
             "transformer_resources",
+            "keras_resources",
+            "keras_affinity",
             "code_server_network",
         }
     )
@@ -364,7 +418,10 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
             "offline_cache",
             "memory8",
             "transformer_resources",
+            "keras_resources",
+            "keras_affinity",
             "code_server_network",
+            "classified_partial_success",
         )
         else "error"
     )
@@ -381,13 +438,29 @@ def test_native_poly_preserves_patch_outcome_and_removes_only_own_container(
         "network_disabled": fault
         not in {"transformer_resources", "code_server_network"},
     }
-    if fault == "transformer_resources":
+    if fault in {"transformer_resources", "keras_resources", "keras_affinity"}:
         graded = json.loads((args.output / "config.json").read_text())
         assert graded["native_thread_workers"] == 2
         assert graded["native_thread_environment"] == poly.native_thread_environment(
             case, 2
         )
-        assert graded["native_network"] == "bridge"
+        assert graded["native_network"] == (
+            "none" if fault in {"keras_resources", "keras_affinity"} else "bridge"
+        )
+        if fault == "keras_affinity":
+            assert graded["native_cpu_count"] == 2
+            assert graded["native_cpu_affinity"] == "4,7"
+    if fault in {"classified_partial_success", "classified_partial_timeout"}:
+        assert result["native_report"]["resolved"] is True
+        assert result["resolved"] is False
+        assert result["native_execution_incomplete"] is True
+        assert result["native_identifier_unverifiable"] is (
+            fault == "classified_partial_success"
+        )
+        assert result["missing_required_tests"] == ["stable"]
+        assert (args.output / "native-identifier-issue-proof.json").read_bytes() == (
+            args.native_identifier_issue_proof.read_bytes()
+        )
     assert all(event[1] != case["patch"] for event in events)
     if ("code", solver["model_patch"]) in events:
         assert events.index(("test", case["test_patch"])) < events.index(
