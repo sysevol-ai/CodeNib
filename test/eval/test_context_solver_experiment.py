@@ -612,9 +612,21 @@ def test_solver_failure_preserves_metered_budget_patch_and_removes_owned_contain
 
     async def query(**kwargs):
         requests.append(kwargs["prompt"])
-        if failure == "budget_api":
-            yield dataclasses.make_dataclass("SystemMessage", ["subtype", "data"])(
-                "init", {"tools": [], "apiKeySource": "ANTHROPIC_API_KEY"}
+        yield dataclasses.make_dataclass("SystemMessage", ["subtype", "data"])(
+            "init",
+            {
+                "tools": [],
+                "apiKeySource": (
+                    "ANTHROPIC_API_KEY" if failure == "budget_api" else "none"
+                ),
+            },
+        )
+        if failure != "budget_api":
+            yield dataclasses.make_dataclass("RateLimitEvent", ["rate_limit_info"])(
+                {
+                    "status": "allowed",
+                    "raw": {"overageEnabled": False, "isUsingOverage": False},
+                }
             )
         first = len(requests) == 1
         command = "edit source" if first else "UNEXECUTED_FAILED_REPLY"

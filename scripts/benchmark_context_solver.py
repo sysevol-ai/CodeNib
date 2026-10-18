@@ -35,7 +35,11 @@ import yaml
 
 from codenib.eval.benchmarks.contextbench import CONTEXTBENCH_UPSTREAM_REVISION
 from scripts import benchmark_context_agent as native
-from scripts.benchmark_context_claude import api_auth, subscription_auth
+from scripts.benchmark_context_claude import (
+    api_auth,
+    included_max_rate,
+    subscription_auth,
+)
 from scripts.benchmark_jev_base import digest, write_json
 from scripts.contextbench_multiswe import solver_cwd, validate_source_only_image
 from scripts.contextbench_search_pair_solver import (
@@ -137,11 +141,16 @@ class SubscriptionModel:
         calls,
         checkpoint,
         billing_route="subscription",
+        max_included_only=False,
     ):
         if billing_route not in {"subscription", "anthropic-api"}:
             raise ValueError("Unknown solver billing route")
+        if max_included_only and billing_route != "subscription":
+            raise ValueError("Included Max usage requires the subscription route")
         self.cli, self.model, self.cwd = cli, model, cwd
         self.billing_route = billing_route
+        self.max_included_only = max_included_only
+        self.included_guard_failed = False
         self.max_meter_usd = max_meter_usd
         self.calls, self.checkpoint = calls, checkpoint
         self.cost, self.n_calls = 0.0, 0
@@ -151,6 +160,10 @@ class SubscriptionModel:
         return {"model_name": self.model, "model_cost": self.cost}
 
     def query(self, messages):
+        if self.included_guard_failed:
+            raise RuntimeError(
+                "Previous solver included Max check failed; stop inference"
+            )
         if self.cost >= self.max_meter_usd:
             self.budget_exhausted = True
             raise RuntimeError("Solver SDK meter exhausted")
@@ -169,10 +182,17 @@ class SubscriptionModel:
             "request": request,
             "request_sha256": request_digest(request),
             "input_delivery_confirmed": False,
+            "max_included_only": self.max_included_only,
         }
         self.calls.append(record)
         self.checkpoint()
-        response = asyncio.run(asyncio.wait_for(self._query(record), 180))
+        try:
+            response = asyncio.run(asyncio.wait_for(self._query(record), 180))
+        except Exception:
+            if self.max_included_only:
+                self.included_guard_failed = True
+                self.checkpoint()
+            raise
         return {"content": response}
 
     async def _query(self, record):
@@ -197,10 +217,31 @@ class SubscriptionModel:
             extra_args={"no-session-persistence": None},
         )
         response, terminal = [], None
+        max_rate_seen = subscription_init_seen = False
+        guard_errors = []
+        if self.max_included_only:
+            record["max_included_rate_confirmed"] = False
         async for event in query(prompt=record["request"]["prompt"], options=options):
             kind, data = type(event).__name__, dataclasses.asdict(event)
             record["events"].append({"kind": kind, "data": data})
+            if self.max_included_only and kind == "RateLimitEvent":
+                try:
+                    record["max_included_rate_info"] = included_max_rate(data)
+                    max_rate_seen = True
+                except RuntimeError as exc:
+                    # This request may already have used tokens. No shell reply
+                    # is released; drain its terminal fee before failing closed.
+                    guard_errors.append(str(exc))
+                    self.included_guard_failed = True
             if kind == "SystemMessage" and data.get("subtype") == "init":
+                record["sdk_init_api_key_source"] = data["data"].get("apiKeySource")
+                if self.max_included_only:
+                    subscription_init_seen = data["data"].get("apiKeySource") == "none"
+                    if not subscription_init_seen:
+                        guard_errors.append(
+                            "Solver SDK did not confirm subscription auth"
+                        )
+                        self.included_guard_failed = True
                 if data["data"].get("tools"):
                     raise ValueError("Solver model unexpectedly received local tools")
                 if (
@@ -241,7 +282,25 @@ class SubscriptionModel:
                     self.budget_exhausted = True
             self.checkpoint()
         if terminal is None:
+            if self.max_included_only:
+                self.included_guard_failed = True
             raise ValueError("Missing or invalid solver SDK metering; stop inference")
+        if self.max_included_only:
+            if not subscription_init_seen:
+                guard_errors.append(
+                    "No subscription init in terminal solver SDK stream"
+                )
+            if not max_rate_seen:
+                guard_errors.append(
+                    "No included Max quota event in terminal solver SDK stream"
+                )
+            if guard_errors:
+                self.included_guard_failed = True
+                record["max_included_guard_errors"] = guard_errors
+                self.checkpoint()
+                raise RuntimeError("; ".join(guard_errors))
+            record["max_included_rate_confirmed"] = True
+            self.checkpoint()
         actual_models = {
             event["data"].get("model")
             for event in record["events"]
@@ -554,6 +613,7 @@ def run(args):
         "actual_bill_usd": None,
         "native_resolution": None,
         "billing_route": billing_route,
+        "max_included_only": billing_route == "subscription",
         "retrieval_notes": notes,
     }
     result_path = args.output / "solver.json"
@@ -576,6 +636,7 @@ def run(args):
             ),
             "initial_context": initial_context,
             "billing_route": billing_route,
+            "max_included_only": billing_route == "subscription",
             "retrieval_notes_token_limit": getattr(args, "retrieval_notes_tokens", 0),
             "context_budget_scope": (
                 "Navigation metadata only; source bodies are read on demand, "
@@ -654,6 +715,7 @@ def run(args):
                 calls=row["calls"],
                 checkpoint=checkpoint,
                 billing_route=billing_route,
+                max_included_only=billing_route == "subscription",
             )
 
             def observation(command, output, timeout):

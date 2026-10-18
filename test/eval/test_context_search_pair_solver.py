@@ -495,6 +495,15 @@ def test_pinned_mini_loop_reads_navigation_on_demand_and_records_edits(
     async def query(**kwargs):
         requests.append(kwargs["prompt"])
         number = len(requests)
+        yield dataclasses.make_dataclass("SystemMessage", ["subtype", "data"])(
+            "init", {"tools": [], "apiKeySource": "none"}
+        )
+        yield dataclasses.make_dataclass("RateLimitEvent", ["rate_limit_info"])(
+            {
+                "status": "allowed",
+                "raw": {"overageEnabled": False, "isUsingOverage": False},
+            }
+        )
         yield Assistant(
             [{"text": "```bash\n" + commands[number - 1] + "\n```"}], "fixture-model"
         )
@@ -520,6 +529,7 @@ def test_pinned_mini_loop_reads_navigation_on_demand_and_records_edits(
         max_meter_usd=1,
         calls=row["calls"],
         checkpoint=lambda: None,
+        max_included_only=True,
     )
 
     class LocalEnvironment:
