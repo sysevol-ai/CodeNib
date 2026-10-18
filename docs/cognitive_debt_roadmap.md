@@ -675,8 +675,9 @@ comparison, not further tuning on the exposed eight. Design `cab3bc5a` fixes
 native Haiku, native Opus and the unchanged issue-only router. Metadata selection
 `059fec72` fixes32 default-only tasks, four per language across23 repository-alias
 clusters, at most two per cluster. Selection precedes new issue/source/label
-access. Source-only preparation is active; all32 sources must pass before any
-inference. All96 source outcomes must seal before selected Gold access. Retain
+access. All32 source preparations pass before inference. Execution protocol
+`63d57a66` is frozen and the96-query comparison is running. All96 source outcomes
+must seal before selected Gold access. Retain
 failed/unclaimed zeros, no retries or replacement, and report Recall, F1,
 all-model usage, latency and paired repository-cluster uncertainty. Default-only
 language balancing differs from verified500; this is not a leaderboard score.
@@ -699,7 +700,7 @@ unit CI succeeds; #838 has298 local checks with7 skips and unchanged-source MUI
 replay. This proves delivery, not ranking or agent-quality gains. #834 remains
 draft with its required unit gate skipped/incomplete; do not merge it prematurely.
 
-Known cumulative API usage is **$59.544567195/$100**. The completed worker-eight
+API usage before the running32 cohort is **$59.544567195/$100**. The worker-eight
 $4 reservation is closed with$3.955101205 released. Independent32 reserves$16,
 leaving$24.455432805 unreserved. Historical unknown Max fees remain unknown;
 nominal usage is not a reconciled cash bill. Native solver controls, candidate500,
