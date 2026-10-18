@@ -303,8 +303,9 @@ before-search router before opening new issues. Metadata-only selection
 alias clusters, at most two per cluster. IDs, original issue identities and
 exact source commits exclude known exposures. This is outside verified500 and
 has different language weighting; it is not a new official leaderboard sample.
-All32 exact sources must be ready before inference; all96 source outcomes must
-seal before selected annotations are opened. Failed/unclaimed positions remain
+All32 exact sources are ready. Execution protocol `63d57a66` is frozen and the
+96-query comparison is running; all96 source outcomes must seal before selected
+annotations are opened. Failed/unclaimed positions remain
 zero, with no quality retries or replacement. Compare Recall first, then F1,
 all-model usage, latency and repository-cluster uncertainty. Retain degenerate
 routes. A$16 reservation leaves$24.455432805 unreserved under the cumulative
