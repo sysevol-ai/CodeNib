@@ -597,10 +597,49 @@ both regular targets and strict source validation. The pilot resolves C at the
 dataset boundary through registry metadata, preserving the public factory
 contract.179 feature tests and190 compiler tests pass. Runtime `85b7f0d2` rebuilds
 only the two failed preparations under source-only correction `4ddf8f93`; the
-six canonical successful artifacts stay intact. All eight must reconcile before
-any new live call. #835 and #836 are ready with successful required unit CI; both production
-fixes remain unmerged. Wider development, fresh default-only validation and full
-submission evidence remain open.
+six canonical successful artifacts stay intact. That source correction also
+fails before models: C computes16,536 L0/396,364 L2 embeddings, then its canonical
+documents exceed the256MiB save limit after2,545.82seconds. Seven of eight
+preparations are ready; the audit stops before live-protocol freeze or any agent
+dispatch. Keep all eight IDs/source scope, both failed gates and cold costs;
+there is no expanded agent quality result. A full-producer admission fix checks
+the exact canonical bytes for all requested levels before initializing any
+embedding model, preserving the limit/save guard/format/publication boundary.
+93 index and448 compiler tests pass. Independent main-based
+[#837](https://github.com/sysevol-ai/CodeNib/pull/837) passes539 tests and fresh
+required unit CI. The same complete C corpus rejects the oversized payload
+in243.37seconds with zero embedding-model initializations; that admission probe
+is separate from the failed experiment. #835/#836/#837 remain ready, unmerged
+production dependencies with successful required unit CI.
+
+The labs file/function policy reuses authenticated source reads, registered
+per-file tree-sitter chunking and surface/body handles without a product route,
+persistent index or provider.66 underlying context checks pass. Initial source
+protocol `b8df97c5` prepares all eight unchanged source snapshots; C retains107,570
+files and takes45.81seconds on the existing filesystem. This is not matched
+cold-machine timing. Its first two SDK attempts fail before assistant/tool output
+on an omitted legacy allowance field, with six positions unclaimed. Preserve
+all eight outcomes and both unknown terminal fees. The narrow typed/raw receipt
+fix passes75 tests and both actual-event replays, retaining rejection of paid,
+missing or conflicting evidence.
+
+Receipt-corrected optional policy `b51f7dc1` completes8/8 with zero context calls.
+Primary-handle policy `aa32ebf0`, runtime `5b79410a`, is frozen from non-adoption
+before current annotations are reopened; two SDK delivery checks pass. Both
+all-eight source arms seal before common official evaluation. Native versus
+optional versus primary line Recall/F1 is69.91%/39.66%,70.06%/38.72% and
+69.40%/37.35%, each8/8 valid. Primary has7/8 surface adopters and1/8 body adopter,
+zero tool errors, and15.58% more mean per-case maximum provider input. The one
+actual body returns164 new lines while omitting one prior grep line. Its declared
+body-adoption and Recall gates fail. This file-outline policy stays a rejected
+development experiment; it is not promoted to product, independent32 or500.
+Ordinary agent source tools remain the working baseline, with embedding/graph
+optional only for a concrete failure and measured benefit. Earlier indexed-four
+positive evidence, all source gates/costs and the two unknown failed-session fees
+remain separate. New16 Max sessions report$3.2396939 nominal, with zero new
+API-key/repair usage. Fresh default-only validation, candidate500, native outcomes
+and submission evidence remain open.
+
 Product lifecycle and dependency direction stay unchanged.
 
 The unstarted443 paid consumers remain cancelled. Known API usage stays

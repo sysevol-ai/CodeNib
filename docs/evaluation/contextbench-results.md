@@ -1,13 +1,21 @@
 # ContextBench retrieval experiments
 
-A surface-first indexed-context policy passes its **four-task development
-screen**, with line Recall/F1 **74.02%/42.40%**, versus original native
-**71.61%/33.68%** and a separately frozen native repeat **71.37%/31.76%**.
-All four agents query actual CodeNib surfaces; none uses handle body fetches.
-This is preliminary, exposed development evidence, with no independent or
-leaderboard-gain claim. A separate eight-language dense-only screen remains open.
-Named-symbol source routing has a verified production fix. The earlier
-metadata-after-read policy remains rejected for lower Recall; all outcomes stay.
+The latest **eight-task file/function-outline development policy fails**:
+line Recall/F1 are **69.40%/37.35%**, versus **69.91%/39.66%** for the exact
+original native controls. Seven agents query CodeNib outlines, one fetches a
+body, and mean per-task maximum provider input rises15.58%. This policy is not
+promoted or expanded to500. All arms retain all eight tasks and score8/8 valid.
+
+The earlier indexed surface-first policy retains its separate **four-task
+positive development screen**,74.02% Recall/42.40% F1 versus original native
+71.61%/33.68% and one native repeat71.37%/31.76%. These are different policies
+and exposed task sets; neither establishes an independent or stable indexed
+context gain. The separate eight-language dense-index study fails preparation
+with7/8 ready before any agent call. Ordinary agent source tools remain the
+working baseline; embedding/graph are not required by the current scoreboard
+path. Further enhancement experiments need a concrete retrieval failure and a
+measured benefit, rather than component use alone. Named-symbol/source-discovery/
+document-admission production fixes remain separately verified dependencies.
 
 The canonical **500-task native baseline** is now sealed and scored. With the
 original empty-source failure counted as zero in the fixed500 denominator,
@@ -289,12 +297,102 @@ pass, as does a fresh required unit CI run. The pilot separately translates data
 feature passes179 relevant and190 compiler tests. Source-only correction protocol
 `4ddf8f93`, runtime `85b7f0d2`, rebuilds the two failed preparations and retains
 six already-verified artifacts. No case/model retry, quality-based replacement or
-model/tool/prompt/budget change occurs. All eight prepared sources must reconcile
-before the corrected live dispatch is frozen; no original gate becomes green.
-The Python correction is ready; the C checkout includes an LLVM submodule and
-is still generating embeddings for396,364 L2 chunks. That cold preparation cost
-stays with the method; no corpus narrowing or case replacement occurs. A separate
-all-eight reporter passes source-only replay against the eight native controls
+model/tool/prompt/budget change occurs. The corrected source-only gate also
+fails: Python is ready, but the C checkout includes LLVM and its396,364 L2
+documents exceed the existing256MiB canonical-document limit during save.
+Its16,536 L0 and396,364 L2 embeddings have already been computed; total C
+preparation takes2,545.82seconds (2,473seconds in the vector build). The audit
+stops before live-protocol freeze or any agent dispatch. All eight IDs, both
+failed source gates and all preparation costs stay; there is no eight-task
+agent quality result, corpus narrowing or case replacement.
+
+The late-admission fix streams the exact document metadata/canonical encoding
+for every requested schema-8 level before any level initializes an embedding
+model. It preserves the256MiB limit, existing save-time guard, native format,
+legacy behavior and publication boundary; it does not make the C artifact fit.
+Three focused regressions,93 index and448 compiler tests pass. Independent
+main-based [PR #837](https://github.com/sysevol-ai/CodeNib/pull/837) passes539
+index/compiler tests and its fresh required unit CI. The same-C admission replay
+rejects the unchanged oversized payload in243.37seconds with zero embedding-model
+initializations. This verifies earlier rejection, not a successful vector build
+or a quality gain. All three production fixes remain unmerged dependencies.
+
+A distinct source-checkout policy now uses CodeNib's existing authenticated
+source reader and tree-sitter chunkers without building repository indexes.
+Native grep/glob discovers a file; `explore_context` returns a bounded definition
+outline, optionally focused near a hit line. Snapshot-bound handles retrieve
+selected bodies with pagination and confirmed-prior-read deduplication. Non-code
+files receive file handles. Metadata receives zero unread-source credit; only
+actual delivered, verified source lines count. No graph counts are invented.
+The requested file is parsed locally; this does not eliminate local source I/O.
+66 relevant source/surface/SDK/input-accounting tests pass.
+
+Protocol `b8df97c5`, clean runtime `bc92d34c`, retains the exact same eight tasks,
+commits, full source fingerprints and original native controls. All8/8 source-only
+preparations pass before dispatch. The C/LLVM source retains107,570 files and
+prepares in45.81seconds on the existing filesystem. This is not a matched
+cold-machine timing; preserve the failed dense2,545.82seconds, its243.37second
+zero-embedding admission probe and the earlier unfrozen46.53second local probe.
+
+The first two SDK sessions stop before assistant/tool output because the local
+quota parser requires a legacy `overageEnabled` field omitted by the receipt.
+The actual events explicitly allow subscription usage, set `isUsingOverage=false`
+and agree on typed/raw organization-disabled overage fields. Six positions remain
+unclaimed; preserve all eight original outcomes with zero accepted executions
+and unknown terminal costs for both attempted sessions. A narrow schema fix
+accepts this explicit disabled state while rejecting paid, absent or conflicting
+evidence.75 relevant tests and both actual-event replays pass.
+
+Receipt-only continuation `b51f7dc1`, runtime `a2b5e74c`, completes8/8 under the
+same source strategy, source scope, Opus5.5/medium/20turn/$0.75guard and included
+Max route. **None of its eight agents uses the advertised context tool.**
+A further primary-handle policy `aa32ebf0`, runtime `5b79410a`, is frozen from
+this non-adoption evidence before reopening current-eight annotations. It directs
+new relevant files through outlines and selected body handles, retaining native
+read for precise gaps/errors. Two SDK guidance/delivery checks pass. The optional
+arm finishes unchanged and source-seals before primary dispatch; both complete
+source arms seal before current-eight annotations are reopened. Neither uses
+API keys, repair calls, graph, vector retrieval, BM25 or Jev.
+
+All three arms score8/8 valid on the same eight tasks, source snapshots and
+pinned official evaluator. Failed source/SDK attempts remain separate, without
+replacement or retuning. The [case-level CSV](../assets/contextbench_file_surface_development_8.csv)
+includes exact per-case metrics, actual context calls, source/reply counts,
+reconciled input maxima and SDK nominal usage.
+
+| Same eight exposed tasks, line task macro | Recall | Precision | F1 | Surface/body adopter cases | Source lines | Tool-reply cl100k estimate | Max nominal SDK estimate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Original native | 69.91% | 35.47% | 39.66% | 0/0 | 3,981 | 57,004 | $1.4261087 |
+| Optional file outline | 70.06% | 34.03% | 38.72% | 0/0 | 3,666 | 54,623 | $1.5609549 |
+| Primary outline/body flow | 69.40% | 34.26% | 37.35% | 7/1 | 4,090 | 66,461 | $1.6787390 |
+
+The primary policy loses0.51 Recall points and2.30 F1 points against original
+native. It passes the declared6/8 surface-adoption threshold but fails the4/8
+body-adoption threshold and Recall comparisons against both controls. Its seven
+surface calls and one body call have zero tool errors. The body fetch covers
+Svelte's `ElementWrapper.addBindings`, lines385–549:164 newly delivered lines
+plus one prior grep line omitted, without partial-line credit. This verifies
+actual CodeNib source delivery and deduplication, not an overall benefit.
+
+All24 selected raw streams reconcile provider input counters with terminal SDK
+usage. Mean per-task maximum single-response input is16,940.75tokens for native,
+17,523.875 for optional and19,580.25 for primary. Primary is15.58% above native;
+known cumulative cache-write/read inputs are130,635/659,158 versus113,670/432,899.
+These are provider counters, not physical KV residency or cash charges; no
+compaction, eviction or measured invalidation saving is implemented.
+
+The16 completed new sessions add$3.2396939 in known Max SDK nominal estimates;
+the two earlier pre-assistant sessions retain unknown terminal costs. New API-key
+usage and repairs remain zero. The optional policy's0.15point Recall movement
+has zero actual CodeNib adoption and cannot establish component gain. The primary
+file-outline policy is not promoted to independent validation or500. Existing
+ordinary-source controls, all preparation failures/costs and the earlier indexed
+four-task screen stay intact. Subsequent retrieval experiments must identify a
+concrete missing-context opportunity and demonstrate a benefit; embedding/graph
+are optional hypotheses. Fresh default-only32 validation, a frozen candidate500,
+native outcomes and submission review remain open.
+
+A separate all-eight reporter passes source-only replay against the eight native controls
 and four earlier surface trajectories. Its contract retains all selected
 positions, gives metadata zero source credit and reports execution/evaluator
 validity separately before reopening the already-exposed labels.
