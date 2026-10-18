@@ -1,0 +1,57 @@
+{
+  "scope": "PARTIAL231 actual final selected-context metrics and native outcomes; not a complete500 or leaderboard result. Different source mix from the search500 population.",
+  "cases": 231,
+  "official_valid_cases": 231,
+  "macro": {
+    "file": {
+      "recall": 0.9143771967507442,
+      "precision": 0.2037523730326838,
+      "f1": 0.3028010525872325
+    },
+    "block": {
+      "recall": 0.8698187542279494,
+      "precision": 0.14476308702060367,
+      "f1": 0.22872395582605023
+    },
+    "line": {
+      "recall": 0.8065231062059167,
+      "precision": 0.21873407033894335,
+      "f1": 0.3146566278205419
+    }
+  },
+  "resolved": 188,
+  "unresolved": 43,
+  "partial_native_pass_at_1": 0.8138528138528138,
+  "modeled_search_plus_repair_usage_usd": 141.76314628,
+  "modeled_usage_per_case_usd": 0.613693273939394,
+  "metered_sessions": 2521,
+  "failed_and_unresolved_cases_retained": true,
+  "per_case_F1_then_macro_mean": true,
+  "retrospective_selection_cases": 3,
+  "arbitrary_shell_source_attribution": "partial",
+  "evaluator_commit": "1436c28a8eb95496da4ea69ad458b9f8a8eb7d61",
+  "input_sha256": "d0a2817203134873da1fe402ab41e6f232000ae108a1bc849281ca414fcaa1c9",
+  "official_metrics_sha256": "987f1b04aff30a8d3d2d06ded14340fd20cc0471d9c88195f6ec6c0c7e61f5db",
+  "full500_official_results_or_submission_ready": false,
+  "model_calls": 0,
+  "native_tests_rerun": 0,
+  "financial_mutations": 0,
+  "same231_search_reference_macro": {
+    "file": {
+      "recall": 0.9143771967507442,
+      "precision": 0.20397499420441748,
+      "f1": 0.30305979359811497
+    },
+    "block": {
+      "recall": 0.8672803001798435,
+      "precision": 0.1452601905968799,
+      "f1": 0.2292200413210074
+    },
+    "line": {
+      "recall": 0.8012018563521243,
+      "precision": 0.2204098039220491,
+      "f1": 0.31548862794718685
+    }
+  },
+  "same231_reference_is_not_a_strict_causal_ablation": true
+}

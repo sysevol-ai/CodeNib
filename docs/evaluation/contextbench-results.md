@@ -24,6 +24,28 @@ it excludes repair, native grading and compute. The search batch is settled once
 its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
+The pinned official evaluator now scores the final selected contexts for all
+**231 completed first attempts**, including all43 unresolved repairs. Per-task
+Recall, Precision and F1 are macro averaged, with F1 computed before averaging:
+
+| Final selected context, partial231 | Recall | Precision | F1 |
+| --- | ---: | ---: | ---: |
+| File | 91.44% | 20.38% | 30.28% |
+| Block / symbol | 86.98% | 14.48% | 22.87% |
+| Line | 80.65% | 21.87% | 31.47% |
+
+The [partial231 score summary](../assets/contextbench_final_context_partial231_summary.json)
+retains exact metrics and evaluator/input hashes. The same231 IDs in the original
+search table have80.12% line Recall and31.55% F1. Final selection adds about0.53
+Recall points while F1 decreases about0.08 points; the observed gain is modest.
+This is not a strict causal ablation: three reused development repairs have
+different original search inputs and retrospective selections. Source attribution
+for arbitrary shell output remains partial. The231 source mix differs from
+full500; do not compare these partial values directly with the full500 search
+table or present them as the final leaderboard score. Native outcomes remain
+188/231 resolved, or81.39%, with$141.76314628 allocated search-plus-repair model
+usage, about$0.61369 per task. This scoring invokes no model or native test.
+
 The canonical500 batches with completed grading and settled fees retain
 **231 unique first candidate attempts:188 natively resolved and43 unresolved**.
 They include the three original development repairs,174 Verified tasks and54 Pro
@@ -108,6 +130,15 @@ test IDs remain explicit. Empty output cannot satisfy the separate required-test
 execution gate. All39 focused unit tests and pinned hooks pass. The full Poly
 source/control cohort, Multi source/control cohort and final500 evaluation remain
 open; these fixes add no model calls or repair score claims.
+
+The prospective remaining269 paid preparer also passes all nine batch transport
+and accounting fixtures. All generated inference/reservation/settlement hashes
+match the preceding policy; seven cache proofs reach only the native grading CLI,
+and changed proofs are rejected. These are synthetic admission fixtures, not269
+real environment qualifications. A separate waiting release owner requires both
+actual source/control execution proofs before installing the transport and
+replacing the original zero-request parent. The original parent remains held and
+alive through Multi source preparation; no reservation or request begins early.
 
 The closed64 metadata-order cohort completes source/native admission before any
 request. Preserve two original Docker create timeouts and their source-only
