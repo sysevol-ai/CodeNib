@@ -14,10 +14,11 @@ import asyncio
 import hashlib
 import json
 import math
+import re
 from pathlib import Path
 
 from scripts import benchmark_context_agent as native
-from scripts.contextbench_packet_reader import API_URL, MODEL, PRICING, usage_cost
+from scripts.contextbench_packet_reader import API_URL, MODEL, usage_cost
 from scripts.contextbench_surface import Location, SurfaceContext
 
 SYSTEM = """Review the evidence coverage of a repository investigation.
@@ -30,6 +31,20 @@ gaps (a list). Each gap has exactly why (a specific missing behavioral link),
 evidence (a nonempty list of existing source handles), and question (a focused
 search question for the same agent). Stop requires an empty gaps list; continue
 requires one or two gaps. Prefer stop when the existing evidence suffices."""
+
+HAIKU = "claude-haiku-5-5"
+
+
+def review_usage_cost(usage, model):
+    """Price only uncached standard/global, tool-free requests on known models."""
+    cost = usage_cost(usage)  # Retain the existing strict profile/usage checks.
+    if model == MODEL:
+        return cost
+    if model == HAIKU:
+        # The threshold includes all prompt input. Caching is rejected above,
+        # so input_tokens is the complete prompt for this specific request.
+        return cost * (0.025 if usage["input_tokens"] <= 100_000 else 0.125)
+    raise ValueError("Unknown review model price")
 
 
 def confirmed_history(messages):
@@ -67,6 +82,7 @@ class EvidenceReviewGuard:
         request_budget_usd=0.15,
         max_output_tokens=2048,
         max_packet_bytes=1_000_000,
+        review_model=MODEL,
     ):
         if (
             ctx.source_verified is not True
@@ -79,6 +95,8 @@ class EvidenceReviewGuard:
             raise ValueError("Evidence review requires authenticated source only")
         if not isinstance(issue, str) or not issue.strip():
             raise ValueError("Evidence review requires an issue")
+        if review_model not in {MODEL, HAIKU}:
+            raise ValueError("Unsupported review model")
         if str(client.base_url).rstrip("/") != API_URL or client.follow_redirects:
             raise ValueError("Evidence review requires the first-party endpoint")
         if not math.isfinite(request_budget_usd) or request_budget_usd <= 0:
@@ -93,12 +111,13 @@ class EvidenceReviewGuard:
         self.request_budget_usd = request_budget_usd
         self.max_output_tokens = max_output_tokens
         self.max_packet_bytes = max_packet_bytes
+        self.review_model = review_model
         self.identity = (ctx.manifest.commit, ctx.manifest.source_fingerprint)
         self.attempted = False
         self.session_id = None
         self.ledger = {
             "policy": "same_session_evidence_review_v1",
-            "model": MODEL,
+            "model": review_model,
             "status": "not_attempted",
             "failed": False,
             "stop_events": [],
@@ -242,6 +261,14 @@ class EvidenceReviewGuard:
                 result[key] = value
             return result
 
+        # A single whole-response Markdown fence is a presentation wrapper,
+        # not a second decision. Do not extract JSON from surrounding prose or
+        # repair malformed JSON; the original provider response remains intact.
+        fenced = re.fullmatch(
+            r"```(?:json)?[ \t]*\r?\n(.*?)\r?\n```", text.strip(), re.DOTALL
+        )
+        if fenced:
+            text = fenced[1]
         data = json.loads(text, object_pairs_hook=unique_pairs)
         if not isinstance(data, dict) or set(data) != {"decision", "gaps"}:
             raise ValueError("Invalid review decision object")
@@ -284,7 +311,7 @@ class EvidenceReviewGuard:
             ledger["status"] = "deferred_no_verified_evidence"
             return None
         common = {
-            "model": MODEL,
+            "model": self.review_model,
             "system": SYSTEM,
             "messages": [{"role": "user", "content": prompt}],
             "tools": [],
@@ -301,10 +328,10 @@ class EvidenceReviewGuard:
         if type(tokens) is not int or tokens < 0:
             raise ValueError("Invalid review input token count")
         margin = max(64, math.ceil(tokens * 0.02))
-        forecast = (
-            (tokens + margin) * PRICING["input_per_million"]
-            + self.max_output_tokens * PRICING["output_per_million"]
-        ) / 1_000_000
+        forecast = review_usage_cost(
+            {"input_tokens": tokens + margin, "output_tokens": self.max_output_tokens},
+            self.review_model,
+        )
         ledger["preflight"] = {
             "input_tokens": tokens,
             "input_margin": margin,
@@ -340,11 +367,13 @@ class EvidenceReviewGuard:
             response=data, usage=data.get("usage"), actual_model=data.get("model")
         )
         try:
-            if data.get("model") == MODEL:
-                ledger["api_usage_estimate_usd"] = usage_cost(data.get("usage") or {})
+            if data.get("model") == self.review_model:
+                ledger["api_usage_estimate_usd"] = review_usage_cost(
+                    data.get("usage") or {}, self.review_model
+                )
         finally:
             self.checkpoint()  # Retain known/unknown fees before parsing or source checks.
-        if data.get("model") != MODEL:
+        if data.get("model") != self.review_model:
             raise ValueError("Unknown reviewer model; price remains unknown")
         content = data.get("content")
         if (
