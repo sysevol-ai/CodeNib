@@ -697,6 +697,45 @@ not another model-only router sweep or a promise to recover the whole gap.
 Keep closed tasks excluded from new independent validation and distinguish
 source relevance routing from predicting which model will search successfully.
 
+Live two-worker runtime `71e489e5`, protocol `f2bba747`, now passes its separate
+development screen on the same eight exposed tasks. All32 actual worker sessions
+and32 configuration positions score valid after source sealing. One common
+first Haiku search supports both matched pairs; the independent repeat keeps
+the original issue, while the complementary worker gets only the issue and
+version-bound navigation metadata. Its2,048-token metadata cap is not a source
+body cap. Real worker source reads feed the same source assembler; metadata and
+assembly add no invented read credit. No parent reread, graph, embedding, Jev
+request or repair is required by this policy.
+
+Native Haiku Recall/F1 is **68.83%/32.26% for$0.046606145**; two independent
+Haiku searches **70.79%/30.17% for$0.085153860**; the complementary pair
+**71.62%/29.29% for$0.100641385**; fresh native Opus **70.56%/39.69% for
+$1.119668300**. Both pairs pass Recall-within-two-points and at-most25%-cost
+development targets. The complementary pair's0.83-point increment over the
+independent pair has95% interval[-3.69,+5.26]; its1.06-point increment over Opus
+has interval[-4.51,+6.65]. Retain the substantial F1 tradeoff and all32 public
+case rows. This is a low-cost candidate, not stable independent, repair or
+leaderboard evidence. It also does not establish fewer reads or better context
+density: the complementary pair observes6,548 unique source lines versus5,839
+for the independent pair and3,686 for Opus, summed per task. Cross-worker
+repetition is3,979 versus3,141 lines. The scout policy bundles navigation metadata
+and a complementary-search instruction; this contrast does not isolate metadata
+alone. Do not expand directly to500 or reopen the
+earlier closed32 for tuning. Fifteen new source-contract tests and56 combined
+focused checks pass; all eight historical source-union identities reproduce
+without new inference.
+
+Successor independent design `bcaf5253`, metadata selection `34023146`, freezes
+the same runtime/policies and selects32 new default-only tasks, four per language
+across22 repository-alias clusters with at most two per cluster. The591-task
+metadata-only pool leaves559 after reserving this cohort and aliases. Exact
+source preparation starts with empty issue/Gold fields; all32 source checks
+must pass before issue projection and128 planned SDK sessions. Seal all128
+source outcomes before selected Gold. The complementary pair is the primary;
+do not substitute the secondary repeat pair after a failed primary. The planned
+$12 API guard is not yet an active reservation or a billed batch. Current8
+results and the earlier failed32 remain immutable; no new repairs or500 starts.
+
 The earlier late-critic policy remains rejected:68.90% Recall/41.14% F1 at
 $0.113543820, one Opus review and zero follow-up searches. Preserve both earlier
 stopped integration cohorts and their full denominators/costs. Callable-tail and
@@ -716,9 +755,13 @@ draft with its required unit gate skipped/incomplete; do not merge it prematurel
 
 Independent32 adds **$7.370233470** in known nominal API usage; the$16 reservation
 closes with$8.629766530 of budget released. Known cumulative usage is
-**$66.914800665/$100**, leaving **$33.085199335**, with no active reservation or
-model job. Historical unknown Max fees remain unknown; nominal usage is not a
-reconciled cash bill. Native solver controls, candidate500,
+**$66.914800665/$100** immediately after that cohort. The live-pair development
+batch then adds **$1.258857400** for its32 distinct sessions, counting the common
+first worker once in the program ledger. Its$10 reservation closes with
+$8.741142600 of budget released. Current known usage is **$68.173658065/$100**,
+leaving **$31.826341935** with no active reservation or model job. Historical
+unknown Max fees remain unknown; nominal usage is not a reconciled cash bill.
+Native solver controls, candidate500,
 reproducible candidate/outcome archives and official submission remain open, but
 no new repair batch starts. The unstarted443 late4K consumers remain cancelled.
 No package lifecycle promotion, storage boundary or mandatory embedding/graph
