@@ -219,31 +219,47 @@ commit requests exceeded a90-second client read guard but actually completed;
 those observation errors remain retained. Metadata restoration preserves every
 registered filesystem layer and restores the full original execution Config.
 Its small manifest requires those existing layers and is not a portable image.
-The first fresh controls retain an unrelated broadcast failure in one reference
-and compiler signal9 failures in another neutral. Explicit bridge and bounded
-Ponyc worker/memory options are independently committed and pass139 related unit
-tests; a fresh bridge-only control pair is running. The third dependency
-preparation uses a separate3,600-second commit
-guard and retains uncertain work for explicit recovery. No patch, native test
-or model call runs during cache construction; construction is not admission.
-The original offline sweep also exposes missing public dependencies in other
-repositories. Separate bridge diagnostics retain those failures and preserve
-images, scripts, scorer,900-second deadlines and default resource ceilings.
+The original default-cache controls retain a broadcast failure and compiler
+signal9/deadline failures. Fresh900-second pairs now satisfy the required native
+criterion for all three cached Ponyc cases after explicit networking and bounded
+worker/memory corrections. The third dependency preparation completes with its
+separate3,600-second commit guard and verified cleanup. No patch, native test or
+model call runs during cache construction; construction alone is not admission.
+Other closed corrections cover Simdjson, GitHub CLI, Fastjson, Logstash and three
+Svelte cases. Native process and CPU-affinity options remain separate from model
+execution; their latest adapter passes142 related unit tests and pinned hooks.
+The remaining resource controls and full-cohort qualification remain open.
+
+Two source-restoration pilots retain original Jackson/Dayjs images whose build
+manifests differ from their Git commits. The derived images restore the canonical
+manifest bytes and preserve reference/test scripts. Dayjs also needs exact Config
+restoration after Docker normalizes null labels; that original error stays
+retained, and its metadata archive requires existing layers. Fresh canonical
+controls then expose an unavailable old Jackson parent POM and Dayjs worker
+exhaustion. Authentic parent POMs are cached unchanged from a
+[pinned upstream snapshot](https://github.com/FasterXML/jackson-bom/tree/c26c2b0fab0edff84590ef05febd1866242dd3a9).
+New controls are running with the source check retained. The Dayjs/Mockito
+process-ceiling corrections also require actual qualification. A Mockito
+observation records a256-process peak,17 denied allocations and current memory
+use below2GiB.
 
 Two other original Ponyc neutral runs abort inside added regression tests, after
 635 and874 completed test results respectively. Their references record all
 declared targets. The prospective source-bound admission keeps170 and36 absent
 non-NONE targets uncredited and requires independent base-only executions covering
-the original test IDs. A separate original reference records a cleanup failure
+the original test IDs. One independent local base now records all1,083 tests as
+passed and covers its historical expected IDs; final-cohort adoption remains open.
+The second base fixture remains required. A separate original reference records a cleanup failure
 after its required tests pass. A fresh unchanged pair now satisfies the criterion
 with all749 targets recorded as passed in its reference. The neutral records
 704 passes and10 failures;35 explicit NONE targets remain absent and uncredited.
 The original raw error remains unchanged and all containers are independently
 absent. Native exit codes2/2 remain visible; this is not a fully green suite.
 
-An uninstalled native transport draft binds these correction paths without
-changing the nine generated model-dispatch/reservation/settlement variants or
-the116 actual Poly argument bindings. Actual current-result reaudits cover22
+An uninstalled native transport draft preserves the nine generated
+model-dispatch/reservation/settlement variants and116 actual Poly argument
+bindings. Additional resource/source profiles still need final integration.
+Actual current-result reaudits cover32
 closed pairs; argument fixtures do not qualify the full153-case cohort. The real
 draft gate rejects before batch creation, a child process or a reservation.
 Complete selected-control/base-only qualification and owner exits remain open;
