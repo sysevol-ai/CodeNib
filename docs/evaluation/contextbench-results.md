@@ -243,9 +243,8 @@ controls expose unavailable old Jackson parent POMs and Dayjs worker exhaustion.
 All eight Jackson images now cache authentic parent POMs, unchanged from exact
 public snapshot Git objects, including the
 [pinned upstream snapshot](https://github.com/FasterXML/jackson-bom/tree/c26c2b0fab0edff84590ef05febd1866242dd3a9).
-No target build or test runs during this metadata installation. One Jackson
-and one Dayjs corrected pair have completed strict readback; the remaining
-source-preserving control batches are running. A Mockito observation records
+No target build or test runs during this metadata installation. All eight Jackson
+and seven Dayjs corrected pairs have completed strict readback. A Mockito observation records
 a256-process peak,17 denied allocations and current memory use below2GiB.
 Its higher-process-limit pair then exposes a500-millisecond timing assertion
 failure while several native containers share CPUs0/1. A separate pair uses
@@ -259,27 +258,51 @@ declared targets. The prospective source-bound admission keeps170 and36 absent
 non-NONE targets uncredited and requires independent base-only executions covering
 the original test IDs. Independent local bases now record all1,083 and1,042 tests
 as passed and cover their historical expected IDs. A new adoption reader
-reauthenticates six completed early baselines, recomputes inverse-test-patch
+reauthenticates26 completed early baselines, recomputes inverse-test-patch
 cancellation with a private Git index and retains their actual current-result
-evidence without rerunning tests. Other required baselines remain open. A separate original reference records a cleanup failure
+evidence without rerunning tests. One further baseline remains unexecuted;
+remaining selected pairs can introduce additional requirements. A separate original reference records a cleanup failure
 after its required tests pass. A fresh unchanged pair now satisfies the criterion
 with all749 targets recorded as passed in its reference. The neutral records
 704 passes and10 failures;35 explicit NONE targets remain absent and uncredited.
 The original raw error remains unchanged and all containers are independently
 absent. Native exit codes2/2 remain visible; this is not a fully green suite.
 
-An uninstalled native transport draft preserves the nine generated
-model-dispatch/reservation/settlement variants and116 actual Poly argument
-bindings. Additional resource/source profiles still need final integration.
-Actual current-result reaudits cover118
-closed pairs, including the source/POM, process and extended-wall corrections.
-Six real baselines are authenticated for reuse; none is candidate credit.
-Altered image, adapter, process ceiling, CPU affinity, network and deadline
-inputs are rejected against actual records. Argument fixtures do not qualify
-the full153-case cohort. The real
-draft gate rejects before batch creation, a child process or a reservation.
-Complete selected-control/base-only qualification and owner exits remain open;
-no remaining269 candidate request has started.
+Actual current-result reaudits now cover145 of153 selected Multi pairs with
+no audit errors, including all ten Vue memory corrections. The remaining eight
+pairs involve Logstash and MUI; a completed pair inside an active batch is not
+admitted until its batch owner closes. Seven MUI native images restore only
+extra trailing blank lines in the official run/test scripts; actual readback
+binds the exact pinned bytes, unchanged Git tree, reference patches and Config.
+The source-only agent images remain unchanged. MUI481 retains its original
+2,000-millisecond Mocha timeout failures. A finite different-CPU pair now
+qualifies with the same two-CPU quota,8GiB memory, internal timeout and tests;
+its reference passes all5,794 required labels. This does not establish a
+specific cause for the earlier timing variation.
+
+The Logstash reference log contains two passed records joined with stderr
+messages, which the unchanged native parser cannot recognize. An explicit
+separate-stream capture mode retains byte-exact stdout and stderr and records
+their sizes, hashes and stdout-then-stderr parser-log composition. It preserves
+partial timed-out output and cleanup; cross-stream chronology is unavailable.
+The default remains merged. All142 related unit checks pass with one skip, and a
+fixture using the pinned official parser reproduces both lost labels and checks
+the separated records. A fresh actual control pair remains pending; the fixture
+and original failed controls contribute no candidate credit. This change is
+[stacked draft PR842](https://github.com/sysevol-ai/CodeNib/pull/842), after
+[PR841](https://github.com/sysevol-ai/CodeNib/pull/841).
+
+The uninstalled native transport archives five approved native adapter versions
+in19 files while preserving all nine generated model-dispatch, reservation and
+settlement programs byte-for-byte from the prior verified draft. Actual config
+boundaries reject changed images, adapters, deadlines, missing native files and
+unknown manifest entries. Raw-log checks reject altered metadata, stdout, stderr
+and composed logs. The new collector rereads all231 original first attempts and
+reproduces the same188 resolved/43 unresolved results,2,521 sessions and fees.
+The actual draft admission gate rechecks all116 Poly records, then rejects missing
+Multi qualification before a paid plan or reservation. Full269 native argument
+bindings, complete selected-control/base-only admission and owner exits remain
+open. No remaining269 candidate request has started.
 
 A separate early diagnostic on one prepared MUI environment records all 8,548
 declared required test identifiers with PASS/FAIL statuses in both actual local
