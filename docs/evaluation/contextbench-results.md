@@ -55,7 +55,11 @@ The canonical500 batches with completed grading and settled fees retain
 They include the three original development repairs,174 Verified tasks and54 Pro
 tasks in canonical metadata order. All231 raw patch/native/selection/fee bindings
 authenticate, including2,521 unique metered search/repair sessions. The remaining269
-are outside these settled cohorts. The latest54 Pro first attempts finish with
+are outside these settled cohorts. The verified native transport is now installed,
+and the unchanged dispatcher has started the first32 remaining tasks with two
+concurrent solver workers. The full269 continuation uses nine fixed batches;
+new outcomes join the total only after native grading and fee closure. The
+latest54 Pro first attempts finish with
 **34 resolved,20 unresolved**, across675 metered repair sessions and
 **$70.9951234** actual API usage. Their$270 reservation closes once and is released;
 it is not an additional charge. The preceding55 Verified attempts retain their
@@ -102,10 +106,11 @@ usage, without charging reused search again. At this closure, the new$500
 authorization has **$360.6095718 remaining**, with no active reservation; cumulative
 program API usage including prior work is$220.40193318. These are recorded SDK
 usage values; native compute and reconciled invoices remain separate.
-No remaining269 candidate request or reservation has begun at this closure.
-Poly source preparation has started after actual Pro fee closure and original
-controller exit; the remaining paid owner stays held for the full source/native
-execution proofs described below.
+These values describe the settled231 prefix. The first remaining32-task batch
+is now running under a$160 reservation, leaving$200.6095718 unreserved at launch;
+reservation is a ceiling, not an additional charge. Its actual receipts are not
+yet settled. All116 Poly and153 Multi source/native admissions and all269
+actual model/native command checks precede this launch.
 
 The Poly preparation encounters native environment failures before any of the
 remaining269 model requests. A VSCode diagnostic compiles but cannot download
@@ -119,7 +124,8 @@ Separate configuration-only images restore the original empty entrypoint, with
 the failed records retained. One actual cached neutral/reference diagnostic
 records all four required test IDs in both runs and yields False/True as expected.
 This diagnostic does not replace the full232 canonical controls or any candidate
-attempt. The remaining paid owner and automatic release helper remain held.
+attempt. This diagnostic preceded the completed full admission and current paid
+continuation; it adds no candidate repair.
 
 All116 Poly source environments are now prepared, including two code-server LFS
 recoveries and three Transformers cleanliness recoveries. The code-server
@@ -258,20 +264,21 @@ declared targets. The prospective source-bound admission keeps170 and36 absent
 non-NONE targets uncredited and requires independent base-only executions covering
 the original test IDs. Independent local bases now record all1,083 and1,042 tests
 as passed and cover their historical expected IDs. A new adoption reader
-reauthenticates26 completed early baselines, recomputes inverse-test-patch
+reauthenticates all28 completed baselines, recomputes inverse-test-patch
 cancellation with a private Git index and retains their actual current-result
-evidence without rerunning tests. One further baseline remains unexecuted;
-remaining selected pairs can introduce additional requirements. A separate original reference records a cleanup failure
+evidence without rerunning tests. The full selected cohort retains26 early executions plus two fresh baselines
+at positions376 and486. All28 now authenticate against actual test results. A separate original reference records a cleanup failure
 after its required tests pass. A fresh unchanged pair now satisfies the criterion
 with all749 targets recorded as passed in its reference. The neutral records
 704 passes and10 failures;35 explicit NONE targets remain absent and uncredited.
 The original raw error remains unchanged and all containers are independently
 absent. Native exit codes2/2 remain visible; this is not a fully green suite.
 
-Actual current-result reaudits now cover145 of153 selected Multi pairs with
-no audit errors, including all ten Vue memory corrections. The remaining eight
-pairs involve Logstash and MUI; a completed pair inside an active batch is not
-admitted until its batch owner closes. Seven MUI native images restore only
+Actual current-result reaudits now cover all153 selected Multi pairs with
+no audit errors, including all ten Vue memory corrections and all seven MUI
+runner restorations. Their corrective batch owners have exited. The full
+selected-admission proof now binds all306 control records,28 actual baseline
+executions and the source/native identities after the qualifier exits. Seven MUI native images restore only
 extra trailing blank lines in the official run/test scripts; actual readback
 binds the exact pinned bytes, unchanged Git tree, reference patches and Config.
 The source-only agent images remain unchanged. MUI481 retains its original
@@ -287,8 +294,11 @@ their sizes, hashes and stdout-then-stderr parser-log composition. It preserves
 partial timed-out output and cleanup; cross-stream chronology is unavailable.
 The default remains merged. All142 related unit checks pass with one skip, and a
 fixture using the pinned official parser reproduces both lost labels and checks
-the separated records. A fresh actual control pair remains pending; the fixture
-and original failed controls contribute no candidate credit. This change is
+the separated records. A fresh actual neutral/reference pair now qualifies: the reference passes
+all1,060 required labels, and both raw-stream bindings authenticate. Unrelated
+failures and native exits1/1 remain visible; this is not a fully green suite.
+The fixture, reference controls and original failed runs contribute no candidate
+credit. This change is
 [stacked draft PR842](https://github.com/sysevol-ai/CodeNib/pull/842), after
 [PR841](https://github.com/sysevol-ai/CodeNib/pull/841).
 
@@ -297,12 +307,23 @@ in19 files while preserving all nine generated model-dispatch, reservation and
 settlement programs byte-for-byte from the prior verified draft. Actual config
 boundaries reject changed images, adapters, deadlines, missing native files and
 unknown manifest entries. Raw-log checks reject altered metadata, stdout, stderr
-and composed logs. The new collector rereads all231 original first attempts and
-reproduces the same188 resolved/43 unresolved results,2,521 sessions and fees.
-The actual draft admission gate rechecks all116 Poly records, then rejects missing
-Multi qualification before a paid plan or reservation. Full269 native argument
-bindings, complete selected-control/base-only admission and owner exits remain
-open. No remaining269 candidate request has started.
+and composed logs. After exact pidfd retirement of the childless old collector and archive
+waiters, the new collector is live for the nine remaining cohorts. It rereads
+all231 original first attempts and reproduces the same188 resolved/43 unresolved
+results,2,521 sessions and fees. Original observer/source files remain retained.
+The actual draft gate rejects incomplete Multi qualification before a paid plan
+or reservation. After the complete153 proof and owner exit, the native contract
+is frozen and all269 actual native/model command lists parse against the approved
+runtimes; changed physical-CPU binding, outer timeout and log mode are rejected.
+An initial Poly field-reader mismatch stops before output or a paid request;
+its original error stays retained, and the corrected metadata reader leaves
+command-validation functions unchanged. Exact pidfd retirement of the obsolete
+release waiter and six stopped, childless paid parents now precedes atomic
+installation. An initial installer fails before retirement because its Conda
+Python lacks pidfd support; the failed files and unchanged-ledger evidence remain
+retained. The corrected installer delegates only process retirement to system
+Python. Installed native admission passes again after retirement, before the
+unchanged dispatcher acquires its fresh intent and starts the first32 tasks.
 
 A separate early diagnostic on one prepared MUI environment records all 8,548
 declared required test identifiers with PASS/FAIL statuses in both actual local
@@ -325,14 +346,15 @@ positive-reference claim. Six changed/incomplete selection fixtures are rejected
 Canonical original cohorts, source records and every failed native log remain
 unchanged. This admission proof is not a candidate repair or a full500 score.
 
-The prospective remaining269 paid preparer now transports the selected Poly
+The installed remaining269 paid preparer transports the selected Poly
 admissions, including bridge/thread/CPU-affinity resources and the three known
 negative descriptors. All116 actual Poly argument bindings authenticate; the
 34 prepared Go profiles also bind to the current source builder. Every option
 reaches only the native grading CLI. Generated model-dispatch, reservation and
 settlement sources match the preceding nine variants exactly. Changed selected
-admission/control hashes are rejected, and the real global gate rejects the
-still-missing Multi execution proof before any plan or reservation.
+admission/control hashes are rejected. Before full qualification, the real global
+gate rejects an incomplete Multi execution proof before any plan or reservation;
+the completed153-case proof now satisfies that gate.
 
 Separate nine-phase lifecycle fixtures inject case admissions and the global
 gate into a temporary root. They exercise all269 fixed IDs, two disjoint shards,
@@ -341,16 +363,18 @@ idempotent settlement. They do not qualify Multi environments. Copied native
 snapshots import their current CLI in isolated Python; no provider, native test,
 Docker build or real financial mutation occurs in these checks.
 
-A waiting release owner requires both actual cohort admissions, the current
-source finalization and actual source/native qualifier exits. All32 readiness
+The installation requires both actual cohort admissions, current source
+finalization and actual source/native qualifier exits. All32 readiness
 gate combinations are checked. Only after these conditions hold may it retire
 six exact stopped, childless obsolete owners through pidfd, retain their original
 intent and installation backups, install the verified transport and start the
 unchanged nine-phase dispatcher under a fresh exclusive intent. Three malformed
-retirement requests are rejected before any signal; all six real owners remain
-held at this preflight. Interrupted installation requires root recovery without
-automatic retry. The original paid parent stays alive and held through Multi
-source preparation. No remaining269 reservation or candidate request has begun.
+retirement requests are rejected before any signal. All six actual obsolete
+parents and the childless obsolete release waiter have now exited through exact
+pidfd acknowledgement. Installation retains their original intent and alias
+backups. The new original dispatcher owns the$160 first-batch reservation and
+two solver shards; interrupted execution still requires root recovery without
+automatic model retries.
 
 To make room for remaining environments,104 closed Pro source/native image caches
 are removed with normal Docker reference checks and no forced removal or global
@@ -758,7 +782,8 @@ the same original pidfd-identified controller resumes. Its two disjoint shards
 now complete all54 first attempts, retaining34 resolved and20 unresolved outcomes.
 The$270 reservation closes once against$70.9951234 in actual SDK usage; the original
 controller exits after updating both financial ledgers.
-The remaining269 owner stays held for its own source and test-execution gates.
+At the Pro closure checkpoint, the remaining269 owner was still held for its
+source and test-execution gates; those gates now precede the active continuation.
 The Pro source/control inventory now freezes4,656 files and722,239,538 bytes,
 including63 original/recovered Git seed TARs and147 distinct native control/probe
 attempts. All108 original controls and108 selected control hashes remain bound.
@@ -811,7 +836,7 @@ evaluator commit `1436c28a8eb95496da4ea69ad458b9f8a8eb7d61`; all29 frozen
 evaluator source hashes and the actual issue/Gold table hash reauthenticate.
 The draft contains no final results file or submission claim.
 
-The remaining269 first attempts now have a queued owner for nine fixed,
+The remaining269 first attempts now have a live owner for nine fixed,
 sequential batches. Isolated synthetic admissions exercise all269 identities,
 source-resource overrides, native controls and known-fee error records. Every
 batch partitions each task once; reservation and settlement variants are
@@ -825,15 +850,13 @@ start only after the preceding phase has closed fees and updated both ledgers
 and its handoff; a completion marker is written last. This prevents overlapping
 reservations and late metadata writes. The owner waits for actual full-cohort
 source/native admission, reserves only existing authorized usage and never
-retries a model or replaces a task. No remaining269 reservation or model request
-has begun, and the synthetic checks establish no new native-ready environment.
-The obsolete original269 controller stays held before creating any paid phase.
-Prospective admission prepares both remaining source cohorts in advance: after
-Pro fee closure and actual Poly source finalization, the Multi source delegate
-prepares all153 remaining environments while Poly native recovery can continue
-and reservations remain zero. The waiting release owner requires actual Poly116
-and Multi153 admission proofs and source/native owner exits before retiring the
-obsolete owners and starting the unchanged nine paid phases under a fresh intent.
+retries a model or replaces a task. The actual first32-task phase has started
+under a$160 reservation; the synthetic checks add no native environment or
+candidate score. The obsolete original269 controller has exited before this
+new exclusive paid intent.
+Admission prepares both remaining source cohorts before inference. Actual
+Poly116 and Multi153 admission proofs and source/native owner exits now precede
+obsolete-owner retirement and the unchanged nine paid phases under a fresh intent.
 Poly checks required identifiers against actual parsed test results. Multi needs
 transition-aware qualification: its report's base/test-patch results are historical
 dataset fields; only the current fix-patch result records the local control run.
@@ -849,20 +872,21 @@ before the selected153-case proof can close. A file fixture authenticates the
 existing fmt18-test result, rejects a synthetic empty current reference despite
 its18 historical passes, and verifies that the original test patch plus its
 inverse restore the exact base tree in a private Git index. This adds no model or
-native test call. Actual ambiguous cases still need local base-only execution
+native test call. Actual ambiguous cases now have local base-only execution
 using the unchanged native adapter and test command; their native resolved flag
-is excluded from candidate outcomes. The queued resumer cannot release without
-these actual execution proofs.
+is excluded from candidate outcomes. All28 actual baselines authenticate before
+paid continuation and add no candidate outcome.
 A separate zero-model result owner adopts the unchanged231-case index and waits
 for nine successive closed cohorts, requiring exactly500 first attempts for the
 final result. It authenticates patch, native outcome, final context and unique
 search/repair fees for every case, including failures. New Poly/Multi records bind
-all four archived native-runtime files to the authenticated native-v9 adapter.
-The collector changes only its pinned Poly adapter digest; every authentication,
-population, failure-retention and fee function remains AST-identical. A regression
-fixture reproduces the old digest's rejection of the real v9 runtime and rejects
-changed, missing, symlinked, old-version and misbound snapshots. Its269 future
-runtime bindings are synthetic fixtures, not native-execution or candidate credit.
+their archived native-runtime files to the selected authenticated adapters.
+The current collector supports five native adapter versions in19 files, plus
+separate-stream byte and composition checks. Existing population, failure-
+retention and fee functions remain AST-identical. Regression fixtures reproduce
+the old digest's rejection of the real v9 runtime and reject changed, missing,
+symlinked, old-version and misbound snapshots. Future-record fixtures add no
+native-execution or candidate credit.
 A separate actual replay reauthenticates all231 original records, preserving the
 188/43 outcomes,2,521 unique metered sessions and$141.76314628 allocated usage.
 The continuation requires a hash-bound receipt for the previous read-only owner's
@@ -881,12 +905,13 @@ the actual231 prefix as500 and a synthetic complete index with a live paid owner
 Failed-output and binary-seed bytes roundtrip through actual split zstd parts;
 symlinked inputs and corrupted parts are rejected. Archive completion requires
 decoding every actual part and hashing every member. The remaining269 archive
-has not executed, and private archival does not approve publication. An
-unlaunched replacement also requires the installed, frozen selected-native
-transport before acquiring output. It retains constructor/probe scripts omitted
-by the earlier filename rules. Actual source-file inventory and rejection checks
-pass while the existing codec, prior-part and nine-phase native/fee checks remain
-unchanged. The original waiting owner must exit before this replacement starts.
+has not completed, and private archival does not approve publication. The new
+read-only archive waiter starts after exact retirement of the old waiter and
+requires the installed, frozen selected-native transport before acquiring output.
+It retains97 actual constructor/probe/recovery scripts, including failed
+installation evidence. Actual full153 admission, source inventory and partial231
+rejection checks pass; the codec, prior-part and nine-phase native/fee checks
+remain unchanged. No archive compression starts until actual full500 closure.
 A separate read-only owner waits for that actual full500 index and its closed
 official metric record, then replays all1,000 original search workers and confirmed
 repair inputs through the unchanged selection compiler. It requires the exact
