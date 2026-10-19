@@ -92,8 +92,16 @@ and unique fees from the prepared archive parts, using bundled frozen CodeNib
 sources. It authenticates all269 new native snapshots and their 5,111 source-file
 occurrences. Python audit hooks deny original-checkout access, network calls and
 child processes during the replay; this is not an operating-system sandbox or a
-fresh model, source-clone or native-test rerun. Final artifact composition, review
-of the resulting submission and maintainer comparability/publication remain open.
+fresh model, source-clone or native-test rerun. Original-input recompilation also
+reauthenticates all500 predictions/receipts and1,000 search workers without
+changing scores, patches or fees.
+
+The complete results,69 actual bounded archive files, all failed attempts,
+checksums and reproduction commands are submitted in
+[the official Agent systems PR](https://github.com/ContextBench/contextbench.github.io/pull/4).
+The official format check passes and public-input aggregation reproduces the
+submitted results byte for byte. Maintainer comparability review and leaderboard
+publication remain pending; opening this PR does not change the rankings.
 
 The following earlier cohort and preparation records preserve historical outcomes
 and launch-time gates. The current closed population and remaining gates are
