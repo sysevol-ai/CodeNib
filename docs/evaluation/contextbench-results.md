@@ -203,8 +203,10 @@ solver/source/native image IDs. Snapshots exclude reference artifacts and retain
 the single-commit boundary. The jq sources preserve their exact oniguruma Gitlink
 and use a checksum-verified public Python runtime; native images stay unchanged.
 Original source failures remain retained. The source owner has exited, and the
-unchanged four-worker controller is running306 canonical neutral/reference
-executions. Source closure adds no candidate attempt or provider usage.
+unchanged four-worker controller continues its canonical control sweep. The306
+planned neutral/reference runs are not a completed-execution count: an early
+neutral error can prevent its reference from starting. Source closure adds no
+candidate attempt or provider usage.
 
 Six observed Zstd native-script deadlines now have separately closed neutral and
 reference diagnostics at3,600 seconds, with the same adapter, images, scripts,
@@ -230,26 +232,36 @@ Svelte cases. Native process and CPU-affinity options remain separate from model
 execution; their latest adapter passes142 related unit tests and pinned hooks.
 The remaining resource controls and full-cohort qualification remain open.
 
-Two source-restoration pilots retain original Jackson/Dayjs images whose build
-manifests differ from their Git commits. The derived images restore the canonical
-manifest bytes and preserve reference/test scripts. Dayjs also needs exact Config
-restoration after Docker normalizes null labels; that original error stays
-retained, and its metadata archive requires existing layers. Fresh canonical
-controls then expose an unavailable old Jackson parent POM and Dayjs worker
-exhaustion. Authentic parent POMs are cached unchanged from a
+Canonical source restoration now covers all eight affected Jackson images and
+seven Dayjs images. Their original build manifests differ from their Git
+commits; derived native images restore only the canonical manifest bytes and
+preserve reference/test scripts and source-only model images. Dayjs also needs
+exact Config restoration after Docker normalizes null labels; that original
+error stays retained, and its metadata archive requires existing layers.
+Actual readback authenticates all15 derived source images. Fresh canonical
+controls expose unavailable old Jackson parent POMs and Dayjs worker exhaustion.
+All eight Jackson images now cache authentic parent POMs, unchanged from exact
+public snapshot Git objects, including the
 [pinned upstream snapshot](https://github.com/FasterXML/jackson-bom/tree/c26c2b0fab0edff84590ef05febd1866242dd3a9).
-New controls are running with the source check retained. The Dayjs/Mockito
-process-ceiling corrections also require actual qualification. A Mockito
-observation records a256-process peak,17 denied allocations and current memory
-use below2GiB.
+No target build or test runs during this metadata installation. One Jackson
+and one Dayjs corrected pair have completed strict readback; the remaining
+source-preserving control batches are running. A Mockito observation records
+a256-process peak,17 denied allocations and current memory use below2GiB.
+Its higher-process-limit pair then exposes a500-millisecond timing assertion
+failure while several native containers share CPUs0/1. A separate pair uses
+CPUs4/5 with the same two-CPU quota, scripts and scoring; its reference records
+all104 required IDs as passed. The original process, deadline and timing failures
+remain retained. This is native environment evidence, not a candidate score.
 
 Two other original Ponyc neutral runs abort inside added regression tests, after
 635 and874 completed test results respectively. Their references record all
 declared targets. The prospective source-bound admission keeps170 and36 absent
 non-NONE targets uncredited and requires independent base-only executions covering
-the original test IDs. One independent local base now records all1,083 tests as
-passed and covers its historical expected IDs; final-cohort adoption remains open.
-The second base fixture remains required. A separate original reference records a cleanup failure
+the original test IDs. Independent local bases now record all1,083 and1,042 tests
+as passed and cover their historical expected IDs. A new adoption reader
+reauthenticates six completed early baselines, recomputes inverse-test-patch
+cancellation with a private Git index and retains their actual current-result
+evidence without rerunning tests. Other required baselines remain open. A separate original reference records a cleanup failure
 after its required tests pass. A fresh unchanged pair now satisfies the criterion
 with all749 targets recorded as passed in its reference. The neutral records
 704 passes and10 failures;35 explicit NONE targets remain absent and uncredited.
@@ -259,8 +271,12 @@ absent. Native exit codes2/2 remain visible; this is not a fully green suite.
 An uninstalled native transport draft preserves the nine generated
 model-dispatch/reservation/settlement variants and116 actual Poly argument
 bindings. Additional resource/source profiles still need final integration.
-Actual current-result reaudits cover32
-closed pairs; argument fixtures do not qualify the full153-case cohort. The real
+Actual current-result reaudits cover118
+closed pairs, including the source/POM, process and extended-wall corrections.
+Six real baselines are authenticated for reuse; none is candidate credit.
+Altered image, adapter, process ceiling, CPU affinity, network and deadline
+inputs are rejected against actual records. Argument fixtures do not qualify
+the full153-case cohort. The real
 draft gate rejects before batch creation, a child process or a reservation.
 Complete selected-control/base-only qualification and owner exits remain open;
 no remaining269 candidate request has started.
