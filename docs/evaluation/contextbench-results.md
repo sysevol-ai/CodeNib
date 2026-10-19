@@ -25,30 +25,31 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The pinned official evaluator now scores the final selected contexts for all
-**347 completed first attempts**, including all67 unresolved repairs. Per-task
+**379 completed first attempts**, including all 79 unresolved repairs. Per-task
 Recall, Precision and F1 are macro averaged, with F1 computed before averaging:
 
-| Final selected context, partial347 | Recall | Precision | F1 |
+| Final selected context, partial379 | Recall | Precision | F1 |
 | --- | ---: | ---: | ---: |
-| File | 89.48% | 20.66% | 30.33% |
-| Block / symbol | 86.71% | 14.78% | 23.13% |
-| Line | 80.78% | 22.37% | 31.61% |
+| File | 89.14% | 20.16% | 29.76% |
+| Block / symbol | 86.40% | 14.74% | 22.87% |
+| Line | 79.15% | 21.91% | 30.73% |
 
-The [partial347 score summary](../assets/contextbench_final_context_partial347_summary.json)
+The [partial379 score summary](../assets/contextbench_final_context_partial379_summary.json)
 retains exact metrics, native outcomes, usage and evaluator/input hashes. The
-same347 IDs in the original search table have80.32% line Recall and31.70% F1.
-Final selection adds about0.46 Recall points while F1 decreases about0.08 points;
-the observed gain remains modest. The same-ID descriptive audit finds21 tasks
-with higher line Recall and326 unchanged, with none lower. Line F1 improves on11
-tasks, falls on69 and remains unchanged on267. Adding confirmed source can
+same 379 IDs in the original search table have 78.70% line Recall and 30.84% F1.
+Final selection adds about 0.44 Recall points while F1 decreases about 0.11 points;
+the observed gain remains modest. The same-ID descriptive audit finds 23 tasks
+with higher line Recall and 356 unchanged, with none lower. Line F1 improves on 13
+tasks, falls on 77 and remains unchanged on 289. Adding confirmed source can
 increase Recall while reducing Precision; a higher final F1 is not guaranteed.
 This is not a strict causal ablation: three reused development repairs have
 different original search inputs and retrospective selections. Source attribution
-for arbitrary shell output remains partial. The347 source mix differs from
+for arbitrary shell output remains partial. The 379 source mix differs from
 full500; do not compare these partial values directly with the full500 search
 table or present them as the final leaderboard score. Native outcomes retain
-280/347 resolved, or80.69%, with$216.99681336 allocated search-plus-repair model
-usage, about$0.62535 per task. Scoring invokes no model or native test. The
+300/379 resolved, or 79.16%, with $250.05899181 allocated search-plus-repair model
+usage, about $0.65979 per task. Scoring invokes no model or native test. The
+[prior347 summary](../assets/contextbench_final_context_partial347_summary.json),
 [prior327 summary](../assets/contextbench_final_context_partial327_summary.json),
 [prior295 summary](../assets/contextbench_final_context_partial295_summary.json),
 [prior263 summary](../assets/contextbench_final_context_partial263_summary.json)
@@ -56,21 +57,24 @@ and [prior231 summary](../assets/contextbench_final_context_partial231_summary.j
 remain available with their original populations and hashes.
 
 The canonical500 batches with completed grading and settled fees retain
-**347 unique first candidate attempts:280 natively resolved and67 unresolved**.
-They include three original development repairs,174 Verified tasks,54 Pro tasks
-and116 Poly tasks; newly attempted cases follow canonical metadata order. All347
-raw patch/native/selection/fee bindings authenticate, including3,759 unique
-metered search/repair sessions. The remaining153 are outside these settled
-cohorts. The latest20 Poly attempts finish with **14 resolved,6 unresolved**,
-across153 repair sessions and **$11.2858574** recorded repair API usage.
-Their$100 reservation closes once;
-40 original search sessions are reused without another model request or charge.
-The preceding96 Poly attempts retain78 resolved,18 unresolved,853 repair sessions
-and$62.6709045 usage. All116 native snapshots authenticate their19 source files.
+**379 unique first candidate attempts:300 natively resolved and79 unresolved**.
+They comprise 174 Verified, 54 Pro, 116 Poly and 35 Multi tasks. The Multi group
+retains three original development repairs; newly attempted cases follow canonical
+metadata order. All 379 raw patch/native/selection/fee bindings authenticate,
+including 4,189 unique metered search/repair sessions. The remaining 121 are outside
+these settled cohorts. The latest 32 Multi attempts finish with **20 resolved,
+12 unresolved**, across 366 repair sessions and **$32.5591471** recorded repair API
+usage. Their $160 reservation closes once; 64 original search sessions are reused
+without another model request or charge. The preceding 116 Poly attempts retain
+92 resolved, 24 unresolved, 1,006 repair sessions and $73.9567619 usage. All 148 new
+Poly/Multi native snapshots authenticate their 19 archived source files.
 Unresolved patches and raw failures stay retained, including an executed target
 assertion failure and a code-patch rejection matching the pinned upstream harness.
-The unchanged dispatcher has started the next32-task Multi phase with two solver
-workers under a new$160 reservation. The269-case continuation still uses its
+One budget-stopped first attempt retains all 20 metered calls and $4.1666292 repair
+usage. Its final request crosses the existing case guard, which is checked between
+requests; its unchanged first patch remains unresolved.
+The unchanged dispatcher has started the next 32-task Multi phase with two solver
+workers under a new $160 reservation. The 269-case continuation still uses its
 nine fixed phases; no model retry or task replacement occurs.
 The prior54 Pro first attempts retain **34 resolved,20 unresolved**, across675
 repair sessions and$70.9951234 usage; their$270 reservation closes once. The
