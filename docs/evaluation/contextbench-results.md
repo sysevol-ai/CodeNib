@@ -25,45 +25,47 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The pinned official evaluator now scores the final selected contexts for all
-**263 completed first attempts**, including all47 unresolved repairs. Per-task
+**295 completed first attempts**, including all55 unresolved repairs. Per-task
 Recall, Precision and F1 are macro averaged, with F1 computed before averaging:
 
-| Final selected context, partial263 | Recall | Precision | F1 |
+| Final selected context, partial295 | Recall | Precision | F1 |
 | --- | ---: | ---: | ---: |
-| File | 90.20% | 21.17% | 31.10% |
-| Block / symbol | 86.76% | 15.08% | 23.78% |
-| Line | 80.31% | 22.84% | 32.65% |
+| File | 89.52% | 21.05% | 30.81% |
+| Block / symbol | 86.70% | 14.62% | 23.13% |
+| Line | 81.13% | 21.68% | 31.25% |
 
-The [partial263 score summary](../assets/contextbench_final_context_partial263_summary.json)
+The [partial295 score summary](../assets/contextbench_final_context_partial295_summary.json)
 retains exact metrics, native outcomes, usage and evaluator/input hashes. The
-same263 IDs in the original search table have79.83% line Recall and32.77% F1.
-Final selection adds about0.47 Recall points while F1 decreases about0.13 points;
+same295 IDs in the original search table have80.71% line Recall and31.38% F1.
+Final selection adds about0.42 Recall points while F1 decreases about0.13 points;
 the observed gain remains modest. The same-ID descriptive audit finds16 tasks
-with higher line Recall and247 unchanged, with none lower. Line F1 improves on7
-tasks, falls on56 and remains unchanged on200. Adding confirmed source can
+with higher line Recall and279 unchanged, with none lower. Line F1 improves on7
+tasks, falls on61 and remains unchanged on227. Adding confirmed source can
 increase Recall while reducing Precision; a higher final F1 is not guaranteed.
 This is not a strict causal ablation: three reused development repairs have
 different original search inputs and retrospective selections. Source attribution
-for arbitrary shell output remains partial. The263 source mix differs from
+for arbitrary shell output remains partial. The295 source mix differs from
 full500; do not compare these partial values directly with the full500 search
 table or present them as the final leaderboard score. Native outcomes retain
-216/263 resolved, or82.13%, with$161.66804502 allocated search-plus-repair model
-usage, about$0.61471 per task. Scoring invokes no model or native test. The
-[prior231 summary](../assets/contextbench_final_context_partial231_summary.json)
-remains available with its original population and hashes.
+240/295 resolved, or81.36%, with$184.024079985 allocated search-plus-repair model
+usage, about$0.62381 per task. Scoring invokes no model or native test. The
+[prior263 summary](../assets/contextbench_final_context_partial263_summary.json)
+and [prior231 summary](../assets/contextbench_final_context_partial231_summary.json)
+remain available with their original populations and hashes.
 
 The canonical500 batches with completed grading and settled fees retain
-**263 unique first candidate attempts:216 natively resolved and47 unresolved**.
+**295 unique first candidate attempts:240 natively resolved and55 unresolved**.
 They include three original development repairs,174 Verified tasks,54 Pro tasks
-and32 Poly tasks in canonical metadata order. All263 raw patch/native/selection/
-fee bindings authenticate, including2,868 unique metered search/repair sessions.
-The remaining237 are outside these settled cohorts. The first32 remaining Poly
-attempts finish with **28 resolved,4 unresolved**, across283 repair sessions and
-**$19.5413949** recorded repair API usage. Their$160 reservation closes once;
+and64 Poly tasks in canonical metadata order. All295 raw patch/native/selection/
+fee bindings authenticate, including3,237 unique metered search/repair sessions.
+The remaining205 are outside these settled cohorts. The latest32 Poly attempts
+finish with **24 resolved,8 unresolved**, across305 repair sessions and
+**$21.9939794** recorded repair API usage. Their$160 reservation closes once;
 64 original search sessions are reused without another model request or charge.
-All32 per-case native snapshots authenticate their19 source files. Unresolved
-patches and raw failures stay retained, including an executed target assertion
-failure and a code-patch rejection matching the pinned upstream harness.
+The preceding32 Poly attempts retain28 resolved,4 unresolved,283 repair sessions
+and$19.5413949 usage. All64 native snapshots authenticate their19 source files.
+Unresolved patches and raw failures stay retained, including an executed target
+assertion failure and a code-patch rejection matching the pinned upstream harness.
 The unchanged dispatcher has started the next32-task phase with two solver
 workers under a new$160 reservation. The269-case continuation still uses its
 nine fixed phases; no model retry or task replacement occurs.
@@ -106,14 +108,14 @@ controls. No model retry, task replacement or search rerun occurs. The cleanup
 helper bounds removal/absence verification and checkpoints ownership while
 preserving model outputs; dispatch still stops on unconfirmed cleanup.
 
-Across all263 repairs, new API usage totals **$158.9318231**. Their allocated
-original search usage is$2.73622192, for **$161.66804502** modeled search-plus-repair
-usage, without charging reused search again. At the263-case closure, the
-additional$500 authorization has **$341.0681769 remaining**; cumulative program
-API usage including prior work is$239.94332808. These are recorded SDK usage
+Across all295 repairs, new API usage totals **$180.9258025**. Their allocated
+original search usage is$3.098277485, for **$184.024079985** modeled search-plus-repair
+usage, without charging reused search again. At the295-case closure, the
+additional$500 authorization has **$319.0741975 remaining**; cumulative program
+API usage including prior work is$261.93730748. These are recorded SDK usage
 values; native compute and reconciled invoices remain separate.
 The next32-task phase is now running under a new$160 reservation, leaving
-$181.0681769 unreserved at launch. A reservation is a ceiling, not another
+$159.0741975 unreserved at launch. A reservation is a ceiling, not another
 charge; this new phase's receipts are not settled. All116 Poly and153 Multi
 source/native admissions and all269 actual model/native command checks precede
 remaining paid execution.
