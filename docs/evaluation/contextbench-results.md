@@ -206,29 +206,44 @@ Original source failures remain retained. The source owner has exited, and the
 unchanged four-worker controller is running306 canonical neutral/reference
 executions. Source closure adds no candidate attempt or provider usage.
 
-Two observed Zstd native-script deadlines now have separately closed neutral and
+Six observed Zstd native-script deadlines now have separately closed neutral and
 reference diagnostics at3,600 seconds, with the same adapter, images, scripts,
-scoring and container resources. Both produce the expected unresolved/resolved
+scoring and container resources. They produce the expected unresolved/resolved
 outcomes and pass current-result/source/cleanup reaudits. Their aggregate reports
-still need actual base-only executions before admission. Further observed Zstd
-deadline diagnostics are running. Three modern Ponyc images instead stop before
+and pure NONE transitions still need actual base-only executions before admission.
+Three modern Ponyc images instead stop before
 tests because the offline runner lacks their pinned LLVM dependency. An audit of
-all12 unattempted Ponyc source recipes isolates these three configurations;
-bounded public-dependency cache preparations are running without patches, tests
-or model calls. Completed cache construction alone cannot qualify an environment:
-fresh neutral/reference controls must still pass the unchanged900-second runner.
+all12 unattempted Ponyc source recipes isolates these three configurations.
+Two caches are compiled and independently source-checked. Their original image
+commit requests exceeded a90-second client read guard but actually completed;
+those observation errors remain retained. Metadata restoration preserves every
+registered filesystem layer and restores the full original execution Config.
+Its small manifest requires those existing layers and is not a portable image.
+The first fresh controls retain an unrelated broadcast failure in one reference
+and compiler signal9 failures in another neutral. Explicit bridge and bounded
+Ponyc worker/memory options are independently committed and pass139 related unit
+tests; a fresh bridge-only control pair is running. The third dependency
+preparation uses a separate3,600-second commit
+guard and retains uncertain work for explicit recovery. No patch, native test
+or model call runs during cache construction; construction is not admission.
+The original offline sweep also exposes missing public dependencies in other
+repositories. Separate bridge diagnostics retain those failures and preserve
+images, scripts, scorer,900-second deadlines and default resource ceilings.
 
 Two other original Ponyc neutral runs abort inside added regression tests, after
 635 and874 completed test results respectively. Their references record all
 declared targets. The prospective source-bound admission keeps170 and36 absent
 non-NONE targets uncredited and requires independent base-only executions covering
 the original test IDs. A separate original reference records a cleanup failure
-after its required tests pass; its container is independently absent, while the
-raw error remains unchanged and a fresh control pair is still required.
+after its required tests pass. A fresh unchanged pair now satisfies the criterion
+with all749 targets recorded as passed in its reference. The neutral records
+704 passes and10 failures;35 explicit NONE targets remain absent and uncredited.
+The original raw error remains unchanged and all containers are independently
+absent. Native exit codes2/2 remain visible; this is not a fully green suite.
 
 An uninstalled native transport draft binds these correction paths without
 changing the nine generated model-dispatch/reservation/settlement variants or
-the116 actual Poly argument bindings. Actual current-result reaudits cover14
+the116 actual Poly argument bindings. Actual current-result reaudits cover22
 closed pairs; argument fixtures do not qualify the full153-case cohort. The real
 draft gate rejects before batch creation, a child process or a reservation.
 Complete selected-control/base-only qualification and owner exits remain open;
@@ -811,7 +826,12 @@ the actual231 prefix as500 and a synthetic complete index with a live paid owner
 Failed-output and binary-seed bytes roundtrip through actual split zstd parts;
 symlinked inputs and corrupted parts are rejected. Archive completion requires
 decoding every actual part and hashing every member. The remaining269 archive
-has not executed, and private archival does not approve publication.
+has not executed, and private archival does not approve publication. An
+unlaunched replacement also requires the installed, frozen selected-native
+transport before acquiring output. It retains constructor/probe scripts omitted
+by the earlier filename rules. Actual source-file inventory and rejection checks
+pass while the existing codec, prior-part and nine-phase native/fee checks remain
+unchanged. The original waiting owner must exit before this replacement starts.
 A separate read-only owner waits for that actual full500 index and its closed
 official metric record, then replays all1,000 original search workers and confirmed
 repair inputs through the unchanged selection compiler. It requires the exact
