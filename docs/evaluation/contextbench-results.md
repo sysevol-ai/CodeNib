@@ -25,45 +25,51 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The pinned official evaluator now scores the final selected contexts for all
-**231 completed first attempts**, including all43 unresolved repairs. Per-task
+**263 completed first attempts**, including all47 unresolved repairs. Per-task
 Recall, Precision and F1 are macro averaged, with F1 computed before averaging:
 
-| Final selected context, partial231 | Recall | Precision | F1 |
+| Final selected context, partial263 | Recall | Precision | F1 |
 | --- | ---: | ---: | ---: |
-| File | 91.44% | 20.38% | 30.28% |
-| Block / symbol | 86.98% | 14.48% | 22.87% |
-| Line | 80.65% | 21.87% | 31.47% |
+| File | 90.20% | 21.17% | 31.10% |
+| Block / symbol | 86.76% | 15.08% | 23.78% |
+| Line | 80.31% | 22.84% | 32.65% |
 
-The [partial231 score summary](../assets/contextbench_final_context_partial231_summary.json)
-retains exact metrics and evaluator/input hashes. The same231 IDs in the original
-search table have80.12% line Recall and31.55% F1. Final selection adds about0.53
-Recall points while F1 decreases about0.08 points; the observed gain is modest.
-The same-ID descriptive audit finds15 tasks with higher line Recall and216
-unchanged, with none lower. Line F1 improves on7 tasks, falls on44 and remains
-unchanged on180. Adding confirmed source can increase Recall while reducing
-Precision; a higher final F1 is not guaranteed.
+The [partial263 score summary](../assets/contextbench_final_context_partial263_summary.json)
+retains exact metrics, native outcomes, usage and evaluator/input hashes. The
+same263 IDs in the original search table have79.83% line Recall and32.77% F1.
+Final selection adds about0.47 Recall points while F1 decreases about0.13 points;
+the observed gain remains modest. The same-ID descriptive audit finds16 tasks
+with higher line Recall and247 unchanged, with none lower. Line F1 improves on7
+tasks, falls on56 and remains unchanged on200. Adding confirmed source can
+increase Recall while reducing Precision; a higher final F1 is not guaranteed.
 This is not a strict causal ablation: three reused development repairs have
 different original search inputs and retrospective selections. Source attribution
-for arbitrary shell output remains partial. The231 source mix differs from
+for arbitrary shell output remains partial. The263 source mix differs from
 full500; do not compare these partial values directly with the full500 search
-table or present them as the final leaderboard score. Native outcomes remain
-188/231 resolved, or81.39%, with$141.76314628 allocated search-plus-repair model
-usage, about$0.61369 per task. This scoring invokes no model or native test.
+table or present them as the final leaderboard score. Native outcomes retain
+216/263 resolved, or82.13%, with$161.66804502 allocated search-plus-repair model
+usage, about$0.61471 per task. Scoring invokes no model or native test. The
+[prior231 summary](../assets/contextbench_final_context_partial231_summary.json)
+remains available with its original population and hashes.
 
 The canonical500 batches with completed grading and settled fees retain
-**231 unique first candidate attempts:188 natively resolved and43 unresolved**.
-They include the three original development repairs,174 Verified tasks and54 Pro
-tasks in canonical metadata order. All231 raw patch/native/selection/fee bindings
-authenticate, including2,521 unique metered search/repair sessions. The remaining269
-are outside these settled cohorts. The verified native transport is now installed,
-and the unchanged dispatcher has started the first32 remaining tasks with two
-concurrent solver workers. The full269 continuation uses nine fixed batches;
-new outcomes join the total only after native grading and fee closure. The
-latest54 Pro first attempts finish with
-**34 resolved,20 unresolved**, across675 metered repair sessions and
-**$70.9951234** actual API usage. Their$270 reservation closes once and is released;
-it is not an additional charge. The preceding55 Verified attempts retain their
-45 resolved,10 unresolved outcomes and$21.4079353 usage.
+**263 unique first candidate attempts:216 natively resolved and47 unresolved**.
+They include three original development repairs,174 Verified tasks,54 Pro tasks
+and32 Poly tasks in canonical metadata order. All263 raw patch/native/selection/
+fee bindings authenticate, including2,868 unique metered search/repair sessions.
+The remaining237 are outside these settled cohorts. The first32 remaining Poly
+attempts finish with **28 resolved,4 unresolved**, across283 repair sessions and
+**$19.5413949** recorded repair API usage. Their$160 reservation closes once;
+64 original search sessions are reused without another model request or charge.
+All32 per-case native snapshots authenticate their19 source files. Unresolved
+patches and raw failures stay retained, including an executed target assertion
+failure and a code-patch rejection matching the pinned upstream harness.
+The unchanged dispatcher has started the next32-task phase with two solver
+workers under a new$160 reservation. The269-case continuation still uses its
+nine fixed phases; no model retry or task replacement occurs.
+The prior54 Pro first attempts retain **34 resolved,20 unresolved**, across675
+repair sessions and$70.9951234 usage; their$270 reservation closes once. The
+preceding55 Verified attempts retain45 resolved,10 unresolved and$21.4079353 usage.
 The earlier58 selected-context exports pass the unchanged official evaluator as
 a format compatibility check. A zero-model provenance replay now reauthenticates
 all354 original search workers and confirmed repair inputs for the completed177,
@@ -75,7 +81,7 @@ remains partial, and the original three selections remain disclosed as retrospec
 These exposed partial results do not establish full500 Pass@1 or complete-system
 Recall/F1. Full500 input provenance and publication replay remain open.
 
-The latest64 fixed tasks complete with **58 resolved,6 unresolved** and
+The earlier64 fixed tasks complete with **58 resolved,6 unresolved** and
 **$25.4390047** across504 fully metered repair sessions. Every first patch,
 native result and source selection authenticates, and all128 owned solver/native
 containers are independently confirmed absent. The$320 reservation closes once;
@@ -100,17 +106,17 @@ controls. No model retry, task replacement or search rerun occurs. The cleanup
 helper bounds removal/absence verification and checkpoints ownership while
 preserving model outputs; dispatch still stops on unconfirmed cleanup.
 
-Across all231 repairs, new API usage totals **$139.3904282**. Their allocated
-original search usage is$2.37271808, for **$141.76314628** modeled search-plus-repair
-usage, without charging reused search again. At this closure, the new$500
-authorization has **$360.6095718 remaining**, with no active reservation; cumulative
-program API usage including prior work is$220.40193318. These are recorded SDK
-usage values; native compute and reconciled invoices remain separate.
-These values describe the settled231 prefix. The first remaining32-task batch
-is now running under a$160 reservation, leaving$200.6095718 unreserved at launch;
-reservation is a ceiling, not an additional charge. Its actual receipts are not
-yet settled. All116 Poly and153 Multi source/native admissions and all269
-actual model/native command checks precede this launch.
+Across all263 repairs, new API usage totals **$158.9318231**. Their allocated
+original search usage is$2.73622192, for **$161.66804502** modeled search-plus-repair
+usage, without charging reused search again. At the263-case closure, the
+additional$500 authorization has **$341.0681769 remaining**; cumulative program
+API usage including prior work is$239.94332808. These are recorded SDK usage
+values; native compute and reconciled invoices remain separate.
+The next32-task phase is now running under a new$160 reservation, leaving
+$181.0681769 unreserved at launch. A reservation is a ceiling, not another
+charge; this new phase's receipts are not settled. All116 Poly and153 Multi
+source/native admissions and all269 actual model/native command checks precede
+remaining paid execution.
 
 The Poly preparation encounters native environment failures before any of the
 remaining269 model requests. A VSCode diagnostic compiles but cannot download
@@ -323,7 +329,9 @@ installation. An initial installer fails before retirement because its Conda
 Python lacks pidfd support; the failed files and unchanged-ledger evidence remain
 retained. The corrected installer delegates only process retirement to system
 Python. Installed native admission passes again after retirement, before the
-unchanged dispatcher acquires its fresh intent and starts the first32 tasks.
+unchanged dispatcher acquires its fresh intent. Its first32-task phase now
+closes with28 resolved/4 unresolved and known fees; the following32-task phase
+is active under the same frozen policy.
 
 A separate early diagnostic on one prepared MUI environment records all 8,548
 declared required test identifiers with PASS/FAIL statuses in both actual local
@@ -836,7 +844,7 @@ evaluator commit `1436c28a8eb95496da4ea69ad458b9f8a8eb7d61`; all29 frozen
 evaluator source hashes and the actual issue/Gold table hash reauthenticate.
 The draft contains no final results file or submission claim.
 
-The remaining269 first attempts now have a live owner for nine fixed,
+The269-case continuation has a live owner for nine fixed,
 sequential batches. Isolated synthetic admissions exercise all269 identities,
 source-resource overrides, native controls and known-fee error records. Every
 batch partitions each task once; reservation and settlement variants are
@@ -850,9 +858,9 @@ start only after the preceding phase has closed fees and updated both ledgers
 and its handoff; a completion marker is written last. This prevents overlapping
 reservations and late metadata writes. The owner waits for actual full-cohort
 source/native admission, reserves only existing authorized usage and never
-retries a model or replaces a task. The actual first32-task phase has started
-under a$160 reservation; the synthetic checks add no native environment or
-candidate score. The obsolete original269 controller has exited before this
+retries a model or replaces a task. The actual first32-task phase closes with
+28 resolved/4 unresolved and$19.5413949 usage; the next32 tasks run under a new
+$160 reservation. Synthetic checks add no native environment or candidate score. The obsolete original269 controller has exited before this
 new exclusive paid intent.
 Admission prepares both remaining source cohorts before inference. Actual
 Poly116 and Multi153 admission proofs and source/native owner exits now precede
