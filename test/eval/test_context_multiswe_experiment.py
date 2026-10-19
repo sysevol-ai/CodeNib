@@ -79,6 +79,7 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
         ({"native_test_workers": 0}, "ponylang/ponyc", "workers"),
         ({"native_test_workers": 4}, "ponylang/ponyc", "workers"),
         ({"native_test_workers": 2}, "fmtlib/fmt", "only for Ponyc"),
+        ({"native_cpu_count": 8}, "fmtlib/fmt", "CPU count"),
     ],
 )
 def test_native_resources_reject_before_container_or_output(
@@ -102,6 +103,15 @@ def test_native_resources_reject_before_container_or_output(
 
     monkeypatch.setattr(multi, "command", unexpected)
     with pytest.raises(ValueError, match=message):
+        multi.grade_multi(args)
+    assert not output.exists()
+
+
+def test_native_affinity_rejects_insufficient_cpus_before_output(monkeypatch, tmp_path):
+    monkeypatch.setattr(multi.os, "sched_getaffinity", lambda pid: {7})
+    output = tmp_path / "grade"
+    args = SimpleNamespace(timeout=900, native_cpu_count=2, output=output)
+    with pytest.raises(ValueError, match="at least two allowed CPUs"):
         multi.grade_multi(args)
     assert not output.exists()
 
@@ -176,6 +186,8 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         args.native_memory_gib = 8
         args.native_network = "bridge"
         args.native_test_workers = 2
+        args.native_cpu_count = 2
+        monkeypatch.setattr(multi.os, "sched_getaffinity", lambda pid: {7, 9, 12})
     monkeypatch.setattr(multi, "native_environment", lambda: multi.HARNESS_HASHES)
     scripts = {
         script: f"pinned native {repo} {script}"
@@ -204,12 +216,15 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
             assert cmd[cmd.index("--pids-limit") + 1] == "256"
             if native_profile:
                 assert cmd[cmd.index("--env") + 1] == "MAKEFLAGS=num_cores=2"
+                assert cmd[cmd.index("--cpuset-cpus") + 1] == "7,9"
             else:
                 assert "--env" not in cmd
+                assert "--cpuset-cpus" not in cmd
             recorded = json.loads((output / "config.json").read_text())
             assert recorded["native_resources"] == {
                 "memory_gib": 8 if native_profile else 3,
                 "cpu_quota": 2,
+                "cpu_affinity": "7,9" if native_profile else None,
                 "pids_limit": 256,
                 "network": "bridge" if native_profile else "none",
                 "test_workers": 2 if native_profile else None,
