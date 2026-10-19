@@ -912,6 +912,19 @@ It retains97 actual constructor/probe/recovery scripts, including failed
 installation evidence. Actual full153 admission, source inventory and partial231
 rejection checks pass; the codec, prior-part and nine-phase native/fee checks
 remain unchanged. No archive compression starts until actual full500 closure.
+The private269 preview admission now binds the installed native contract and
+current archive path. It reauthenticates the existing109 real closed cases and
+1,092 repair sessions for$92.4030587 without changing their evidence. Actual231
+input is rejected before output, compression or credential loading. A separate
+owned-child fixture proves that a final archive marker cannot release preview
+generation while that exact producer remains alive. The preview/pattern-review
+waiter is live; it runs only after actual500 archive closure and producer exit.
+The established semantic redactor, Git-seed handling and codec remain unchanged.
+Scoped findings still need contextual classification and final artifact review.
+The private submission README and runtime bindings now match this route. Its
+actual metadata fields pass the pinned official schema before the validator
+rejects the deliberately absent full500 results file; no final score or formal
+submission metadata is generated from partial results.
 A separate read-only owner waits for that actual full500 index and its closed
 official metric record, then replays all1,000 original search workers and confirmed
 repair inputs through the unchanged selection compiler. It requires the exact
