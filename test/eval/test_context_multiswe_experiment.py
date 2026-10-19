@@ -81,6 +81,7 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
         ({"native_test_workers": 2}, "fmtlib/fmt", "only for Ponyc"),
         ({"native_cpu_count": 8}, "fmtlib/fmt", "CPU count"),
         ({"native_pids_limit": 0}, "fmtlib/fmt", "process limit"),
+        ({"native_log_streams": "discard-stderr"}, "fmtlib/fmt", "log streams"),
     ],
 )
 def test_native_resources_reject_before_container_or_output(
@@ -115,6 +116,63 @@ def test_native_affinity_rejects_insufficient_cpus_before_output(monkeypatch, tm
     with pytest.raises(ValueError, match="at least two allowed CPUs"):
         multi.grade_multi(args)
     assert not output.exists()
+
+
+@pytest.mark.parametrize("times_out", [False, True])
+@pytest.mark.parametrize(
+    "stdout,stderr,separator",
+    [
+        (
+            b"JvmOptionsParserTest > testMandatoryJvmOptionApplicableJvmPresent PASSED",
+            b"Picked up JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8\n",
+            b"\n",
+        ),
+        (b"> Task :logstash-xpack:compileTestJava\n", b"> Run with --scan\n", b""),
+        (b"", b"stderr only\r\n\xff", b""),
+        (b"stdout only\x00", b"", b""),
+    ],
+)
+def test_native_separate_logs_preserve_records_and_timeout_evidence(
+    monkeypatch, tmp_path, stdout, stderr, separator, times_out
+):
+    def run(argv, **kwargs):
+        assert argv == ["docker", "exec", "owned", "bash", "/home/fix-run.sh"]
+        assert kwargs["timeout"] == 900
+        kwargs["stdout"].write(stdout)
+        kwargs["stderr"].write(stderr)
+        if times_out:
+            raise subprocess.TimeoutExpired(argv, 900)
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(multi.subprocess, "run", run)
+    if times_out:
+        with pytest.raises(subprocess.TimeoutExpired):
+            multi.run_native_tests("owned", tmp_path, 900, "separate")
+    else:
+        assert (
+            multi.run_native_tests("owned", tmp_path, 900, "separate").returncode == 1
+        )
+    expected = {
+        "fix-patch-run.stdout.log": stdout,
+        "fix-patch-run.stderr.log": stderr,
+        "fix-patch-run.log": stdout + separator + stderr,
+    }
+    for filename, content in expected.items():
+        assert (tmp_path / filename).read_bytes() == content
+    capture = json.loads((tmp_path / "native-log-streams.json").read_text())
+    assert capture == {
+        "mode": "separate",
+        "composition": ["fix-patch-run.stdout.log", "fix-patch-run.stderr.log"],
+        "separator_hex": separator.hex(),
+        "separator_offset": len(stdout),
+        "files": {
+            filename: {
+                "sha256": hashlib.sha256(content).hexdigest(),
+                "bytes": len(content),
+            }
+            for filename, content in expected.items()
+        },
+    }
 
 
 @pytest.mark.parametrize(
@@ -189,6 +247,7 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         args.native_test_workers = 2
         args.native_cpu_count = 2
         args.native_pids_limit = 1024
+        args.native_log_streams = "separate"
         monkeypatch.setattr(multi.os, "sched_getaffinity", lambda pid: {7, 9, 12})
     monkeypatch.setattr(multi, "native_environment", lambda: multi.HARNESS_HASHES)
     scripts = {
@@ -277,9 +336,13 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         elif cmd[0] == "docker":
             assert state["copied"] and cmd[-1] == "/home/fix-run.sh"
             state["executed"] = True
+            if native_profile:
+                kwargs["stdout"].write(b"official native test output\n")
+                kwargs["stderr"].write(b"JVM diagnostic\n")
+            else:
+                kwargs["stdout"].write("official native test output\n")
             if failure == "timeout":
                 raise subprocess.TimeoutExpired(cmd, 600)
-            kwargs["stdout"].write("official native test output\n")
         else:
             assert state["executed"] and "multi_swe_bench.harness.gen_report" in cmd
             assert (
@@ -321,6 +384,15 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
     assert result["resolved"] == (failure is None)
     assert result["status"] == ("graded" if failure is None else "error")
     assert result["model_calls"] == 0
+    if native_profile and state["executed"]:
+        capture = result["native_log_capture"]
+        work = output / "work" / repo / "evals" / f"pr-{number}"
+        assert result["native_log_capture_sha256"] == multi.digest(
+            work / "native-log-streams.json"
+        )
+        assert capture["files"]["fix-patch-run.stderr.log"]["sha256"] == multi.digest(
+            work / "fix-patch-run.stderr.log"
+        )
     if failure is None:
         assert result["native_exit_code"] == native_exit_code
     if failure in {"startup_timeout", "copy_mismatch", "wrong_tree", "wrong_script"}:

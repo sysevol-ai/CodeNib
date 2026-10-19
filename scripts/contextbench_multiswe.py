@@ -16,6 +16,7 @@ import importlib.metadata
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -255,6 +256,58 @@ def command(args, *, timeout=60, **kwargs):
     ).stdout.strip()
 
 
+def run_native_tests(container, work, timeout, log_streams):
+    """Retain raw streams before composing the opt-in parser log.
+
+    A shared stdout/stderr file permits JVM diagnostics to split Gradle test
+    records. Separate capture preserves each stream's bytes and order. The
+    parser receives stdout followed by stderr, with one recorded newline only
+    when needed to separate two nonempty streams. Cross-stream chronology is
+    unavailable in this mode. Finalization also retains partial timed-out runs.
+    """
+    argv = ["docker", "exec", container, "bash", "/home/fix-run.sh"]
+    canonical = work / "fix-patch-run.log"
+    if log_streams == "merged":
+        with canonical.open("x") as log:
+            return subprocess.run(
+                argv, stdout=log, stderr=subprocess.STDOUT, timeout=timeout
+            )
+    stdout = work / "fix-patch-run.stdout.log"
+    stderr = work / "fix-patch-run.stderr.log"
+    with stdout.open("xb") as out, stderr.open("xb") as err:
+        try:
+            return subprocess.run(argv, stdout=out, stderr=err, timeout=timeout)
+        finally:
+            out.flush()
+            err.flush()
+            separator = b""
+            with stdout.open("rb") as source, canonical.open("xb") as target:
+                shutil.copyfileobj(source, target)
+                if source.tell() and stderr.stat().st_size:
+                    source.seek(-1, os.SEEK_END)
+                    if source.read(1) != b"\n":
+                        separator = b"\n"
+                        target.write(separator)
+                with stderr.open("rb") as errors:
+                    shutil.copyfileobj(errors, target)
+            write_json(
+                work / "native-log-streams.json",
+                {
+                    "mode": "separate",
+                    "composition": [stdout.name, stderr.name],
+                    "separator_hex": separator.hex(),
+                    "separator_offset": stdout.stat().st_size,
+                    "files": {
+                        path.name: {
+                            "sha256": digest(path),
+                            "bytes": path.stat().st_size,
+                        }
+                        for path in (stdout, stderr, canonical)
+                    },
+                },
+            )
+
+
 def grade_multi(args):
     """Own one fresh native grader; remove it synchronously on every exit.
 
@@ -276,6 +329,9 @@ def grade_multi(args):
     pids_limit = getattr(args, "native_pids_limit", 256)
     if pids_limit not in (256, 1024):
         raise ValueError("Native Multi process limit must be 256 or 1024")
+    log_streams = getattr(args, "native_log_streams", "merged")
+    if log_streams not in ("merged", "separate"):
+        raise ValueError("Native Multi log streams must be merged or separate")
     test_workers = getattr(args, "native_test_workers", None)
     if test_workers not in (None, 2):
         raise ValueError("Native Ponyc test workers must be 2")
@@ -338,6 +394,7 @@ def grade_multi(args):
             "image_repo_digests": metadata.get("RepoDigests", []),
             "adapter_sha256": digest(Path(__file__)),
             "timeout": args.timeout,
+            "native_log_streams": log_streams,
             "container_start_timeout": 180,
             "source_commit": config["source_commit"],
             "source_tree": config["source_tree"],
@@ -439,13 +496,7 @@ def grade_multi(args):
             raise ValueError("Native image did not receive the exact solver patch")
         row["applied_solver_patch_sha256"] = actual
         write_json(result_path, row)
-        with (work / "fix-patch-run.log").open("x") as log:
-            process = subprocess.run(
-                ["docker", "exec", container, "bash", "/home/fix-run.sh"],
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                timeout=args.timeout,
-            )
+        process = run_native_tests(container, work, args.timeout, log_streams)
         row["native_exit_code"] = process.returncode
         with (args.output / "grading.log").open("x") as log:
             subprocess.run(
@@ -490,6 +541,14 @@ def grade_multi(args):
     except Exception as exc:
         row.update(status="error", resolved=False, error=f"{type(exc).__name__}: {exc}")
     finally:
+        capture = work / "native-log-streams.json"
+        try:
+            if capture.is_file():
+                row["native_log_capture"] = json.loads(capture.read_text())
+                row["native_log_capture_sha256"] = digest(capture)
+        except (OSError, ValueError) as exc:
+            row.update(status="error", resolved=False)
+            row["native_log_capture_error"] = f"{type(exc).__name__}: {exc}"
         row["container_removed"] = False
         try:
             removal = subprocess.run(
@@ -533,6 +592,12 @@ def main():
         choices=(256, 1024),
         default=256,
         help="Explicit native process ceiling for admitted JVM test pools",
+    )
+    parser.add_argument(
+        "--native-log-streams",
+        choices=("merged", "separate"),
+        default="merged",
+        help="Preserve separate raw streams and compose stdout before stderr",
     )
     grade_multi(parser.parse_args())
 
