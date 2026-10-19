@@ -925,6 +925,19 @@ The private submission README and runtime bindings now match this route. Its
 actual metadata fields pass the pinned official schema before the validator
 rejects the deliberately absent full500 results file; no final score or formal
 submission metadata is generated from partial results.
+The extended relocated replay now authenticates the selected19-file native
+snapshots and separate-stream publication bindings without opening private
+originals. An actual new Poly repair and actual controls for all five Multi
+adapters pass through redacted excerpts; changed files, incomplete manifests,
+wrong images/adapters, missing CPU launchers and short outer deadlines fail.
+The control transport wrappers are synthetic fixtures and add no candidate score.
+Its complete231-part regression preserves identical per-case replay records,
+188/43 outcomes,2,521 sessions and$141.76314628 modeled usage. The established
+codec, runtime extraction and parent execution remain AST-identical. Exact
+portable tool bytes and actual verification records are staged in the private
+submission draft. A new read-only owner waits for actual500 metric closure,
+disjoint preview parts and the exact preview producer's exit before full500
+replay. Full500 replay and contextual privacy review remain incomplete.
 A separate read-only owner waits for that actual full500 index and its closed
 official metric record, then replays all1,000 original search workers and confirmed
 repair inputs through the unchanged selection compiler. It requires the exact
