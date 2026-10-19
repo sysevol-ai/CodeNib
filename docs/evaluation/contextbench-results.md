@@ -1,4 +1,4 @@
-# ContextBench retrieval experiments
+# ContextBench agent evaluation
 
 The complementary Haiku search pair has completed all **500 canonical tasks**
 under execution protocol `3e20eb64`, with 1,000 accepted worker sessions and no
@@ -24,31 +24,37 @@ it excludes repair, native grading and compute. The search batch is settled once
 its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
+The measured CodeNib route combines the complementary Haiku5.5 search pair,
+version-bound source delivery on demand, and Opus5.5 in the mini SWE-agent repair
+loop. Embeddings, Jev reranking and graph expansion are outside this frozen route.
+
 The pinned official evaluator now scores the final selected contexts for all
-**475 completed first attempts**, including all 104 unresolved repairs. Per-task
+**500 completed first attempts**, including all 112 unresolved repairs. Per-task
 Recall, Precision and F1 are macro averaged, with F1 computed before averaging:
 
-| Final selected context, partial475 | Recall | Precision | F1 |
+| Final selected context, canonical500 | Recall | Precision | F1 |
 | --- | ---: | ---: | ---: |
-| File | 88.95% | 18.87% | 28.08% |
-| Block / symbol | 86.08% | 14.43% | 22.02% |
-| Line | 79.01% | 20.83% | 28.85% |
+| File | 87.99% | 18.80% | 27.88% |
+| Block / symbol | 85.18% | 14.27% | 21.61% |
+| Line | 77.90% | 20.39% | 28.11% |
 
-The [partial475 score summary](../assets/contextbench_final_context_partial475_summary.json)
+The [canonical500 score summary](../assets/contextbench_final_context_500_summary.json)
 retains exact metrics, native outcomes, usage and evaluator/input hashes. The
-same 475 IDs in the original search table have 78.14% line Recall and 28.88% F1.
-Final selection adds about 0.87 Recall points while F1 decreases about 0.03 points;
+same 500 IDs in the original search table have 77.07% line Recall and 28.16% F1.
+Final selection adds about 0.83 Recall points while F1 decreases about 0.05 points;
 the observed gain remains modest. The same-ID descriptive audit finds 35 tasks
-with higher line Recall and 440 unchanged, with none lower. Line F1 improves on 23
-tasks, falls on 94 and remains unchanged on 358. Adding confirmed source can
+with higher line Recall and 465 unchanged, with none lower. Line F1 improves on 23
+tasks, falls on 100 and remains unchanged on 377. Adding confirmed source can
 increase Recall while reducing Precision; a higher final F1 is not guaranteed.
-This is not a strict causal ablation: three reused development repairs have
-different original search inputs and retrospective selections. Source attribution
-for arbitrary shell output remains partial. The 475 source mix differs from
-full500; do not compare these partial values directly with the full500 search
-table or present them as the final leaderboard score. Native outcomes retain
-371/475 resolved, or 78.11%, with $322.176711215 allocated search-plus-repair model
-usage, about $0.67827 per task. Scoring invokes no model or native test. The
+This is not a strict causal ablation: three development repairs are reused with
+retrospective selected-context exports; their original inputs and configurations
+remain in the raw evidence. Source attribution for arbitrary shell output remains
+partial. These results cover all500 selected-context records, without establishing
+complete capture of every source exposure. Comparability with the leaderboard's
+agent parser requires maintainer review. Native outcomes retain 388/500 resolved,
+or 77.60%, with $338.876600645 search-plus-repair model usage, about $0.67775 per
+task. Scoring invokes no model or native test. The
+[prior475 summary](../assets/contextbench_final_context_partial475_summary.json),
 [prior443 summary](../assets/contextbench_final_context_partial443_summary.json),
 [prior411 summary](../assets/contextbench_final_context_partial411_summary.json),
 [prior379 summary](../assets/contextbench_final_context_partial379_summary.json),
@@ -60,18 +66,17 @@ and [prior231 summary](../assets/contextbench_final_context_partial231_summary.j
 remain available with their original populations and hashes.
 
 The canonical500 batches with completed grading and settled fees retain
-**475 unique first candidate attempts:371 natively resolved and104 unresolved**.
-They comprise 174 Verified, 54 Pro, 116 Poly and 131 Multi tasks. The Multi group
+**500 unique first candidate attempts:388 natively resolved and112 unresolved**.
+They comprise 174 Verified, 54 Pro, 116 Poly and 156 Multi tasks. The Multi group
 retains three original development repairs; newly attempted cases follow canonical
-metadata order. All 475 raw patch/native/selection/fee bindings authenticate,
-including 5,262 unique metered search/repair sessions. The remaining 25 are outside
-these settled cohorts. The 128 new Multi attempts retain 91 resolved, 37 unresolved,
-1,247 repair sessions and $103.4305262 usage. Their latest 32 mixed
-JavaScript/Rust/TypeScript attempts finish with **23 resolved, 9 unresolved**,
-across 334 repair sessions and **$28.8745474** recorded repair API usage.
-Their $160 reservation closes once; 64 original search sessions
+metadata order. All 500 raw patch/native/selection/fee bindings authenticate,
+including 5,514 unique metered sessions: 1,000 search and 4,514 repair sessions.
+The 153 new Multi attempts retain 108 resolved, 45 unresolved, 1,449 repair sessions
+and $119.8486388 usage. Their final 25 TypeScript attempts finish with
+**17 resolved, 8 unresolved**, across 202 repair sessions and **$16.4181126**
+recorded repair API usage. Their $125 reservation closes once; 50 original search sessions
 are reused without another model request or charge. The 116 Poly attempts retain
-92 resolved, 24 unresolved, 1,006 repair sessions and $73.9567619 usage. All 244 new
+92 resolved, 24 unresolved, 1,006 repair sessions and $73.9567619 usage. All 269 new
 Poly/Multi native snapshots authenticate their 19 archived source files.
 Unresolved patches and raw failures stay retained, including an executed target
 assertion failure and a code-patch rejection matching the pinned upstream harness.
@@ -79,11 +84,16 @@ One budget-stopped first attempt retains all 20 metered calls and $4.1666292 rep
 usage. Its final request crosses the existing case guard, which is checked between
 requests; its unchanged first patch remains unresolved. Two turn-limited Rust
 attempts also retain their first patches and all 20 metered calls each.
-The unchanged dispatcher has started the final 25-task TypeScript Multi phase
-with two solver workers under a new $125 reservation. The 269-case continuation
-still uses its nine fixed phases; no model retry or task replacement occurs.
-Full500 context scoring, input provenance, publication review and relocated
-replay remain open.
+The dispatcher has closed all nine fixed phases, with no model retry or task
+replacement. The final API reservation is zero.
+
+A relocated replay verifies all500 selected contexts, first-patch/native bindings
+and unique fees from the prepared archive parts, using bundled frozen CodeNib
+sources. It authenticates all269 new native snapshots and their 5,111 source-file
+occurrences. Python audit hooks deny original-checkout access, network calls and
+child processes during the replay; this is not an operating-system sandbox or a
+fresh model, source-clone or native-test rerun. Final artifact composition, review
+of the resulting submission and maintainer comparability/publication remain open.
 
 The following earlier cohort and preparation records preserve historical outcomes
 and launch-time gates. The current closed population and remaining gates are
