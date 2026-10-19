@@ -25,30 +25,31 @@ its summary retains the budget snapshot at that settlement. These are recorded
 model usage values, not reconciled cash invoices or a provider credit balance.
 
 The pinned official evaluator now scores the final selected contexts for all
-**443 completed first attempts**, including all 95 unresolved repairs. Per-task
+**475 completed first attempts**, including all 104 unresolved repairs. Per-task
 Recall, Precision and F1 are macro averaged, with F1 computed before averaging:
 
-| Final selected context, partial443 | Recall | Precision | F1 |
+| Final selected context, partial475 | Recall | Precision | F1 |
 | --- | ---: | ---: | ---: |
-| File | 88.99% | 19.03% | 28.29% |
-| Block / symbol | 86.04% | 14.68% | 22.34% |
-| Line | 78.87% | 21.17% | 29.33% |
+| File | 88.95% | 18.87% | 28.08% |
+| Block / symbol | 86.08% | 14.43% | 22.02% |
+| Line | 79.01% | 20.83% | 28.85% |
 
-The [partial443 score summary](../assets/contextbench_final_context_partial443_summary.json)
+The [partial475 score summary](../assets/contextbench_final_context_partial475_summary.json)
 retains exact metrics, native outcomes, usage and evaluator/input hashes. The
-same 443 IDs in the original search table have 78.02% line Recall and 29.38% F1.
-Final selection adds about 0.84 Recall points while F1 decreases about 0.05 points;
-the observed gain remains modest. The same-ID descriptive audit finds 31 tasks
-with higher line Recall and 412 unchanged, with none lower. Line F1 improves on 20
-tasks, falls on 85 and remains unchanged on 338. Adding confirmed source can
+same 475 IDs in the original search table have 78.14% line Recall and 28.88% F1.
+Final selection adds about 0.87 Recall points while F1 decreases about 0.03 points;
+the observed gain remains modest. The same-ID descriptive audit finds 35 tasks
+with higher line Recall and 440 unchanged, with none lower. Line F1 improves on 23
+tasks, falls on 94 and remains unchanged on 358. Adding confirmed source can
 increase Recall while reducing Precision; a higher final F1 is not guaranteed.
 This is not a strict causal ablation: three reused development repairs have
 different original search inputs and retrospective selections. Source attribution
-for arbitrary shell output remains partial. The 443 source mix differs from
+for arbitrary shell output remains partial. The 475 source mix differs from
 full500; do not compare these partial values directly with the full500 search
 table or present them as the final leaderboard score. Native outcomes retain
-348/443 resolved, or 78.56%, with $292.836958005 allocated search-plus-repair model
-usage, about $0.66103 per task. Scoring invokes no model or native test. The
+371/475 resolved, or 78.11%, with $322.176711215 allocated search-plus-repair model
+usage, about $0.67827 per task. Scoring invokes no model or native test. The
+[prior443 summary](../assets/contextbench_final_context_partial443_summary.json),
 [prior411 summary](../assets/contextbench_final_context_partial411_summary.json),
 [prior379 summary](../assets/contextbench_final_context_partial379_summary.json),
 [prior347 summary](../assets/contextbench_final_context_partial347_summary.json),
@@ -59,28 +60,35 @@ and [prior231 summary](../assets/contextbench_final_context_partial231_summary.j
 remain available with their original populations and hashes.
 
 The canonical500 batches with completed grading and settled fees retain
-**443 unique first candidate attempts:348 natively resolved and95 unresolved**.
-They comprise 174 Verified, 54 Pro, 116 Poly and 99 Multi tasks. The Multi group
+**475 unique first candidate attempts:371 natively resolved and104 unresolved**.
+They comprise 174 Verified, 54 Pro, 116 Poly and 131 Multi tasks. The Multi group
 retains three original development repairs; newly attempted cases follow canonical
-metadata order. All 443 raw patch/native/selection/fee bindings authenticate,
-including 4,864 unique metered search/repair sessions. The remaining 57 are outside
-these settled cohorts. The 96 new Multi attempts retain 68 resolved, 28 unresolved,
-913 repair sessions and $74.5559788 usage. Their latest 32 mixed Go/Java/JavaScript
-attempts finish with **26 resolved, 6 unresolved**, across 339 repair sessions and
-**$26.6629257** recorded
-repair API usage. Their $160 reservation closes once; 64 original search sessions
+metadata order. All 475 raw patch/native/selection/fee bindings authenticate,
+including 5,262 unique metered search/repair sessions. The remaining 25 are outside
+these settled cohorts. The 128 new Multi attempts retain 91 resolved, 37 unresolved,
+1,247 repair sessions and $103.4305262 usage. Their latest 32 mixed
+JavaScript/Rust/TypeScript attempts finish with **23 resolved, 9 unresolved**,
+across 334 repair sessions and **$28.8745474** recorded repair API usage.
+Their $160 reservation closes once; 64 original search sessions
 are reused without another model request or charge. The 116 Poly attempts retain
-92 resolved, 24 unresolved, 1,006 repair sessions and $73.9567619 usage. All 212 new
+92 resolved, 24 unresolved, 1,006 repair sessions and $73.9567619 usage. All 244 new
 Poly/Multi native snapshots authenticate their 19 archived source files.
 Unresolved patches and raw failures stay retained, including an executed target
 assertion failure and a code-patch rejection matching the pinned upstream harness.
 One budget-stopped first attempt retains all 20 metered calls and $4.1666292 repair
 usage. Its final request crosses the existing case guard, which is checked between
-requests; its unchanged first patch remains unresolved.
-The unchanged dispatcher has started the next 32-task JavaScript/Rust/TypeScript
-Multi phase with two solver workers under a new $160 reservation. The 269-case
-continuation still uses its
-nine fixed phases; no model retry or task replacement occurs.
+requests; its unchanged first patch remains unresolved. Two turn-limited Rust
+attempts also retain their first patches and all 20 metered calls each.
+The unchanged dispatcher has started the final 25-task TypeScript Multi phase
+with two solver workers under a new $125 reservation. The 269-case continuation
+still uses its nine fixed phases; no model retry or task replacement occurs.
+Full500 context scoring, input provenance, publication review and relocated
+replay remain open.
+
+The following earlier cohort and preparation records preserve historical outcomes
+and launch-time gates. The current closed population and remaining gates are
+stated above.
+
 The prior54 Pro first attempts retain **34 resolved,20 unresolved**, across675
 repair sessions and$70.9951234 usage; their$270 reservation closes once. The
 preceding55 Verified attempts retain45 resolved,10 unresolved and$21.4079353 usage.
