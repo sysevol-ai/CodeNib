@@ -72,6 +72,41 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
 
 
 @pytest.mark.parametrize(
+    "overrides,repo,message",
+    [
+        ({"native_memory_gib": 64}, "ponylang/ponyc", "memory"),
+        ({"native_network": "host"}, "ponylang/ponyc", "network"),
+        ({"native_test_workers": 0}, "ponylang/ponyc", "workers"),
+        ({"native_test_workers": 4}, "ponylang/ponyc", "workers"),
+        ({"native_test_workers": 2}, "fmtlib/fmt", "only for Ponyc"),
+    ],
+)
+def test_native_resources_reject_before_container_or_output(
+    monkeypatch, tmp_path, overrides, repo, message
+):
+    solver = tmp_path / "solver"
+    solver.mkdir()
+    (solver / "config.json").write_text(json.dumps({"repo": repo}))
+    output = tmp_path / "grade"
+    args = SimpleNamespace(
+        solver_run=solver,
+        output=output,
+        timeout=900,
+        native_image="sha256:" + "a" * 64,
+        **overrides,
+    )
+    monkeypatch.setattr(multi, "native_environment", lambda: multi.HARNESS_HASHES)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid resources must not dispatch Docker")
+
+    monkeypatch.setattr(multi, "command", unexpected)
+    with pytest.raises(ValueError, match=message):
+        multi.grade_multi(args)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
     "failure",
     [
         None,
@@ -85,11 +120,16 @@ def test_multi_task_identity_and_source_remain_bound(tmp_path, repo, number):
     ],
 )
 @pytest.mark.parametrize(
-    "repo,number,native_exit_code",
-    [("fmtlib/fmt", 2394, 0), ("google/gson", 1391, 1), ("ponylang/ponyc", 2205, 2)],
+    "repo,number,native_exit_code,native_profile",
+    [
+        ("fmtlib/fmt", 2394, 0, False),
+        ("google/gson", 1391, 1, False),
+        ("ponylang/ponyc", 2205, 2, False),
+        ("ponylang/ponyc", 2205, 2, True),
+    ],
 )
 def test_native_grader_replaces_reference_before_running_and_removes_owner(
-    monkeypatch, tmp_path, failure, repo, number, native_exit_code
+    monkeypatch, tmp_path, failure, repo, number, native_exit_code, native_profile
 ):
     org, name = repo.split("/")
     solver_run = tmp_path / "solver"
@@ -132,6 +172,10 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         timeout=600,
         native_image="sha256:" + "a" * 64,
     )
+    if native_profile:
+        args.native_memory_gib = 8
+        args.native_network = "bridge"
+        args.native_test_workers = 2
     monkeypatch.setattr(multi, "native_environment", lambda: multi.HARNESS_HASHES)
     scripts = {
         script: f"pinned native {repo} {script}"
@@ -151,7 +195,26 @@ def test_native_grader_replaces_reference_before_running_and_removes_owner(
         if cmd[:3] == ["docker", "image", "inspect"]:
             return json.dumps([{"Id": args.native_image}])
         if cmd[:2] == ["docker", "run"]:
-            assert "--rm" in cmd and "none" in cmd and "--volume" not in cmd
+            assert "--rm" in cmd and "--volume" not in cmd
+            assert cmd[cmd.index("--network") + 1] == (
+                "bridge" if native_profile else "none"
+            )
+            assert cmd[cmd.index("--memory") + 1] == ("8g" if native_profile else "3g")
+            assert cmd[cmd.index("--cpus") + 1] == "2"
+            assert cmd[cmd.index("--pids-limit") + 1] == "256"
+            if native_profile:
+                assert cmd[cmd.index("--env") + 1] == "MAKEFLAGS=num_cores=2"
+            else:
+                assert "--env" not in cmd
+            recorded = json.loads((output / "config.json").read_text())
+            assert recorded["native_resources"] == {
+                "memory_gib": 8 if native_profile else 3,
+                "cpu_quota": 2,
+                "pids_limit": 256,
+                "network": "bridge" if native_profile else "none",
+                "test_workers": 2 if native_profile else None,
+                "environment": {"MAKEFLAGS": "num_cores=2"} if native_profile else {},
+            }
             state["container"] = cmd[cmd.index("--name") + 1]
             if failure == "startup_timeout":
                 raise subprocess.TimeoutExpired(cmd, 60)
