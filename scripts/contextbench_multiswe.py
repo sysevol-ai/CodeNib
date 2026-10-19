@@ -273,6 +273,9 @@ def grade_multi(args):
     network = getattr(args, "native_network", "none")
     if network not in ("none", "bridge"):
         raise ValueError("Native Multi network must be none or bridge")
+    pids_limit = getattr(args, "native_pids_limit", 256)
+    if pids_limit not in (256, 1024):
+        raise ValueError("Native Multi process limit must be 256 or 1024")
     test_workers = getattr(args, "native_test_workers", None)
     if test_workers not in (None, 2):
         raise ValueError("Native Ponyc test workers must be 2")
@@ -344,7 +347,7 @@ def grade_multi(args):
                 "memory_gib": memory_gib,
                 "cpu_quota": 2,
                 "cpu_affinity": cpu_affinity,
-                "pids_limit": 256,
+                "pids_limit": pids_limit,
                 "network": network,
                 "test_workers": test_workers,
                 "environment": (
@@ -380,7 +383,7 @@ def grade_multi(args):
                 "--cpus",
                 "2",
                 "--pids-limit",
-                "256",
+                str(pids_limit),
                 *(["--cpuset-cpus", cpu_affinity] if cpu_affinity is not None else []),
                 *(
                     ["--env", "MAKEFLAGS=num_cores=2"]
@@ -523,6 +526,13 @@ def main():
         type=int,
         choices=(2,),
         help="Expose two allowed CPUs to native worker pools; retain CPU quota",
+    )
+    parser.add_argument(
+        "--native-pids-limit",
+        type=int,
+        choices=(256, 1024),
+        default=256,
+        help="Explicit native process ceiling for admitted JVM test pools",
     )
     grade_multi(parser.parse_args())
 
