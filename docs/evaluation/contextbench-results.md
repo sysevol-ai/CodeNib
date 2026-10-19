@@ -196,29 +196,43 @@ environment qualification. Remaining paid admission must consume this separate
 policy and its actual receipts before launch; none of these three cases has a
 candidate repair yet.
 
-Multi source preparation can now run after actual Poly source finalization while
-Poly native recovery continues; all paid owners remain held and all native
-qualification gates still precede inference. Initial Multi preparation rejects
-reference artifacts left under `/home` by the native images. The interrupted
-19 source preparations and original intent remain retained. A corrected builder
-removes only the eight already-prohibited artifact paths before canonical reset,
-preserving source-tree, single-commit and artifact-absence checks and leaving the
-original native images unchanged. All153 generated builders and source-dispatch
-boundaries pass local checks. A live first-case canary passes before parallel
-preparation continues; a preparation error stops new dispatch. Seven sources
-prepare before two jq snapshots fail because Python3 is absent. A source-only
-runtime profile uses a checksum-verified public Python archive; it leaves native
-grading images unchanged. The jq snapshot also retains its exact oniguruma
-Gitlink using the earlier Pro submodule recipe: source files stay intact, with
-one commit and no remotes or reflogs. Its live canary now prepares successfully.
-The eight earlier prepared environments are reused without repeating preparation;
-all153 Multi sources now prepare successfully. A read-only closure audit
-reauthenticates every source proof, builder and canonical commit/tree binding,
-all34 source resource profiles and307 required solver/source/native image IDs.
-The original source owner exits and the unchanged four-worker native controller
-starts306 canonical neutral/reference executions. This closes source preparation,
-not native execution qualification or any candidate repair. No model calls or
-financial mutations occur during these source-only operations.
+All153 Multi source environments are prepared, including eight reused sources.
+A closure audit reauthenticates every source proof, builder and canonical
+commit/tree binding, all34 source resource profiles and307 required
+solver/source/native image IDs. Snapshots exclude reference artifacts and retain
+the single-commit boundary. The jq sources preserve their exact oniguruma Gitlink
+and use a checksum-verified public Python runtime; native images stay unchanged.
+Original source failures remain retained. The source owner has exited, and the
+unchanged four-worker controller is running306 canonical neutral/reference
+executions. Source closure adds no candidate attempt or provider usage.
+
+Two observed Zstd native-script deadlines now have separately closed neutral and
+reference diagnostics at3,600 seconds, with the same adapter, images, scripts,
+scoring and container resources. Both produce the expected unresolved/resolved
+outcomes and pass current-result/source/cleanup reaudits. Their aggregate reports
+still need actual base-only executions before admission. Further observed Zstd
+deadline diagnostics are running. Three modern Ponyc images instead stop before
+tests because the offline runner lacks their pinned LLVM dependency. An audit of
+all12 unattempted Ponyc source recipes isolates these three configurations;
+bounded public-dependency cache preparations are running without patches, tests
+or model calls. Completed cache construction alone cannot qualify an environment:
+fresh neutral/reference controls must still pass the unchanged900-second runner.
+
+Two other original Ponyc neutral runs abort inside added regression tests, after
+635 and874 completed test results respectively. Their references record all
+declared targets. The prospective source-bound admission keeps170 and36 absent
+non-NONE targets uncredited and requires independent base-only executions covering
+the original test IDs. A separate original reference records a cleanup failure
+after its required tests pass; its container is independently absent, while the
+raw error remains unchanged and a fresh control pair is still required.
+
+An uninstalled native transport draft binds these correction paths without
+changing the nine generated model-dispatch/reservation/settlement variants or
+the116 actual Poly argument bindings. Actual current-result reaudits cover14
+closed pairs; argument fixtures do not qualify the full153-case cohort. The real
+draft gate rejects before batch creation, a child process or a reservation.
+Complete selected-control/base-only qualification and owner exits remain open;
+no remaining269 candidate request has started.
 
 A separate early diagnostic on one prepared MUI environment records all 8,548
 declared required test identifiers with PASS/FAIL statuses in both actual local
@@ -754,10 +768,14 @@ Poly checks required identifiers against actual parsed test results. Multi needs
 transition-aware qualification: its report's base/test-patch results are historical
 dataset fields; only the current fix-patch result records the local control run.
 The153-case audit identifies21 pure NONE-to-PASS cases and five aggregate-only
-test reports. Expected NONE-to-PASS absence must remain distinct from a broken
-test runner. Ambiguous neutral collection needs extra local base-source execution
-evidence, outside candidate metrics. The Multi qualifier is now queued behind the
-actual153 source admissions and306 controls. A file fixture authenticates the
+test reports. Two observed regression-triggered aborts also require base-only
+evidence; their missing IDs receive no execution credit. Expected NONE-to-PASS
+absence and a regression abort must remain distinct from a broken test runner.
+The original qualifier cannot admit the observed failed original controls. Its
+prospective replacement binds completed original or separately corrected pairs
+to current test results, original failures and the actual source images. Extra
+local base-source executions remain outside candidate metrics and must finish
+before the selected153-case proof can close. A file fixture authenticates the
 existing fmt18-test result, rejects a synthetic empty current reference despite
 its18 historical passes, and verifies that the original test patch plus its
 inverse restore the exact base tree in a private Git index. This adds no model or
