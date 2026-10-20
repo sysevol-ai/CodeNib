@@ -44,10 +44,12 @@ def _repository_relative_source(ctx: ServerContext, value: str) -> str:
     return path_text
 
 
-def _bounded_source_content(payload: dict[str, Any]) -> dict[str, Any]:
+def _bounded_source_content(
+    payload: dict[str, Any], *, max_chars: int = MAX_SOURCE_CONTENT_CHARS
+) -> dict[str, Any]:
     content = str(payload.get("content") or "")
     original_chars = len(content)
-    if original_chars <= MAX_SOURCE_CONTENT_CHARS:
+    if original_chars <= max_chars:
         payload["content_projection"] = {
             "truncated": False,
             "original_chars": original_chars,
@@ -61,7 +63,7 @@ def _bounded_source_content(payload: dict[str, Any]) -> dict[str, Any]:
     returned_chars = 0
     line_truncated = False
     for line in lines:
-        available = MAX_SOURCE_CONTENT_CHARS - returned_chars
+        available = max_chars - returned_chars
         if available <= 0:
             break
         if len(line) > available:
@@ -110,6 +112,7 @@ def read_source_excerpt_impl(
     *,
     query: str,
     window_lines: int,
+    max_content_chars: int = MAX_SOURCE_CONTENT_CHARS,
 ) -> dict[str, Any]:
     """Select a bounded excerpt inside an anchor, using authenticated live bytes.
 
@@ -123,8 +126,19 @@ def read_source_excerpt_impl(
     window_lines = bounded_integer(
         window_lines, name="window_lines", maximum=MAX_SOURCE_WINDOW_LINES
     )
+    max_content_chars = bounded_integer(
+        max_content_chars,
+        name="max_content_chars",
+        maximum=MAX_SOURCE_CONTENT_CHARS,
+    )
     return _read_source_window(
-        ctx, file_path, start_line, end_line, query=query, window_lines=window_lines
+        ctx,
+        file_path,
+        start_line,
+        end_line,
+        query=query,
+        window_lines=window_lines,
+        max_content_chars=max_content_chars,
     )
 
 
@@ -136,6 +150,7 @@ def _read_source_window(
     *,
     query: str | None = None,
     window_lines: int | None = None,
+    max_content_chars: int = MAX_SOURCE_CONTENT_CHARS,
 ) -> dict[str, Any]:
 
     if getattr(ctx, "source_verified", False) is not True:
@@ -177,7 +192,7 @@ def _read_source_window(
     selection = None
     if window_lines is not None:
         offset, matches = query_focus_line(
-            selected, query, max_line_chars=MAX_SOURCE_CONTENT_CHARS
+            selected, query, max_line_chars=max_content_chars
         )
         selection = {
             "strategy": "query_window" if matches else "scope_head",
@@ -186,6 +201,7 @@ def _read_source_window(
             "inspected_end_line": min(last, len(all_lines)),
             "matched_query_terms": matches,
             "window_lines": window_lines,
+            "delivery_char_limit": max_content_chars,
         }
         first += offset
         selected = selected[offset : offset + window_lines]
@@ -197,7 +213,7 @@ def _read_source_window(
     }
     if int(payload["end_line"]) < first:
         raise ValueError("start_line exceeds the source file length.")
-    payload = _bounded_source_content(payload)
+    payload = _bounded_source_content(payload, max_chars=max_content_chars)
     if selection is not None:
         selection["omitted_before_lines"] = first - selection["scope_start_line"]
         selection["omitted_after_lines"] = max(
