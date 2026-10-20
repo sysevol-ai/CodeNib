@@ -232,7 +232,21 @@ async def run_agent_baseline(
     instance_rows = list(instances)
     logger.info("Loaded %d instance(s) from %s", len(instance_rows), args.dataset)
 
-    eval_metadata = dataset_obj.load_eval_metadata(args.eval_instances or "")
+    # Derive the default from --dataset: codenib_base reads its in-dataset
+    # labels, and the others use (or build) a per-dataset annotation file.
+    eval_path = args.eval_instances or (
+        ""
+        if args.dataset == "codenib_base"
+        else str(user_state_dir() / f"{args.dataset}_{args.split}_gt.json")
+    )
+    if isinstance(dataset_obj, LocbenchDataset):
+        # Label only the rows this run scores, so --limit also bounds the
+        # first-use GT locator run.
+        eval_metadata = dataset_obj.load_eval_metadata(
+            eval_path, instances=instance_rows
+        )
+    else:
+        eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     simplified_symbols = getattr(dataset_obj, "simplified_symbols", True)
     metrics_k = list(args.metrics_k)
 

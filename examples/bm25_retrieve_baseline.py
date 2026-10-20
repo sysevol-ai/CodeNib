@@ -137,8 +137,10 @@ def run_bm25_pipeline(args):
 
     logger.info("Loaded %d instance(s)", len(dataset_instances))
 
+    # Derive the default from --dataset so a Loc-Bench run can't silently align
+    # against the SWE-bench Lite ground truth and score no instances.
     eval_path = args.eval_instances or str(
-        Path.home() / ".codenib" / f"swebench_lite_{args.split}_gt.json"
+        Path.home() / ".codenib" / f"{args.dataset}_{args.split}_gt.json"
     )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     metrics_k = sorted(set(args.metrics_k))

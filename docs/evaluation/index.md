@@ -71,7 +71,7 @@ collection, joins, or custom runs rather than as scored benchmarks.
 | [CodeNib Base](datasets.md#codenib-base) | L1 Localization | Real issues; find the code the golden patch changed | C/C++, Go, Python, Rust, TypeScript/JavaScript | `CodeNibBaseDataset` | [Measured](grep_jev.md) |
 | [CodeNib Synthesis](datasets.md#codenib-synthesis) | L1 Localization | Synthetic behavioral, hint, reasoning, and traversal queries | C/C++, Go, Python, Rust, TypeScript/JavaScript | `CodeNibSynthesisDataset` | Runnable |
 | [SWE-bench Lite](datasets.md#swe-bench-lite) | L1 Localization | Real issues; find the code the golden patch changed | Python | `SwebenchDataset` | [Runnable](../agent_integrations.md#fixed-swe-bench-lite-coverage); dataset revision and a 50-case selection are pinned for paired policy runs |
-| [Loc-Bench v1](datasets.md#loc-bench-v1) | L1 Localization | Real issues with edited and added functions | Python | `LocbenchDataset` | Runnable |
+| [Loc-Bench v1](datasets.md#loc-bench-v1) | L1 Localization | Real issues, including features, performance, and security; find the code the golden patch changed | Python | `LocbenchDataset` | Runnable |
 | [SWE-Explore](swe_explore.md) | L1 Localization | Rank the source regions an issue needs | Seven languages in the fixed 20-case set | `codenib-swe-explore-benchmark` | [Pinned](swe_explore.md); scorer agrees with the official evaluator |
 | [Agent Retrieval Bench](agent_retrieval_bench.md) | L1 Localization | Four static tasks; code→test, comment→context, trace→code, edit→ripple | Mixed; multi-language repositories | `codenib-arb` | [Pinned](agent_retrieval_bench.md#validation); official scorer; 8-case smoke only |
 | [ContextBench](contextbench.md) | L2 Agent context | Real issues; an agent explores, and everything it reads is scored | C, C++, Go, Java, JavaScript, Python, Rust, TypeScript | `codenib-contextbench` | [Measured](contextbench-results.md); 500 canonical tasks with a research route; leaderboard review pending |
@@ -101,7 +101,7 @@ Numbered notes follow each table.
 | A · Planner `auto` | Runnable | — | Runnable | Runnable | Runnable | — |
 | B · Model-planned grep → Jev | [Measured](grep_jev.md) | — | — | — | — | — |
 | B · Agentless v1.5.0 | Runnable<sup>8</sup> | — | Runnable | Runnable | — | — |
-| C · CodeNib agent | Runnable | Runnable | Runnable | — | — | — |
+| C · CodeNib agent | Runnable | Runnable | Runnable | Runnable | — | — |
 | C · LocAgent | Runnable | — | [Pinned](../agent_integrations.md#paired-provider-compatibility) | Runnable | — | — |
 | C · CoSIL | Runnable | — | Runnable | Runnable | — | — |
 | C · OrcaLoca SearchAgent | Runnable | — | [Pinned](../agent_integrations.md#paired-provider-compatibility) | Runnable | — | — |

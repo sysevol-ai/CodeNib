@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 # GTLocator
 
-Extract symbol-level ground truth changes (functions, classes, methods) from SWE-bench unified diff patches. Identifies which symbols were modified, added, or deleted.
+Extract symbol-level ground truth changes (functions, classes, methods) from the golden patches of SWE-bench and Loc-Bench. Identifies which symbols were modified, added, or deleted.
 
 Supports Python, Go, Rust, C/C++, C#, Java, Ruby, PHP, Kotlin, Swift, Scala, Lua, JavaScript, and TypeScript.
 
@@ -90,14 +90,17 @@ from codenib.dataset.gt_locate import build_gt_metadata
 results = build_gt_metadata(dataset, work_dir="/data/repos", keep_repos=True)
 ```
 
-`SwebenchDataset.load_eval_metadata()` calls `build_gt_metadata` itself when
-its annotation file does not exist yet, so retrieval and agent harnesses can
-run on SWE-bench without a separate preparation step. The first run clones
+`SwebenchDataset.load_eval_metadata()` and `LocbenchDataset.load_eval_metadata()`
+call `build_gt_metadata` themselves when the annotation file does not exist
+yet, so retrieval and agent harnesses can run on SWE-bench and Loc-Bench without
+a separate preparation step. `LocbenchDataset` also locates the instances a
+run needs that an existing file lacks or failed on, holding a file lock beside
+the annotation file so concurrent runs do not locate into the same checkouts. The first run clones
 every repository and is slow.
 
 ## Command Line
 
-Write ground truth for a whole SWE-bench split:
+Write ground truth for a whole SWE-bench or Loc-Bench split:
 
 ```bash
 python -m codenib.dataset.gt_locate --dataset verified --split test \
@@ -106,9 +109,9 @@ python -m codenib.dataset.gt_locate --dataset verified --split test \
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--dataset` | `verified` | `verified` or `lite` |
+| `--dataset` | `verified` | `verified`, `lite`, or `locbench` |
 | `--split` | `test` | Hugging Face split |
-| `--output` | `~/.codenib/swebench_{dataset}_{split}_gt.json` | Output JSON path |
+| `--output` | `~/.codenib/swebench_{dataset}_{split}_gt.json`, or `~/.codenib/locbench_v1_{split}_gt.json` | Output JSON path |
 | `--work-dir` | `~/.codenib/tmp` | Where repositories are cloned |
 | `--limit` | all | Maximum number of instances |
 | `--filter` | `.*` | Regular expression over instance IDs |

@@ -90,6 +90,7 @@ _ensure_user_writable_hf_cache()
 from codenib.agent.skills.loader import SkillLoader
 from codenib.agent.skills.registry import SkillRegistry
 from codenib.compiler import build_skill_contexts
+from codenib.dataset.locbench import LocbenchDataset
 from codenib.dataset.swebench import SwebenchDataset
 from codenib.eval.retrieval_eval import (
     aggregate_metrics,
@@ -336,7 +337,7 @@ def run_agent_with_skills(
 
 def evaluate_instance(
     instance: Dict[str, Any],
-    dataset: SwebenchDataset,
+    dataset: SwebenchDataset | LocbenchDataset,
     llm: Optional[LiteLLMChat],
     args: argparse.Namespace,
     eval_metadata: Optional[Dict[str, Any]] = None,
@@ -635,7 +636,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
 
                     # Still need dataset object for process_instance/get_repo_path
                     # Create a dataset object but don't load from HF (instances already loaded)
-                    dataset = SwebenchDataset(
+                    dataset = _dataset_class(args.dataset)(
                         dataset=args.dataset,
                         split=args.split,
                         filter_instance=args.filter_instance,
@@ -647,7 +648,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
                     dataset._data = instances
                 else:
                     # Just GT metadata, load instances from HF as usual
-                    dataset = SwebenchDataset(
+                    dataset = _dataset_class(args.dataset)(
                         dataset=args.dataset,
                         split=args.split,
                         filter_instance=args.filter_instance,
@@ -668,7 +669,7 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
             )
     else:
         # No --eval-instances, load from HF dataset
-        dataset = SwebenchDataset(
+        dataset = _dataset_class(args.dataset)(
             dataset=args.dataset,
             split=args.split,
             filter_instance=args.filter_instance,
@@ -814,6 +815,15 @@ def run_evaluation(args: argparse.Namespace) -> SkillEvalReport:
     return report
 
 
+def _dataset_class(name: str) -> type[SwebenchDataset] | type[LocbenchDataset]:
+    """Pick the loader for ``--dataset``.
+
+    Loc-Bench rows lack SWE-bench-only columns such as ``version``, so the
+    SWE-bench loader cannot read them back from its cache.
+    """
+    return LocbenchDataset if name == "czlll/Loc-Bench_V1" else SwebenchDataset
+
+
 # CLI
 
 
@@ -827,7 +837,7 @@ def parse_args() -> argparse.Namespace:
         "--dataset",
         type=str,
         default="princeton-nlp/SWE-bench_Lite",
-        help="SWE-bench dataset to use",
+        help="SWE-bench dataset, or czlll/Loc-Bench_V1",
     )
     parser.add_argument(
         "--split",

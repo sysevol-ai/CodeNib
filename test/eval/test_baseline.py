@@ -439,3 +439,120 @@ def test_run_agent_baseline_resume_skips_processing_done_instances(
         "demo__repo-1",
         "demo__repo-2",
     ]
+
+
+@pytest.mark.parametrize(
+    ("dataset", "expected"),
+    [
+        ("codenib_base", ""),
+        ("swebench_lite", "swebench_lite_test_gt.json"),
+        ("locbench_v1", "locbench_v1_test_gt.json"),
+    ],
+)
+def test_run_agent_baseline_defaults_annotations_per_dataset(
+    monkeypatch, tmp_path, dataset, expected
+):
+    requested = []
+
+    class FakeDataset:
+        simplified_symbols = True
+
+        def load(self):
+            return [{"instance_id": "demo__repo-1", "repo": "demo/repo"}]
+
+        def load_eval_metadata(self, path):
+            requested.append(path)
+            return {}
+
+        def process_instance(self, _instance):
+            return None
+
+        def get_repo_path(self, _instance):
+            return "/repos/demo"
+
+    class FakeAgent:
+        async def locate_code(self, query_text, repo_path, context):
+            return _success_result()
+
+    monkeypatch.setattr(
+        "codenib.eval.agent_runner.loc_baseline.build_dataset",
+        lambda _args: FakeDataset(),
+    )
+    monkeypatch.setattr(
+        "codenib.eval.agent_runner.loc_baseline.user_state_dir", lambda: tmp_path
+    )
+    args = SimpleNamespace(
+        dataset=dataset,
+        split="test",
+        filter_instance=".*",
+        repo_cache_dir="",
+        result_path=str(tmp_path / "baseline.jsonl"),
+        resume=False,
+        limit=None,
+        eval_instances="",
+        metrics_k=[1],
+    )
+
+    asyncio.run(
+        run_agent_baseline(
+            args, agent_factory=FakeAgent, agent_name="fake", model_label="m"
+        )
+    )
+
+    assert requested == [str(tmp_path / expected) if expected else ""]
+
+
+def test_run_agent_baseline_labels_only_the_limited_locbench_rows(
+    monkeypatch, tmp_path
+):
+    from codenib.dataset.locbench import LocbenchDataset
+
+    rows = [
+        {"instance_id": f"demo__repo-{index}", "repo": "demo/repo"}
+        for index in range(3)
+    ]
+    requested = []
+
+    class LimitedLocbench(LocbenchDataset):
+        def load(self):
+            from datasets import Dataset
+
+            return Dataset.from_list(rows)
+
+        def load_eval_metadata(self, path="", instances=None):
+            requested.append([row["instance_id"] for row in instances])
+            return {}
+
+        def process_instance(self, _instance):
+            return None
+
+        def get_repo_path(self, _instance):
+            return "/repos/demo"
+
+    class FakeAgent:
+        async def locate_code(self, query_text, repo_path, context):
+            return _success_result()
+
+    monkeypatch.setattr(
+        "codenib.eval.agent_runner.loc_baseline.build_dataset",
+        lambda _args: LimitedLocbench(root=str(tmp_path), log=False),
+    )
+    args = SimpleNamespace(
+        dataset="locbench_v1",
+        split="test",
+        filter_instance=".*",
+        repo_cache_dir="",
+        result_path=str(tmp_path / "baseline.jsonl"),
+        resume=False,
+        limit=1,
+        eval_instances=str(tmp_path / "gt.json"),
+        metrics_k=[1],
+    )
+
+    asyncio.run(
+        run_agent_baseline(
+            args, agent_factory=FakeAgent, agent_name="fake", model_label="m"
+        )
+    )
+
+    assert requested == [["demo__repo-0"]]

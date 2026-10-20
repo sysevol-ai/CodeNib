@@ -316,16 +316,17 @@ def parse_args():
     )
 
     # Evaluation configuration
-    default_eval_path = user_state_dir() / "swebench_lite_dev_gt.json"
     parser.add_argument(
         "--eval-instances",
         type=str,
-        default=str(default_eval_path),
+        default=None,
         help=(
             "Path to JSON file containing evaluation annotations "
-            "(target_files, symbols_*). "
-            "Defaults to ~/.codenib/swebench_lite_dev_gt.json. "
-            "For SWE-bench, the file is generated if missing."
+            "(target_files, symbols_*). Defaults to "
+            "~/.codenib/<dataset>_<split>_gt.json for the split actually loaded "
+            "(dev for SWE-bench Lite, test for Loc-Bench); codenib_base reads "
+            "its in-dataset labels instead. For SWE-bench Lite and Loc-Bench, "
+            "missing annotations are generated."
         ),
     )
     parser.add_argument(
@@ -542,7 +543,16 @@ def run_pipeline(args):
             "Runtime profiler summaries will be stored in: %s", profile_output_dir
         )
 
-    eval_metadata = dataset_obj.load_eval_metadata(args.eval_instances)
+    # Derive the default from --dataset so a run never aligns against another
+    # dataset's ground truth and silently scores no instances.
+    eval_path = args.eval_instances
+    if eval_path is None:
+        eval_path = (
+            ""
+            if args.dataset == "codenib_base"
+            else str(user_state_dir() / f"{args.dataset}_{dataset_split}_gt.json")
+        )
+    eval_metadata = dataset_obj.load_eval_metadata(eval_path)
     retrieve_plan = build_retrieve_plan(args.retrieval_mode)
     fixed_retrieve_plan = None if args.retrieval_mode == "auto" else retrieve_plan
     retrieve_top_k = max((stage.top_k or RETRIEVAL_TOP_K) for stage in retrieve_plan)

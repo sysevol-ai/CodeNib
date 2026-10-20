@@ -367,7 +367,13 @@ def run_embedding_pipeline(args):
             "Runtime profiler summaries will be stored in: %s", profile_output_dir
         )
 
-    eval_path = args.eval_instances or ""
+    # Derive the default from --dataset: codenib_base reads its in-dataset
+    # labels, and the others use (or build) a per-dataset annotation file.
+    eval_path = args.eval_instances or (
+        ""
+        if args.dataset == "codenib_base"
+        else str(user_state_dir() / f"{args.dataset}_{args.split}_gt.json")
+    )
     eval_metadata = dataset_obj.load_eval_metadata(eval_path)
 
     metrics_k = sorted(set(args.metrics_k))

@@ -68,6 +68,7 @@ from ..code_chunking.base import CodeChunk
 from ..languages import extension_to_language_map
 from ..log_utils import get_logger
 from ..paths import user_state_dir
+from .locbench import LocbenchDataset
 from .swebench import SwebenchDataset
 
 logger = get_logger(__name__)
@@ -725,14 +726,16 @@ def build_gt_metadata(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze SWE-bench patches to extract symbol-level changes"
+        description=(
+            "Analyze SWE-bench or Loc-Bench patches to extract symbol-level changes"
+        )
     )
     parser.add_argument(
         "--dataset",
         type=str,
         default="verified",
-        choices=["verified", "lite"],
-        help="Dataset type to use: 'verified' or 'lite' (default: verified)",
+        choices=["verified", "lite", "locbench"],
+        help="SWE-bench Verified, SWE-bench Lite, or Loc-Bench v1 (default: verified)",
     )
     parser.add_argument(
         "--split",
@@ -776,20 +779,24 @@ def main():
     if args.output is None:
         cache_dir = user_state_dir()
         cache_dir.mkdir(parents=True, exist_ok=True)
-        args.output = os.path.join(
-            str(cache_dir), f"swebench_{args.dataset}_{args.split}_gt.json"
+        stem = (
+            "locbench_v1" if args.dataset == "locbench" else f"swebench_{args.dataset}"
         )
+        args.output = os.path.join(str(cache_dir), f"{stem}_{args.split}_gt.json")
 
-    dataset_name = (
-        "princeton-nlp/SWE-bench_Lite"
-        if args.dataset == "lite"
-        else "princeton-nlp/SWE-bench_Verified"
-    )
-    dataset_obj = SwebenchDataset(
-        dataset=dataset_name,
-        split=args.split,
-        filter_instance=args.filter,
-    )
+    if args.dataset == "locbench":
+        dataset_obj = LocbenchDataset(split=args.split, filter_instance=args.filter)
+    else:
+        dataset_name = (
+            "princeton-nlp/SWE-bench_Lite"
+            if args.dataset == "lite"
+            else "princeton-nlp/SWE-bench_Verified"
+        )
+        dataset_obj = SwebenchDataset(
+            dataset=dataset_name,
+            split=args.split,
+            filter_instance=args.filter,
+        )
     dataset = dataset_obj.load()
 
     logger.info(f"Processing {len(dataset)} instances")
