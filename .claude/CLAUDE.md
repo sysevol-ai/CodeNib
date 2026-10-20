@@ -75,9 +75,11 @@ screenshot, or iterate the UI:
 
 ## Documentation writing
 
-Public docs (`README.md`, the published `docs/` site) are written for people,
-not as a work log. Lead with the point and the concept, explain terms in plain
-words before naming code, and put reference detail last. Before editing any
+Public docs (`README.md`, the published `docs/` site) are product
+documentation for people, not a work log or an experiment report. Lead with
+the point and the concept, explain terms in plain words before naming code,
+put reference detail last, and keep run provenance and protocol mechanics out
+of the main text. Before editing any
 public page, read the full rules in
 [`AGENTS.md` § Documentation Writing](../AGENTS.md#documentation-writing) and
 the docs checks listed under its Testing Guidance.

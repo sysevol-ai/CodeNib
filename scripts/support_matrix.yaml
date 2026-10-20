@@ -485,7 +485,7 @@ methods:
         - python: codenib/clients/locagent_agent.py:LocAgentAgent
         - path: examples/locagent_loc_agent.py
       results:
-        text: "SWE-bench Lite, 50 cases, one run: file Acc@1 0.78"
+        text: "SWE-bench Lite, 50 issues: file Accuracy@1 0.78"
         link: agent_integrations.md#locagent-on-swe-bench-lite
       page: agent_integrations.md#locagent
     modules:
@@ -571,9 +571,6 @@ methods:
       entry:
         - python: codenib/clients/orcaloca_agent.py:OrcaLocaAgent
         - path: examples/orcaloca_loc_agent.py
-      results:
-        text: "SWE-bench Lite, 4-case paired smoke: both backends matched 4/4"
-        link: agent_integrations.md#orcaloca-paired-smoke
       page: agent_integrations.md#orcaloca
     modules:
       - codenib/eval/benchmarks/orcaloca.py
