@@ -73,6 +73,15 @@ screenshot, or iterate the UI:
   edge-provenance differentiator, wiki reframe):
   [`.claude/design/graph-frontend-direction.md`](design/graph-frontend-direction.md).
 
+## Documentation writing
+
+Public docs (`README.md`, the published `docs/` site) are written for people,
+not as a work log. Lead with the point and the concept, explain terms in plain
+words before naming code, and put reference detail last. Before editing any
+public page, read the full rules in
+[`AGENTS.md` § Documentation Writing](../AGENTS.md#documentation-writing) and
+the docs checks listed under its Testing Guidance.
+
 ## Git & PR conventions
 
 Rules for any AI/code agent (Claude Code, etc.) committing or opening PRs here.
