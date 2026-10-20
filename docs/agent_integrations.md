@@ -1,20 +1,27 @@
 # Reproduced Agents
 
-CodeNib re-runs five published code-localization agents in its own harness:
-LocAgent, Agentless, CoSIL, OrcaLoca, and the `jump` tool from RepoNavigator.
-Each agent keeps its published prompts and control loop. CodeNib only answers
-its repository calls. That serves two purposes:
+CodeNib re-runs four published code-localization agents in its own harness:
+LocAgent, Agentless, CoSIL, and OrcaLoca. Each keeps its published prompts and
+control loop, and CodeNib answers its repository calls. CodeNib also serves the
+`jump` tool from the RepoNavigator paper; RepoNavigator has released no agent
+code, so the caller supplies the agent. The four agents serve two purposes:
 
-- **Baselines.** The agents run on the same benchmarks, labels, and scorer as
-  CodeNib's own methods, so their results are directly comparable.
+- **Baselines.** The agents run through the same harnesses, labels, and scorer
+  as CodeNib's own methods. That makes a matched comparison possible: one run
+  of each on the same cases and settings. None has been published yet. The
+  [LocAgent result](#locagent-on-swe-bench-lite) uses a fixed 50-case selection
+  on which no CodeNib method has been run, so do not compare it with CodeNib
+  results on other case sets.
 - **Backend.** An agent can use CodeNib's index instead of the one it would
   build itself. For LocAgent and OrcaLoca, a
   [paired runner](#paired-provider-compatibility) swaps the two backends under
   a fixed model, case set, and budget. That shows whether CodeNib serves the
   agent as well as the agent's own index does.
 
-No agent builds its own graph, BM25 index, or cache. Each one binds to a single
-CodeNib index (`repo_manifest.json`) and loads only the views it needs.
+With CodeNib as the backend, an agent builds no graph, BM25 index, or cache of
+its own: it binds to a single CodeNib index (`repo_manifest.json`) and loads
+only the views it needs. The native arm of the paired runner is the exception,
+since it runs the agent with its own index and search code.
 
 ## At a glance
 
