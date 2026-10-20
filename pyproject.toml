@@ -82,8 +82,10 @@ grep = [
     "requests>=2.25.0",
     "ripgrep-bin>=15.2.0,<16",
 ]
+# LiteLLM imports its MCP gateway while dispatching ordinary function tools.
+# Select its coupled transport dependencies instead of relying on a test extra.
 agent = [
-    "litellm>=1.93.0",
+    "litellm[mcp]>=1.93.0",
     "openai>=1.0.0",
     "requests>=2.25.0",
 ]
@@ -126,7 +128,7 @@ serving = [
 # Keep the provider SDK coupled to LiteLLM's own compatibility constraint
 # instead of maintaining a second, looser google-cloud-aiplatform pin here.
 vertex = [
-    "litellm[google]>=1.93.0",
+    "litellm[google,mcp]>=1.93.0",
 ]
 zoekt = [
     "requests>=2.25.0",
@@ -136,7 +138,7 @@ full = [
     "einops>=0.8.0",
     "faiss-cpu>=1.7.0",
     "igraph>=0.11.6",
-    "litellm[google]>=1.93.0",
+    "litellm[google,mcp]>=1.93.0",
     "mcp>=2.0.0,<3",
     "numpy>=1.24.0",
     "openai>=1.0.0",
@@ -165,7 +167,7 @@ test = [
     "einops>=0.8.0",
     "faiss-cpu>=1.7.0",
     "igraph>=0.11.6",
-    "litellm>=1.93.0",
+    "litellm[mcp]>=1.93.0",
     "matplotlib>=3.4.0",
     "mcp>=2.0.0,<3",
     "numpy>=1.24.0",

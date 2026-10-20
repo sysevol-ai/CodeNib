@@ -81,8 +81,8 @@ def test_optional_capabilities_have_named_extras() -> None:
 
 def test_vertex_capability_uses_litellm_provider_constraints() -> None:
     extras = _project()["optional-dependencies"]
-    runtime_requirement = "litellm>=1.93.0"
-    provider_requirement = "litellm[google]>=1.93.0"
+    runtime_requirement = "litellm[mcp]>=1.93.0"
+    provider_requirement = "litellm[google,mcp]>=1.93.0"
 
     assert runtime_requirement in extras["agent"]
     assert runtime_requirement in extras["test"]
