@@ -946,7 +946,10 @@ def test_registry_publishers_use_separate_workflows() -> None:
         "agent-smoke",
         "graph-smoke",
     ):
-        assert verification["jobs"][job_name]["if"] == "inputs.full"
+        expected_gate = "inputs.full"
+        if job_name == "agent-smoke":
+            expected_gate += " || github.event_name == 'pull_request'"
+        assert verification["jobs"][job_name]["if"] == expected_gate
     assert not any(name.startswith("publish-") for name in verification["jobs"])
 
     for workflow in (production, test, verification):
