@@ -50,6 +50,12 @@ _PARADIGMS = {"A": "one-shot retrieval", "B": "fixed LLM workflow", "C": "agenti
 _ROLES = {"CodeNib", "Reproduced", "Client", "Control"}
 _ORIGINS = {"CodeNib", "External"}
 _NO_HARNESS = "—"
+_REQUIRED_NONCARD_BLOCKS = {
+    ("concepts/methods.md", "methods"),
+    ("evaluation/index.md", "benchmarks"),
+    ("evaluation/index.md", "grid:L1"),
+    ("evaluation/index.md", "grid:L2+L3"),
+}
 
 
 @dataclass(frozen=True)
@@ -466,12 +472,25 @@ def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
         errors.append(f"claimed module {module} does not exist")
 
     cards: dict[str, list[str]] = {}
+    blocks: dict[tuple[str, str], int] = {}
     for path in pages_with_blocks(docs):
         page = path.relative_to(docs).as_posix()
-        for match in _BLOCK_RE.finditer(path.read_text(encoding="utf-8")):
+        text = path.read_text(encoding="utf-8")
+        remaining = _BLOCK_RE.sub("", text)
+        if re.search(r"<!--\s*(?:BEGIN|END)\s+CODENIB_SUPPORT_MATRIX:", remaining):
+            errors.append(f"docs/{page}: malformed generated support-matrix markers")
+        for match in _BLOCK_RE.finditer(text):
             kind = match.group("kind")
+            blocks[page, kind] = blocks.get((page, kind), 0) + 1
             if kind.startswith("card:"):
                 cards.setdefault(kind.removeprefix("card:"), []).append(page)
+    for page, kind in sorted(_REQUIRED_NONCARD_BLOCKS):
+        count = blocks.get((page, kind), 0)
+        if count != 1:
+            errors.append(
+                f"required generated block {kind} must appear once in docs/{page}; "
+                f"found {count}"
+            )
     for item in data["benchmarks"]:
         expected = item["page"].partition("#")[0]
         found = cards.get(item["id"], [])
