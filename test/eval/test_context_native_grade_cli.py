@@ -16,6 +16,7 @@ CASES = [
     ("--native-network", "bridge", "native_network", "bridge"),
     ("--native-test-workers", "2", "native_test_workers", 2),
     ("--native-cpu-count", "2", "native_cpu_count", 2),
+    ("--native-pids-limit", "1024", "native_pids_limit", 1024),
     # Additional native options are covered by their owning stack PR.
 ]
 
