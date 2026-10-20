@@ -86,18 +86,29 @@ def _query_terms(query: str) -> set[str]:
     }
 
 
-def query_focus_line(lines: Sequence[str], query: str) -> tuple[int, int]:
+def query_focus_line(
+    lines: Sequence[str], query: str, *, max_line_chars: int | None = None
+) -> tuple[int, int]:
     """Return the strongest exact-token line and its distinct query-term count.
 
     Ties keep the earlier line; no match keeps the scope head. Token-set
     intersection scans source once rather than once per query term. This is a
     lexical location hint, not a relevance probability or evidence expansion.
+    A character bound excludes matches that cannot survive source delivery.
     """
     terms = _query_terms(query)
     best_line, best_score = 0, 0
     if terms:
         for index, line in enumerate(lines):
-            score = len(terms.intersection(re.findall(r"[a-z0-9_]+", line.lower())))
+            # Include one lookahead character so cutting an identifier at the
+            # response limit cannot turn its prefix into an exact-token match.
+            visible = line if max_line_chars is None else line[: max_line_chars + 1]
+            words = {
+                match.group()
+                for match in re.finditer(r"[a-z0-9_]+", visible.lower())
+                if max_line_chars is None or match.end() <= max_line_chars
+            }
+            score = len(terms.intersection(words))
             if score > best_score:
                 best_line, best_score = index, score
     return best_line, best_score

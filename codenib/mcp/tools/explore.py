@@ -20,7 +20,7 @@ from typing import Any
 
 from ...agent.lsp_graph import display_name, resolve_symbol_candidates
 from ...context_delivery import project_evidence_payloads
-from ...types import is_symbol_node
+from ...types import is_symbol_node, node_has_definition
 from ..explore_bounds import MAX_EXPLORE_PAYLOAD_BYTES, bound_explore_response
 from ._validation import (
     MAX_EXPLORE_WINDOWS,
@@ -84,7 +84,7 @@ _BUDGETS = {
 _DIRECTIONS = frozenset({"impact", "dependencies", "both"})
 _MERGE_GAP_LINES = 8
 _IDENTIFIER = r"[A-Za-z_][A-Za-z0-9_]*(?:(?:::|\.)[A-Za-z_][A-Za-z0-9_]*)*"
-_QUERY_IDENTIFIERS = re.compile(rf"`({_IDENTIFIER})`|({_IDENTIFIER})")
+_QUERY_IDENTIFIERS = re.compile(rf"`({_IDENTIFIER})(?:\(\))?`|({_IDENTIFIER})")
 
 
 def _query_symbol_seeds(ctx: Any, query: str) -> list[str]:
@@ -111,13 +111,18 @@ def _query_symbol_seeds(ctx: Any, query: str) -> list[str]:
             break
         examined.add(seed)
         for name in resolve_symbol_candidates(graph, seed, limit=4):
-            if not is_symbol_node((info_for(name) or {}).get("type")):
+            info = info_for(name) or {}
+            if not is_symbol_node(info.get("type")) or not node_has_definition(info):
                 continue
             label = str(display_name(graph, name)).rstrip("()")
             leaf = label.rsplit(":", 1)[-1].rsplit(".", 1)[-1]
             if label == seed or label.endswith(":" + seed) or leaf == seed:
-                seeds.append(seed)
-                break
+                # Concrete names keep ambiguous leaf matches usable by the
+                # dependency tool, whose fast budget admits only one seed.
+                if len(name) <= MAX_LSP_SYMBOL_CHARS and name not in seeds:
+                    seeds.append(name)
+                if len(seeds) >= MAX_ROUTE_SYMBOLS:
+                    return seeds
     return seeds
 
 
@@ -537,7 +542,9 @@ def explore_context_impl(
                 symbols=route_symbols,
                 query=normalized_query,
                 top_k=profile.route_top_k,
-                include_neighbors=True,
+                # Inferred identifiers reserve definitions only. Bounded
+                # dependency expansion below supplies related symbols.
+                include_neighbors=not inferred_symbols,
             )
             if isinstance(routed, list):
                 route_results = routed
@@ -599,17 +606,26 @@ def explore_context_impl(
 
     # Retain canonical origin/merge metadata, but reserve delivery for requested
     # definitions before dense hits can fill every source-window slot.
-    delivery_anchors = (
-        sorted(anchors, key=lambda anchor: "route" not in anchor.origins)
-        if route_symbols
-        else anchors
+    source_identity = _source_identity(ctx)
+    requested_labels = {symbol.rstrip("()") for symbol in route_symbols}
+    graph = getattr(ctx, "symbol_graph", None)
+    if graph is not None:
+        for symbol in route_symbols:
+            for name in resolve_symbol_candidates(graph, symbol, limit=4):
+                requested_labels.add(str(display_name(graph, name)).rstrip("()"))
+    delivery_anchors = sorted(
+        anchors,
+        key=lambda anchor: not (
+            source_identity["verified"]
+            and "route" in anchor.origins
+            and anchor.symbol.rstrip("()") in requested_labels
+        ),
     )
     windows = _admit_windows(
         delivery_anchors,
         max_windows=window_limit,
         window_lines=profile.source_window_lines,
     )
-    source_identity = _source_identity(ctx)
     contexts: list[dict[str, Any]] = []
     for window in windows:
         if source_identity["verified"]:

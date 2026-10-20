@@ -443,3 +443,137 @@ def test_explore_keeps_route_source_when_ranked_retrieval_fails(
 def test_explore_validates_bounded_request(tmp_path, kwargs, message) -> None:
     with pytest.raises(ValueError, match=message):
         explore_context_impl(_context(tmp_path), **kwargs)
+
+
+def test_inferred_calls_use_concrete_definitions_without_neighbor_expansion(
+    tmp_path, monkeypatch
+):
+    from codenib.mcp.tools.explore import _query_symbol_seeds
+
+    definitions = {
+        "first.run": {"type": NODE_TYPE_FUNCTION, "has_definition": True},
+        "second.run": {"type": NODE_TYPE_FUNCTION, "has_definition": True},
+        "external.run": {"type": NODE_TYPE_FUNCTION, "has_definition": False},
+    }
+    ctx = _context(tmp_path)
+    ctx.symbol_graph = SimpleNamespace(
+        resolve_symbol_candidates=lambda *_args: list(definitions),
+        get_node_info_by_name=lambda name: definitions[name],
+    )
+    assert _query_symbol_seeds(ctx, "fix `run()` behavior") == [
+        "first.run",
+        "second.run",
+    ]
+    calls = []
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_args, **_kwargs: {"results": []},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl",
+        lambda *_args, **kwargs: calls.append(kwargs) or [],
+    )
+    dependencies = []
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.dependency_subgraph_impl",
+        lambda _ctx, seed, **_kwargs: dependencies.append(seed) or {"nodes": []},
+    )
+    result = explore_context_impl(ctx, query="fix `run()` behavior", budget="fast")
+    assert calls[0]["symbols"] == ["first.run", "second.run"]
+    assert calls[0]["include_neighbors"] is False
+    assert dependencies == ["first.run"]
+    assert result["plan"]["route"]["inferred_symbols"] == ["first.run", "second.run"]
+
+
+def test_reference_only_inference_keeps_generic_query_fallback(tmp_path, monkeypatch):
+    ctx = _context(tmp_path)
+    ctx.symbol_graph = SimpleNamespace(
+        resolve_symbol_candidates=lambda *_args: ["external.run"],
+        get_node_info_by_name=lambda _name: {
+            "type": NODE_TYPE_FUNCTION,
+            "has_definition": False,
+        },
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_args, **_kwargs: {"results": []},
+    )
+    calls = []
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl",
+        lambda *_args, **kwargs: calls.append(kwargs) or [],
+    )
+    result = explore_context_impl(
+        ctx, query="fix `run()` behavior", include_dependencies=False
+    )
+    assert calls[0]["symbols"] == []
+    assert calls[0]["include_neighbors"] is True
+    assert result["plan"]["route"]["query_fallback"] is True
+
+
+@pytest.mark.parametrize("verified", [True, False])
+def test_only_verified_requested_definition_precedes_ranked_hits(
+    tmp_path, monkeypatch, verified
+):
+    ctx = _context(tmp_path, verified=verified)
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("src/target.py")
+    graph.add_symbol_node(
+        "target",
+        line=20,
+        scope_start_line=20,
+        scope_end_line=21,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    graph.build_range_indexes()
+    ctx.symbol_graph = graph
+    _write_source(tmp_path, "src/target.py", "target")
+    _write_source(tmp_path, "src/ranked.py", "ranked")
+    ranked = {
+        "node_name": "ranked",
+        "type": NODE_TYPE_FUNCTION,
+        "file": "src/ranked.py",
+        "start_line": 21,
+        "end_line": 22,
+        "content": "RANKED_SOURCE_BODY",
+    }
+    routed = [
+        {
+            "node_name": "target",
+            "type": NODE_TYPE_FUNCTION,
+            "file": "src/target.py",
+            "start_line": 21,
+            "end_line": 22,
+        }
+    ]
+    for index in range(8):
+        path = f"src/neighbor{index}.py"
+        _write_source(tmp_path, path, f"neighbor{index}")
+        routed.append(
+            {
+                "node_name": f"neighbor{index}",
+                "type": NODE_TYPE_FUNCTION,
+                "file": path,
+                "start_line": 21,
+                "end_line": 22,
+            }
+        )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_args, **_kwargs: {"results": [ranked]},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl", lambda *_args, **_kwargs: routed
+    )
+    result = explore_context_impl(
+        ctx,
+        query="fix target",
+        symbols=["target"],
+        budget="fast",
+        include_dependencies=False,
+    )
+    files = [item["file"] for item in result["files"]]
+    assert "src/ranked.py" in files
+    assert files[0] == ("src/target.py" if verified else "src/ranked.py")
+    if not verified:
+        assert "RANKED_SOURCE_BODY" in result["files"][0]["contexts"][0]["content"]
