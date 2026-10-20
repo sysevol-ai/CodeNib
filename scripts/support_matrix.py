@@ -8,9 +8,14 @@
 
 The tables are generated from ``scripts/support_matrix.yaml``. Each page embeds
 a block between ``<!-- BEGIN CODENIB_SUPPORT_MATRIX:<kind> -->`` and the
-matching END marker, where ``<kind>`` is ``methods``, ``benchmarks``,
-``grid:<layers>`` (for example ``grid:L1`` or ``grid:L2+L3``), or
-``card:<benchmark id>``.
+matching END marker, where ``<kind>`` is one of:
+
+- ``methods`` and ``benchmarks``: the overview tables;
+- ``grid:<layers>[:<roles>]``: a method x benchmark grid, for example
+  ``grid:L2+L3`` or ``grid:L1:Reproduced+Control`` to keep only those roles;
+- ``card:<benchmark id>``: a benchmark card;
+- ``agents`` and ``agent:<method id>``: the reproduced-agents table and the
+  card of one reproduced method.
 
 The script imports nothing from ``codenib`` so that it runs in the docs-only CI
 environment. It validates the data statically: entry points, links, anchors,
@@ -46,16 +51,23 @@ _BLOCK_RE = re.compile(
     r"<!-- END CODENIB_SUPPORT_MATRIX:(?P=kind) -->",
     re.DOTALL,
 )
-_PARADIGMS = {"A": "one-shot retrieval", "B": "fixed LLM workflow", "C": "agentic"}
+_PARADIGMS = {
+    "A": "one-shot retrieval",
+    "B": "fixed LLM workflow",
+    "C": "agentic tool loop",
+}
 _ROLES = {"CodeNib", "Reproduced", "Client", "Control"}
 _ORIGINS = {"CodeNib", "External"}
 _NO_HARNESS = "—"
 _REQUIRED_NONCARD_BLOCKS = {
     ("concepts/methods.md", "methods"),
     ("evaluation/index.md", "benchmarks"),
-    ("evaluation/index.md", "grid:L1"),
+    ("evaluation/index.md", "grid:L1:CodeNib"),
+    ("evaluation/index.md", "grid:L1:Reproduced+Control"),
     ("evaluation/index.md", "grid:L2+L3"),
+    ("agent_integrations.md", "agents"),
 }
+_AGENT_FIELDS = ("summary", "upstream", "scope", "excluded", "provides", "page")
 
 
 @dataclass(frozen=True)
@@ -217,10 +229,29 @@ def render_benchmarks(data: dict[str, Any], page: str) -> str:
     return "\n".join(lines)
 
 
-def render_grid(data: dict[str, Any], page: str, layers: set[str]) -> str:
+def render_grid(
+    data: dict[str, Any],
+    page: str,
+    layers: set[str],
+    roles: set[str] | None = None,
+) -> str:
     benchmarks = [item for item in _grid_benchmarks(data) if item["layer"] in layers]
     if not benchmarks:
         raise ValueError(f"no grid benchmarks in layers {sorted(layers)}")
+    if roles is not None and not roles <= _ROLES:
+        raise ValueError(f"unknown grid roles {sorted(roles - _ROLES)}")
+    methods = [
+        method
+        for method in data["methods"]
+        if (roles is None or method["role"] in roles)
+        and any(item["id"] in method.get("cells", {}) for item in benchmarks)
+    ]
+    # Drop columns that no shown method can run, so a filtered grid stays narrow.
+    benchmarks = [
+        item
+        for item in benchmarks
+        if any(item["id"] in method.get("cells", {}) for method in methods)
+    ]
     header = ["Method"] + [
         (
             item["column"]
@@ -234,10 +265,8 @@ def render_grid(data: dict[str, Any], page: str, layers: set[str]) -> str:
         "| " + " | ".join("---" for _ in header) + " |",
     ]
     notes: list[str] = []
-    for method in data["methods"]:
+    for method in methods:
         cells = method.get("cells", {})
-        if not any(item["id"] in cells for item in benchmarks):
-            continue
         row = [f"{method['paradigm']} · {method['name']}"]
         for item in benchmarks:
             raw = cells.get(item["id"])
@@ -285,15 +314,115 @@ def render_card(data: dict[str, Any], benchmark_id: str, page: str) -> str:
     return "\n".join(lines)
 
 
+def _reproduced(data: dict[str, Any]) -> list[dict[str, Any]]:
+    return [method for method in data["methods"] if method["role"] == "Reproduced"]
+
+
+def _upstream(agent: dict[str, Any], with_label: bool = True) -> str:
+    upstream = agent["upstream"]
+    label = f"{upstream['label']} " if with_label else ""
+    return f"[{label}`{upstream['revision']}`]({upstream['url']})"
+
+
+def _paired(agent: dict[str, Any], page: str) -> str:
+    if not agent.get("paired"):
+        return _NO_HARNESS
+    link = "agent_integrations.md#paired-provider-compatibility"
+    return _linked("Paired runner", link, page)
+
+
+def _agent_results(agent: dict[str, Any], page: str) -> str:
+    results = agent.get("results")
+    if not results:
+        return "None published"
+    return _linked(results["text"], results.get("link", ""), page)
+
+
+def _agent_benchmarks(data: dict[str, Any], method: dict[str, Any]) -> str:
+    columns = {item["id"]: item["column"] for item in data["benchmarks"]}
+    cells = method.get("cells", {})
+    return ", ".join(columns[key] for key in cells) or _NO_HARNESS
+
+
+def render_agents(data: dict[str, Any], page: str) -> str:
+    lines = [
+        "| Agent | Upstream revision | Fidelity | CodeNib serves | Native ↔ CodeNib "
+        "| Benchmarks | Results |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for method in _reproduced(data):
+        agent = method["agent"]
+        contract = _cell(method["contract"])
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _linked(method["name"], agent["page"], page),
+                    _upstream(agent, with_label=False),
+                    f"{contract.level} · {contract.label}",
+                    method["views"],
+                    _paired(agent, page),
+                    _agent_benchmarks(data, method),
+                    _agent_results(agent, page),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines)
+
+
+def render_agent_card(data: dict[str, Any], method_id: str, page: str) -> str:
+    methods = {method["id"]: method for method in _reproduced(data)}
+    if method_id not in methods:
+        raise ValueError(f"unknown reproduced-agent card: {method_id}")
+    method = methods[method_id]
+    agent = method["agent"]
+    contract = _cell(method["contract"])
+    benchmarks = {item["id"]: item["column"] for item in data["benchmarks"]}
+    evidence = "; ".join(
+        f"{benchmarks[key]}: {_linked(_cell(raw).level, _cell(raw).link, page)}"
+        for key, raw in method.get("cells", {}).items()
+    )
+    rows = [
+        ("What it is", agent["summary"]),
+        ("Type", f"{method['paradigm']} · {_PARADIGMS[method['paradigm']]}"),
+        ("Pinned upstream", _upstream(agent)),
+        (
+            "Fidelity",
+            f"{contract.level}: {contract.note[:1].lower()}{contract.note[1:]}",
+        ),
+        ("Reproduced", agent["scope"]),
+        ("Not reproduced", agent["excluded"]),
+        ("CodeNib serves", agent["provides"]),
+        ("Native ↔ CodeNib", _paired(agent, page)),
+        ("Benchmarks", evidence or "None; the caller supplies the agent"),
+        ("Results", _agent_results(agent, page)),
+        ("Entry points", ", ".join(_entry(entry) for entry in agent.get("entry", []))),
+    ]
+    lines = ["| Agent card | |", "| --- | --- |"]
+    lines.extend(f"| {name} | {value} |" for name, value in rows)
+    return "\n".join(lines)
+
+
 def render_kind(data: dict[str, Any], kind: str, page: str) -> str:
     if kind == "methods":
         return render_methods(data, page)
     if kind == "benchmarks":
         return render_benchmarks(data, page)
     if kind.startswith("grid:"):
-        return render_grid(data, page, set(kind.removeprefix("grid:").split("+")))
+        layers, _, roles = kind.removeprefix("grid:").partition(":")
+        return render_grid(
+            data,
+            page,
+            set(layers.split("+")),
+            set(roles.split("+")) if roles else None,
+        )
     if kind.startswith("card:"):
         return render_card(data, kind.removeprefix("card:"), page)
+    if kind == "agents":
+        return render_agents(data, page)
+    if kind.startswith("agent:"):
+        return render_agent_card(data, kind.removeprefix("agent:"), page)
     raise ValueError(f"unknown support-matrix block: {kind}")
 
 
@@ -364,6 +493,11 @@ def _iter_links(data: dict[str, Any]):
                 yield f"method {method['id']} × {key}", raw["link"]
         if method.get("contract", {}).get("link"):
             yield f"method {method['id']} contract", method["contract"]["link"]
+        agent = method.get("agent", {})
+        if agent.get("page"):
+            yield f"method {method['id']} agent page", agent["page"]
+        if agent.get("results", {}).get("link"):
+            yield f"method {method['id']} results", agent["results"]["link"]
 
 
 def _console_scripts(root: Path) -> set[str]:
@@ -377,6 +511,32 @@ def _claimed_modules(data: dict[str, Any]) -> list[str]:
         for item in data[section]:
             claimed.extend(item.get("modules", []))
     return claimed
+
+
+def _entry_errors(
+    where: str, entries: list[dict[str, str]], root: Path, scripts: set[str]
+) -> list[str]:
+    errors: list[str] = []
+    for entry in entries:
+        if "cli" in entry and entry["cli"] not in scripts:
+            errors.append(f"{where}: console script {entry['cli']} not in pyproject")
+        if "python" in entry:
+            relative, _, symbol = entry["python"].partition(":")
+            source = root / relative
+            pattern = rf"^(?:class|def)\s+{re.escape(symbol)}\b"
+            if not source.is_file():
+                errors.append(f"{where}: {relative} does not exist")
+            elif not re.search(pattern, source.read_text(encoding="utf-8"), re.M):
+                errors.append(f"{where}: {symbol} not defined in {relative}")
+        if "path" in entry and not (root / entry["path"]).exists():
+            errors.append(f"{where}: {entry['path']} does not exist")
+        if "module" in entry:
+            base = root / entry["module"].replace(".", "/")
+            if not (
+                base.with_suffix(".py").is_file() or (base / "__init__.py").is_file()
+            ):
+                errors.append(f"{where}: module {entry['module']} does not exist")
+    return errors
 
 
 def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
@@ -401,28 +561,7 @@ def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
             errors.append(f"{where}: unknown level {item['level']}")
         if item["origin"] not in _ORIGINS:
             errors.append(f"{where}: unknown origin {item['origin']}")
-        for entry in item["entry"]:
-            if "cli" in entry and entry["cli"] not in scripts:
-                errors.append(
-                    f"{where}: console script {entry['cli']} not in pyproject"
-                )
-            if "python" in entry:
-                relative, _, symbol = entry["python"].partition(":")
-                source = root / relative
-                pattern = rf"^(?:class|def)\s+{re.escape(symbol)}\b"
-                if not source.is_file():
-                    errors.append(f"{where}: {relative} does not exist")
-                elif not re.search(pattern, source.read_text(encoding="utf-8"), re.M):
-                    errors.append(f"{where}: {symbol} not defined in {relative}")
-            if "path" in entry and not (root / entry["path"]).exists():
-                errors.append(f"{where}: {entry['path']} does not exist")
-            if "module" in entry:
-                base = root / entry["module"].replace(".", "/")
-                if not (
-                    base.with_suffix(".py").is_file()
-                    or (base / "__init__.py").is_file()
-                ):
-                    errors.append(f"{where}: module {entry['module']} does not exist")
+        errors.extend(_entry_errors(where, item["entry"], root, scripts))
 
     for method in data["methods"]:
         where = f"method {method['id']}"
@@ -440,6 +579,16 @@ def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
                 errors.append(f"{where} × {key}: unknown level {raw.get('level')}")
         if "baseline" in method and method["baseline"] not in levels:
             errors.append(f"{where}: unknown baseline {method['baseline']}")
+        if method["role"] == "Reproduced":
+            agent = method.get("agent", {})
+            missing = [field for field in _AGENT_FIELDS if not agent.get(field)]
+            if "contract" not in method:
+                missing.append("contract")
+            if missing:
+                errors.append(f"{where}: reproduced agent lacks {', '.join(missing)}")
+            errors.extend(_entry_errors(where, agent.get("entry", []), root, scripts))
+        elif "agent" in method:
+            errors.append(f"{where}: only Reproduced methods carry an agent card")
 
     docs = root / "docs"
     anchor_cache: dict[Path, set[str]] = {}
@@ -472,6 +621,7 @@ def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
         errors.append(f"claimed module {module} does not exist")
 
     cards: dict[str, list[str]] = {}
+    agent_cards: dict[str, list[str]] = {}
     blocks: dict[tuple[str, str], int] = {}
     for path in pages_with_blocks(docs):
         page = path.relative_to(docs).as_posix()
@@ -484,6 +634,8 @@ def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
             blocks[page, kind] = blocks.get((page, kind), 0) + 1
             if kind.startswith("card:"):
                 cards.setdefault(kind.removeprefix("card:"), []).append(page)
+            if kind.startswith("agent:"):
+                agent_cards.setdefault(kind.removeprefix("agent:"), []).append(page)
     for page, kind in sorted(_REQUIRED_NONCARD_BLOCKS):
         count = blocks.get((page, kind), 0)
         if count != 1:
@@ -498,6 +650,14 @@ def validate(data: dict[str, Any], root: Path = _PROJECT_ROOT) -> list[str]:
             errors.append(
                 f"benchmark {item['id']}: card must appear once, in docs/{expected}; "
                 f"found in {found or 'no page'}"
+            )
+    for method in _reproduced(data):
+        expected = method.get("agent", {}).get("page", "").partition("#")[0]
+        found = agent_cards.get(method["id"], [])
+        if expected and found != [expected]:
+            errors.append(
+                f"method {method['id']}: agent card must appear once, in "
+                f"docs/{expected}; found in {found or 'no page'}"
             )
     return errors
 

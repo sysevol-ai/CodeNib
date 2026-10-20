@@ -50,12 +50,12 @@ retrieval and planning surface that answers the task.
 
 -   <span class="codenib-card-eyebrow">Embed CodeNib</span>
 
-    **Agent integrations**
+    **Reproduced agents**
 
-    Run pinned LocAgent, Agentless, CoSIL, OrcaLoca, and RepoNavigator
-    contracts over CodeNib's manifest-backed views.
+    Run LocAgent, Agentless, CoSIL, OrcaLoca, or RepoNavigator's `jump` tool
+    with CodeNib's index as their backend.
 
-    [Choose an integration →](../agent_integrations.md)
+    [Choose an agent →](../agent_integrations.md)
 
 -   <span class="codenib-card-eyebrow">Execute safely</span>
 

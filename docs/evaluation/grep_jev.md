@@ -79,7 +79,7 @@ deployment configuration.
 For today's model-free agent setup, use [CodeGraph](../codegraph.md).
 For the source-checkout OpenRouter route, use [grep and Jev](../guides/grep-jev.md).
 For reproduced method contracts and scorer validation, use
-[agent integrations](../agent_integrations.md) and the
+[reproduced agents](../agent_integrations.md) and the
 [method × benchmark matrix](index.md#method-benchmark-matrix).
 
 ## Does the product preview reproduce these candidates?

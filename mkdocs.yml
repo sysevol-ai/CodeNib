@@ -183,7 +183,6 @@ nav:
       - Browser OpenRouter trial: guides/browser-trial.md
       - Agent Skills: agent_skills.md
       - Jev Reranking: jev.md
-      - Agent Integrations: agent_integrations.md
       - Isolated Agent Execution: sandbox.md
       - Reference Deployments:
           - guides/reference-deployments/index.md
@@ -217,6 +216,7 @@ nav:
           - SWE-Explore: evaluation/swe_explore.md
           - Agent Retrieval Bench: evaluation/agent_retrieval_bench.md
           - ContextBench: evaluation/contextbench.md
+      - Reproduced Agents: agent_integrations.md
       - Results:
           - Model-planned grep and Jev: evaluation/grep_jev.md
           - ContextBench Experiments: evaluation/contextbench-results.md
