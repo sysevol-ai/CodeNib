@@ -11,6 +11,16 @@ the complete version history, see
 [GitHub Releases](https://github.com/sysevol-ai/CodeNib/releases) and the
 [changelog](https://github.com/sysevol-ai/CodeNib/blob/main/CHANGELOG.md).
 
+## 2026-09-26 — grep → Jev and static Wiki stories
+
+CodeNib 0.2.4 adds an optional source-only route: a model plans ripgrep
+searches over your checkout and Jev ranks the matches, using one OpenRouter
+credential and no index, embedding model, or GPU. It also publishes
+precomputed Wiki stories as static pages and fixes the empty MCP server
+version reported in #779.
+
+[Read the 0.2.4 release notes](releases/0.2.4.md)
+
 ## 2026-09-03 — Wiki-only storage boundary
 
 CodeNib 0.2.3 makes `codenib.storage` a single-file Wiki-only facade for

@@ -11,30 +11,34 @@ SPDX-License-Identifier: Apache-2.0
 
 # CodeNib
 
-Give your coding agent source context and typed graph navigation across
-languages. Start with [local CodeGraph setup](codegraph.md),
-[compare repository tools](comparison.md), or inspect the
-[measured grep → Jev experiment](evaluation/grep_jev.md): **71.4% code-block
-Recall@5 on 100 issues**, 12.8 percentage points above the same grep candidates
-without reranking. That experiment is separate from today's model-free setup.
+CodeNib finds the source code a coding agent needs and serves it with file and
+line evidence. It builds several views of one repository snapshot (BM25,
+embeddings, a typed SCIP/LSP symbol graph) and offers them three ways: as
+fixed retrieval pipelines, as fixed LLM workflows, and as tools inside an
+agent loop.
 
-Language support varies by surface. Start with the generated
-[Language Capabilities](language_capabilities.md) matrix when you need to know
-which languages support chunking, graph indexing, incremental backends, or C++
-core decoder parity. See [architecture](concepts/architecture.md) for view
-reuse and rebuild boundaries, and [agent integrations](agent_integrations.md)
-for pinned method contracts and their reproduction status.
+The shipping path for Codex and Claude Code is
+[local CodeGraph setup](codegraph.md): model-free, with no API key. The headline
+measured result is the [grep → Jev experiment](evaluation/grep_jev.md):
+**71.4% code-block Recall@5 on 100 issues**, 12.8 percentage points above
+the same grep candidates without reranking. That route is optional and uses
+remote models.
 
-## Choose a path
+## How these docs are organized
 
-| Goal | Section | Start with |
+| Section | Read it to | Start with |
 |------|---------|------------|
-| Install CodeNib and explore a repository | [Get Started](get-started/index.md) | [Quickstart](quickstart.md) |
-| Give Codex or Claude Code a repository CodeGraph | [CodeGraph](codegraph.md) | `codenib codegraph init .` |
-| Serve custom repository context over MCP | [Guides](guides/index.md) | [MCP Server](mcp.md) |
-| Understand indexes, graphs, and incremental updates | [Concepts](concepts/index.md) | [Incremental Graph](incremental_graph/index.md) |
-| Browse source-generated Python contracts | [API Reference](api/codenib/index.md) | `codenib` public surface |
-| Extend, test, release, or evaluate CodeNib | [Development](development/index.md) | [Contributing a Language](contributing-a-language.md) |
+| [Get Started](get-started/index.md) | Install CodeNib and connect a repository to your agent | [Agent-ready CodeGraph](codegraph.md) |
+| [Guides](guides/index.md) | Serve context over MCP, add grep → Jev, or embed CodeNib in an agent | [MCP Server](mcp.md) |
+| [Concepts](concepts/index.md) | Understand the views and how each method uses them | [Context methods and support matrix](concepts/methods.md) |
+| [Benchmarks](evaluation/index.md) | See what is measured, on which datasets, and how to reproduce it | [Method × benchmark matrix](evaluation/index.md#method-benchmark-matrix) |
+| [API Reference](api/codenib/index.md) | Browse the public Python contracts | `codenib` public surface |
+| [Development](development/index.md) | Extend, test, and release CodeNib | [Contributing a Language](contributing-a-language.md) |
+
+Language support differs by view. The generated
+[language capability matrix](language_capabilities.md) shows which languages
+support chunking, graph indexing, incremental backends, and C++ core decoder
+parity.
 
 ## Quick Start
 

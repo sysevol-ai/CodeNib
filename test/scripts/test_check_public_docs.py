@@ -32,12 +32,13 @@ def test_mkdocs_navigation_tabs_contract():
     titles = [item if isinstance(item, str) else next(iter(item)) for item in nav]
     assert titles == [
         "Home",
-        "News",
         "Get Started",
         "Guides",
         "Concepts",
+        "Benchmarks",
         "API Reference",
         "Development",
+        "News",
     ]
 
     sections = {
@@ -45,7 +46,12 @@ def test_mkdocs_navigation_tabs_contract():
         for item in nav
         if isinstance(item, dict)
     }
-    assert sections["News"] == "news.md"
+    assert sections["News"][0] == "news.md"
+    assert sections["Benchmarks"][0] == "evaluation/index.md"
+    assert {"Datasets": "evaluation/datasets.md"} in sections["Benchmarks"]
+    assert {"Harnesses and Metrics": "evaluation/harnesses.md"} in sections[
+        "Benchmarks"
+    ]
     assert sections["Get Started"][0] == "get-started/index.md"
     assert sections["Guides"][0] == "guides/index.md"
     assert sections["Concepts"][0] == "concepts/index.md"
@@ -76,12 +82,18 @@ def test_mkdocs_navigation_tabs_contract():
     )
     assert retrieval_planning == [{"RAG Ops And Planner": "rag_ops.md"}]
 
-    evaluation = next(
-        item["Benchmarks & Evaluation"]
-        for item in sections["Development"]
-        if isinstance(item, dict) and "Benchmarks & Evaluation" in item
-    )
+    # Evaluation is a first-class tab, with guides and results at that layer.
+    evaluation = sections["Benchmarks"]
     assert evaluation[0] == "evaluation/index.md"
+    assert {"ContextBench Experiments": "evaluation/contextbench-results.md"} in next(
+        item["Results"]
+        for item in evaluation
+        if isinstance(item, dict) and "Results" in item
+    )
+    assert not any(
+        isinstance(item, dict) and "Benchmarks & Evaluation" in item
+        for item in sections["Development"]
+    )
 
     # Home uses its page outline as the left rail without duplicating "Home".
     home_source = (REPO_ROOT / "docs" / "index.md").read_text(encoding="utf-8")

@@ -74,7 +74,8 @@ objects inside the fixed bootstrap container. Ignored files, untracked files,
 and working-tree modifications are never copied. The provider rejects commits
 containing Git submodules, tracked symlinks, or `export-ignore`/`export-subst`
 attributes, then fingerprints the sealed baseline with CodeNib's repository
-filter policy. `query(..., sandbox=...)` requires both that fingerprint and the
+filter policy. `query()` with
+`CodeNibAgentOptions(manifest=..., sandbox=...)` requires both that fingerprint and the
 commit to match its trusted manifest. Git LFS pointer files remain pointers;
 bot jobs that require symlink, submodule, or LFS contents are unsupported by
 this MVP and must be skipped.

@@ -22,6 +22,25 @@ boundaries differ.
 
 <div class="codenib-section-grid" markdown>
 
+-   <span class="codenib-card-eyebrow">Start here</span>
+
+    **Context methods and support matrix**
+
+    See every retrieval, workflow, and agent method side by side: which views
+    it reads, who controls the search, where it is exposed, and how far it has
+    been evaluated.
+
+    [Compare the methods →](methods.md)
+
+-   <span class="codenib-card-eyebrow">System design</span>
+
+    **Repository context architecture**
+
+    Follow one repository snapshot from view compilation to manifests,
+    query planning, and bounded evidence delivery.
+
+    [Read the architecture →](architecture.md)
+
 -   <span class="codenib-card-eyebrow">Static navigation</span>
 
     **SCIP index**

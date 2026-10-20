@@ -1,0 +1,523 @@
+# SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+#
+# SPDX-License-Identifier: Apache-2.0
+
+# Single source of truth for the benchmark cards, the context-method support
+# matrix, and the method x benchmark grid in the published docs. Render with:
+#
+#   python scripts/support_matrix.py --write
+#
+# Links are relative to docs/ and are rewritten for each page that embeds a
+# table. Cell levels must be one of `evidence_levels`; `—` means no harness
+# accepts the pair. Research arms (one-off experiment configurations) do not
+# belong here: list them on their benchmark's results page, and add a method
+# only once it is a supported CodeNib surface or a reproduced published method.
+
+evidence_levels: [Tested, Runnable, Pinned, Measured]
+
+layers:
+  L1:
+    name: Localization
+    scored: The method's final ranked files, symbols, code blocks, or line regions
+  L2:
+    name: Agent context
+    scored: Every source span an agent viewed during its trajectory, and its final context
+  L3:
+    name: Resolution
+    scored: Whether the patch produced for the task passes the task's tests
+
+benchmarks:
+  - id: codenib_base
+    name: CodeNib Base
+    column: Base
+    url: https://huggingface.co/datasets/fishmingyu/codenib-base-dataset
+    layer: L1
+    origin: CodeNib
+    task: Real issues; find the code the golden patch changed
+    ground_truth: Derived from golden patches by the GT locator
+    granularity: File, symbol, code block
+    languages: C/C++, Go, Python, Rust, TypeScript/JavaScript
+    size: 100 issues from 25 repositories; 151 code blocks
+    pins: Dataset revision `4eb84e2e`
+    scorer: CodeNib shared retrieval metrics
+    setup: Hugging Face download and repository clones
+    entry:
+      - python: codenib/dataset/codenib_base.py:CodeNibBaseDataset
+    level: Measured
+    results: evaluation/grep_jev.md
+    page: evaluation/datasets.md#codenib-base
+
+  - id: codenib_synthesis
+    name: CodeNib Synthesis
+    column: Synthesis
+    url: https://huggingface.co/datasets/sysevol-ai/codeminer-synthesis
+    layer: L1
+    origin: CodeNib
+    task: Synthetic behavioral, hint, reasoning, and traversal queries
+    ground_truth: Generated with the query, then judged
+    granularity: File, symbol span
+    languages: C/C++, Go, Python, Rust, TypeScript/JavaScript
+    size: 500 queries, 100 per language group
+    pins: None in the loader; five configurations, one per language group
+    scorer: CodeNib shared retrieval metrics
+    setup: Hugging Face download and repository clones
+    entry:
+      - python: codenib/dataset/codenib_synthesis.py:CodeNibSynthesisDataset
+    level: Runnable
+    page: evaluation/datasets.md#codenib-synthesis
+
+  - id: swebench_lite
+    name: SWE-bench Lite
+    column: SWE-bench Lite
+    url: https://huggingface.co/datasets/princeton-nlp/SWE-bench_Lite
+    layer: L1
+    origin: External
+    task: Real issues; find the code the golden patch changed
+    ground_truth: Derived from golden patches by the GT locator
+    granularity: File, function, code block
+    languages: Python
+    size: Full split, or a pinned 50-case policy selection
+    pins: Dataset revision and seeded case selection for paired policy runs
+    scorer: CodeNib shared retrieval metrics
+    setup: Repository clones; annotation file built on first use
+    entry:
+      - python: codenib/dataset/swebench.py:SwebenchDataset
+    level: Runnable
+    level_note: dataset revision and a 50-case selection are pinned for paired policy runs
+    results: agent_integrations.md#fixed-swe-bench-lite-coverage
+    page: evaluation/datasets.md#swe-bench-lite
+    modules:
+      - codenib/eval/benchmarks/policy_benchmark.py
+      - codenib/eval/benchmarks/policy_compat.py
+      - codenib/eval/benchmarks/swebench_policy_cases.py
+
+  - id: locbench_v1
+    name: Loc-Bench v1
+    column: Loc-Bench
+    url: https://huggingface.co/datasets/czlll/Loc-Bench_V1
+    layer: L1
+    origin: External
+    task: Real issues with edited and added functions
+    ground_truth: An annotation file supplied with `--eval-instances`
+    granularity: File, symbol
+    languages: Python
+    size: Full release
+    pins: None in the loader
+    scorer: CodeNib shared retrieval metrics
+    setup: Repository clones and an annotation file
+    entry:
+      - python: codenib/dataset/locbench.py:LocbenchDataset
+    level: Runnable
+    page: evaluation/datasets.md#loc-bench-v1
+
+  - id: swe_explore
+    name: SWE-Explore
+    column: SWE-Explore
+    url: https://github.com/Qiushao-E/SWE-Explore-Bench
+    layer: L1
+    origin: External
+    task: Rank the source regions an issue needs
+    ground_truth: Released core and optional line regions
+    granularity: Line region, file
+    languages: Seven languages in the fixed 20-case set
+    size: 848 released rows; a fixed 20-case validation set
+    pins: Benchmark `3c12dc5a`, dataset `bdb0ae45`
+    scorer: Official 17 metrics, reproduced exactly
+    setup: Released JSONL and clean checkouts at joined base commits
+    entry:
+      - cli: codenib-swe-explore-benchmark
+    level: Pinned
+    level_note: scorer agrees with the official evaluator
+    results: evaluation/swe_explore.md
+    page: evaluation/swe_explore.md
+    modules:
+      - codenib/eval/benchmarks/swe_explore.py
+      - codenib/eval/benchmarks/swe_explore_runner.py
+
+  - id: arb
+    name: Agent Retrieval Bench
+    column: ARB
+    url: https://github.com/eyuansu62/agent-retrieval-bench
+    layer: L1
+    origin: External
+    task: Four static tasks; code→test, comment→context, trace→code, edit→ripple
+    ground_truth: Released gold files
+    granularity: File
+    languages: Mixed; multi-language repositories
+    size: 345 positive samples
+    pins: Evaluator `07014c98`, dataset `5901e1ee`
+    scorer: Official functions called directly (Recall@k, MRR, BCY)
+    setup: ARB checkout and verified release download
+    entry:
+      - cli: codenib-arb
+    level: Pinned
+    level_note: official scorer; 8-case smoke only
+    results: evaluation/agent_retrieval_bench.md#validation
+    page: evaluation/agent_retrieval_bench.md
+    modules:
+      - codenib/eval/benchmarks/agent_retrieval_bench.py
+      - codenib/eval/benchmarks/agent_retrieval_bench_runner.py
+      - codenib/eval/benchmarks/_arb_evaluate.py
+
+  - id: contextbench
+    name: ContextBench
+    column: ContextBench
+    url: https://github.com/EuniAI/ContextBench
+    layer: L2
+    origin: External
+    task: Real issues; an agent explores, and everything it reads is scored
+    ground_truth: Annotated gold context
+    granularity: File, symbol, byte span, line, trajectory
+    languages: C, C++, Go, Java, JavaScript, Python, Rust, TypeScript
+    size: 1,136 tasks; 500 in the verified configuration
+    pins: Evaluator `1436c28a`, dataset `c2855792`
+    scorer: Official evaluator in an isolated subprocess
+    setup: Evaluator checkout and a separate Python 3.10 or 3.11 environment
+    entry:
+      - cli: codenib-contextbench
+    level: Measured
+    level_note: 500 canonical tasks with a research route; leaderboard review pending
+    results: evaluation/contextbench-results.md
+    page: evaluation/contextbench.md
+    modules:
+      - codenib/eval/benchmarks/contextbench.py
+      - codenib/eval/benchmarks/contextbench_runner.py
+      - codenib/eval/benchmarks/_contextbench_evaluate.py
+
+  - id: contextbench_pass1
+    name: ContextBench Pass@1
+    column: ContextBench Pass@1
+    layer: L3
+    origin: External
+    task: The same tasks; a solver writes a patch, and native tests judge it
+    ground_truth: Each task's native tests
+    granularity: Resolved or unresolved per task
+    languages: C, C++, Go, Java, JavaScript, Python, Rust, TypeScript
+    size: 500 tasks in the verified configuration
+    pins: Same dataset; pinned per-source images, parsers, and grading scripts
+    scorer: Native graders for the Verified, Pro, Poly, and Multi sources
+    setup: Pinned task images, a mini SWE-agent checkout, and Docker
+    entry:
+      - path: scripts/benchmark_context_solver.py
+      - path: scripts/contextbench_verified.py
+    level: Measured
+    level_note: 388/500 resolved with a research route; leaderboard review pending
+    results: evaluation/contextbench-results.md
+    page: evaluation/index.md#l3-resolution
+
+  - id: deepswe
+    name: DeepSWE
+    column: DeepSWE
+    layer: L3
+    origin: External
+    task: Solve the task in a container; an external harness runs the solver
+    ground_truth: The task's tests
+    granularity: Pass or fail per trial
+    languages: Set by the external harness
+    size: Set by the external harness
+    pins: Set by the external harness
+    scorer: External harness; CodeNib only aggregates its trial artifacts
+    setup: The external DeepSWE harness and task containers
+    entry:
+      - module: codenib.eval.benchmarks.deepswe
+      - module: scripts.guardian.deepswe.results
+        run: true
+    level: Tested
+    level_note: artifact analysis only; no published result
+    page: evaluation/index.md#l3-resolution
+    in_grid: false
+    modules:
+      - codenib/eval/benchmarks/deepswe/__init__.py
+      - codenib/eval/benchmarks/deepswe/metrics.py
+      - codenib/eval/benchmarks/deepswe/reports.py
+      - codenib/eval/benchmarks/deepswe/results.py
+
+methods:
+  - id: bm25
+    name: BM25
+    paradigm: A
+    role: CodeNib
+    views: "`bm25`"
+    model: none
+    surfaces: Python, MCP
+    cells:
+      codenib_base:
+        level: Runnable
+        note: Scored only as the first stage of BM25 → Jev.
+        link: evaluation/grep_jev.md#what-was-measured
+      codenib_synthesis:
+        level: Runnable
+        note: >-
+          BM25 and Dense run through `examples/eval_synthesized_queries.py` on
+          rows exported to JSON, scored on file and symbol names only.
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+      swe_explore:
+        level: Runnable
+        note: Control scores on the 20 validation cases; not a quality claim.
+        link: evaluation/swe_explore.md#localization-summary
+      arb:
+        level: Runnable
+        note: The only native ARB route; validated on an 8-case smoke.
+        link: evaluation/agent_retrieval_bench.md#validation
+      contextbench:
+        level: Runnable
+        note: >-
+          Through the research harness `scripts/benchmark_graph_decisions.py`,
+          which also runs dense and graph-expansion arms. Its published
+          100-task arms rerank with a different decision model, not Jev.
+
+  - id: dense
+    name: Dense
+    paradigm: A
+    role: CodeNib
+    views: "`vector`"
+    model: embedding model
+    surfaces: Python, MCP
+    cells:
+      codenib_base:
+        level: Runnable
+        note: Scored only as the first stage of dense → Qwen3-Reranker-4B.
+        link: evaluation/grep_jev.md#what-was-measured
+      codenib_synthesis: {level: Runnable}
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+      swe_explore: {level: Runnable}
+      contextbench: {level: Runnable}
+
+  - id: hybrid
+    name: Hybrid (RRF)
+    paradigm: A
+    role: CodeNib
+    views: "`bm25`, `vector`"
+    model: embedding model
+    surfaces: Python, MCP
+    cells:
+      codenib_base:
+        level: Runnable
+        note: Scored only as the first stage of hybrid → Jev and hybrid → Qwen3-Reranker-4B.
+        link: evaluation/grep_jev.md#what-was-measured
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+      swe_explore: {level: Runnable}
+
+  - id: graph_expansion
+    name: Graph expansion
+    paradigm: A
+    role: CodeNib
+    views: "`bm25` or `vector`, plus `symbol_graph`"
+    model: embedding model for dense seeds; optional reranker
+    surfaces: Python, MCP
+    cells:
+      codenib_base: {level: Runnable}
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+      swe_explore: {level: Runnable}
+      contextbench: {level: Runnable}
+
+  - id: retrieve_rerank
+    name: Retrieve → rerank
+    paradigm: A
+    role: CodeNib
+    views: any first stage
+    model: a reranker
+    surfaces: Python
+    cells:
+      codenib_base:
+        level: Measured
+        note: >-
+          Measured through the frozen-candidate research scripts
+          `benchmark_jev_base.py` and `benchmark_jev_dense.py`, not through
+          `RetrieveRerankPipeline`.
+        link: evaluation/grep_jev.md#what-was-measured
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+      swe_explore: {level: Runnable}
+
+  - id: planner_auto
+    name: Planner `auto`
+    paradigm: A
+    role: CodeNib
+    views: whatever is available
+    model: none to plan; the chosen route may need embeddings or a reranker
+    surfaces: Python, MCP
+    cells:
+      codenib_base: {level: Runnable}
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+      swe_explore: {level: Runnable}
+
+  - id: grep_jev
+    name: Model-planned grep → Jev
+    paradigm: B
+    role: CodeNib
+    views: none; reads the checkout
+    model: planner LLM and Jev
+    surfaces: CLI, MCP
+    cells:
+      codenib_base:
+        level: Measured
+        link: evaluation/grep_jev.md
+
+  - id: agentless
+    name: Agentless v1.5.0
+    paradigm: B
+    role: Reproduced
+    views: "`symbol_graph`"
+    model: chat LLM, three stages
+    surfaces: Python
+    contract:
+      level: Pinned
+      note: Upstream v1.5.0 prompts.
+      label: upstream prompts
+      link: agent_integrations.md#agentless
+    modules:
+      - codenib/eval/benchmarks/agentless.py
+    cells:
+      codenib_base:
+        level: Runnable
+        note: Upstream's Python-only file filter limits it to the Python issues.
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+
+  - id: codenib_agent
+    name: CodeNib agent
+    paradigm: C
+    role: CodeNib
+    views: per enabled skill
+    model: chat LLM
+    surfaces: Python
+    cells:
+      codenib_base: {level: Runnable}
+      codenib_synthesis: {level: Runnable}
+      swebench_lite: {level: Runnable}
+      contextbench:
+        level: Measured
+        note: >-
+          Historical 24-task development subset, with source tools only
+          (`read`, `grep`, `glob`) and no index view. `codenib-contextbench`
+          runs the same `AgentRunner` with its own prompt, budgets, and model,
+          plus the `bm25_search` skill, and does not reproduce these numbers.
+        link: evaluation/contextbench-results.md#historical-post-run-24-task-results
+
+  - id: mcp_clients
+    name: Claude Code or Codex over MCP
+    paradigm: C
+    role: Client
+    views: "`bm25`, `symbol_graph`"
+    model: the client's own
+    surfaces: MCP
+    baseline: Tested
+
+  - id: claude_sdk_source_tools
+    name: Claude Agent SDK with CodeNib source tools
+    paradigm: C
+    role: Client
+    views: none; CodeNib's confined `read`, `grep`, `glob`
+    model: the SDK's Claude model
+    surfaces: research scripts only
+    cells:
+      contextbench:
+        level: Measured
+        note: >-
+          All 500 canonical tasks, for a native Opus control and for the
+          complementary Haiku search-pair research arm. The population was
+          already exposed during development.
+        link: evaluation/contextbench-results.md
+      contextbench_pass1:
+        level: Measured
+        note: >-
+          388/500 resolved when the search-pair arm's context feeds an Opus
+          mini SWE-agent repair loop. A leaderboard submission awaits maintainer
+          review.
+        link: evaluation/contextbench-results.md
+
+  - id: locagent
+    name: LocAgent
+    paradigm: C
+    role: Reproduced
+    views: "`bm25`, `symbol_graph`"
+    model: chat LLM
+    surfaces: Python
+    contract:
+      level: Pinned
+      note: Vendored upstream prompts and loop.
+      label: upstream prompts and loop
+      link: agent_integrations.md#locagent
+    modules:
+      - codenib/eval/benchmarks/locagent.py
+    cells:
+      codenib_base: {level: Runnable}
+      swebench_lite:
+        level: Pinned
+        link: agent_integrations.md#paired-provider-compatibility
+      locbench_v1: {level: Runnable}
+
+  - id: cosil
+    name: CoSIL
+    paradigm: C
+    role: Reproduced
+    views: "`symbol_graph`"
+    model: chat LLM
+    surfaces: Python
+    contract:
+      level: Pinned
+      note: Vendored upstream prompts and loop.
+      label: upstream prompts and loop
+      link: agent_integrations.md#cosil
+    modules:
+      - codenib/eval/benchmarks/cosil.py
+    cells:
+      codenib_base: {level: Runnable}
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+
+  - id: orcaloca
+    name: OrcaLoca SearchAgent
+    paradigm: C
+    role: Reproduced
+    views: "`symbol_graph`"
+    model: chat LLM
+    surfaces: Python
+    contract:
+      level: Pinned
+      note: Upstream `SearchAgent` driven through CodeNib views.
+      label: upstream agent
+      link: agent_integrations.md#orcaloca
+    modules:
+      - codenib/eval/benchmarks/orcaloca.py
+    cells:
+      codenib_base: {level: Runnable}
+      swebench_lite:
+        level: Pinned
+        link: agent_integrations.md#paired-provider-compatibility
+      locbench_v1: {level: Runnable}
+
+  - id: reponavigator
+    name: RepoNavigator `jump`
+    paradigm: C
+    role: Reproduced
+    views: "`symbol_graph`, SCIP occurrences"
+    model: the caller's
+    surfaces: Python
+    contract:
+      level: Pinned
+      note: Upstream tool contract.
+      label: upstream tool contract
+      link: agent_integrations.md#reponavigator
+
+  - id: no_codenib
+    name: Claude / Codex without CodeNib
+    paradigm: C
+    role: Control
+    views: none; reads files
+    model: Claude Agent SDK or Codex
+    surfaces: Python
+    cells:
+      codenib_base: {level: Runnable}
+      swebench_lite: {level: Runnable}
+      locbench_v1: {level: Runnable}
+
+# Benchmark adapter modules that belong to no single benchmark or method.
+shared_modules:
+  - codenib/eval/benchmarks/__init__.py

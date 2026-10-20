@@ -21,6 +21,8 @@ on:
       - "web/package-lock.json"
       - "scripts/check_public_docs.py"
       - "scripts/language_capability_matrix.py"
+      - "scripts/support_matrix.py"
+      - "scripts/support_matrix.yaml"
       - ".github/workflows/docs.yml"
   pull_request:
     branches:
@@ -38,6 +40,8 @@ on:
       - "web/package-lock.json"
       - "scripts/check_public_docs.py"
       - "scripts/language_capability_matrix.py"
+      - "scripts/support_matrix.py"
+      - "scripts/support_matrix.yaml"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -74,6 +78,8 @@ jobs:
         run: >-
           uv run --no-sync python scripts/language_capability_matrix.py
           --check docs/language_capabilities.md
+      - name: Check generated support matrix
+        run: uv run --no-sync python scripts/support_matrix.py --check
 
       - name: Build docs
         run: uv run --no-sync mkdocs build --strict

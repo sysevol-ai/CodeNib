@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2025-2026 CodeNib Contributors
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 # Evaluation Artifact Bundles
 
 `codenib-artifact-bundle` stages content-locked evaluation releases from
@@ -97,7 +103,8 @@ otherwise the complete-inventory verifier will reject the modified copy.
 Agent query sweeps self-record their protocol, so bundling a sweep's output
 directory captures full provenance without extra bookkeeping. `run_query_sweep`
 (`codenib/eval/agent_runner/query_sweep.py`) writes a summary JSON
-(`query_sweep_summary.json` by default) whose top-level `protocol` block pins
+(`query_sweep_summary.json` by default; `run_synthesis_sweep.py` names it
+`synthesis_summary.json`) whose top-level `protocol` block pins
 the run configuration:
 
 - **Identity and model**: `sweep_id`, `model`, `model_revision` — the provider

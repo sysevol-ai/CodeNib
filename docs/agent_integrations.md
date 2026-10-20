@@ -5,6 +5,12 @@ agent without importing that agent or rebuilding its indexes. Integrations bind
 to one existing `repo_manifest.json` through `ServerContext`; they never create
 an agent-specific graph, BM25 index, or cache directory.
 
+These integrations are the fixed-workflow (Agentless) and agentic
+(LocAgent, CoSIL, OrcaLoca, RepoNavigator) rows of the
+[context methods matrix](concepts/methods.md#support-matrix). The
+[method × benchmark matrix](evaluation/index.md#method-benchmark-matrix) shows
+which datasets each one can be scored on.
+
 ## Support Matrix
 
 The support levels below are intentionally separate. **Provider** means CodeNib
@@ -20,6 +26,7 @@ Integration links point to the exact upstream revisions checked by the probes.
 | [Agentless v1.5.0](https://github.com/OpenAutoCoder/Agentless/tree/b150f28465a77a81a7f4776384957a4271f5bd69) | CodeNib-native, revision-pinned | Symbol graph | Python tree, symbol skeleton, and line-window context | Vendored three-stage localization prompts; shared ranked file/symbol scoring | Localization only; repair and patch validation are excluded |
 | [CoSIL](https://github.com/ZhonghaoJiang/CoSIL/tree/0568e423735b399d5b089996961fea9ae142e4c7/CoSIL/fl) | CodeNib-native, revision-pinned | Symbol graph | Pinned four-tool contract | Vendored file reflection, function tool loop, prune policy, and shared localization scoring | RQ1 file/function localization only; line localization and patch generation are excluded |
 | [OrcaLoca SearchAgent](https://github.com/fishmingyu/OrcaLoca/tree/37db289be2dc3b7432183fe08b3f06becce87c27) | Revision-pinned supported | Symbol graph | Pinned six-tool and private-hook contract | Upstream `SearchAgent`; fixed-case paired runner and native File/Function Match scorer | Python SWE-bench repositories; empty `TraceAnalysisOutput`; upstream trace generation is not included |
+| [RepoNavigator](https://arxiv.org/abs/2512.20957v6) | Provider only | Symbol graph + persisted LSP occurrences | Published single-tool `jump` contract | No policy loop or benchmark runner; the caller supplies the agent | Graph-only heuristics are rejected unless the caller opts into degraded behavior |
 
 ### What Supported Means
 
@@ -61,7 +68,7 @@ OrcaLoca native implementations support those languages.
 ### Shared LSP navigation provider
 
 The definition, reference, and route agent skills resolve the same provider
-injected into `ExpandContext`. In 0.2.2 manifest-bound contexts, including
+injected into `ExpandContext`. Since 0.2.2, manifest-bound contexts, including
 C/C++-only builds, select the verified persisted symbol graph. Native clangd
 fact-query postings remain an independently benchmarked implementation, but
 their mutable project-local `.idx` generation has no source-selection receipt

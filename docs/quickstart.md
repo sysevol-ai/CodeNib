@@ -208,7 +208,7 @@ embedding model, and BYO endpoint configurations.
 | `graph` | `codenib[graph]` | BM25 and symbol graph |
 | `full` | `codenib[full]` | BM25, dense vectors, symbol graph, and Zoekt |
 
-Building the Zoekt view and serving it are separate boundaries. In 0.2.2,
+Building the Zoekt view and serving it are separate boundaries. Since 0.2.2,
 authenticated MCP `search_zoekt` serving requires Linux `/proc`; macOS and
 Windows fail closed instead of handing the process a mutable shard path.
 

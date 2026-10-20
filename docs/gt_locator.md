@@ -89,3 +89,34 @@ from codenib.dataset.gt_locate import build_gt_metadata
 
 results = build_gt_metadata(dataset, work_dir="/data/repos", keep_repos=True)
 ```
+
+`SwebenchDataset.load_eval_metadata()` calls `build_gt_metadata` itself when
+its annotation file does not exist yet, so retrieval and agent harnesses can
+run on SWE-bench without a separate preparation step. The first run clones
+every repository and is slow.
+
+## Command Line
+
+Write ground truth for a whole SWE-bench split:
+
+```bash
+python -m codenib.dataset.gt_locate --dataset verified --split test \
+  --filter '^django__' --limit 20
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--dataset` | `verified` | `verified` or `lite` |
+| `--split` | `test` | Hugging Face split |
+| `--output` | `~/.codenib/swebench_{dataset}_{split}_gt.json` | Output JSON path |
+| `--work-dir` | `~/.codenib/tmp` | Where repositories are cloned |
+| `--limit` | all | Maximum number of instances |
+| `--filter` | `.*` | Regular expression over instance IDs |
+| `--keep-repos` | off | Keep repositories cloned into the default work directory |
+
+## Line Numbers
+
+Tree-sitter chunks are 0-based. `GTLocator` converts them once, when it emits
+`code_blocks`, so every `start_line` and `end_line` in its output is 1-based
+and inclusive. Scorers compare these blocks with predicted spans by overlap;
+see [Harnesses and metrics](evaluation/harnesses.md#code-block-metrics).

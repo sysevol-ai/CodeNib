@@ -115,9 +115,10 @@ repair is not enabled.
 
 | Start here | What you can inspect |
 | --- | --- |
+| [Context methods and support matrix](https://docs.codenib.ai/concepts/methods/) | Every retrieval pipeline, LLM workflow and agent route, sorted by the views it reads and who controls the search |
+| [Benchmarks](https://docs.codenib.ai/evaluation/) | Localization, agent-context and resolution layers, evidence levels, and the method × benchmark matrix over CodeNib Base/Synthesis, SWE-bench Lite, Loc-Bench, SWE-Explore, Agent Retrieval Bench and ContextBench |
 | [grep → Jev result](https://docs.codenib.ai/evaluation/grep_jev/) | 100-issue retrieval comparison, candidate controls, model use and limitations |
 | [Agent integration matrix](https://docs.codenib.ai/agent_integrations/) | Revision-pinned LocAgent, Agentless, CoSIL, OrcaLoca and RepoNavigator contracts; compatibility does not imply reproduced paper scores |
-| [Dataset and benchmark matrix](https://docs.codenib.ai/evaluation/) | CodeNib Base/Synthesis, SWE-bench variants, Loc-Bench and SWE-Explore support |
 | [SWE-Explore validation](https://docs.codenib.ai/evaluation/swe_explore/) | 1,020/1,020 real-output metric cells match the pinned official evaluator on a fixed 20-case run |
 | [DGX Spark deployment](https://docs.codenib.ai/guides/reference-deployments/dgx-spark/) | Local Wiki, CodeGraph and model serving on GB10; a deployment guide, not a token-saving benchmark |
 
