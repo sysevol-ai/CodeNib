@@ -11,7 +11,109 @@ from types import SimpleNamespace
 import pytest
 
 from codenib.compiler.manifest import RepoManifest
+from codenib.graph.code_graph import CodeGraph
 from codenib.mcp.tools.explore import explore_context_impl
+from codenib.types import NODE_TYPE_FUNCTION
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("symbol", ["processRequest", "process_request", "decode"])
+def test_explore_preserves_named_query_symbol_before_dense_window_limit(
+    tmp_path, monkeypatch, explicit, symbol
+):
+    """A named definition must survive an otherwise full semantic result page."""
+    _write_source(tmp_path, "src/target.py", symbol)
+    graph = CodeGraph(str(tmp_path))
+    graph.add_file_node("src/target.py")
+    graph.add_symbol_node(
+        symbol,
+        line=20,
+        scope_start_line=20,
+        scope_end_line=21,
+        symbol_type=NODE_TYPE_FUNCTION,
+    )
+    graph.build_range_indexes()
+    ctx = _context(tmp_path)
+    ctx.bm25 = None
+    ctx.vector = object()
+    ctx.symbol_graph = graph
+    dense = []
+    for i in range(4):
+        path = f"src/semantic{i}.py"
+        _write_source(tmp_path, path, f"other_{i}")
+        dense.append(
+            {
+                "node_name": f"other_{i}",
+                "type": NODE_TYPE_FUNCTION,
+                "file": path,
+                "start_line": 21,
+                "end_line": 22,
+            }
+        )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_a, **_kw: {"plan": {"name": "semantic"}, "results": dense},
+    )
+    mention = f"`{symbol}`" if symbol == "decode" else symbol
+    result = explore_context_impl(
+        ctx,
+        query=f"refresh {mention} configuration",
+        symbols=[symbol] if explicit else [],
+        top_k=4,
+        budget="fast",
+        include_dependencies=False,
+    )
+    assert result["files"][0]["file"] == "src/target.py"
+    assert result["plan"]["route"]["inferred_symbols"] == ([] if explicit else [symbol])
+    assert result["summary"]["source_windows"] == 4
+    assert f"def {symbol}" in result["files"][0]["contexts"][0]["content"]
+
+
+def test_explore_does_not_promote_fuzzy_query_identifier_matches(tmp_path, monkeypatch):
+    ctx = _context(tmp_path)
+    ctx.symbol_graph = SimpleNamespace(
+        resolve_symbol_candidates=lambda *_a: ["different_symbol"],
+        get_node_info_by_name=lambda _n: {"type": NODE_TYPE_FUNCTION},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_a, **_kw: {"results": []},
+    )
+    calls = []
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl",
+        lambda *_a, **kw: calls.append(kw) or [],
+    )
+    result = explore_context_impl(
+        ctx, query="refresh unknownSymbol behavior", include_dependencies=False
+    )
+    assert calls[0]["symbols"] == []
+    assert result["plan"]["route"]["inferred_symbols"] == []
+    assert result["plan"]["route"]["query_fallback"] is True
+
+
+def test_explore_bounds_inferred_symbol_lookups(tmp_path, monkeypatch):
+    from codenib.mcp.tools._validation import MAX_ROUTE_SYMBOLS
+
+    lookups = []
+    ctx = _context(tmp_path)
+    ctx.symbol_graph = SimpleNamespace(
+        resolve_symbol_candidates=lambda seed, _limit: lookups.append(seed) or [],
+        get_node_info_by_name=lambda _n: None,
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.search_context_impl",
+        lambda *_a, **_kw: {"results": []},
+    )
+    monkeypatch.setattr(
+        "codenib.mcp.tools.explore.lsp_route_impl", lambda *_a, **_kw: []
+    )
+    explore_context_impl(
+        ctx,
+        query=" ".join(f"unknownSymbol{i}" for i in range(200)),
+        include_dependencies=False,
+    )
+    assert len(lookups) == MAX_ROUTE_SYMBOLS
 
 
 def _context(tmp_path, *, verified: bool = True):
